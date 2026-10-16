@@ -10,13 +10,14 @@ import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // GitHub issue #584: ColorPickerPanel had no test file at all. Covers the colorWarnings memo's full
 // pipeline (field key -> overrideActiveProfileColor -> warnings attached to that field, GitHub issue
 // #717) and buildProjectColorGroups' de-dup/priority logic.
 
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 beforeEach(() => {

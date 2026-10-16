@@ -4,6 +4,7 @@ import { makeProjection } from "../pixi/tessellationProjection";
 import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -18,7 +19,7 @@ vi.mock("../store/mazeStore", () => ({
 // unit-test environment -- mock with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 const { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } = await import("../pixi/PresetConnectionsRenderer");

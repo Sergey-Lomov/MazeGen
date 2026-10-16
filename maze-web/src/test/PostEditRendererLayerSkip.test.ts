@@ -13,6 +13,7 @@ import { EdgeHighlightRenderer } from "../pixi/renderers/EdgeHighlightRenderer";
 import { IssueHighlightOverlay } from "../pixi/IssueHighlightOverlay";
 import { canvas } from "../pixi/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -25,7 +26,8 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 // Cartesian coords come from wasm, unavailable here — same square-grid stand-in as other renderer tests.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const n = nodeEndpoint;

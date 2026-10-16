@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 // `baseGraphRenderer.test.ts` — lets `buildNodePositions`/`buildCrossFloorMarkers` run without a
 // real wasm module.
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (config: { points: [number, number][] }) => config.points,
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 // Minimal fake pixi (same pattern as `RegionOverlayRenderer.test.ts`).
@@ -53,6 +53,7 @@ const { Graphics: FakeGraphics, BitmapText: FakeText, Container } = await import
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });

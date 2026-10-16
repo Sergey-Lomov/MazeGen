@@ -7,9 +7,11 @@ import { computeAnalyticsAsync, generateMaze } from "../wasm/mazeService";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),

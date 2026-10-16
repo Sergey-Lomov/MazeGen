@@ -2,19 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
 // in this unit-test environment -- mock with the canonical projections used by the three
 // tessellation families.
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { tessellation: { kind: "square" | "hex" | "tri" }; points: [number, number][] }) => cfg.points.map(([x, y]) => {
-    if (cfg.tessellation.kind === "hex") return [x * 1.5, -(y * Math.sqrt(3) + x * Math.sqrt(3) / 2)];
-    if (cfg.tessellation.kind === "tri") {
-      const h = Math.sqrt(3);
-      return [x + 0.5, -((x + y) % 2 === 0 ? y * h + h / 3 : y * h + 2 * h / 3)];
-    }
-    return [x, y];
-  }),
+  getCellCenters: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
 }));
 
 const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSelectors");

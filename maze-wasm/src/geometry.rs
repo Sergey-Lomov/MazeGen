@@ -1,5 +1,8 @@
 use crate::generation_config::TessellationConfig;
 use maze_core::space::Tessellation;
+use maze_runner::runner::geometry::{
+    self as runner_geometry, CellAtRequest, CellsInRegionRequest, GeometrySnapshotRequest,
+};
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
@@ -7,56 +10,85 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-/// Wire shape for `cartesian_coords` — a standalone point list plus its tessellation config,
-/// independent of `GenerateConfig`'s `level_fields` (which carry no `points` themselves — see
-/// GitHub issue #338). This endpoint answers a single geometry query, not a multi-level
-/// generation config.
+/// Wire shape for `cell_centers` — a standalone point list plus its tessellation config,
+/// independent of `GenerateConfig`'s `level_fields`.
 #[derive(Deserialize)]
-struct CartesianCoordsConfig {
+struct CellCentersConfig {
     tessellation: TessellationConfig,
     points: Vec<[i32; 2]>,
 }
 
-/// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point in `points`, via
-/// `Tessellation::cartesian` — see `maze-core::space`'s doc comment for why this carries no
-/// rendering-specific orientation/rotation (a display-only concept that stays entirely on the
-/// web side). `maze-web`'s `tessellationGeometry.ts` is the single caller: it scales this by
-/// `TILE_SIZE`/`TRI_TILE_SIZE` and applies the configured orientation's rotation to get pixel
-/// coordinates, rather than duplicating the projection formulas in TypeScript.
+/// World-unit center (`Tessellation::center`, math convention, no display orientation) of each
+/// point in `points`, in order. `maze-web`'s `cartesianCache.ts` is the single caller: it scales
+/// these to pixels and applies the display orientation. Superseded by `geometry_snapshot` once the
+/// web consumes core geometry (GitHub issue #761).
 #[wasm_bindgen]
-pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
-    let cfg: CartesianCoordsConfig = serde_wasm_bindgen::from_value(config)
+pub fn cell_centers(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: CellCentersConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
-    let coords = cartesian_coords_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
-    Ok(serde_wasm_bindgen::to_value(&coords).unwrap())
+    let centers = cell_centers_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&centers).unwrap())
 }
 
-fn cartesian_coords_for(cfg: &CartesianCoordsConfig) -> Result<Vec<[f64; 2]>, String> {
+fn cell_centers_for(cfg: &CellCentersConfig) -> Result<Vec<[f64; 2]>, String> {
     build_tessellation(
         &cfg.tessellation,
-        Project {
+        Centers {
             points: &cfg.points,
         },
-    )
+    )?
 }
 
-/// Projects wire points through the built tessellation instance.
-struct Project<'a> {
+struct Centers<'a> {
     points: &'a [[i32; 2]],
 }
 
-impl TessellationVisitor for Project<'_> {
-    type Output = Vec<[f64; 2]>;
+impl TessellationVisitor for Centers<'_> {
+    type Output = Result<Vec<[f64; 2]>, String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         self.points
             .iter()
             .map(|&[x, y]| {
-                let (cx, cy) = tessellation.cartesian((codec.from_xy)(x, y));
-                [cx, cy]
+                let cell = (codec.from_xy)(x, y);
+                if !tessellation.is_valid_cell(cell) {
+                    return Err(format!("invalid cell [{x}, {y}]"));
+                }
+                let center = tessellation.center(cell);
+                Ok([center.x, center.y])
             })
             .collect()
     }
+}
+
+/// Immutable geometry snapshot of a cell set (boundary path commands, flattened polylines,
+/// centers, `cell_scale`, per-face contact points and segments), bound to the tessellation
+/// instance and the caller's field version — see `maze_runner::runner::geometry`.
+#[wasm_bindgen]
+pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: GeometrySnapshotRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let snapshot =
+        runner_geometry::geometry_snapshot(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&snapshot).unwrap())
+}
+
+/// Point query: the cell at a world point, within an optional cell-set scope.
+#[wasm_bindgen]
+pub fn geometry_cell_at(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellAtRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let cell = runner_geometry::cell_at(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&cell).unwrap())
+}
+
+/// Region query: cells matching a closed polygon under a mode, within an optional scope.
+#[wasm_bindgen]
+pub fn geometry_cells_in_region(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellsInRegionRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let cells = runner_geometry::cells_in_region(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&cells).unwrap())
 }
 
 /// Wire shape for `tessellation_shapes`: a tessellation config plus the cells whose own template
@@ -126,25 +158,34 @@ impl TessellationVisitor for Shapes<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CartesianCoordsConfig, TessellationShapes, TessellationShapesConfig, cartesian_coords_for,
+        CellCentersConfig, TessellationShapes, TessellationShapesConfig, cell_centers_for,
         tessellation_shapes_for,
     };
     use crate::generation_config::TessellationConfig;
     use maze_runner::config::TessellationKind;
 
     #[test]
-    fn cairo_cartesian_projection_preserves_wire_coordinates() {
-        let cfg = CartesianCoordsConfig {
+    fn cell_centers_are_core_centers_in_point_order() {
+        let cfg = CellCentersConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::Square,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[2, -1], [0, 0]],
+        };
+        assert_eq!(cell_centers_for(&cfg), Ok(vec![[2.5, -0.5], [0.5, 0.5]]));
+    }
+
+    #[test]
+    fn cell_centers_rejects_invalid_cells() {
+        let cfg = CellCentersConfig {
             tessellation: TessellationConfig {
                 kind: TessellationKind::Cairo,
                 params: serde_json::Map::new(),
             },
-            points: vec![[-6, -5], [3, 2]],
+            points: vec![[0, 0]],
         };
-        assert_eq!(
-            cartesian_coords_for(&cfg),
-            Ok(vec![[-6.0, -5.0], [3.0, 2.0]])
-        );
+        assert!(cell_centers_for(&cfg).is_err());
     }
 
     #[test]

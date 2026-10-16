@@ -3,12 +3,13 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { CorridorGeometryTestPage, PROBLEM_TYPES, labCellGeometry } from "../components/CorridorGeometryTestPage";
 import { contourToPolyline } from "../pixi/imageExport/vectorByCorridorsContour";
 import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // Cell centres come from wasm, unavailable here — mock with the square identity formula. It is only
 // geometrically correct for square cells; other tessellations are exercised here for UI structure
 // only (`corridorLabParity.test.ts` compares their geometry on the real wasm build).
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 describe("CorridorGeometryTestPage", () => {

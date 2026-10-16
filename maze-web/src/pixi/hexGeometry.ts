@@ -7,6 +7,10 @@ import { cairoCenter } from "./cairoGeometry";
 
 export const INRADIUS = TILE_SIZE * Math.sqrt(3) / 2;
 
+/// Side of `maze-core`'s area-1 hexagon in world units — a hex is drawn with side `TILE_SIZE`, so
+/// world coordinates scale by `TILE_SIZE / HEX_WORLD_SIDE` pixels.
+const HEX_WORLD_SIDE = Math.sqrt(2 / (3 * Math.sqrt(3)));
+
 export interface Pos { x: number; y: number; }
 
 /// Rotates (x, y) counter-clockwise by `deg` degrees around the origin — a plain 2D rotation
@@ -16,8 +20,8 @@ function rotateDeg(x: number, y: number, deg: number): Pos {
   return { x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) };
 }
 
-/// Scales `maze-core`'s canonical (flat_top-equivalent, unit-tile-scale) projection
-/// (`Tessellation::cartesian`, read via `getCartesian`) by `TILE_SIZE`, then rotates by 30° for
+/// Scales `maze-core`'s world-unit (flat_top-equivalent) center (`Tessellation::center`, read via
+/// `getCartesian`) to pixels (`TILE_SIZE / HEX_WORLD_SIDE`), then rotates by 30° for
 /// `pointy_top` (0° for `flat_top`, i.e. no rotation). Verified numerically that `pointy_top` is
 /// exactly a 30° rotation of the same canonical point as `flat_top` for every (q, r) — not an
 /// independent projection formula — so this stays a single source of truth instead of needing a
@@ -25,7 +29,8 @@ function rotateDeg(x: number, y: number, deg: number): Pos {
 /// without a full config in hand may pass `kindFieldConfig("hex")`.
 export function hexCenter(q: number, r: number, orientation: "flat_top" | "pointy_top", cfg: FieldConfig = kindFieldConfig("hex")): Pos {
   const [ux, uy] = getCartesian(q, r, cfg);
-  const { x, y } = rotateDeg(ux * TILE_SIZE, uy * TILE_SIZE, orientation === "pointy_top" ? 30 : 0);
+  const scale = TILE_SIZE / HEX_WORLD_SIDE;
+  const { x, y } = rotateDeg(ux * scale, uy * scale, orientation === "pointy_top" ? 30 : 0);
   return { x, y };
 }
 

@@ -20,8 +20,11 @@ pub trait Tessellation: Send + Sync + 'static {
     fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
     fn shape_descriptors(&self) -> &[ShapeDescriptor];
     fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
-    fn cartesian(&self, cell: Self::CellId) -> (f64, f64);
-    fn edge_position(&self, from: Self::CellId, to: Self::CellId) -> (f64, f64); // default: midpoint of endpoints
+    // Geometry primitives (GitHub issue #759), see "Geometry" below:
+    fn center(&self, cell: Self::CellId) -> Point;
+    fn face_segments(&self, cell: Self::CellId, face: Self::Face) -> Vec<Segment>;
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<Self::CellId>>;
+    fn area(&self, cell: Self::CellId) -> f64; // default: signed area of the boundary path
 }
 ```
 
@@ -38,8 +41,8 @@ fixture keys (`split_points`, `[x, y]` coordinates) are unchanged here — they 
 instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (accessors
 `tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The four built-in tessellations
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
-(`face_index_toward`, `geometric_distance`, `geometric_edge_distance`, `floor_aware_distance`,
-`floor_aware_edge_distance`) take the instance as their first argument; consumers resolve it from
+(`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
+`floor_aware_distance`) take the instance as their first argument; consumers resolve it from
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
@@ -48,8 +51,9 @@ the field (`maze.field.tessellation()`).
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
 `Arc<T>` plus the kind's wire point codec (`CellCodec`) to a `TessellationVisitor`. `maze-runner`
-(full run, canonical baselines, benchmarks) and `maze-wasm` (generate, compute analytics,
-`cartesian_coords`, `tessellation_shapes`) all dispatch through it.
+(full run, canonical baselines, benchmarks, geometry snapshots) and `maze-wasm` (generate, compute
+analytics, `cell_centers`, `tessellation_shapes`, the geometry snapshot and point queries) all
+dispatch through it.
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
@@ -66,14 +70,12 @@ the kind does not accept (`Err` with a reason; the built-in kinds accept none) a
   that is the same boundary piece; `None` when no cell exists there (built-in tessellations: only on `i32` coordinate overflow). Cairo's offset tables carry the back face directly, indexed by face discriminant.
   Reciprocal for every tessellation (`neighbor(cell', face') == Some((cell, face))`), checked by
   `space_tests.rs`'s `neighbor_contract_tests`. Field membership is separate.
-- **`is_straight(cell, in_face, out_face)`** — face-identity semantics, kept from the old
-  `Field::is_straight` so canonical baselines match: straight iff `out_face` equals the face of the
-  previous cell that `in_face` touches (`neighbor(cell, in_face).1`). Square/hex/tri answer from
-  the face's `opposite()` table (`TriFace`: `Left ↔ Right`, `Base ↔ Base`); Cairo resolves the
-  reciprocal face from its transition table. The geometric definition lands in #759.
-  `neighbor_contract_tests` also checks `Field::is_straight` against an independent re-statement
-  of the old definition (face of `from` toward `via` equals face of `via` toward `to`) for every
-  tessellation.
+- **`is_straight(cell, in_face, out_face)`** — geometric semantics (GitHub issue #759, see the
+  target model's topology contract): square and hex answer from the face's `opposite()` table
+  (a straight pass leaves by the opposite side); triangle and Cairo always answer `false` (every
+  pass through a triangle turns by 60°, and no two Cairo contact points are collinear with the
+  pentagon's centroid). `geometry::tests` checks every table against `is_straight_geometric` and
+  `neighbor_contract_tests` checks `Field::is_straight` against it for every tessellation.
 - **`face_index_toward(tessellation, cell, other)`** (free function) — position in
   `faces_of(cell)` of the face reaching `other`, or `None` when `other` is not a tessellation
   neighbor. Used by the per-face split QC check.
@@ -82,7 +84,11 @@ the kind does not accept (`Err` with a reason; the built-in kinds accept none) a
   "Shape templates" below). They are the only source of split-pattern variants; the old
   per-tessellation `rotation_symmetries`/`mirror_symmetries` tables, `transform_face_index` and
   `symmetry_degree` were removed in GitHub issue #758.
-- **`cartesian`/`edge_position`** — pure geometry, no rendering-specific orientation. `geometric_distance<T>`/`geometric_edge_distance<T>` (free functions in `space::mod`) build on these for node-to-node/edge-to-edge Euclidean distance, unrelated to graph/nav distance (tile-hop count along real edges).
+- **Geometry primitives** (`center`, `face_segments`, `candidate_cells`, `area`) — see
+  "Geometry" below. `cell_position`/`edge_position` (free functions in `space::mod`) resolve a
+  cell's center or an edge's contact point together with its scale; `geometric_distance`,
+  `floor_aware_distance` and `floor_aware_xy_distance` measure between them in `cell_scale` units,
+  unrelated to graph/nav distance (tile-hop count along real edges).
 
 ## Field\<T\>
 
@@ -246,7 +252,8 @@ The sketch fixes semantics, not exact signatures.
   identity. Staging: #756 introduces the per-cell `is_straight` with the old face-identity
   semantics as tables, so canonical baselines still match. #759 switches it to the geometric
   definition, adds the table-vs-geometry test, and documents the resulting tri/Cairo generation
-  changes together with the `cell_scale` change before its baseline update. Consumers
+  changes together with the `cell_scale` change before its baseline update (done, see
+  `baselines.md`). Consumers
   (`graph::classify`, `generation::vertex_based`) call
   `Field::is_straight(from, via, to)`, which resolves the faces of `via` toward `from` and `to`.
 
@@ -306,7 +313,7 @@ patterns, QC split matching, split topology and repair split planning consume it
   debug-asserted precondition violation.
 - Built-in `faces_of` is the canonical order (#758), so `local_to_canonical` is the identity for
   every built-in cell; `shape_tests.rs` checks that, and checks the canonical order against
-  `cartesian` neighbor angles. Template geometry is not implemented yet.
+  neighbor center angles. Template geometry is not implemented yet.
 
 ### Geometry
 
@@ -315,9 +322,10 @@ units, math convention (x right, y up, counter-clockwise positive). There is no 
 orientation or pixel scale (see "Display transform").
 
 - **Scale.** `cell_scale(cell) = sqrt(area(cell))`. For regular tessellations the world unit is
-  chosen so a cell's area is 1. Distance-based QC thresholds are expressed in `cell_scale` units.
-  This is an intentional scale change for hex/tri/Cairo versus the old `cartesian`, explained in
-  #759 before its baseline update.
+  chosen so a cell's area is 1; Cairo pentagons are area 1 too. Distance-based QC thresholds are
+  expressed in `cell_scale` units (`quality_control.md`'s "Geometric distance"). This was an
+  intentional scale change for hex/tri/Cairo versus the old per-tessellation `cartesian`
+  projection (#759, `baselines.md`).
 - **Point queries:**
   - `center(cell)`.
   - `contact_point(cell, face)`: the point where a corridor crosses the face, by default the
@@ -353,8 +361,9 @@ orientation or pixel scale (see "Display transform").
   - `length()`.
   - `reversed()`: `reversed().point(t) == point(1 − t)`.
   - `flatten(tolerance) -> polyline`: endpoints are exactly `point(0)` / `point(1)`, the maximum
-    distance between the polyline and the true curve is at most `tolerance` (world units), the
-    output is deterministic, and a line flattens to its two endpoints.
+    distance between the polyline and the true curve is at most `tolerance` (world units; a
+    tolerance below `GEOM_EPS` is raised to it, so the piece count stays bounded), the output is
+    deterministic, and a line flattens to its two endpoints.
   - `path_commands()`.
 
   Consumers never inspect the segment kind: drawing uses path commands, geometric operations use
@@ -369,6 +378,49 @@ orientation or pixel scale (see "Display transform").
   - no self-intersection;
   - counter-clockwise (positive signed area);
   - face order along the path equals `faces_of(cell)`.
+
+Status (GitHub issue #759): implemented in `space::geometry`.
+
+- **Split of responsibilities.** A tessellation implements four primitives on `Tessellation`:
+  `center`, `face_segments(cell, face)` (the face's segments counter-clockwise along `cell`'s
+  boundary — consumers never call it directly), `candidate_cells(min, max, limit)` (a superset of
+  the cells whose boundary may touch a box, the candidate source for whole-space queries; `None`
+  when there would be more than `limit`, counted before any is built) and `area`
+  (defaults to the boundary's signed area; the built-ins return `1.0`, checked against the
+  boundary by tests). Everything else is the `TessellationGeometry` extension trait (blanket impl
+  for every `Tessellation`): `edge_owner` (the canonical edge key), `edge_segments` (owner-side
+  `face_segments`, reversed for the other side), `boundary_path`, `contact_point` (computed on the
+  owner side), `cell_scale`, `cell_at`, `cells_in_region`. `CellScope` is `Space` or
+  `Cells(&[CellId])` — a cell set sorted by `CellId` without duplicates; membership is a binary
+  search. `contact_point` is `chain_midpoint` (the arc-length midpoint) of the owner-side face
+  segments. `is_straight_geometric` is the definition the `is_straight`
+  tables are tested against.
+- **Built-in geometry.** Square: unit squares, cell `(x, y)` spans `[x, x + 1] × [y, y + 1]`. Hex:
+  flat-top hexagons, face `k` of `[E, NE, NW, W, SW, SE]` runs between the vertices at
+  `60k − 60°` and `60k°`. Triangle: `pointing_up` cells have their base on top. Cairo: the base
+  pentagon `(4,0), (6,6), (0,8), (-6,6), (-4,0)` (lattice unit `√2/12`, so the area is 1) turned
+  counter-clockwise per orientation (U 0, L 1, D 2, R 3 quarter turns) and placed at
+  `3 · (x, y)` plus the orientation offset (U `(0,-3)`, L `(3,0)`, D `(0,3)`, R `(-3,0)`), with each face's edge found once per orientation by
+  matching vertices with the neighbor. Every vertex is an integer lattice point times a
+  per-tessellation unit, so a vertex shared by several cells has identical coordinates from each
+  of them (exact joints by construction, not by tolerance). Centers are area centroids.
+- **Segments.** `Segment::Line` and `Segment::CircularArc` (explicit `from`/`to` endpoints plus
+  center, radius, start angle and signed sweep, so joints stay exact). `flatten` cuts an arc into
+  the fewest equal pieces whose sagitta stays within the tolerance. Containment, bounds and region
+  tests are exact for arcs (never flattened): the ray test cuts an arc at its y-extrema into
+  y-monotone pieces with the same half-open rule as lines, and region tests intersect region
+  edges with the circle (`touches_line`, `crosses_line`; tangency touches but never crosses). No
+  built-in tessellation uses arcs yet.
+- **Region size limit.** With `CellScope::Space`, `cells_in_region` returns
+  `Err(RegionTooLarge)` when the region's bounding box holds more than `MAX_REGION_CANDIDATES`
+  (250 000) candidate cells, before building any — an oversized request fails fast instead of
+  stalling. Callers keep such requests within it (the web clamps selections, #761). With
+  `CellScope::Cells`, the query examines only the scope's cells, so any region size is accepted.
+  `cell_at` has no limit (its box is a point).
+- **Scale between two positions.** A distance between two positions is divided by the **mean**
+  of their `cell_scale`s (an edge position's scale is the mean of its two cells'). For the
+  built-in tessellations every scale is 1; for a tiling mixing cell sizes this keeps the measure
+  symmetric and independent of which side is "first".
 
 ### Field operations
 
@@ -405,3 +457,15 @@ boundary path commands, the flattened polylines (at the requested tolerance), th
 `cells_in_region`) are exported too. A snapshot is bound to the tessellation instance identity
 and the field version (incremented on every cell-set change). The web geometry access layer
 invalidates it when either changes, and never because of the display transform.
+
+Status (GitHub issue #759): `maze_runner::runner::geometry` builds snapshots
+(`geometry_snapshot(GeometrySnapshotRequest { tessellation, cells, tolerance, field_version })`,
+computing each canonical edge's segments and contact point once per snapshot and only for the
+requested cells, and assembling each boundary path from them) and answers
+`cell_at`/`cells_in_region` requests (scope: a cell list in any order, sorted and deduplicated by the
+runner, or `None` for the whole space); `maze-wasm`
+exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`. The snapshot's
+`instance` is the serialized tessellation config (equal configs build equal instances) and
+`field_version` is echoed from the request — the web owns the version counter (#761). An invalid
+cell or a non-positive tolerance is an error. The benchmark measures the snapshot as its
+`geometry` stage.

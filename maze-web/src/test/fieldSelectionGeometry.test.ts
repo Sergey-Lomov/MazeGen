@@ -1,17 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] => {
-    if (cfg.tessellation.kind === "hex") {
-      const inradius = Math.sqrt(3) / 2;
-      return [x * 1.5, -(y * inradius * 2 + x * inradius)];
-    }
-    return [x, y];
-  },
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 import { selectionBoundarySegments } from "../pixi/fieldSelectionGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 describe("selectionBoundarySegments", () => {
   it("removes internal edges from a selected square-cell union", () => {

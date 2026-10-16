@@ -9,9 +9,10 @@ import { PC } from "../pixi/selectors/projectColorsSelector";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 // `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to

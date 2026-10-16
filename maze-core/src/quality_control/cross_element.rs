@@ -26,7 +26,7 @@ use crate::quality_control::checks::elevator_core::elevator_groups;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::checks::vertical_passage_count_core::vertical_passage_proximity_candidates;
 use crate::quality_control::vertical_passage_type::VerticalPassageType;
-use crate::space::Tessellation;
+use crate::space::{ScaledPoint, Tessellation, cell_position, edge_position};
 
 /// Canonical unordered node pair identifying one teleport portal — `(min(a, b), max(a, b))`, so a
 /// portal is the same id no matter which direction happens to iterate first in `Graph::edges`.
@@ -109,15 +109,15 @@ pub struct CrossElementOccurrence<T: Tessellation> {
     pub level_index: usize,
     /// `field.cell_of(node)`.
     pub point: T::CellId,
-    /// Cartesian position the geometric metric measures from — `Tessellation::cartesian(point)` for every
+    /// Position the geometric metric measures from — `space::cell_position(point)` for every
     /// occurrence, except a one-way's two occurrences, which both carry the one-way edge's own
-    /// `Tessellation::edge_position(from, to)` instead (GitHub issue #376's follow-up: a one-way renders on
+    /// `space::edge_position(from, to)` (its face's contact point) instead (GitHub issue #376's follow-up: a one-way renders on
     /// the tile border it crosses, not at either endpoint node, so its geometric distance is
     /// measured the same way `OneWayGroupGeometricProximityCheck` measures it, from the edge's own
     /// position rather than from either of its two endpoint nodes). Both of a one-way's occurrences
     /// carrying the identical `xy` is harmless — `aggregate_pairs` already collapses duplicate
     /// close-pairs back to one group per logical element.
-    pub xy: (f64, f64),
+    pub xy: ScaledPoint,
     /// `nav.nav_node_for(node)` — `None` when the node is absent from the nav graph.
     pub nav_node: Option<NavNodeId>,
 }
@@ -217,7 +217,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
                 node,
                 level_index,
                 point,
-                xy: tessellation.cartesian(point),
+                xy: cell_position(tessellation, point),
                 nav_node: nav.nav_node_for(node),
             });
         };
@@ -246,7 +246,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
             else {
                 continue;
             };
-            let edge_xy = tessellation.edge_position(from_point, to_point);
+            let edge_xy = edge_position(tessellation, from_point, to_point);
             let before = out.len();
             push_at(&mut out, CrossElement::OneWay(id), from);
             push_at(&mut out, CrossElement::OneWay(id), to);

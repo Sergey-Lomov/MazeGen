@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Container } from "pixi.js";
+import { fakeCellCenter } from "./cellCentersFake";
 
 // getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
 // same square-tessellation mock as exportFit.test.ts/printFit.test.ts.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const { ExportFrameOverlay } = await import("../pixi/imageExport/ExportFrameOverlay");

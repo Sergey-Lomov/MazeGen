@@ -7,7 +7,8 @@
 //! ```
 //!
 //! Stages are measured on the canonical baseline fixtures (`tests/fixtures/baseline/`):
-//! `generation` on every `*-gen.json` fixture, `qc` (all checks once, no repair) and `repair` (the
+//! `generation` and `geometry` (a snapshot of every field cell, GitHub issue #759) on every
+//! `*-gen.json` fixture, `qc` (all checks once, no repair) and `repair` (the
 //! full QC+repair loop) on every `*-qc.json` fixture, whose fixed graph keeps them independent of
 //! generation. Each measurement is the median of `--runs` samples (at least 10) after one warm-up
 //! run; setup (field, presets, graph) is never timed. `qc` and `repair` include building the QC
@@ -21,6 +22,7 @@
 
 use maze_core::space::Tessellation;
 use maze_runner::GenerateConfig;
+use maze_runner::runner::geometry::{GeometrySnapshotRequest, geometry_snapshot};
 use maze_runner::runner::prepare::{Prepared, PreparedVisitor, dispatch};
 use maze_runner::runner::stages::{run_check_only, run_generation, run_repair, seed_graph};
 use serde_json::{Map, Value, json};
@@ -35,12 +37,15 @@ const DEFAULT_THRESHOLD: f64 = 0.05;
 const MIN_SAMPLE_MS: f64 = 100.0;
 const FIXTURE_DIR: &str = "tests/fixtures/baseline";
 const BASELINE_FILE: &str = "bench/baseline.json";
+/// `flatten` tolerance of the geometry stage's snapshot, in world units.
+const GEOMETRY_TOLERANCE: f64 = 0.01;
 
 #[derive(Clone, Copy)]
 enum Stage {
     Generation,
     Qc,
     Repair,
+    Geometry,
 }
 
 impl Stage {
@@ -49,6 +54,7 @@ impl Stage {
             Stage::Generation => "generation",
             Stage::Qc => "qc",
             Stage::Repair => "repair",
+            Stage::Geometry => "geometry",
         }
     }
 }
@@ -65,6 +71,12 @@ impl PreparedVisitor for TimeStage<'_> {
     fn visit<T: Tessellation>(self, prepared: Prepared<T>) -> Result<f64, String> {
         let config = self.config;
         let mut seeded = seed_graph(prepared, config)?;
+        let snapshot_request = GeometrySnapshotRequest {
+            tessellation: config.tessellation.clone(),
+            cells: config.level_fields.concat(),
+            tolerance: GEOMETRY_TOLERANCE,
+            field_version: 0,
+        };
         let started = Instant::now();
         match self.stage {
             Stage::Generation => {
@@ -75,6 +87,9 @@ impl PreparedVisitor for TimeStage<'_> {
             }
             Stage::Repair => {
                 std::hint::black_box(run_repair(seeded, config, None, None)?);
+            }
+            Stage::Geometry => {
+                std::hint::black_box(geometry_snapshot(&snapshot_request)?);
             }
         }
         Ok(started.elapsed().as_secs_f64() * 1000.0)
@@ -165,7 +180,7 @@ fn main() -> ExitCode {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let plan: Vec<(Stage, PathBuf)> = fixtures(root, "-gen.json")
         .into_iter()
-        .map(|path| (Stage::Generation, path))
+        .flat_map(|path| [(Stage::Generation, path.clone()), (Stage::Geometry, path)])
         .chain(
             fixtures(root, "-qc.json")
                 .into_iter()

@@ -6,6 +6,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 pub mod cairo;
+pub mod geometry;
 pub mod hex;
 pub mod multi_level;
 pub mod shape;
@@ -15,6 +16,11 @@ pub(crate) mod test_support;
 pub mod triangle;
 
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
+pub use geometry::{
+    BoundaryPath, CellScope, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode,
+    RegionTooLarge, STRAIGHT_TOLERANCE, Segment, TessellationGeometry, chain_midpoint,
+    is_straight_geometric,
+};
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
 pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
@@ -50,11 +56,10 @@ pub trait Tessellation: Send + Sync + 'static {
     fn neighbor(&self, cell: Self::CellId, face: Self::Face) -> Option<(Self::CellId, Self::Face)>;
 
     /// Whether a pass through `cell` entering by `in_face` and leaving by `out_face` is straight.
-    /// Current semantics are face identity: straight iff `out_face` equals the face of the
-    /// previous cell that `in_face` touches (`neighbor(cell, in_face)`'s second element) —
-    /// answered from per-tessellation tables. The geometric definition replaces it in GitHub issue
-    /// #759 (see `Specs/space.md`'s target model). An invalid `cell`, or a face not in
-    /// `faces_of(cell)`, is a precondition violation.
+    /// Geometric semantics (`geometry::is_straight_geometric`, GitHub issue #759): the contact
+    /// points of both faces and the cell's center are collinear, in that order. Answered from
+    /// per-tessellation tables for speed; tests check every table against the definition. An
+    /// invalid `cell`, or a face not in `faces_of(cell)`, is a precondition violation.
     fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
 
     /// Every shape template this instance's cells use, each listed once.
@@ -66,39 +71,25 @@ pub trait Tessellation: Send + Sync + 'static {
     /// Allocation-free. An invalid `cell` is a precondition violation.
     fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
 
-    /// Canonical Cartesian projection of `cell`, in unit tile scale (one tile = 1.0), with no
-    /// rendering-specific orientation/rotation applied — a display-only concept (e.g. hex
-    /// flat_top/pointy_top, tri r0/r90/r180/r270 in `maze-web`) that stays entirely on the web
-    /// side, since core has no notion of it. Never a pixel coordinate — callers needing pixels
-    /// scale and (for hex/tri) rotate this themselves. Used for geometric (as opposed to
-    /// logical/graph) distance between two cells — see `geometric_distance` below.
-    ///
-    /// **Not required to agree on a shared sign/offset convention across tessellations** — each
-    /// impl only has to be internally consistent (same cell always maps to the same coordinate,
-    /// distances behave as expected for that tessellation's own geometry). `SquarePoint`'s impl
-    /// returns the raw `(x, y)` grid coordinate (the tile's corner, no Y flip); `HexPoint`'s and
-    /// `TriPoint`'s impls happen to bake in a screen-style Y flip (and, for `TriPoint`, a
-    /// half-tile centering offset) because their formulas were ported directly from
-    /// `maze-web`'s pre-existing pixel-space `hexCenter`/`triCenter` — not because `cartesian` as
-    /// a concept requires it. `geometric_distance` is unaffected either way (translation/
-    /// reflection are isometries, so distances come out identical regardless of which convention
-    /// an impl picked); callers doing anything convention-sensitive (e.g. `maze-web`'s
-    /// `squareCenter`/`hexCenter`/`triCenter`, which each apply their own scale/offset/rotation on
-    /// top) must check the specific impl's doc comment rather than assume one is like another.
-    fn cartesian(&self, cell: Self::CellId) -> (f64, f64);
+    /// World-unit center of `cell` (see `geometry`). Used for geometric (as opposed to
+    /// logical/graph) distance and as `C` in the geometric `is_straight` definition.
+    fn center(&self, cell: Self::CellId) -> Point;
 
-    /// Canonical Cartesian position of the edge between `from` and `to`, same coordinate
-    /// convention/scale as `cartesian` — used for geometric distance *between edges* (as opposed
-    /// to between nodes), since a one-way passage renders visually on the tile border it crosses,
-    /// not at either endpoint node. Default impl is the midpoint of the two endpoints'
-    /// `cartesian` positions, correct for every current tessellation (square/hex/tri all place an
-    /// edge crossing squarely between its two nodes) — a future tessellation whose edges don't
-    /// sit at the node midpoint (e.g. an off-center border) overrides this method instead of
-    /// `geometric_edge_distance`'s callers each reimplementing the correction themselves.
-    fn edge_position(&self, from: Self::CellId, to: Self::CellId) -> (f64, f64) {
-        let (fx, fy) = self.cartesian(from);
-        let (tx, ty) = self.cartesian(to);
-        ((fx + tx) / 2.0, (fy + ty) / 2.0)
+    /// The segments of `face`, running counter-clockwise along `cell`'s boundary. Consumers call
+    /// `TessellationGeometry::edge_segments` instead, which evaluates this on the canonical owner
+    /// side only, so an implementation never has to agree with itself across a face pair.
+    fn face_segments(&self, cell: Self::CellId, face: Self::Face) -> Vec<Segment>;
+
+    /// A superset of the valid cells whose boundary may touch the axis-aligned box `min`–`max`
+    /// (any order) — the candidate source for point and region queries over the whole
+    /// tessellation space. Exact filtering happens in `geometry`. `None` when there would be more
+    /// than `limit` candidates; an implementation counts them before allocating any.
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<Self::CellId>>;
+
+    /// Area of `cell`. Defaults to the signed area of its boundary path; a tessellation with a
+    /// known constant area overrides it (tests check the override against the boundary).
+    fn area(&self, cell: Self::CellId) -> f64 {
+        self.boundary_path(cell).signed_area()
     }
 }
 
@@ -116,41 +107,56 @@ pub fn face_index_toward<T: Tessellation>(
     })
 }
 
-/// Euclidean distance (in unit tile scale) between two cells of the same tessellation, via
-/// `Tessellation::cartesian`. Purely geometric — unrelated to graph/nav distance
-/// (`MazeAnalysis::distance_from_start`/`distance_from_finish`), which counts tile-hops along
-/// actual edges instead.
-pub fn geometric_distance<T: Tessellation>(tessellation: &T, a: T::CellId, b: T::CellId) -> f64 {
-    let (ax, ay) = tessellation.cartesian(a);
-    let (bx, by) = tessellation.cartesian(b);
-    ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
+/// A world position together with the `cell_scale` distances to it are measured in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScaledPoint {
+    pub point: Point,
+    pub scale: f64,
 }
 
-/// Euclidean distance (in unit tile scale) between two *edges*, each identified by its
-/// `from`/`to` endpoint pair, via `Tessellation::edge_position`. Distinct from
-/// `geometric_distance` (node-to-node): an edge's visual position is its border crossing, not
-/// either endpoint node, so measuring edge proximity via node distance would systematically
-/// underestimate how far apart two edges actually render.
-pub fn geometric_edge_distance<T: Tessellation>(
+/// `cell`'s center, measured in its own `cell_scale`.
+pub fn cell_position<T: Tessellation>(tessellation: &T, cell: T::CellId) -> ScaledPoint {
+    ScaledPoint {
+        point: tessellation.center(cell),
+        scale: tessellation.cell_scale(cell),
+    }
+}
+
+/// Position of the edge `from -> to`: the contact point of the face between the two cells (where
+/// a passage renders), measured in the mean `cell_scale` of both. Two cells that are not
+/// tessellation neighbors (no shared face) fall back to the midpoint of their centers.
+pub fn edge_position<T: Tessellation>(
     tessellation: &T,
-    a_from: T::CellId,
-    a_to: T::CellId,
-    b_from: T::CellId,
-    b_to: T::CellId,
-) -> f64 {
-    let (ax, ay) = tessellation.edge_position(a_from, a_to);
-    let (bx, by) = tessellation.edge_position(b_from, b_to);
-    ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
+    from: T::CellId,
+    to: T::CellId,
+) -> ScaledPoint {
+    let scale = (tessellation.cell_scale(from) + tessellation.cell_scale(to)) / 2.0;
+    let point = match face_index_toward(tessellation, from, to) {
+        Some(index) => tessellation.contact_point(from, tessellation.faces_of(from)[index]),
+        None => (tessellation.center(from) + tessellation.center(to)) * 0.5,
+    };
+    ScaledPoint { point, scale }
 }
 
-/// Euclidean distance between two nodes' cells, each on its own floor (`MultiLevelField::
-/// level_index_of` position) — see GitHub issue #342. `include_height` folds the floor
-/// difference in as a third coordinate, one unit per floor apart, on top of the ordinary x-y
-/// distance `geometric_distance` computes; `false` reproduces `geometric_distance` exactly
-/// (floor ignored, same as a single-floor maze). Callers wanting "cross-floor pairs never count"
-/// instead of a height-aware metric skip calling this entirely for a mismatched pair rather than
-/// passing a mode here — this function only ever computes a distance, it never decides whether a
-/// pair should be evaluated at all.
+/// Euclidean distance between two cells' centers, in `cell_scale` units. Edge-to-edge distance is
+/// `floor_aware_xy_distance` over two `edge_position`s, each resolved once per edge by the caller. Purely geometric —
+/// unrelated to graph/nav distance (`MazeAnalysis::distance_from_start`/`distance_from_finish`),
+/// which counts tile-hops along actual edges instead.
+pub fn geometric_distance<T: Tessellation>(tessellation: &T, a: T::CellId, b: T::CellId) -> f64 {
+    floor_aware_xy_distance(
+        0,
+        cell_position(tessellation, a),
+        0,
+        cell_position(tessellation, b),
+        false,
+    )
+}
+
+/// Distance between two nodes' cells, each on its own floor (`MultiLevelField::level_index_of`
+/// position) — see GitHub issue #342. `include_height` folds the floor difference in as a third
+/// coordinate, one `cell_scale` unit per floor apart; `false` reproduces `geometric_distance`
+/// exactly. Callers wanting "cross-floor pairs never count" skip calling this for a mismatched
+/// pair — this function only ever computes a distance.
 pub fn floor_aware_distance<T: Tessellation>(
     tessellation: &T,
     a_level: usize,
@@ -161,55 +167,32 @@ pub fn floor_aware_distance<T: Tessellation>(
 ) -> f64 {
     floor_aware_xy_distance(
         a_level,
-        tessellation.cartesian(a),
+        cell_position(tessellation, a),
         b_level,
-        tessellation.cartesian(b),
+        cell_position(tessellation, b),
         include_height,
     )
 }
 
-/// Euclidean distance between two edges' `Tessellation::edge_position`s, each on its own floor —
-/// the edge-based counterpart of `floor_aware_distance`, mirroring how `geometric_edge_distance`
-/// relates to `geometric_distance`. See GitHub issue #342.
-#[allow(clippy::too_many_arguments)]
-pub fn floor_aware_edge_distance<T: Tessellation>(
-    tessellation: &T,
-    a_level: usize,
-    a_from: T::CellId,
-    a_to: T::CellId,
-    b_level: usize,
-    b_from: T::CellId,
-    b_to: T::CellId,
-    include_height: bool,
-) -> f64 {
-    floor_aware_xy_distance(
-        a_level,
-        tessellation.edge_position(a_from, a_to),
-        b_level,
-        tessellation.edge_position(b_from, b_to),
-        include_height,
-    )
-}
-
-/// Shared core of `floor_aware_distance`/`floor_aware_edge_distance` — both ultimately compare two
-/// already-resolved cartesian `(x, y)` positions (a node's `cartesian`, or an edge's
-/// `edge_position`), so this is the one place the actual formula lives. Also used directly by
-/// `cross_element_geometric_proximity`'s occurrence scan (GitHub issue #376's one-way-distance
-/// follow-up), whose occurrences carry a pre-resolved cartesian position rather than a `T::CellId`
-/// (a one-way's occurrence is its edge's midpoint, which is not any tile's own cell).
+/// Shared core of every geometric distance: the planar world distance divided by the mean
+/// `cell_scale` of both positions (so thresholds are in `cell_scale` units), with the floor
+/// difference folded in as a third coordinate when `include_height` is set. Also used directly by
+/// `cross_element_geometric_proximity`, whose occurrences carry pre-resolved positions (a one-way's
+/// occurrence is its edge's contact point, which is not any cell's center).
 pub fn floor_aware_xy_distance(
     a_level: usize,
-    a_xy: (f64, f64),
+    a: ScaledPoint,
     b_level: usize,
-    b_xy: (f64, f64),
+    b: ScaledPoint,
     include_height: bool,
 ) -> f64 {
+    let planar = a.point.distance(b.point) / ((a.scale + b.scale) / 2.0);
     let dz = if include_height {
         b_level as f64 - a_level as f64
     } else {
         0.0
     };
-    ((b_xy.0 - a_xy.0).powi(2) + (b_xy.1 - a_xy.1).powi(2) + dz.powi(2)).sqrt()
+    (planar.powi(2) + dz.powi(2)).sqrt()
 }
 
 /// A tile's cell resolves to one *or more* `NodeId`s (see GitHub issue #219, epic #218) — most

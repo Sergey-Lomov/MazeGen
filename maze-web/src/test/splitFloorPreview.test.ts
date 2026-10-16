@@ -3,10 +3,11 @@ import type { FieldConfig } from "../fieldConfig";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/postEditTypes";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/wasmLoader", () => ({
   getWasm: () => ({
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
   }),
   initWasm: vi.fn(() => Promise.resolve()),
 }));

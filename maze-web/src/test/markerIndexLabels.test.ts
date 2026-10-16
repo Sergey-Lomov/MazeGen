@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
@@ -12,6 +12,7 @@ import type { MarkerIndexSettings } from "../store/imageExportTypes";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 8, rows: 8 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });

@@ -15,6 +15,7 @@ import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
 // only ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`).
@@ -39,7 +40,8 @@ function makeEmptyBounds(): FakeBounds {
 // same square-tessellation mock as exportFit.test.ts/exportMargins.test.ts, needed since
 // getRequiredExportMargin's pixel-accurate path calls cellCenterBounds/getCellCenter directly.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 vi.mock("../pixi/selectors/mazeSelectors", () => ({

@@ -20,7 +20,10 @@ use wasm_bindgen::prelude::*;
 pub use analytics::compute_analytics;
 pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
-pub use geometry::{cartesian_coords, tessellation_shapes};
+pub use geometry::{
+    cell_centers, geometry_cell_at, geometry_cells_in_region, geometry_snapshot,
+    tessellation_shapes,
+};
 pub use strategies_catalog::available_strategies;
 
 #[wasm_bindgen]

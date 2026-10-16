@@ -8,13 +8,14 @@ import { STATIC_COLOR_FIELD_KEYS, parseColorFieldKey } from "../pixi/colorFieldK
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { ColorRow } from "../components/ColorRow";
 import { ColorVisibilityProvider, LayoutGate } from "../components/ColorVisibilityContext";
+import { fakeCellCenters } from "./cellCentersFake";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
 } from "../store/slices/imageExportSlice";
 
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 const emptyMaze = { nodes: [], edges: [], floors: [{ id: "f", title: "F" }] } as never;

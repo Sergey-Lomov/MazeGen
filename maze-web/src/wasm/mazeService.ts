@@ -273,13 +273,12 @@ export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
   return validateSnapshot(raw);
 }
 
-/// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point, in the same order
-/// as `config.points` -- see `cartesian_coords`'s doc comment in `maze-wasm/src/lib.rs`. Single
-/// source of truth for tile geometry: `tessellationGeometry.ts`'s `getCellCenter` scales and
-/// (for hex/tri) rotates this per the caller's tessellation config, rather than duplicating the
-/// per-tessellation projection formulas in TypeScript.
-export function getCartesianCoords(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): [number, number][] {
-  return getWasm().cartesian_coords(config) as [number, number][];
+/// World-unit center (core's `Tessellation::center`: area-1 cells, math Y-up, no display
+/// orientation) of each point, in the same order as `config.points` -- see `cell_centers`'s doc
+/// comment in `maze-wasm/src/geometry.rs`. `tessellationGeometry.ts`'s `getCellCenter` scales and
+/// (for hex/tri) rotates this per the caller's tessellation config.
+export function getCellCenters(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): [number, number][] {
+  return getWasm().cell_centers(config) as [number, number][];
 }
 
 /** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell

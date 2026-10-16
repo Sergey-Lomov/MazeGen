@@ -1,4 +1,4 @@
-use super::{CellShape, ShapeDescriptor, Tessellation};
+use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
 use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -77,9 +77,60 @@ impl Tessellation for SquareTessellation {
         ))
     }
 
-    fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
-        (cell.x as f64, cell.y as f64)
+    /// Unit squares: cell `(x, y)` spans `[x, x + 1] × [y, y + 1]` (area 1).
+    fn center(&self, cell: SquarePoint) -> Point {
+        Point::new(cell.x as f64 + 0.5, cell.y as f64 + 0.5)
     }
+
+    fn face_segments(&self, cell: SquarePoint, face: SquareFace) -> Vec<Segment> {
+        let corner = |dx: i32, dy: i32| {
+            Point::new(
+                (cell.x as i64 + dx as i64) as f64,
+                (cell.y as i64 + dy as i64) as f64,
+            )
+        };
+        let (from, to) = match face {
+            SquareFace::E => (corner(1, 0), corner(1, 1)),
+            SquareFace::N => (corner(1, 1), corner(0, 1)),
+            SquareFace::W => (corner(0, 1), corner(0, 0)),
+            SquareFace::S => (corner(0, 0), corner(1, 0)),
+        };
+        vec![Segment::line(from, to)]
+    }
+
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<SquarePoint>> {
+        let xs = cell_range(min.x.min(max.x) - 1.0, min.x.max(max.x));
+        let ys = cell_range(min.y.min(max.y) - 1.0, min.y.max(max.y));
+        grid_candidates(xs, ys, limit, |x, y| SquarePoint { x, y })
+    }
+
+    fn area(&self, _cell: SquarePoint) -> f64 {
+        1.0
+    }
+}
+
+/// Every `(x, y)` of the two ranges mapped by `cell`, or `None` when that would exceed `limit`.
+pub(super) fn grid_candidates<C>(
+    xs: std::ops::RangeInclusive<i32>,
+    ys: std::ops::RangeInclusive<i32>,
+    limit: usize,
+    cell: impl Fn(i32, i32) -> C,
+) -> Option<Vec<C>> {
+    let span = |r: &std::ops::RangeInclusive<i32>| (*r.end() as i64 - *r.start() as i64 + 1).max(0);
+    if span(&xs).saturating_mul(span(&ys)) > i64::try_from(limit).unwrap_or(i64::MAX) {
+        return None;
+    }
+    Some(
+        ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
+            .map(|(x, y)| cell(x, y))
+            .collect(),
+    )
+}
+
+/// Integer range `floor(lo)..=floor(hi)`, clamped to `i32`.
+pub(super) fn cell_range(lo: f64, hi: f64) -> std::ops::RangeInclusive<i32> {
+    let clamp = |v: f64| v.floor().clamp(i32::MIN as f64, i32::MAX as f64) as i32;
+    clamp(lo)..=clamp(hi)
 }
 
 pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

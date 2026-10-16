@@ -7,6 +7,7 @@ import { VerticalConnectionRenderer } from "../pixi/renderers/VerticalConnection
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -19,7 +20,8 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 // Cartesian coords come from wasm, unavailable here — same square-grid stand-in as other renderer tests.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const SECOND_FLOOR_ID = "floor_2";

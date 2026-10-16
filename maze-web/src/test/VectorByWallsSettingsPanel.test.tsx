@@ -8,6 +8,7 @@ import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICA
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { distributeOklchHues } from "../store/colorMath";
 import * as m from "~/paraglide/messages";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
 // section's group list) delegates to wasm, unavailable in this unit-test environment — mocked with
@@ -18,7 +19,7 @@ vi.mock("../wasm/mazeService", () => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),

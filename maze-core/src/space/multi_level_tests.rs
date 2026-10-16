@@ -618,8 +618,8 @@ fn add_level_accepts_a_field_sharing_the_instance_of_a_data_carrying_tessellatio
     mf.add_level(Field::new(Arc::clone(&tessellation), square_rect(2, 1), &mut ids).unwrap());
     assert_eq!(mf.level_count(), 2);
     assert_eq!(
-        mf.tessellation().cartesian(SquarePoint { x: 1, y: 1 }),
-        (2.0, 2.0)
+        mf.tessellation().center(SquarePoint { x: 1, y: 1 }),
+        crate::space::Point::new(3.0, 3.0)
     );
 }
 

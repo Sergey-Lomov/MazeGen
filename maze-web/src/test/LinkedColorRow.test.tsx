@@ -5,9 +5,10 @@ import { LinkedColorRow } from "../components/features/LinkedRows";
 import { LinkContextProvider } from "../components/features/LinkContext";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
 import * as m from "~/paraglide/messages";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 beforeEach(() => {

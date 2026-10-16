@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("../wasm/wasmLoader", () => ({
   getWasm: () => ({
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
   }),
 }));
 
@@ -11,6 +11,7 @@ import { PresetSplitNodesDialog } from "../components/features/PresetSplitNodesD
 import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { baseStoreState } from "./storeTestHelpers";
+import { fakeCellCenters } from "./cellCentersFake";
 
 beforeEach(() => {
   useMazeStore.setState({

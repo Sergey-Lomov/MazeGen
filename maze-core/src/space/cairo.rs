@@ -1,4 +1,5 @@
-use super::{CellShape, ShapeDescriptor, Tessellation};
+use super::square::{cell_range, grid_candidates};
+use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
 use std::sync::LazyLock;
 
 /// Integer coordinate of a Cairo pentagonal tile.
@@ -236,15 +237,14 @@ impl Tessellation for CairoTessellation {
         Some((Self::offset_point(cell, offset)?, back_face))
     }
 
-    /// Face-identity semantics: a pass is straight when the face it leaves by has the same slot
-    /// as the face of the previous cell it entered through.
-    fn is_straight(&self, cell: CairoPoint, in_face: CairoFace, out_face: CairoFace) -> bool {
+    /// Geometric semantics: the contact points of two faces are never collinear with the
+    /// pentagon's centroid, so no pass through a Cairo cell is straight.
+    fn is_straight(&self, cell: CairoPoint, _in_face: CairoFace, _out_face: CairoFace) -> bool {
         debug_assert!(
             Self::is_valid_cell(cell),
             "is_straight: invalid Cairo cell {cell:?}"
         );
-        Self::transition(cell, in_face)
-            .is_some_and(|(_, _, previous_face)| previous_face == out_face)
+        false
     }
 
     fn shape_descriptors(&self) -> &[ShapeDescriptor] {
@@ -260,14 +260,121 @@ impl Tessellation for CairoTessellation {
         Some(CellShape::full(&CAIRO_SHAPES[0], &CAIRO_LOCAL_TO_CANONICAL))
     }
 
-    /// Canonical unit-scale projection of the integer tile-centre coordinate.
-    /// The coordinate model is intentionally affine: translation and
-    /// reflection are left to the rendering layer, as with the other core
-    /// tessellations.
-    fn cartesian(&self, cell: CairoPoint) -> (f64, f64) {
-        (cell.x as f64, cell.y as f64)
+    /// Area centroid of the cell's pentagon.
+    fn center(&self, cell: CairoPoint) -> Point {
+        let vertices = cairo_vertices(cell);
+        let (mut cx, mut cy, mut doubled_area) = (0.0, 0.0, 0.0);
+        for k in 0..5 {
+            let (a, b) = (vertices[k], vertices[(k + 1) % 5]);
+            let cross = a.cross(b);
+            doubled_area += cross;
+            cx += (a.x + b.x) * cross;
+            cy += (a.y + b.y) * cross;
+        }
+        Point::new(cx / (3.0 * doubled_area), cy / (3.0 * doubled_area))
+    }
+
+    fn face_segments(&self, cell: CairoPoint, face: CairoFace) -> Vec<Segment> {
+        let Some(kind) = Self::tile_kind(cell) else {
+            return Vec::new();
+        };
+        let vertices = cairo_vertices(cell);
+        let edge = CAIRO_FACE_EDGES[kind_index(kind)][face as usize];
+        vec![Segment::line(vertices[edge], vertices[(edge + 1) % 5])]
+    }
+
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<CairoPoint>> {
+        let (lo, hi) = (
+            Point::new(min.x.min(max.x), min.y.min(max.y)),
+            Point::new(min.x.max(max.x), min.y.max(max.y)),
+        );
+        // Vertices lie within `CAIRO_REACH` lattice units of `3 · (x, y)`.
+        let span = |lo: f64, hi: f64| {
+            cell_range(
+                (lo / CAIRO_UNIT - CAIRO_REACH) / 3.0,
+                (hi / CAIRO_UNIT + CAIRO_REACH) / 3.0 + 1.0,
+            )
+        };
+        let cells = grid_candidates(span(lo.x, hi.x), span(lo.y, hi.y), limit, CairoPoint::new)?;
+        Some(
+            cells
+                .into_iter()
+                .filter(|&cell| Self::is_valid_cell(cell))
+                .collect(),
+        )
+    }
+
+    fn area(&self, _cell: CairoPoint) -> f64 {
+        1.0
     }
 }
+
+/// World length of one Cairo lattice unit. The lattice is the integer grid of the classic
+/// pentagon model: a cell's vertices are `3 · (x, y)` plus its rotated base pentagon plus an
+/// orientation offset, all integers, so every shared vertex is identical from each side. The base
+/// pentagon has lattice area 72; `72 · CAIRO_UNIT² = 1`.
+const CAIRO_UNIT: f64 = std::f64::consts::SQRT_2 / 12.0;
+
+/// Upper bound of a vertex's lattice distance (per axis) from `3 · (x, y)`.
+const CAIRO_REACH: f64 = 11.0;
+
+/// Base pentagon, counter-clockwise, long side (`Twin`) last: `(-4, 0) -> (4, 0)`.
+const CAIRO_BASE: [(i64, i64); 5] = [(4, 0), (6, 6), (0, 8), (-6, 6), (-4, 0)];
+
+fn kind_index(kind: CairoTileKind) -> usize {
+    match kind {
+        CairoTileKind::U => 0,
+        CairoTileKind::L => 1,
+        CairoTileKind::D => 2,
+        CairoTileKind::R => 3,
+    }
+}
+
+/// The cell's pentagon, counter-clockwise: the base pentagon turned by `kind_index` quarter turns
+/// counter-clockwise, shifted by the orientation offset (3 lattice units away from the long side).
+fn cairo_vertices(cell: CairoPoint) -> [Point; 5] {
+    let kind = CairoTessellation::tile_kind(cell).expect("cairo_vertices: invalid Cairo cell");
+    let turns = kind_index(kind);
+    let (ox, oy) = match kind {
+        CairoTileKind::U => (0, -3),
+        CairoTileKind::L => (3, 0),
+        CairoTileKind::D => (0, 3),
+        CairoTileKind::R => (-3, 0),
+    };
+    let (ax, ay) = (3 * cell.x as i64 + ox, 3 * cell.y as i64 + oy);
+    CAIRO_BASE.map(|(mut x, mut y)| {
+        for _ in 0..turns {
+            (x, y) = (-y, x);
+        }
+        Point::new(CAIRO_UNIT * (ax + x) as f64, CAIRO_UNIT * (ay + y) as f64)
+    })
+}
+
+/// A representative cell per orientation (`kind_index` order).
+const CAIRO_REPRESENTATIVES: [CairoPoint; 4] = [
+    CairoPoint::new(2, 3),
+    CairoPoint::new(5, 2),
+    CairoPoint::new(2, 1),
+    CairoPoint::new(7, 2),
+];
+
+/// Per orientation and face (discriminant order), the index `k` of the pentagon edge
+/// `vertices[k] -> vertices[k + 1]` the face is: the edge whose endpoints are both vertices of
+/// the face's neighbor.
+static CAIRO_FACE_EDGES: LazyLock<[[usize; 5]; 4]> = LazyLock::new(|| {
+    CAIRO_REPRESENTATIVES.map(|cell| {
+        let vertices = cairo_vertices(cell);
+        let mut edges = [0; 5];
+        for (face, transition) in CairoTessellation::offsets(cell).unwrap().iter().enumerate() {
+            let other =
+                cairo_vertices(CairoTessellation::offset_point(cell, transition.1).unwrap());
+            edges[face] = (0..5)
+                .find(|&k| other.contains(&vertices[k]) && other.contains(&vertices[(k + 1) % 5]))
+                .expect("every Cairo face shares an edge with its neighbor");
+        }
+        edges
+    })
+});
 
 pub fn cairo_rect(cols: usize, rows: usize) -> Vec<CairoPoint> {
     CairoTessellation::rect(cols, rows)

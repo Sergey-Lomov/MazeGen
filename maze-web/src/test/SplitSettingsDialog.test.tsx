@@ -4,7 +4,7 @@ vi.mock("../wasm/wasmLoader", () => ({
   getWasm: () => ({
     // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
     // comment on squareCenter.
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
   }),
 }));
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -12,6 +12,7 @@ import { SplitSettingsDialog } from "../components/dialogs/SplitSettingsDialog";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import type { SplitPattern } from "../wasm/types";
+import { fakeCellCenters } from "./cellCentersFake";
 
 function pattern(weight: number): SplitPattern {
   return { shape: "regular:4", node_count: 2, faces: [[], []], weight };

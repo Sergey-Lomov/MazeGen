@@ -27,7 +27,7 @@ fire only during repair, not in the check-only pass on the still-disconnected fi
 graph thresholds only (`teleport_graph_distance`, `max_teleport_count`, waypoint distances,
 region sizes, loop lengths/counts) — no geometric-length check — so the intentional
 `cell_scale` threshold change of #759 doesn't move these baselines. One geometric dependency
-remains: `expand_region_passage` ranks candidate pairs by `Tessellation::cartesian` distance; a geometry port
+remains: `expand_region_passage` ranks candidate pairs by `geometric_distance`; a geometry change
 that preserves relative distances keeps it unchanged.
 
 ## Canonical form (`maze_runner::canonical`)
@@ -103,9 +103,20 @@ UPDATE_BASELINES=1 cargo test -p maze-runner --test baselines
   generation stays weakly connected after repair at the same rate as before, and the set of
   remaining QC issue kinds after repair is unchanged (`excessive_scc_count`,
   `region_needs_expansion` always, `unreachable_finish` at a comparable rate).
-- **#759 (core geometry)** — adds the geometry snapshot stage to the benchmark. Baselines change
-  only where geometry is observable (see `expand_region_passage` above); explain any difference
-  before updating.
+- **#759 (core geometry)** — adds the `geometry` stage to the benchmark. Two geometric changes:
+  - Scale: every built-in cell has area 1 (`cell_scale == 1`), so hex/triangle/Cairo distances
+    shrink by a per-tessellation factor (hex center spacing √3 → ≈1.075, triangle ≈1.155 →
+    ≈0.877, Cairo centers are now pentagon centroids instead of the integer lattice point). No
+    baseline rule uses a geometric threshold, and `expand_region_passage`'s ranking survived the
+    rescale and the Cairo center shift: `qc`, `repair` and `split_candidates` are unchanged for
+    every tessellation.
+  - `is_straight` is geometric: triangle and Cairo cells have no straight pass any more (the old
+    face-identity check counted `Left → Right` through a triangle and same-slot Cairo passes as
+    straight). Generation's straightness bias therefore changes `generation` for triangle and
+    Cairo only; square and hex are unchanged. Checked over 30 seeds per tessellation before the
+    update: the remaining QC issue kinds after repair are the same (`excessive_scc_count`,
+    `region_needs_expansion` always, `unreachable_finish` at 11/30 vs 14/30 for triangle and
+    11/30 vs 12/30 for Cairo) and the edge count stays within 0.3%.
 
 ## Benchmark (`maze-runner/src/bin/bench.rs`)
 
@@ -115,7 +126,8 @@ cargo run --release -p maze-runner --bin bench -- --record  # rewrite the baseli
 ```
 
 Stages: `generation` on `-gen` fixtures; `qc` (every check once, no repair) and `repair` (full
-QC+repair loop) on `-qc` fixtures. Geometry snapshot is added later in the epic. Each
+QC+repair loop) on `-qc` fixtures; `geometry` (a `geometry_snapshot` of every field cell at
+tolerance 0.01, GitHub issue #759) on `-gen` fixtures. Each
 measurement is the median of `--runs` samples (default 15, minimum 10) after one warm-up; setup is
 untimed, except that `qc` and `repair` include building the QC engine (and `qc` copying the
 field/graph) — sub-millisecond next to the stage. A stage shorter than 100 ms (generation) is

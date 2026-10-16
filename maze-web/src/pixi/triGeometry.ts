@@ -11,6 +11,10 @@ import { kindFieldConfig, type FieldConfig } from "../fieldConfig";
 // Centroid of pointing-down: cx = col*S/2 + S/4,  cy = -(row*H + 2*H/3)
 export const TRI_TILE_SIZE = TILE_SIZE * 2;
 
+/// Side of `maze-core`'s area-1 triangle in world units — a triangle is drawn with side
+/// `TRI_TILE_SIZE`, so world coordinates scale by `TRI_TILE_SIZE / TRI_WORLD_SIDE` pixels.
+const TRI_WORLD_SIDE = 2 / Math.sqrt(Math.sqrt(3));
+
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 
 // Rotates a flat_base (r0) coordinate by the given orientation.
@@ -27,8 +31,8 @@ function rotate(x: number, y: number, orientation: TriOrientation): Pos {
   }
 }
 
-/// Scales `maze-core`'s canonical (r0-equivalent, unit-tile-scale — core's S = 2.0) projection
-/// (`Tessellation::cartesian`, read via `getCartesian`) by `TRI_TILE_SIZE / 2`, then applies the
+/// Scales `maze-core`'s world-unit (r0-equivalent) center (`Tessellation::center`, read via
+/// `getCartesian`) to pixels (`TRI_TILE_SIZE / TRI_WORLD_SIDE`), then applies the
 /// r0/r90/r180/r270 rotation matrix above. Verified numerically that each orientation is exactly
 /// a fixed-angle rotation of the same canonical point (r90/r180/r270 rotate by 90°/180°/270°) —
 /// rotation is an isometry, so this never changes distances between points, only which way they
@@ -36,7 +40,7 @@ function rotate(x: number, y: number, orientation: TriOrientation): Pos {
 /// pass `kindFieldConfig("tri")`.
 export function triCenter(col: number, row: number, orientation: TriOrientation, cfg: FieldConfig = kindFieldConfig("tri")): Pos {
   const [ux, uy] = getCartesian(col, row, cfg);
-  const scale = TRI_TILE_SIZE / 2;
+  const scale = TRI_TILE_SIZE / TRI_WORLD_SIDE;
   return rotate(ux * scale, uy * scale, orientation);
 }
 

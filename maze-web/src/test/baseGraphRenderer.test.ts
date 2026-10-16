@@ -8,14 +8,15 @@ import type { Pos } from "../pixi/BaseGraphRenderer";
 import type { FieldConfig } from "../fieldConfig";
 import { debugRefEdgePairs } from "../pixi/DebugRefHighlightOverlay";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // `getCellCenter`/`nearestCellCoord` (square tessellation) round-trip through wasm's own
-// `cartesian_coords` — mocked here as an identity mapping (square cell (x, y) IS its own cartesian
-// coordinate, so this is exact, not an approximation) purely so `buildCrossFloorMarkers`'s own
+// `cell_centers` — mocked here with `cellCentersFake.ts` (the exact square centers, not an
+// approximation) purely so `buildCrossFloorMarkers`'s own
 // badge-placement tests don't need a real wasm module loaded, same rationale
 // `TeleportRenderer.test.ts` documents for its own wasm mock.
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (config: { points: [number, number][] }) => config.points,
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 describe("nodeRadius", () => {

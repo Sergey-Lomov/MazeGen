@@ -1,25 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 // getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment.
-// Mock it with the same canonical (unit-tile-scale, flat_top/r0-equivalent) formulas
-// `maze-core::space`'s Tessellation impls use, so these tests stay pure formula checks -- see
-// `maze-core/src/space/{square,hex,triangle}.rs` for the source of truth these must match.
+// Mock it with the world-unit centers `maze-core::space`'s Tessellation impls produce
+// (`cellCentersFake.ts`), so these tests stay pure formula checks.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] => {
-    if (cfg.tessellation.kind === "square") return [x, y];
-    if (cfg.tessellation.kind === "hex") {
-      const inradius = Math.sqrt(3) / 2;
-      return [x * 1.5, -(y * inradius * 2 + x * inradius)];
-    }
-    // triangle: core's canonical S=2 projection
-    const s = 2, h = (s * Math.sqrt(3)) / 2;
-    const pointingUp = (x + y) % 2 === 0;
-    const cx = (x * s) / 2 + s / 4;
-    const cy = pointingUp ? -(y * h + h / 3) : -(y * h + (2 * h) / 3);
-    return [cx, cy];
-  },
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const { hexCenter, cellCenter, hexVertices, mazeBounds, INRADIUS } = await import("../pixi/hexGeometry");

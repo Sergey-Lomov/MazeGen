@@ -22,7 +22,8 @@ vi.mock("pixi.js", () => {
 });
 
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 import {
@@ -32,6 +33,7 @@ import {
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 describe("viewport grid density", () => {
   it("counts the inclusive viewport bounds", () => {

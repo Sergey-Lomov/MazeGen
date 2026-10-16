@@ -8,9 +8,11 @@ import { cellsInsideShape, type ShapeDefinition } from "../pixi/shapeSelection";
 import { pickEdgeAtPosition } from "../pixi/edgeHitTesting";
 import { selectionBoundarySegments } from "../pixi/fieldSelectionGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });

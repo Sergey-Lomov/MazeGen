@@ -223,15 +223,18 @@ mod geometric_distance_tests {
 
     #[test]
     fn hex_adjacent_cells_are_at_center_to_center_distance() {
-        // (0,0) -E-> (1,0) is a direct neighbor (HexFace::E). Center-to-center distance for a
-        // flat_top hex at unit tile scale (circumradius 1.0) is TILE_SIZE * sqrt(3) — same
-        // geometric relationship `maze-web`'s hexCenter formula produces at pixel scale.
+        // (0,0) -E-> (1,0) is a direct neighbor (HexFace::E). An area-1 hexagon has side
+        // s = sqrt(2 / (3·sqrt(3))); centers of adjacent cells are s·sqrt(3) = sqrt(2 / sqrt(3))
+        // apart.
         let d = geometric_distance(
             &HexTessellation,
             HexPoint { q: 0, r: 0 },
             HexPoint { q: 1, r: 0 },
         );
-        assert!((d - 3f64.sqrt()).abs() < 1e-9, "distance was {d}");
+        assert!(
+            (d - (2.0 / 3f64.sqrt()).sqrt()).abs() < 1e-9,
+            "distance was {d}"
+        );
     }
 
     #[test]
@@ -245,7 +248,7 @@ mod geometric_distance_tests {
             HexPoint { q: -1, r: 1 },
             HexPoint { q: 0, r: 1 },
         ];
-        let expected = 3f64.sqrt();
+        let expected = (2.0 / 3f64.sqrt()).sqrt();
         for n in neighbors {
             let d = geometric_distance(&HexTessellation, center, n);
             assert!(
@@ -258,14 +261,14 @@ mod geometric_distance_tests {
     #[test]
     fn tri_adjacent_cells_via_left_right_face_are_at_center_to_center_distance() {
         // (0,0) pointing-up, (1,0) pointing-down (Left/Right neighbors share a vertical edge).
-        // Center-to-center distance for adjacent up/down triangles sharing a vertical edge is
-        // S / sqrt(3) (S = triangle side length = 2.0 at unit tile scale).
+        // Centroids of two triangles sharing an edge are S / sqrt(3) apart; an area-1 triangle has
+        // side S = 2 / 3^(1/4).
         let d = geometric_distance(
             &TriTessellation,
             TriPoint { col: 0, row: 0 },
             TriPoint { col: 1, row: 0 },
         );
-        let expected = 2.0 / 3f64.sqrt();
+        let expected = 2.0 / 3f64.sqrt().sqrt() / 3f64.sqrt();
         assert!(
             (d - expected).abs() < 1e-9,
             "distance was {d}, expected {expected}"
@@ -284,30 +287,48 @@ mod geometric_distance_tests {
 #[cfg(test)]
 mod edge_position_tests {
     use super::super::*;
-    use crate::space::SquarePoint;
+    use crate::space::{HexPoint, SquarePoint, TriPoint};
+
+    fn geometric_edge_distance<T: Tessellation>(
+        tessellation: &T,
+        a_from: T::CellId,
+        a_to: T::CellId,
+        b_from: T::CellId,
+        b_to: T::CellId,
+    ) -> f64 {
+        floor_aware_xy_distance(
+            0,
+            edge_position(tessellation, a_from, a_to),
+            0,
+            edge_position(tessellation, b_from, b_to),
+            false,
+        )
+    }
 
     #[test]
-    fn square_edge_position_is_the_midpoint_of_its_endpoints() {
-        let pos = SquareTessellation
-            .edge_position(SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
-        assert!((pos.0 - 0.5).abs() < 1e-9);
-        assert!((pos.1 - 0.0).abs() < 1e-9);
+    fn square_edge_position_is_the_contact_point_of_the_shared_face() {
+        let pos = edge_position(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+        );
+        assert_eq!(pos.point, Point::new(1.0, 0.5));
+        assert_eq!(pos.scale, 1.0);
     }
 
     #[test]
     fn edge_position_is_symmetric_in_from_to() {
         let a = SquarePoint { x: 2, y: 3 };
         let b = SquarePoint { x: 5, y: 1 };
-        let ab = SquareTessellation.edge_position(a, b);
-        let ba = SquareTessellation.edge_position(b, a);
-        assert!((ab.0 - ba.0).abs() < 1e-9);
-        assert!((ab.1 - ba.1).abs() < 1e-9);
+        let ab = edge_position(&SquareTessellation, a, b);
+        let ba = edge_position(&SquareTessellation, b, a);
+        assert_eq!(ab, ba);
     }
 
     #[test]
     fn geometric_edge_distance_between_two_edges_sharing_a_node_is_half_a_tile_apart_on_a_straight_line()
      {
-        // 0->1 and 1->2, collinear on the x-axis: edge midpoints are (0.5,0) and (1.5,0).
+        // 0->1 and 1->2, collinear on the x-axis: contact points are (1, 0.5) and (2, 0.5).
         let d = geometric_edge_distance(
             &SquareTessellation,
             SquarePoint { x: 0, y: 0 },
@@ -320,7 +341,7 @@ mod edge_position_tests {
 
     #[test]
     fn geometric_edge_distance_between_disjoint_parallel_edges() {
-        // 0->1 on row y=0, 0->1 on row y=1: midpoints (0.5,0) and (0.5,1).
+        // 0->1 on row y=0, 0->1 on row y=1: contact points (1, 0.5) and (1, 1.5).
         let d = geometric_edge_distance(
             &SquareTessellation,
             SquarePoint { x: 0, y: 0 },
@@ -343,28 +364,38 @@ mod edge_position_tests {
         assert_eq!(d, 0.0);
     }
 
-    #[test]
-    fn hex_edge_position_is_the_midpoint_of_its_endpoints() {
-        // Same neighbor pair `geometric_distance_tests::hex_adjacent_cells_are_at_center_to_center_distance`
-        // uses (distance sqrt(3) apart) -- the edge position must be exactly halfway between them.
-        let a = HexPoint { q: 0, r: 0 };
-        let b = HexPoint { q: 1, r: 0 };
-        let (ax, ay) = HexTessellation.cartesian(a);
-        let (bx, by) = HexTessellation.cartesian(b);
-        let pos = HexTessellation.edge_position(a, b);
-        assert!((pos.0 - (ax + bx) / 2.0).abs() < 1e-9);
-        assert!((pos.1 - (ay + by) / 2.0).abs() < 1e-9);
+    /// Hex and triangle neighbors are mirror images across their shared face, so its contact
+    /// point is the midpoint of the two centers.
+    fn assert_edge_position_is_the_centers_midpoint<T: Tessellation>(
+        tessellation: &T,
+        a: T::CellId,
+        b: T::CellId,
+    ) {
+        let midpoint = (tessellation.center(a) + tessellation.center(b)) * 0.5;
+        assert!(edge_position(tessellation, a, b).point.distance(midpoint) < 1e-9);
     }
 
     #[test]
-    fn tri_edge_position_is_the_midpoint_of_its_endpoints() {
-        let a = TriPoint { col: 0, row: 0 };
-        let b = TriPoint { col: 1, row: 0 };
-        let (ax, ay) = TriTessellation.cartesian(a);
-        let (bx, by) = TriTessellation.cartesian(b);
-        let pos = TriTessellation.edge_position(a, b);
-        assert!((pos.0 - (ax + bx) / 2.0).abs() < 1e-9);
-        assert!((pos.1 - (ay + by) / 2.0).abs() < 1e-9);
+    fn hex_and_tri_edge_position_is_the_midpoint_of_the_centers() {
+        assert_edge_position_is_the_centers_midpoint(
+            &HexTessellation,
+            HexPoint { q: 0, r: 0 },
+            HexPoint { q: 1, r: 0 },
+        );
+        assert_edge_position_is_the_centers_midpoint(
+            &TriTessellation,
+            TriPoint { col: 0, row: 0 },
+            TriPoint { col: 1, row: 0 },
+        );
+    }
+
+    #[test]
+    fn distance_is_measured_in_cell_scale_units() {
+        use crate::space::test_support::ScaledSquareTessellation;
+        let tessellation = ScaledSquareTessellation { scale: 2.0 };
+        let (a, b) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 3, y: 4 });
+        assert!((tessellation.cell_scale(a) - 2.0).abs() < 1e-12);
+        assert!((geometric_distance(&tessellation, a, b) - 5.0).abs() < 1e-9);
     }
 
     #[test]
@@ -470,24 +501,19 @@ mod floor_aware_distance_tests {
     }
 
     #[test]
-    fn edge_include_height_false_matches_geometric_edge_distance_exactly() {
-        let (a_from, a_to) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
-        let (b_from, b_to) = (SquarePoint { x: 0, y: 1 }, SquarePoint { x: 1, y: 1 });
-        let plain = geometric_edge_distance(&SquareTessellation, a_from, a_to, b_from, b_to);
-        let d =
-            floor_aware_edge_distance(&SquareTessellation, 0, a_from, a_to, 5, b_from, b_to, false);
-        assert_eq!(
-            d, plain,
-            "include_height=false must ignore the floor difference"
+    fn edge_positions_fold_in_one_unit_per_floor_apart() {
+        let position = edge_position(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
         );
-    }
-
-    #[test]
-    fn edge_include_height_true_folds_in_one_unit_per_floor_apart() {
-        let (from, to) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
-        // Same edge position, one floor apart -> pure vertical distance of 1.0.
-        let d = floor_aware_edge_distance(&SquareTessellation, 0, from, to, 1, from, to, true);
-        assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
+        // Same edge position, one floor apart -> pure vertical distance of 1.0; ignored without
+        // height.
+        assert_eq!(floor_aware_xy_distance(0, position, 1, position, true), 1.0);
+        assert_eq!(
+            floor_aware_xy_distance(0, position, 5, position, false),
+            0.0
+        );
     }
 }
 
@@ -646,31 +672,30 @@ mod neighbor_contract_tests {
         );
     }
 
-    /// The pre-#756 face-identity definition, written independently of `Tessellation::is_straight`
-    /// and of `neighbor`'s back face: the face of `from` toward `via` equals the face of `via`
-    /// toward `to`.
-    fn old_face_identity_straight<T: Tessellation>(
+    /// The geometric definition through `via`, resolving its faces toward `from` and `to`
+    /// independently of `Field::is_straight`.
+    fn geometric_straight<T: Tessellation>(
         tessellation: &T,
         from: T::CellId,
         via: T::CellId,
         to: T::CellId,
     ) -> bool {
-        let face_toward = |cell: T::CellId, other: T::CellId| {
-            face_index_toward(tessellation, cell, other).map(|i| tessellation.faces_of(cell)[i])
+        let face_toward = |other: T::CellId| {
+            face_index_toward(tessellation, via, other).map(|i| tessellation.faces_of(via)[i])
         };
-        match (face_toward(from, via), face_toward(via, to)) {
-            (Some(a), Some(b)) => a == b,
+        match (face_toward(from), face_toward(to)) {
+            (Some(a), Some(b)) => is_straight_geometric(tessellation, via, a, b),
             _ => false,
         }
     }
 
     /// `Field::is_straight` over every ordered pair of distinct neighbors of every `centers` cell
-    /// agrees with the old face-identity definition, and at least one pass counts as straight.
-    fn assert_field_is_straight_matches_old_semantics<T: Tessellation>(
+    /// agrees with the geometric definition. Returns how many passes are straight.
+    fn assert_field_is_straight_is_geometric<T: Tessellation>(
         tessellation: T,
         cells: Vec<T::CellId>,
         centers: &[T::CellId],
-    ) {
+    ) -> usize {
         let tessellation = Arc::new(tessellation);
         let mut ids = IdGenerator::new();
         let field = Field::new(Arc::clone(&tessellation), cells, &mut ids).unwrap();
@@ -683,7 +708,7 @@ mod neighbor_contract_tests {
                     if from == to {
                         continue;
                     }
-                    let expected = old_face_identity_straight(
+                    let expected = geometric_straight(
                         &*tessellation,
                         field.cell_of(from).unwrap(),
                         center,
@@ -694,11 +719,11 @@ mod neighbor_contract_tests {
                 }
             }
         }
-        assert!(straight_count > 0);
+        straight_count
     }
 
     #[test]
-    fn field_is_straight_matches_old_face_identity_semantics_for_every_tessellation() {
+    fn field_is_straight_matches_the_geometric_definition_for_every_tessellation() {
         let square: Vec<_> = grid(2).map(|(x, y)| SquarePoint { x, y }).collect();
         let hex: Vec<_> = grid(2).map(|(q, r)| HexPoint { q, r }).collect();
         let tri: Vec<_> = grid(2).map(|(col, row)| TriPoint { col, row }).collect();
@@ -710,22 +735,22 @@ mod neighbor_contract_tests {
             .map(|(x, y)| CairoPoint::new(x, y))
             .filter(|&p| CairoTessellation::is_valid_cell(p))
             .collect();
-        assert_field_is_straight_matches_old_semantics(
+        let square_straight = assert_field_is_straight_is_geometric(
             SquareTessellation,
             square,
             &[SquarePoint { x: 0, y: 0 }],
         );
-        assert_field_is_straight_matches_old_semantics(
-            HexTessellation,
-            hex,
-            &[HexPoint { q: 0, r: 0 }],
-        );
-        assert_field_is_straight_matches_old_semantics(
+        assert_eq!(square_straight, 4);
+        let hex_straight =
+            assert_field_is_straight_is_geometric(HexTessellation, hex, &[HexPoint { q: 0, r: 0 }]);
+        assert_eq!(hex_straight, 6);
+        let tri_straight = assert_field_is_straight_is_geometric(
             TriTessellation,
             tri,
             &[TriPoint { col: 0, row: 0 }, TriPoint { col: 1, row: 0 }],
         );
-        assert_field_is_straight_matches_old_semantics(CairoTessellation, cairo, &cairo_centers);
+        assert_eq!(tri_straight, 0, "every pass through a triangle turns");
+        assert_field_is_straight_is_geometric(CairoTessellation, cairo, &cairo_centers);
     }
 
     #[test]
@@ -744,8 +769,8 @@ mod neighbor_contract_tests {
 
         let tri = Field::<TriTessellation>::new(Arc::default(), tri_rect(3, 2), &mut ids).unwrap();
         let t = |col, row| tri.node_at(TriPoint { col, row }).unwrap();
-        // Face identity counts a Left/Right pass through a triangle as straight.
-        assert!(tri.is_straight(t(0, 0), t(1, 0), t(2, 0)));
+        // A Left/Right pass through a triangle turns by 60°.
+        assert!(!tri.is_straight(t(0, 0), t(1, 0), t(2, 0)));
         assert!(!tri.is_straight(t(0, 0), t(1, 0), t(1, 1)));
     }
 

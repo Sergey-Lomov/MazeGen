@@ -8,7 +8,7 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getAvailableRuleParams: vi.fn(() => []),
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),
@@ -16,6 +16,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 
 import { generateMaze, computeAnalytics, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
+import { fakeCellCenters } from "./cellCentersFake";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());

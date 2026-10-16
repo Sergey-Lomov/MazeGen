@@ -11,11 +11,12 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));

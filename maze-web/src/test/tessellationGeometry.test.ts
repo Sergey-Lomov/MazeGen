@@ -3,23 +3,14 @@ import type { FieldConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 // `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
-// — same mock `hexGeometry.test.ts` uses, canonical (unit-tile-scale) formulas mirroring
-// `maze-core::space`'s Tessellation impls.
+// — same mock `hexGeometry.test.ts` uses, the world-unit centers of `maze-core::space`'s
+// Tessellation impls.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] => {
-    if (cfg.tessellation.kind === "square") return [x, y];
-    if (cfg.tessellation.kind === "hex") {
-      const inradius = Math.sqrt(3) / 2;
-      return [x * 1.5, -(y * inradius * 2 + x * inradius)];
-    }
-    const s = 2, h = (s * Math.sqrt(3)) / 2;
-    const pointingUp = (x + y) % 2 === 0;
-    const cx = (x * s) / 2 + s / 4;
-    const cy = pointingUp ? -(y * h + h / 3) : -(y * h + (2 * h) / 3);
-    return [cx, cy];
-  },
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");

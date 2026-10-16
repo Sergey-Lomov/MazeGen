@@ -105,19 +105,18 @@ fn assert_chain_invertible<T: Tessellation>(tessellation: &T, cells: &[T::CellId
 }
 
 /// The canonical order is counter-clockwise: sorting the faces by the angle from the cell's
-/// `cartesian` position to its neighbor's, starting at canonical face 0, yields `0..n`.
+/// center to its neighbor's, starting at canonical face 0, yields `0..n`.
 fn assert_canonical_order_is_counter_clockwise<T: Tessellation>(
     tessellation: &T,
     cells: &[T::CellId],
 ) {
     for &cell in cells {
         let shape = tessellation.shape_of(cell).unwrap();
-        let (cx, cy) = tessellation.cartesian(cell);
+        let c = tessellation.center(cell);
         let angle_of = |local: usize| {
             let face = tessellation.faces_of(cell)[local];
             let (other, _) = tessellation.neighbor(cell, face).unwrap();
-            let (ox, oy) = tessellation.cartesian(other);
-            (oy - cy).atan2(ox - cx)
+            (tessellation.center(other) - c).angle()
         };
         let start = angle_of(shape.local_of_canonical(0));
         let mut canonical: Vec<usize> = (0..shape.descriptor().face_count()).collect();

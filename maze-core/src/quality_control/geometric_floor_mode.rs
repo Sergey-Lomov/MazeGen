@@ -9,11 +9,11 @@ pub enum GeometricFloorMode {
     /// Floor is ignored — plain x-y distance, same as before floors existed.
     Ignore,
     /// Floor difference becomes a third coordinate, one unit per floor apart, folded into the
-    /// same Euclidean distance as x/y (`space::floor_aware_distance`/`floor_aware_edge_distance`).
+    /// same Euclidean distance as x/y (`space::floor_aware_distance`/`floor_aware_xy_distance`).
     AsCoordinate,
     /// A pair spanning different floors never fails the check, regardless of `Comparison` — the
     /// check's own scan skips it before computing any distance at all (never calls
-    /// `floor_aware_distance`/`floor_aware_edge_distance` for such a pair).
+    /// `floor_aware_distance`/`floor_aware_xy_distance` for such a pair).
     SameFloorOnly,
 }
 
@@ -42,7 +42,7 @@ impl GeometricFloorMode {
         }
     }
 
-    /// Whether `floor_aware_distance`/`floor_aware_edge_distance` should fold the floor
+    /// Whether `floor_aware_distance`/`floor_aware_xy_distance` should fold the floor
     /// difference into the distance as a third coordinate — `Ignore` and `SameFloorOnly` both
     /// pass `false` here (`SameFloorOnly` never reaches the distance call for a cross-floor pair
     /// in the first place, but same-floor pairs under it still compute a plain x-y distance).

@@ -4,6 +4,7 @@ import { encodePoint } from "../pixi/tessellationProjection";
 import { baseStoreState, emptyFreePoints, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", () => ({
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
@@ -12,8 +13,8 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   // Cartesian coordinates aren't asserted on in this suite -- any deterministic per-point
-  // stand-in is fine, as long as its shape matches `getCartesianCoords`'s real return type.
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  // stand-in is fine, as long as its shape matches `getCellCenters`'s real return type.
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),

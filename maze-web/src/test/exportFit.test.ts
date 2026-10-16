@@ -4,11 +4,13 @@ import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { DigitalExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenter } from "./cellCentersFake";
 
 // getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
 // same square-tessellation mock as hexGeometry.test.ts.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
+    fakeCellCenter(x, y, cfg.tessellation.kind),
 }));
 
 const { computeDigitalExportFit, placeInBox } = await import("../pixi/imageExport/exportFit");

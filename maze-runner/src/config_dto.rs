@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
@@ -55,7 +55,7 @@ pub struct StageConfig {
 
 /// Registered tessellation kinds. Branching on a kind is allowed only in the tessellation factory
 /// (`runner::tessellation_factory`), registries and serialization (`Specs/space.md`).
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum TessellationKind {
     Square,
@@ -66,7 +66,7 @@ pub enum TessellationKind {
 
 /// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory
 /// builds the instance deterministically from it and rejects params the kind does not accept.
-#[derive(Deserialize, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct TessellationConfig {
     pub kind: TessellationKind,
     pub params: serde_json::Map<String, serde_json::Value>,

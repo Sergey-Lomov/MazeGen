@@ -54,14 +54,6 @@ fn invalid_points_are_not_neighbors_and_rect_is_deterministic() {
 }
 
 #[test]
-fn cartesian_projection_preserves_integer_coordinates() {
-    assert_eq!(
-        CairoTessellation.cartesian(CairoPoint::new(-6, -5)),
-        (-6.0, -5.0)
-    );
-}
-
-#[test]
 fn every_valid_point_has_five_deterministic_direct_neighbors() {
     for point in broad_points() {
         let first = direct_neighbors(point);

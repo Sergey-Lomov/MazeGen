@@ -2,12 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/wasmLoader", () => ({
   getWasm: () => ({
     // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
     // comment on squareCenter.
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
   }),
 }));
 

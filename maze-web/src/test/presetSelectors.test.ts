@@ -6,13 +6,14 @@ import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "../pixi/constants";
 import { canvas } from "../pixi/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeCellCenters } from "./cellCentersFake";
 
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock it with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip -- those are applied
 // by `squareGeometry.ts` itself, not this mock).
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 
 const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");

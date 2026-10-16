@@ -858,15 +858,37 @@ If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("telep
 
 `RemoveTeleportStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_TELEPORT` — removes every flagged teleport edge outright.
 
-### Geometric distance (`space::Tessellation::cartesian` / `space::geometric_distance`)
+### Geometric distance (`space::geometric_distance`)
 
-Shared utility the two checks below build on — see GitHub issue #74. `Tessellation::cartesian(point) -> (f64, f64)` (`maze-core/src/space/mod.rs`) projects a tessellation's own `Point` type into a canonical Cartesian coordinate, unit tile scale (one tile = 1.0), implemented separately per tessellation (`SquarePoint`, `HexPoint`, `TriPoint`). Never a pixel coordinate, and carries no rendering-specific orientation/rotation (hex flat_top/pointy_top, tri r0/r90/r180/r270 are display-only choices that live entirely in `maze-web`, which scales and — for hex/tri — rotates this canonical projection itself rather than duplicating per-tessellation formulas; see `maze-wasm`'s `cartesian_coords` below). Each tessellation's impl only needs to be internally consistent — `SquarePoint`'s returns the raw `(x, y)` grid coordinate, while `HexPoint`'s and `TriPoint`'s happen to bake in a screen-style Y flip (ported directly from `maze-web`'s pre-existing pixel-space formulas) — see `cartesian`'s own doc comment for the full rationale. This has no effect on distance calculations, since translation/reflection are isometries.
+Shared utility the geometric checks build on — see GitHub issue #74 and `Specs/space.md`'s
+"Geometry" (GitHub issue #759). Positions are core world coordinates (area-1 cells for every
+built-in tessellation, math Y-up, no display orientation): a cell's position is
+`space::cell_position(cell)` — its `Tessellation::center` together with its `cell_scale`.
 
-`space::geometric_distance::<T>(a, b) -> f64` is the Euclidean distance between two points (nodes) of the same tessellation, via `cartesian`. Purely geometric — unrelated to graph/nav distance (`MazeAnalysis::distance_from_start`/`distance_from_finish`, used by `TeleportWaypointDistanceCheck` above), which counts tile-hops along actual edges instead of straight-line distance.
+**Distances are in `cell_scale` units.** Every geometric distance is the planar world distance
+divided by the mean `cell_scale` of the two positions (`space.md`'s "Scale between two
+positions"), so a threshold means the same number of
+"cell sizes" on any tessellation (for the built-in ones `cell_scale == 1` everywhere, so world
+units and cell units coincide). This was an intentional scale change for hex, triangle and Cairo in
+#759: before it, distances used each tessellation's own projection (hex center spacing √3,
+triangle side 2); now adjacent hex centers are ≈1.075 apart and adjacent triangle centroids
+≈0.877.
 
-`Tessellation::edge_position(from, to) -> (f64, f64)` (GitHub issue #199 follow-up) is the canonical Cartesian position of the *edge* between two nodes, same convention/scale as `cartesian` — needed because an edge like a one-way passage renders visually on the tile border it crosses, not at either endpoint node, so node-to-node distance systematically underestimates how far apart two edges actually render. Default impl (used by every current tessellation) is the midpoint of the two endpoints' `cartesian` positions; a future tessellation whose edges don't sit at the node midpoint overrides this method instead of every caller reimplementing the correction. `space::geometric_edge_distance::<T>(a_from, a_to, b_from, b_to) -> f64` is the Euclidean distance between two edges' `edge_position`s — the edge-to-edge counterpart of `geometric_distance`, used by `OneWayGroupGeometricProximityCheck` (see below).
+`space::geometric_distance::<T>(a, b) -> f64` is the distance between two cells' centers. Purely
+geometric — unrelated to graph/nav distance (`MazeAnalysis::distance_from_start`/
+`distance_from_finish`, used by `TeleportWaypointDistanceCheck` above), which counts tile-hops along
+actual edges instead of straight-line distance.
 
-**Floor-aware variants (GitHub issue #342, multi-floor mazes)**: `space::floor_aware_distance::<T>(a_level: usize, a: T::CellId, b_level: usize, b: T::CellId, include_height: bool) -> f64` and `space::floor_aware_edge_distance::<T>(a_level, a_from, a_to, b_level, b_from, b_to, include_height: bool) -> f64` are the multi-floor counterparts of `geometric_distance`/`geometric_edge_distance`. With `include_height: false` they reproduce the plain (non-floor-aware) function exactly, floor indices ignored entirely — the correct behavior for a single-floor maze or when a caller wants x-y distance only. With `include_height: true`, the floor difference (`b_level as f64 - a_level as f64`) is folded in as a third coordinate, one unit per floor apart, combined with the x-y distance via ordinary 3D Euclidean distance (`sqrt(dx² + dy² + dz²)`). These functions never decide *whether* a cross-floor pair should be evaluated at all — that decision belongs entirely to `GeometricFloorMode` below; a caller wanting "cross-floor pairs never count" skips calling the distance function for a mismatched pair rather than expecting it here.
+`space::edge_position::<T>(from, to) -> ScaledPoint` (GitHub issue #199 follow-up) is the position of
+the *edge* between two cells: the contact point of the face between them (`contact_point`, where a
+passage renders), measured in the mean `cell_scale` of both cells — needed because an edge like a
+one-way passage renders visually on the tile border it crosses, not at either endpoint node. Two
+cells that share no face fall back to the midpoint of their centers.
+Edge-to-edge distance is `space::floor_aware_xy_distance` over two `edge_position`s, each resolved
+once per edge before any pair is compared (`OneWayGroupGeometricProximityCheck`, cross-element
+one-way occurrences) — never once per pair.
+
+**Floor-aware variants (GitHub issue #342, multi-floor mazes)**: `space::floor_aware_distance::<T>(a_level: usize, a: T::CellId, b_level: usize, b: T::CellId, include_height: bool) -> f64` and `space::floor_aware_xy_distance(a_level, a: ScaledPoint, b_level, b: ScaledPoint, include_height: bool) -> f64` (the shared core, over pre-resolved positions) are the multi-floor counterparts of `geometric_distance`. With `include_height: false` they reproduce the plain (non-floor-aware) function exactly, floor indices ignored entirely — the correct behavior for a single-floor maze or when a caller wants x-y distance only. With `include_height: true`, the floor difference (`b_level as f64 - a_level as f64`) is folded in as a third coordinate, one `cell_scale` unit per floor apart, combined with the x-y distance via ordinary 3D Euclidean distance (`sqrt(dx² + dy² + dz²)`). These functions never decide *whether* a cross-floor pair should be evaluated at all — that decision belongs entirely to `GeometricFloorMode` below; a caller wanting "cross-floor pairs never count" skips calling the distance function for a mismatched pair rather than expecting it here.
 
 **`GeometricFloorMode` (`quality_control::geometric_floor_mode`, GitHub issue #342)** — shared cross-floor policy enum used by every geometric-distance check (`TeleportGeometricLengthCheck`, `OneWayGroupGeometricProximityCheck`, `SplitGroupGeometricProximityCheck`), mirroring `Comparison`'s "shared parametrizing enum" shape:
 
@@ -879,14 +901,14 @@ pub enum GeometricFloorMode {
 ```
 
 - `Ignore` — floor is ignored entirely; plain x-y distance, same behavior as before floors existed (`include_height() == false`).
-- `AsCoordinate` — floor difference becomes a third coordinate, one unit per floor apart, folded into the same Euclidean distance as x/y via `floor_aware_distance`/`floor_aware_edge_distance` (`include_height() == true`).
+- `AsCoordinate` — floor difference becomes a third coordinate, one `cell_scale` unit per floor apart, folded into the same Euclidean distance as x/y via `floor_aware_distance`/`floor_aware_xy_distance` (`include_height() == true`).
 - `SameFloorOnly` — a pair spanning different floors never fails the check, regardless of `Comparison`/threshold; each check's own scan skips such a pair *before* computing any distance at all (the distance function is never called for it). Same-floor pairs under this mode still compute a plain x-y distance (`include_height() == false`).
 
 `as_str()`/`from_str()` round-trip through `"ignore"`/`"as_coordinate"`/`"same_floor_only"` for the wasm param boundary. **Default is `SameFloorOnly` for all three checks** (`TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE`, `ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE`, `SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE`, all `= GeometricFloorMode::SameFloorOnly`) — this reproduces pre-#342 behavior exactly for a newly-added floor (a cross-floor pair never counted as close, since no cross-floor pair could exist before floors did), so enabling multi-floor mazes doesn't silently change any existing single-floor maze's check results, and doesn't silently start flagging cross-floor pairs a user hasn't opted into comparing.
 
 Repair strategies for these three checks (`TeleportGroupSelectStrategy`, `OneWayGroupSelectStrategy`, `SplitGroupSelectStrategy`, all built on the shared `group_select_apply` — see `repair.md`) need no floor-mode awareness: they operate purely on element/edge ids and membership counts once a group has already been identified by the check, with no coordinate/geometry logic of their own.
 
-**WASM Interface**: `cartesian_coords(config: { tessellation: { kind, params }, points }) -> [[f64; 2]]` (`maze-wasm/src/geometry.rs`) exposes `cartesian` to the frontend — given a tessellation config (built through the shared tessellation factory) and a list of points, returns each point's canonical projection in the same order. `maze-web`'s single caller is `cartesianCache.ts`: `warmCartesianCache(cfg)` batches one call over every field cell whenever the tessellation config (`{ kind, params }`, compared by its serialized form) changes (confirmTessellation, project load, generate), populating a `Map<"x,y", [number, number]>` that `getCartesian(x, y, cfg)` reads from synchronously — render loops call tile-center lookups every frame, so a per-call wasm round-trip would be far too slow. A cache miss (a point outside the prewarmed field, e.g. an invalid preset connection's endpoint) falls back to a single-point wasm call, cached afterward. `tessellationGeometry.ts`'s `squareCenter`/`hexCenter`/`triCenter` read from this cache and apply their own tile-size scale, half-tile offset, and (for hex/tri) orientation rotation on top — the single source of truth for tile geometry, replacing what used to be independently-maintained TypeScript formulas. Cairo is the one exception served locally: its canonical projection is the identity by contract, so the cache fills Cairo coordinates without a wasm call.
+**WASM Interface**: `cell_centers(config: { tessellation: { kind, params }, points }) -> [[f64; 2]]` (`maze-wasm/src/geometry.rs`) exposes `Tessellation::center` to the frontend — given a tessellation config (built through the shared tessellation factory) and a list of points, returns each point's world-unit center in the same order (an invalid cell is an error). `maze-web`'s single caller is `cartesianCache.ts`: `warmCartesianCache(cfg)` batches one call over every field cell whenever the tessellation config (`{ kind, params }`, compared by its serialized form) changes (confirmTessellation, project load, generate), populating a `Map<"x,y", [number, number]>` that `getCartesian(x, y, cfg)` reads from synchronously — render loops call tile-center lookups every frame, so a per-call wasm round-trip would be far too slow. A cache miss (a point outside the prewarmed field, e.g. an invalid preset connection's endpoint) falls back to a single-point wasm call, cached afterward. `tessellationGeometry.ts`'s `squareCenter`/`hexCenter`/`triCenter` read from this cache, scale world units to pixels (one world unit is `TILE_SIZE` for square; hex/tri divide their drawn side by core's area-1 side) and flip Y, plus the hex/tri display rotation. Cairo is drawn from its own TS geometry and does not read the cache. The whole snapshot API (`geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`) replaces this once the web consumes core geometry (GitHub issue #761).
 
 ### TeleportGeometricLengthCheck
 
@@ -904,7 +926,7 @@ pub struct TeleportGeometricLengthCheck {
 
 Merges the former `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` — see GitHub issue #74/#177's "Comparison operator" rule above (`comparison: Lt` reproduces the old "shorter than minimum" behavior, `Gt` reproduces "longer than maximum"). `check_type_id() == "teleport_geometric_length"`. Flags a teleport edge whose geometric (Euclidean, unit tile scale) distance between its entry and exit compares against `length`. A teleport meant to feel like a meaningful "jump" across the maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian space, even when they're topologically far (no direct passage); conversely a maximum keeps teleports from spanning the entire field when a more local "jump" is desired.
 
-Distance is purely geometric — via `space::floor_aware_distance` (`Tessellation::cartesian`, see the "Geometric distance"/floor-aware-variants section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` and level index via `maze.field.cell_of(...)`/`maze.field.level_index_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point/level can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
+Distance is purely geometric — via `space::floor_aware_distance` (cell centers in `cell_scale` units, see the "Geometric distance"/floor-aware-variants section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` and level index via `maze.field.cell_of(...)`/`maze.field.level_index_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point/level can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
 
 `floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a teleport crossing floors is treated — see `GeometricFloorMode` above. Under `SameFloorOnly` a cross-floor teleport is skipped before any distance is computed, so it never fails the check regardless of `comparison`/`length`.
 
@@ -1192,7 +1214,7 @@ pub struct OneWayGroupGraphProximityCheck {
 
 Flag a pair of one-way passage edges (`EdgeKind::Basic`, single direction) placed too close to each other — see GitHub issue #199, part of the one-way management epic (#92). Individual one-way checks (issue #198) only ever look at one edge at a time; these instead catch problems that emerge from *pairs* of one-way edges being close to each other, which no single-edge check can detect. Mirror `TeleportGroupProximityCheck`'s role, split into two independently configurable checks for the two metrics that check's `own_edge`/`other_edge`-agnostic one-way equivalent needs: `OneWayGroupGeometricProximityCheck` (Euclidean, unit tile scale) and `OneWayGroupGraphProximityCheck` (topological tile-hops via `proximity_scan_core::pairwise_graph_proximity_scan`, the same shared engine `TeleportGroupProximityCheck` uses — see its own writeup above). Both share identical scan/protection shape; only the distance metric differs.
 
-**`OneWayGroupGeometricProximityCheck` measures edge-to-edge, not node-to-node (GitHub issue #199 follow-up)**: a one-way edge renders visually on the tile *border* it crosses, not at either endpoint node — so distance is `space::floor_aware_edge_distance(own_level, own_from, own_to, other_level, other_from, other_to, floor_mode.include_height())`, the Euclidean distance between the two edges' `Tessellation::edge_position`s directly, not a `min` over node-endpoint combinations. `Tessellation::edge_position(from, to)` defaults to the midpoint of `cartesian(from)`/`cartesian(to)` — correct for every current tessellation (square/hex/tri all place an edge crossing squarely between its two nodes); a future tessellation whose edges don't sit at the node midpoint overrides `edge_position` itself rather than this check special-casing it.
+**`OneWayGroupGeometricProximityCheck` measures edge-to-edge, not node-to-node (GitHub issue #199 follow-up)**: a one-way edge renders visually on the tile *border* it crosses, not at either endpoint node — so distance is `space::floor_aware_xy_distance` over the two edges' `edge_position`s (resolved once per edge), the Euclidean distance between the two edges' `space::edge_position`s (each the contact point of the face the edge crosses) directly, not a `min` over node-endpoint combinations.
 
 `floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a pair of one-way edges on different floors is treated — see `GeometricFloorMode` above. Under `SameFloorOnly` a cross-floor pair is skipped before `own_level`/`other_level` are ever compared via distance; a level lookup only needs the edge's `from` endpoint (`EdgeKind::Basic` edges are always same-floor by construction — cross-floor connectivity uses dedicated `EdgeKind::VerticalPassage`/`EdgeKind::Elevator` kinds instead).
 
@@ -1946,7 +1968,7 @@ keeping the minimum distance — one `groups` entry `(vec![a, b], 1)` per logica
 
 **`CrossElementGeometricProximityCheck`** (`check_type_id() == "cross_element_geometric_proximity"`)
 — Euclidean distance between occurrence `xy` positions (`space::floor_aware_xy_distance`, the shared
-core `floor_aware_distance`/`floor_aware_edge_distance` both wrap), folded across floors per
+core `floor_aware_distance` wraps), folded across floors per
 `floor_mode` (shared `GeometricFloorMode`, default `SameFloorOnly`). A multi-floor vertical passage
 contributes one occurrence per touched floor; each elevator stop is its own single-occurrence
 element at that stop's floor; a one-way's two occurrences both carry its edge's own `edge_position`
@@ -2359,9 +2381,9 @@ separates:
   `ElevatorStop` = the stop's own node, `VerticalPassage` = canonical edge, `Split` = sorted tile
   nodes). Each elevator stop is its own `ElevatorStop` element, not a shared "elevator" identity.
 - `CrossElementOccurrence` — one or more per element, one per physical end / floor stop, each with
-  its own `point`, `level_index`, `nav_node`, and `xy` (the Cartesian position the *geometric*
-  metric measures from). `xy` is `Tessellation::cartesian(point)` for every occurrence except a one-way's two
-  occurrences, which both carry the one-way edge's own `T::edge_position(from, to)` instead (GitHub
+  its own `point`, `level_index`, `nav_node`, and `xy` (the `ScaledPoint` the *geometric*
+  metric measures from). `xy` is `space::cell_position(point)` for every occurrence except a one-way's two
+  occurrences, which both carry the one-way edge's own `space::edge_position(from, to)` instead (GitHub
   issue #376 follow-up) — a one-way renders on the tile border it crosses, not at either endpoint
   node, so its geometric distance is measured the same way `one_way_group_geometric_proximity`
   measures it, from the edge's own position rather than from either endpoint. Both of a one-way's

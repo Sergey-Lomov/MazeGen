@@ -4,7 +4,7 @@ import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
 import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting";
 
-// `getCartesianCoords` (wasm) is never reached by the group-customization-off `render()` path
+// `getCellCenters` (wasm) is never reached by the group-customization-off `render()` path
 // exercised below (no `TeleportConnectorRouter.route` call needed since `connectorStyle: "none"`),
 // but `TeleportRenderer`'s own module graph pulls in `../../store/mazeStore`, which pulls in
 // `../wasm/mazeService` at import time — same rationale as `VectorByWallsSettingsPanel.test.tsx`.

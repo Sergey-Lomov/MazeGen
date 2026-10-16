@@ -1,4 +1,5 @@
-use super::{CellShape, ShapeDescriptor, Tessellation};
+use super::square::{cell_range, grid_candidates};
+use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
 use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -80,11 +81,9 @@ impl Tessellation for TriTessellation {
         Some((neighbor, face.opposite()))
     }
 
-    /// Face-identity semantics: a pass is straight when it leaves by the face opposite (in the
-    /// `TriFace::opposite` sense) to the one it entered by, so `Left`/`Right` passes count as
-    /// straight.
-    fn is_straight(&self, _cell: TriPoint, in_face: TriFace, out_face: TriFace) -> bool {
-        out_face == in_face.opposite()
+    /// Geometric semantics: every pass through a triangle turns by 60°, so none is straight.
+    fn is_straight(&self, _cell: TriPoint, _in_face: TriFace, _out_face: TriFace) -> bool {
+        false
     }
 
     fn shape_descriptors(&self) -> &[ShapeDescriptor] {
@@ -96,24 +95,65 @@ impl Tessellation for TriTessellation {
         Some(CellShape::full(&TRI_SHAPES[0], &TRI_LOCAL_TO_CANONICAL))
     }
 
-    /// Canonical (r0-equivalent) projection, unit tile scale — `S = 2.0` (triangle side length,
-    /// matching `maze-web`'s `TRI_TILE_SIZE = TILE_SIZE * 2` convention so triangles are
-    /// geometrically comparable to squares/hexagons at the same unit scale), `H = S * sqrt(3)/2`
-    /// (triangle height). Same centroid formula as `maze-web`'s `triCenter` (r0 branch), minus
-    /// the `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side
-    /// concerns — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(&self, cell: TriPoint) -> (f64, f64) {
-        let s = 2.0;
-        let h = s * 3f64.sqrt() / 2.0;
-        let pointing_up = pointing_up(cell);
-        let (col, row) = (cell.col as f64, cell.row as f64);
-        let cx = col * s / 2.0 + s / 4.0;
-        let cy = if pointing_up {
-            -(row * h + h / 3.0)
-        } else {
-            -(row * h + 2.0 * h / 3.0)
+    /// Centroid of the cell's triangle (area 1).
+    fn center(&self, cell: TriPoint) -> Point {
+        let [a, b, c] = tri_vertices(cell);
+        Point::new((a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0)
+    }
+
+    /// `pointing_up` cells (base on top): `Base` top-right to top-left, `Left` down to the apex,
+    /// `Right` back up. Other cells (base at the bottom): `Base` bottom-left to bottom-right,
+    /// `Right` up to the apex, `Left` back down.
+    fn face_segments(&self, cell: TriPoint, face: TriFace) -> Vec<Segment> {
+        let [first, second, third] = tri_vertices(cell);
+        let (from, to) = match face {
+            TriFace::Base => (first, second),
+            TriFace::Left if pointing_up(cell) => (second, third),
+            TriFace::Right if pointing_up(cell) => (third, first),
+            TriFace::Right => (second, third),
+            TriFace::Left => (third, first),
         };
-        (cx, cy)
+        vec![Segment::line(from, to)]
+    }
+
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<TriPoint>> {
+        let (x_unit, y_unit) = tri_units();
+        let (lo, hi) = (
+            Point::new(min.x.min(max.x), min.y.min(max.y)),
+            Point::new(min.x.max(max.x), min.y.max(max.y)),
+        );
+        // Center lattice x = 2col + 1; rows span y in [-(row + 1), -row] (lattice units).
+        let cols = cell_range((lo.x / x_unit - 3.0) / 2.0, (hi.x / x_unit + 1.0) / 2.0);
+        let rows = cell_range(-(hi.y / y_unit) - 1.0, -(lo.y / y_unit) + 1.0);
+        grid_candidates(cols, rows, limit, |col, row| TriPoint { col, row })
+    }
+
+    fn area(&self, _cell: TriPoint) -> f64 {
+        1.0
+    }
+}
+
+/// World units of the triangle lattice: side `s` with `sqrt(3)/4·s² = 1`; `x = s/4 · i`,
+/// `y = s·sqrt(3)/2 · j`. Every vertex sits on integer `(i, j)`, so shared vertices are identical.
+fn tri_units() -> (f64, f64) {
+    let side = 2.0 / 3f64.sqrt().sqrt();
+    (side / 4.0, side * 3f64.sqrt() / 2.0)
+}
+
+/// The cell's vertices in counter-clockwise order starting at `Base`'s start (see
+/// `face_segments`).
+fn tri_vertices(cell: TriPoint) -> [Point; 3] {
+    let (x_unit, y_unit) = tri_units();
+    let at = |i: i64, j: i64| Point::new(x_unit * i as f64, y_unit * j as f64);
+    let (i, top, bottom) = (
+        2 * cell.col as i64 + 1,
+        -(cell.row as i64),
+        -(cell.row as i64) - 1,
+    );
+    if pointing_up(cell) {
+        [at(i + 2, top), at(i - 2, top), at(i, bottom)]
+    } else {
+        [at(i - 2, bottom), at(i + 2, bottom), at(i, top)]
     }
 }
 
