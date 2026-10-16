@@ -1,4 +1,5 @@
 pub(crate) mod check_factory;
+pub mod field_ops;
 pub mod geometry;
 pub mod prepare;
 pub(crate) mod qc_kind_registry;

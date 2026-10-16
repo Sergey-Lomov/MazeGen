@@ -7,7 +7,8 @@ import { fieldOf } from "./fieldConfigFixtures";
 import { fakeCellCenters } from "./cellCentersFake";
 
 // Cell centers resolve through wasm, unavailable in unit tests — canonical square formula.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

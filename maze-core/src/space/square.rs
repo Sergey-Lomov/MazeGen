@@ -1,4 +1,10 @@
-use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
+use super::field_ops::{
+    CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
+};
+use super::{
+    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
+    Tessellation, validate_preset,
+};
 use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -104,6 +110,28 @@ impl Tessellation for SquareTessellation {
         grid_candidates(xs, ys, limit, |x, y| SquarePoint { x, y })
     }
 
+    fn presets(&self) -> &[PresetDescriptor] {
+        &SQUARE_PRESETS
+    }
+
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<SquarePoint>, FieldOpError> {
+        validate_preset(&SQUARE_PRESETS, key, params)?;
+        let origin = self.center(SquarePoint { x: 0, y: 0 });
+        match key {
+            "rect" => Ok(centered_square_rect(
+                param(params, "cols") as usize,
+                param(params, "rows") as usize,
+            )),
+            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
+            "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
+            _ => Err(FieldOpError::Unavailable),
+        }
+    }
+
     fn area(&self, _cell: SquarePoint) -> f64 {
         1.0
     }
@@ -142,4 +170,21 @@ pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
             })
         })
         .collect()
+}
+
+/// Preset field shapes of the square grid, in UI order.
+const SQUARE_PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+
+/// `square_rect` shifted so the origin cell sits at `size / 2` (rounded down) of each axis.
+fn centered_square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
+    let (ox, oy) = ((width / 2) as i32, (height / 2) as i32);
+    let mut cells: Vec<SquarePoint> = square_rect(width, height)
+        .into_iter()
+        .map(|p| SquarePoint {
+            x: p.x - ox,
+            y: p.y - oy,
+        })
+        .collect();
+    cells.sort();
+    cells
 }

@@ -14,7 +14,8 @@ import {
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
 } from "../store/slices/imageExportSlice";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

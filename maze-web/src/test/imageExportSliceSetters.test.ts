@@ -4,13 +4,15 @@ import { baseStoreState } from "./storeTestHelpers";
 import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { fieldOf } from "./fieldConfigFixtures";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 

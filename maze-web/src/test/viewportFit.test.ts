@@ -4,13 +4,18 @@ import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeCellCenters } from "./cellCentersFake";
 
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => {
+  const actual = await importActual<typeof import("../wasm/wasmLoader")>();
+  return {
+    ...actual,
+    getWasm: () => ({
+      ...actual.getWasm(),
     // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
     // comment on squareCenter.
     cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
-  }),
-}));
+    }),
+  };
+});
 
 const { fitMazeViewport } = await import("../pixi/viewportFit");
 const { fitFieldViewport } = await import("../pixi/FieldEditorOverlay");

@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 // Identity wasm mapping (square cell (x, y) IS its own cartesian coordinate), same rationale as
 // `baseGraphRenderer.test.ts` — lets `buildNodePositions`/`buildCrossFloorMarkers` run without a
 // real wasm module.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

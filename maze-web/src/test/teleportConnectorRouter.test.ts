@@ -9,7 +9,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // `getCellVertices` (square) delegates to wasm for cartesian coords via `getCartesian` — mocked with
 // the identity mapping square uses (see `maze-core/src/space/square.rs`'s `cartesian`), same
 // rationale as `VectorByWallsSettingsPanel.test.tsx`.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

@@ -14,14 +14,16 @@ import { fakeCellCenters } from "./cellCentersFake";
 // section's group list) delegates to wasm, unavailable in this unit-test environment — mocked with
 // the canonical square formula (see `maze-core/src/space/square.rs`'s `cartesian`), same as
 // `issueHighlightSelectors.test.ts`.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 

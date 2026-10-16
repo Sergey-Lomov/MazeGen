@@ -12,13 +12,15 @@ import type { PostEditEdgeState } from "../store/postEditTypes";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 import { compactPostEditCommands } from "../pixi/postEditCompaction";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 

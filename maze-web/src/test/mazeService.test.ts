@@ -1,7 +1,8 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { generateMaze, generateMazeAsync, computeAnalyticsAsync } from "../wasm/mazeService";
 
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   getWasm: vi.fn(),
   initWasm: vi.fn(() => Promise.resolve()),
 }));

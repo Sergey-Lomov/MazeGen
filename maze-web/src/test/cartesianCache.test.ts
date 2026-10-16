@@ -4,7 +4,8 @@ const { getCellCenters } = vi.hoisted(() => ({
   getCellCenters: vi.fn(),
 }));
 
-vi.mock("../wasm/mazeService", () => ({ getCellCenters }));
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getCellCenters }));
 
 import { getCartesian, warmCartesianCache } from "../pixi/cartesianCache";
 import { fieldOf } from "./fieldConfigFixtures";

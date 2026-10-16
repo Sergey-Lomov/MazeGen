@@ -7,7 +7,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
 // in this unit-test environment -- mock with the canonical projections used by the three
 // tessellation families.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
 }));
 

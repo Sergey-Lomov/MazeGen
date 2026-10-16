@@ -9,7 +9,8 @@ import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { fakeCellCenters } from "./cellCentersFake";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
   generateMaze: vi.fn(),
@@ -20,7 +21,8 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableRuleParams: vi.fn(() => []),
 }));
 
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 

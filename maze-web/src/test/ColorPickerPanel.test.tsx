@@ -16,7 +16,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // pipeline (field key -> overrideActiveProfileColor -> warnings attached to that field, GitHub issue
 // #717) and buildProjectColorGroups' de-dup/priority logic.
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

@@ -5,6 +5,7 @@ mod dto;
 mod dto_analytics_config;
 mod dto_issues;
 mod dto_statistics;
+mod field_ops;
 mod generation_config;
 mod geometry;
 mod result;
@@ -20,6 +21,7 @@ use wasm_bindgen::prelude::*;
 pub use analytics::compute_analytics;
 pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
+pub use field_ops::{field_capabilities, field_preset, field_reflect_cells, field_translate_cells};
 pub use geometry::{
     cell_centers, geometry_cell_at, geometry_cells_in_region, geometry_snapshot,
     tessellation_shapes,

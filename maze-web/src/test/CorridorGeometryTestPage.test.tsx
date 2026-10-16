@@ -8,7 +8,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // Cell centres come from wasm, unavailable here — mock with the square identity formula. It is only
 // geometrically correct for square cells; other tessellations are exercised here for UI structure
 // only (`corridorLabParity.test.ts` compares their geometry on the real wasm build).
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

@@ -1,8 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initWasm } from "./wasm/wasmLoader";
-import { App } from "./App";
-import { CorridorGeometryTestPage } from "./components/CorridorGeometryTestPage";
 import { initLocale } from "./i18n/localeStore";
 import "./styles/global.css";
 
@@ -30,7 +28,10 @@ async function bootstrap() {
     return;
   }
 
+  // The store builds its initial field through wasm at module load, so the app modules must be
+  // imported only after wasm is ready.
   if (isCorridorGeometryRoute) {
+    const { CorridorGeometryTestPage } = await import("./components/CorridorGeometryTestPage");
     createRoot(root).render(
       <StrictMode>
         <CorridorGeometryTestPage />
@@ -39,6 +40,7 @@ async function bootstrap() {
     return;
   }
 
+  const { App } = await import("./App");
   createRoot(root).render(
     <StrictMode>
       <App />

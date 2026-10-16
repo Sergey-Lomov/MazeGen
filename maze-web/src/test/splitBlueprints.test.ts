@@ -3,7 +3,8 @@ import { blueprintsForDegree, rotateBlueprint, fittingRotation, blueprintToSplit
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 
-vi.mock("../wasm/mazeService", () => ({ getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
 
 describe("blueprintsForDegree", () => {
   it("returns the built-in set for a known degree", () => {

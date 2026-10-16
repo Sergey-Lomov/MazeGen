@@ -1,5 +1,11 @@
+use super::field_ops::{
+    CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param,
+};
 use super::square::{cell_range, grid_candidates};
-use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
+use super::{
+    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
+    Tessellation, validate_preset,
+};
 use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -128,6 +134,30 @@ impl Tessellation for TriTessellation {
         grid_candidates(cols, rows, limit, |col, row| TriPoint { col, row })
     }
 
+    fn presets(&self) -> &[PresetDescriptor] {
+        &TRI_PRESETS
+    }
+
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<TriPoint>, FieldOpError> {
+        validate_preset(&TRI_PRESETS, key, params)?;
+        let mut cells = match key {
+            "rect" => centered_tri_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "triangle" => centered_on_lattice(tri_triangle(param(params, "side") as usize)),
+            "hexagon" => centered_on_lattice(tri_hexagon(param(params, "radius") as usize)),
+            "circle" => {
+                let origin = self.center(TriPoint { col: 0, row: 0 });
+                circle_cells(self, origin, param(params, "radius"), Inclusion::WholeCell)?
+            }
+            _ => return Err(FieldOpError::Unavailable),
+        };
+        cells.sort();
+        Ok(cells)
+    }
+
     fn area(&self, _cell: TriPoint) -> f64 {
         1.0
     }
@@ -200,6 +230,49 @@ pub fn tri_hexagon(radius: usize) -> Vec<TriPoint> {
             let indent = odd_base - k;
             let width = 2 * (k + r) + 1;
             (indent..indent + width).map(move |col| TriPoint { col, row })
+        })
+        .collect()
+}
+
+/// Preset field shapes of the triangle grid, in UI order.
+const TRI_PRESETS: [PresetDescriptor; 4] =
+    [RECT_PRESET, TRIANGLE_PRESET, HEXAGON_PRESET, CIRCLE_PRESET];
+
+/// Each configured column is a pair of adjacent opposite-orientation triangles, so a rectangle
+/// holds `2 · cols` triangles per row.
+fn centered_tri_rect(cols: i32, rows: i32) -> Vec<TriPoint> {
+    let origin_row = rows / 2;
+    (0..rows)
+        .flat_map(|row| {
+            (0..2 * cols).map(move |col| TriPoint {
+                col: col - cols,
+                row: row - origin_row,
+            })
+        })
+        .collect()
+}
+
+/// Shifts a lattice-aligned shape so its middle cell sits near the origin. The shift keeps
+/// `col + row` parity (which decides a triangle's orientation), so the shape's boundary stays
+/// smooth.
+fn centered_on_lattice(cells: Vec<TriPoint>) -> Vec<TriPoint> {
+    let bounds = |f: fn(&TriPoint) -> i32| {
+        (
+            cells.iter().map(f).min().unwrap_or(0),
+            cells.iter().map(f).max().unwrap_or(0),
+        )
+    };
+    let ((min_col, max_col), (min_row, max_row)) = (bounds(|p| p.col), bounds(|p| p.row));
+    let ox = (min_col + max_col + 1).div_euclid(2);
+    let mut oy = (min_row + max_row + 1).div_euclid(2);
+    if (ox + oy).rem_euclid(2) != 0 {
+        oy = (oy - 1).max(0);
+    }
+    cells
+        .into_iter()
+        .map(|p| TriPoint {
+            col: p.col - ox,
+            row: p.row - oy,
         })
         .collect()
 }

@@ -12,7 +12,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // unit-test environment -- mock it with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip -- those are applied
 // by `squareGeometry.ts` itself, not this mock).
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

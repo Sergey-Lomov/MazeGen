@@ -6,7 +6,8 @@ import { patternShapeOf, shapeKeysOf, splitPatternsFor } from "../pixi/shapeTemp
 import { patternAnchorPoint } from "../pixi/splitPatternTile";
 import { tessellationConfigOf } from "../fieldConfig";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
 }));
 

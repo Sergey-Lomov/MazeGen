@@ -15,7 +15,8 @@ import { fakeCellCenters } from "./cellCentersFake";
 // approximation) purely so `buildCrossFloorMarkers`'s own
 // badge-placement tests don't need a real wasm module loaded, same rationale
 // `TeleportRenderer.test.ts` documents for its own wasm mock.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

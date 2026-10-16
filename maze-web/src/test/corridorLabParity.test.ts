@@ -21,7 +21,8 @@ import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
 const wasmPath = resolve(dirname(__filename), "../wasm/pkg/maze_wasm_bg.wasm");
 const describeIfWasmBuilt = existsSync(wasmPath) ? describe : describe.skip;
 const wasmHolder = vi.hoisted(() => ({ module: null as unknown }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: () => Promise.resolve(),
   getWasm: () => {
     if (!wasmHolder.module) throw new Error("WASM not initialized");

@@ -6,6 +6,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 pub mod cairo;
+pub mod field_ops;
 pub mod geometry;
 pub mod hex;
 pub mod multi_level;
@@ -16,6 +17,10 @@ pub(crate) mod test_support;
 pub mod triangle;
 
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
+pub use field_ops::{
+    FieldOpError, FieldOperation, FieldOps, PresetDescriptor, PresetParam, PresetParams,
+    is_connected, validate_preset,
+};
 pub use geometry::{
     BoundaryPath, CellScope, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode,
     RegionTooLarge, STRAIGHT_TOLERANCE, Segment, TessellationGeometry, chain_midpoint,
@@ -85,6 +90,29 @@ pub trait Tessellation: Send + Sync + 'static {
     /// tessellation space. Exact filtering happens in `geometry`. `None` when there would be more
     /// than `limit` candidates; an implementation counts them before allocating any.
     fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<Self::CellId>>;
+
+    /// The field operations this tessellation supports (GitHub issue #760). The UI hides tools
+    /// for operations not listed; `FieldOps` refuses them with `FieldOpError::Unavailable`.
+    fn field_operations(&self) -> &[FieldOperation] {
+        &[FieldOperation::Translate, FieldOperation::Reflect]
+    }
+
+    /// The preset field shapes this tessellation offers, each with its parameter schema.
+    fn presets(&self) -> &[PresetDescriptor] {
+        &[]
+    }
+
+    /// The cells of preset `key` built from `params` (named per the preset's schema), centered
+    /// around the tessellation's origin, sorted by `CellId`. `Unavailable` for a preset not in
+    /// `presets`, `InvalidPreset` for parameters that do not match its schema.
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Self::CellId>, FieldOpError> {
+        validate_preset(self.presets(), key, params)?;
+        Err(FieldOpError::Unavailable)
+    }
 
     /// Area of `cell`. Defaults to the signed area of its boundary path; a tessellation with a
     /// known constant area overrides it (tests check the override against the boundary).
@@ -524,3 +552,7 @@ impl<T: Tessellation> Field<T> {
 #[cfg(test)]
 #[path = "space_tests.rs"]
 mod space_tests;
+
+#[cfg(test)]
+#[path = "field_ops_tests.rs"]
+mod field_ops_tests;

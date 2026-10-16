@@ -1,5 +1,12 @@
+use super::field_ops::{
+    CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells,
+    hexagon_cells, param, triangle_cells,
+};
 use super::square::{cell_range, grid_candidates};
-use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
+use super::{
+    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
+    Tessellation, validate_preset,
+};
 use std::sync::LazyLock;
 
 /// Integer coordinate of a Cairo pentagonal tile.
@@ -304,6 +311,31 @@ impl Tessellation for CairoTessellation {
         )
     }
 
+    fn presets(&self) -> &[PresetDescriptor] {
+        &CAIRO_PRESETS
+    }
+
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<CairoPoint>, FieldOpError> {
+        validate_preset(&CAIRO_PRESETS, key, params)?;
+        // `(0, 0)` is not a Cairo cell; the lattice origin is still the natural center.
+        let origin = Point::default();
+        let mut cells = match key {
+            "rect" => {
+                centered_cairo_rect(param(params, "cols") as i32, param(params, "rows") as i32)
+            }
+            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
+            "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center)?,
+            "hexagon" => hexagon_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
+            _ => return Err(FieldOpError::Unavailable),
+        };
+        cells.sort();
+        Ok(cells)
+    }
+
     fn area(&self, _cell: CairoPoint) -> f64 {
         1.0
     }
@@ -378,4 +410,24 @@ static CAIRO_FACE_EDGES: LazyLock<[[usize; 5]; 4]> = LazyLock::new(|| {
 
 pub fn cairo_rect(cols: usize, rows: usize) -> Vec<CairoPoint> {
     CairoTessellation::rect(cols, rows)
+}
+
+/// Preset field shapes of the Cairo grid, in UI order.
+const CAIRO_PRESETS: [PresetDescriptor; 4] =
+    [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET, HEXAGON_PRESET];
+
+/// `CairoTessellation::rect` translated around the origin by whole fundamental blocks. Cairo's
+/// checkerboard repeats after two blocks, so the block offset keeps an even parity sum; otherwise a
+/// valid cell lands on an empty position.
+fn centered_cairo_rect(cols: i32, rows: i32) -> Vec<CairoPoint> {
+    let mut block_x = cols / 2;
+    let block_y = rows / 2;
+    if (block_x + block_y) % 2 != 0 {
+        block_x += 1;
+    }
+    let (ox, oy) = (4 * block_x, 4 * block_y);
+    CairoTessellation::rect(cols as usize, rows as usize)
+        .into_iter()
+        .map(|p| CairoPoint::new(p.x - ox, p.y - oy))
+        .collect()
 }

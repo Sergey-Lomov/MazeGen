@@ -5,6 +5,11 @@ import { regularHexagonDimensions } from "../pixi/shapeSelection";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "../pixi/triShapeHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 
+/** Core returns preset cells sorted by cell id (x, then y). */
+function sortedCells(cells: number[][]): number[][] {
+  return [...cells].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
 describe("field shape primitives", () => {
   const gesture = {
     startGrid: { x: 0, y: 0 },
@@ -91,7 +96,7 @@ describe("field shape primitives", () => {
     const centered = (side: number) => {
       const raw = triTriangleRaw(side);
       const { ox, oy } = triCenterOffset(raw);
-      return raw.map(([x, y]) => [x - ox, y - oy]);
+      return sortedCells(raw.map(([x, y]) => [x - ox, y - oy]));
     };
     for (let side = 1; side <= 6; side++) {
       const cells = configAllCells(fieldOf("tri", { shape: "triangle", side }, "r0"));
@@ -336,11 +341,11 @@ describe("field shape primitives", () => {
       symmetric: true,
       constrainSquare: true,
     });
-    expect(manual).toEqual(standard);
+    expect(sortedCells(manual)).toEqual(standard);
     expect(standard).toHaveLength(6 * radius * radius);
     const raw = triHexagonRaw(radius);
     const { ox, oy } = triCenterOffset(raw);
-    expect(standard).toEqual(raw.map(([x, y]) => [x - ox, y - oy]));
+    expect(standard).toEqual(sortedCells(raw.map(([x, y]) => [x - ox, y - oy])));
   });
 
   it("supports the same primitive set on every tessellation", () => {

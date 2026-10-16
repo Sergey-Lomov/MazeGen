@@ -16,7 +16,8 @@ vi.mock("../store/mazeStore", () => ({
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
 

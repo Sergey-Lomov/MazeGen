@@ -1,10 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => {
+  const actual = await importActual<typeof import("../wasm/wasmLoader")>();
+  return {
+    ...actual,
+    getWasm: () => ({
+      ...actual.getWasm(),
     cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
-  }),
-}));
+    }),
+  };
+});
 
 import { render, screen } from "@testing-library/react";
 import { PresetSplitNodesDialog } from "../components/features/PresetSplitNodesDialog";

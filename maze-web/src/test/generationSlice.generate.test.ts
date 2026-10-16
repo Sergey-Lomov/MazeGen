@@ -6,7 +6,8 @@ import { configAllCells } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -14,7 +15,8 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableRuleParams: vi.fn(() => []),
   getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -58,22 +60,18 @@ describe("mazeStore.generate", () => {
   it("maps Cairo generation config and standard cells to the WASM contract", () => {
     const config = fieldOf("cairo", { shape: "rect", cols: 2, rows: 2 });
     expect(fieldConfigToWasm(config)).toEqual({ kind: "cairo" as const, params: {} });
+    // Core returns preset cells sorted by cell id (x, then y).
     expect(configAllCells(config)).toEqual([
-      [-2, -3], [-2, -1],
-      [1, -2], [3, -2],
-      [-3, 2], [-1, 2],
-      [2, 1], [2, 3],
+      [-3, 2], [-2, -3], [-2, -1], [-1, 2],
+      [1, -2], [2, 1], [2, 3], [3, -2],
     ]);
   });
 
   it("keeps Cairo rectangle cells in their canonical fundamental-square blocks", () => {
     expect(configAllCells(fieldOf("cairo", { shape: "rect", cols: 3, rows: 2 }))).toEqual([
-      [-2, -3], [-2, -1],
-      [1, -2], [3, -2],
-      [6, -3], [6, -1],
-      [-3, 2], [-1, 2],
-      [2, 1], [2, 3],
-      [5, 2], [7, 2],
+      [-3, 2], [-2, -3], [-2, -1], [-1, 2],
+      [1, -2], [2, 1], [2, 3], [3, -2],
+      [5, 2], [6, -3], [6, -1], [7, 2],
     ]);
   });
 

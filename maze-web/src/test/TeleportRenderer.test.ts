@@ -8,13 +8,15 @@ import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting
 // exercised below (no `TeleportConnectorRouter.route` call needed since `connectorStyle: "none"`),
 // but `TeleportRenderer`'s own module graph pulls in `../../store/mazeStore`, which pulls in
 // `../wasm/mazeService` at import time — same rationale as `VectorByWallsSettingsPanel.test.tsx`.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 

@@ -7,7 +7,8 @@ import type { CheckDescriptor, RuleParamDescriptor, StrategyDescriptor } from ".
 import type { QcRuleState } from "../store/storeTypes";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
-vi.mock("../wasm/mazeService", () => ({ getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
 
 const HEX = tessellationConfigOf("hex");
 

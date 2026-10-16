@@ -424,23 +424,47 @@ Status (GitHub issue #759): implemented in `space::geometry`.
 
 ### Field operations
 
-Field-editing operations work on cell sets and live in core:
+Field-editing operations work on cell sets and live in core (`space/field_ops.rs`, GitHub issue
+#760):
 
 - **translate** by a world vector, which must be a translation symmetry of the tessellation;
-- **reflect** across an axis (a world line), which must be a reflection symmetry;
-- **preset field shapes** built from named params (the ported `square_rect`, `hex_hexagon`,
-  `tri_*`, `cairo_rect` and the web generators from `storeHelpers`/`fieldConfig`).
+- **reflect** across an axis (a world line through two points), which must be a reflection
+  symmetry;
+- **preset field shapes** built from named integer params: `rect`, `parallelogram`, `circle`,
+  `triangle` and `hexagon` (the ported `square_rect`, `hex_hexagon`, `tri_*`, `cairo_rect` and the
+  web generators from `storeHelpers`/`fieldConfig`).
 
-Availability is separate from execution. The tessellation exposes which operations it supports
-(and its preset list with param schemas) so the UI can hide unavailable tools. Execution returns
-`Result<cells, FieldOpError>`, where the error carries a reason:
+Availability is separate from execution. `Tessellation::field_operations` lists the supported
+operations and `Tessellation::presets` its preset list, each `PresetDescriptor { key, params }`
+with `PresetParam { name, min }`, so the UI can hide unavailable tools and build param forms.
+Translate and reflect run through the `FieldOps` extension trait (blanket impl); presets through
+`Tessellation::build_preset(key, params)`. Execution returns `Result<cells, FieldOpError>`, where
+the error carries a reason:
 
-- `Unavailable`;
-- `NotASymmetry`;
-- `OutsideTessellation`: a mapped cell does not exist;
-- `ConnectivityBroken`: the resulting cell set is disconnected.
+- `Unavailable`: the operation or preset is not offered;
+- `NotASymmetry`: the vector or axis is not a symmetry (decided geometrically: every cell around
+  the origin, or around the axis, must map onto a cell with the same boundary vertices);
+- `OutsideTessellation`: an input cell is invalid, or a mapped cell does not exist;
+- `ConnectivityBroken`: the resulting cell set is disconnected;
+- `InvalidPreset(reason)`: unknown or missing params, a value below its minimum, a parameter
+  product above 1,000,000 or a shape too large to build, or one that contains no cells.
 
-Results are sorted by `CellId`.
+Results are sorted by `CellId`. An empty input yields an empty result.
+
+Presets are built in canonical math orientation — there is no orientation param, because core
+geometry knows nothing about the display transform. All sizes are world units (cell area 1), the
+shape is centered on the tessellation origin (the origin cell's center, or the lattice origin for
+Cairo) and a cell is in when its center is inside, within `1e-6`. Lattice-exact shapes (the square
+and hex rectangles, hex parallelogram and hexagon, tri rectangle, triangle and hexagon, Cairo
+rectangle) are built from lattice coordinates; `circle` (the tri circle takes whole cells),
+`triangle` (apex up) and `hexagon` (vertices on the x axis, Cairo only) are rasterized through the
+cell geometry. The hex rectangle has screen-aligned sides on the flat-top lattice core uses.
+
+Wire (`maze-runner::runner::field_ops`, exported by `maze-wasm`): `field_capabilities`,
+`field_preset`, `field_translate_cells`, `field_reflect_cells`; failures are
+`{ kind, message? }` with `kind` one of the reasons above (`invalid_request` for a malformed
+request; also returned for non-finite vector or axis coordinates). The web `configAllCells` treats
+`invalid_preset` as an empty field and caches built presets by tessellation, key and params.
 
 ### Display transform
 

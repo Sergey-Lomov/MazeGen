@@ -1,5 +1,12 @@
+use super::field_ops::{
+    CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, PARALLELOGRAM_PRESET, RECT_PRESET, TRIANGLE_PRESET,
+    circle_cells, param, triangle_cells,
+};
 use super::square::cell_range;
-use super::{CellShape, Point, Segment, ShapeDescriptor, Tessellation};
+use super::{
+    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
+    Tessellation, validate_preset,
+};
 use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -141,6 +148,32 @@ impl Tessellation for HexTessellation {
         )
     }
 
+    fn presets(&self) -> &[PresetDescriptor] {
+        &HEX_PRESETS
+    }
+
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<HexPoint>, FieldOpError> {
+        validate_preset(&HEX_PRESETS, key, params)?;
+        let origin = self.center(HexPoint { q: 0, r: 0 });
+        let mut cells = match key {
+            "rect" => centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "parallelogram" => centered_hex_parallelogram(
+                param(params, "cols") as i32,
+                param(params, "rows") as i32,
+            ),
+            "hexagon" => hex_hexagon(param(params, "radius") as usize),
+            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
+            "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center)?,
+            _ => return Err(FieldOpError::Unavailable),
+        };
+        cells.sort();
+        Ok(cells)
+    }
+
     fn area(&self, _cell: HexPoint) -> f64 {
         1.0
     }
@@ -174,5 +207,43 @@ pub fn hex_hexagon(radius: usize) -> Vec<HexPoint> {
     let n = radius as i32;
     (-n..=n)
         .flat_map(move |q| ((-n).max(-q - n)..=n.min(-q + n)).map(move |r| HexPoint { q, r }))
+        .collect()
+}
+
+/// Preset field shapes of the hex grid, in UI order.
+const HEX_PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    PARALLELOGRAM_PRESET,
+    HEXAGON_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+];
+
+/// An axial rectangle: each parameter runs along one grid axis; the origin cell sits at
+/// `size / 2` (rounded down) of each.
+fn centered_hex_parallelogram(cols: i32, rows: i32) -> Vec<HexPoint> {
+    let (ox, oy) = (cols / 2, rows / 2);
+    hex_parallelogram(cols as usize, rows as usize)
+        .into_iter()
+        .map(|p| HexPoint {
+            q: p.q - ox,
+            r: p.r - oy,
+        })
+        .collect()
+}
+
+/// A rectangle with screen-aligned sides: the hex lattice is flat-topped (columns step `1.5·side`
+/// in x), so each column is shifted by half a row per column step. Every increment of `cols` or
+/// `rows` adds a complete layer.
+fn centered_hex_rect(cols: i32, rows: i32) -> Vec<HexPoint> {
+    let (origin_col, origin_row) = (cols / 2, rows / 2);
+    (0..cols)
+        .flat_map(|col| {
+            let q = col - origin_col;
+            (0..rows).map(move |row| HexPoint {
+                q,
+                r: row - origin_row - q.div_euclid(2),
+            })
+        })
         .collect()
 }

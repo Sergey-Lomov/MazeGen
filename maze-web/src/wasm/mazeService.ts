@@ -294,3 +294,46 @@ export interface TessellationShapes {
 export function getTessellationShapes(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): TessellationShapes {
   return getWasm().tessellation_shapes(config) as TessellationShapes;
 }
+
+/** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
+export type FieldOpError =
+  | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" | "connectivity_broken" }
+  | { kind: "invalid_preset" | "invalid_request"; message: string };
+
+/** Mirrors `maze-runner`'s `FieldCapabilities` — see `field_capabilities`'s doc comment. */
+export interface FieldCapabilities {
+  operations: ("translate" | "reflect")[];
+  presets: { key: string; params: { name: string; min: number }[] }[];
+}
+
+export function getFieldCapabilities(tessellation: WasmTessellationConfig): FieldCapabilities {
+  return getWasm().field_capabilities({ tessellation }) as FieldCapabilities;
+}
+
+/// Cells of a preset field shape built by `maze-core` (`field_preset`, GitHub issue #760), around
+/// the tessellation origin. Throws the wire `FieldOpError` when core refuses the request.
+export function getFieldPreset(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): [number, number][] {
+  return getWasm().field_preset({ tessellation, preset, params }) as [number, number][];
+}
+
+/// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
+export function translateFieldCells(
+  tessellation: WasmTessellationConfig,
+  cells: [number, number][],
+  vector: [number, number],
+): [number, number][] {
+  return getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+}
+
+/// Cells mirrored across the world line through two points; it must be a reflection symmetry.
+export function reflectFieldCells(
+  tessellation: WasmTessellationConfig,
+  cells: [number, number][],
+  axis: [[number, number], [number, number]],
+): [number, number][] {
+  return getWasm().field_reflect_cells({ tessellation, cells, axis }) as [number, number][];
+}
