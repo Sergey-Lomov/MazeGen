@@ -1,12 +1,12 @@
 use super::Tessellation;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct HexPoint {
     pub q: i32,
     pub r: i32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum HexFace {
     E,
     NE,
@@ -16,47 +16,32 @@ pub enum HexFace {
     SE,
 }
 
+impl HexFace {
+    /// The face on the other side of the same edge — also the face a straight pass leaves by.
+    pub fn opposite(self) -> Self {
+        match self {
+            HexFace::E => HexFace::W,
+            HexFace::NE => HexFace::SW,
+            HexFace::NW => HexFace::SE,
+            HexFace::W => HexFace::E,
+            HexFace::SW => HexFace::NE,
+            HexFace::SE => HexFace::NW,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
 
 impl Tessellation for HexTessellation {
-    type Point = HexPoint;
+    type CellId = HexPoint;
     type Face = HexFace;
 
-    fn step(&self, point: HexPoint, face: HexFace) -> Option<HexPoint> {
-        Some(match face {
-            HexFace::E => HexPoint {
-                q: point.q + 1,
-                r: point.r,
-            },
-            HexFace::NE => HexPoint {
-                q: point.q + 1,
-                r: point.r - 1,
-            },
-            HexFace::NW => HexPoint {
-                q: point.q,
-                r: point.r - 1,
-            },
-            HexFace::W => HexPoint {
-                q: point.q - 1,
-                r: point.r,
-            },
-            HexFace::SW => HexPoint {
-                q: point.q - 1,
-                r: point.r + 1,
-            },
-            HexFace::SE => HexPoint {
-                q: point.q,
-                r: point.r + 1,
-            },
-        })
-    }
-
-    fn is_valid_point(&self, _point: HexPoint) -> bool {
+    fn is_valid_cell(&self, _cell: HexPoint) -> bool {
         true
     }
 
-    fn faces(&self) -> &[HexFace] {
+    fn faces_of(&self, _cell: HexPoint) -> &[HexFace] {
         &[
             HexFace::E,
             HexFace::NE,
@@ -67,25 +52,33 @@ impl Tessellation for HexTessellation {
         ]
     }
 
-    fn face_between(&self, from: HexPoint, to: HexPoint) -> Option<HexFace> {
-        match (to.q - from.q, to.r - from.r) {
-            (1, 0) => Some(HexFace::E),
-            (1, -1) => Some(HexFace::NE),
-            (0, -1) => Some(HexFace::NW),
-            (-1, 0) => Some(HexFace::W),
-            (-1, 1) => Some(HexFace::SW),
-            (0, 1) => Some(HexFace::SE),
-            _ => None,
-        }
+    fn neighbor(&self, cell: HexPoint, face: HexFace) -> Option<(HexPoint, HexFace)> {
+        let (dq, dr) = match face {
+            HexFace::E => (1, 0),
+            HexFace::NE => (1, -1),
+            HexFace::NW => (0, -1),
+            HexFace::W => (-1, 0),
+            HexFace::SW => (-1, 1),
+            HexFace::SE => (0, 1),
+        };
+        let neighbor = HexPoint {
+            q: cell.q.checked_add(dq)?,
+            r: cell.r.checked_add(dr)?,
+        };
+        Some((neighbor, face.opposite()))
+    }
+
+    fn is_straight(&self, _cell: HexPoint, in_face: HexFace, out_face: HexFace) -> bool {
+        out_face == in_face.opposite()
     }
 
     /// Canonical (flat_top-equivalent) projection, unit tile scale. `INRADIUS` = sqrt(3)/2 at
     /// unit tile size — same formula as `maze-web`'s `hexCenter` (flat_top branch), minus the
     /// `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side concerns
     /// — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(&self, point: HexPoint) -> (f64, f64) {
+    fn cartesian(&self, cell: HexPoint) -> (f64, f64) {
         let inradius = 3f64.sqrt() / 2.0;
-        let (q, r) = (point.q as f64, point.r as f64);
+        let (q, r) = (cell.q as f64, cell.r as f64);
         (q * 1.5, -(r * inradius * 2.0 + q * inradius))
     }
 

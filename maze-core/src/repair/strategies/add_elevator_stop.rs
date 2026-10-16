@@ -395,7 +395,7 @@ fn add_stop_command_with_planned<T: Tessellation>(
     preset_state: &PresetState,
 ) -> Option<Vec<MutationCommand>> {
     let &existing = elevator.stops.first()?;
-    let point = maze.field.point_of(existing)?;
+    let point = maze.field.cell_of(existing)?;
     let new_stop = maze.field.node_at(target_level, point)?;
 
     if elevator.stops.contains(&new_stop) {

@@ -551,7 +551,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 2);
-        let split_points: std::collections::HashSet<_> = maze.field.split_points().collect();
+        let split_points: std::collections::HashSet<_> = maze.field.split_cells().collect();
         assert_eq!(split_points.len(), 2);
         for (level, _) in split_points {
             assert_eq!(

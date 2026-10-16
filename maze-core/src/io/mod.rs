@@ -10,7 +10,7 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
     let (width, height) = {
         let mut max_x = 0i32;
         let mut max_y = 0i32;
-        for p in field.all_points() {
+        for p in field.all_cells() {
             if p.x > max_x {
                 max_x = p.x;
             }

@@ -1,70 +1,65 @@
 use super::Tessellation;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TriPoint {
     pub col: i32,
     pub row: i32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TriFace {
     Left,
     Right,
     Base,
 }
 
+impl TriFace {
+    /// The face on the other side of the same edge: a `Left` side touches the neighbor's `Right`
+    /// side and vice versa, a `Base` touches the neighbor's `Base`.
+    pub fn opposite(self) -> Self {
+        match self {
+            TriFace::Left => TriFace::Right,
+            TriFace::Right => TriFace::Left,
+            TriFace::Base => TriFace::Base,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TriTessellation;
 
 impl Tessellation for TriTessellation {
-    type Point = TriPoint;
+    type CellId = TriPoint;
     type Face = TriFace;
 
-    fn step(&self, point: TriPoint, face: TriFace) -> Option<TriPoint> {
-        let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
-        Some(match face {
-            TriFace::Left => TriPoint {
-                col: point.col - 1,
-                row: point.row,
-            },
-            TriFace::Right => TriPoint {
-                col: point.col + 1,
-                row: point.row,
-            },
-            TriFace::Base => {
-                if pointing_up {
-                    TriPoint {
-                        col: point.col,
-                        row: point.row - 1,
-                    }
-                } else {
-                    TriPoint {
-                        col: point.col,
-                        row: point.row + 1,
-                    }
-                }
-            }
-        })
-    }
-
-    fn is_valid_point(&self, _point: TriPoint) -> bool {
+    fn is_valid_cell(&self, _cell: TriPoint) -> bool {
         true
     }
 
-    fn faces(&self) -> &[TriFace] {
+    fn faces_of(&self, _cell: TriPoint) -> &[TriFace] {
         &[TriFace::Left, TriFace::Right, TriFace::Base]
     }
 
-    fn face_between(&self, from: TriPoint, to: TriPoint) -> Option<TriFace> {
-        let pointing_up = (from.col + from.row).rem_euclid(2) == 0;
-        match (to.col - from.col, to.row - from.row) {
-            (-1, 0) => Some(TriFace::Left),
-            (1, 0) => Some(TriFace::Right),
-            (0, dy) if (pointing_up && dy == -1) || (!pointing_up && dy == 1) => {
-                Some(TriFace::Base)
-            }
-            _ => None,
-        }
+    fn neighbor(&self, cell: TriPoint, face: TriFace) -> Option<(TriPoint, TriFace)> {
+        let pointing_up = (cell.col + cell.row).rem_euclid(2) == 0;
+        let (dcol, drow) = match face {
+            TriFace::Left => (-1, 0),
+            TriFace::Right => (1, 0),
+            TriFace::Base if pointing_up => (0, -1),
+            TriFace::Base => (0, 1),
+        };
+        let neighbor = TriPoint {
+            col: cell.col.checked_add(dcol)?,
+            row: cell.row.checked_add(drow)?,
+        };
+        Some((neighbor, face.opposite()))
+    }
+
+    /// Face-identity semantics: a pass is straight when it leaves by the face opposite (in the
+    /// `TriFace::opposite` sense) to the one it entered by, so `Left`/`Right` passes count as
+    /// straight.
+    fn is_straight(&self, _cell: TriPoint, in_face: TriFace, out_face: TriFace) -> bool {
+        out_face == in_face.opposite()
     }
 
     /// Canonical (r0-equivalent) projection, unit tile scale — `S = 2.0` (triangle side length,
@@ -73,11 +68,11 @@ impl Tessellation for TriTessellation {
     /// (triangle height). Same centroid formula as `maze-web`'s `triCenter` (r0 branch), minus
     /// the `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side
     /// concerns — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(&self, point: TriPoint) -> (f64, f64) {
+    fn cartesian(&self, cell: TriPoint) -> (f64, f64) {
         let s = 2.0;
         let h = s * 3f64.sqrt() / 2.0;
-        let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
-        let (col, row) = (point.col as f64, point.row as f64);
+        let pointing_up = (cell.col + cell.row).rem_euclid(2) == 0;
+        let (col, row) = (cell.col as f64, cell.row as f64);
         let cx = col * s / 2.0 + s / 4.0;
         let cy = if pointing_up {
             -(row * h + h / 3.0)

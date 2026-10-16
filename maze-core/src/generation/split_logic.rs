@@ -53,7 +53,7 @@ pub(crate) fn split_is_eligible<T: Tessellation>(
     let Some(level) = field.level_of(src) else {
         return false;
     };
-    let Some(point) = field.point_of(src) else {
+    let Some(point) = field.cell_of(src) else {
         return false;
     };
     field.nodes_at(level, point).len() <= 1

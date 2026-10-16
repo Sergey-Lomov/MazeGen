@@ -20,7 +20,7 @@ a random node count with unconstrained face assignment.
   face: `Forward` means the edge points away from this node, `Backward` means into it. Mirrors
   `PresetConnectionState`'s naming.
 - **`SplitPatternFace`** — `{ face_index, requirement, sibling_target }`. `face_index` is a
-  position into `Tessellation::faces()`, always interpreted against the tessellation the pattern
+  position into `Tessellation::faces_of` of the cell, always interpreted against the tessellation the pattern
   is currently authored/applied for. `sibling_target: Some(i)` means this face must connect to
   pattern-local node `i` (an inter-split edge — the two split nodes share the same point, never
   geometrically resolved against an outside neighbor); `None` means an ordinary outside neighbor.

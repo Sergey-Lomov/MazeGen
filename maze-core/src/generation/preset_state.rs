@@ -148,16 +148,16 @@ impl PresetState {
 
     /// Resolves a `PresetEndpoint` (e.g. `preset_start`/`preset_finish`/`preset_gen_source`) to a
     /// real `NodeId` on `field`, against the same split nodes `build_preset_state` already
-    /// applied to it — must be called with the same `field`/`xy_to_point` used to build this
+    /// applied to it — must be called with the same `field`/`xy_to_cell` used to build this
     /// `PresetState`. Returns `None` for an unresolvable endpoint (unknown point/level, or an
     /// undeclared slot), same "silently unresolved" contract `build_preset_state` uses internally.
     pub fn resolve_endpoint<T: Tessellation>(
         &self,
         field: &MultiLevelField<T>,
-        xy_to_point: impl Fn(i32, i32) -> T::Point,
+        xy_to_cell: impl Fn(i32, i32) -> T::CellId,
         endpoint: PresetEndpoint,
     ) -> Option<NodeId> {
-        resolve_preset_endpoint(field, &self.slots_by_point, &xy_to_point, endpoint)
+        resolve_preset_endpoint(field, &self.slots_by_point, &xy_to_cell, endpoint)
     }
 }
 
@@ -192,7 +192,7 @@ fn apply_split_points<T: Tessellation>(
     graph: &mut Graph,
     ids: &mut IdGenerator,
     split_points: &[((i32, i32), u32, u32)],
-    xy_to_point: &impl Fn(i32, i32) -> T::Point,
+    xy_to_cell: &impl Fn(i32, i32) -> T::CellId,
     mut debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<PresetTeleportBuild, String> {
     // Sort by (level, point, slot) — `((i32,i32), u32, u32)`'s natural tuple order sorts by point
@@ -208,7 +208,7 @@ fn apply_split_points<T: Tessellation>(
     for (level_index, xy, slot_id) in sorted {
         let level = level_id_at(field, level_index)
             .ok_or_else(|| format!("split_points references unknown level {level_index}"))?;
-        let point = xy_to_point(xy.0, xy.1);
+        let point = xy_to_cell(xy.0, xy.1);
         if field.field_of(level).is_none_or(|f| !f.contains(point)) {
             return Err(format!(
                 "split_points references unknown point {xy:?} on level {level_index}"
@@ -235,12 +235,12 @@ fn apply_split_points<T: Tessellation>(
 fn resolve_preset_endpoint<T: Tessellation>(
     field: &MultiLevelField<T>,
     slots_by_point: &HashMap<(u32, i32, i32), Vec<u32>>,
-    xy_to_point: &impl Fn(i32, i32) -> T::Point,
+    xy_to_cell: &impl Fn(i32, i32) -> T::CellId,
     endpoint: PresetEndpoint,
 ) -> Option<NodeId> {
     let level_index = endpoint.level.unwrap_or(0);
     let level = level_id_at(field, level_index)?;
-    let point = xy_to_point(endpoint.point.0, endpoint.point.1);
+    let point = xy_to_cell(endpoint.point.0, endpoint.point.1);
     let nodes = field.nodes_at(level, point);
     match endpoint.slot {
         None => nodes.first().copied(),
@@ -279,7 +279,7 @@ pub fn build_preset_state<T: Tessellation>(
     preset_elevators: &[PresetElevator],
     locked_nodes: &[LockedNode],
     split_points: &[((i32, i32), u32, u32)],
-    xy_to_point: impl Fn(i32, i32) -> T::Point,
+    xy_to_cell: impl Fn(i32, i32) -> T::CellId,
     mut log: Option<&mut EventLog<PresetSetupEvent>>,
     debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<PresetState, String> {
@@ -292,9 +292,9 @@ pub fn build_preset_state<T: Tessellation>(
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
     let (slots_by_point, preset_declared_nodes) =
-        apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
+        apply_split_points(field, graph, ids, split_points, &xy_to_cell, debug_state)?;
     let resolve =
-        |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
+        |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_cell, ep);
 
     for preset in preset_connections {
         let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else {

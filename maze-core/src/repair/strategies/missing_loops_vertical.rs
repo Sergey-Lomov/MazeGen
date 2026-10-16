@@ -272,8 +272,8 @@ mod tests {
                 "a vertical passage must connect two different floors"
             );
             assert_eq!(
-                maze.field.point_of(edge.from),
-                maze.field.point_of(edge.to),
+                maze.field.cell_of(edge.from),
+                maze.field.cell_of(edge.to),
                 "a vertical passage must connect the same x-y point across floors"
             );
         }

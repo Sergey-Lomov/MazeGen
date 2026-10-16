@@ -70,7 +70,7 @@ fn tile(nodes: Vec<NodeId>) -> SplitTileNodes {
 fn tile_with_slot0(maze: &Maze<SquareTessellation>, extra: NodeId) -> SplitTileNodes {
     let point = maze
         .field
-        .point_of(extra)
+        .cell_of(extra)
         .expect("extra must still be in the field");
     tile(
         maze.field
@@ -167,10 +167,10 @@ fn apply_removes_both_tiles_when_to_remove_covers_the_whole_group() {
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(
-        maze.field.point_of(extra1).is_none(),
+        maze.field.cell_of(extra1).is_none(),
         "both tiles must be collapsed"
     );
-    assert!(maze.field.point_of(extra2).is_none());
+    assert!(maze.field.cell_of(extra2).is_none());
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn apply_stops_once_to_remove_is_reached() {
 
     let removed_count = [extra1, extra2]
         .iter()
-        .filter(|&&n| maze.field.point_of(n).is_none())
+        .filter(|&&n| maze.field.cell_of(n).is_none())
         .count();
     assert_eq!(
         removed_count, 1,
@@ -209,7 +209,7 @@ fn apply_stops_once_to_remove_is_reached() {
 #[test]
 fn apply_collapses_the_selected_tile_to_exactly_one_node() {
     let (mut maze, extra1, _extra2) = maze_with_two_split_tiles();
-    let point = maze.field.point_of(extra1).unwrap();
+    let point = maze.field.cell_of(extra1).unwrap();
     let slot0 = maze.field.nodes_at(maze.field.single_level_id(), point)[0];
     let issue = group_issue(vec![(vec![tile(vec![slot0, extra1])], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
@@ -266,7 +266,7 @@ fn maze_with_a_small_and_a_big_split_tile()
 /// Whether `tile`'s point has collapsed to exactly one node (which one survived doesn't matter --
 /// slot-0 is no longer guaranteed to be it).
 fn tile_collapsed(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> bool {
-    let point = tile.0.iter().find_map(|&n| maze.field.point_of(n));
+    let point = tile.0.iter().find_map(|&n| maze.field.cell_of(n));
     match point {
         Some(p) => maze.field.nodes_at(maze.field.single_level_id(), p).len() == 1,
         // Every old node of the tile is gone -- collapsed into a brand-new node at some point we
@@ -279,7 +279,7 @@ fn tile_collapsed(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> boo
 
 /// Whether `tile`'s point still has every one of its original nodes (nothing was touched).
 fn tile_untouched(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> bool {
-    tile.0.iter().all(|&n| maze.field.point_of(n).is_some())
+    tile.0.iter().all(|&n| maze.field.cell_of(n).is_some())
 }
 
 #[test]
@@ -444,6 +444,6 @@ fn random_priority_still_resolves_the_group() {
         &nested,
     );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
-    assert!(maze.field.point_of(extra1).is_none());
-    assert!(maze.field.point_of(extra2).is_none());
+    assert!(maze.field.cell_of(extra1).is_none());
+    assert!(maze.field.cell_of(extra2).is_none());
 }

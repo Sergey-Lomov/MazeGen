@@ -22,7 +22,7 @@ mod field_clone_tests {
         // than deep-cloned) HashMap would still pass this if aliasing were harmless, but combined
         // with the derive/manual-impl having no unsafe/Rc involved, structural equality here is
         // exactly what a correct deep clone (vs. an accidentally-empty one) needs to satisfy.
-        for point in field.all_points() {
+        for point in field.all_cells() {
             assert_eq!(field.node_at(point), cloned.node_at(point));
         }
     }
@@ -35,7 +35,7 @@ mod from_id_points_tests {
 
     #[test]
     fn preserves_the_given_ids_instead_of_minting_new_ones() {
-        let field: Field<SquareTessellation> = Field::from_id_points(
+        let field: Field<SquareTessellation> = Field::from_id_cells(
             Arc::default(),
             [
                 (10, SquarePoint { x: 0, y: 0 }),
@@ -46,8 +46,8 @@ mod from_id_points_tests {
 
         assert_eq!(field.node_at(SquarePoint { x: 0, y: 0 }), Some(10));
         assert_eq!(field.node_at(SquarePoint { x: 1, y: 0 }), Some(20));
-        assert_eq!(field.point_of(10), Some(SquarePoint { x: 0, y: 0 }));
-        assert_eq!(field.point_of(20), Some(SquarePoint { x: 1, y: 0 }));
+        assert_eq!(field.cell_of(10), Some(SquarePoint { x: 0, y: 0 }));
+        assert_eq!(field.cell_of(20), Some(SquarePoint { x: 1, y: 0 }));
         assert_eq!(field.node_count(), 2);
     }
 
@@ -59,7 +59,7 @@ mod from_id_points_tests {
     fn groups_entries_by_point_preserving_given_order_as_creation_order() {
         let p = SquarePoint { x: 0, y: 0 };
         let field: Field<SquareTessellation> =
-            Field::from_id_points(Arc::default(), [(5, p), (7, p), (9, p)]).unwrap();
+            Field::from_id_cells(Arc::default(), [(5, p), (7, p), (9, p)]).unwrap();
 
         assert_eq!(field.nodes_at(p), &[5, 7, 9]);
     }
@@ -67,10 +67,10 @@ mod from_id_points_tests {
     #[test]
     fn empty_entries_yields_an_empty_field() {
         let field: Field<SquareTessellation> =
-            Field::from_id_points(Arc::default(), std::iter::empty()).unwrap();
+            Field::from_id_cells(Arc::default(), std::iter::empty()).unwrap();
 
         assert_eq!(field.node_count(), 0);
-        assert_eq!(field.all_points().count(), 0);
+        assert_eq!(field.all_cells().count(), 0);
     }
 }
 
@@ -90,7 +90,7 @@ mod remove_node_at_tests {
         field.remove_node_at(p, extra);
 
         assert!(!field.nodes_at(p).contains(&extra));
-        assert_eq!(field.point_of(extra), None);
+        assert_eq!(field.cell_of(extra), None);
     }
 
     #[test]
@@ -112,7 +112,7 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot remove a point's last remaining node")]
+    #[should_panic(expected = "cannot remove a cell's last remaining node")]
     fn panics_when_removing_a_points_last_remaining_node() {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> =
@@ -124,7 +124,7 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "node does not belong to point")]
+    #[should_panic(expected = "node does not belong to cell")]
     fn panics_when_node_belongs_to_a_different_point() {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> =
@@ -142,8 +142,8 @@ mod all_node_ids_tests {
     use super::super::*;
     use crate::space::{SquarePoint, SquareTessellation, square_rect};
 
-    // GitHub issue #232: `all_points().flat_map(|p| nodes_at(p))` repeats a split point's nodes
-    // once per its own node count (N times via `all_points()`, each re-expanded to N nodes via
+    // GitHub issue #232: `all_cells().flat_map(|p| nodes_at(p))` repeats a split point's nodes
+    // once per its own node count (N times via `all_cells()`, each re-expanded to N nodes via
     // `nodes_at`), yielding N² entries instead of N. `all_node_ids` must yield each node exactly
     // once regardless of how many nodes share a point.
     #[test]
@@ -499,20 +499,29 @@ mod floor_aware_distance_tests {
 #[cfg(test)]
 mod transform_face_index_tests {
     use super::super::*;
-    use crate::space::{HexFace, SquareFace, TriFace};
+    use crate::space::{HexFace, HexPoint, SquareFace, SquarePoint, TriFace, TriPoint};
+
+    /// Position of `face` in `tessellation`'s (uniform) face order, read at `cell`.
+    fn face_index<T: Tessellation>(tessellation: &T, cell: T::CellId, face: T::Face) -> usize {
+        tessellation
+            .faces_of(cell)
+            .iter()
+            .position(|&f| f == face)
+            .unwrap()
+    }
 
     #[test]
     fn identity_rotation_and_no_mirror_is_a_no_op_for_every_tessellation() {
-        for i in 0..SquareTessellation.faces().len() {
+        for i in 0..symmetry_degree(&SquareTessellation) {
             assert_eq!(
                 transform_face_index(&SquareTessellation, i, 0, None),
                 Some(i)
             );
         }
-        for i in 0..HexTessellation.faces().len() {
+        for i in 0..symmetry_degree(&HexTessellation) {
             assert_eq!(transform_face_index(&HexTessellation, i, 0, None), Some(i));
         }
-        for i in 0..TriTessellation.faces().len() {
+        for i in 0..symmetry_degree(&TriTessellation) {
             assert_eq!(transform_face_index(&TriTessellation, i, 0, None), Some(i));
         }
     }
@@ -521,10 +530,26 @@ mod transform_face_index_tests {
     fn square_mirror_across_n_s_axis_swaps_e_and_w_and_fixes_n_s() {
         // The actual bug (GitHub issue #275): mirroring a square pattern must swap E<->W (or
         // N<->S, depending on axis), never leave E fixed while turning W into S.
-        let n = SquareTessellation.face_index(SquareFace::N).unwrap();
-        let s = SquareTessellation.face_index(SquareFace::S).unwrap();
-        let e = SquareTessellation.face_index(SquareFace::E).unwrap();
-        let w = SquareTessellation.face_index(SquareFace::W).unwrap();
+        let n = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::N,
+        );
+        let s = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::S,
+        );
+        let e = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::E,
+        );
+        let w = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::W,
+        );
 
         let ns_axis = 0; // mirror_symmetries()[0]: N-S axis, per SquareTessellation's own doc comment
         assert_eq!(
@@ -547,10 +572,26 @@ mod transform_face_index_tests {
 
     #[test]
     fn square_90_degree_rotation_cycles_n_e_s_w() {
-        let n = SquareTessellation.face_index(SquareFace::N).unwrap();
-        let e = SquareTessellation.face_index(SquareFace::E).unwrap();
-        let s = SquareTessellation.face_index(SquareFace::S).unwrap();
-        let w = SquareTessellation.face_index(SquareFace::W).unwrap();
+        let n = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::N,
+        );
+        let e = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::E,
+        );
+        let s = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::S,
+        );
+        let w = face_index(
+            &SquareTessellation,
+            SquarePoint { x: 0, y: 0 },
+            SquareFace::W,
+        );
 
         let rot_90 = 1; // rotation_symmetries()[1]
         assert_eq!(
@@ -573,12 +614,12 @@ mod transform_face_index_tests {
 
     #[test]
     fn hex_mirror_across_e_w_axis_fixes_e_and_w_and_swaps_the_rest() {
-        let e = HexTessellation.face_index(HexFace::E).unwrap();
-        let ne = HexTessellation.face_index(HexFace::NE).unwrap();
-        let nw = HexTessellation.face_index(HexFace::NW).unwrap();
-        let w = HexTessellation.face_index(HexFace::W).unwrap();
-        let sw = HexTessellation.face_index(HexFace::SW).unwrap();
-        let se = HexTessellation.face_index(HexFace::SE).unwrap();
+        let e = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::E);
+        let ne = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::NE);
+        let nw = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::NW);
+        let w = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::W);
+        let sw = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::SW);
+        let se = face_index(&HexTessellation, HexPoint { q: 0, r: 0 }, HexFace::SE);
 
         let ew_axis = 0; // mirror_symmetries()[0]: E-W axis, per HexTessellation's own doc comment
         assert_eq!(
@@ -609,10 +650,10 @@ mod transform_face_index_tests {
 
     #[test]
     fn hex_60_degree_rotation_cycles_every_face() {
-        let faces = HexTessellation.faces();
+        let degree = symmetry_degree(&HexTessellation);
         let rot_60 = 1; // rotation_symmetries()[1]
-        for i in 0..faces.len() {
-            let expected = (i + 1) % faces.len();
+        for i in 0..degree {
+            let expected = (i + 1) % degree;
             assert_eq!(
                 transform_face_index(&HexTessellation, i, rot_60, None),
                 Some(expected)
@@ -627,9 +668,13 @@ mod transform_face_index_tests {
 
     #[test]
     fn tri_120_degree_rotation_cycles_left_right_base() {
-        let left = TriTessellation.face_index(TriFace::Left).unwrap();
-        let right = TriTessellation.face_index(TriFace::Right).unwrap();
-        let base = TriTessellation.face_index(TriFace::Base).unwrap();
+        let left = face_index(&TriTessellation, TriPoint { col: 0, row: 0 }, TriFace::Left);
+        let right = face_index(
+            &TriTessellation,
+            TriPoint { col: 0, row: 0 },
+            TriFace::Right,
+        );
+        let base = face_index(&TriTessellation, TriPoint { col: 0, row: 0 }, TriFace::Base);
 
         let rot_120 = 1; // rotation_symmetries()[1]
         assert_eq!(
@@ -662,27 +707,27 @@ mod transform_face_index_tests {
         }
         check_permutations(
             SquareTessellation.rotation_symmetries(),
-            SquareTessellation.faces().len(),
+            symmetry_degree(&SquareTessellation),
         );
         check_permutations(
             SquareTessellation.mirror_symmetries(),
-            SquareTessellation.faces().len(),
+            symmetry_degree(&SquareTessellation),
         );
         check_permutations(
             HexTessellation.rotation_symmetries(),
-            HexTessellation.faces().len(),
+            symmetry_degree(&HexTessellation),
         );
         check_permutations(
             HexTessellation.mirror_symmetries(),
-            HexTessellation.faces().len(),
+            symmetry_degree(&HexTessellation),
         );
         check_permutations(
             TriTessellation.rotation_symmetries(),
-            TriTessellation.faces().len(),
+            symmetry_degree(&TriTessellation),
         );
         check_permutations(
             TriTessellation.mirror_symmetries(),
-            TriTessellation.faces().len(),
+            symmetry_degree(&TriTessellation),
         );
     }
 }
@@ -702,17 +747,20 @@ mod coordinate_gap_tests {
         let field: Field<GappedSquareTessellation> =
             Field::new(Arc::default(), [origin, north, east], &mut ids).unwrap();
 
-        assert_eq!(GappedSquareTessellation.step(origin, SquareFace::E), None);
         assert_eq!(
-            GappedSquareTessellation.step(origin, SquareFace::N),
-            Some(north)
+            GappedSquareTessellation.neighbor(origin, SquareFace::E),
+            None
+        );
+        assert_eq!(
+            GappedSquareTessellation.neighbor(origin, SquareFace::N),
+            Some((north, SquareFace::S))
         );
         let neighbors = field.neighbors(field.node_at(origin).unwrap());
         assert_eq!(neighbors, vec![field.node_at(north).unwrap()]);
     }
 
     #[test]
-    fn is_straight_remains_geometric_when_a_transition_is_missing() {
+    fn is_straight_is_false_through_a_missing_edge() {
         let west = SquarePoint { x: -1, y: 0 };
         let origin = SquarePoint { x: 0, y: 0 };
         let east = SquarePoint { x: 1, y: 0 };
@@ -720,8 +768,11 @@ mod coordinate_gap_tests {
         let field: Field<GappedSquareTessellation> =
             Field::new(Arc::default(), [west, origin, east], &mut ids).unwrap();
 
-        assert_eq!(GappedSquareTessellation.step(origin, SquareFace::E), None);
-        assert!(field.is_straight(
+        assert_eq!(
+            GappedSquareTessellation.neighbor(origin, SquareFace::E),
+            None
+        );
+        assert!(!field.is_straight(
             field.node_at(west).unwrap(),
             field.node_at(origin).unwrap(),
             field.node_at(east).unwrap(),
@@ -736,7 +787,7 @@ mod coordinate_gap_tests {
             [SquarePoint { x: 99, y: 0 }],
             &mut ids,
         );
-        assert!(matches!(invalid, Err("field contains an invalid point")));
+        assert!(matches!(invalid, Err("field contains an invalid cell")));
 
         let valid = Field::<GappedSquareTessellation>::new(
             Arc::default(),
@@ -749,11 +800,210 @@ mod coordinate_gap_tests {
 
     #[test]
     fn from_id_points_rejects_invalid_points() {
-        let result = Field::<GappedSquareTessellation>::from_id_points(
+        let result = Field::<GappedSquareTessellation>::from_id_cells(
             Arc::default(),
             [(10, SquarePoint { x: 99, y: 0 })],
         );
 
-        assert!(matches!(result, Err("field contains an invalid point")));
+        assert!(matches!(result, Err("field contains an invalid cell")));
+    }
+}
+
+/// GitHub issue #756: the per-cell neighbor contract — `neighbor` is reciprocal for every
+/// tessellation, and a cell's neighbors through distinct faces are pairwise distinct.
+#[cfg(test)]
+mod neighbor_contract_tests {
+    use super::super::*;
+    use crate::space::test_support::GappedSquareTessellation;
+
+    fn assert_neighbor_contract<T: Tessellation>(
+        tessellation: &T,
+        cells: impl IntoIterator<Item = T::CellId>,
+    ) {
+        for cell in cells {
+            assert!(tessellation.is_valid_cell(cell));
+            let mut reached = Vec::new();
+            for &face in tessellation.faces_of(cell) {
+                let Some((other, other_face)) = tessellation.neighbor(cell, face) else {
+                    continue;
+                };
+                assert!(
+                    tessellation.faces_of(other).contains(&other_face),
+                    "{cell:?}: back face is not a face of {other:?}"
+                );
+                assert!(
+                    tessellation.neighbor(other, other_face) == Some((cell, face)),
+                    "{cell:?}: neighbor through a face is not reciprocal (via {other:?})"
+                );
+                assert!(
+                    !reached.contains(&other),
+                    "{cell:?}: {other:?} reached twice"
+                );
+                reached.push(other);
+            }
+        }
+    }
+
+    fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
+        (-radius..=radius).flat_map(move |a| (-radius..=radius).map(move |b| (a, b)))
+    }
+
+    #[test]
+    fn neighbor_is_reciprocal_for_square() {
+        assert_neighbor_contract(
+            &SquareTessellation,
+            grid(4).map(|(x, y)| SquarePoint { x, y }),
+        );
+    }
+
+    #[test]
+    fn neighbor_is_reciprocal_for_hex() {
+        assert_neighbor_contract(&HexTessellation, grid(4).map(|(q, r)| HexPoint { q, r }));
+    }
+
+    #[test]
+    fn neighbor_is_reciprocal_for_tri() {
+        assert_neighbor_contract(
+            &TriTessellation,
+            grid(4).map(|(col, row)| TriPoint { col, row }),
+        );
+    }
+
+    #[test]
+    fn neighbor_is_reciprocal_for_cairo() {
+        let cells: Vec<CairoPoint> = grid(16)
+            .map(|(x, y)| CairoPoint::new(x, y))
+            .filter(|&p| CairoTessellation::is_valid_cell(p))
+            .collect();
+        assert!(!cells.is_empty());
+        assert_neighbor_contract(&CairoTessellation, cells);
+    }
+
+    #[test]
+    fn neighbor_is_reciprocal_for_gapped_square() {
+        assert_neighbor_contract(
+            &GappedSquareTessellation,
+            grid(3).map(|(x, y)| SquarePoint { x, y }),
+        );
+    }
+
+    /// The pre-#756 face-identity definition, written independently of `Tessellation::is_straight`
+    /// and of `neighbor`'s back face: the face of `from` toward `via` equals the face of `via`
+    /// toward `to`.
+    fn old_face_identity_straight<T: Tessellation>(
+        tessellation: &T,
+        from: T::CellId,
+        via: T::CellId,
+        to: T::CellId,
+    ) -> bool {
+        let face_toward = |cell: T::CellId, other: T::CellId| {
+            face_index_toward(tessellation, cell, other).map(|i| tessellation.faces_of(cell)[i])
+        };
+        match (face_toward(from, via), face_toward(via, to)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    /// `Field::is_straight` over every ordered pair of distinct neighbors of every `centers` cell
+    /// agrees with the old face-identity definition, and at least one pass counts as straight.
+    fn assert_field_is_straight_matches_old_semantics<T: Tessellation>(
+        tessellation: T,
+        cells: Vec<T::CellId>,
+        centers: &[T::CellId],
+    ) {
+        let tessellation = Arc::new(tessellation);
+        let mut ids = IdGenerator::new();
+        let field = Field::new(Arc::clone(&tessellation), cells, &mut ids).unwrap();
+        let mut straight_count = 0;
+        for &center in centers {
+            let via = field.node_at(center).unwrap();
+            let neighbors = field.neighbors(via);
+            for &from in &neighbors {
+                for &to in &neighbors {
+                    if from == to {
+                        continue;
+                    }
+                    let expected = old_face_identity_straight(
+                        &*tessellation,
+                        field.cell_of(from).unwrap(),
+                        center,
+                        field.cell_of(to).unwrap(),
+                    );
+                    assert_eq!(field.is_straight(from, via, to), expected);
+                    straight_count += usize::from(expected);
+                }
+            }
+        }
+        assert!(straight_count > 0);
+    }
+
+    #[test]
+    fn field_is_straight_matches_old_face_identity_semantics_for_every_tessellation() {
+        let square: Vec<_> = grid(2).map(|(x, y)| SquarePoint { x, y }).collect();
+        let hex: Vec<_> = grid(2).map(|(q, r)| HexPoint { q, r }).collect();
+        let tri: Vec<_> = grid(2).map(|(col, row)| TriPoint { col, row }).collect();
+        let cairo: Vec<_> = grid(16)
+            .map(|(x, y)| CairoPoint::new(x, y))
+            .filter(|&p| CairoTessellation::is_valid_cell(p))
+            .collect();
+        let cairo_centers: Vec<_> = grid(4)
+            .map(|(x, y)| CairoPoint::new(x, y))
+            .filter(|&p| CairoTessellation::is_valid_cell(p))
+            .collect();
+        assert_field_is_straight_matches_old_semantics(
+            SquareTessellation,
+            square,
+            &[SquarePoint { x: 0, y: 0 }],
+        );
+        assert_field_is_straight_matches_old_semantics(
+            HexTessellation,
+            hex,
+            &[HexPoint { q: 0, r: 0 }],
+        );
+        assert_field_is_straight_matches_old_semantics(
+            TriTessellation,
+            tri,
+            &[TriPoint { col: 0, row: 0 }, TriPoint { col: 1, row: 0 }],
+        );
+        assert_field_is_straight_matches_old_semantics(CairoTessellation, cairo, &cairo_centers);
+    }
+
+    #[test]
+    fn field_is_straight_explicit_square_and_tri_cases() {
+        let mut ids = IdGenerator::new();
+        let square =
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
+        let s = |x, y| square.node_at(SquarePoint { x, y }).unwrap();
+        assert!(square.is_straight(s(0, 1), s(1, 1), s(2, 1)));
+        assert!(square.is_straight(s(1, 0), s(1, 1), s(1, 2)));
+        assert!(!square.is_straight(s(0, 1), s(1, 1), s(1, 2)));
+        // `from` is not a neighbor of `via`.
+        assert!(!square.is_straight(s(0, 0), s(1, 1), s(2, 1)));
+        // Unknown node.
+        assert!(!square.is_straight(999, s(1, 1), s(2, 1)));
+
+        let tri = Field::<TriTessellation>::new(Arc::default(), tri_rect(3, 2), &mut ids).unwrap();
+        let t = |col, row| tri.node_at(TriPoint { col, row }).unwrap();
+        // Face identity counts a Left/Right pass through a triangle as straight.
+        assert!(tri.is_straight(t(0, 0), t(1, 0), t(2, 0)));
+        assert!(!tri.is_straight(t(0, 0), t(1, 0), t(1, 1)));
+    }
+
+    #[test]
+    fn neighbor_is_none_at_coordinate_overflow() {
+        let max = i32::MAX;
+        assert_eq!(
+            SquareTessellation.neighbor(SquarePoint { x: max, y: 0 }, SquareFace::E),
+            None
+        );
+        assert_eq!(
+            HexTessellation.neighbor(HexPoint { q: max, r: 0 }, HexFace::NE),
+            None
+        );
+        assert_eq!(
+            TriTessellation.neighbor(TriPoint { col: max, row: 0 }, TriFace::Right),
+            None
+        );
     }
 }

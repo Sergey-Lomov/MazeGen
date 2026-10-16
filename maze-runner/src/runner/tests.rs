@@ -1137,7 +1137,7 @@ mod cairo_dispatch_tests {
         assert!(
             points
                 .iter()
-                .all(|[x, y]| CairoTessellation::is_valid_point(CairoPoint::new(*x, *y)))
+                .all(|[x, y]| CairoTessellation::is_valid_cell(CairoPoint::new(*x, *y)))
         );
 
         let config = cairo_config(vec![points.clone(), points]);
@@ -1176,6 +1176,6 @@ mod cairo_dispatch_tests {
             Err(error) => error,
             Ok(_) => panic!("invalid Cairo points must be rejected"),
         };
-        assert!(invalid.contains("field contains an invalid point"));
+        assert!(invalid.contains("field contains an invalid cell"));
     }
 }

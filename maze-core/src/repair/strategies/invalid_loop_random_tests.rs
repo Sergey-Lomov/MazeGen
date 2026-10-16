@@ -26,7 +26,7 @@ fn maze_with_triangle() -> Maze<SquareTessellation> {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -203,7 +203,7 @@ fn shared_edge_between_two_cycles_does_not_panic_on_second_cut() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B
@@ -270,7 +270,7 @@ fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
@@ -302,7 +302,7 @@ fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let d = nodes[3];
@@ -355,7 +355,7 @@ fn apply_result_is_identical_for_full_and_invalid_only_requirement() {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -568,7 +568,7 @@ fn maze_with_triangle_one_vertical() -> (Maze<SquareTessellation>, EdgeId) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -671,7 +671,7 @@ fn vertical_priority_protected_reports_failed_when_the_whole_cycle_is_vertical()
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
@@ -736,7 +736,7 @@ fn vertical_priority_prioritized_picks_among_several_vertical_candidates_by_seed
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let v1 = g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);

@@ -105,8 +105,8 @@ pub(super) fn count_matching_split_tiles_per_floor<T: Tessellation>(
 fn matching_split_tile_points<'a, T: Tessellation>(
     maze: &'a Maze<T>,
     patterns: &'a [SplitPattern],
-) -> impl Iterator<Item = (LevelId, T::Point)> + 'a {
-    maze.field.split_points().filter(move |&(level, point)| {
+) -> impl Iterator<Item = (LevelId, T::CellId)> + 'a {
+    maze.field.split_cells().filter(move |&(level, point)| {
         patterns.is_empty()
             || split_tile_matches_any(
                 &maze.graph,

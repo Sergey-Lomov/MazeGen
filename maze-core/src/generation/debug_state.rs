@@ -1,6 +1,6 @@
 // Ledger of every node that ever existed during a debug-instrumented run, including ones later
 // removed or replaced (`MutationCommand::RemoveNode`/`ReplacePointNodes`) — GitHub issue #271.
-// Lives outside `Field` deliberately: `Field` must forget a removed node's point (`point_of`/
+// Lives outside `Field` deliberately: `Field` must forget a removed node's point (`cell_of`/
 // `neighbors` correctness depends on it), so this is a separate, append-only record.
 //
 // **Minting invariant**: the only sanctioned way to learn a freshly minted `NodeId` in the
@@ -15,7 +15,7 @@
 // minted mid-run at all — it can be one of `Field`'s own original base nodes, whose coordinates
 // otherwise exist nowhere once it's gone from both `Field` and the final snapshot. Every runtime
 // call site that removes/replaces a node is required to `.note(id, point)` its coordinates
-// *before* the removal (`field.point_of` still resolves it) in the same diff:
+// *before* the removal (`field.cell_of` still resolves it) in the same diff:
 //   - `quality_control::rule::apply_commands` (`RemoveNode`/`ReplacePointNodes` — the only two
 //     mutating commands that ever remove a node from `Field`)
 //
@@ -23,7 +23,7 @@
 // fixtures) is exempt from both invariants — those never run through a real generation/repair
 // pipeline.
 pub struct DebugGenerationState<T: crate::space::Tessellation> {
-    all_node_points: std::collections::HashMap<crate::ids::NodeId, T::Point>,
+    all_node_points: std::collections::HashMap<crate::ids::NodeId, T::CellId>,
 }
 
 impl<T: crate::space::Tessellation> DebugGenerationState<T> {
@@ -33,11 +33,11 @@ impl<T: crate::space::Tessellation> DebugGenerationState<T> {
         }
     }
 
-    pub fn note(&mut self, id: crate::ids::NodeId, point: T::Point) {
+    pub fn note(&mut self, id: crate::ids::NodeId, point: T::CellId) {
         self.all_node_points.insert(id, point);
     }
 
-    pub fn all_node_points(&self) -> impl Iterator<Item = (crate::ids::NodeId, T::Point)> + '_ {
+    pub fn all_node_points(&self) -> impl Iterator<Item = (crate::ids::NodeId, T::CellId)> + '_ {
         self.all_node_points.iter().map(|(&id, &point)| (id, point))
     }
 }

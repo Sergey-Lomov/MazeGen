@@ -37,7 +37,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
     ) {
         let tiles: Vec<(LevelId, SplitTileNodes)> = maze
             .field
-            .split_points()
+            .split_cells()
             .map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 (level, SplitTileNodes::new(nodes.to_vec()))
@@ -48,7 +48,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
         // per-floor grouping/filter, not a counts-toward-both case (GitHub issue #369).
         let (group, to_remove) = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count();
+                let field_cells = maze.field.cell_count();
                 if field_cells == 0 {
                     return;
                 }

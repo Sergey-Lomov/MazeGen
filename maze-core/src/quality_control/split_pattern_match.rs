@@ -12,7 +12,7 @@ use crate::space::{MultiLevelField, Tessellation};
 /// `nodes` itself reads the same as any other neighbor-directed face, since `matches_any` (below)
 /// only compares requirement shape per geometric direction, not node identity.
 ///
-/// Returns one `Vec<SplitFaceRequirement>` per node in `nodes`, indexed by `Tessellation::faces()`
+/// Returns one `Vec<SplitFaceRequirement>` per node in `nodes`, indexed by `Tessellation::faces_of(point)`
 /// position (`Wall` where no edge exists in that direction — including a face pointing off-field).
 pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
     graph: &Graph,
@@ -21,22 +21,20 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
 ) -> Vec<Vec<SplitFaceRequirement>> {
     let Some((level, point)) = nodes
         .first()
-        .and_then(|&n| field.level_of(n).zip(field.point_of(n)))
+        .and_then(|&n| field.level_of(n).zip(field.cell_of(n)))
     else {
         return Vec::new();
     };
     let tessellation = field.tessellation();
-    let degree = tessellation.faces().len();
 
     nodes
         .iter()
         .map(|&node| {
-            (0..degree)
-                .map(|face_index| {
-                    let Some(face) = tessellation.face_at(face_index) else {
-                        return SplitFaceRequirement::Wall;
-                    };
-                    let Some(neighbor_point) = tessellation.step(point, face) else {
+            tessellation
+                .faces_of(point)
+                .iter()
+                .map(|&face| {
+                    let Some((neighbor_point, _)) = tessellation.neighbor(point, face) else {
                         return SplitFaceRequirement::Wall;
                     };
                     let candidates = field.nodes_at(level, neighbor_point);
@@ -72,7 +70,7 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
 ///
 /// `rotation`/`mirror` index into `Tessellation::rotation_symmetries()`/`Tessellation::mirror_symmetries()` (via
 /// `space::transform_face_index`, GitHub issue #275) — never raw arithmetic on the face index,
-/// since `Self::faces()` order isn't angular for every tessellation.
+/// since `faces_of` order isn't angular for every tessellation.
 fn pattern_faces_at<T: Tessellation>(
     tessellation: &T,
     pattern: &SplitPattern,
@@ -116,7 +114,7 @@ pub fn split_tile_matches_any<T: Tessellation>(
         return false;
     }
     let tessellation = field.tessellation();
-    let degree = tessellation.faces().len();
+    let degree = crate::space::symmetry_degree(tessellation);
     if degree == 0 {
         return false;
     }
@@ -254,7 +252,9 @@ mod tests {
         assert_eq!(actual.len(), 1);
         assert_eq!(
             actual[0][GappedSquareTessellation
-                .face_index(crate::space::SquareFace::E,)
+                .faces_of(origin)
+                .iter()
+                .position(|&face| face == crate::space::SquareFace::E)
                 .unwrap()],
             SplitFaceRequirement::Wall
         );

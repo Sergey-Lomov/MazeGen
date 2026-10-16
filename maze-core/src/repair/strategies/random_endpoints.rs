@@ -93,7 +93,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         for i in 0..n - 1 {
@@ -203,7 +203,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -255,7 +255,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);

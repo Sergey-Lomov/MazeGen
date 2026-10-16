@@ -58,7 +58,7 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveElevatorStopGapIssue>
             let Some(elevator) = find_elevator_by_stop(maze, any_stop) else {
                 continue;
             };
-            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else {
+            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.cell_of(n)) else {
                 continue;
             };
             let Some(lo_idx) = maze

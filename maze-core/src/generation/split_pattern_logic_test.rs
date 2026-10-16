@@ -141,7 +141,7 @@ fn resolve_face_rejects_a_required_connection_when_step_has_no_coordinate() {
         MultiLevelField::single_level(Arc::default(), [origin, east], &mut ids).unwrap();
     let level = field.single_level_id();
     let face = SplitPatternFace {
-        face_index: GappedSquareTessellation.face_index(SquareFace::E).unwrap(),
+        face_index: east_face_index(),
         requirement: SplitFaceRequirement::Passage,
         sibling_target: None,
     };
@@ -410,4 +410,13 @@ fn ResolvedFace_for_test(
         sibling_target,
         neighbor,
     }
+}
+
+/// Position of `SquareFace::E` in `GappedSquareTessellation`'s (uniform) face order.
+fn east_face_index() -> usize {
+    GappedSquareTessellation
+        .faces_of(SquarePoint { x: 0, y: 0 })
+        .iter()
+        .position(|&face| face == SquareFace::E)
+        .unwrap()
 }

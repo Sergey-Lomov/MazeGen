@@ -94,7 +94,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                 .expect("remove_node_feasible confirmed this node exists");
             let point = maze
                 .field
-                .point_of(node)
+                .cell_of(node)
                 .expect("remove_node_feasible confirmed this node exists");
             any_removable = true;
 
@@ -278,7 +278,7 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(extra).is_none(),
+            maze.field.cell_of(extra).is_none(),
             "extra node must be gone from the field"
         );
         assert!(
@@ -315,7 +315,7 @@ mod tests {
         );
 
         assert!(
-            maze.field.point_of(slot0).is_some(),
+            maze.field.cell_of(slot0).is_some(),
             "a point's last remaining node must never be removed"
         );
     }
@@ -339,7 +339,7 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(slot0).is_none(),
+            maze.field.cell_of(slot0).is_none(),
             "slot0 must be removed since it isn't the point's last remaining node"
         );
     }
@@ -365,7 +365,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra).is_none());
+        assert!(maze.field.cell_of(extra).is_none());
         // Only sibling is slot0 (2-node split), so redistribution must land there deterministically.
         assert!(
             maze.graph.edge_between(slot0, right).is_some(),
@@ -409,7 +409,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
         // Exactly one of slot0/extra2 must have inherited the connection to `right`.
         let slot0_has = maze.graph.edge_between(slot0, right).is_some();
         let extra2_has = maze.graph.edge_between(extra2, right).is_some();
@@ -459,7 +459,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
         let right1_target = if maze.graph.edge_between(slot0, right1).is_some() {
             Some(slot0)
         } else if maze.graph.edge_between(extra2, right1).is_some() {
@@ -584,8 +584,8 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
-        assert!(maze.field.point_of(extra2).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra2).is_none());
         assert!(
             maze.graph.edge_between(slot0, right).is_some(),
             "slot0 is the only sibling that survives the whole batch, so it must inherit the connection"
@@ -618,11 +618,11 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(extra).is_none(),
+            maze.field.cell_of(extra).is_none(),
             "extra is processed first and actually removed"
         );
         assert!(
-            maze.field.point_of(slot0).is_some(),
+            maze.field.cell_of(slot0).is_some(),
             "slot0's own RemoveNode is declined once it becomes the point's last remaining node"
         );
     }
@@ -668,7 +668,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra).is_none());
+        assert!(maze.field.cell_of(extra).is_none());
         assert!(
             maze.graph.edge_between(slot0, slot0).is_none(),
             "must never create a self-loop on the target"
@@ -736,7 +736,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Failed));
         assert!(
-            maze.field.point_of(extra).is_some(),
+            maze.field.cell_of(extra).is_some(),
             "preset-protected node must survive"
         );
         let _ = slot0;

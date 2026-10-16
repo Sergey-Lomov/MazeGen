@@ -25,7 +25,7 @@ pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
 /// always canonicalize to the same value and can be grouped/compared with plain equality.
 ///
 /// Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-/// (`Tessellation::faces()` empty).
+/// (`space::symmetry_degree` zero).
 pub fn canonical_split_topology<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
@@ -35,7 +35,7 @@ pub fn canonical_split_topology<T: Tessellation>(
         return None;
     }
     let tessellation = field.tessellation();
-    let degree = tessellation.faces().len();
+    let degree = crate::space::symmetry_degree(tessellation);
     if degree == 0 {
         return None;
     }
@@ -82,7 +82,7 @@ pub fn canonical_split_topology<T: Tessellation>(
 ///   equality, mapped to how many tiles share it. A tile whose topology can't be canonicalized
 ///   (degenerate tessellation) is still counted in the two totals above but has no group entry.
 ///
-/// Iterates via `MultiLevelField::split_points()` (GitHub issue #614), which already dedups a
+/// Iterates via `MultiLevelField::split_cells()` (GitHub issue #614), which already dedups a
 /// split point down to one entry (see its own doc comment).
 pub fn split_totals<T: Tessellation>(
     graph: &Graph,
@@ -102,7 +102,7 @@ pub fn split_totals_scoped<T: Tessellation>(
     let mut node_count = 0usize;
     let mut groups: HashMap<SplitTopology, usize> = HashMap::new();
 
-    for (point_level, point) in field.split_points() {
+    for (point_level, point) in field.split_cells() {
         if level.is_some_and(|l| l != point_level) {
             continue;
         }

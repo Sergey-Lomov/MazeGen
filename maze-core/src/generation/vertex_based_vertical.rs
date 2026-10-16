@@ -73,7 +73,7 @@ pub(super) fn resolve_vertical_passage_target<T: Tessellation>(
     src: NodeId,
     upward: bool,
 ) -> Option<NodeId> {
-    let point = field.point_of(src)?;
+    let point = field.cell_of(src)?;
     let level = adjacent_level(field, src, upward)?;
     field.node_at(level, point)
 }
@@ -290,7 +290,7 @@ pub(super) fn elevator_floor_candidates<T: Tessellation>(
     field: &MultiLevelField<T>,
     src: NodeId,
 ) -> Vec<(LevelId, NodeId)> {
-    let Some(point) = field.point_of(src) else {
+    let Some(point) = field.cell_of(src) else {
         return Vec::new();
     };
     let Some(src_level) = field.level_of(src) else {

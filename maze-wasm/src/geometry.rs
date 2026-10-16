@@ -1,7 +1,7 @@
 use crate::generation_config::TessellationConfig;
 use maze_core::space::Tessellation;
 use maze_runner::runner::tessellation_factory::{
-    PointCodec, TessellationVisitor, build_tessellation,
+    CellCodec, TessellationVisitor, build_tessellation,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ struct Project<'a> {
 impl TessellationVisitor for Project<'_> {
     type Output = Vec<[f64; 2]>;
 
-    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         self.points
             .iter()
             .map(|&[x, y]| {

@@ -61,7 +61,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
 
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .split_points()
+            .split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 let point_distance = nodes

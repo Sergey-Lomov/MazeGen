@@ -4,8 +4,8 @@ use super::Tessellation;
 ///
 /// The coordinates are the tile-centre coordinates of the standard 4-fold
 /// pentille model.  Only four residue/orientation classes are occupied; use
-/// [`CairoTessellation::is_valid_point`] when accepting user-provided points.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+/// [`CairoTessellation::is_valid_cell`] when accepting user-provided cells.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct CairoPoint {
     pub x: i32,
     pub y: i32,
@@ -51,37 +51,42 @@ const FACES: [CairoFace; 5] = [
     CairoFace::SouthWest,
 ];
 
-// These are the direct coordinate transitions of the standard Cairo model.
+/// One direct transition: the face, its integer coordinate offset, and the
+/// destination cell's face on the same boundary piece.
+type Transition = (CairoFace, (i32, i32), CairoFace);
+
+// These are the direct coordinate transitions of the standard Cairo model,
+// in `FACES` order (so a face's discriminant indexes its entry).
 // They are deliberately tables, rather than a geometric search: every entry
 // is an integer offset and every reverse transition appears in the table of
-// the destination orientation.
-const R_OFFSETS: [(CairoFace, (i32, i32)); 5] = [
-    (CairoFace::Twin, (-2, 0)),
-    (CairoFace::NorthWest, (-1, -3)),
-    (CairoFace::NorthEast, (3, 1)),
-    (CairoFace::SouthEast, (3, -1)),
-    (CairoFace::SouthWest, (-1, 3)),
+// the destination orientation, as the entry's back face.
+const R_OFFSETS: [Transition; 5] = [
+    (CairoFace::Twin, (-2, 0), CairoFace::Twin),
+    (CairoFace::NorthWest, (-1, -3), CairoFace::NorthEast),
+    (CairoFace::NorthEast, (3, 1), CairoFace::NorthWest),
+    (CairoFace::SouthEast, (3, -1), CairoFace::NorthWest),
+    (CairoFace::SouthWest, (-1, 3), CairoFace::NorthEast),
 ];
-const U_OFFSETS: [(CairoFace, (i32, i32)); 5] = [
-    (CairoFace::Twin, (0, -2)),
-    (CairoFace::NorthWest, (-3, -1)),
-    (CairoFace::NorthEast, (1, 3)),
-    (CairoFace::SouthEast, (3, -1)),
-    (CairoFace::SouthWest, (-1, 3)),
+const U_OFFSETS: [Transition; 5] = [
+    (CairoFace::Twin, (0, -2), CairoFace::Twin),
+    (CairoFace::NorthWest, (-3, -1), CairoFace::NorthEast),
+    (CairoFace::NorthEast, (1, 3), CairoFace::NorthWest),
+    (CairoFace::SouthEast, (3, -1), CairoFace::SouthWest),
+    (CairoFace::SouthWest, (-1, 3), CairoFace::NorthEast),
 ];
-const L_OFFSETS: [(CairoFace, (i32, i32)); 5] = [
-    (CairoFace::Twin, (2, 0)),
-    (CairoFace::NorthWest, (-3, -1)),
-    (CairoFace::NorthEast, (1, -3)),
-    (CairoFace::SouthEast, (1, 3)),
-    (CairoFace::SouthWest, (-3, 1)),
+const L_OFFSETS: [Transition; 5] = [
+    (CairoFace::Twin, (2, 0), CairoFace::Twin),
+    (CairoFace::NorthWest, (-3, -1), CairoFace::SouthEast),
+    (CairoFace::NorthEast, (1, -3), CairoFace::SouthWest),
+    (CairoFace::SouthEast, (1, 3), CairoFace::SouthWest),
+    (CairoFace::SouthWest, (-3, 1), CairoFace::SouthEast),
 ];
-const D_OFFSETS: [(CairoFace, (i32, i32)); 5] = [
-    (CairoFace::Twin, (0, 2)),
-    (CairoFace::NorthWest, (-3, 1)),
-    (CairoFace::NorthEast, (1, -3)),
-    (CairoFace::SouthEast, (3, 1)),
-    (CairoFace::SouthWest, (-1, -3)),
+const D_OFFSETS: [Transition; 5] = [
+    (CairoFace::Twin, (0, 2), CairoFace::Twin),
+    (CairoFace::NorthWest, (-3, 1), CairoFace::SouthEast),
+    (CairoFace::NorthEast, (1, -3), CairoFace::SouthWest),
+    (CairoFace::SouthEast, (3, 1), CairoFace::NorthWest),
+    (CairoFace::SouthWest, (-1, -3), CairoFace::SouthEast),
 ];
 
 impl CairoPoint {
@@ -95,8 +100,8 @@ impl CairoPoint {
 }
 
 impl CairoTessellation {
-    fn offsets(point: CairoPoint) -> Option<&'static [(CairoFace, (i32, i32)); 5]> {
-        match Self::tile_kind(point)? {
+    fn offsets(cell: CairoPoint) -> Option<&'static [Transition; 5]> {
+        match Self::tile_kind(cell)? {
             CairoTileKind::R => Some(&R_OFFSETS),
             CairoTileKind::U => Some(&U_OFFSETS),
             CairoTileKind::L => Some(&L_OFFSETS),
@@ -104,22 +109,31 @@ impl CairoTessellation {
         }
     }
 
-    fn offset_point(point: CairoPoint, (dx, dy): (i32, i32)) -> Option<CairoPoint> {
+    fn transition(cell: CairoPoint, face: CairoFace) -> Option<Transition> {
+        let transition = Self::offsets(cell)?[face as usize];
+        debug_assert!(
+            transition.0 == face,
+            "Cairo transition tables must follow FACES order"
+        );
+        Some(transition)
+    }
+
+    fn offset_point(cell: CairoPoint, (dx, dy): (i32, i32)) -> Option<CairoPoint> {
         Some(CairoPoint {
-            x: point.x.checked_add(dx)?,
-            y: point.y.checked_add(dy)?,
+            x: cell.x.checked_add(dx)?,
+            y: cell.y.checked_add(dy)?,
         })
     }
 
-    /// Returns the occupied orientation class for `point`, or `None` for one
+    /// Returns the occupied orientation class for `cell`, or `None` for one
     /// of the unused coordinate pairs in the enclosing integer grid.
-    pub fn tile_kind(point: CairoPoint) -> Option<CairoTileKind> {
+    pub fn tile_kind(cell: CairoPoint) -> Option<CairoTileKind> {
         // `div_euclid`/`rem_euclid` are important here: Rust's truncating
-        // division would classify points left/below the origin differently.
-        let cell_x = point.x.div_euclid(4) as i64;
-        let cell_y = point.y.div_euclid(4) as i64;
-        let x = point.x.rem_euclid(4);
-        let y = point.y.rem_euclid(4);
+        // division would classify cells left/below the origin differently.
+        let cell_x = cell.x.div_euclid(4) as i64;
+        let cell_y = cell.y.div_euclid(4) as i64;
+        let x = cell.x.rem_euclid(4);
+        let y = cell.y.rem_euclid(4);
 
         if (cell_x + cell_y).rem_euclid(2) == 1 {
             match (x, y) {
@@ -136,26 +150,14 @@ impl CairoTessellation {
         }
     }
 
-    pub fn is_valid_point(point: CairoPoint) -> bool {
-        Self::tile_kind(point).is_some()
-    }
-
-    /// The five direct transitions from `point`, in [`Tessellation::faces`]
-    /// order.  This helper is useful to geometry/rendering code that needs the
-    /// face alongside the destination point.
-    pub fn face_neighbors(point: CairoPoint) -> Option<[(CairoFace, CairoPoint); 5]> {
-        let offsets = Self::offsets(point)?;
-        let mut neighbors = [(CairoFace::Twin, CairoPoint::new(0, 0)); 5];
-        for (index, (face, offset)) in offsets.iter().copied().enumerate() {
-            neighbors[index] = (face, Self::offset_point(point, offset)?);
-        }
-        Some(neighbors)
+    pub fn is_valid_cell(cell: CairoPoint) -> bool {
+        Self::tile_kind(cell).is_some()
     }
 
     /// A rectangular collection of Cairo cells made from `cols * rows`
     /// fundamental 4-by-4 squares.  Each square contributes its two tiles;
     /// callers wanting an arbitrary shape can pass any subset of the same
-    /// integer points directly to `Field::new`.
+    /// integer cells directly to `Field::new`.
     pub fn rect(cols: usize, rows: usize) -> Vec<CairoPoint> {
         (0..rows)
             .flat_map(|cell_y| {
@@ -174,32 +176,39 @@ impl CairoTessellation {
 }
 
 impl Tessellation for CairoTessellation {
-    type Point = CairoPoint;
+    type CellId = CairoPoint;
     type Face = CairoFace;
 
-    fn step(&self, point: CairoPoint, face: CairoFace) -> Option<CairoPoint> {
-        let offsets = Self::offsets(point)?;
-        let (_, offset) = offsets.iter().find(|(candidate, _)| *candidate == face)?;
-        Self::offset_point(point, *offset)
+    fn is_valid_cell(&self, cell: CairoPoint) -> bool {
+        CairoTessellation::is_valid_cell(cell)
     }
 
-    fn is_valid_point(&self, point: CairoPoint) -> bool {
-        CairoTessellation::is_valid_point(point)
-    }
-
-    fn faces(&self) -> &[CairoFace] {
+    fn faces_of(&self, cell: CairoPoint) -> &[CairoFace] {
+        debug_assert!(
+            Self::is_valid_cell(cell),
+            "faces_of: invalid Cairo cell {cell:?}"
+        );
         &FACES
     }
 
-    fn face_between(&self, from: CairoPoint, to: CairoPoint) -> Option<CairoFace> {
-        let offsets = Self::offsets(from)?;
-        if !Self::is_valid_point(to) {
-            return None;
-        }
-        let delta = (to.x.checked_sub(from.x)?, to.y.checked_sub(from.y)?);
-        offsets
-            .iter()
-            .find_map(|(face, offset)| (*offset == delta).then_some(*face))
+    fn neighbor(&self, cell: CairoPoint, face: CairoFace) -> Option<(CairoPoint, CairoFace)> {
+        debug_assert!(
+            Self::is_valid_cell(cell),
+            "neighbor: invalid Cairo cell {cell:?}"
+        );
+        let (_, offset, back_face) = Self::transition(cell, face)?;
+        Some((Self::offset_point(cell, offset)?, back_face))
+    }
+
+    /// Face-identity semantics: a pass is straight when the face it leaves by has the same slot
+    /// as the face of the previous cell it entered through.
+    fn is_straight(&self, cell: CairoPoint, in_face: CairoFace, out_face: CairoFace) -> bool {
+        debug_assert!(
+            Self::is_valid_cell(cell),
+            "is_straight: invalid Cairo cell {cell:?}"
+        );
+        Self::transition(cell, in_face)
+            .is_some_and(|(_, _, previous_face)| previous_face == out_face)
     }
 
     /// The Cairo pentagon has no non-trivial rotational symmetry.  Its one
@@ -216,8 +225,8 @@ impl Tessellation for CairoTessellation {
     /// The coordinate model is intentionally affine: translation and
     /// reflection are left to the rendering layer, as with the other core
     /// tessellations.
-    fn cartesian(&self, point: CairoPoint) -> (f64, f64) {
-        (point.x as f64, point.y as f64)
+    fn cartesian(&self, cell: CairoPoint) -> (f64, f64) {
+        (cell.x as f64, cell.y as f64)
     }
 }
 

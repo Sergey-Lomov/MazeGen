@@ -51,12 +51,12 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let candidates: Vec<(EdgeId, usize, T::Point, VerticalPassageType)> =
+        let candidates: Vec<(EdgeId, usize, T::CellId, VerticalPassageType)> =
             vertical_passage_proximity_candidates(maze, self.passage_type, self.count_incoming)
                 .into_iter()
                 .filter_map(|c| {
                     let level = maze.field.level_index_of(c.node)?;
-                    let point = maze.field.point_of(c.node)?;
+                    let point = maze.field.cell_of(c.node)?;
                     Some((c.canonical_edge, level, point, c.passage_type))
                 })
                 .collect();

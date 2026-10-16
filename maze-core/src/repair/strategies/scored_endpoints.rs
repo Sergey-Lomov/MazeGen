@@ -684,11 +684,11 @@ fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
     edges.iter().map(|e| e.is_teleport).collect()
 }
 
-/// True if `field.point_of(node_id)` is a split tile (a field point with >= 2 nodes).
+/// True if `field.cell_of(node_id)` is a split tile (a field point with >= 2 nodes).
 fn is_split_node<T: Tessellation>(field: &MultiLevelField<T>, node_id: crate::ids::NodeId) -> bool {
     field
         .level_of(node_id)
-        .zip(field.point_of(node_id))
+        .zip(field.cell_of(node_id))
         .is_some_and(|(level, point)| field.nodes_at(level, point).len() >= 2)
 }
 

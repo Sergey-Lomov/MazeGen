@@ -1,31 +1,34 @@
 use super::{SquareFace, SquarePoint, SquareTessellation, Tessellation};
 
-/// Square tessellation with one missing transition, used to exercise `Option<Point>` consumers.
+/// Square tessellation with one missing edge (between `(0, 0)` and `(1, 0)`, in both directions),
+/// used to exercise consumers of a `None` neighbor.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GappedSquareTessellation;
 
 impl Tessellation for GappedSquareTessellation {
-    type Point = SquarePoint;
+    type CellId = SquarePoint;
     type Face = SquareFace;
 
-    fn step(&self, point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
-        if point == (SquarePoint { x: 0, y: 0 }) && face == SquareFace::E {
+    fn is_valid_cell(&self, cell: SquarePoint) -> bool {
+        cell.x != 99
+    }
+
+    fn faces_of(&self, cell: SquarePoint) -> &[SquareFace] {
+        SquareTessellation.faces_of(cell)
+    }
+
+    fn neighbor(&self, cell: SquarePoint, face: SquareFace) -> Option<(SquarePoint, SquareFace)> {
+        let gap = (SquarePoint { x: 0, y: 0 }, SquareFace::E);
+        let back = SquareTessellation.neighbor(gap.0, gap.1)?;
+        if (cell, face) == gap || (cell, face) == back {
             None
         } else {
-            SquareTessellation.step(point, face)
+            SquareTessellation.neighbor(cell, face)
         }
     }
 
-    fn is_valid_point(&self, point: SquarePoint) -> bool {
-        point.x != 99
-    }
-
-    fn faces(&self) -> &[SquareFace] {
-        SquareTessellation.faces()
-    }
-
-    fn face_between(&self, from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
-        SquareTessellation.face_between(from, to)
+    fn is_straight(&self, cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
+        SquareTessellation.is_straight(cell, in_face, out_face)
     }
 
     fn rotation_symmetries(&self) -> &[&[usize]] {
@@ -36,8 +39,8 @@ impl Tessellation for GappedSquareTessellation {
         SquareTessellation.mirror_symmetries()
     }
 
-    fn cartesian(&self, point: SquarePoint) -> (f64, f64) {
-        SquareTessellation.cartesian(point)
+    fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
+        SquareTessellation.cartesian(cell)
     }
 }
 
@@ -49,23 +52,23 @@ pub(crate) struct ScaledSquareTessellation {
 }
 
 impl Tessellation for ScaledSquareTessellation {
-    type Point = SquarePoint;
+    type CellId = SquarePoint;
     type Face = SquareFace;
 
-    fn step(&self, point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
-        SquareTessellation.step(point, face)
+    fn is_valid_cell(&self, cell: SquarePoint) -> bool {
+        SquareTessellation.is_valid_cell(cell)
     }
 
-    fn is_valid_point(&self, point: SquarePoint) -> bool {
-        SquareTessellation.is_valid_point(point)
+    fn faces_of(&self, cell: SquarePoint) -> &[SquareFace] {
+        SquareTessellation.faces_of(cell)
     }
 
-    fn faces(&self) -> &[SquareFace] {
-        SquareTessellation.faces()
+    fn neighbor(&self, cell: SquarePoint, face: SquareFace) -> Option<(SquarePoint, SquareFace)> {
+        SquareTessellation.neighbor(cell, face)
     }
 
-    fn face_between(&self, from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
-        SquareTessellation.face_between(from, to)
+    fn is_straight(&self, cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
+        SquareTessellation.is_straight(cell, in_face, out_face)
     }
 
     fn rotation_symmetries(&self) -> &[&[usize]] {
@@ -76,8 +79,8 @@ impl Tessellation for ScaledSquareTessellation {
         SquareTessellation.mirror_symmetries()
     }
 
-    fn cartesian(&self, point: SquarePoint) -> (f64, f64) {
-        let (x, y) = SquareTessellation.cartesian(point);
+    fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
+        let (x, y) = SquareTessellation.cartesian(cell);
         (x * self.scale, y * self.scale)
     }
 }

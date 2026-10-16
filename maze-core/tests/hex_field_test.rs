@@ -64,7 +64,7 @@ fn parallelogram_point_of_round_trip() {
     let field = make_parallelogram(3, 3);
     let point = HexPoint { q: 2, r: 1 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }
 
 #[test]
@@ -150,5 +150,5 @@ fn hexagon_point_of_round_trip() {
     let field = make_hexagon(2);
     let point = HexPoint { q: 1, r: -1 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }

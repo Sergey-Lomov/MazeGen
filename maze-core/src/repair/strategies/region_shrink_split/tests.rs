@@ -19,7 +19,7 @@ fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (Maze::new(field, g), nodes)

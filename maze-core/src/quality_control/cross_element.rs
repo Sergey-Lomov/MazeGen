@@ -107,8 +107,8 @@ pub struct CrossElementOccurrence<T: Tessellation> {
     pub node: NodeId,
     /// `field.level_index_of(node)`.
     pub level_index: usize,
-    /// `field.point_of(node)`.
-    pub point: T::Point,
+    /// `field.cell_of(node)`.
+    pub point: T::CellId,
     /// Cartesian position the geometric metric measures from — `Tessellation::cartesian(point)` for every
     /// occurrence, except a one-way's two occurrences, which both carry the one-way edge's own
     /// `Tessellation::edge_position(from, to)` instead (GitHub issue #376's follow-up: a one-way renders on
@@ -208,7 +208,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
     let push_at =
         |out: &mut Vec<CrossElementOccurrence<T>>, element: CrossElement, node: NodeId| {
             let (Some(level_index), Some(point)) =
-                (maze.field.level_index_of(node), maze.field.point_of(node))
+                (maze.field.level_index_of(node), maze.field.cell_of(node))
             else {
                 return;
             };
@@ -242,7 +242,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
         // on both after the fact.
         for (id, from, to) in one_way_edges_with_endpoints(maze) {
             let (Some(from_point), Some(to_point)) =
-                (maze.field.point_of(from), maze.field.point_of(to))
+                (maze.field.cell_of(from), maze.field.cell_of(to))
             else {
                 continue;
             };
@@ -275,7 +275,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
     }
 
     if set.split {
-        for (level, point) in maze.field.split_points() {
+        for (level, point) in maze.field.split_cells() {
             let nodes = maze.field.nodes_at(level, point);
             let element = CrossElement::Split(SplitTileNodes::new(nodes.to_vec()));
             // One occurrence per node of the tile. They all share the same point/level, so the
@@ -320,7 +320,7 @@ pub fn cross_element_still_violates<T: Tessellation>(
             let Some(&node) = tile.0.first() else {
                 return false;
             };
-            let (Some(level), Some(point)) = (maze.field.level_of(node), maze.field.point_of(node))
+            let (Some(level), Some(point)) = (maze.field.level_of(node), maze.field.cell_of(node))
             else {
                 return false;
             };
@@ -368,7 +368,7 @@ pub fn cross_element_preset_locked<T: Tessellation>(
 /// since an earlier fix in the same pass may have changed the tile.
 pub fn split_tile_nodes_of<T: Tessellation>(maze: &Maze<T>, cached: &[NodeId]) -> Vec<NodeId> {
     for &anchor in cached {
-        let (Some(level), Some(point)) = (maze.field.level_of(anchor), maze.field.point_of(anchor))
+        let (Some(level), Some(point)) = (maze.field.level_of(anchor), maze.field.cell_of(anchor))
         else {
             continue;
         };

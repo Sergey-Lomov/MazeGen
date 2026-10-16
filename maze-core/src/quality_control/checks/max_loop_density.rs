@@ -47,7 +47,7 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
     ) {
         // Not yet migrated to honor `_requirement` — this check always flags every loop it finds
         // (see the struct's doc comment), so there is never a "valid cycle" to skip computing.
-        let field_cells = maze.field.point_count();
+        let field_cells = maze.field.cell_count();
         if field_cells == 0 {
             return;
         }
@@ -176,7 +176,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -257,7 +257,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -316,7 +316,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         // Triangle A: 0-1-2-0, Triangle B: 2-3-4-2 (shares node 2)
@@ -361,7 +361,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);

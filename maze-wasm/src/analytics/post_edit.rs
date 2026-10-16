@@ -125,14 +125,14 @@ pub(crate) fn restore_vertical_edges(graph: &mut Graph, edges: &[VerticalEdgeDto
 ///
 /// `level_ids` maps a `split_points` entry's own 0-based `level_fields` index to the `MultiLevelField`'s
 /// real `LevelId` (`levels_ordered()` order, same as `build_field_from_nodes` builds it) — every
-/// point is checked against that level's own field with `xy_to_point`/`contains` before calling
+/// point is checked against that level's own field with `xy_to_cell`/`contains` before calling
 /// `add_node_at_on_level`: `Field::add_node_at` panics on an unknown point, and a stale
 /// `split_points` entry (e.g. a project saved when the point existed, loaded after the tessellation
 /// shrank, or naming a level index that no longer exists) must surface as an ordinary `Err`, not
 /// take down the whole call.
 pub(crate) fn apply_split_points<T: Tessellation>(
     maze: &mut Maze<T>,
-    xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
+    xy_to_cell: impl Fn([i32; 2]) -> Option<T::CellId>,
     split_points: &[([i32; 2], u32, u32)],
     existing_by_index: &SplitSlotMap,
     level_ids: &[maze_core::space::LevelId],
@@ -145,7 +145,7 @@ pub(crate) fn apply_split_points<T: Tessellation>(
                 let &level = level_ids.get(level_index as usize).ok_or_else(|| {
                     format!("split_points references unknown level {level_index}")
                 })?;
-                let point = xy_to_point(xy)
+                let point = xy_to_cell(xy)
                     .filter(|&p| maze.field.field_of(level).is_some_and(|f| f.contains(p)))
                     .ok_or_else(|| {
                         format!(
@@ -262,7 +262,7 @@ pub(crate) fn resolve_preset_nodes_for_post_edit(
 /// generation path).
 ///
 /// Returns `(field, existing_by_index, index_by_node, level_ids)`:
-/// - `field`: one `Field` per `level_field_count` entry, each built (via `Field::from_id_points`)
+/// - `field`: one `Field` per `level_field_count` entry, each built (via `Field::from_id_cells`)
 ///   only from `cfg.nodes` entries whose own `level` matches that level's index — rebuilt directly
 ///   from the client's own node ids, not re-minted from `tessellation.points` order, so the rebuild
 ///   reproduces exactly the ids the client already holds, including auto-split nodes whose ids come
@@ -289,17 +289,17 @@ pub(crate) fn build_field_from_nodes<T: Tessellation>(
     tessellation: &Arc<T>,
     nodes: &[crate::dto::NodeDto],
     level_field_count: usize,
-    xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
+    xy_to_cell: &impl Fn([i32; 2]) -> Option<T::CellId>,
 ) -> BuildFieldFromNodesResult<T>
 where
-    T::Point: Copy,
+    T::CellId: Copy,
 {
-    let mut entries_by_level: Vec<Vec<(u64, T::Point, u32)>> = vec![Vec::new(); level_field_count];
+    let mut entries_by_level: Vec<Vec<(u64, T::CellId, u32)>> = vec![Vec::new(); level_field_count];
     for n in nodes {
         let entries = entries_by_level
             .get_mut(n.level as usize)
             .ok_or_else(|| format!("node {} references unknown level {}", n.id, n.level))?;
-        let point = xy_to_point([n.x, n.y]).ok_or_else(|| {
+        let point = xy_to_cell([n.x, n.y]).ok_or_else(|| {
             format!(
                 "node {} references a point outside the current tessellation: [{}, {}] (level {})",
                 n.id, n.x, n.y, n.level
@@ -318,7 +318,7 @@ where
     let level_fields: Vec<Field<T>> = entries_by_level
         .into_iter()
         .map(|entries| {
-            Field::from_id_points(
+            Field::from_id_cells(
                 Arc::clone(tessellation),
                 entries.into_iter().map(|(id, p, _)| (id, p)),
             )

@@ -1,12 +1,12 @@
 use super::Tessellation;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SquarePoint {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum SquareFace {
     N,
     S,
@@ -14,54 +14,53 @@ pub enum SquareFace {
     W,
 }
 
+impl SquareFace {
+    /// The face on the other side of the same edge — also the face a straight pass leaves by.
+    pub fn opposite(self) -> Self {
+        match self {
+            SquareFace::N => SquareFace::S,
+            SquareFace::S => SquareFace::N,
+            SquareFace::E => SquareFace::W,
+            SquareFace::W => SquareFace::E,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
 
 impl Tessellation for SquareTessellation {
-    type Point = SquarePoint;
+    type CellId = SquarePoint;
     type Face = SquareFace;
 
-    fn step(&self, point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
-        Some(match face {
-            SquareFace::N => SquarePoint {
-                x: point.x,
-                y: point.y + 1,
-            },
-            SquareFace::S => SquarePoint {
-                x: point.x,
-                y: point.y - 1,
-            },
-            SquareFace::E => SquarePoint {
-                x: point.x + 1,
-                y: point.y,
-            },
-            SquareFace::W => SquarePoint {
-                x: point.x - 1,
-                y: point.y,
-            },
-        })
-    }
-
-    fn is_valid_point(&self, _point: SquarePoint) -> bool {
+    fn is_valid_cell(&self, _cell: SquarePoint) -> bool {
         true
     }
 
-    fn faces(&self) -> &[SquareFace] {
+    fn faces_of(&self, _cell: SquarePoint) -> &[SquareFace] {
         &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
     }
 
-    fn face_between(&self, from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
-        match (to.x - from.x, to.y - from.y) {
-            (0, 1) => Some(SquareFace::N),
-            (0, -1) => Some(SquareFace::S),
-            (1, 0) => Some(SquareFace::E),
-            (-1, 0) => Some(SquareFace::W),
-            _ => None,
-        }
+    fn neighbor(&self, cell: SquarePoint, face: SquareFace) -> Option<(SquarePoint, SquareFace)> {
+        let (dx, dy) = match face {
+            SquareFace::N => (0, 1),
+            SquareFace::S => (0, -1),
+            SquareFace::E => (1, 0),
+            SquareFace::W => (-1, 0),
+        };
+        let neighbor = SquarePoint {
+            x: cell.x.checked_add(dx)?,
+            y: cell.y.checked_add(dy)?,
+        };
+        Some((neighbor, face.opposite()))
     }
 
-    fn cartesian(&self, point: SquarePoint) -> (f64, f64) {
-        (point.x as f64, point.y as f64)
+    fn is_straight(&self, _cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
+        out_face == in_face.opposite()
+    }
+
+    fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
+        (cell.x as f64, cell.y as f64)
     }
 
     /// Faces in `[N, S, E, W]` order (indices 0-3). 90°-clockwise rotation cycles N->E->S->W->N.

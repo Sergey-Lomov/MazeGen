@@ -97,7 +97,7 @@ fn build_nodes_registers_added_nodes_in_the_graph() {
 fn assert_multi_node_behaves_the_same<T: Tessellation>(
     mut field: Field<T>,
     mut ids: IdGenerator,
-    point: T::Point,
+    point: T::CellId,
 ) {
     let original = field.nodes_at(point)[0];
     let added = field.add_node_at(point, &mut ids);

@@ -159,14 +159,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
                     // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
                     // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
                     // this same `apply()` call, that node no longer exists by the time commands are
-                    // applied (`replace_point_nodes_feasible` requires `field.point_of(edge.target)`
+                    // applied (`replace_point_nodes_feasible` requires `field.cell_of(edge.target)`
                     // to still resolve) — the whole command would be silently declined. Skip any `dst`
                     // whose point is already split-committed this call, rather than propose a command
                     // guaranteed to be rejected.
                     let dst_already_split = maze
                         .field
                         .level_of(dst)
-                        .zip(maze.field.point_of(dst))
+                        .zip(maze.field.cell_of(dst))
                         .is_some_and(|(l, p)| {
                             maze.field
                                 .nodes_at(l, p)
@@ -390,7 +390,7 @@ mod tests {
                 maze.graph
                     .outgoing_neighbors(n)
                     .chain(maze.graph.incoming_neighbors(n))
-                    .any(|nb| maze.field.point_of(nb) != Some(split_point))
+                    .any(|nb| maze.field.cell_of(nb) != Some(split_point))
             })
             .expect("one node must carry the outside bridge");
         let degree = maze
@@ -647,7 +647,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 1);
-        let split_points: std::collections::HashSet<_> = maze.field.split_points().collect();
+        let split_points: std::collections::HashSet<_> = maze.field.split_cells().collect();
         assert_eq!(split_points.len(), 1);
         assert_eq!(
             split_points.iter().next().unwrap().0,

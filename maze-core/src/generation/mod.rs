@@ -173,7 +173,7 @@ pub struct EventedGenerationResult<T: Tessellation> {
     /// `vertex_based.rs`); every other algorithm leaves this empty. Union with QC/repair's own
     /// mint/removal tracking (`maze-wasm/src/runner.rs::run_generate`) is what lets the debug tape
     /// resolve coordinates for a node no longer in the final `Field`.
-    pub all_node_points: Vec<(NodeId, T::Point)>,
+    pub all_node_points: Vec<(NodeId, T::CellId)>,
 }
 
 /// Qualifies debug-value names with their source's scope name when more than one source is

@@ -273,7 +273,7 @@ fn add_new_branch_failure_falls_back_to_reuse() {
             .field
             .field_of(level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .filter_map(|p| {
                 if p == survivor_point {
                     None

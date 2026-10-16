@@ -146,7 +146,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -226,7 +226,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -328,7 +328,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);

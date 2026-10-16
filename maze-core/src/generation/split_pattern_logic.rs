@@ -155,7 +155,7 @@ struct AdaptationBuilder {
 fn resolve_face<T: Tessellation>(
     field: &MultiLevelField<T>,
     level: LevelId,
-    point: T::Point,
+    point: T::CellId,
     visited: &HashSet<NodeId>,
     bridge: Option<NodeId>,
     parent: Option<NodeId>,
@@ -174,7 +174,7 @@ fn resolve_face<T: Tessellation>(
     else {
         return false;
     };
-    let Some(tess_face) = tessellation.face_at(resolved_index) else {
+    let Some(&tess_face) = tessellation.faces_of(point).get(resolved_index) else {
         return false;
     };
 
@@ -189,8 +189,8 @@ fn resolve_face<T: Tessellation>(
     }
 
     let neighbor = tessellation
-        .step(point, tess_face)
-        .and_then(|neighbor_point| field.nodes_at(level, neighbor_point).first().copied());
+        .neighbor(point, tess_face)
+        .and_then(|(neighbor_point, _)| field.nodes_at(level, neighbor_point).first().copied());
 
     match face.requirement {
         SplitFaceRequirement::Wall => {
@@ -272,7 +272,7 @@ fn try_adaptation<T: Tessellation>(
     pattern: &SplitPattern,
     src: NodeId,
     level: LevelId,
-    point: T::Point,
+    point: T::CellId,
     bridge: Option<NodeId>,
     parent: Option<NodeId>,
     parent_fwd: bool,
@@ -393,12 +393,11 @@ fn enumerate_adaptations<T: Tessellation>(
     let Some(level) = field.level_of(src) else {
         return Vec::new();
     };
-    let Some(point) = field.point_of(src) else {
+    let Some(point) = field.cell_of(src) else {
         return Vec::new();
     };
     let tessellation = field.tessellation();
-    let degree = tessellation.faces().len();
-    if degree == 0 {
+    if crate::space::symmetry_degree(tessellation) == 0 {
         return Vec::new();
     }
 

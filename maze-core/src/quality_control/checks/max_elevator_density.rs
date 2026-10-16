@@ -34,7 +34,7 @@ impl<T: Tessellation> Check<T, InvalidElevatorGroupIssue> for MaxElevatorDensity
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let field_cells = maze.field.point_count();
+        let field_cells = maze.field.cell_count();
         if field_cells == 0 {
             return;
         }

@@ -265,7 +265,7 @@ this reuse) — the same per-node, per-face-position `Passage`/`OneWay`/`Wall` r
 function, `canonical_split_topology` needs no candidate pattern list at all — it reduces a tile to
 one canonical value that can be grouped/compared with plain equality, no rotation search needed by
 the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-(`Tessellation::faces()` empty).
+(`space::symmetry_degree` zero).
 
 ### `split_totals`
 
@@ -284,8 +284,8 @@ Returns `(split_tile_count, split_node_count, groups)`:
   share it. A tile whose topology can't be canonicalized (degenerate tessellation) is still counted
   in the two totals above but has no group entry.
 
-Iterates via `Field::all_points`, deduped per point (a split point appears once per its own node
-count in `all_points`'s NodeId-domain iteration) — same dedup shape as `build_analytics_snapshot`'s
+Iterates via `Field::all_cells`, deduped per point (a split point appears once per its own node
+count in `all_cells`'s NodeId-domain iteration) — same dedup shape as `build_analytics_snapshot`'s
 node listing (GitHub issue #223). Not cached in `MazeAnalysis` — same precedent as
 `compute_node_stats`/`compute_spatial_edge_stats`, which are also recomputed on every analytics
 snapshot rather than going through `MazeAnalysis`'s `RefCell`-backed cache slots.
@@ -315,7 +315,7 @@ pub struct ElementsStatsDto {
 `SplitFaceRequirementDto`/`OneWayDirectionDto` mirror `maze_core::generation::SplitFaceRequirement`/
 `OneWayDirection` (tagged via `#[serde(tag = "kind", rename_all = "snake_case")]`, same convention
 as `IssuePayloadDto`). `topology[i]` is one node's per-face-position requirement list, indexed by
-`maze-core`'s `Tessellation::faces()` position directly (**not** the web `TileFaceEditor` authoring
+`maze-core`'s `Tessellation::faces_of` position directly (**not** the web `TileFaceEditor` authoring
 order — see `nav-graph.md`/GitHub issue #273's face-index distinction).
 
 `ElementsStatsDto`, like the rest of `MazeStatisticsDto`, is `FloorScoped` (`.total` + `.by_floor`)
@@ -412,7 +412,7 @@ pub struct SpatialEdgeStatsDto { pub bidirectional: usize, pub walls: usize, pub
 pub struct FloorScoped<T> { pub total: T, pub by_floor: HashMap<String, T> } // key = floor index, as string (json_compatible())
 ```
 
-`cell_count: FloorScoped<usize>` is the real geometric cell count per floor (`Field::all_points()`,
+`cell_count: FloorScoped<usize>` is the real geometric cell count per floor (`Field::all_cells()`,
 deduped by point) — derived straight from field shape, not reconstructed by summing `cell_stats`'
 own counts (which would double-count a split point's every extra node).
 

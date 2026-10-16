@@ -1597,8 +1597,8 @@ node being entirely absent from `selectDebugMazeView`'s reconstructed canvas vie
 before its removal, where it should have rendered normally with whatever edges it had at that point.
 
 **`DebugGenerationState<T>`** (`maze-core/src/generation/debug_state.rs`) is an append-only
-`HashMap<NodeId, T::Point>` ledger, separate from `Field` on purpose — `Field` must forget a removed
-node's point for its own `point_of`/`neighbors` correctness, so this is a second, independent
+`HashMap<NodeId, T::CellId>` ledger, separate from `Field` on purpose — `Field` must forget a removed
+node's point for its own `cell_of`/`neighbors` correctness, so this is a second, independent
 record that never forgets. Threaded as `Option<&mut DebugGenerationState<T>>` alongside the existing
 `Option<&mut EventLog<E>>` parameter through the same call chain, gated on `debug_events` exactly
 like the event log (`None` on the non-debug path, zero cost beyond the `Option` check). Lives for
@@ -1612,7 +1612,7 @@ Two invariants keep the ledger exhaustive, both documented on the struct itself:
   it's the only algorithm whose `generate()` receives an `&mut IdGenerator`), and
   `node_ops::try_replace_point_nodes` (QC repair mint, `ReplacePointNodes`'s `new_nodes`).
 - **Removal invariant** — every runtime call site that removes/replaces a node must
-  `.note(id, point)` its coordinates *before* the removal (`field.point_of` still resolves it at
+  `.note(id, point)` its coordinates *before* the removal (`field.cell_of` still resolves it at
   that point), even when the node was never itself minted mid-run — a node can be one of `Field`'s
   own original base nodes, whose coordinates otherwise exist nowhere once gone from both `Field` and
   the final snapshot. The sole call site is `quality_control::rule::apply_commands`, for both
@@ -1668,8 +1668,8 @@ itself, since `net` never held generation-time edges to begin with.
 
 ### Out of Scope (#271)
 
-- Reusing `Field`'s own `node_to_point` map instead of a separate ledger — `Field` actively clears
-  that map on `remove_node_at`/`replace_nodes_at` by design (its own `point_of`/`neighbors`
+- Reusing `Field`'s own `node_to_cell` map instead of a separate ledger — `Field` actively clears
+  that map on `remove_node_at`/`replace_nodes_at` by design (its own `cell_of`/`neighbors`
   correctness depends on forgetting a removed node), so it cannot double as an append-only record
   without compromising that invariant.
 - Carrying coordinates in the wire event payloads themselves (e.g. adding `(x, y)` to

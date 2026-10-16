@@ -5,7 +5,7 @@ use crate::quality_control::issue::{
 use std::collections::HashMap;
 
 /// One flagged edge along a route, paired with whether it is incident to the split tile the route
-/// was found for (`from` or `to` resolves to that tile's own `Field::point_of`) — a repair
+/// was found for (`from` or `to` resolves to that tile's own `Field::cell_of`) — a repair
 /// strategy needs this distinction to tell "cutting the split's own connection to the outside"
 /// apart from "cutting some other passage the route happens to pass through" when deciding which
 /// edge along the route to actually remove.

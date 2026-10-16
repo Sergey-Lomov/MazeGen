@@ -28,7 +28,7 @@ type InitialGenerationResult<T> = (
     Vec<(String, maze_core::event_log::DebugValueKind)>,
     f64,
     Option<maze_core::generation::StartReassignment>,
-    Vec<(maze_core::ids::NodeId, <T as Tessellation>::Point)>,
+    Vec<(maze_core::ids::NodeId, <T as Tessellation>::CellId)>,
 );
 
 fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> PresetEndpoint {
@@ -70,7 +70,7 @@ fn run_initial_generation<T: Tessellation>(
         Option<maze_core::event_log::EventedEventKind>,
         Vec<(String, maze_core::event_log::DebugValueKind)>,
         Option<maze_core::generation::StartReassignment>,
-        Vec<(maze_core::ids::NodeId, <T as Tessellation>::Point)>,
+        Vec<(maze_core::ids::NodeId, <T as Tessellation>::CellId)>,
     );
 
     let initial_build_start = now_ms();
@@ -143,10 +143,10 @@ pub fn run_generate<T: Tessellation + 'static>(
     seed: u64,
     mut field: MultiLevelField<T>,
     mut ids: IdGenerator,
-    start: T::Point,
+    start: T::CellId,
     config: &GenerateConfig,
-    point_to_xy: impl Fn(T::Point) -> (i32, i32),
-    point_from_xy: impl Fn(i32, i32) -> T::Point,
+    cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
+    cell_from_xy: impl Fn(i32, i32) -> T::CellId,
 ) -> Result<GenerateResult, JsValue> {
     use maze_core::generation::pipeline::build_maze;
 
@@ -160,7 +160,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
     // the same check `run_generate_typed` runs, via the shared `validate_split_patterns`.
-    let degree = field.tessellation().faces().len();
+    let degree = maze_core::space::symmetry_degree(field.tessellation());
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)
         .map_err(|e| JsValue::from_str(&e))?;
 
@@ -192,7 +192,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         &gen_config.preset_elevators,
         &gen_config.locked_nodes,
         &gen_config.split_points,
-        &point_from_xy,
+        &cell_from_xy,
         preset_setup_log.as_mut(),
         debug_node_ledger.as_mut(),
     )
@@ -213,7 +213,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         .preset_gen_source
         .as_ref()
         .and_then(|dto| {
-            preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+            preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
         })
         .or_else(|| field.nodes_at(level, start).first().copied())
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
@@ -250,10 +250,10 @@ pub fn run_generate<T: Tessellation + 'static>(
     // so the issue-payload resolver can flag a pinned `start`/`finish` element `preset_locked`
     // (GitHub issue #376 follow-up).
     let pinned_start = config.preset_start.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+        preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
     });
     let pinned_finish = config.preset_finish.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+        preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
     });
     preset_state.preset_start = pinned_start;
     preset_state.preset_finish = pinned_finish;
@@ -321,7 +321,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         Some(issues),
         &check_types,
         &repair_preset_state,
-        &point_to_xy,
+        &cell_to_xy,
         |_, _, pos| pos as u32,
         score_weights.as_ref(),
     )
@@ -344,7 +344,7 @@ pub fn run_generate<T: Tessellation + 'static>(
                 .all_node_points()
                 .filter_map(|(id, point)| {
                     let id32 = u32::try_from(id).ok()?;
-                    let (x, y) = point_to_xy(point);
+                    let (x, y) = cell_to_xy(point);
                     let level = maze.field.level_index_of(id).unwrap_or(0) as u32;
                     Some(crate::dto::NodeDto {
                         id: id32,

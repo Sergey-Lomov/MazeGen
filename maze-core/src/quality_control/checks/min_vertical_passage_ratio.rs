@@ -44,7 +44,7 @@ impl<T: Tessellation> Check<T, MissingVerticalPassagesIssue> for MinVerticalPass
 
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 let missing = Self::missing_for(
                     count_logical_vertical_passages(maze, self.passage_type) as u64,
                     field_cells,

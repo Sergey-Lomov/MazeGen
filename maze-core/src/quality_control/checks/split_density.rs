@@ -36,7 +36,7 @@ impl<T: Tessellation> Check<T, MissingSplitTilesIssue> for SplitDensityCheck {
     ) {
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count();
+                let field_cells = maze.field.cell_count();
                 if field_cells == 0 {
                     return;
                 }

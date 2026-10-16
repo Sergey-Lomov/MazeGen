@@ -21,8 +21,8 @@ pub enum OneWayDirection {
     Backward,
 }
 
-/// One face of one pattern-local node. `face_index` is a position into `Tessellation::faces()`
-/// (see `Tessellation::face_index`/`face_at`), always interpreted against the tessellation the
+/// One face of one pattern-local node. `face_index` is a position into `Tessellation::faces_of`
+/// of the cell the pattern applies to, always interpreted against the tessellation the
 /// pattern is currently authored/applied for — patterns are per-tessellation and never portable
 /// across tessellations (see `SplitPattern`'s doc comment).
 ///
@@ -80,7 +80,7 @@ impl Default for SplitGenerationConfig {
 }
 
 /// Validates every pattern in `config` against a tessellation of the given `degree`
-/// (`Tessellation::faces().len()`) — shared by `maze-runner` and `maze-wasm`'s own generation
+/// (`space::symmetry_degree`) — shared by `maze-runner` and `maze-wasm`'s own generation
 /// entry points, since neither is generic over `T: Tessellation` until this point in their own
 /// call chain (see each caller's own doc comment for why the check lives here rather than at the
 /// DTO-conversion layer). Two independent failure modes (GitHub issue #222):

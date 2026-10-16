@@ -18,7 +18,7 @@ pub struct LevelId(u32);
 /// resolved internally via `node_to_level`, never required from the caller (see
 /// `Specs`/GitHub issue #334's design discussion: the graph itself is level-agnostic, growth
 /// algorithms freely mix nodes from different levels in one frontier). `LevelId` is required
-/// only where a bare geometric point is otherwise ambiguous (point-based lookup/creation) or for
+/// only where a bare geometric cell is otherwise ambiguous (cell-based lookup/creation) or for
 /// managing the level set itself.
 pub struct MultiLevelField<T: Tessellation> {
     tessellation: Arc<T>,
@@ -41,7 +41,7 @@ impl<T: Tessellation> Clone for MultiLevelField<T> {
 }
 
 impl<T: Tessellation> MultiLevelField<T> {
-    /// Empty aggregator, no levels yet — internal starting point for `single_level`/`new`.
+    /// Empty aggregator, no levels yet — internal starting cell for `single_level`/`new`.
     fn empty(tessellation: Arc<T>) -> Self {
         Self {
             tessellation,
@@ -52,15 +52,15 @@ impl<T: Tessellation> MultiLevelField<T> {
         }
     }
 
-    /// Wraps a single `Field::new(points, ids)` call into a one-level aggregator — the drop-in
+    /// Wraps a single `Field::new(cells, ids)` call into a one-level aggregator — the drop-in
     /// replacement for every existing `Field::new` call site during the single-level migration
     /// (GitHub issue #334). The resulting level's id is retrievable via `single_level_id()`.
     pub fn single_level(
         tessellation: Arc<T>,
-        points: impl IntoIterator<Item = T::Point>,
+        cells: impl IntoIterator<Item = T::CellId>,
         ids: &mut IdGenerator,
     ) -> Result<Self, &'static str> {
-        let field = Field::new(Arc::clone(&tessellation), points, ids)?;
+        let field = Field::new(Arc::clone(&tessellation), cells, ids)?;
         let mut mf = Self::empty(tessellation);
         mf.add_level(field);
         Ok(mf)
@@ -83,7 +83,7 @@ impl<T: Tessellation> MultiLevelField<T> {
     ///
     /// Debug-asserts none of `field`'s nodes already belong to another level — a `NodeId`
     /// collision across levels would otherwise silently overwrite the mapping instead of
-    /// signalling a broken invariant (mirrors `Field::from_id_points`'s duplicate-id
+    /// signalling a broken invariant (mirrors `Field::from_id_cells`'s duplicate-id
     /// `debug_assert!` convention). The global per-`Maze` `IdGenerator` is expected to guarantee
     /// uniqueness, but the aggregator does not blindly trust callers of `new`/`add_level`.
     ///
@@ -164,7 +164,7 @@ impl<T: Tessellation> MultiLevelField<T> {
 
     /// Read-only access to one level's underlying `Field` — for callers that need the full
     /// `Field` contract without level bookkeeping (e.g. rendering, geometry). Never `&mut`: every
-    /// mutation must go through this aggregator's own node-id-based/point-based methods so
+    /// mutation must go through this aggregator's own node-id-based/cell-based methods so
     /// `node_to_level` never drifts out of sync.
     pub fn field_of(&self, level: LevelId) -> Option<&Field<T>> {
         self.levels.get(&level)
@@ -185,11 +185,11 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.level_order.iter().position(|&l| l == level)
     }
 
-    /// Geometric point of `node`, resolved on `node`'s own level. `None` if `node` doesn't
+    /// Geometric cell of `node`, resolved on `node`'s own level. `None` if `node` doesn't
     /// belong to any level — node-id-based, mirrors `neighbors`/`level_of`.
-    pub fn point_of(&self, node: NodeId) -> Option<T::Point> {
+    pub fn cell_of(&self, node: NodeId) -> Option<T::CellId> {
         let level = self.level_of(node)?;
-        self.levels[&level].point_of(node)
+        self.levels[&level].cell_of(node)
     }
 
     /// Geometric neighbors of `node`, resolved on `node`'s own level. Empty `Vec` if `node`
@@ -203,14 +203,14 @@ impl<T: Tessellation> MultiLevelField<T> {
     }
 
     /// `node`'s *potential* `VerticalPassage` partner nodes: whichever node(s) exist at `node`'s
-    /// own x-y point on the floor(s) directly above and/or below its own (never both if `node` is
+    /// own x-y cell on the floor(s) directly above and/or below its own (never both if `node` is
     /// on a boundary floor) — resolved purely from tessellation/level structure, regardless of
     /// whether a `VerticalPassage`/`Elevator` edge between them has actually been added yet. Not
-    /// geometric in the `neighbors()` sense (no shared tessellation face — same x-y point on a
+    /// geometric in the `neighbors()` sense (no shared tessellation face — same x-y cell on a
     /// different level entirely), and deliberately not `Graph`-backed either: `CustomVertexBased`'s
     /// reserve-populate step (GitHub issue #337 follow-up) needs to know a vertical partner is a
     /// *reachable candidate* before any edge to it exists, not just recognize one that already
-    /// does — the whole point is giving an unlucky `vertical_chance` miss a second chance later,
+    /// does — the whole cell is giving an unlucky `vertical_chance` miss a second chance later,
     /// the same way a geometric free neighbor already gets via plain `reserve`. Only adjacent
     /// floors, not an `Elevator`'s full far-floor fan — same "one hop, not a long-distance bridge"
     /// scope reserve-bridging already uses for its ordinary geometric candidates. Deliberately a
@@ -219,7 +219,7 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// results unconditionally, and a boolean/enum parameter would require every one of those call
     /// sites to opt out explicitly instead of never being touched at all.
     pub fn vertical_neighbors(&self, node: NodeId) -> Vec<NodeId> {
-        let Some(point) = self.point_of(node) else {
+        let Some(cell) = self.cell_of(node) else {
             return Vec::new();
         };
         let Some(level) = self.level_of(node) else {
@@ -230,10 +230,10 @@ impl<T: Tessellation> MultiLevelField<T> {
         };
         let mut result = Vec::new();
         if idx > 0 {
-            result.extend(self.nodes_at(self.level_order[idx - 1], point));
+            result.extend(self.nodes_at(self.level_order[idx - 1], cell));
         }
         if let Some(&above) = self.level_order.get(idx + 1) {
-            result.extend(self.nodes_at(above, point));
+            result.extend(self.nodes_at(above, cell));
         }
         result
     }
@@ -254,8 +254,8 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.levels[&lf].is_straight(from, via, to)
     }
 
-    /// Removes `node` from the aggregator entirely — resolves both its level and point
-    /// internally, unlike `Field::remove_node_at` which takes the point explicitly (redundant
+    /// Removes `node` from the aggregator entirely — resolves both its level and cell
+    /// internally, unlike `Field::remove_node_at` which takes the cell explicitly (redundant
     /// once it's derivable from `node`). Panics if `node` doesn't belong to any level, mirroring
     /// `Field::remove_node_at`'s own panic-on-unknown-node contract — never a silent no-op.
     pub fn remove_node_at(&mut self, node: NodeId) {
@@ -266,55 +266,55 @@ impl<T: Tessellation> MultiLevelField<T> {
             .levels
             .get_mut(&level)
             .expect("level present in node_to_level must exist in levels");
-        let point = field
-            .point_of(node)
+        let cell = field
+            .cell_of(node)
             .unwrap_or_else(|| panic!("remove_node_at: node does not belong to any level"));
-        field.remove_node_at(point, node);
+        field.remove_node_at(cell, node);
         self.node_to_level.remove(&node);
     }
 
-    // --- Point-based API: level required, a bare point is ambiguous across levels ---
+    // --- Cell-based API: level required, a bare cell is ambiguous across levels ---
 
-    pub fn node_at(&self, level: LevelId, point: T::Point) -> Option<NodeId> {
-        self.levels.get(&level)?.nodes_at(point).first().copied()
+    pub fn node_at(&self, level: LevelId, cell: T::CellId) -> Option<NodeId> {
+        self.levels.get(&level)?.nodes_at(cell).first().copied()
     }
 
-    pub fn nodes_at(&self, level: LevelId, point: T::Point) -> &[NodeId] {
-        self.levels.get(&level).map_or(&[], |f| f.nodes_at(point))
+    pub fn nodes_at(&self, level: LevelId, cell: T::CellId) -> &[NodeId] {
+        self.levels.get(&level).map_or(&[], |f| f.nodes_at(cell))
     }
 
-    /// Adds a node to `point` on `level` and registers it in `node_to_level`. Panics if `level`
-    /// doesn't exist or `point` isn't already in that level's field — mirrors
+    /// Adds a node to `cell` on `level` and registers it in `node_to_level`. Panics if `level`
+    /// doesn't exist or `cell` isn't already in that level's field — mirrors
     /// `Field::add_node_at`'s own panic contract.
     pub fn add_node_at(
         &mut self,
         level: LevelId,
-        point: T::Point,
+        cell: T::CellId,
         ids: &mut IdGenerator,
     ) -> NodeId {
         let field = self
             .levels
             .get_mut(&level)
             .unwrap_or_else(|| panic!("add_node_at: level not in aggregator"));
-        let node = field.add_node_at(point, ids);
+        let node = field.add_node_at(cell, ids);
         self.node_to_level.insert(node, level);
         node
     }
 
-    /// Replaces every node at `point` on `level` with `new_ids`. Removes the mapping for every
-    /// node currently at that point, then adds mapping for each of `new_ids` — after the call,
+    /// Replaces every node at `cell` on `level` with `new_ids`. Removes the mapping for every
+    /// node currently at that cell, then adds mapping for each of `new_ids` — after the call,
     /// any old id not in `new_ids` gives `level_of(old_id) == None`, and every id in `new_ids`
     /// gives `level_of(new_id) == Some(level)`.
-    pub fn replace_nodes_at(&mut self, level: LevelId, point: T::Point, new_ids: Vec<NodeId>) {
+    pub fn replace_nodes_at(&mut self, level: LevelId, cell: T::CellId, new_ids: Vec<NodeId>) {
         let field = self
             .levels
             .get_mut(&level)
             .unwrap_or_else(|| panic!("replace_nodes_at: level not in aggregator"));
-        let old_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
+        let old_nodes: Vec<NodeId> = field.nodes_at(cell).to_vec();
         for old in &old_nodes {
             self.node_to_level.remove(old);
         }
-        field.replace_nodes_at(point, new_ids.clone());
+        field.replace_nodes_at(cell, new_ids.clone());
         for &new in &new_ids {
             self.node_to_level.insert(new, level);
         }
@@ -340,42 +340,42 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.node_to_level.len()
     }
 
-    /// Total distinct field cells (points) across every level — the multi-level counterpart of
-    /// `Field::point_count()`, summed. Ratio/density QC checks normalizing "per 100 field cells"
+    /// Total distinct field cells (cells) across every level — the multi-level counterpart of
+    /// `Field::cell_count()`, summed. Ratio/density QC checks normalizing "per 100 field cells"
     /// across the whole maze use this, not `node_count()` (inflated by split tiles) and not any
-    /// single level's own `point_count()`.
-    pub fn point_count(&self) -> usize {
-        self.levels.values().map(|f| f.point_count()).sum()
+    /// single level's own `cell_count()`.
+    pub fn cell_count(&self) -> usize {
+        self.levels.values().map(|f| f.cell_count()).sum()
     }
 
-    /// Every `(LevelId, Point)` pair across every level, grouped by level in `levels_ordered()`
-    /// order, each level's own points in that level's `Field::all_points()` order. For
-    /// single-level/level-agnostic callers, prefer `field_of(level).all_points()` instead — this
+    /// Every `(LevelId, Cell)` pair across every level, grouped by level in `levels_ordered()`
+    /// order, each level's own cells in that level's `Field::all_cells()` order. For
+    /// single-level/level-agnostic callers, prefer `field_of(level).all_cells()` instead — this
     /// is for genuinely level-aware code (future multi-level UI/QC).
-    pub fn all_points_with_level(&self) -> impl Iterator<Item = (LevelId, T::Point)> + '_ {
+    pub fn all_cells_with_level(&self) -> impl Iterator<Item = (LevelId, T::CellId)> + '_ {
         self.level_order
             .iter()
-            .flat_map(move |&level| self.levels[&level].all_points().map(move |p| (level, p)))
+            .flat_map(move |&level| self.levels[&level].all_cells().map(move |p| (level, p)))
     }
 
-    /// Every split tile across every level — a point carrying >= 2 nodes — as `(LevelId,
-    /// T::Point)` pairs, each appearing exactly once. GitHub issue #614: shared replacement for
+    /// Every split tile across every level — a cell carrying >= 2 nodes — as `(LevelId,
+    /// T::CellId)` pairs, each appearing exactly once. GitHub issue #614: shared replacement for
     /// the ~14 call sites (QC checks, `cross_element`, `split_topology`, repair-strategy tests)
-    /// that used to each independently filter `all_points_with_level()` down to split tiles,
-    /// repeating both the dedup (`all_points_with_level` yields a split point once per its own
-    /// node, not once overall — see `Field::all_points`'s doc comment) and the `nodes_at(...).len()
+    /// that used to each independently filter `all_cells_with_level()` down to split tiles,
+    /// repeating both the dedup (`all_cells_with_level` yields a split cell once per its own
+    /// node, not once overall — see `Field::all_cells`'s doc comment) and the `nodes_at(...).len()
     /// >= 2` check.
-    pub fn split_points(&self) -> impl Iterator<Item = (LevelId, T::Point)> + '_ {
+    pub fn split_cells(&self) -> impl Iterator<Item = (LevelId, T::CellId)> + '_ {
         let mut seen_points = HashSet::new();
-        self.all_points_with_level()
-            .filter(move |&(level, point)| seen_points.insert((level, point)))
-            .filter(move |&(level, point)| self.nodes_at(level, point).len() >= 2)
+        self.all_cells_with_level()
+            .filter(move |&(level, cell)| seen_points.insert((level, cell)))
+            .filter(move |&(level, cell)| self.nodes_at(level, cell).len() >= 2)
     }
 
-    /// True if `point` on `level` is a split tile (>= 2 nodes). `false` if `level`/`point` don't
+    /// True if `cell` on `level` is a split tile (>= 2 nodes). `false` if `level`/`cell` don't
     /// exist — mirrors `nodes_at`'s own "unknown -> empty" contract rather than panicking.
-    pub fn is_split_point(&self, level: LevelId, point: T::Point) -> bool {
-        self.nodes_at(level, point).len() >= 2
+    pub fn is_split_cell(&self, level: LevelId, cell: T::CellId) -> bool {
+        self.nodes_at(level, cell).len() >= 2
     }
 }
 

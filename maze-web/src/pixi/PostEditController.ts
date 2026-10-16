@@ -55,7 +55,7 @@ export class PostEditController extends BaseController {
 
   private confirmDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Every real node at a point, in snapshot order (index 0 is always the point's original node
-  // per Field::nodes_at/all_points's contract — see analytics.rs's node iteration) — replaces the
+  // per Field::nodes_at/all_cells's contract — see analytics.rs's node iteration) — replaces the
   // old one-id-per-cell map, since a split point (GitHub issue #221) can have more than one.
   private nodeMap: Map<string, number[]> = new Map();
   private nodeMapNodes: NodeDto[] | null = null;
@@ -1174,7 +1174,7 @@ export class PostEditController extends BaseController {
   }
 }
 
-/** All real nodes at each point, in snapshot order (see `Field::nodes_at`/`all_points`'s
+/** All real nodes at each point, in snapshot order (see `Field::nodes_at`/`all_cells`'s
  * determinism contract, mirrored by `maze-wasm/src/analytics.rs`'s node iteration) — index 0 is
  * always the point's original node, guaranteed by that contract, not an observation of `Graph`'s
  * incidental insertion order. */

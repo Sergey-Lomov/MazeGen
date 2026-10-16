@@ -96,8 +96,8 @@ fn count_splits<T: Tessellation>(field: &MultiLevelField<T>, path: &[NodeId]) ->
         .filter(|&&node_id| {
             field
                 .level_of(node_id)
-                .zip(field.point_of(node_id))
-                .is_some_and(|(level, point)| field.is_split_point(level, point))
+                .zip(field.cell_of(node_id))
+                .is_some_and(|(level, point)| field.is_split_cell(level, point))
         })
         .count()
 }

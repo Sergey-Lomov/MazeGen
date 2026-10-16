@@ -120,7 +120,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     return endpointsEqual(a, b);
   };
   // Every real node at this point, in snapshot order (index 0 is always the point's original
-  // node — see `Field::nodes_at`/`all_points`'s contract, mirrored by `PostEditController`'s
+  // node — see `Field::nodes_at`/`all_cells`'s contract, mirrored by `PostEditController`'s
   // `buildNodeMap`). Needed to resolve the original node's real `NodeId` — it's a graph node id
   // like any other, nothing about the point's coordinates.
   const originalNodeId = useMemo(() => {

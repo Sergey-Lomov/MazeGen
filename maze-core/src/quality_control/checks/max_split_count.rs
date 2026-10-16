@@ -36,7 +36,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountChec
     ) {
         let tiles: Vec<(LevelId, SplitTileNodes)> = maze
             .field
-            .split_points()
+            .split_cells()
             .map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 (level, SplitTileNodes::new(nodes.to_vec()))

@@ -57,8 +57,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             .into_iter()
             .filter_map(|(id, e_from, e_to)| {
                 let level = maze.field.level_index_of(e_from)?;
-                let from = maze.field.point_of(e_from)?;
-                let to = maze.field.point_of(e_to)?;
+                let from = maze.field.cell_of(e_from)?;
+                let to = maze.field.cell_of(e_to)?;
                 Some((id, level, from, to))
             })
             .collect();

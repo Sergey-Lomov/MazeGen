@@ -57,7 +57,7 @@ fn point_of_round_trip() {
     let field = make_field(4, 4);
     let point = SquarePoint { x: 2, y: 3 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }
 
 #[test]

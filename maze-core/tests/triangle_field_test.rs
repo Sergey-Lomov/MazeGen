@@ -25,7 +25,7 @@ fn assert_neighbors_symmetric(field: &Field<TriTessellation>) {
             assert!(
                 field.neighbors(neighbor).contains(&node),
                 "neighbor relation not symmetric for node {:?}",
-                field.point_of(node)
+                field.cell_of(node)
             );
         }
     }

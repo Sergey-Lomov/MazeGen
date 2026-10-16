@@ -504,7 +504,7 @@ mod tests {
             .field
             .field_of(maze.field.single_level_id())
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
             .collect();
         let mut preset_state = PresetState::empty();

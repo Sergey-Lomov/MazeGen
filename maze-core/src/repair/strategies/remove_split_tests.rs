@@ -94,11 +94,11 @@ fn apply_collapses_the_tile_to_exactly_one_node() {
         "collapse must mint a brand-new node, not reuse an old id"
     );
     assert!(
-        maze.field.point_of(slot0).is_none(),
+        maze.field.cell_of(slot0).is_none(),
         "old slot0 must be gone"
     );
     assert!(
-        maze.field.point_of(extra).is_none(),
+        maze.field.cell_of(extra).is_none(),
         "old extra must be gone"
     );
 }
@@ -441,11 +441,11 @@ fn apply_reports_failed_and_leaves_the_tile_untouched_when_a_node_is_preset_prot
         "preset-locked tile must report Failed, not silently Fixed"
     );
     assert!(
-        maze.field.point_of(slot0).is_some(),
+        maze.field.cell_of(slot0).is_some(),
         "preset-locked tile must survive untouched"
     );
     assert!(
-        maze.field.point_of(extra).is_some(),
+        maze.field.cell_of(extra).is_some(),
         "preset-locked tile must survive untouched"
     );
 }

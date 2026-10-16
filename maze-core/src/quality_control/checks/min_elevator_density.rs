@@ -29,7 +29,7 @@ impl<T: Tessellation> Check<T, MissingElevatorsIssue> for MinElevatorDensityChec
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let field_cells = maze.field.point_count() as u64;
+        let field_cells = maze.field.cell_count() as u64;
         let count = elevator_groups(maze).len() as u64;
         let missing = Self::missing_for(count, field_cells, self.min_density);
         if missing == 0 {

@@ -16,12 +16,12 @@ pub const SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT: u32 = 1;
 /// face toward two different neighbor tiles still both count against the same face's cap).
 ///
 /// **Outside only, outgoing only** — same rules as `SplitNodeConnectionPerNeighborCheck`: a
-/// sibling edge to another node of the same split tile is never counted (`Field::point_of(edge.to)`
+/// sibling edge to another node of the same split tile is never counted (`Field::cell_of(edge.to)`
 /// must differ from the split tile's own point), and only edges *from* a split node *to* the
 /// neighbor count. `EdgeKind` doesn't matter.
 ///
-/// **Face direction** is `Tessellation::face_between(split_point, neighbor_point)`, converted to a stable
-/// index via `T::face_index` so it can key a `HashMap` — resolved once per edge from the two
+/// **Face direction** is `space::face_index_toward(split_point, neighbor_point)` — the position of
+/// the split point's face toward the neighbor, a stable index that can key a `HashMap` — resolved once per edge from the two
 /// points involved, independent of which of the split's nodes the edge actually starts at.
 pub struct SplitNodeConnectionPerFaceCheck {
     pub instance_id: String,
@@ -42,8 +42,8 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let split_points: Vec<(crate::space::LevelId, T::Point)> =
-            maze.field.split_points().collect();
+        let split_points: Vec<(crate::space::LevelId, T::CellId)> =
+            maze.field.split_cells().collect();
         if split_points.is_empty() {
             return;
         }
@@ -61,16 +61,15 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
                 if !nodes.contains(&edge.from) {
                     continue;
                 }
-                let Some(neighbor_point) = maze.field.point_of(edge.to) else {
+                let Some(neighbor_point) = maze.field.cell_of(edge.to) else {
                     continue;
                 };
                 if neighbor_point == point {
                     continue; // sibling edge to another node of the same split -- not "outside".
                 }
-                let Some(face) = tessellation.face_between(point, neighbor_point) else {
-                    continue;
-                };
-                let Some(face_index) = tessellation.face_index(face) else {
+                let Some(face_index) =
+                    crate::space::face_index_toward(tessellation, point, neighbor_point)
+                else {
                     continue;
                 };
                 by_face.entry(face_index).or_default().push(edge.id);

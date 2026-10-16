@@ -43,9 +43,9 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze
+        let tiles: Vec<(T::CellId, Vec<NodeId>)> = maze
             .field
-            .split_points()
+            .split_cells()
             .map(|(level, point)| (point, maze.field.nodes_at(level, point).to_vec()))
             .collect();
         if tiles.len() < 2 {
@@ -65,7 +65,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
             &tiles,
             max_dist,
             true, // directed: min(forward, reverse), see the check's own doc comment.
-            |_: &(T::Point, Vec<NodeId>)| HashSet::new(),
+            |_: &(T::CellId, Vec<NodeId>)| HashSet::new(),
             |_, _| true,
             |(_, nodes)| ScanAnchor::Multi(nodes.clone()),
             |(_, nodes)| ScanAnchor::Multi(nodes.clone()),

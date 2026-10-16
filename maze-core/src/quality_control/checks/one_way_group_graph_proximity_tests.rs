@@ -168,7 +168,7 @@ fn protect_route_excludes_a_pair_fully_on_route() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     maze.meta = MazeMeta {
@@ -194,7 +194,7 @@ fn protect_route_disabled_flags_the_route_pair_as_before() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     maze.meta = MazeMeta {

@@ -35,7 +35,7 @@ impl<T: Tessellation> Check<T, ExcessiveElevatorStopGapIssue> for MaxElevatorSto
 
         for elevator in elevator_groups(maze) {
             let floors = stop_floors(&elevator, maze);
-            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else {
+            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.cell_of(n)) else {
                 continue;
             };
             let Some(levels_by_index) = levels_by_index(maze, point) else {
@@ -77,7 +77,7 @@ impl<T: Tessellation> Check<T, ExcessiveElevatorStopGapIssue> for MaxElevatorSto
 
 fn levels_by_index<T: Tessellation>(
     maze: &Maze<T>,
-    point: T::Point,
+    point: T::CellId,
 ) -> Option<std::collections::HashMap<usize, crate::space::LevelId>> {
     Some(
         maze.field

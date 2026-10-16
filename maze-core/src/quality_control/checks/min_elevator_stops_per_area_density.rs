@@ -41,7 +41,7 @@ impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue>
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
                 let total: u64 = per_floor.values().map(|stops| stops.len() as u64).sum();
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 let missing = Self::missing_for(total, field_cells, min_ratio);
                 if missing == 0 {
                     vec![]

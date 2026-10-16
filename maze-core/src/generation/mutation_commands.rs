@@ -210,7 +210,7 @@ mod cmd_builders_tests {
         let mut field: MultiLevelField<SquareTessellation> =
             MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
-        let p = field.field_of(level).unwrap().all_points().next().unwrap();
+        let p = field.field_of(level).unwrap().all_cells().next().unwrap();
         let slot0 = field.node_at(level, p).unwrap();
         let extra = field.add_node_at(level, p, &mut ids);
         (field, slot0, extra)
@@ -534,7 +534,7 @@ mod cmd_builders_tests {
         let field: MultiLevelField<SquareTessellation> =
             MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
-        let p = field.field_of(level).unwrap().all_points().next().unwrap();
+        let p = field.field_of(level).unwrap().all_cells().next().unwrap();
         let slot0 = field.node_at(level, p).unwrap();
         assert!(
             cmd_remove_node(&field, &PresetState::empty(), slot0).is_empty(),

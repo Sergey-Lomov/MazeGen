@@ -177,7 +177,7 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot remove a point's last remaining node")]
+    #[should_panic(expected = "cannot remove a cell's last remaining node")]
     fn delegates_the_last_remaining_node_panic() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =

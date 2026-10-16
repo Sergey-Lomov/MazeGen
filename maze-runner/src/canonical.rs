@@ -56,7 +56,7 @@ impl PreparedVisitor for BaselineRun<'_> {
         let mut seeded = seed_graph(prepared, config)?;
         if !config.qc_experiment {
             let start_reassignment = run_generation(&mut seeded, config);
-            let cells = CellIndex::new(&seeded.field, seeded.point_to_xy);
+            let cells = CellIndex::new(&seeded.field, seeded.cell_to_xy);
             return Ok(json!({
                 "generation": {
                     "start": cells.cell(seeded.start_id),
@@ -78,7 +78,7 @@ impl PreparedVisitor for BaselineRun<'_> {
 
         let check_types = build_check_types(config);
         let Checked { maze, issues } = run_check_only(&seeded, config)?;
-        let cells = CellIndex::new(&maze.field, seeded.point_to_xy);
+        let cells = CellIndex::new(&maze.field, seeded.cell_to_xy);
         let scc = maze.analysis.scc(&maze.graph);
         out.insert(
             "qc".to_string(),
@@ -87,14 +87,14 @@ impl PreparedVisitor for BaselineRun<'_> {
             }),
         );
 
-        let point_to_xy = seeded.point_to_xy;
+        let cell_to_xy = seeded.cell_to_xy;
         let Repaired {
             maze,
             remaining_issues,
             preset_state,
             timing,
         } = run_repair(seeded, config, None, None)?;
-        let cells = CellIndex::new(&maze.field, point_to_xy);
+        let cells = CellIndex::new(&maze.field, cell_to_xy);
         let scc = maze.analysis.scc(&maze.graph);
         out.insert(
             "repair".to_string(),
@@ -147,7 +147,7 @@ pub struct CellIndex {
 impl CellIndex {
     pub fn new<T: Tessellation>(
         field: &MultiLevelField<T>,
-        point_to_xy: fn(T::Point) -> (i32, i32),
+        cell_to_xy: fn(T::CellId) -> (i32, i32),
     ) -> Self {
         let level_index: HashMap<_, usize> = field
             .levels_ordered()
@@ -158,12 +158,12 @@ impl CellIndex {
             .all_node_ids()
             .filter_map(|node| {
                 let level = field.level_of(node)?;
-                let point = field.point_of(node)?;
+                let point = field.cell_of(node)?;
                 let slot = field
                     .nodes_at(level, point)
                     .iter()
                     .position(|&n| n == node)?;
-                let (x, y) = point_to_xy(point);
+                let (x, y) = cell_to_xy(point);
                 Some((node, format!("{}:{x},{y}/{slot}", level_index[&level])))
             })
             .collect();
@@ -424,7 +424,7 @@ fn canonical_split_candidates<T: Tessellation>(
 ) -> Value {
     let field = &seeded.field;
     let graph = &seeded.graph;
-    let cells = CellIndex::new(field, seeded.point_to_xy);
+    let cells = CellIndex::new(field, seeded.cell_to_xy);
     let patterns = &seeded.gen_config.split_generation.patterns;
 
     let mut probes: Vec<(String, NodeId)> = field
@@ -437,8 +437,8 @@ fn canonical_split_candidates<T: Tessellation>(
     let visited_subset: HashSet<NodeId> = field
         .all_node_ids()
         .filter(|&node| {
-            field.point_of(node).is_some_and(|point| {
-                let (x, y) = (seeded.point_to_xy)(point);
+            field.cell_of(node).is_some_and(|point| {
+                let (x, y) = (seeded.cell_to_xy)(point);
                 (x * 7 + y * 13).rem_euclid(3) == 0
             })
         })

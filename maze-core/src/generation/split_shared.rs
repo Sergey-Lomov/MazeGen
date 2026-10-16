@@ -24,7 +24,7 @@ pub(super) fn mint_split_nodes<T: Tessellation>(
     mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> Vec<NodeId> {
     let level = field.level_of(src).expect("src must be in field");
-    let point = field.point_of(src).expect("src must be in field");
+    let point = field.cell_of(src).expect("src must be in field");
     let mut nodes = vec![src];
     for _ in 1..count {
         let node = field.add_node_at(level, point, ids);

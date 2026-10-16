@@ -78,7 +78,7 @@ fn linear_field(n: usize) -> (MultiLevelField<SquareTessellation>, G, Vec<NodeId
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (field, g, nodes)

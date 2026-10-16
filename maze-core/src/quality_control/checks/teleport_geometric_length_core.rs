@@ -20,12 +20,12 @@ pub fn find_invalid_teleports<T: Tessellation>(
         .filter(|t| {
             let (Some(from_level), Some(from)) = (
                 maze.field.level_index_of(t.from),
-                maze.field.point_of(t.from),
+                maze.field.cell_of(t.from),
             ) else {
                 return false;
             };
             let (Some(to_level), Some(to)) =
-                (maze.field.level_index_of(t.to), maze.field.point_of(t.to))
+                (maze.field.level_index_of(t.to), maze.field.cell_of(t.to))
             else {
                 return false;
             };

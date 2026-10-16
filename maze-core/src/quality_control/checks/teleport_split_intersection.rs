@@ -49,7 +49,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportSplitIntersecti
         let in_split_cell = |node| {
             maze.field
                 .level_of(node)
-                .zip(maze.field.point_of(node))
+                .zip(maze.field.cell_of(node))
                 .is_some_and(|(level, point)| maze.field.nodes_at(level, point).len() >= 2)
         };
 

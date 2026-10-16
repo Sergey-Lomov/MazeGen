@@ -25,7 +25,7 @@ fn node_removal_allowed<T: Tessellation>(
     let Some(level) = field.level_of(node) else {
         return false;
     };
-    let Some(point) = field.point_of(node) else {
+    let Some(point) = field.cell_of(node) else {
         return false;
     };
     if !allow_last_node && field.nodes_at(level, point).len() == 1 {
@@ -37,7 +37,7 @@ fn node_removal_allowed<T: Tessellation>(
 /// Feasibility shared by `try_remove_node`/`cmd_remove_node`: a node is only ever removable if
 /// it isn't the last node left at its point — a point must always keep at least one node — and
 /// isn't itself preset-protected (locked in/out, or the endpoint of a preset connection).
-/// Structural existence (`field.point_of(node).is_some()`) is checked by the caller, since only
+/// Structural existence (`field.cell_of(node).is_some()`) is checked by the caller, since only
 /// `try_remove_node` has a `&mut MultiLevelField` to also act on that check's result.
 pub(crate) fn remove_node_feasible<T: Tessellation>(
     field: &MultiLevelField<T>,
@@ -76,7 +76,7 @@ pub(crate) fn try_remove_node<T: Tessellation>(
 /// forbid a direction). All-or-nothing: a single infeasible old node, missing target, or new edge
 /// fails the whole check.
 ///
-/// **`target` must still structurally exist** (`field.point_of(edge.target).is_some()`) — unlike
+/// **`target` must still structurally exist** (`field.cell_of(edge.target).is_some()`) — unlike
 /// every other command in this crate, `ReplacePointNodes` can itself remove a node an *earlier*
 /// command in the same batch already targeted as an edge endpoint (it replaces every node at the
 /// point at once, not just adds beside them), so a batch proposing splits at two adjacent points can have the second
@@ -98,7 +98,7 @@ pub(crate) fn replace_point_nodes_feasible<T: Tessellation>(
     let Some(level) = field.level_of(at) else {
         return false;
     };
-    let Some(point) = field.point_of(at) else {
+    let Some(point) = field.cell_of(at) else {
         return false;
     };
     if !field
@@ -109,7 +109,7 @@ pub(crate) fn replace_point_nodes_feasible<T: Tessellation>(
         return false;
     }
     nodes.iter().flatten().all(|edge| {
-        if field.point_of(edge.target).is_none() {
+        if field.cell_of(edge.target).is_none() {
             return false;
         }
         match edge.direction {
@@ -149,7 +149,7 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
         .level_of(at)
         .expect("replace_point_nodes_feasible confirmed this node exists");
     let point = field
-        .point_of(at)
+        .cell_of(at)
         .expect("replace_point_nodes_feasible confirmed this point exists");
     let old_nodes: Vec<NodeId> = field.nodes_at(level, point).to_vec();
     for &old in &old_nodes {
@@ -341,7 +341,7 @@ mod tests {
         let at_point = field.nodes_at(level, SquarePoint { x: 0, y: 0 });
         assert_eq!(at_point, &[new_nodes[0]]);
         assert!(
-            field.point_of(slot0).is_none(),
+            field.cell_of(slot0).is_none(),
             "old slot-0 id must be gone from the field"
         );
     }
@@ -470,8 +470,8 @@ mod tests {
             &[new_nodes[0]],
             "both old nodes gone, only the new one remains"
         );
-        assert!(field.point_of(slot0).is_none());
-        assert!(field.point_of(extra).is_none());
+        assert!(field.cell_of(slot0).is_none());
+        assert!(field.cell_of(extra).is_none());
     }
 
     #[test]

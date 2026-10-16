@@ -67,13 +67,13 @@ pub fn apply_commands<T: Tessellation>(
         };
         // `ReplacePointNodes`'s `old_nodes` (every node currently at `at`'s point) must be resolved
         // before the mutation runs, same "resolve while it's still live" reasoning as
-        // `edge_endpoints` above — `field.point_of`/`nodes_at` no longer return the old nodes once
+        // `edge_endpoints` above — `field.cell_of`/`nodes_at` no longer return the old nodes once
         // `try_replace_point_nodes` has replaced them.
         let old_point_nodes = match &cmd {
             MutationCommand::ReplacePointNodes { at, .. } => maze
                 .field
                 .level_of(*at)
-                .zip(maze.field.point_of(*at))
+                .zip(maze.field.cell_of(*at))
                 .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
             _ => None,
         };
@@ -82,7 +82,7 @@ pub fn apply_commands<T: Tessellation>(
         // slot-0 (see `retarget_endpoints`).
         let removed_node_point = match &cmd {
             MutationCommand::RemoveNode { node } => {
-                maze.field.level_of(*node).zip(maze.field.point_of(*node))
+                maze.field.level_of(*node).zip(maze.field.cell_of(*node))
             }
             _ => None,
         };
@@ -102,13 +102,13 @@ pub fn apply_commands<T: Tessellation>(
             MutationCommand::AddDirectedEdge { from, to }
             | MutationCommand::AddDirectedTeleport { from, to }
             | MutationCommand::AddDirectedVerticalPassage { from, to } => {
-                maze.field.point_of(*from).is_some() && maze.field.point_of(*to).is_some()
+                maze.field.cell_of(*from).is_some() && maze.field.cell_of(*to).is_some()
             }
             MutationCommand::AddBidirectionalEdge { a, b }
             | MutationCommand::AddBidirectionalTeleport { a, b }
             | MutationCommand::AddBidirectionalVerticalPassage { a, b }
             | MutationCommand::AddBidirectionalElevator { a, b } => {
-                maze.field.point_of(*a).is_some() && maze.field.point_of(*b).is_some()
+                maze.field.cell_of(*a).is_some() && maze.field.cell_of(*b).is_some()
             }
             _ => true,
         };
@@ -223,12 +223,12 @@ pub fn apply_commands<T: Tessellation>(
                 MutationCommand::RemoveNode { node } => {
                     // Note the node's own coordinates into the ledger (GitHub issue #271) *before*
                     // removal, same "resolve while it's still live" reasoning as `old_point_nodes`
-                    // above — `field.point_of` returns `None` once `try_remove_node` has removed it.
+                    // above — `field.cell_of` returns `None` once `try_remove_node` has removed it.
                     // Needed for a node that was never itself minted mid-run (e.g. the field's own
                     // original base nodes), whose coordinates otherwise exist nowhere once gone from
                     // both `Field` and the final snapshot.
                     if let (Some(state), Some(point)) =
-                        (debug_state.as_deref_mut(), maze.field.point_of(node))
+                        (debug_state.as_deref_mut(), maze.field.cell_of(node))
                     {
                         state.note(node, point);
                     }
@@ -245,7 +245,7 @@ pub fn apply_commands<T: Tessellation>(
                     // resolved while still live; its point is `at`'s own (every old node lives there).
                     if let (Some(state), Some(old_nodes)) =
                         (debug_state.as_deref_mut(), old_point_nodes.as_ref())
-                        && let Some(point) = maze.field.point_of(at)
+                        && let Some(point) = maze.field.cell_of(at)
                     {
                         for &old in old_nodes {
                             state.note(old, point);
@@ -583,7 +583,7 @@ pub(super) fn qc_event_proposed_for_command<T: Tessellation>(
             let old_nodes = maze
                 .field
                 .level_of(*at)
-                .zip(maze.field.point_of(*at))
+                .zip(maze.field.cell_of(*at))
                 .map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
                 .unwrap_or_default();
             QcEvent::PointNodesReplaceProposed {

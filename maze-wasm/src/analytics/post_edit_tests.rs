@@ -284,7 +284,7 @@ fn build_field_from_nodes_places_extra_slots_after_the_original_regardless_of_in
 
 #[test]
 fn build_field_from_nodes_rejects_a_node_outside_the_current_tessellation() {
-    // xy_to_point that maps every coordinate to None -- simulates a project saved before the
+    // xy_to_cell that maps every coordinate to None -- simulates a project saved before the
     // tessellation shrank, whose stale node no longer resolves to a real point.
     let nodes = vec![node(1, 5, 5, 0)];
     let xy_to_none = |_: [i32; 2]| -> Option<SquarePoint> { None };
@@ -372,7 +372,7 @@ fn apply_split_points_mints_distinct_new_nodes_when_none_exist_yet() {
 }
 
 /// GitHub issue #236's core fix: a slot that already has a real node (the field was rebuilt
-/// from the client's own authoritative node list via `Field::from_id_points`, matched by its
+/// from the client's own authoritative node list via `Field::from_id_cells`, matched by its
 /// real `i` — not by position) resolves to that exact same `NodeId` — no re-mint, no drift —
 /// instead of the old behavior where every call re-minted every slot from scratch in sorted
 /// order.
@@ -557,7 +557,7 @@ fn apply_split_points_rejects_unknown_level() {
 
 #[test]
 fn apply_split_points_rejects_point_removed_from_field_without_panicking() {
-    // xy_to_point that maps every coordinate to a Some(...) point, but the point isn't in
+    // xy_to_cell that maps every coordinate to a Some(...) point, but the point isn't in
     // the field — must not panic (Field::add_node_at panics on an unknown point), must
     // surface as an ordinary Err instead (e.g. a project saved before the tessellation shrank).
     let (mut maze, level_ids) = build_single_level_maze();

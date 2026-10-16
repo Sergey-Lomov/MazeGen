@@ -56,7 +56,7 @@ fn build_multi_level(
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })
@@ -374,9 +374,9 @@ fn apply_picks_the_same_candidate_regardless_of_insertion_order() {
             .map(|e| {
                 (
                     maze.field.level_index_of(e.from).unwrap(),
-                    maze.field.point_of(e.from).unwrap(),
+                    maze.field.cell_of(e.from).unwrap(),
                     maze.field.level_index_of(e.to).unwrap(),
-                    maze.field.point_of(e.to).unwrap(),
+                    maze.field.cell_of(e.to).unwrap(),
                 )
             })
             .collect();

@@ -467,7 +467,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)
@@ -544,7 +544,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)
@@ -677,7 +677,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)

@@ -76,7 +76,7 @@ impl<T: Tessellation> Maze<T> {
     pub fn add_node_at_on_level(
         &mut self,
         level: crate::space::LevelId,
-        point: T::Point,
+        point: T::CellId,
     ) -> NodeId {
         let node = self.field.add_node_at(level, point, &mut self.ids);
         self.graph.add_node(node);

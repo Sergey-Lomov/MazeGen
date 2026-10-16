@@ -35,7 +35,7 @@ pub fn resolve_vertical_target<T: Tessellation>(
     constraint: &DirectionConstraint,
     direction_balance: f64,
 ) -> Option<(NodeId, NodeId)> {
-    let point = maze.field.point_of(src)?;
+    let point = maze.field.cell_of(src)?;
     let src_level = maze.field.level_of(src)?;
     let levels: Vec<_> = maze.field.levels_ordered().collect();
     let idx = levels.iter().position(|&l| l == src_level)?;

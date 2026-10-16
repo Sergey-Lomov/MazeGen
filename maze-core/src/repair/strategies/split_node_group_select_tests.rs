@@ -134,11 +134,11 @@ fn selects_slot0_when_it_is_the_only_offered_candidate_and_a_sibling_remains() {
     );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert!(
-        maze.field.point_of(slot0).is_none(),
+        maze.field.cell_of(slot0).is_none(),
         "slot0 must be removed since it isn't the point's last remaining node"
     );
-    assert!(maze.field.point_of(extra1).is_some());
-    assert!(maze.field.point_of(extra2).is_some());
+    assert!(maze.field.cell_of(extra1).is_some());
+    assert!(maze.field.cell_of(extra2).is_some());
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn removes_exactly_one_node_of_the_group() {
 
     let removed_count = [slot0, extra1, extra2]
         .iter()
-        .filter(|&&n| maze.field.point_of(n).is_none())
+        .filter(|&&n| maze.field.cell_of(n).is_none())
         .count();
     assert_eq!(removed_count, 1, "to_remove=1 must remove exactly one node");
 }
@@ -198,13 +198,13 @@ fn apply_fixes_to_remove_multiple_nodes_from_a_single_group_in_one_call() {
 
     let removed_count = [extra1, extra2, extra3]
         .iter()
-        .filter(|&&n| maze.field.point_of(n).is_none())
+        .filter(|&&n| maze.field.cell_of(n).is_none())
         .count();
     assert_eq!(
         removed_count, 2,
         "to_remove=2 must remove exactly 2 nodes of the group in one apply() call"
     );
-    assert!(maze.field.point_of(slot0).is_some());
+    assert!(maze.field.cell_of(slot0).is_some());
 }
 
 #[test]
@@ -231,10 +231,10 @@ fn selection_most_connected_picks_the_more_connected_extra_node() {
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(
-        maze.field.point_of(extra1).is_none(),
+        maze.field.cell_of(extra1).is_none(),
         "extra1 (higher degree) must be picked under most_connected"
     );
-    assert!(maze.field.point_of(extra2).is_some());
+    assert!(maze.field.cell_of(extra2).is_some());
 }
 
 #[test]
@@ -261,10 +261,10 @@ fn selection_least_connected_picks_the_less_connected_extra_node() {
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(
-        maze.field.point_of(extra2).is_none(),
+        maze.field.cell_of(extra2).is_none(),
         "extra2 (lower degree) must be picked under least_connected"
     );
-    assert!(maze.field.point_of(extra1).is_some());
+    assert!(maze.field.cell_of(extra1).is_some());
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn preset_protected_candidate_is_excluded_and_group_reports_failed() {
     );
     assert!(matches!(result, RepairResult::Failed));
     assert!(
-        maze.field.point_of(extra1).is_some(),
+        maze.field.cell_of(extra1).is_some(),
         "preset-protected node must survive"
     );
 }
@@ -323,11 +323,11 @@ fn partially_preset_protected_group_removes_only_the_unprotected_candidate() {
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(
-        maze.field.point_of(extra1).is_some(),
+        maze.field.cell_of(extra1).is_some(),
         "preset-protected node must survive"
     );
     assert!(
-        maze.field.point_of(extra2).is_none(),
+        maze.field.cell_of(extra2).is_none(),
         "unprotected node must be the one removed"
     );
 }

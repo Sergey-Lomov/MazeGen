@@ -76,7 +76,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
 
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .split_points()
+            .split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 if !nodes.iter().any(|&n| node_matches(n)) {

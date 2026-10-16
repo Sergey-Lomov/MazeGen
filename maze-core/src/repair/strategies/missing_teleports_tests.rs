@@ -180,7 +180,7 @@ fn desired_length_interval_restricts_the_exit_distance() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..9 {
@@ -241,7 +241,7 @@ fn one_way_chance_zero_falls_back_to_directed_when_reverse_is_preset_blocked() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let mut preset_state = PresetState::empty();
@@ -295,7 +295,7 @@ fn attempts_limit_failure_on_one_slot_does_not_abort_remaining_slots() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let mut preset_state = PresetState::empty();
@@ -507,7 +507,7 @@ fn apply_does_not_duplicate_an_existing_edge_between_the_same_pair() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -548,7 +548,7 @@ fn entry_pick_farthest_from_random_places_entry_at_the_far_end_of_a_directed_cha
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -610,7 +610,7 @@ fn entry_pick_farthest_from_random_resolves_a_corridor_interior_candidate() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -677,7 +677,7 @@ fn farthest_from_via_nav_exhaustive_mode_finds_a_mid_corridor_node_nav_graph_mod
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -717,7 +717,7 @@ fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qu
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -772,7 +772,7 @@ fn allow_out_of_interval_false_fails_when_nothing_satisfies_the_interval() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -833,7 +833,7 @@ fn unreachable_priority_bridges_a_separate_strongly_connected_component() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..2 {
@@ -1093,7 +1093,7 @@ fn entry_pick_dead_end_priority_always_resolves_entry_to_a_dead_end() {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         for i in 0..4 {
@@ -1142,7 +1142,7 @@ fn exit_pick_dead_end_priority_prefers_a_dead_end_exit_within_the_resolved_zone(
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     // Rewire into a star-ish shape: nodes[0] hub connects to nodes[1] (dead end) and nodes[3];
@@ -1214,7 +1214,7 @@ fn exit_pick_dead_end_priority_falls_back_to_uniform_pick_when_the_zone_has_no_d
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);

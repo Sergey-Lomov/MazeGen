@@ -48,7 +48,7 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let field_cells = maze.field.point_count();
+        let field_cells = maze.field.cell_count();
         if field_cells == 0 {
             return;
         }
@@ -178,7 +178,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -258,7 +258,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);

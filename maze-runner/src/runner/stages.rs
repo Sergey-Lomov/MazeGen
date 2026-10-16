@@ -27,8 +27,8 @@ pub struct Seeded<T: Tessellation> {
     pub preset_state: PresetState,
     pub start_id: NodeId,
     pub gen_config: GenerationConfig,
-    pub point_from_xy: fn(i32, i32) -> T::Point,
-    pub point_to_xy: fn(T::Point) -> (i32, i32),
+    pub cell_from_xy: fn(i32, i32) -> T::CellId,
+    pub cell_to_xy: fn(T::CellId) -> (i32, i32),
 }
 
 /// Validates split patterns, adds every field node to a fresh graph, applies presets and resolves
@@ -43,11 +43,11 @@ pub fn seed_graph<T: Tessellation>(
         mut ids,
         start,
         gen_config,
-        point_from_xy,
-        point_to_xy,
+        cell_from_xy,
+        cell_to_xy,
     } = prepared;
 
-    let degree = field.tessellation().faces().len();
+    let degree = maze_core::space::symmetry_degree(field.tessellation());
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
 
     let mut graph = Graph::new();
@@ -64,7 +64,7 @@ pub fn seed_graph<T: Tessellation>(
         &gen_config.preset_elevators,
         &gen_config.locked_nodes,
         &gen_config.split_points,
-        point_from_xy,
+        cell_from_xy,
         None,
         None,
     )?;
@@ -78,7 +78,7 @@ pub fn seed_graph<T: Tessellation>(
         .preset_gen_source
         .as_ref()
         .and_then(|dto| {
-            preset_state.resolve_endpoint(&field, point_from_xy, preset_endpoint_dto_to_core(dto))
+            preset_state.resolve_endpoint(&field, cell_from_xy, preset_endpoint_dto_to_core(dto))
         })
         .or_else(|| field.nodes_at(level, start).first().copied())
         .ok_or_else(|| "start node not found".to_string())?;
@@ -91,8 +91,8 @@ pub fn seed_graph<T: Tessellation>(
         preset_state,
         start_id,
         gen_config,
-        point_from_xy,
-        point_to_xy,
+        cell_from_xy,
+        cell_to_xy,
     })
 }
 
@@ -127,7 +127,7 @@ fn pinned_endpoints<T: Tessellation>(
     let resolve = |dto: &crate::config::PresetEndpointDto| {
         seeded.preset_state.resolve_endpoint(
             &seeded.field,
-            seeded.point_from_xy,
+            seeded.cell_from_xy,
             preset_endpoint_dto_to_core(dto),
         )
     };

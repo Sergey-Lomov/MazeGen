@@ -8,7 +8,7 @@ use crate::dto::{ComputeAnalyticsConfig, MazeSnapshot};
 use crate::generation_config::{self, GenerateConfig};
 use maze_core::{Maze, graph::Graph, space::Tessellation};
 use maze_runner::runner::tessellation_factory::{
-    PointCodec, TessellationVisitor, build_tessellation,
+    CellCodec, TessellationVisitor, build_tessellation,
 };
 use post_edit::{
     apply_split_points, build_field_from_nodes, build_graph_from_post_edit_edges,
@@ -41,7 +41,7 @@ struct ComputeAnalyticsVisitor {
 impl TessellationVisitor for ComputeAnalyticsVisitor {
     type Output = Result<JsValue, JsValue>;
 
-    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         run_compute_analytics(self.cfg, tessellation, codec.to_xy, |[x, y]| {
             Some((codec.from_xy)(x, y))
         })
@@ -127,13 +127,13 @@ fn score_weights_from_strategies<'a>(
 fn run_compute_analytics<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
     tessellation: Arc<T>,
-    point_to_xy: impl Fn(T::Point) -> (i32, i32),
-    xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
+    cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
+    xy_to_cell: impl Fn([i32; 2]) -> Option<T::CellId>,
 ) -> Result<JsValue, JsValue>
 where
-    T::Point: Copy,
+    T::CellId: Copy,
 {
-    let snapshot = run_compute_analytics_core(cfg, tessellation, point_to_xy, xy_to_point)
+    let snapshot = run_compute_analytics_core(cfg, tessellation, cell_to_xy, xy_to_cell)
         .map_err(|e| JsValue::from_str(&e))?;
 
     snapshot
@@ -150,11 +150,11 @@ where
 fn run_compute_analytics_core<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
     tessellation: Arc<T>,
-    point_to_xy: impl Fn(T::Point) -> (i32, i32),
-    xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
+    cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
+    xy_to_cell: impl Fn([i32; 2]) -> Option<T::CellId>,
 ) -> Result<MazeSnapshot, String>
 where
-    T::Point: Copy,
+    T::CellId: Copy,
 {
     if cfg.nodes.is_empty() {
         return Err("nodes must not be empty".to_string());
@@ -167,7 +167,7 @@ where
         &tessellation,
         &cfg.nodes,
         cfg.level_fields.len(),
-        &xy_to_point,
+        &xy_to_cell,
     )?;
 
     let mut graph = Graph::new();
@@ -181,7 +181,7 @@ where
     // by (point, slot_id, level) that only comes into being here (GitHub issue #221/#359).
     let split_map = apply_split_points(
         &mut maze,
-        xy_to_point,
+        xy_to_cell,
         &cfg.split_points,
         &existing_by_index,
         &level_ids,
@@ -259,7 +259,7 @@ where
         None,
         &check_types,
         &preset_state,
-        point_to_xy,
+        cell_to_xy,
         |id, _, pos| {
             index_by_node
                 .get(&id)
@@ -303,10 +303,10 @@ mod tests {
         use crate::dto::NodeDto;
         use maze_core::space::{CairoPoint, CairoTessellation, SquarePoint, SquareTessellation};
 
-        fn xy_to_point(p: [i32; 2]) -> Option<SquarePoint> {
+        fn xy_to_cell(p: [i32; 2]) -> Option<SquarePoint> {
             Some(SquarePoint { x: p[0], y: p[1] })
         }
-        fn point_to_xy(p: SquarePoint) -> (i32, i32) {
+        fn cell_to_xy(p: SquarePoint) -> (i32, i32) {
             (p.x, p.y)
         }
 
@@ -347,8 +347,8 @@ mod tests {
             run_compute_analytics_core::<SquareTessellation>(
                 cfg,
                 Arc::default(),
-                point_to_xy,
-                xy_to_point,
+                cell_to_xy,
+                xy_to_cell,
             )
         }
 
@@ -418,7 +418,7 @@ mod tests {
                 Ok(_) => panic!("invalid Cairo points must be rejected by post-edit analytics"),
             };
 
-            assert!(error.contains("field contains an invalid point"));
+            assert!(error.contains("field contains an invalid cell"));
         }
 
         // GitHub issue #626 regression: re-adding a split slot at a point whose only prior slot was
@@ -860,8 +860,8 @@ mod tests {
         #[test]
         fn preset_declared_split_node_with_only_a_preset_protected_edge_reaches_the_dto_marked_preset_locked()
          {
-            let xy_to_point = |[x, y]: [i32; 2]| Some(SquarePoint { x, y });
-            let point_to_xy = |p: SquarePoint| (p.x, p.y);
+            let xy_to_cell = |[x, y]: [i32; 2]| Some(SquarePoint { x, y });
+            let cell_to_xy = |p: SquarePoint| (p.x, p.y);
 
             // Original nodes at (0,0) and (1,0), ids 1 and 2 -- mirrors NodeDto's real wire shape.
             let nodes = vec![
@@ -889,7 +889,7 @@ mod tests {
                     &Arc::default(),
                     &nodes,
                     1,
-                    &xy_to_point,
+                    &xy_to_cell,
                 )
                 .unwrap();
             let mut graph = Graph::new();
@@ -899,7 +899,7 @@ mod tests {
             let mut maze = Maze::<SquareTessellation>::new(field, graph);
             let split_map = apply_split_points(
                 &mut maze,
-                xy_to_point,
+                xy_to_cell,
                 &split_points,
                 &existing_by_index,
                 &level_ids,
@@ -979,7 +979,7 @@ mod tests {
                 None,
                 &HashMap::new(),
                 &preset_state,
-                point_to_xy,
+                cell_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32),
                 None,
             )
@@ -1021,8 +1021,8 @@ mod tests {
 
         #[test]
         fn vertical_passage_and_elevator_edges_survive_into_the_snapshot_as_their_own_dto_kind() {
-            let xy_to_point = |[x, y]: [i32; 2]| Some(SquarePoint { x, y });
-            let point_to_xy = |p: SquarePoint| (p.x, p.y);
+            let xy_to_cell = |[x, y]: [i32; 2]| Some(SquarePoint { x, y });
+            let cell_to_xy = |p: SquarePoint| (p.x, p.y);
 
             let nodes = vec![
                 NodeDto {
@@ -1052,7 +1052,7 @@ mod tests {
                     &Arc::default(),
                     &nodes,
                     1,
-                    &xy_to_point,
+                    &xy_to_cell,
                 )
                 .unwrap();
             let mut graph = Graph::new();
@@ -1060,8 +1060,7 @@ mod tests {
                 graph.add_node(node);
             }
             let mut maze = Maze::<SquareTessellation>::new(field, graph);
-            apply_split_points(&mut maze, xy_to_point, &[], &existing_by_index, &level_ids)
-                .unwrap();
+            apply_split_points(&mut maze, xy_to_cell, &[], &existing_by_index, &level_ids).unwrap();
 
             restore_vertical_edges(
                 &mut maze.graph,
@@ -1086,7 +1085,7 @@ mod tests {
                 Some(vec![]),
                 &HashMap::new(),
                 &preset_state,
-                point_to_xy,
+                cell_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32),
                 None,
             )

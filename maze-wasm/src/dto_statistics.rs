@@ -163,7 +163,7 @@ pub struct FloorScoped<T> {
 #[derive(Serialize)]
 pub struct MazeStatisticsDto {
     pub graph_stats: GraphStatsDto,
-    /// Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
+    /// Real geometric cell count per floor — `Field::all_cells()` count, deduped by point (a
     /// split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
     /// breakdown, this is derived straight from field shape, not reconstructed by summing
     /// `cell_stats`' own counts (which would count a split point's every extra node separately).

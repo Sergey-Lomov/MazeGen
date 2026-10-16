@@ -7,7 +7,7 @@ use maze_core::{
     space::{Field, MultiLevelField, Tessellation},
 };
 use maze_runner::runner::tessellation_factory::{
-    PointCodec, TessellationVisitor, build_tessellation,
+    CellCodec, TessellationVisitor, build_tessellation,
 };
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -34,7 +34,7 @@ fn resolve_start<P: Copy>(
 /// count and `level_fields.len()` can never disagree.
 fn build_multi_level_field<T: Tessellation>(
     tessellation: &Arc<T>,
-    mut level_points: Vec<Vec<T::Point>>,
+    mut level_points: Vec<Vec<T::CellId>>,
     ids: &mut IdGenerator,
 ) -> Result<MultiLevelField<T>, JsValue> {
     let first = level_points.remove(0);
@@ -64,9 +64,9 @@ struct GenerateVisitor<'a> {
 impl TessellationVisitor for GenerateVisitor<'_> {
     type Output = Result<GenerateResult, JsValue>;
 
-    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         let GenerateVisitor { seed, config } = self;
-        let level_points: Vec<Vec<T::Point>> = config
+        let level_points: Vec<Vec<T::CellId>> = config
             .level_fields
             .iter()
             .map(|raw| raw.iter().map(|&[x, y]| (codec.from_xy)(x, y)).collect())

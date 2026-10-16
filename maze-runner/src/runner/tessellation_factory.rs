@@ -7,25 +7,25 @@ use std::sync::Arc;
 
 /// Wire encoding of a tessellation's points as `[i32; 2]` pairs. Defined per kind by the factory;
 /// it round-trips only under the same tessellation config.
-pub struct PointCodec<T: Tessellation> {
-    pub from_xy: fn(i32, i32) -> T::Point,
-    pub to_xy: fn(T::Point) -> (i32, i32),
+pub struct CellCodec<T: Tessellation> {
+    pub from_xy: fn(i32, i32) -> T::CellId,
+    pub to_xy: fn(T::CellId) -> (i32, i32),
 }
 
-impl<T: Tessellation> Clone for PointCodec<T> {
+impl<T: Tessellation> Clone for CellCodec<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Tessellation> Copy for PointCodec<T> {}
+impl<T: Tessellation> Copy for CellCodec<T> {}
 
 /// Consumer of a freshly built tessellation instance — the single place where a runtime
 /// `TessellationKind` turns into a compile-time `T`. Every `maze-runner`/`maze-wasm` entry point
 /// goes through `build_tessellation` with its own visitor.
 pub trait TessellationVisitor {
     type Output;
-    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output;
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output;
 }
 
 /// Builds the tessellation instance described by `config` and hands it to `visitor`. The same
@@ -39,7 +39,7 @@ pub fn build_tessellation<V: TessellationVisitor>(
             reject_params(config)?;
             Ok(visitor.visit(
                 Arc::new(SquareTessellation),
-                PointCodec {
+                CellCodec {
                     from_xy: |x, y| SquarePoint { x, y },
                     to_xy: |p| (p.x, p.y),
                 },
@@ -49,7 +49,7 @@ pub fn build_tessellation<V: TessellationVisitor>(
             reject_params(config)?;
             Ok(visitor.visit(
                 Arc::new(HexTessellation),
-                PointCodec {
+                CellCodec {
                     from_xy: |q, r| HexPoint { q, r },
                     to_xy: |p| (p.q, p.r),
                 },
@@ -59,7 +59,7 @@ pub fn build_tessellation<V: TessellationVisitor>(
             reject_params(config)?;
             Ok(visitor.visit(
                 Arc::new(TriTessellation),
-                PointCodec {
+                CellCodec {
                     from_xy: |col, row| TriPoint { col, row },
                     to_xy: |p| (p.col, p.row),
                 },
@@ -69,7 +69,7 @@ pub fn build_tessellation<V: TessellationVisitor>(
             reject_params(config)?;
             Ok(visitor.visit(
                 Arc::new(CairoTessellation),
-                PointCodec {
+                CellCodec {
                     from_xy: |x, y| CairoPoint { x, y },
                     to_xy: |p| (p.x, p.y),
                 },
@@ -91,24 +91,20 @@ fn reject_params(config: &TessellationConfig) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PointCodec, TessellationVisitor, build_tessellation};
+    use super::{CellCodec, TessellationVisitor, build_tessellation};
     use crate::config::{TessellationConfig, TessellationKind};
     use maze_core::space::Tessellation;
     use std::sync::Arc;
 
-    /// Reports the built instance's face count and the codec round-trip of one point.
+    /// Reports the built instance's `symmetry_degree` and the codec round-trip of one point.
     struct Probe;
 
     impl TessellationVisitor for Probe {
         type Output = (usize, (i32, i32));
 
-        fn visit<T: Tessellation>(
-            self,
-            tessellation: Arc<T>,
-            codec: PointCodec<T>,
-        ) -> Self::Output {
+        fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
             (
-                tessellation.faces().len(),
+                maze_core::space::symmetry_degree(&*tessellation),
                 (codec.to_xy)((codec.from_xy)(3, -2)),
             )
         }

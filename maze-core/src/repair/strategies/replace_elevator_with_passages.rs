@@ -137,7 +137,7 @@ fn full_floor_span_pairs<T: Tessellation>(
     let Some(&first) = elevator.stops.first() else {
         return vec![];
     };
-    let Some(point) = maze.field.point_of(first) else {
+    let Some(point) = maze.field.cell_of(first) else {
         return vec![];
     };
 

@@ -54,7 +54,7 @@ fn default_params() -> StrategyParams {
 }
 
 /// Builds a `w`x`h` square field replicated across `levels` floors, no edges at all, and
-/// returns the nodes of each level in `all_points` order (row-major). Every point exists on
+/// returns the nodes of each level in `all_cells` order (row-major). Every point exists on
 /// every floor (same shape), so `resolve_vertical_target` always finds a same-point node one
 /// floor up/down.
 fn build_multi_level(
@@ -78,7 +78,7 @@ fn build_multi_level(
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })

@@ -43,7 +43,7 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let candidates: Vec<(NodeId, usize, usize, T::Point)> = elevator_groups(maze)
+        let candidates: Vec<(NodeId, usize, usize, T::CellId)> = elevator_groups(maze)
             .into_iter()
             .enumerate()
             .flat_map(|(elevator_index, elevator)| {
@@ -54,7 +54,7 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
             })
             .filter_map(|(elevator_index, node)| {
                 let level = maze.field.level_index_of(node)?;
-                let point = maze.field.point_of(node)?;
+                let point = maze.field.cell_of(node)?;
                 Some((node, elevator_index, level, point))
             })
             .collect();

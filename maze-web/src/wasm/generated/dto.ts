@@ -490,7 +490,7 @@ export interface FloorScoped<T> {
 export interface MazeStatisticsDto {
   graph_stats: GraphStatsDto;
   /**
-   * Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
+   * Real geometric cell count per floor — `Field::all_cells()` count, deduped by point (a
    * split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
    * breakdown, this is derived straight from field shape, not reconstructed by summing
    * `cell_stats`' own counts (which would count a split point's every extra node separately).
@@ -586,7 +586,7 @@ export interface ComputeAnalyticsConfig {
   level_fields: [number, number][][];
   /**
    * The client's authoritative node list (real ids from the previous generation/confirm) —
-   * `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_points`) instead of
+   * `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_cells`) instead of
    * re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a
    * rebuild reproduce the exact same ids the client already holds, including auto-split nodes
    * created by the generator (whose ids come from traversal order, not coordinate order). Each

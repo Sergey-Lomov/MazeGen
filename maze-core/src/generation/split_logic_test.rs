@@ -4,7 +4,7 @@ use crate::generation::split_pattern::{
 };
 use crate::generation::test_utils::make_field_graph_ids;
 use crate::generation::{ElementsConfig, GenerationParams, PresetState};
-use crate::space::{SquarePoint, Tessellation};
+use crate::space::SquarePoint;
 
 fn no_split_elements() -> ElementsConfig {
     ElementsConfig {
@@ -32,32 +32,6 @@ fn empty_presets() -> PresetState {
 
 fn no_split_config() -> SplitGenerationConfig {
     SplitGenerationConfig::default()
-}
-
-// ─── face_index / face_at round-trip ────────────────────────────────────
-
-#[test]
-fn face_index_face_at_round_trip_square() {
-    for f in crate::space::SquareTessellation.faces() {
-        let idx = crate::space::SquareTessellation.face_index(*f).unwrap();
-        assert!(crate::space::SquareTessellation.face_at(idx) == Some(*f));
-    }
-}
-
-#[test]
-fn face_index_face_at_round_trip_hex() {
-    for f in crate::space::HexTessellation.faces() {
-        let idx = crate::space::HexTessellation.face_index(*f).unwrap();
-        assert!(crate::space::HexTessellation.face_at(idx) == Some(*f));
-    }
-}
-
-#[test]
-fn face_index_face_at_round_trip_tri() {
-    for f in crate::space::TriTessellation.faces() {
-        let idx = crate::space::TriTessellation.face_index(*f).unwrap();
-        assert!(crate::space::TriTessellation.face_at(idx) == Some(*f));
-    }
 }
 
 // ─── RNG parity at split_chance == 0.0 ──────────────────────────────────
@@ -202,7 +176,7 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
         None,
     );
     let mut checked_a_split = false;
-    for point in field.field_of(field_level).unwrap().all_points() {
+    for point in field.field_of(field_level).unwrap().all_cells() {
         let nodes = field.nodes_at(field_level, point);
         if nodes.len() <= 1 {
             continue;
@@ -260,7 +234,7 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
         None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
-    let point = field.point_of(start).unwrap();
+    let point = field.cell_of(start).unwrap();
     for &n in field.nodes_at(field_level, point) {
         let degree = graph.outgoing_neighbors(n).count() + graph.incoming_neighbors(n).count();
         assert!(

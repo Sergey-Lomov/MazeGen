@@ -319,7 +319,7 @@ fn split_points_dedups_a_split_tile_and_skips_unsplit_points() {
     let level = mf.single_level_id();
     mf.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
 
-    let points: Vec<_> = mf.split_points().collect();
+    let points: Vec<_> = mf.split_cells().collect();
     assert_eq!(
         points,
         vec![(level, SquarePoint { x: 1, y: 0 })],
@@ -340,7 +340,7 @@ fn split_points_is_scoped_per_level() {
     mf.add_node_at(level_a, SquarePoint { x: 0, y: 0 }, &mut ids);
     mf.add_node_at(level_b, SquarePoint { x: 1, y: 0 }, &mut ids);
 
-    let points: std::collections::HashSet<_> = mf.split_points().collect();
+    let points: std::collections::HashSet<_> = mf.split_cells().collect();
     assert_eq!(
         points,
         std::collections::HashSet::from([
@@ -359,8 +359,8 @@ fn is_split_point_matches_split_points() {
     let plain = SquarePoint { x: 1, y: 0 };
     mf.add_node_at(level, split, &mut ids);
 
-    assert!(mf.is_split_point(level, split));
-    assert!(!mf.is_split_point(level, plain));
+    assert!(mf.is_split_cell(level, split));
+    assert!(!mf.is_split_cell(level, plain));
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn all_points_with_level_covers_every_level_in_order() {
     let l0 = mf.add_level(f0);
     let l1 = mf.add_level(f1);
 
-    let pairs: Vec<(LevelId, SquarePoint)> = mf.all_points_with_level().collect();
+    let pairs: Vec<(LevelId, SquarePoint)> = mf.all_cells_with_level().collect();
     assert_eq!(pairs.len(), 3);
     assert!(pairs.iter().take(2).all(|(l, _)| *l == l0));
     assert!(pairs.iter().skip(2).all(|(l, _)| *l == l1));
@@ -402,7 +402,7 @@ fn field_of_gives_read_only_access_to_the_wrapped_field() {
     let (mf, _ids) = single(2, 2);
     let level = mf.single_level_id();
     let field = mf.field_of(level).unwrap();
-    assert_eq!(field.point_count(), 4);
+    assert_eq!(field.cell_count(), 4);
 }
 
 #[test]
@@ -467,13 +467,13 @@ fn remove_level_returns_the_same_field_that_was_added() {
     let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
     let field =
         Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
-    let expected_points: Vec<SquarePoint> = field.all_points().collect();
+    let expected_points: Vec<SquarePoint> = field.all_cells().collect();
     let expected_nodes: Vec<NodeId> = field.all_node_ids().collect();
     let level = mf.add_level(field);
 
     let removed = mf.remove_level(level).unwrap();
 
-    assert_eq!(removed.all_points().collect::<Vec<_>>(), expected_points);
+    assert_eq!(removed.all_cells().collect::<Vec<_>>(), expected_points);
     assert_eq!(removed.all_node_ids().collect::<Vec<_>>(), expected_nodes);
 }
 
@@ -553,19 +553,19 @@ fn point_count_sums_across_levels_and_differs_from_node_count_with_splits() {
     );
 
     // 4 points on the first level + 1 on the second = 5, regardless of extra split nodes added below.
-    assert_eq!(mf.point_count(), 5);
+    assert_eq!(mf.cell_count(), 5);
 
-    // A split (extra node on an existing point) grows node_count but not point_count.
+    // A split (extra node on an existing point) grows node_count but not cell_count.
     mf.add_node_at(level, SquarePoint { x: 0, y: 0 }, &mut ids);
     assert_eq!(
-        mf.point_count(),
+        mf.cell_count(),
         5,
-        "point_count must not grow when a point gains an extra split node"
+        "cell_count must not grow when a point gains an extra split node"
     );
     assert_ne!(
-        mf.point_count(),
+        mf.cell_count(),
         mf.node_count(),
-        "split node makes node_count diverge from point_count"
+        "split node makes node_count diverge from cell_count"
     );
 }
 
@@ -576,8 +576,8 @@ fn point_of_resolves_on_the_nodes_own_level_and_is_none_for_unknown_node() {
     let p = SquarePoint { x: 1, y: 0 };
     let node = mf.node_at(level, p).unwrap();
 
-    assert_eq!(mf.point_of(node), Some(p));
-    assert_eq!(mf.point_of(999_999), None);
+    assert_eq!(mf.cell_of(node), Some(p));
+    assert_eq!(mf.cell_of(999_999), None);
 }
 
 #[test]

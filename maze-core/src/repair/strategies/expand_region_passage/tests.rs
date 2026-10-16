@@ -44,8 +44,8 @@ fn default_params() -> StrategyParams {
     )
 }
 
-/// Builds a `w`x`h` square field with no edges and returns its nodes in `all_points` order
-/// (row-major, since `square_rect` yields points row-major and `all_points` is sorted by
+/// Builds a `w`x`h` square field with no edges and returns its nodes in `all_cells` order
+/// (row-major, since `square_rect` yields points row-major and `all_cells` is sorted by
 /// `NodeId`/creation order) — the common setup every test in this file starts from before
 /// wiring up its own edges.
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
@@ -59,7 +59,7 @@ fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (Maze::new(field, g), nodes)
@@ -410,7 +410,7 @@ fn one_way_fails_when_only_a_single_bridging_pair_exists() {
 /// pairs for one_way mode's max-separation placement.
 fn maze_2x2_two_columns() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let (mut maze, nodes) = build_field(2, 2);
-    // all_points order is sorted by NodeId (creation order), which square_rect yields
+    // all_cells order is sorted by NodeId (creation order), which square_rect yields
     // row-major: (0,0),(1,0),(0,1),(1,1).
     // Left column {nodes[0], nodes[2]} as one region, right column {nodes[1], nodes[3]}
     // as another -> connect within each column only.
@@ -569,7 +569,7 @@ fn one_way_completes_missing_direction_maximizing_min_distance_to_all_occupied_p
     // other occupied pair (row 4). The correct max-min-distance choice is row 2, maximizing
     // the *minimum* distance to both occupied pairs (row 0 and row 4) at once.
     let (mut maze, nodes) = build_field(2, 5);
-    // all_points sorted by NodeId (row-major): row_i = [nodes[2*i], nodes[2*i+1]].
+    // all_cells sorted by NodeId (row-major): row_i = [nodes[2*i], nodes[2*i+1]].
     let left: Vec<NodeId> = (0..5).map(|i| nodes[2 * i]).collect();
     let right: Vec<NodeId> = (0..5).map(|i| nodes[2 * i + 1]).collect();
     for i in 0..4 {
@@ -697,7 +697,7 @@ fn prefer_partially_connected_applies_to_one_way_mode_too() {
     // unconnected left neighbor, and one_way mode completes the missing inbound direction
     // through the *other* row's pair (not the one already carrying the outbound edge).
     let (mut maze, nodes) = build_field(4, 2);
-    // all_points sorted by NodeId (creation/row-major order): row0 = nodes[0..4],
+    // all_cells sorted by NodeId (creation/row-major order): row0 = nodes[0..4],
     // row1 = nodes[4..8], each row laid out col0..col3.
     let left = [nodes[0], nodes[1], nodes[4], nodes[5]]; // cols 0-1, both rows
     let middle = [nodes[2], nodes[6]]; // col 2, both rows
@@ -754,7 +754,7 @@ fn mode_prefer_needy_picks_a_flagged_neighbor_in_one_way_mode_too() {
     // MODE_PREFER_NEEDY + connection_mode=one_way must bridge into the needy left neighbor,
     // building both one-way directions through the left neighbor's two distinct row pairs.
     let (mut maze, nodes) = build_field(3, 2);
-    // all_points sorted by NodeId (row-major): row0 = nodes[0..3], row1 = nodes[3..6].
+    // all_cells sorted by NodeId (row-major): row0 = nodes[0..3], row1 = nodes[3..6].
     let left = [nodes[0], nodes[3]];
     let middle = [nodes[1], nodes[4]];
     let right = [nodes[2], nodes[5]];

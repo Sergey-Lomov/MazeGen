@@ -67,7 +67,7 @@ fn free_floors<T: Tessellation>(maze: &Maze<T>, stops: &[crate::ids::NodeId]) ->
     let Some(&first) = stops.first() else {
         return Vec::new();
     };
-    let Some(point) = maze.field.point_of(first) else {
+    let Some(point) = maze.field.cell_of(first) else {
         return Vec::new();
     };
     maze.field

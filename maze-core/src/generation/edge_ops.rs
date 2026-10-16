@@ -96,7 +96,7 @@ pub(crate) fn split_aware_neighbors<T: Tessellation>(
 ) -> Vec<NodeId> {
     let siblings: &[NodeId] = field
         .level_of(node)
-        .zip(field.point_of(node))
+        .zip(field.cell_of(node))
         .map(|(level, point)| field.nodes_at(level, point))
         .unwrap_or(&[]);
     field

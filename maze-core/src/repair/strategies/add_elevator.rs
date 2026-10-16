@@ -250,7 +250,7 @@ fn try_build_elevator<T: Tessellation>(
     rng: &mut dyn RngCore,
 ) -> Option<Vec<NodeId>> {
     let start_idx = maze.field.level_index_of(start)?;
-    let point = maze.field.point_of(start)?;
+    let point = maze.field.cell_of(start)?;
 
     let max_len_here = levels.len().min(length_max);
     if max_len_here < length_min {
@@ -694,7 +694,7 @@ mod tests {
                 .field
                 .field_of(level)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .filter_map(|p| {
                     if p == survivor_point {
                         None

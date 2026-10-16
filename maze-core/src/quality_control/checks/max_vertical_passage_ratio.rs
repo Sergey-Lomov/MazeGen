@@ -46,7 +46,7 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for MaxVertical
 
         let (group, to_remove) = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 if field_cells == 0 {
                     return;
                 }

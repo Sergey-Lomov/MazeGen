@@ -82,7 +82,7 @@ UPDATE_BASELINES=1 cargo test -p maze-runner --test baselines
 - **#756 (per-cell neighbor contract)**, **#757 (shape templates)** — no behavior change; every
   baseline must match exactly.
 - **#758 (split logic on shape templates, canonical circular face order)** — the fixtures' split
-  patterns are authored as `face_index` in today's `faces()` order. Translate them to the new
+  patterns are authored as `face_index` in today's `faces_of` order. Translate them to the new
   face order (or attach their `shape`) in the same change, so each pattern keeps its geometric
   meaning; otherwise baselines diverge because the fixture changed, not the behavior. Then:
   - `qc`/`repair` sections on fixed graphs must match canonically;

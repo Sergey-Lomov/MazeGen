@@ -201,7 +201,7 @@ fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
     let pattern = SplitPattern {
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: GappedSquareTessellation.face_index(SquareFace::E).unwrap(),
+            face_index: east_face_index(),
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -323,11 +323,11 @@ fn pattern_mode_never_leaves_a_stale_edge_referencing_the_old_slot0_id() {
 
     let old_slot0 = *all_nodes_before
         .iter()
-        .find(|&&n| maze.field.point_of(n).is_none())
+        .find(|&&n| maze.field.cell_of(n).is_none())
         .expect("exactly one pre-existing node must have been replaced");
 
     assert!(
-        maze.field.point_of(old_slot0).is_none(),
+        maze.field.cell_of(old_slot0).is_none(),
         "old slot0 id must no longer resolve to a point"
     );
     for other in maze.field.all_node_ids() {
@@ -359,7 +359,7 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
     g.add_bidirectional_edge(west_slot1, at, EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let point = maze.field.point_of(at).unwrap();
+    let point = maze.field.cell_of(at).unwrap();
     let pattern = SplitPattern {
         node_count: 2,
         faces: vec![
@@ -397,4 +397,13 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
         per_node[1].iter().any(|e| e.target == west_slot1),
         "must wire the new node to the neighbor's actual owning node (slot-1)"
     );
+}
+
+/// Position of `SquareFace::E` in `GappedSquareTessellation`'s (uniform) face order.
+fn east_face_index() -> usize {
+    GappedSquareTessellation
+        .faces_of(SquarePoint { x: 0, y: 0 })
+        .iter()
+        .position(|&face| face == SquareFace::E)
+        .unwrap()
 }

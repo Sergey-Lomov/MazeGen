@@ -225,7 +225,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         for i in 0..len - 1 {
@@ -246,7 +246,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         for i in 0..len - 1 {
@@ -366,7 +366,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.build_initial_edge(nodes[1], nodes[0], EdgeKind::Basic);
@@ -419,7 +419,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.build_initial_edge(nodes[1], nodes[0], EdgeKind::Basic);
@@ -523,7 +523,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -588,7 +588,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         // Short forward: nodes[0] -> nodes[1] (1 hop).
@@ -667,7 +667,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);

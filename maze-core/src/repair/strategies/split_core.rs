@@ -190,10 +190,9 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
     allow_lose: bool,
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let point = maze.field.point_of(at)?;
+    let point = maze.field.cell_of(at)?;
     let tessellation = maze.field.tessellation();
-    let degree = tessellation.faces().len();
-    if degree == 0 || pattern.node_count < 2 {
+    if crate::space::symmetry_degree(tessellation) == 0 || pattern.node_count < 2 {
         return None;
     }
     if required.is_some_and(|r| excluded.contains(&r.neighbor)) {
@@ -228,7 +227,7 @@ pub(crate) fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
 }
 
 /// One rotation/mirror candidate: resolves every one of the pattern's `node_count` new nodes' own
-/// faces to real neighbors (`T::step` off `point`) — including node 0, the new slot-0, on equal
+/// faces to real neighbors (`T::neighbor` off `point`) — including node 0, the new slot-0, on equal
 /// footing with every other node (split creation has no removal-eligibility rule to apply here).
 ///
 /// When `required` is set, this candidate is only accepted if some node's resolved faces include
@@ -241,7 +240,7 @@ pub(crate) fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
 pub(crate) fn try_pattern_adaptation<T: Tessellation>(
     maze: &Maze<T>,
     at: NodeId,
-    point: T::Point,
+    point: T::CellId,
     pattern: &SplitPattern,
     rotation: usize,
     mirror: Option<usize>,
@@ -269,8 +268,8 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
             match face.requirement {
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let tess_face = tessellation.face_at(resolved_index)?;
-                    let neighbor_point = tessellation.step(point, tess_face)?;
+                    let &tess_face = tessellation.faces_of(point).get(resolved_index)?;
+                    let (neighbor_point, _) = tessellation.neighbor(point, tess_face)?;
                     let level = maze.field.level_of(at).expect("at must be in field");
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
@@ -437,7 +436,7 @@ mod tests {
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
             .unwrap();
-        let point = maze.field.point_of(at).unwrap();
+        let point = maze.field.cell_of(at).unwrap();
         let east_neighbor = maze
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })
@@ -479,7 +478,7 @@ mod tests {
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
             .unwrap();
-        let point = maze.field.point_of(at).unwrap();
+        let point = maze.field.cell_of(at).unwrap();
         let east_neighbor = maze
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })

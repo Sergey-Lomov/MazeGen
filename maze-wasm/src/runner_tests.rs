@@ -1246,7 +1246,7 @@ mod preset_locked_end_to_end_tests {
         let nodes: Vec<_> = field
             .field_of(level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.nodes_at(level, p)[0])
             .collect();
         let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -1383,7 +1383,7 @@ mod preset_locked_end_to_end_tests {
             graph.add_node(node);
         }
 
-        let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
+        let xy_to_cell = |x: i32, y: i32| SquarePoint { x, y };
         let split_points = vec![((1, 0), 0u32, 0u32)];
         // Both slot0's and the extra slot's connections to the neighbor are preset Passages --
         // the whole group must resolve preset_locked: true (all_preset_locked requires *every*
@@ -1413,7 +1413,7 @@ mod preset_locked_end_to_end_tests {
             &[],
             &[],
             &split_points,
-            xy_to_point,
+            xy_to_cell,
             None,
             None,
         )

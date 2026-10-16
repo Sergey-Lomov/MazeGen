@@ -153,7 +153,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue>
             let Some(level) = maze.field.level_of(e.from) else {
                 return false;
             };
-            let Some(point) = maze.field.point_of(e.from) else {
+            let Some(point) = maze.field.cell_of(e.from) else {
                 return false;
             };
             maze.field.nodes_at(level, point).first() == Some(&e.from)

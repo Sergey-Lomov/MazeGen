@@ -78,7 +78,7 @@ fn maze_with_two_teleports() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -183,7 +183,7 @@ fn problematic_priority_removes_the_teleport_in_more_pairs() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -264,7 +264,7 @@ fn missing_priority_override_falls_back_to_problematic_default() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -325,7 +325,7 @@ fn already_resolved_pair_is_skipped() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -381,7 +381,7 @@ fn removing_a_teleport_also_resolves_a_pair_referencing_its_reverse_direction() 
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -446,7 +446,7 @@ fn protect_route_falls_back_to_the_non_route_side_of_the_pair() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -500,7 +500,7 @@ fn protect_route_leaves_pair_untouched_and_fails_when_both_sides_are_route_criti
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -553,7 +553,7 @@ fn protect_route_untouched_pair_does_not_block_a_different_fixable_pair() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -616,7 +616,7 @@ fn protect_route_falls_back_correctly_across_multiple_pairs_sharing_the_protecte
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -671,7 +671,7 @@ fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -727,7 +727,7 @@ fn nested_allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
@@ -783,7 +783,7 @@ fn protect_route_default_is_true_when_no_override_is_given() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);

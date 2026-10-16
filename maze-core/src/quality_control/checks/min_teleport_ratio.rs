@@ -11,7 +11,7 @@ pub const MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFl
 
 /// Flags a deficit against the share of distinct teleports (see `count_distinct_teleports`)
 /// relative to the field's size — see GitHub issue #211. Mirrors `MinOneWayRatioCheck`'s role for
-/// one-ways: a count expressed per 100 field cells (via `maze.field.point_count()`).
+/// one-ways: a count expressed per 100 field cells (via `maze.field.cell_count()`).
 ///
 /// Compares `count * 100` against `min_teleport_ratio * field_cells` directly instead of computing an
 /// intermediate `count * 100 / field_cells` ratio — the intermediate division floors, which can
@@ -40,7 +40,7 @@ impl<T: Tessellation> Check<T, MissingTeleportsIssue> for MinTeleportRatioCheck 
 
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 let missing = Self::missing_for(
                     count_distinct_teleports(maze) as u64,
                     field_cells,

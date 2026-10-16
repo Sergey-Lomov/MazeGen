@@ -93,7 +93,7 @@ fn pattern_split_emits_edge_added_for_every_face_edge_it_creates() {
     drop(scope);
     assert_eq!(outcome, SplitOutcome::Handled);
 
-    let point = field.point_of(src).unwrap();
+    let point = field.cell_of(src).unwrap();
     let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(
         split_nodes.len(),
@@ -185,7 +185,7 @@ fn pattern_split_never_pushes_src_or_siblings_into_frontier() {
     );
     assert_eq!(outcome, SplitOutcome::Handled);
 
-    let point = field.point_of(src).unwrap();
+    let point = field.cell_of(src).unwrap();
     let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(
         split_nodes.len(),
@@ -324,7 +324,7 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
     drop(scope);
     assert_eq!(outcome, SplitOutcome::Handled);
 
-    let point = field.point_of(src).unwrap();
+    let point = field.cell_of(src).unwrap();
     let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(split_nodes.len(), 2);
     let sibling = split_nodes[1];
