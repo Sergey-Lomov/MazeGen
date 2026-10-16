@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ParamFields, isEntityVisible } from "../components/features/ParamFields";
 import type { ParamDescriptor } from "../wasm/types";
 import { useMazeStore } from "../store/mazeStore";
+import * as m from "~/paraglide/messages";
 
 // ParamFields is intentionally uncontrolled -- it re-renders off whatever `values` prop it's
 // given, same as its real callers (useParamEditor's local `values` state). A bare static
@@ -210,11 +211,11 @@ describe("ParamFields", () => {
       expect(onCommit).toHaveBeenLastCalledWith("max_attempts", "9");
     });
 
-    it("passes integer=true for an integer param (decimal point blocked)", () => {
+    it("passes integer=true for an integer param and explains rejected decimal input", () => {
       render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
-      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
-      expect(input.dispatchEvent(event)).toBe(false);
+      fireEvent.keyDown(input, { key: "." });
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
     });
 
     it("does not pass integer=true for a float param (decimal point allowed)", () => {

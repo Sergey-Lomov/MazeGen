@@ -161,6 +161,10 @@ All 8 new parameters live in `ElementsConfig` (not `GenerationParams`) alongside
 | `elevator_branching` | 0.0–1.0 | 0.5 | Growth factor from `elevator_span_min` toward the run's actual `max_slots` (clamped by `elevator_span_max`) — same binomial shape as `junction_count`, but parameterized by `elevator_span_min` instead of a fixed `2`. |
 | `allow_non_consecutive_elevator_floors` | bool | false | When false, an elevator's unvisited floor pool is clamped to the longest contiguous run (by floor order) before the branching roll — `floor_count` is never drawn from an unreachable range. When true, any unvisited floor is eligible regardless of gaps. |
 
+The two elevator-span controls use the shared integer `NumberInput` (GitHub issue #770): decimal
+separators are rejected with an immediate field hint; rounding, the minimum-1 clamp, and invalid
+draft restoration are explained on blur/Enter.
+
 `cross_floor_teleport_balance` (0.0–1.0, default 0.0) lives in `ElementsConfig` alongside `teleport_chance` — balance between preferring a teleport target on another floor (1) vs. the same floor (0), rolled once `teleport_chance` already hit and only when `field.level_count() > 1`.
 
 ### Roll order in the main per-node step

@@ -143,3 +143,23 @@ hint.dismiss();                                                        // next a
   info outline while the hint is shown through `fieldStyle`, merged by the owner into the field's
   own `style` (the hint never writes to the field's DOM node). The notice-toast countdown is drawn as
   a thin underline of the text, restarted by a repeat and paused on hover.
+
+## Input-normalization integrations (GitHub issue #770)
+
+All audited field corrections use `NormalizerResult<T> = { raw, value, reason }` from
+`src/components/inputNormalization.ts`. A non-null structured reason maps to a lazy localized
+`FieldHintReason`; the hint is therefore shown from the correction event, even when `value` equals
+the value already stored.
+
+- `NumberInput` keeps rejected drafts visible like `TextInput` and never commits them. Integer
+  decimal separators get an immediate hint; on blur it reports rounding, min/max clamping, or
+  restoring the last valid value.
+- Range clamping and range reversion hints say that the value was adjusted to the allowed
+  `{min}–{max}` range; they do not include the corrected value itself.
+- `TextInput` reports truncation or a rejected character immediately and invalid-draft restoration
+  on blur.
+- Field-size controls and Quality repair limits report their blur-time reversion/clamping.
+- Elevator-span and digital PNG margin/size fields use `NumberInput`; PNG margins have minimum 0,
+  while fixed width/height have minimum 1.
+- RGB, HSL and OKLCH typed channel values retain their responsive clamp-on-input behavior, but a
+  range hint appears only on blur. Slider movement and OKLCH gamut conversion do not show hints.

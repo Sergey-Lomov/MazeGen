@@ -24,6 +24,8 @@ import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { colorToHex } from "../colorFormat";
+import { useFieldHint } from "../FieldHint";
+import { inputHintReason, type NormalizerResult } from "../inputNormalization";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -36,31 +38,54 @@ interface SizeParamProps {
 }
 
 function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeParamProps) {
+  const hint = useFieldHint();
   const [local, setLocal] = useState(String(value));
 
   useEffect(() => { setLocal(String(value)); }, [value]);
 
   function commit() {
     const n = Number(local);
-    if (!isNaN(n) && n >= min && n <= max) onCommit(n);
-    else setLocal(String(value));
+    const valid = local.trim() !== "" && Number.isFinite(n);
+    const result: NormalizerResult<number> = valid && n >= min && n <= max
+      ? { raw: local, value: n, reason: null }
+      : {
+          raw: local,
+          value,
+          reason: valid
+            ? { kind: "range_reverted", min: String(min), max: String(max), value: String(value) }
+            : { kind: "restored", value: String(value) },
+        };
+    if (result.reason) {
+      setLocal(String(result.value));
+      hint.show(inputHintReason(result.reason));
+    } else {
+      onCommit(result.value);
+    }
   }
 
   return (
-    <label style={styles.label}>
+    <label ref={hint.labelRef as React.Ref<HTMLLabelElement>} style={styles.label}>
       {label}
       <input
-        style={styles.input}
+        ref={hint.anchorRef as React.Ref<HTMLInputElement>}
+        style={{ ...styles.input, ...hint.fieldStyle }}
         type="number"
         name={label}
         min={min}
         max={max}
         value={local}
         disabled={disabled}
-        onChange={(e) => setLocal(e.target.value)}
+        aria-describedby={hint.describedBy}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setLocal(raw);
+          const n = Number(raw);
+          if (raw.trim() !== "" && Number.isFinite(n) && n >= min && n <= max) hint.dismiss();
+        }}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); } }}
       />
+      {hint.hint}
     </label>
   );
 }

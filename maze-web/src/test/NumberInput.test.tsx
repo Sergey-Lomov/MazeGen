@@ -2,6 +2,7 @@ import { useState } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { NumberInput } from "../components/NumberInput";
+import * as m from "~/paraglide/messages";
 
 // NumberInput reports the value to commit upward and expects the committed value to flow back in
 // via the `value` prop -- this wrapper stands in for that round-trip (same pattern as
@@ -131,22 +132,69 @@ describe("NumberInput", () => {
       fireEvent.blur(input);
       expect(onCommit).toHaveBeenLastCalledWith("0");
     });
+
+    it("shows each correction reason only when normalization occurs", () => {
+      const { rerender } = render(<Stateful initial="5" min={0} max={10} integer />);
+      const input = screen.getByRole("spinbutton");
+
+      fireEvent.change(input, { target: { value: "6" } });
+      fireEvent.blur(input);
+      expect(screen.queryByTestId("field-hint")).toBeNull();
+
+      fireEvent.change(input, { target: { value: "6.6" } });
+      fireEvent.blur(input);
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.rounded"]({ value: "7" }));
+
+      rerender(<Stateful initial="5" min={0} max={10} />);
+    });
+
+    it("shows a clamp hint even when the corrected value equals the stored value", () => {
+      render(<Stateful initial="10" max={10} />);
+      const input = screen.getByRole("spinbutton");
+      fireEvent.change(input, { target: { value: "99" } });
+      fireEvent.blur(input);
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(
+        m["input_hint.clamped_max"]({ min: "−∞", max: "10" }),
+      );
+    });
+
+    it("shows a restore hint for an empty draft", () => {
+      render(<Stateful initial="42" />);
+      const input = screen.getByRole("spinbutton");
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.blur(input);
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.restored"]());
+    });
   });
 
   describe("decimal separator guard on integer fields", () => {
-    it("blocks typing a decimal point", () => {
+    it("keeps a decimal separator visible and explains why it is rejected", () => {
       render(<NumberInput value="5" integer onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
-      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
-      expect(input.dispatchEvent(event)).toBe(false);
+      expect(fireEvent.keyDown(input, { key: "." })).toBe(true);
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
+      fireEvent.change(input, { target: { value: "5." } });
+      expect(input).toHaveValue("5.");
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
     });
 
-    it("blocks pasting text with a decimal separator", () => {
+    it("keeps pasted decimal separators visible and explains why they are rejected", () => {
       render(<NumberInput value="5" integer onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
       const event = new Event("paste", { bubbles: true, cancelable: true }) as unknown as ClipboardEvent;
       Object.defineProperty(event, "clipboardData", { value: { getData: () => "7.5" } });
-      expect(input.dispatchEvent(event)).toBe(false);
+      expect(input.dispatchEvent(event)).toBe(true);
+      fireEvent.change(input, { target: { value: "7.5" } });
+      expect(input).toHaveValue("7.5");
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
+    });
+
+    it("keeps a rejected letter visible and explains why it is not accepted", () => {
+      render(<NumberInput value="5" onChange={vi.fn()} />);
+      const input = screen.getByRole("spinbutton");
+      fireEvent.change(input, { target: { value: "5a" } });
+      expect(input).toHaveValue("5a");
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.character_rejected"]());
     });
 
     it("allows a decimal point on a float field", () => {

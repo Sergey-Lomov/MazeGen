@@ -118,7 +118,7 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
   // then the timer starts again from the full duration.
   useEffect(() => {
     remaining.current = state.duration;
-  }, [state.restart, state.duration]);
+  }, [state.reason.key, state.restart, state.duration]);
   useEffect(() => {
     if (paused) return;
     const startedAt = Date.now();
@@ -127,7 +127,7 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
       clearTimeout(timer);
       remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt));
     };
-  }, [paused, state.restart, onClose]);
+  }, [paused, state.reason.key, state.restart, state.duration, onClose]);
 
   return createPortal(
     <div
@@ -141,7 +141,7 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
       <span style={styles.message}>
         {state.reason.message()}
         <span
-          key={state.restart}
+          key={`${state.reason.key}:${state.restart}`}
           data-testid="field-hint-countdown"
           aria-hidden="true"
           style={{ ...styles.countdown, animationDuration: `${state.duration}ms`, animationPlayState: paused ? "paused" : "running" }}

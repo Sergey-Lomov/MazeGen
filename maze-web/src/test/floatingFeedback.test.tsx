@@ -127,6 +127,7 @@ describe("Tooltip", () => {
 
 const tooLong: FieldHintReason = { key: "too_long", message: () => (getLocale() === "ru" ? "Слишком длинно" : "Too long") };
 const rounded: FieldHintReason = { key: "rounded", message: () => "Rounded" };
+const sameDuration: FieldHintReason = { key: "same_duration", message: () => "Too long" };
 
 /** Notice-toast duration of "Too long" — the field-hint timer uses the same formula. */
 const HINT_MS = noticeDisplayDuration("Too long");
@@ -201,6 +202,30 @@ describe("useFieldHint", () => {
     act(() => vi.advanceTimersByTime(999));
     expect(screen.getByTestId("field-hint")).toBeTruthy();
     act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByTestId("field-hint")).toBeNull();
+  });
+
+  it("restarts the timer when a new reason replaces the current message", () => {
+    vi.useFakeTimers();
+    renderField();
+    act(() => controller.show(tooLong));
+    act(() => vi.advanceTimersByTime(HINT_MS - 1000));
+    act(() => controller.show(rounded));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByTestId("field-hint")).toBeTruthy();
+    act(() => vi.advanceTimersByTime(noticeDisplayDuration("Rounded") - 1000));
+    expect(screen.queryByTestId("field-hint")).toBeNull();
+  });
+
+  it("restarts the timer when a new reason has the same message duration", () => {
+    vi.useFakeTimers();
+    renderField();
+    act(() => controller.show(tooLong));
+    act(() => vi.advanceTimersByTime(HINT_MS - 1000));
+    act(() => controller.show(sameDuration));
+    act(() => vi.advanceTimersByTime(HINT_MS - 1000));
+    expect(screen.getByTestId("field-hint")).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1000));
     expect(screen.queryByTestId("field-hint")).toBeNull();
   });
 

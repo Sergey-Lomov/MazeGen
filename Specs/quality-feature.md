@@ -11,7 +11,7 @@ The Quality feature manages active checks, their **rules** (the unit a fix strat
 
 Subtitle: `"N check(s) active"`.
 
-The card body (`QualityFeature` component) shows `status.no_checks` when no check is active, otherwise the `quality.open_to_configure` hint while the panel is **closed** (no hint while it is open). Below that it always shows the repair limits (max iterations, time budget — each a switch plus a number input), then a divider, then "Save rules" / "Load rules" buttons that save and load the whole quality configuration as a standalone rules file (GitHub issue #751 — see `Specs/project-file.md`'s "Quality preset" section). Unknown ids skipped on load are listed in an `AlertModal`.
+The card body (`QualityFeature` component) shows `status.no_checks` when no check is active, otherwise the `quality.open_to_configure` hint while the panel is **closed** (no hint while it is open). Below that it always shows the repair limits (max iterations, time budget — each a switch plus a number input), then a divider, then "Save rules" / "Load rules" buttons that save and load the whole quality configuration as a standalone rules file (GitHub issue #751 — see `Specs/project-file.md`'s "Quality preset" section). Unknown ids skipped on load are listed in an `AlertModal`. Repair-limit drafts commit on blur/Enter; max iterations rounds to an integer and clamps to 1, while time budget clamps to 0.1. Each correction gets a field-anchored hint (GitHub issue #770), even when the corrected value equals the stored value.
 
 `QualityDetailPanel` shows the `quality.select_to_view` hint both for no selection and for a selection that no longer resolves (e.g. after a rules load replaced every rule).
 

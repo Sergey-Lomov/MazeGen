@@ -13,6 +13,8 @@ import {
 import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
+import { useFieldHint } from "../FieldHint";
+import { inputHintReason, isParseableNumber, normalizeNumberCommit } from "../inputNormalization";
 import * as m from "~/paraglide/messages";
 
 const DEFAULT_MAX_ITERATIONS = 100;
@@ -22,22 +24,30 @@ const DEFAULT_TIME_BUDGET_SECS = 10;
 /// keystroke. Typing into a clamped-on-change number input fights the user mid-edit (e.g.
 /// clamping "0" to "0.1" before they can type "0.5"). `value` resets the draft whenever the
 /// store value changes from outside this input (switch toggle, project load).
-function useCommitOnBlur(value: number, commit: (v: number) => void, clampMin: number) {
+function useCommitOnBlur(value: number, commit: (v: number) => void, clampMin: number, integer = false) {
+  const hint = useFieldHint();
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
 
   function doCommit() {
-    const n = Number(draft);
-    const clamped = Number.isFinite(n) ? Math.max(clampMin, n) : value;
-    setDraft(String(clamped));
-    commit(clamped);
+    const result = normalizeNumberCommit(draft, String(value), { min: clampMin, integer });
+    setDraft(result.value);
+    commit(Number(result.value));
+    if (result.reason) hint.show(inputHintReason(result.reason));
   }
 
   return {
     value: draft,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value),
+    ref: hint.anchorRef as React.Ref<HTMLInputElement>,
+    style: hint.fieldStyle,
+    "aria-describedby": hint.describedBy,
+    hint: hint.hint,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      setDraft(e.target.value);
+      if (isParseableNumber(e.target.value)) hint.dismiss();
+    },
     onBlur: doCommit,
-    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") doCommit(); },
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") e.currentTarget.blur(); },
   };
 }
 
@@ -73,6 +83,7 @@ export function QualityFeature() {
     repairMaxIterations ?? lastMaxIterations,
     (v) => { const rounded = Math.round(v); setLastMaxIterations(rounded); setRepairMaxIterations(rounded); },
     1,
+    true,
   );
   const timeBudgetField = useCommitOnBlur(
     repairTimeBudgetSecs ?? lastTimeBudgetSecs,
@@ -122,12 +133,18 @@ export function QualityFeature() {
           <input
             type="number"
             name="repair-max-iterations"
-            style={styles.limitInput}
+            style={{ ...styles.limitInput, ...maxIterationsField.style }}
             disabled={repairMaxIterations == null}
             min={1}
             step={1}
-            {...maxIterationsField}
+            value={maxIterationsField.value}
+            ref={maxIterationsField.ref}
+            aria-describedby={maxIterationsField["aria-describedby"]}
+            onChange={maxIterationsField.onChange}
+            onBlur={maxIterationsField.onBlur}
+            onKeyDown={maxIterationsField.onKeyDown}
           />
+          {maxIterationsField.hint}
         </div>
         <div style={styles.limitRow}>
           <Switch
@@ -138,12 +155,18 @@ export function QualityFeature() {
           <input
             type="number"
             name="repair-time-budget-seconds"
-            style={styles.limitInput}
+            style={{ ...styles.limitInput, ...timeBudgetField.style }}
             disabled={repairTimeBudgetSecs == null}
             min={0.1}
             step={0.1}
-            {...timeBudgetField}
+            value={timeBudgetField.value}
+            ref={timeBudgetField.ref}
+            aria-describedby={timeBudgetField["aria-describedby"]}
+            onChange={timeBudgetField.onChange}
+            onBlur={timeBudgetField.onBlur}
+            onKeyDown={timeBudgetField.onKeyDown}
           />
+          {timeBudgetField.hint}
         </div>
       </div>
       <div style={styles.divider} />

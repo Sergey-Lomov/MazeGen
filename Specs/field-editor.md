@@ -14,7 +14,7 @@ Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be co
 
 Two sub-modes toggled inside the card:
 
-**Default** — predefined shape with configurable size parameters (width/height, cols/rows, radius, side). Canvas shows all cells of the shape centered around the grid origin. Camera centers on the shape when the card opens or when size params change.
+**Default** — predefined shape with configurable size parameters (width/height, cols/rows, radius, side). Canvas shows all cells of the shape centered around the grid origin. Camera centers on the shape when the card opens or when size params change. An invalid or out-of-range size is restored on blur and gets a field-anchored hint (GitHub issue #770), including when the restored value equals the stored value.
 
 **Custom** — free-draw mode. The active Add/Remove mode controls whether drawing adds or removes
 cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move

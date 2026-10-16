@@ -7,6 +7,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import * as m from "~/paraglide/messages";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -17,6 +18,17 @@ beforeEach(() => {
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("explains an out-of-range field size on blur, even when it restores the stored value", () => {
+    render(<FieldSetupFeature />);
+    const width = screen.getByRole("spinbutton", { name: m["field.width"]() });
+    fireEvent.change(width, { target: { value: "999" } });
+    fireEvent.blur(width);
+    expect(width).toHaveValue(10);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.range_reverted"]({ min: "1", max: "200" }),
+    );
+  });
+
   it("disables field editing controls while an auto-fill preview is active", () => {
     useMazeStore.setState({
       floorFields: {

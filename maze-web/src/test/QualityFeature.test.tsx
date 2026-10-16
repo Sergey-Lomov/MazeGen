@@ -58,6 +58,18 @@ beforeEach(() => {
 });
 
 describe("QualityFeature quality preset load (GitHub issue #751)", () => {
+  it("explains a lower-bound clamp on blur even when the result equals the stored value", () => {
+    useMazeStore.setState({ repairMaxIterations: 1 });
+    const { container } = render(<QualityFeature />);
+    const input = container.querySelector('input[name="repair-max-iterations"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.blur(input);
+    expect(useMazeStore.getState().repairMaxIterations).toBe(1);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.clamped_min"]({ min: "1", max: "∞" }),
+    );
+  });
+
   it("applies a picked preset and warns about skipped unknown ids", async () => {
     const { container } = render(<QualityFeature />);
     pickPresetFile(preset, container);
