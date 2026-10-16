@@ -280,6 +280,31 @@ The sketch fixes semantics, not exact signatures.
 - The descriptor-level split-pattern contract (two-level applicability) lives in
   `split-patterns.md`.
 
+Status (GitHub issue #757): implemented in `space::shape` (`ShapeFamily`, `ShapeDescriptor`,
+`CellShape` with the face-chain methods `canonical_of_local`, `local_of_canonical`,
+`transformed_local`, `canonical_of_transformed_local`) and `Tessellation::shape_descriptors`/
+`shape_of` for square, hex, tri and Cairo; every built-in cell gets its full group.
+
+- Group element order: `RegularPolygon` lists rotations `i -> i + k` (`k = 0..n`) then
+  reflections `i -> k - i` (mod `n`); `CairoPentagon` is `[identity, i -> -i mod 5]`; a
+  `Registered` template is the closure of its generator permutations under composition, identity
+  first, then breadth-first discovery order. A generator that is not a permutation of
+  `0..face_count`, or a registered `kind` of `regular` (it would collide with `regular:<n>` keys),
+  panics: templates are tessellation code, not user params.
+- `CellShape` fields are private. It is built by `CellShape::full` or
+  `CellShape::restricted(descriptor, local_to_canonical, allowed_transforms)`, which
+  debug-assert that `local_to_canonical` is a permutation of `0..face_count` and the allowed set
+  contains the identity and indexes the group. Using a transform outside the allowed set is a
+  debug-asserted precondition violation.
+- The legacy per-tessellation `mirror_symmetries` tables stay as they were until #758: tri's is
+  empty, and Cairo's `[0, 4, 3, 2, 1]` is geometrically correct only for the R/L orientations,
+  because face slots run in a different circular order on U/D. `shape_of` is correct for every
+  orientation. Since `faces_of`
+keeps its pre-#758 order, `local_to_canonical` is a non-identity map for square, tri (per
+orientation) and Cairo (per orientation). `shape_tests.rs` checks the canonical order against
+`cartesian` neighbor angles. Template geometry is not implemented yet. Consumers still use
+`rotation_symmetries`/`mirror_symmetries`.
+
 ### Geometry
 
 A separate API from topology (an extension trait over `Tessellation`). Coordinates are world

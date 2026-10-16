@@ -1,4 +1,5 @@
-use super::Tessellation;
+use super::{CellShape, ShapeDescriptor, Tessellation};
+use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct HexPoint {
@@ -29,6 +30,12 @@ impl HexFace {
         }
     }
 }
+
+static HEX_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
+    LazyLock::new(|| [ShapeDescriptor::regular_polygon(6)]);
+
+/// Local `[E, NE, NW, W, SW, SE]` is already counter-clockwise.
+const HEX_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
@@ -70,6 +77,14 @@ impl Tessellation for HexTessellation {
 
     fn is_straight(&self, _cell: HexPoint, in_face: HexFace, out_face: HexFace) -> bool {
         out_face == in_face.opposite()
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        &*HEX_SHAPES
+    }
+
+    fn shape_of(&self, _cell: HexPoint) -> Option<CellShape<'_>> {
+        Some(CellShape::full(&HEX_SHAPES[0], &HEX_LOCAL_TO_CANONICAL))
     }
 
     /// Canonical (flat_top-equivalent) projection, unit tile scale. `INRADIUS` = sqrt(3)/2 at

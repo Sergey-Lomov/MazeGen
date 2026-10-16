@@ -1,4 +1,5 @@
-use super::Tessellation;
+use super::{CellShape, ShapeDescriptor, Tessellation};
+use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SquarePoint {
@@ -25,6 +26,12 @@ impl SquareFace {
         }
     }
 }
+
+static SQUARE_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
+    LazyLock::new(|| [ShapeDescriptor::regular_polygon(4)]);
+
+/// Local `[N, S, E, W]` to canonical counter-clockwise `[E, N, W, S]`.
+const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [1, 3, 0, 2];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
@@ -57,6 +64,17 @@ impl Tessellation for SquareTessellation {
 
     fn is_straight(&self, _cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
         out_face == in_face.opposite()
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        &*SQUARE_SHAPES
+    }
+
+    fn shape_of(&self, _cell: SquarePoint) -> Option<CellShape<'_>> {
+        Some(CellShape::full(
+            &SQUARE_SHAPES[0],
+            &SQUARE_LOCAL_TO_CANONICAL,
+        ))
     }
 
     fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {

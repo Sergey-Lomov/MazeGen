@@ -1,4 +1,6 @@
-use super::{SquareFace, SquarePoint, SquareTessellation, Tessellation};
+use super::{
+    CellShape, ShapeDescriptor, SquareFace, SquarePoint, SquareTessellation, Tessellation,
+};
 
 /// Square tessellation with one missing edge (between `(0, 0)` and `(1, 0)`, in both directions),
 /// used to exercise consumers of a `None` neighbor.
@@ -29,6 +31,14 @@ impl Tessellation for GappedSquareTessellation {
 
     fn is_straight(&self, cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
         SquareTessellation.is_straight(cell, in_face, out_face)
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        SquareTessellation.shape_descriptors()
+    }
+
+    fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
+        SquareTessellation.shape_of(cell)
     }
 
     fn rotation_symmetries(&self) -> &[&[usize]] {
@@ -69,6 +79,14 @@ impl Tessellation for ScaledSquareTessellation {
 
     fn is_straight(&self, cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
         SquareTessellation.is_straight(cell, in_face, out_face)
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        SquareTessellation.shape_descriptors()
+    }
+
+    fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
+        SquareTessellation.shape_of(cell)
     }
 
     fn rotation_symmetries(&self) -> &[&[usize]] {

@@ -1,4 +1,5 @@
-use super::Tessellation;
+use super::{CellShape, ShapeDescriptor, Tessellation};
+use std::sync::LazyLock;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TriPoint {
@@ -25,6 +26,21 @@ impl TriFace {
     }
 }
 
+static TRI_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
+    LazyLock::new(|| [ShapeDescriptor::regular_polygon(3)]);
+
+/// `pointing_up` cells (`Base` neighbor at `row - 1`, above in `cartesian`): canonical
+/// counter-clockwise order `[Base, Left, Right]`.
+const TRI_BASE_ABOVE_LOCAL_TO_CANONICAL: [usize; 3] = [1, 2, 0];
+
+/// Other cells (`Base` neighbor at `row + 1`, below in `cartesian`): canonical counter-clockwise
+/// order `[Base, Right, Left]`.
+const TRI_BASE_BELOW_LOCAL_TO_CANONICAL: [usize; 3] = [2, 1, 0];
+
+fn pointing_up(cell: TriPoint) -> bool {
+    (cell.col + cell.row).rem_euclid(2) == 0
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TriTessellation;
 
@@ -41,7 +57,7 @@ impl Tessellation for TriTessellation {
     }
 
     fn neighbor(&self, cell: TriPoint, face: TriFace) -> Option<(TriPoint, TriFace)> {
-        let pointing_up = (cell.col + cell.row).rem_euclid(2) == 0;
+        let pointing_up = pointing_up(cell);
         let (dcol, drow) = match face {
             TriFace::Left => (-1, 0),
             TriFace::Right => (1, 0),
@@ -62,6 +78,22 @@ impl Tessellation for TriTessellation {
         out_face == in_face.opposite()
     }
 
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        &*TRI_SHAPES
+    }
+
+    /// Full dihedral group (3 rotations + 3 reflections). The local-to-canonical map depends on
+    /// the cell's orientation, since `[Left, Right, Base]` runs clockwise on one orientation and
+    /// counter-clockwise on the other.
+    fn shape_of(&self, cell: TriPoint) -> Option<CellShape<'_>> {
+        let local_to_canonical = if pointing_up(cell) {
+            &TRI_BASE_ABOVE_LOCAL_TO_CANONICAL
+        } else {
+            &TRI_BASE_BELOW_LOCAL_TO_CANONICAL
+        };
+        Some(CellShape::full(&TRI_SHAPES[0], local_to_canonical))
+    }
+
     /// Canonical (r0-equivalent) projection, unit tile scale — `S = 2.0` (triangle side length,
     /// matching `maze-web`'s `TRI_TILE_SIZE = TILE_SIZE * 2` convention so triangles are
     /// geometrically comparable to squares/hexagons at the same unit scale), `H = S * sqrt(3)/2`
@@ -71,7 +103,7 @@ impl Tessellation for TriTessellation {
     fn cartesian(&self, cell: TriPoint) -> (f64, f64) {
         let s = 2.0;
         let h = s * 3f64.sqrt() / 2.0;
-        let pointing_up = (cell.col + cell.row).rem_euclid(2) == 0;
+        let pointing_up = pointing_up(cell);
         let (col, row) = (cell.col as f64, cell.row as f64);
         let cx = col * s / 2.0 + s / 4.0;
         let cy = if pointing_up {
@@ -92,9 +124,9 @@ impl Tessellation for TriTessellation {
         ]
     }
 
-    /// A triangle has no reflective symmetry realizable as a permutation of its own 3 faces
-    /// (swapping any two sides while fixing the third isn't a symmetry of an equilateral
-    /// triangle's face *labels* under this tessellation's `pointing_up`-dependent geometry).
+    /// Empty: `[Left, Right, Base]` runs in opposite circular directions on the two orientations,
+    /// so no single per-tessellation table describes a reflection. The triangle's reflections
+    /// are available per cell through `shape_of` (full dihedral group).
     fn mirror_symmetries(&self) -> &[&[usize]] {
         &[]
     }

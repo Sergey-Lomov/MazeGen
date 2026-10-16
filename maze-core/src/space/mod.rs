@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub mod cairo;
 pub mod hex;
 pub mod multi_level;
+pub mod shape;
 pub mod square;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -16,6 +17,7 @@ pub mod triangle;
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
+pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 
@@ -53,6 +55,15 @@ pub trait Tessellation: Send + Sync + 'static {
     /// #759 (see `Specs/space.md`'s target model). An invalid `cell`, or a face not in
     /// `faces_of(cell)`, is a precondition violation.
     fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
+
+    /// Every shape template this instance's cells use, each listed once.
+    fn shape_descriptors(&self) -> &[ShapeDescriptor];
+
+    /// `cell`'s binding to one of `shape_descriptors`: the descriptor, the local-to-canonical face
+    /// map and the cell's allowed transform group (see `CellShape`). `None` means the cell has no
+    /// template — it still has full topology and geometry, but split patterns never apply to it.
+    /// Allocation-free. An invalid `cell` is a precondition violation.
+    fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
 
     /// Every rotational symmetry of one tile, as a permutation of face indices (positions in
     /// `faces_of`, which every current tessellation orders identically for all of its cells) —

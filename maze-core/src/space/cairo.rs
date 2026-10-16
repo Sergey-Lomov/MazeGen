@@ -1,4 +1,5 @@
-use super::Tessellation;
+use super::{CellShape, ShapeDescriptor, Tessellation};
+use std::sync::LazyLock;
 
 /// Integer coordinate of a Cairo pentagonal tile.
 ///
@@ -39,6 +40,20 @@ pub enum CairoTileKind {
     U,
     D,
 }
+
+static CAIRO_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
+    LazyLock::new(|| [ShapeDescriptor::cairo_pentagon()]);
+
+// Local `FACES` order to the canonical counter-clockwise order starting at `Twin` (the long side),
+// per orientation — the face slots are not in the same circular order on every orientation.
+/// R: `[Twin, NorthWest, SouthEast, NorthEast, SouthWest]`.
+const R_LOCAL_TO_CANONICAL: [usize; 5] = [0, 1, 3, 2, 4];
+/// U: `[Twin, SouthEast, NorthEast, SouthWest, NorthWest]`.
+const U_LOCAL_TO_CANONICAL: [usize; 5] = [0, 4, 2, 1, 3];
+/// L: `[Twin, SouthEast, SouthWest, NorthWest, NorthEast]`.
+const L_LOCAL_TO_CANONICAL: [usize; 5] = [0, 3, 4, 1, 2];
+/// D: `[Twin, NorthWest, SouthWest, NorthEast, SouthEast]`.
+const D_LOCAL_TO_CANONICAL: [usize; 5] = [0, 1, 3, 4, 2];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CairoTessellation;
@@ -219,6 +234,24 @@ impl Tessellation for CairoTessellation {
 
     fn mirror_symmetries(&self) -> &[&[usize]] {
         &[&[0, 4, 3, 2, 1]]
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        &*CAIRO_SHAPES
+    }
+
+    fn shape_of(&self, cell: CairoPoint) -> Option<CellShape<'_>> {
+        debug_assert!(
+            Self::is_valid_cell(cell),
+            "shape_of: invalid Cairo cell {cell:?}"
+        );
+        let local_to_canonical = match Self::tile_kind(cell)? {
+            CairoTileKind::R => &R_LOCAL_TO_CANONICAL,
+            CairoTileKind::U => &U_LOCAL_TO_CANONICAL,
+            CairoTileKind::L => &L_LOCAL_TO_CANONICAL,
+            CairoTileKind::D => &D_LOCAL_TO_CANONICAL,
+        };
+        Some(CellShape::full(&CAIRO_SHAPES[0], local_to_canonical))
     }
 
     /// Canonical unit-scale projection of the integer tile-centre coordinate.
