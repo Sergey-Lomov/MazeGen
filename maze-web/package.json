@@ -19,6 +19,7 @@
     "gen:msdf": "node tools/msdf/generate.mjs"
   },
   "dependencies": {
+    "@floating-ui/react-dom": "^2.1.9",
     "@inlang/paraglide-js": "^2.19.0",
     "@tanstack/react-virtual": "^3.14.6",
     "lucide-react": "^1.21.0",

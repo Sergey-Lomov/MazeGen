@@ -73,3 +73,54 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
   Escape does not close toasts.
 - Toasts have no live roles. `announce()` feeds `Announcer`: error cards assertive once on
   creation; notices polite once when they become visible. Field hints use the same `announce()`.
+
+# Tooltip and field-anchored hints
+
+Primitives for epic #766 rules 3 and 4 (GitHub issue #768). Both render through a portal into
+`body` with `z-index` `FLOATING_Z_INDEX` (above modals) and share positioning from
+`src/components/floating/floatingPosition.ts`: `@floating-ui/react-dom` with `offset`, `flip`,
+`shift` (8 px viewport padding), `fixed` strategy and `autoUpdate`, so they pick a side, stay in the
+viewport and follow scroll containers and modals.
+
+## `Tooltip` (`src/components/Tooltip.tsx`)
+
+- `<Tooltip content={reason | undefined} block?>{control}</Tooltip>` — for disabled controls and
+  other non-focusable content; replaces the native `title`.
+- The wrapper is focusable (`tabIndex=0`) with `aria-describedby` pointing to a hidden copy of
+  `content`; the visible bubble is `aria-hidden`.
+- Shown on hover (300 ms delay), focus and touch tap; hidden on leave, blur, tap outside or Escape
+  (Escape is stopped from propagating only while the bubble is open, so an enclosing modal does
+  not close at the same time).
+- Empty `content` keeps the wrapper (no remount when `disabled` toggles) but makes it inert: no tab
+  stop, no description, no bubble.
+- `ColorRow`'s `disabledHint` uses it; the hint is shown only when the caller disabled the row, not
+  when the row is disabled because its field is hidden.
+
+## Field hint (`src/components/FieldHint.tsx`)
+
+```ts
+const hint = useFieldHint();
+<label ref={hint.labelRef}>…</label>                              // optional position anchor
+<input ref={hint.anchorRef} aria-describedby={hint.describedBy} style={{ ...own, ...hint.fieldStyle }} />
+{hint.hint}
+hint.show({ key: "too_long", message: () => m["feature.too_long"]() }); // rejected / corrected
+hint.dismiss();                                                        // next accepted change
+```
+
+- One hint per field: a new `key` replaces the current hint; the same `key` restarts the timer
+  without re-announcement. Without a mounted field (`anchorRef`) `show()` does nothing.
+- Closed by `dismiss()`, its close button, the notice-toast display duration
+  (`min(4 s + 50 ms × chars, 8 s)` of the text at show / repeat time) of active display (hover
+  pauses), or unmount of the owner. Refocusing the field does not close it.
+- Announced politely once through `announce()`; no live role on the hint. `message` is called on
+  render, so a locale switch re-translates it in place.
+- At least as wide as the span from the label's left edge to the field's right edge when
+  `labelRef` is attached (a note of the whole row; virtual reference = bounding union of both,
+  `minWidth` via the `size` middleware), else at least the field's width. Longer single-line text
+  extends past the span instead of wrapping.
+- Lightweight caption 2 px under its anchor: `caption` typography in `ui.text.info`, panel-colored
+  backdrop (readability over neighboring rows), thin 1 px info border at 45 % opacity, no shadow;
+  single-line layout with a small dimmed close button centered on the line. The field gets a 1 px
+  info outline while the hint is shown through `fieldStyle`, merged by the owner into the field's
+  own `style` (the hint never writes to the field's DOM node). The notice-toast countdown is drawn as
+  a thin underline of the text, restarted by a repeat and paused on hover.

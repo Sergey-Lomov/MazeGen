@@ -572,13 +572,15 @@ describe("VectorByWallsSettingsPanel", () => {
       useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: true } });
       const { unmount } = render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(document.querySelectorAll(`[title="${hint}"]`).length).toBeGreaterThan(0);
+      const describedByHint = () => Array.from(document.querySelectorAll("[aria-describedby]"))
+        .filter((el) => document.getElementById(el.getAttribute("aria-describedby")!)?.textContent === hint);
+      expect(describedByHint().length).toBeGreaterThan(0);
       unmount();
 
       useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: false } });
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(document.querySelectorAll(`[title="${hint}"]`)).toHaveLength(0);
+      expect(describedByHint()).toHaveLength(0);
     });
 
     it("hides the auto buttons while group customization is off", () => {

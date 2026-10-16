@@ -21,6 +21,9 @@ src/
   components/
     ControlPanel    — seed/width/height inputs, Generate/Reset buttons
     DebugPanel      — node ID / coords toggles, selected node info
+    Tooltip         — accessible tooltip for disabled controls — see notifications.md
+    FieldHint       — `useFieldHint()` field-anchored hint — see notifications.md
+    floating/       — shared floating-ui positioning for Tooltip / FieldHint
   store/
     mazeStore       — Zustand store: maze state + actions
   notifications/
