@@ -8,6 +8,7 @@ import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
+import { ToolTooltip } from "../ToolIconButton";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
@@ -160,6 +161,12 @@ export function GenerationFeature({ canGenerate }: Props) {
   const generateBlocked = !canGenerate || registryError !== null;
   const canSeedBack = seedHistory.length > 0 && seedHistoryIndex > 0;
   const canSeedForward = seedHistoryIndex < seedHistory.length - 1;
+  const seedBackDescription = canSeedBack
+    ? m["generation.seed_history_seed"]({ seed: seedHistory[seedHistoryIndex - 1] })
+    : m["generation.seed_history_prev_unavailable_tooltip"]();
+  const seedForwardDescription = canSeedForward
+    ? m["generation.seed_history_seed"]({ seed: seedHistory[seedHistoryIndex + 1] })
+    : m["generation.seed_history_next_unavailable_tooltip"]();
 
   return (
     <div style={styles.root}>
@@ -180,24 +187,28 @@ export function GenerationFeature({ canGenerate }: Props) {
               if (Number.isSafeInteger(parsed)) setSeed(parsed);
             }}
           />
-          <button
-            className={canSeedBack ? "hoverable" : undefined}
-            style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
-            disabled={!canSeedBack}
-            onClick={seedHistoryBack}
-            title={m["generation.seed_history_prev_tooltip"]()}
-          >
-            <ChevronLeft size={16} color={ui.text.tertiary} />
-          </button>
-          <button
-            className={canSeedForward ? "hoverable" : undefined}
-            style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
-            disabled={!canSeedForward}
-            onClick={seedHistoryForward}
-            title={m["generation.seed_history_next_tooltip"]()}
-          >
-            <ChevronRight size={16} color={ui.text.tertiary} />
-          </button>
+          <ToolTooltip title={m["generation.seed_history_prev_tooltip"]()} description={seedBackDescription}>
+            <button
+              className={canSeedBack ? "hoverable" : undefined}
+              style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
+              disabled={!canSeedBack}
+              onClick={seedHistoryBack}
+              aria-label={m["generation.seed_history_prev_tooltip"]()}
+            >
+              <ChevronLeft size={16} color={ui.text.tertiary} />
+            </button>
+          </ToolTooltip>
+          <ToolTooltip title={m["generation.seed_history_next_tooltip"]()} description={seedForwardDescription}>
+            <button
+              className={canSeedForward ? "hoverable" : undefined}
+              style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
+              disabled={!canSeedForward}
+              onClick={seedHistoryForward}
+              aria-label={m["generation.seed_history_next_tooltip"]()}
+            >
+              <ChevronRight size={16} color={ui.text.tertiary} />
+            </button>
+          </ToolTooltip>
           <button
             className="hoverable"
             style={styles.seedToolbarBtn}

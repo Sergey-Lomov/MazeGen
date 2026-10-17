@@ -72,6 +72,34 @@ describe("GenerationFeature — QC Only toggle", () => {
   });
 });
 
+describe("GenerationFeature — seed history navigation tooltips", () => {
+  it("names the destination seeds when navigating within history", () => {
+    useMazeStore.setState({ seed: 20, seedHistory: [10, 20, 30], seedHistoryIndex: 1 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.getByRole("button", { name: m["generation.seed_history_prev_tooltip"]() })).toBeEnabled();
+    expect(screen.getByRole("button", { name: m["generation.seed_history_next_tooltip"]() })).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 10 }))).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 30 }))).toBeEnabled();
+  });
+
+  it("explains unavailable navigation at history boundaries", () => {
+    useMazeStore.setState({ seed: 10, seedHistory: [10, 20], seedHistoryIndex: 0 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(getTooltipControl(m["generation.seed_history_prev_unavailable_tooltip"]())).toBeDisabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 20 }))).toBeEnabled();
+  });
+
+  it("explains unavailable forward navigation at the end of history", () => {
+    useMazeStore.setState({ seed: 20, seedHistory: [10, 20], seedHistoryIndex: 1 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 10 }))).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_next_unavailable_tooltip"]())).toBeDisabled();
+  });
+});
+
 describe("GenerationFeature — delayed generation spinner", () => {
   beforeEach(() => {
     vi.useFakeTimers();
