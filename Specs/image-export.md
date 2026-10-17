@@ -659,11 +659,18 @@ or disabled as an override); the blue **dependents indicator** (bottom-right) wh
 dependent link exists; and, only for an unsupported (`linkTarget: null`) field, a red **unsupported
 indicator** (bottom-right `X`) over a disabled-gray chain. A field with no link of any kind (but
 linkable) renders the chain alone, broken and disabled-gray, with no badge — the glyph itself says
-enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each followed by the link's
-modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and suffixed
-"(disabled)" when inactive, plus a click hint); clicking opens `LinkEditor` (add/edit) or, for a
+enough. Hovering shows a tooltip whose bubble alone can grow to 560px (other tooltips retain their
+normal cap): its relationship lines stay single-line until that cap, then wrap within the bubble.
+The semantic-colored header is
+green for an active driving link, blue when the field only has dependents, disabled gray for a
+disabled driving link, and primary for no links. The field's own driving/dependent lines follow,
+each with its modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and a
+disabled line is suffixed "(disabled)" and rendered disabled gray, followed by a click hint.
+For linkable fields, clicking opens `LinkEditor` (add/edit) or, for a
 disabled driving link, re-enables it directly (`onSetLinkEnabled`, equivalent to the old
-`OverrideResetButton`'s reset action) without a dialog. An unsupported field's click opens a small
+`OverrideResetButton`'s reset action) without a dialog. An unsupported field instead has an
+error-colored "Links not supported" heading and its tertiary explanation on the next line;
+its click opens a small
 info dialog instead, explaining why (a per-field `unsupportedHint` override is supported for a field
 whose unsupported reason isn't the generic "type not modeled yet", e.g. the random-wall-color-mode
 toggle).

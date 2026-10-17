@@ -19,13 +19,15 @@ export const TOOLTIP_HOVER_DELAY_MS = 300;
  *  Meant for disabled controls and other non-focusable content (epic #766 rule 3). With empty
  *  `content` the wrapper stays in place (so toggling a control's `disabled` never remounts it) but is
  *  inert: no tab stop, no description, no bubble. */
-export function Tooltip({ content, children, placement = "bottom", block = false }: {
+export function Tooltip({ content, children, placement = "bottom", block = false, bubbleStyle }: {
   content: React.ReactNode;
   children: React.ReactNode;
   placement?: Placement;
   /** Render the wrapper as a block-level `div` (e.g. a whole settings row) instead of an
    *  `inline-flex` `span`. */
   block?: boolean;
+  /** Optional presentation override for one tooltip bubble. Most callers use the shared style. */
+  bubbleStyle?: React.CSSProperties;
 }) {
   const id = useId();
   const descriptionId = `${id}-description`;
@@ -91,7 +93,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
       {children}
       {active && <span id={descriptionId} hidden>{content}</span>}
       {active && open && createPortal(
-        <div ref={refs.setFloating} data-testid="tooltip" aria-hidden="true" style={{ ...floatingStyles, ...styles.bubble }}>
+        <div ref={refs.setFloating} data-testid="tooltip" aria-hidden="true" style={{ ...floatingStyles, ...styles.bubble, ...bubbleStyle }}>
           {content}
         </div>,
         document.body,

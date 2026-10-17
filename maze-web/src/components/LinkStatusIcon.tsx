@@ -9,6 +9,50 @@ import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from ".
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 
+type LinkStatus = "active" | "disabled" | "noIncoming" | "noLinks";
+
+const tooltipHeaderStyles: Record<LinkStatus, React.CSSProperties> = {
+  active: { display: "block", color: ui.text.success },
+  disabled: { display: "block", color: ui.text.disabled },
+  noIncoming: { display: "block", color: ui.text.info },
+  noLinks: { display: "block", color: ui.text.primary },
+};
+
+/** Disabled links remain listed, but use muted gray so they cannot be confused with active links.
+ *  The semantic header color adds a quick visual cue without replacing its textual status. */
+function LinkStatusTooltip({
+  status,
+  header,
+  lines,
+  hint,
+}: {
+  status: LinkStatus;
+  header: string;
+  lines: { text: string; disabled: boolean }[];
+  hint: string;
+}) {
+  return (
+    <>
+      <span style={tooltipHeaderStyles[status]}>{header}</span>
+      {lines.map((line, index) => (
+        <span key={index} style={line.disabled ? styles.tooltipLinkDisabled : styles.tooltipLink}>
+          {line.text}
+        </span>
+      ))}
+      <span style={styles.tooltipHint}>{hint}</span>
+    </>
+  );
+}
+
+function UnsupportedLinkTooltip({ header, hint }: { header: string; hint: string }) {
+  return (
+    <>
+      <span style={styles.tooltipUnsupportedHeader}>{header}</span>
+      <span style={styles.tooltipHint}>{hint}</span>
+    </>
+  );
+}
+
 /** Per-field link-status icon (GitHub issue #652) — replaces the old reset-only
  *  `OverrideResetButton` with a richer control that shows link state at a glance and opens the
  *  add/edit link dialog directly from the field, rather than only clearing an override. The chain
@@ -100,7 +144,10 @@ export function LinkStatusIcon<P extends string>({
     const hint = unsupportedHint ?? m["link_status.unsupported_hint"]();
     return (
       <>
-        <Tooltip content={`${m["link_status.header_unsupported"]()}\n${hint}`}>
+        <Tooltip
+          content={<UnsupportedLinkTooltip header={m["link_status.header_unsupported"]()} hint={hint} />}
+          bubbleStyle={styles.tooltipBubble}
+        >
           <span
             className="hoverable"
             style={styles.wrapper}
@@ -147,38 +194,38 @@ export function LinkStatusIcon<P extends string>({
     }
   }
 
-  const tooltipLines: string[] = [];
-  tooltipLines.push(
-    hasLink
-      ? incomingActive
-        ? m["link_status.header_active"]()
-        : m["link_status.header_disabled"]()
-      : hasAnyLink
+  const status: LinkStatus = hasLink
+    ? incomingActive ? "active" : "disabled"
+    : hasAnyLink ? "noIncoming" : "noLinks";
+  const header = status === "active"
+    ? m["link_status.header_active"]()
+    : status === "disabled"
+      ? m["link_status.header_disabled"]()
+      : status === "noIncoming"
         ? m["link_status.header_no_incoming"]()
-        : m["link_status.header_no_links"](),
-  );
+        : m["link_status.header_no_links"]();
+  const tooltipLines: { text: string; disabled: boolean }[] = [];
   if (incoming !== null) {
     const line = m["link_status.incoming_line"]({ source: hierarchicalLabel(incoming.source) }) + linkModifiersSuffix(incoming);
-    tooltipLines.push(incoming.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`);
+    tooltipLines.push({ text: incoming.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`, disabled: !incoming.enabled });
   }
   // Rule 5: list every dependent link, active or not — the badge/indicator only reflects
   // *active* dependents, but the tooltip's detail list is a complete inventory of all links.
   for (const link of links.filter((l) => l.source === linkTarget)) {
     const line = m["link_status.outgoing_line"]({ target: hierarchicalLabel(link.target) }) + linkModifiersSuffix(link);
-    tooltipLines.push(link.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`);
+    tooltipLines.push({ text: link.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`, disabled: !link.enabled });
   }
+  let hint: string;
   if (onToggleLink) {
-    tooltipLines.push(
-      incoming === null
-        ? m["link_status.hint_group_no_link"]()
-        : incoming.enabled
-          ? m["link_status.hint_group_break"]()
-          : m["link_status.hint_group_restore"](),
-    );
-  } else if (incoming === null) tooltipLines.push(m["link_status.hint_click_to_link"]());
-  else if (incoming.enabled) tooltipLines.push(m["link_status.hint_click_to_edit"]());
-  else tooltipLines.push(m["link_status.hint_click_to_enable"]());
-  const tooltip = tooltipLines.join("\n");
+    hint = incoming === null
+      ? m["link_status.hint_group_no_link"]()
+      : incoming.enabled
+        ? m["link_status.hint_group_break"]()
+        : m["link_status.hint_group_restore"]();
+  } else if (incoming === null) hint = m["link_status.hint_click_to_link"]();
+  else if (incoming.enabled) hint = m["link_status.hint_click_to_edit"]();
+  else hint = m["link_status.hint_click_to_enable"]();
+  const tooltip = <LinkStatusTooltip status={status} header={header} lines={tooltipLines} hint={hint} />;
 
   // Rule 4: the chain glyph itself is disabled-colored whenever there's no *active* link driving
   // this field — either no link at all, or a driving link that exists but is disabled (override).
@@ -190,7 +237,7 @@ export function LinkStatusIcon<P extends string>({
 
   return (
     <>
-      <Tooltip content={tooltip}>
+      <Tooltip content={tooltip} bubbleStyle={styles.tooltipBubble}>
         <span className="hoverable" style={styles.wrapper} onClick={handleClick}>
         <ChainIcon size={iconSize} color={chainColor} strokeWidth={2.5} />
         {/* Rule 1/4: driving indicator (green) whenever a driving link exists, active or
@@ -255,4 +302,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
   },
+  // The bubble grows to fit ordinary link names, then wraps them at this local cap. Other tooltips
+  // retain Tooltip's compact default width and wrapping behavior.
+  tooltipBubble: { width: "max-content", maxWidth: 560, overflowWrap: "anywhere" },
+  tooltipLink: { display: "block", color: ui.text.primary },
+  tooltipLinkDisabled: { display: "block", color: ui.text.disabled },
+  tooltipUnsupportedHeader: { display: "block", color: ui.text.error },
+  tooltipHint: { display: "block", marginTop: 2, color: ui.text.tertiary },
 };

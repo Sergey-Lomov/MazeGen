@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { LinkStatusIcon } from "../components/LinkStatusIcon";
 import { getTooltipAnchor } from "./tooltipTestUtils";
 import { useMazeStore } from "../store/mazeStore";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
+import { ui } from "../styles/theme";
 
 type P = "a" | "b" | "c";
 
@@ -86,6 +87,44 @@ describe("LinkStatusIcon", () => {
   it("shows the driving-disabled header and no badge when overridden with no dependents", () => {
     renderIcon("b", [link({ enabled: false })]);
     expect(getTooltipAnchor(/Driving link disabled/)).toBeTruthy();
+  });
+
+  it("uses semantic colors for status and dims disabled link details", () => {
+    renderIcon("b", [link({ enabled: false })]);
+    const description = document.getElementById(getTooltipAnchor(/Driving link disabled/).getAttribute("aria-describedby")!);
+    const [header, detail] = [...(description?.children ?? [])] as HTMLElement[];
+    expect(header).toHaveStyle({ color: ui.text.disabled });
+    expect(detail).toHaveStyle({ color: ui.text.disabled });
+  });
+
+  it("uses the success color for an active driving-link status", () => {
+    renderIcon("b", [link({ enabled: true })]);
+    const description = document.getElementById(getTooltipAnchor(/Driving link active/).getAttribute("aria-describedby")!);
+    expect(description?.firstElementChild).toHaveStyle({ color: ui.text.success });
+  });
+
+  it("uses semantic colors for dependents-only and unlinked statuses", () => {
+    renderIcon("a", [link({ source: "a", target: "b", enabled: true })]);
+    const dependentsOnly = document.getElementById(getTooltipAnchor(/No driving link/).getAttribute("aria-describedby")!);
+    expect(dependentsOnly?.firstElementChild).toHaveStyle({ color: ui.text.info });
+
+    renderIcon("c", []);
+    const unlinked = document.getElementById(getTooltipAnchor(/No links/).getAttribute("aria-describedby")!);
+    expect(unlinked?.firstElementChild).toHaveStyle({ color: ui.text.primary });
+  });
+
+  it("uses an error heading and tertiary explanation for unsupported links", () => {
+    renderIcon(null, []);
+    const description = document.getElementById(getTooltipAnchor(/Links not supported/).getAttribute("aria-describedby")!);
+    const [header, hint] = [...(description?.children ?? [])] as HTMLElement[];
+    expect(header).toHaveStyle({ display: "block", color: ui.text.error });
+    expect(hint).toHaveStyle({ display: "block", color: ui.text.tertiary });
+  });
+
+  it("uses a wider, capped bubble only for link-status tooltips", () => {
+    renderIcon("b", [link({ enabled: true })]);
+    fireEvent.focus(getTooltipAnchor(/Driving link active/));
+    expect(screen.getByTestId("tooltip")).toHaveStyle({ width: "max-content", maxWidth: "560px", overflowWrap: "anywhere" });
   });
 
   it("shows the driving-active header when the driving link is enabled", () => {
