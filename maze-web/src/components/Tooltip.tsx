@@ -19,7 +19,7 @@ export const TOOLTIP_HOVER_DELAY_MS = 300;
  *  Meant for disabled controls and other non-focusable content (epic #766 rule 3). With empty
  *  `content` the wrapper stays in place (so toggling a control's `disabled` never remounts it) but is
  *  inert: no tab stop, no description, no bubble. */
-export function Tooltip({ content, children, placement = "top", block = false }: {
+export function Tooltip({ content, children, placement = "bottom", block = false }: {
   content: React.ReactNode;
   children: React.ReactNode;
   placement?: Placement;

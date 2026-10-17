@@ -5,6 +5,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { ui, spacing, typography } from "../../styles/theme";
 import { disabledOf } from "../../styles/palette";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "../Tooltip";
 import type React from "react";
 import {
   type EditRefusalSource, notifyEditRefusal, SPLIT_BOUNDARY_FACE,
@@ -243,12 +244,12 @@ export function TileFaceEditor({
     {showRotateControls && (
       <div style={styles.rotateRow}>
         <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
-        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)} title={m["post_edit.split_rotate_ccw"]()}>
+        <Tooltip content={m["post_edit.split_rotate_ccw"]()}><button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)}>
           <RotateCcw size={16} />
-        </button>
-        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)} title={m["post_edit.split_rotate_cw"]()}>
+        </button></Tooltip>
+        <Tooltip content={m["post_edit.split_rotate_cw"]()}><button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)}>
           <RotateCw size={16} />
-        </button>
+        </button></Tooltip>
       </div>
     )}
     </div>

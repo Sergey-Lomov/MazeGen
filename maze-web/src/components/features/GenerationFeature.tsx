@@ -9,6 +9,7 @@ import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
 import { ToolTooltip } from "../ToolIconButton";
+import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
@@ -209,14 +210,13 @@ export function GenerationFeature({ canGenerate }: Props) {
               <ChevronRight size={16} color={ui.text.tertiary} />
             </button>
           </ToolTooltip>
-          <button
+          <Tooltip content={m["generation.seed_history_open_tooltip"]()}><button
             className="hoverable"
             style={styles.seedToolbarBtn}
             onClick={() => setHistoryDialogOpen(true)}
-            title={m["generation.seed_history_open_tooltip"]()}
           >
             <History size={16} color={ui.text.tertiary} />
-          </button>
+          </button></Tooltip>
         </div>
         <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{m["generation.random"]()}</span>
@@ -235,7 +235,7 @@ export function GenerationFeature({ canGenerate }: Props) {
           {isVertexBased && (
             <SettingsIconButton title={m["generation.vertex_settings"]()} onClick={() => setVertexSettingsPanelOpen(true)} />
           )}
-          <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
+          <Tooltip content={m["generation.edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)}>✎</button></Tooltip>
         </div>
       </div>
 
@@ -253,18 +253,15 @@ export function GenerationFeature({ canGenerate }: Props) {
       </div>
 
       {/* QC Only toggle */}
-      <div style={styles.row} title={m["generation.qc_experiment_tooltip"]()}>
+      <Tooltip block content={m["generation.qc_experiment_tooltip"]()}><div style={styles.row}>
         <span style={styles.switchLabel}>{m["generation.qc_experiment"]()}</span>
         <div style={styles.switchRight}>
           <Switch checked={qcExperiment} onChange={setQcExperiment} />
         </div>
-      </div>
+      </div></Tooltip>
 
       {/* Random generation source toggle */}
-      <div
-        style={styles.row}
-        title={presetGenSource ? m["generation.random_source_disabled_tooltip"]() : undefined}
-      >
+      <Tooltip block content={<><span style={{ color: ui.text.primary }}>{m["generation.random_source_tooltip"]()}</span>{presetGenSource && <span style={{ display: "block", marginTop: 2, color: ui.text.tertiary }}>{m["generation.random_source_disabled_tooltip"]()}</span>}</>}><div style={styles.row}>
         <span style={{ ...styles.switchLabel, ...(presetGenSource ? styles.disabledLabel : {}) }}>
           {m["generation.random_source"]()}
         </span>
@@ -275,7 +272,7 @@ export function GenerationFeature({ canGenerate }: Props) {
             onChange={(checked) => setGenerationSourceMode(checked ? "random" : "default")}
           />
         </div>
-      </div>
+      </div></Tooltip>
 
       {/* Action buttons */}
       <div style={styles.btnRow}>

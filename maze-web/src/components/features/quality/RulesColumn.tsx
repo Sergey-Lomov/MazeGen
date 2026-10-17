@@ -57,7 +57,7 @@ function selectionBelongsToRule(selection: QualitySelection, ruleId: string, che
 // explains why instead of opening an empty picker (GitHub issue #772).
 function AddCheckRow({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
-    <Tooltip block content={disabled ? m["quality.no_checks_for_kind"]() : undefined}>
+    <Tooltip block content={disabled ? m["quality.no_checks_for_kind"]() : m["quality.add_check"]()}>
       <div
         className={disabled ? undefined : "hoverable"}
         style={disabled ? { ...styles.ruleAddCheckRow, opacity: 0.4 } : styles.ruleAddCheckRow}
@@ -71,7 +71,6 @@ function AddCheckRow({ disabled, onClick }: { disabled: boolean; onClick: () => 
             onClick();
           }
         }}
-        title={disabled ? undefined : m["quality.add_check"]()}
       >{`+ ${m["quality.add_check"]()}`}</div>
     </Tooltip>
   );
@@ -216,47 +215,42 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   expandTitle={m["quality.expand_stage"]()}
                   style={styles.collapseBtn}
                 />
-                <button
+                <Tooltip content={m["quality.add_new_rule"]()}><button
                   className="hoverable"
                   style={styles.stageToolbarBtn}
-                  title={m["quality.add_new_rule"]()}
                   onClick={() => setNewRuleStep({ stage: "issue", targetStageId: stage.stageId })}
                 >
                   <Plus size={16} color={ui.text.tertiary} strokeWidth={2.5} />
-                </button>
-                <button
+                </button></Tooltip>
+                <Tooltip content={m["quality.move_stage_up"]()}><button
                   className={isFirstStage ? undefined : "hoverable"}
                   style={{ ...styles.stageToolbarBtn, ...(isFirstStage ? styles.stageToolbarBtnDisabled : {}) }}
-                  title={m["quality.move_stage_up"]()}
                   disabled={isFirstStage}
                   onClick={() => moveStage(stage.stageId, "up")}
                 >
                   <ChevronUp size={16} color={ui.text.tertiary} strokeWidth={2.5} />
-                </button>
-                <button
+                </button></Tooltip>
+                <Tooltip content={m["quality.move_stage_down"]()}><button
                   className={isLastStage ? undefined : "hoverable"}
                   style={{ ...styles.stageToolbarBtn, ...(isLastStage ? styles.stageToolbarBtnDisabled : {}) }}
-                  title={m["quality.move_stage_down"]()}
                   disabled={isLastStage}
                   onClick={() => moveStage(stage.stageId, "down")}
                 >
                   <ChevronDown size={16} color={ui.text.tertiary} strokeWidth={2.5} />
-                </button>
-                <button className="hoverable" style={{ ...styles.stageToolbarBtn, fontSize: 16 }} title={m["quality.rename_stage"]()} onClick={() => startRenameStage(stage)}>✎</button>
-                <div
+                </button></Tooltip>
+                <Tooltip content={m["quality.rename_stage"]()}><button className="hoverable" style={{ ...styles.stageToolbarBtn, fontSize: 16 }} onClick={() => startRenameStage(stage)}>✎</button></Tooltip>
+                <Tooltip content={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}><div
                   style={styles.toggleWrap}
-                  title={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}
                 >
                   <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
-                </div>
-                <button
+                </div></Tooltip>
+                <Tooltip content={m["quality.remove_stage"]()}><button
                   className="hoverable"
                   style={styles.stageToolbarBtn}
-                  title={m["quality.remove_stage"]()}
                   onClick={() => setRemoveConfirmStageId(stage.stageId)}
                 >
                   <X size={16} color={ui.text.tertiary} strokeWidth={2.5} />
-                </button>
+                </button></Tooltip>
               </div>
               {!stage.collapsed && (
               <div style={styles.stageCards}>
@@ -297,30 +291,27 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           </span>
                         )}
                         <div style={styles.ruleCardTools}>
-                          <button
+                          <Tooltip content={m["quality.move_rule_up"]()}><button
                             className={isFirst ? undefined : "hoverable"}
                             style={{ ...styles.moveBtn, ...(isFirst ? styles.moveBtnDisabled : {}) }}
-                            title={m["quality.move_rule_up"]()}
                             disabled={isFirst}
                             onClick={() => moveRule(slot.ruleId, "up")}
                           >
                             <ChevronUp size={16} color={ui.text.tertiary} />
-                          </button>
-                          <button
+                          </button></Tooltip>
+                          <Tooltip content={m["quality.move_rule_down"]()}><button
                             className={isLast ? undefined : "hoverable"}
                             style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
-                            title={m["quality.move_rule_down"]()}
                             disabled={isLast}
                             onClick={() => moveRule(slot.ruleId, "down")}
                           >
                             <ChevronDown size={16} color={ui.text.tertiary} />
-                          </button>
-                          <div
+                          </button></Tooltip>
+                          <Tooltip content={slot.ruleDisabled ? m["quality.enable_rule"]() : m["quality.disable_rule"]()}><div
                             style={styles.toggleWrap}
-                            title={slot.ruleDisabled ? m["quality.enable_rule"]() : m["quality.disable_rule"]()}
                           >
                             <Switch checked={!slot.ruleDisabled} onChange={() => toggleRuleDisabled(slot.ruleId)} />
-                          </div>
+                          </div></Tooltip>
                           <EditIconButton title={m["quality.rename_rule"]()} onClick={() => startRename(slot)} />
                           <RemoveIconButton title={m["quality.remove_rule"]()} onClick={() => setRemoveConfirmRuleId(slot.ruleId)} />
                         </div>

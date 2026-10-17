@@ -18,6 +18,7 @@ import {
 } from "../../notifications/notificationStore";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
 import { overlay, radius, spacing, typography } from "../../styles/theme";
+import { Tooltip } from "../Tooltip";
 import * as m from "~/paraglide/messages";
 
 export const NOTIFICATION_ZONE_OFFSET = 16;
@@ -219,16 +220,15 @@ function CopyButton({ text }: { text: string }) {
   }, [copied]);
   const label = m["notifications.copy"]();
   return (
-    <button
+    <Tooltip content={label}><button
       type="button"
       className="hoverable"
       style={styles.iconBtn}
       aria-label={label}
-      title={label}
       onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {}); }}
     >
       {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-    </button>
+    </button></Tooltip>
   );
 }
 
@@ -263,16 +263,15 @@ function CountdownBar({ notice, paused }: { notice: NoticeItem; paused: boolean 
 
 function CloseButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
+    <Tooltip content={m["notifications.close"]()}><button
       type="button"
       className="hoverable"
       aria-label={m["notifications.close"]()}
-      title={m["notifications.close"]()}
       style={styles.iconBtn}
       onClick={onClick}
     >
       <X size={14} />
-    </button>
+    </button></Tooltip>
   );
 }
 

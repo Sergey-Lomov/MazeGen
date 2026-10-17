@@ -12,10 +12,6 @@ interface Props {
    * softer, like being experimental, "info" (blue) for a purely informational notice with no
    * risk attached (e.g. a param panel being unavailable for canonical elements). */
   severity?: NotificationSeverity;
-  /** Native tooltip text — used by callers that need a longer explanation than fits in `message`
-   * (e.g. Preset Connections' isolated-nodes/orphan-split warnings, which list the affected
-   * nodes/count in the title instead of the bubble body). */
-  title?: string;
   /** Hover handlers — used by callers that highlight something on the canvas while this bubble is
    * hovered (e.g. Preset Connections' isolated-nodes/orphan-split-node warnings). */
   onMouseEnter?: () => void;
@@ -29,7 +25,7 @@ interface Props {
 /** Warning/error bubble shown under a strategy's description — also the shared style for any
  * other inline info/warning/critical notice (GitHub issue #340's "match IssuesBlock" follow-up),
  * so every such notice across the app looks consistent instead of each feature rolling its own. */
-export function WarningBubble({ message, severity = "warning", title, onMouseEnter, onMouseLeave, children }: Props) {
+export function WarningBubble({ message, severity = "warning", onMouseEnter, onMouseLeave, children }: Props) {
   const palette = notificationPalette(severity);
   return (
     <div
@@ -38,7 +34,6 @@ export function WarningBubble({ message, severity = "warning", title, onMouseEnt
         background: palette.bg, color: palette.text, borderColor: palette.text,
         ...(children ? { display: "flex", flexDirection: "column", gap: 4 } : {}),
       }}
-      title={title}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

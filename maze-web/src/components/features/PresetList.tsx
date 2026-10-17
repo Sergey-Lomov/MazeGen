@@ -25,6 +25,7 @@ import { SidePanel } from "../SidePanel";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { ToolIconButton } from "../ToolIconButton";
+import { Tooltip } from "../Tooltip";
 import { Button } from "../Button";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ToolGlyphKey } from "./toolGlyphs";
@@ -538,13 +539,12 @@ function PresetCell({
   type ActionKind = "direction" | "settings" | "delete";
 
   const actionButton = (kind: ActionKind, title: string, onAction: () => void, child: React.ReactNode, danger = false) => (
-    <button
+    <Tooltip content={title}><button
       type="button"
       data-testid={`preset-action-${kind}`}
       data-preset-key={cell.key}
       className="hoverable"
       style={{ ...styles.iconButton, ...(danger ? { color: ui.text.error } : {}) }}
-      title={title}
       aria-label={title}
       onPointerDown={(event) => {
         event.preventDefault();
@@ -558,7 +558,7 @@ function PresetCell({
       }}
     >
       {child}
-    </button>
+    </button></Tooltip>
   );
 
   return (

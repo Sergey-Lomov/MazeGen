@@ -8,6 +8,7 @@ import { noticeDisplayDuration } from "../notifications/notificationStore";
 import { useLocale } from "../i18n/useLocale";
 import { radius, spacing, typography, ui } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "./Tooltip";
 
 /** Why a field's input was rejected or corrected. `key` identifies the reason (a repeat of the same
  *  key restarts the timer silently); `message` is called on every render, so a locale switch
@@ -147,10 +148,9 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
           style={{ ...styles.countdown, animationDuration: `${state.duration}ms`, animationPlayState: paused ? "paused" : "running" }}
         />
       </span>
-      <button
+      <Tooltip content={m["notifications.close"]()}><button
         type="button"
         aria-label={m["notifications.close"]()}
-        title={m["notifications.close"]()}
         style={{ ...styles.closeBtn, opacity: closeHovered ? 1 : 0.5 }}
         onMouseEnter={() => setCloseHovered(true)}
         onMouseLeave={() => setCloseHovered(false)}
@@ -159,7 +159,7 @@ function FieldHintBubble({ id, anchor, label, placement, state, onClose }: {
         onClick={onClose}
       >
         <X size={12} />
-      </button>
+      </button></Tooltip>
     </div>,
     document.body,
   );

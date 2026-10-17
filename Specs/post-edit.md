@@ -822,9 +822,9 @@ Hovering the id bubble highlights every OTHER row in the log sharing that same e
 list highlight, unrelated to `postEditHoveredEntity`'s canvas highlight that point/row hovers already
 drive. A highlighted row gets a plain background tint (`ui.bg.hover`, the same generic hover fill
 other panels use), independent of and stacked orthogonally to the row's own `rowHighlight`/bubble
-canvas-highlight behavior. The bubble's own `title` tooltip (`post_edit.changes_id_bubble_title`) is a
-dedicated i18n key describing this hover/click behavior, distinct from the filter input's own
-`changes_filter_placeholder`. Clicking the id bubble calls `setPostEditChangesEntityFilter(entityId)`
+canvas-highlight behavior. The bubble's custom tooltip is the concise `post_edit.changes_id_bubble_primary`
+label, “Filter by id”; it intentionally does not repeat the hover behavior because the entity is already
+highlighted when the tooltip is shown. Clicking the id bubble calls `setPostEditChangesEntityFilter(entityId)`
 directly — the minimal ad-hoc use of the #574 filter the issue described, rather than waiting on a
 separate generic event-filter ticket.
 

@@ -346,7 +346,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       });
       render(<VectorByCorridorsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+      expect(document.querySelectorAll('select[name^="teleport-group-"]')).toHaveLength(1);
     });
   });
 

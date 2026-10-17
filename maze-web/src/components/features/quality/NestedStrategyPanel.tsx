@@ -11,6 +11,7 @@ import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
 import { ui, typography, spacing, indent } from "../../../styles/theme";
 import { Inline } from "../../Layout";
+import { Tooltip } from "../../Tooltip";
 import { resolveStrategyLabel, resolveNestedStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
@@ -229,24 +230,22 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
       {showPriority && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
           <span style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</span>
-          <button
+          <Tooltip content={m["quality.nested_strategy.move_up"]()}><button
             className="hoverable"
             style={styles.reorderBtn}
-            title={m["quality.nested_strategy.move_up"]()}
             disabled={!canMoveUp}
             onClick={() => moveNestedStrategy(ruleId, path, "up")}
           >
             <ChevronUp size={16} color={canMoveUp ? ui.text.tertiary : ui.text.disabled} />
-          </button>
-          <button
+          </button></Tooltip>
+          <Tooltip content={m["quality.nested_strategy.move_down"]()}><button
             className="hoverable"
             style={styles.reorderBtn}
-            title={m["quality.nested_strategy.move_down"]()}
             disabled={!canMoveDown}
             onClick={() => moveNestedStrategy(ruleId, path, "down")}
           >
             <ChevronDown size={16} color={canMoveDown ? ui.text.tertiary : ui.text.disabled} />
-          </button>
+          </button></Tooltip>
           {removable && (
             <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}

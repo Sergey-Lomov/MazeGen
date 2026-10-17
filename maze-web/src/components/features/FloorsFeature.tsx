@@ -153,24 +153,22 @@ export function FloorsFeature() {
               <span ref={floor.id === hintTargetId ? attachTitle : undefined} style={styles.titleText}>{floor.title}</span>
             )}
             <div style={styles.tools}>
-              <button
+              <Tooltip content={m["floors.move_floor_up"]()}><button
                 className={isFirst ? undefined : "hoverable"}
                 style={{ ...styles.moveBtn, ...(isFirst ? styles.moveBtnDisabled : {}) }}
-                title={m["floors.move_floor_up"]()}
                 disabled={isFirst}
                 onClick={() => handleMoveClick(floor.id, "down")}
               >
                 <ChevronUp size={16} color={ui.text.tertiary} />
-              </button>
-              <button
+              </button></Tooltip>
+              <Tooltip content={m["floors.move_floor_down"]()}><button
                 className={isLast ? undefined : "hoverable"}
                 style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
-                title={m["floors.move_floor_down"]()}
                 disabled={isLast}
                 onClick={() => handleMoveClick(floor.id, "up")}
               >
                 <ChevronDown size={16} color={ui.text.tertiary} />
-              </button>
+              </button></Tooltip>
               <EditIconButton title={m["floors.rename_floor"]()} fontSize={15} onClick={() => startRename(floor.id, floor.title)} />
               <Tooltip content={floors.length === 1 ? m["floors.remove_last_floor_hint"]() : undefined}>
                 <RemoveIconButton title={m["floors.remove_floor"]()} disabled={floors.length === 1} onClick={() => handleRemoveClick(floor.id)} />

@@ -37,7 +37,8 @@ describe("LinkEditor cycle filtering", () => {
     const onSave = renderEditor(null, "a", existing);
     const disabledRow = document.querySelector('[aria-disabled="true"]') as HTMLElement;
     expect(disabledRow.textContent).toBe("Beta");
-    expect(disabledRow.title).toMatch(/cyclic/i);
+    const tooltipAnchor = disabledRow.closest<HTMLElement>('[data-testid="tooltip-anchor"]');
+    expect(document.getElementById(tooltipAnchor?.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/cyclic/i);
     fireEvent.click(disabledRow);
     expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
     expect(onSave).not.toHaveBeenCalled();

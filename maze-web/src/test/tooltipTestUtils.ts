@@ -2,12 +2,17 @@ import { screen } from "@testing-library/react";
 
 /** Finds the accessible tooltip anchor by the text exposed through `aria-describedby`. */
 export function getTooltipAnchor(content: string | RegExp): HTMLElement {
-  const anchor = screen.getAllByTestId("tooltip-anchor").find((candidate) => {
+  const anchor = getTooltipAnchors(content)[0];
+  if (!anchor) throw new Error(`Tooltip anchor not found: ${content}`);
+  return anchor;
+}
+
+/** Returns every accessible tooltip anchor whose description contains `content`. */
+export function getTooltipAnchors(content: string | RegExp): HTMLElement[] {
+  return screen.getAllByTestId("tooltip-anchor").filter((candidate) => {
     const description = document.getElementById(candidate.getAttribute("aria-describedby") ?? "");
     return typeof content === "string" ? description?.textContent?.includes(content) : content.test(description?.textContent ?? "");
   });
-  if (!anchor) throw new Error(`Tooltip anchor not found: ${content}`);
-  return anchor;
 }
 
 /** Returns the interactive element wrapped by a tooltip. */

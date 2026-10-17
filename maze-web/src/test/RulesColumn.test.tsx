@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { RulesColumn } from "../components/features/quality/RulesColumn";
 import { useMazeStore } from "../store/mazeStore";
 import type { StrategySlotVM, StrategyVM, CheckVM, QualityStageVM } from "../components/features/useQualityViewModel";
-import { getTooltipControl, getTooltipControlWithin } from "./tooltipTestUtils";
+import { getTooltipControl, getTooltipControlWithin, getTooltipControls } from "./tooltipTestUtils";
 
 // Wraps a flat `StrategySlotVM[]` fixture into a single-stage `QualityStageVM[]` — most tests
 // here don't care about stage grouping itself, just about rendering/interacting with rule cards,
@@ -286,8 +286,8 @@ describe("RulesColumn", () => {
 
     // The first entry's "up" arrow must be disabled (already top rank); the second's "down"
     // arrow must likewise be disabled (already lowest rank).
-    const upButtons = screen.getAllByTitle("Move up (higher priority)");
-    const downButtons = screen.getAllByTitle("Move down (lower priority)");
+    const upButtons = getTooltipControls("Move up (higher priority)");
+    const downButtons = getTooltipControls("Move down (lower priority)");
     expect(upButtons[0]).toBeDisabled();
     expect(upButtons[1]).not.toBeDisabled();
     expect(downButtons[0]).not.toBeDisabled();
@@ -301,7 +301,7 @@ describe("RulesColumn", () => {
     ]);
 
     // The (now second) entry's "up" arrow reorders it back above the first.
-    const upButtonsAfter = screen.getAllByTitle("Move up (higher priority)");
+    const upButtonsAfter = getTooltipControls("Move up (higher priority)");
     fireEvent.click(upButtonsAfter[1]);
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.nestedStrategies).toEqual([
       { slotId: "loop_seed_target", strategyId: "missing_loops_random", params: {}, nested: [] },

@@ -7,6 +7,7 @@ import { pickColor, pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { distributeOklchHues } from "../store/colorMath";
+import { getTooltipAnchor, getTooltipAnchors } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
 
 // getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
@@ -519,10 +520,8 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
 
-      // The group row's fill-color swatch is wrapped in a `<span title=...>` (no visible label).
-      const fillWrap = document.querySelector(
-        `[title="${m["image_export.vector_by_walls.teleport_group_override_color"]()}"]`,
-      )!;
+      // The group row's fill-color swatch has no visible label, so its custom tooltip identifies it.
+      const fillWrap = getTooltipAnchor(m["image_export.vector_by_walls.teleport_group_override_color"]());
       pickColor(fillWrap.querySelector('[role="button"]')!, "#abcdef");
       const groupKey = Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)[0];
       expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides[groupKey].fillColor).toBe(0xabcdef);
@@ -676,7 +675,7 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(2);
+      expect(getTooltipAnchors(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(2);
     });
 
     it("does not show a collision warning when a connector line is drawn (groups already distinguishable)", () => {
@@ -1044,7 +1043,7 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
       // One `TeleportGroupRow` — its shape dropdown carries the "override shape" title.
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+      expect(document.querySelectorAll('select[name^="teleport-group-"]')).toHaveLength(1);
     });
   });
 

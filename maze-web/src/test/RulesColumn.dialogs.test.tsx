@@ -89,7 +89,7 @@ describe("RulesColumn dialogs and rule management", () => {
     useMazeStore.setState({ availableStrategies: [] });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
     expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     expect(screen.getByTestId("issue-select-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByText("pick-k1"));
     expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("Back from the check dialog returns to the issue-select dialog", () => {
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("go-back"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("RulesColumn dialogs and rule management", () => {
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("RulesColumn dialogs and rule management", () => {
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     fireEvent.click(screen.getByText("go-back-2"));
@@ -139,7 +139,7 @@ describe("RulesColumn dialogs and rule management", () => {
       rules: [],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     fireEvent.click(screen.getByText("pick-strategy"));
@@ -156,7 +156,7 @@ describe("RulesColumn dialogs and rule management", () => {
       rules: [],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();

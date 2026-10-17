@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
-import { getTooltipControl } from "./tooltipTestUtils";
+import { getTooltipAnchor, getTooltipControl } from "./tooltipTestUtils";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -187,6 +187,15 @@ describe("GenerationFeature — random generation source toggle", () => {
     useMazeStore.setState({ presetGenSource: { point: [1, 1] } });
     render(<GenerationFeature canGenerate={true} />);
     expect(toggle().disabled).toBe(true);
+  });
+
+  it("explains the source mode and separately explains why a pinned source disables it", () => {
+    useMazeStore.setState({ presetGenSource: { point: [1, 1] } });
+    render(<GenerationFeature canGenerate={true} />);
+    const anchor = getTooltipAnchor(m["generation.random_source_tooltip"]());
+    const description = document.getElementById(anchor.getAttribute("aria-describedby")!);
+    expect(description?.textContent).toContain(m["generation.random_source_tooltip"]());
+    expect(description?.textContent).toContain(m["generation.random_source_disabled_tooltip"]());
   });
 
   it("keeps showing the real generationSourceMode (not forced checked) while disabled by a pin (GitHub issue #640 regression)", () => {

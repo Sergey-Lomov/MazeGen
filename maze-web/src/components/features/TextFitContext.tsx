@@ -4,6 +4,7 @@ import { Maximize2 } from "lucide-react";
 import { ui, controlRowHeight } from "../../styles/theme";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
+import { ToolTooltip } from "../ToolIconButton";
 
 /** Auto-fit data for the export settings panels (GitHub issue #707) — each panel provides one at its
  *  root, computed from the whole project's labels (`computeTextFitItemsAcrossFloors`), so every
@@ -39,22 +40,21 @@ export function AutoFitButton({ resolve, onApply, all = false }: {
   if (!ctx) return null;
   const size = resolve(ctx);
   const label = m["image_export.vector_by_walls.text_autofit_button"]();
-  const title = size === null
+  const description = size === null
     ? m["image_export.vector_by_walls.text_autofit_nothing"]()
     : all ? m["image_export.vector_by_walls.text_autofit_all_tooltip"]() : m["image_export.vector_by_walls.text_autofit_tooltip"]();
   const disabled = size === null;
   return (
-    <span
+    <ToolTooltip title={m["image_export.vector_by_walls.text_autofit_primary"]()} description={description}><span
       className={disabled ? undefined : "hoverable"}
       style={{ ...iconStyle, cursor: "default" }}
-      title={title}
       role="button"
       aria-label={label}
       aria-disabled={disabled}
       onClick={() => { if (size !== null) onApply(size); }}
     >
       <Maximize2 size={controlRowHeight - 9} color={disabled ? ui.text.disabled : ui.text.secondary} strokeWidth={2.5} />
-    </span>
+    </span></ToolTooltip>
   );
 }
 

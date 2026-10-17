@@ -171,7 +171,7 @@ describe("useFieldHint", () => {
     expect(screen.getAllByTestId("field-hint")).toHaveLength(1);
     act(() => controller.show(rounded));
     expect(screen.getAllByTestId("field-hint")).toHaveLength(1);
-    expect(screen.getByTestId("field-hint").textContent).toBe("Rounded");
+    expect(screen.getByTestId("field-hint").querySelector("span")?.textContent).toBe("Rounded");
     expect(politeTexts()).toEqual(["Too long", "Rounded"]);
   });
 
@@ -257,9 +257,13 @@ describe("useFieldHint", () => {
     screen.getByTestId("label").getBoundingClientRect = () => rect(20, 80);
     screen.getByTestId("field").getBoundingClientRect = () => rect(100, 160);
     act(() => controller.show(tooLong));
-    const options = vi.mocked(floating.useFloating).mock.calls.at(-1)![0]!;
+    const floatingCalls = vi.mocked(floating.useFloating).mock;
+    const sizeCall = floatingCalls.calls.find(([options]) => options?.middleware?.some((middleware) => middleware && middleware.name === "size"));
+    expect(sizeCall).toBeDefined();
+    const callIndex = floatingCalls.calls.indexOf(sizeCall!);
+    const options = sizeCall![0]!;
     expect(options.middleware?.map((mw) => mw && mw.name)).toContain("size");
-    const reference = vi.mocked(floating.useFloating).mock.results.at(-1)!.value.refs.reference.current;
+    const reference = floatingCalls.results[callIndex]!.value.refs.reference.current;
     const span = reference.getBoundingClientRect();
     expect([span.left, span.right, span.width]).toEqual([20, 160, 140]);
     expect(screen.getByTestId("field").style.outline).not.toBe("");
@@ -291,7 +295,7 @@ describe("useFieldHint", () => {
     act(() => controller.show(tooLong));
     try {
       act(() => setLocale("ru"));
-      expect(screen.getByTestId("field-hint").textContent).toBe("Слишком длинно");
+      expect(screen.getByTestId("field-hint").querySelector("span")?.textContent).toBe("Слишком длинно");
       expect(politeTexts()).toEqual(["Too long"]);
     } finally {
       act(() => setLocale("en"));
