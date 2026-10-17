@@ -28,6 +28,10 @@ const cells = new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(2, 0)])
 const activeControllers: PostEditController[] = [];
 
 function makeController(): PostEditController {
+  return makeHarness().controller;
+}
+
+function makeHarness(): { controller: PostEditController; renderer: PostEditRenderer } {
   const renderer = {
     getCachedCellSet: () => cells,
     getCachedCells: () => [[0, 0], [1, 0], [2, 0]],
@@ -41,7 +45,7 @@ function makeController(): PostEditController {
     vi.fn(),
   );
   activeControllers.push(controller);
-  return controller;
+  return { controller, renderer };
 }
 
 /** Square cell centers: (20, -20), (60, -20), (100, -20). */
@@ -94,6 +98,16 @@ afterEach(() => {
 });
 
 describe("PostEditController element tools (GitHub issue #748)", () => {
+  it("clears edge, cell, and teleport-preview hover together", () => {
+    const { controller, renderer } = makeHarness();
+
+    controller.clearHover();
+
+    expect(renderer.updateHover).toHaveBeenLastCalledWith(null);
+    expect(renderer.updateCellHover).toHaveBeenLastCalledWith(null);
+    expect(renderer.updateTeleportPreview).toHaveBeenLastCalledWith(null, 0, 0);
+  });
+
   it("a placement click on an occupied node adds the tool's element; a press that leaves the cell drags instead", () => {
     useMazeStore.setState({ postEditTool: "set_finish" });
     const controller = makeController();

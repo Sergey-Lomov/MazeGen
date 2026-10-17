@@ -659,6 +659,39 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("clears editor hover when the pointer moves from the canvas to a side panel", () => {
+    const canvas = document.createElement("canvas");
+    const clearHover = vi.fn();
+    const onHoverChanged = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: { x: 0, y: 0, scale: { x: 1, y: 1 } } as any,
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({
+        onPointerDown: vi.fn(),
+        onPointerMove: vi.fn(),
+        onPointerUp: vi.fn(),
+        cancelPointerGesture: vi.fn(),
+        clearHover,
+      }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged,
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    canvas.dispatchEvent(new Event("pointerleave"));
+
+    expect(clearHover).toHaveBeenCalledOnce();
+    expect(onHoverChanged).toHaveBeenCalledWith(null);
+    interaction.destroy();
+  });
+
   it("confirms a persistent field selection when the pointer is released outside the canvas", () => {
     const stageHandlers: Record<string, () => void> = {};
     const state = useMazeStore.getState();

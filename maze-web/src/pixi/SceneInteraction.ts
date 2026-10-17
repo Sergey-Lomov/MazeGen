@@ -69,6 +69,17 @@ export class SceneInteraction {
     this.deps.onHoverChanged(null);
   };
 
+  /** DOM pointerleave is the reliable boundary when moving directly from canvas to a side panel. */
+  private onPointerLeave = () => {
+    const st = useMazeStore.getState();
+    this.deps.getController(st)?.clearHover?.();
+    this.deps.onHoverChanged(null);
+    setCanvasCursor(this.deps.app.canvas, "");
+    if (st.openCard === "field_setup") {
+      this.deps.fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
+    }
+  };
+
   private onWindowPointerDown = (e: PointerEvent) => {
     const state = useMazeStore.getState();
     if (state.floorLabelDrag !== null && !this.isInsideCanvas(e.target)) {
@@ -225,18 +236,10 @@ export class SceneInteraction {
       this.defaultPan.end();
     });
 
-    stage.on("pointerleave", () => {
-      const st = useMazeStore.getState();
-      onHoverChanged(null);
-      setCanvasCursor(app.canvas, "");
-      if (st.openCard === "field_setup") {
-        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
-      }
-    });
-
     window.addEventListener("blur", this.onBlur);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("pointerdown", this.onWindowPointerDown, true);
+    app.canvas.addEventListener("pointerleave", this.onPointerLeave);
 
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -258,6 +261,7 @@ export class SceneInteraction {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("pointerdown", this.onWindowPointerDown, true);
+    this.deps.app.canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.deps.app.canvas.removeEventListener("wheel", this.onWheel);
     setCanvasCursor(this.deps.app.canvas, "");
   }

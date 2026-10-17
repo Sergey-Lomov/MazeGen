@@ -1153,6 +1153,7 @@ export class PostEditController extends BaseController {
   clearHover(): void {
     resetPointerHover({
       updateHover: (edge) => this.renderer.updateHover(edge),
+      updateCellHover: (cell) => this.renderer.updateCellHover(cell),
       updateTeleportPreview: (point, x, y) => this.renderer.updateTeleportPreview(point, x, y),
     });
   }

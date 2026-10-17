@@ -1497,6 +1497,8 @@ Extends `BaseController` (shared with `PresetConnectionsController`). `BaseContr
 
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` — every real node at a point, GitHub issue #221) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 
+**Pointer cleanup.** When the pointer leaves the canvas, `SceneInteraction` clears the active controller's hover through the canvas DOM `pointerleave` boundary. `PostEditController.clearHover()` clears edge hover, cell hover, and the pending-teleport preview together, so moving directly to either side panel cannot retain a stale field-cell highlight.
+
 - **Left click + edge tool** → resolves both cells' active endpoint (`resolveActiveEndpointAt`) and calls `applyPostEditTool`, schedule confirm if `autoConfirm`.
 - **Right click + edge tool** → resets the clicked edge to its generation-time state (`applyPostEditToolAt("reset", …)`, GitHub issue #459), regardless of which edge tool is active — mirrors `PresetConnectionsController`'s own right-click reset. A split connection can't be reset via the edge branch (GitHub issue #327), same as the dedicated Reset tool — it emits `edit_refusal.split_connection_reset` there (whole-point reset stays Reset-tool-only). Floor-scoped via the same `level` passed to `cellEdgeToNodeKey` as the left-click path.
 - **Left click + endpoint tool (`set_start`/`set_finish`), no start/finish marker under cursor** → `setPostEditEndpoint` with the point's currently active endpoint (confirm called internally by store action when `autoConfirm`); an unconfirmed split node emits `edit_refusal.unconfirmed_split_node`. Teleport and vertical-element tools use the same refusal.
