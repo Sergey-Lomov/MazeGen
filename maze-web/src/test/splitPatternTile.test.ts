@@ -24,7 +24,7 @@ describe("degreeFor", () => {
   });
 
   it("builds five-face pattern tiles for Cairo", () => {
-    const nodes = tileNodesForPattern({ shape: "cairo_pentagon", node_count: 1, faces: [[]], weight: 1 }, 5);
+    const nodes = tileNodesForPattern({ shape: "cairo_pentagon", node_count: 1, faces: [[]], weight: 1 }, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }));
     expect(nodes[0].faces).toHaveLength(5);
   });
 });
@@ -119,8 +119,7 @@ describe("tileNodesForTopology", () => {
   const WALL: SplitFaceRequirement = { kind: "wall" };
   const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
-  it("converts core face positions to web face positions per node", () => {
-    // Web authors faces in core's `faces_of` order, so web position i is core position i.
+  it("reads canonical face positions per node", () => {
     const hexCfg = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const topology: SplitFaceRequirement[][] = [
       [PASSAGE, PASSAGE, WALL, WALL, WALL, WALL],

@@ -22,6 +22,7 @@
  *    adjacent-face nodes are "Side corridor 1" / "Side corridor 2" by ascending lowest face index. */
 
 import { detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
+import { canonicalFaceKinds, type SplitShapeBinding } from "./splitShape";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import * as m from "~/paraglide/messages";
 
@@ -78,10 +79,12 @@ const sideCorridorN = (n: number): SemanticName => ({
  *  faces, in `offsets`/row order — original node first, then each slot), or `null` if this point's
  *  topology has no registered names. A non-`null` result always has exactly one entry per node. */
 export function splitNodeSemanticNamesFromKinds(
-  faceKindsByNode: SplitFaceKind[][],
+  localFaceKindsByNode: SplitFaceKind[][],
+  binding: SplitShapeBinding | null,
 ): SemanticName[] | null {
-  const kind = detectSplitSpecialShapeKind(faceKindsByNode);
-  if (kind === null) return null;
+  const kind = detectSplitSpecialShapeKind(localFaceKindsByNode, binding);
+  if (kind === null || binding === null) return null;
+  const faceKindsByNode = localFaceKindsByNode.map((kinds) => canonicalFaceKinds(binding, kinds));
 
   const degree = faceKindsByNode[0]?.length ?? 0;
   const facesByNode = faceKindsByNode.map(connectedFaceIndices);
@@ -166,8 +169,8 @@ export function splitNodeSemanticNamesFromKinds(
 
 /** Per-node semantic names for `nodes` (in row order: original node first, then each slot), or
  *  `null` if this point's topology has no registered names. */
-export function splitNodeSemanticNames(nodes: SplitNodeFaces[]): SemanticName[] | null {
-  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)));
+export function splitNodeSemanticNames(nodes: SplitNodeFaces[], binding: SplitShapeBinding | null): SemanticName[] | null {
+  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)), binding);
 }
 
 /** One name for the whole split point's recognized shape (not per-node) — e.g. for

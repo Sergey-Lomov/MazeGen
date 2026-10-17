@@ -5,6 +5,7 @@ import {
 } from "../fieldEditUtils";
 import { presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
+import { splitShapeBinding } from "../splitShape";
 import type { PresetSplitLabelContext } from "../presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
@@ -100,7 +101,7 @@ export function buildPresetCellInspection(
       endpoint, point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
     ));
     semanticNames = splitNodeSemanticNamesFromKinds(
-      faceKindsByNode,
+      faceKindsByNode, splitShapeBinding(cfg, point[0], point[1]),
     );
   }
 

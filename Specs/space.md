@@ -519,10 +519,22 @@ Status (GitHub issue #761, third step): the web has no per-tessellation geometry
 `pixi/geometry/tessellationUi.ts` holds only UI metadata per `kind` (name, orientations, default
 params, the display base transform and pixel sizes). `pixi/tessellationGeometry.ts` derives cell
 centers, vertices, shared edges, neighbor offsets, and nearest-cell lookup from the snapshot through
-the display transform (`pixel = pixelsPerUnit · Orient · Base · core`). Face indices in the web —
-split blueprints, stored split patterns' `face_index`, face editors — follow core's `faces_of`
-order (counter-clockwise), the same order the generator reads. A pattern's `face_index` is stored as
-the shape template's canonical index through the anchor cell's `canonical_face`.
+the display transform (`pixel = pixelsPerUnit · Orient · Base · core`). Face indices of cells in the web —
+split blueprints, post-edit and preset face editors — follow core's `faces_of` order
+(counter-clockwise), the same order the generator reads. A pattern's `face_index` is the shape
+template's canonical index everywhere; the pattern editor reads the anchor tile through the anchor
+cell's `canonical_face` (`anchorCanonicalFaces`).
+
+Status (GitHub issue #764): `CellGeometry` also carries `shape` (the cell's `ShapeDescriptor` key:
+`regular:4`, `regular:6`, `cairo_pentagon`, …). Special split shape recognition (`bridge`, `diagonal`,
+`hex_*`, `cairo_*`), their node positions and semantic names are keyed on that shape and evaluated on
+the template's canonical faces (`splitShapeBinding`, `pixi/splitShape.ts`), not on the tessellation
+kind or the cell's face count. Shared-edge contact points come from core's `contact_point` for every
+face. `CellGeometry` carries `allowed_group` (the cell's allowed transforms as canonical-face permutations,
+identity first); split-point rotation (`rotateFaceIndex`) applies the group element that shifts every
+canonical face by one step and is unavailable (controls hidden, faces unchanged) when the group has none,
+as for Cairo (identity + one reflection). The corridor contour engine orders ports with an angular epsilon so float noise at the ±π
+branch cut cannot reorder them.
 
 Status (GitHub issue #762): the field editor is built on core's geometry and field operations.
 Selection, editor primitives, nearest-cell lookup and print layout use the snapshot geometry;
@@ -539,7 +551,7 @@ one-way markers, edge highlights and the grid draw with `tracePath` on the displ
 (`getCellPath`, `SharedEdge.path`); geometric operations (hit-testing, wall chaining, boundary
 highlight bands, region contours, `closestPointOnPolyline`, `offsetPolyline`, `trimPolyline`) use
 polylines. `getSharedEdgeSegment` returns a `SharedEdge` (`v0`, `v1`, `path`, `polyline`, `contact`);
-markers and corridor crossings sit at the face's contact point (a single straight segment's midpoint is taken exactly from its end points); `getTileDiagram` sides carry the same `contact`, relative to the tile center. Print-fit treats a shape core refuses as not fitting. No consumer inspects the segment type. Print-fit sizing
+markers and corridor crossings sit at the face's contact point, taken from core for every face; `getTileDiagram` sides carry the same `contact`, relative to the tile center. Print-fit treats a shape core refuses as not fitting. No consumer inspects the segment type. Print-fit sizing
 measures presets with `field_preset_extents` along the rows of the display transform. The
 triangle/hexagon selection shapes, equilateral snapping (`TessellationUi.equilateralSnap`: step and canonical offset in core space, turned by the orientation),
 primitive hexagon frames and hex connector axes take their orientation from the display

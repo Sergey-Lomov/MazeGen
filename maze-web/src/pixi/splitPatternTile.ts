@@ -1,6 +1,6 @@
 import { splitSlotColor } from "./colorUtils";
 import { canvas } from "./colorTokens";
-import { getNeighborData, splitFaceIndexToCore } from "./tessellationGeometry";
+import { anchorCanonicalFaces, getNeighborData } from "./tessellationGeometry";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
@@ -50,11 +50,14 @@ export function tileFaceKindOf(requirement: SplitFaceRequirement | undefined): T
 
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for every node of `pattern` at once — shared
  *  between the abstract pattern editor and the compact read-only preview shown on each pattern's
- *  card in the settings list, so the two always render a given pattern identically. */
-export function tileNodesForPattern(pattern: SplitPattern, degree: number): TileFaceNode[] {
+ *  card in the settings list, so the two always render a given pattern identically. A pattern's
+ *  `face_index` is canonical, so each drawn side of the anchor tile is read through
+ *  `anchorCanonicalFaces`. */
+export function tileNodesForPattern(pattern: SplitPattern, cfg: FieldConfig): TileFaceNode[] {
+  const canonical = anchorCanonicalFaces(cfg);
   return Array.from({ length: pattern.node_count }, (_, nodeIndex): TileFaceNode => ({
     color: splitPatternNodeColor(nodeIndex),
-    faces: Array.from({ length: degree }, (_, faceIndex): TileFace => ({
+    faces: canonical.map((faceIndex): TileFace => ({
       kind: tileFaceKindOf(pattern.faces[nodeIndex]?.find((f) => f.face_index === faceIndex)?.requirement),
       boundary: false,
     })),
@@ -63,19 +66,15 @@ export function tileNodesForPattern(pattern: SplitPattern, degree: number): Tile
 
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for a maze-wide split group's canonical
  *  topology (`SplitGroupDto.topology`, `maze_core::graph::split_topology`) — used by the analytics
- *  "pattern statistics" modal's preview thumbnails. Unlike `tileNodesForPattern`, `topology[node]`
- *  is a plain array indexed by the shape template's canonical face index directly (no
- *  `face_index` field to match against), so each web face position is converted to its canonical
- *  index via `splitFaceIndexToCore` before reading — the same conversion point
- *  `splitPatternsToCore` uses at the wasm-config-serialization boundary (GitHub issue #273), just
- *  read in the opposite direction (canonical value -> web slot) since this data already arrived
- *  from wasm in canonical ordering, unlike an authored `SplitPattern`. */
+ *  "pattern statistics" modal's preview thumbnails. `topology[node]` is a plain array indexed by
+ *  the shape template's canonical face index, so each drawn side is read through
+ *  `anchorCanonicalFaces`. */
 export function tileNodesForTopology(topology: SplitFaceRequirement[][], cfg: FieldConfig): TileFaceNode[] {
-  const degree = degreeFor(cfg);
+  const canonical = anchorCanonicalFaces(cfg);
   return topology.map((nodeFaces, nodeIndex): TileFaceNode => ({
     color: splitPatternNodeColor(nodeIndex),
-    faces: Array.from({ length: degree }, (_, webFaceIndex): TileFace => ({
-      kind: tileFaceKindOf(nodeFaces[splitFaceIndexToCore(cfg, webFaceIndex)]),
+    faces: canonical.map((faceIndex): TileFace => ({
+      kind: tileFaceKindOf(nodeFaces[faceIndex]),
       boundary: false,
     })),
   }));

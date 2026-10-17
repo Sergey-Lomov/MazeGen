@@ -32,12 +32,12 @@ const NOOP = () => {};
  *  `TileFaceEditor` itself (no separate rendering path to keep in sync with the abstract editor)
  *  with a fixed small size and no-op click handlers; `TileFaceEditor`'s own cursor is already
  *  `default` (not a pointer), so it doesn't visually suggest interactivity. */
-function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
+function PatternPreviewTile({ pattern, cfg }: { pattern: SplitPattern; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
   const anchorPoint = originCellOf(cfg);
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
-        point={anchorPoint} cfg={cfg} nodes={tileNodesForPattern(pattern, degree)} activeIndex={null}
+        point={anchorPoint} cfg={cfg} nodes={tileNodesForPattern(pattern, cfg)} activeIndex={null}
         onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
       />
     </div>
@@ -129,7 +129,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         ) : (
           patterns.map((pattern, i) => (
             <div key={i} style={styles.patternCard}>
-              <PatternPreviewTile pattern={pattern} degree={degree} cfg={fieldConfig} />
+              <PatternPreviewTile pattern={pattern} cfg={fieldConfig} />
               <div style={styles.patternInfo}>
                 {withWeights && (
                   <div style={styles.weightRow}>

@@ -10,6 +10,7 @@
  * live here once. */
 
 import type { SplitSpecialShapeKind } from "./renderers/types";
+import { canonicalFaceKinds, type SplitShapeBinding } from "./splitShape";
 
 /** `"none"` deliberately doesn't exist here — every face always has a real decided-or-default
  *  kind (`wall` for post-edit, `undefined`/optional for presets); "no decision yet" is represented
@@ -69,13 +70,16 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
   return null;
 }
 
-/** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
- *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294 — or
+/** Recognizes a split point's topology by its cell's shape template (`binding`; a cell without one
+ *  is never recognized). `localFaceKindsByNode` is in the cell's `faces_of` order; recognition runs
+ *  on the template's canonical faces, so it holds for every cell of the template. The `regular:4`
+ *  template: a two-node topology as `"bridge"` (each node an opposite-face pair) or `"diagonal"` (each node an
+ *  adjacent-face pair) — GitHub issue #294 — or
  *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
  *  `"hex_bridge"` (two nodes, each an opposite-face pair), `"hex_triple_bridge"` (three nodes, all
  *  opposite-face pairs), `"hex_diagonal"` (two nodes, neither an opposite-face pair — adjacent
  *  and/or skip-face pairs), `"hex_triple_corridor"` (three nodes: one opposite-face pair plus two
- *  adjacent-face pairs). `faceKindsByNode[nodeIndex]` is that node's kind on every one of the
+ *  adjacent-face pairs). `localFaceKindsByNode[nodeIndex]` is that node's kind on every one of the
  *  point's faces, in the same order as `offsets`/`faceInputs`; a node only counts as "connected" on
  *  a face for `passage`/`one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null`
  *  for anything else (wrong degree/node count, not exactly 2 connected faces per node, or a
@@ -88,12 +92,15 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
  *  so a recognized shape would hide the directionality. Falling back to `null` makes the caller
  *  render the ordinary per-node hub connectors, which draw the one-way arrow. */
 export function detectSplitSpecialShapeKind(
-  faceKindsByNode: SplitFaceKind[][],
+  localFaceKindsByNode: SplitFaceKind[][],
+  binding: SplitShapeBinding | null,
 ): SplitSpecialShapeKind | null {
+  if (binding === null) return null;
+  const faceKindsByNode = localFaceKindsByNode.map((kinds) => canonicalFaceKinds(binding, kinds));
   const degree = faceKindsByNode[0]?.length ?? 0;
   const nodeCount = faceKindsByNode.length;
   if (faceKindsByNode.some((kinds) => kinds.some((k) => k === "one_way_out" || k === "one_way_in"))) return null;
-  if (degree === 5) {
+  if (binding.shape === "cairo_pentagon") {
     if (nodeCount !== 2) return null;
     const connectedIndices = faceKindsByNode.map((kinds) => connectedIndicesOf(kinds));
     const hasPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
@@ -110,7 +117,7 @@ export function detectSplitSpecialShapeKind(
       (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
       ? "cairo_adjacent_divider" : null;
   }
-  if (degree !== 4 && degree !== 6) return null;
+  if (binding.shape !== "regular:4" && binding.shape !== "regular:6") return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 

@@ -490,11 +490,7 @@ Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionE
 
 ### Rotating a split point (`rotatePresetSplitPoint`, GitHub issue #580)
 
-Cairo uses its five stable face slots directly. Rotation orders those slots by the actual
-neighbor-vector angles and moves each face to the adjacent physical offset, rather than treating
-the stable core slot order as a perimeter. Its odd degree never participates in the opposite-face
-bridge heuristic; owner resolution otherwise follows the existing-owner and safe-fallback tiers
-used by the other tessellations.
+Rotation follows the cell's shape template, exactly as in post-edit (see `Specs/post-edit.md`'s "Rotating a split point"): one step is the allowed-group element shifting every canonical face by one, and a cell whose group has none (Cairo) cannot rotate. Owner resolution follows the existing-owner and safe-fallback tiers.
 
 Mirrors post-edit's own `rotateSplitPointNodes` (see `Specs/post-edit.md`'s "Rotating a split point" section for the full algorithm) over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`: each of the point's own declared nodes independently shifts its decided faces by one adjacent physical face; a new neighbor's owning node is resolved by the same existing-connection → geometry-evidence (`canCompleteOppositePair`) → active/original-fallback tiering (`resolvePresetFaceOwner`/`selectExistingPresetFaceOwner`).
 

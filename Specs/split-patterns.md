@@ -9,8 +9,7 @@ a random node count with unconstrained face assignment.
 ## Wire types (`maze-core/src/generation/split_pattern.rs`, mirrored by `wasm/types.ts`)
 
 > Core, wasm/runner DTOs and the project format follow "Patterns on shape templates" at the end
-> of this file (GitHub issue #758). The pattern UI still authors in web face order and converts at
-> the wasm boundary until #764.
+> of this file (GitHub issue #758). The pattern UI authors in canonical face order (#764).
 
 - **`SplitFaceRequirement`** — `Passage | OneWay(direction) | Wall | Unspecified`. `Wall` is the
   only requirement satisfiable off-field (a face pointing past the tessellation's boundary).
@@ -278,11 +277,12 @@ per-node requirement lists are indexed by canonical face.
 
 ### Pattern UI
 
-The store and the project file keep web authoring order: `face_index` follows core's `faces_of`
-(canonical CCW order) of the pattern anchor cell, `originCellOf(cfg)` (registry field `originCell`;
-Cairo `[2, 1]`, others `[0, 0]`). `splitFaceIndexToCore` / `splitFaceIndexToWeb` convert between that
-order and core's canonical indices through the anchor cell's `canonical_face` binding. No
-per-tessellation face tables exist in the web.
+The store, the project file, the wasm payloads and the strategy params all hold canonical
+`face_index` values; no conversion exists at any boundary. The editor draws the anchor cell's tile
+(`originCellOf(cfg)`, registry field `originCell`; Cairo `[2, 1]`, others `[0, 0]`) and reads each
+drawn side through `anchorCanonicalFaces` (the anchor cell's `canonical_face` binding): previews,
+the editor's face clicks, blueprint-to-pattern conversion and analytics topology thumbnails all
+go through it. No per-tessellation face tables exist in the web.
 
 `TileFaceEditor`, face rotation and bridge/diagonal detection are driven by the descriptor:
 - template geometry from core;

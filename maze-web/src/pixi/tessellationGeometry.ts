@@ -1,8 +1,8 @@
 import type { FieldConfig } from "../fieldConfig";
-import type { SplitPattern } from "../wasm/types";
 import { cellAtSpacePoint, getCellGeometry, type CellGeometryEntry } from "./cartesianCache";
 import { getCellsInRegion, type RegionMode } from "../wasm/mazeService";
 import type { PathCommand } from "../wasm/mazeService";
+import { rotationTransform, splitShapeBinding } from "./splitShape";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import { flattenSegments, segmentsToCommands } from "./geometry/pathFlatten";
 import { GEOMETRY_TOLERANCE } from "./cartesianCache";
@@ -65,8 +65,6 @@ export {
 interface CellTopology {
   offsets: [number, number][];
   edgeVerts: [number, number][];
-  /// Face indices in boundary order (counter-clockwise in core space).
-  boundaryOrder: number[];
 }
 
 const topologies = new WeakMap<CellGeometryEntry, CellTopology>();
@@ -91,8 +89,7 @@ function topologyOf(geometry: CellGeometryEntry): CellTopology {
       const last = face.segments[face.segments.length - 1];
       edgeVerts.push([vertexIndex(geometry.polyline, first.from), vertexIndex(geometry.polyline, last.to)]);
     }
-    const boundaryOrder = edgeVerts.map((_, i) => i).sort((a, b) => edgeVerts[a][0] - edgeVerts[b][0]);
-    topology = { offsets, edgeVerts, boundaryOrder };
+    topology = { offsets, edgeVerts };
     topologies.set(geometry, topology);
   }
   return topology;
@@ -291,9 +288,10 @@ export function getCellNeighborOffsets(cfg: FieldConfig, x: number, y: number): 
 }
 
 /** The face reached by one rotation step around the cell: `direction` 1 is counter-clockwise on
- * screen, -1 clockwise. Faces are walked in boundary order, which is counter-clockwise in core
- * space; the display transform reverses it when it does not reflect (core is Y-up, the screen
- * Y-down). */
+ * screen, -1 clockwise. The step is the template group element that moves each canonical face to
+ * its neighbor in canonical (counter-clockwise in core space) order; the display transform
+ * reverses it when it does not reflect (core is Y-up, the screen Y-down). A cell whose allowed
+ * group has no such element (Cairo) keeps the face unchanged. */
 export function rotateFaceIndex(
   cfg: FieldConfig,
   x: number,
@@ -301,53 +299,19 @@ export function rotateFaceIndex(
   faceIndex: number,
   direction: 1 | -1,
 ): number {
-  const order = topologyOf(getCellGeometry(x, y, cfg)).boundaryOrder;
-  const n = order.length;
-  const position = order.indexOf(faceIndex);
-  if (position === -1) return faceIndex;
-  const step = isReflection(displayTransform(cfg)) ? direction : -direction;
-  return order[(position + step + n) % n];
+  const binding = splitShapeBinding(cfg, x, y);
+  if (binding === null || faceIndex < 0 || faceIndex >= binding.canonicalOfLocal.length) return faceIndex;
+  const transform = rotationTransform(binding, isReflection(displayTransform(cfg)) ? direction : (-direction as 1 | -1));
+  if (transform === null) return faceIndex;
+  return binding.localOfCanonical[transform[binding.canonicalOfLocal[faceIndex]]];
 }
 
-/** The index a split pattern's `face_index` takes in core: the face's index in the shape template
- *  of the pattern's anchor cell (`TessellationUi.originCell`). Patterns are authored on that
- *  tile against core's `faces_of` order; the template order is the one core stores. */
-export function splitFaceIndexToCore(cfg: FieldConfig, faceIndex: number): number {
-  return anchorFaceTable(cfg)[faceIndex] ?? faceIndex;
-}
-
-/** Inverse of `splitFaceIndexToCore`. */
-export function splitFaceIndexToWeb(cfg: FieldConfig, faceIndex: number): number {
-  const webIndex = anchorFaceTable(cfg).indexOf(faceIndex);
-  return webIndex === -1 ? faceIndex : webIndex;
-}
-
-function anchorFaceTable(cfg: FieldConfig): number[] {
+/** The shape template's canonical face index of each side of the pattern anchor tile
+ *  (`TessellationUi.originCell`), by the side's position in the tile `TileFaceEditor` draws. A
+ *  pattern's `face_index` is canonical; this is the one place the drawn tile is read in those terms. */
+export function anchorCanonicalFaces(cfg: FieldConfig): number[] {
   const [ax, ay] = TESSELLATION_UI[cfg.tessellation.kind].originCell;
   return getCellGeometry(ax, ay, cfg).faces.map((face, local) => face.canonical_face ?? local);
-}
-
-/** Converts a `SplitPattern[]`'s `face_index` values to the shape template's order -- the single
- *  conversion every wasm-bound `SplitPattern[]` payload goes through (GitHub issue #273):
- *  `buildGenerateConfig`'s `split_generation.patterns` and `ParamFields.tsx`'s
- *  `pattern_list`/`split_generation_config` param editors. Neither the project file nor a param
- *  string's own *stored* value is converted -- only the moment a list is sent to wasm. */
-export function splitPatternsToCore(patterns: SplitPattern[], cfg: FieldConfig): SplitPattern[] {
-  return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToCore(cfg, i));
-}
-
-/** Inverse of `splitPatternsToCore`, for display/editing in `TileFaceEditor`-based UI. */
-export function splitPatternsToWeb(patterns: SplitPattern[], cfg: FieldConfig): SplitPattern[] {
-  return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToWeb(cfg, i));
-}
-
-function mapSplitPatternFaceIndices(patterns: SplitPattern[], convert: (faceIndex: number) => number): SplitPattern[] {
-  return patterns.map((p) => ({
-    ...p,
-    faces: p.faces.map((nodeFaces) =>
-      nodeFaces.map((f) => ({ ...f, face_index: convert(f.face_index) })),
-    ),
-  }));
 }
 
 export interface TileSide {
@@ -451,11 +415,7 @@ export function getSharedEdgeSegment(
     const points = flattenSegments(segments, GEOMETRY_TOLERANCE).map((point) => applyTransform(t, point));
     const v0 = toPos(segments[0].from);
     const v1 = toPos(segments[segments.length - 1].to);
-    // A single straight segment's contact point is its midpoint; taking it from the end points
-    // keeps it exactly on the chord (the contact point of any other face comes from core).
-    const [cx, cy] = segments.length === 1 && segments[0].kind === "line"
-      ? [(v0.x + v1.x) / 2, (v0.y + v1.y) / 2]
-      : applyTransform(t, geometry.faces[face].contact_point);
+    const [cx, cy] = applyTransform(t, geometry.faces[face].contact_point);
     edge = {
       v0,
       v1,

@@ -1004,12 +1004,12 @@ The "active node" concept exists only for the "Manage split nodes" editing conte
 
 ### Rotating a split point (`rotateSplitPointNodes`, GitHub issue #580)
 
-Cairo uses its five stable face slots directly. For rotation, those slots are first ordered by the
-actual neighbor-vector angles, then face wiring shifts to the adjacent physical offset in that
-order; the stable core slot order is not treated as a perimeter. This does not claim that the
-asymmetric Cairo pentagon has a non-trivial core rotational symmetry. Because Cairo has odd degree,
-opposite-face evidence and square/hex special topologies are unavailable, so owner resolution uses
-the ordinary existing-owner and safe-fallback tiers.
+Rotation is defined by the cell's shape template: one step is the element of the cell's allowed
+transform group (`CellGeometry.allowed_group`) that moves every canonical face to the next one
+(`rotationTransform`, `pixi/splitShape.ts`), so face wiring shifts to the adjacent canonical face. A
+cell whose allowed group has no such element cannot rotate: Cairo's group is identity plus one
+reflection, so its rotate buttons are hidden (`canRotateSplit`) and `rotateFaceIndex` leaves faces
+unchanged. Owner resolution otherwise uses the ordinary existing-owner and safe-fallback tiers.
 
 Rotating a split point's tile (the panel's rotate buttons) shifts **every one of the point's own nodes' face-wiring independently** by one adjacent physical face around the point — not a rigid-body rotation of the whole point as a unit. Each of the point's nodes (original + every slot) that currently has a decided face keeps that face's edge but re-keys it onto the new geometric face one step further in the rotation direction; a node with no decided face on the point is untouched.
 

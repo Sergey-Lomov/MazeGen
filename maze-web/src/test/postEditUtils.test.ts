@@ -200,7 +200,7 @@ function faceOf(neighbor: PostEditEndpoint, toNeighbor: PostEditEdge, fromNeighb
 const wallTo = (from: PostEditEndpoint, to: PostEditEndpoint): PostEditEdge => ({ kind: "wall", from, to });
 
 describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 compaction follow-up)", () => {
-  it("rotates Cairo's five face slots without assuming four or six faces", () => {
+  it("keeps Cairo connections in place: its allowed group has no rotation", () => {
     const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const from = nodeEndpoint(1);
     const oldNeighbor = nodeEndpoint(2);
@@ -216,7 +216,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
       ], {}, {},
     );
     expect(result).toHaveLength(1);
-    expect(result[0].faces[0].neighbor).toEqual(nodeEndpoint(3));
+    expect(result[0].faces[0].neighbor).toEqual(nodeEndpoint(2));
   });
 
   it("no split slots — a one-way edge from the point moves from its E neighbor to its N neighbor (direction 1)", () => {

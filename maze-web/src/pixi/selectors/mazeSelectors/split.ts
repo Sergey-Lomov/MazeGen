@@ -2,6 +2,7 @@ import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
 import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
+import { splitShapeBinding, canonicalFaceKinds } from "../../splitShape";
 import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceKind } from "../../splitFaceLayout";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
@@ -387,7 +388,12 @@ export function buildSplitPassagesCore<Id>(
     const faceKindsByNode: SplitFaceKind[][] = pointNodes.map((_, nodeIndex) =>
       kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
     );
-    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode);
+    const shapeBinding = splitShapeBinding(cfg, px, py);
+    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode, shapeBinding);
+    // Template-specific faces below are canonical; `lc` maps one to the cell's own face.
+    const lc = (canonical: number): number => shapeBinding?.localOfCanonical[canonical] ?? canonical;
+    const canonicalConnectedFaces = (kinds: SplitFaceKind[]): number[] =>
+      shapeBinding ? connectedFaces(canonicalFaceKinds(shapeBinding, kinds)) : connectedFaces(kinds);
     if (specialShapeKind === "cairo_diagonal_divider") {
       // Cairo's canonical template separates canonical faces 1-2 from 3-4. Its divider is a
       // deliberately bent wall: from the corner shared by 1/2 to the tile centre, then to the
@@ -398,11 +404,11 @@ export function buildSplitPassagesCore<Id>(
           const index = sharedCornerIndex(edgeVerts, faceA, faceB);
           return index === null ? null : verts[index];
         };
-        const corner12 = cornerFor(1, 2);
-        const corner34 = cornerFor(3, 4);
+        const corner12 = cornerFor(lc(1), lc(2));
+        const corner34 = cornerFor(lc(3), lc(4));
         if (corner12 && corner34) {
           const topNodeIndex = faceKindsByNode.findIndex((kinds) => {
-            const faces = connectedFaces(kinds);
+            const faces = canonicalConnectedFaces(kinds);
             return faces.length === 2 && faces.includes(2) && faces.includes(3);
           });
           specialShapes.push(buildDiagonalShape(
@@ -416,8 +422,8 @@ export function buildSplitPassagesCore<Id>(
       // straight segment from the corner shared by faces 2/3 to the midpoint of side 0.
       const verts = getCellVertices(px, py, cfg);
       if (verts) {
-        const edge0 = edgeVerts[0];
-        const corner23Index = sharedCornerIndex(edgeVerts, 2, 3);
+        const edge0 = edgeVerts[lc(0)];
+        const corner23Index = sharedCornerIndex(edgeVerts, lc(2), lc(3));
         if (edge0 && corner23Index !== null) {
           const side0Start = verts[edge0[0]], side0End = verts[edge0[1]];
           const side0Mid = { x: (side0Start.x + side0End.x) / 2, y: (side0Start.y + side0End.y) / 2 };
@@ -430,11 +436,11 @@ export function buildSplitPassagesCore<Id>(
       // The Cairo 2x3 bridge is a tapered bridge from canonical face 1 to face 4. The other node
       // owns three faces. The corridor renderer keeps that three-face fork as an underlay and
       // emits only the bridge node's deck as the dedicated special shape.
-      const perNodeFaces = faceKindsByNode.map(connectedFaces);
+      const perNodeFaces = faceKindsByNode.map(canonicalConnectedFaces);
       const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
       const bridgeNodeIndex = perNodeFaces.findIndex((faces) => isPair(faces, 1, 4));
       if (bridgeNodeIndex >= 0) {
-        const bridgeFaces = [faceInputs[1], faceInputs[4]] as [Seg, Seg];
+        const bridgeFaces = [faceInputs[lc(1)], faceInputs[lc(4)]] as [Seg, Seg];
         specialShapes.push(buildBridgeShape(
           pointKey,
           null,
@@ -487,13 +493,15 @@ export function buildSplitPassagesCore<Id>(
     } else if (specialShapeKind === "hex_diagonal_divider") {
       // The middle face of each adjacent triple does not change its boundary. Use the exact same
       // separator as the equivalent two skip-face passages (0-2 / 3-5 and their rotations).
-      const node0Faces = adjacentTripleOuterFaces(connectedFaces(faceKindsByNode[0]), offsets.length);
-      const node1Faces = adjacentTripleOuterFaces(connectedFaces(faceKindsByNode[1]), offsets.length);
+      const outerFaces = (kinds: SplitFaceKind[]): number[] | null =>
+        adjacentTripleOuterFaces(canonicalConnectedFaces(kinds), offsets.length)?.map(lc) ?? null;
+      const node0Faces = outerFaces(faceKindsByNode[0]);
+      const node1Faces = outerFaces(faceKindsByNode[1]);
       if (node0Faces && node1Faces) {
         const endpoints = buildHexDiagonalEndpoints(px, py, cfg, edgeVerts, faceInputs, node0Faces, node1Faces);
         const allFaces = faceKindsByNode.map(connectedFaces);
         const dividerJunctions = allFaces.map((faces, slot) =>
-          specialSplitNodePoint(cfg, center, "hex_diagonal_divider", faces, slot, allFaces),
+          specialSplitNodePoint(cfg, center, "hex_diagonal_divider", faces, slot, allFaces, [px, py]),
         );
         if (endpoints && dividerJunctions.every((point): point is Point => point !== null)) {
           specialShapes.push(buildDiagonalShape(
@@ -525,7 +533,8 @@ export function buildSplitPassagesCore<Id>(
       // collapses both boundaries onto the single opposite-corner diagonal `0-3`.
       const perNodeFaces = faceKindsByNode.map((kinds) => connectedFaces(kinds));
       const degree = offsets.length;
-      const throughNodeIdx = perNodeFaces.findIndex(([a, b]) => circularDist(a, b, degree) === degree / 2);
+      const throughNodeIdx = faceKindsByNode.map(canonicalConnectedFaces)
+        .findIndex(([a, b]) => circularDist(a, b, degree) === degree / 2);
       const verts = getCellVertices(px, py, cfg);
       if (verts && throughNodeIdx >= 0) {
         let diameter = 0;

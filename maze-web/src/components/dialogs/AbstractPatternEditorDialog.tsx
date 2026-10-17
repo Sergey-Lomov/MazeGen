@@ -11,7 +11,8 @@ import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { typography, spacing } from "../../styles/theme";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
-import { degreeFor, originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
+import { anchorCanonicalFaces } from "../../pixi/tessellationGeometry";
+import { originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -59,7 +60,7 @@ type NodeRef = number;
  *  follow-up issue tracks removing the field itself from both sides. */
 export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Props) {
   const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
-  const degree = degreeFor(fieldConfig);
+  const canonicalFaces = useMemo(() => anchorCanonicalFaces(fieldConfig), [fieldConfig]);
   const anchorPoint = originCellOf(fieldConfig);
   const [activeNode, setActiveNode] = useState(0);
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
@@ -108,18 +109,19 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
     return { kind };
   }
 
-  function handleFaceClick(faceIndex: number) {
+  function handleFaceClick(side: number) {
+    const faceIndex = canonicalFaces[side];
     const existing = pattern.faces[activeNode]?.find((f) => f.face_index === faceIndex)?.requirement;
     setFaceRequirement(activeNode, faceIndex, requirementFor(activeKind, existing));
   }
 
-  function handleFaceRightClick(faceIndex: number) {
-    setFaceRequirement(activeNode, faceIndex, { kind: "wall" });
+  function handleFaceRightClick(side: number) {
+    setFaceRequirement(activeNode, canonicalFaces[side], { kind: "wall" });
   }
 
   const nodeRefs: NodeRef[] = useMemo(() => Array.from({ length: pattern.node_count }, (_, i) => i), [pattern.node_count]);
   const colorAt = splitPatternNodeColor;
-  const tileNodes: TileFaceNode[] = tileNodesForPattern(pattern, degree);
+  const tileNodes: TileFaceNode[] = tileNodesForPattern(pattern, fieldConfig);
   const emptyNodeIndices = new Set(
     nodeRefs.filter((i) => (pattern.faces[i]?.length ?? 0) === 0),
   );

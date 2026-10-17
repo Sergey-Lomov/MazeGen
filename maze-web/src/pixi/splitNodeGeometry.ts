@@ -2,6 +2,8 @@ import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
+import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { splitShapeBinding } from "./splitShape";
 import { getSplitCircleRotationDeg, getCellCenter, getCellVertices, getNeighborData, type Pos } from "./tessellationGeometry";
 
 /** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
@@ -60,6 +62,14 @@ const SQUARE_FACE_DIRECTION: Pos[] = [{ x: 1, y: 0 }, { x: 0, y: -1 }, { x: -1, 
 
 const SQUARE_BRIDGE_CROSS_OFFSET_FRAC = 0.25;
 
+/** The cell vertex shared by faces `a` and `b` (both local indices), or `null` when they do not touch. */
+function sharedCorner(vertices: readonly Pos[], edgeVerts: readonly (readonly [number, number])[], a: number, b: number): Pos | null {
+  const [a0, a1] = edgeVerts[a] ?? [];
+  const [b0, b1] = edgeVerts[b] ?? [];
+  const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
+  return index === null || index === undefined ? null : vertices[index];
+}
+
 /** Absolute node point for a node recognized as part of a `SplitSpecialShapeKind` — `null` if this
  *  tessellation/kind/face-pair combination has no dedicated rule (caller falls back to
  *  `splitHubPoint`). `center` is the split point's own tile center (`getCellCenter`). `faces` is
@@ -72,30 +82,25 @@ export function specialSplitNodePoint(
   faces: number[],
   slotIndex: number,
   allFaces?: number[][],
-  point?: [number, number],
+  point: readonly [number, number] = TESSELLATION_UI[cfg.tessellation.kind].originCell,
 ): Pos | null {
+  const binding = splitShapeBinding(cfg, point[0], point[1]);
+  if (binding === null) return null;
+  // Template-specific faces are canonical; `order[k]` is the cell's own face for canonical face `k`.
+  const order = binding.localOfCanonical;
+  const canonicalFaces = faces.map((face) => binding.canonicalOfLocal[face]);
   if (kind === "cairo_diagonal_divider") {
-    if (!point || cfg.tessellation.kind !== "cairo") return null;
+    if (binding.shape !== "cairo_pentagon") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
-    const sharedCorner = (a: number, b: number): Pos | null => {
-      const [a0, a1] = edgeVerts[a] ?? [];
-      const [b0, b1] = edgeVerts[b] ?? [];
-      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
-      return index === null || index === undefined ? null : vertices[index];
-    };
-    const corner23 = sharedCorner(order[2], order[3]);
+    const corner23 = sharedCorner(vertices, edgeVerts, order[2], order[3]);
     const edge0 = edgeVerts[order[0]];
     if (!corner23 || !edge0) return null;
     const face0Center = {
       x: (vertices[edge0[0]].x + vertices[edge0[1]].x) / 2,
       y: (vertices[edge0[0]].y + vertices[edge0[1]].y) / 2,
     };
-    const canonicalFaces = order
-      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
-      .filter((face) => face >= 0);
     const t = canonicalFaces.length === 2 && canonicalFaces.includes(2) && canonicalFaces.includes(3)
       ? 1 / 4
       : canonicalFaces.length === 2 && canonicalFaces.includes(1) && canonicalFaces.includes(4)
@@ -108,18 +113,11 @@ export function specialSplitNodePoint(
   }
 
   if (kind === "cairo_adjacent_divider") {
-    if (!point || cfg.tessellation.kind !== "cairo") return null;
+    if (binding.shape !== "cairo_pentagon") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
-    const sharedCorner = (a: number, b: number): Pos | null => {
-      const [a0, a1] = edgeVerts[a] ?? [];
-      const [b0, b1] = edgeVerts[b] ?? [];
-      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
-      return index === null || index === undefined ? null : vertices[index];
-    };
-    const corner23 = sharedCorner(order[2], order[3]);
+    const corner23 = sharedCorner(vertices, edgeVerts, order[2], order[3]);
     const edge0 = edgeVerts[order[0]];
     if (!corner23 || !edge0) return null;
     const side0Mid = {
@@ -134,9 +132,6 @@ export function specialSplitNodePoint(
       const [a, b] = edgeVerts[face];
       return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
     };
-    const canonicalFaces = order
-      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
-      .filter((face) => face >= 0);
     const from = canonicalFaces.includes(1) ? faceCenter(order[1]) : faceCenter(order[4]);
     const t = 1 / 2;
     return {
@@ -146,30 +141,20 @@ export function specialSplitNodePoint(
   }
 
   if (kind === "cairo_bridge_2x3") {
-    if (!point || cfg.tessellation.kind !== "cairo") return null;
+    if (binding.shape !== "cairo_pentagon") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
-    const sharedCorner = (a: number, b: number): Pos | null => {
-      const [a0, a1] = edgeVerts[a] ?? [];
-      const [b0, b1] = edgeVerts[b] ?? [];
-      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
-      return index === null || index === undefined ? null : vertices[index];
-    };
     const faceCenter = (canonicalFace: number): Pos => {
       const [a, b] = edgeVerts[order[canonicalFace]];
       return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
     };
-    const canonicalFaces = order
-      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
-      .filter((face) => face >= 0);
     if (canonicalFaces.length === 2 && canonicalFaces.includes(1) && canonicalFaces.includes(4)) {
       const face1 = faceCenter(1), face4 = faceCenter(4);
       return { x: (face1.x + face4.x) / 2, y: (face1.y + face4.y) / 2 };
     }
     if (canonicalFaces.length === 3 && [0, 2, 3].every((face) => canonicalFaces.includes(face))) {
-      const corner23 = sharedCorner(order[2], order[3]);
+      const corner23 = sharedCorner(vertices, edgeVerts, order[2], order[3]);
       const [edgeStart, edgeEnd] = edgeVerts[order[0]] ?? [];
       if (!corner23 || edgeStart === undefined || edgeEnd === undefined) return null;
       const edge0Center = {
@@ -184,23 +169,27 @@ export function specialSplitNodePoint(
     return null;
   }
 
-  if (cfg.tessellation.kind === "hex") {
-    const vertices = getCellVertices(0, 0, cfg);
-    const { edgeVerts } = getNeighborData(cfg, 0, 0);
+  if (binding.shape === "regular:6") {
+    const vertices = getCellVertices(point[0], point[1], cfg);
+    const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
     if (!vertices) return null;
-    const faceCenter = (face: number): Pos => {
-      const [a, b] = edgeVerts[face];
+    // Everything below is in canonical faces; `order` maps one to the cell's own face.
+    const startVertex = (canonicalFace: number): number => edgeVerts[order[canonicalFace]][0];
+    const faceCenter = (canonicalFace: number): Pos => {
+      const [a, b] = edgeVerts[order[canonicalFace]];
       return {
         x: (vertices[a].x + vertices[b].x) / 2,
         y: (vertices[a].y + vertices[b].y) / 2,
       };
     };
 
-    const localCenter = getCellCenter(0, 0, cfg);
+    const localCenter = getCellCenter(point[0], point[1], cfg);
+    let hexFaces = canonicalFaces;
+    const allHexFaces = allFaces?.map((nodeFaces) => nodeFaces.map((face) => binding.canonicalOfLocal[face]));
     if (kind === "hex_diagonal_divider") {
-      const outerFaces = adjacentTripleOuterFaces(faces, 6);
+      const outerFaces = adjacentTripleOuterFaces(hexFaces, 6);
       if (!outerFaces) return null;
-      faces = outerFaces;
+      hexFaces = outerFaces;
       kind = "hex_diagonal";
     }
 
@@ -209,11 +198,11 @@ export function specialSplitNodePoint(
       // underneath and moves toward the nearer of the two vertices midway around the perimeter
       // between the deck's opposite sides.
       if (slotIndex === 1) return center;
-      const upperFaces = allFaces?.[1];
+      const upperFaces = allHexFaces?.[1];
       if (!upperFaces) return null;
       const firstUpperFace = Math.min(...upperFaces);
-      const candidateIndices = [(firstUpperFace + 2) % 6, (firstUpperFace + 5) % 6];
-      const lowerFaceCenter = faceCenter(faces[0]);
+      const candidateIndices = [startVertex((firstUpperFace + 2) % 6), startVertex((firstUpperFace + 5) % 6)];
+      const lowerFaceCenter = faceCenter(hexFaces[0]);
       const vertexIndex = candidateIndices.reduce((best, candidate) => {
         const distance = (index: number) => Math.hypot(
           vertices[index].x - lowerFaceCenter.x,
@@ -231,19 +220,19 @@ export function specialSplitNodePoint(
     if (kind === "hex_triple_corridor") {
       // The axis joins the two tile corners at which each side corridor's adjacent faces meet, so
       // it rotates with the topology instead of being tied to one fixed pair of global faces.
-      const sidePairs = allFaces?.filter(([a, b]) => {
+      const sidePairs = allHexFaces?.filter(([a, b]) => {
         const distance = Math.abs(a - b);
         return Math.min(distance, 6 - distance) === 1;
       });
       if (sidePairs?.length !== 2) return null;
       const sharedVertex = ([a, b]: number[]): Pos | null => {
-        const [a0, a1] = edgeVerts[a], [b0, b1] = edgeVerts[b];
+        const [a0, a1] = edgeVerts[order[a]], [b0, b1] = edgeVerts[order[b]];
         const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
         return index === null ? null : vertices[index];
       };
       const from = sharedVertex(sidePairs[0]), to = sharedVertex(sidePairs[1]);
       if (!from || !to) return null;
-      const throughIndex = allFaces?.findIndex(([a, b]) => Math.abs(a - b) === 3) ?? -1;
+      const throughIndex = allHexFaces?.findIndex(([a, b]) => Math.abs(a - b) === 3) ?? -1;
       if (throughIndex < 0) return null;
       const positions = [1 / 6, 1 / 2, 5 / 6];
       [positions[throughIndex], positions[1]] = [positions[1], positions[throughIndex]];
@@ -257,8 +246,8 @@ export function specialSplitNodePoint(
 
     if (kind === "hex_triple_bridge") {
       const reversed = slotIndex === 0 || slotIndex === 2;
-      const from = faceCenter(faces[reversed ? 1 : 0]);
-      const to = faceCenter(faces[reversed ? 0 : 1]);
+      const from = faceCenter(hexFaces[reversed ? 1 : 0]);
+      const to = faceCenter(hexFaces[reversed ? 0 : 1]);
       const t = 5 / 6;
       return {
         x: center.x + from.x + (to.x - from.x) * t - localCenter.x,
@@ -268,8 +257,8 @@ export function specialSplitNodePoint(
 
     if (kind !== "hex_diagonal") return null;
 
-    const a = faceCenter(faces[0]);
-    const b = faceCenter(faces[1]);
+    const a = faceCenter(hexFaces[0]);
+    const b = faceCenter(hexFaces[1]);
     const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const midpointOffset = { x: midpoint.x - localCenter.x, y: midpoint.y - localCenter.y };
     const skipA = faceCenter(0);
@@ -287,10 +276,10 @@ export function specialSplitNodePoint(
     };
   }
 
-  if (cfg.tessellation.kind !== "square") return null;
+  if (binding.shape !== "regular:4") return null;
 
   if (kind === "diagonal") {
-    const [a, b] = [...faces].sort((x, y) => x - y);
+    const [a, b] = [...canonicalFaces].sort((x, y) => x - y);
     const offset = SQUARE_DIAGONAL_NODE_OFFSET[`${a},${b}`];
     return offset ? { x: center.x + offset.x * TILE_SIZE, y: center.y + offset.y * TILE_SIZE } : null;
   }
@@ -298,7 +287,7 @@ export function specialSplitNodePoint(
   // "bridge" — slot 1 sits at plain tile center; slot 0 offsets along its own face-pair axis.
   if (slotIndex === 1) return center;
 
-  const dir = SQUARE_FACE_DIRECTION[faces[0]];
+  const dir = SQUARE_FACE_DIRECTION[canonicalFaces[0]];
   return { x: center.x + dir.x * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE, y: center.y + dir.y * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE };
 }
 
@@ -381,7 +370,7 @@ export function buildNodePositions<Id extends string | number>(
     let kind: SplitSpecialShapeKind | null = null;
     if ((group.length === 2 || group.length === 3) && directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
-      kind = detectSplitSpecialShapeKind(faceKindsByNode);
+      kind = detectSplitSpecialShapeKind(faceKindsByNode, splitShapeBinding(cfg, group[0].x, group[0].y));
     }
 
     const connectedFacesByNode = kind && faceKindsByNode

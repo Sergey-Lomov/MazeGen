@@ -3,6 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
@@ -64,8 +65,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     const geometry = buildSplitFloorGeometry(point, level ?? 0, allNodes, draftEdges, draftTeleports, splitPoints, cfg);
     if (!geometry) return null;
     const { pointNodes, floorNodes, edges, faceKindsByNode } = geometry;
-    const special = detectSplitSpecialShapeKind(faceKindsByNode) !== null;
-    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+    const binding = splitShapeBinding(cfg, point[0], point[1]);
+    const special = detectSplitSpecialShapeKind(faceKindsByNode, binding) !== null;
+    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode, binding);
 
     return { pointNodes, floorNodes, edges, special, semanticNames };
   }, [point, allNodes, level, cfg, draftEdges, draftTeleports, splitPoints]);

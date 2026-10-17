@@ -54,6 +54,9 @@ export type CorridorSegmentInput = {
 type Port = { centre: Pt; mid: Pt; out: Pt };
 type Tile = { id: CorridorCellId; centre: Pt; ports: Port[]; boundary: readonly Pt[] };
 
+/** Angular tolerance, in radians, for treating a port as lying on the atan2 branch cut. */
+const PORT_ANGLE_EPSILON = 1e-9;
+
 /** Junction corner radius used when the caller requests none, as a fraction of the half-width. */
 const DEFAULT_JUNCTION_RADIUS_FACTOR = 0.75;
 
@@ -834,7 +837,12 @@ function buildTileGeometry(tile: Tile, halfWidth: number, requestedRadius: numbe
     return { cellId: tile.id, target: tile.ports[0].mid, centerCurves: [], rawRibbons: [], ribbons: [], contourBeforeCornerRadius: cap, contour: cap };
   }
   const target = deadEndCurve ? deadEndCurve.p3 : baseTarget;
-  const orderedPorts = [...tile.ports].sort((a, b) => angleOf(sub(a.mid, target)) - angleOf(sub(b.mid, target)));
+  const portAngle = (port: Port): number => {
+    const angle = angleOf(sub(port.mid, target));
+    // A port straight behind the target sits on the atan2 branch cut, where float noise flips -π and π.
+    return angle < -Math.PI + PORT_ANGLE_EPSILON ? angle + Math.PI * 2 : angle;
+  };
+  const orderedPorts = [...tile.ports].sort((a, b) => portAngle(a) - portAngle(b));
   const targetTangents = new Map<Port, TargetTangent>();
   if (oppositePair) {
     const biarc = biarcTargetTangents(oppositePair[0], oppositePair[1], target);

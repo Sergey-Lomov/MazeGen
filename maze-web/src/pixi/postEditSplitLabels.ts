@@ -15,6 +15,7 @@ import type { PostEditEdge } from "../store/postEditTypes";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual, buildLogicalCandidates, resolvePartnerForPlacement, resolveEndpointToHoverPoint } from "./postEditEndpoint";
 import { getNeighborData } from "./tessellationGeometry";
 import { splitNodeSemanticNames } from "./splitNodeNames";
+import { splitShapeBinding } from "./splitShape";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
 import { formatTargetLabel } from "./targetLabel";
 import type { TileFace, TileFaceKind } from "../components/features/TileFaceEditor";
@@ -171,6 +172,7 @@ export function resolveSplitNodeShortLabel(
 
   const semanticNames = splitNodeSemanticNames(
     nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ctx, floorNodes, level, point, ep) })),
+    splitShapeBinding(ctx.cfgAt(level), point[0], point[1]),
   );
   const idx = nodeEndpointsInOrder.findIndex((ep) => endpointsMatch(ep, endpoint));
   if (idx < 0) {

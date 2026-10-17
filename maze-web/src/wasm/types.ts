@@ -224,12 +224,8 @@ export interface ElementsConfig {
   allow_non_consecutive_elevator_floors?: boolean;
 }
 
-/** Mirrors Rust's `SplitPatternFaceDto` in shape, but NOT in `face_index` ordering while held in
- * `MazeStore`/the project file: here it's a position into `tessellationGeometry.ts`'s
- * `getNeighborData` offsets (`TileFaceEditor`'s authoring order), not the canonical face order of
- * the pattern's shape template that core expects (GitHub issue #273). Converted to canonical
- * indices only at the wasm-config-serialization boundary (`generateConfigBuilder.ts`'s
- * `splitPatternsToCore`). */
+/** Mirrors Rust's `SplitPatternFaceDto`; `face_index` is a canonical index of the pattern's shape
+ * template. */
 export interface SplitPatternFace {
   face_index: number;
   requirement: SplitFaceRequirement;

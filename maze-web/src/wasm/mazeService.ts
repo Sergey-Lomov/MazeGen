@@ -314,6 +314,10 @@ export interface CellGeometry<B extends PathBoundary | PolylineBoundary = PathBo
   cell: [number, number];
   center: WorldPoint;
   cell_scale: number;
+  /// The key of the cell's shape template; `null` for a cell without one.
+  shape: string | null;
+  /** Allowed transform group: permutations of canonical face indices, identity first. */
+  allowed_group: number[][] | null;
   boundary: B;
   faces: FaceGeometry[];
 }

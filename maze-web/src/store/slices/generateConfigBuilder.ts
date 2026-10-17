@@ -13,7 +13,6 @@ import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resol
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
-import { splitPatternsToCore } from "../../pixi/tessellationGeometry";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -226,7 +225,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     split_generation: {
       pattern_mode: state.splitPatternMode,
       max_split_nodes: state.splitMaxNodes,
-      patterns: splitPatternsToCore(state.splitPatterns, activeTessellation),
+      patterns: state.splitPatterns,
     },
     ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
     ...(state.presetGenSource && !invalidGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),

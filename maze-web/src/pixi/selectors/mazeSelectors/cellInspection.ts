@@ -3,6 +3,7 @@ import type { FieldConfig } from "../../../fieldConfig";
 import { selectVerticalPassagePairSet } from "./vertical";
 import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
 import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
+import { splitShapeBinding } from "../../splitShape";
 import { formatTargetLabel } from "../../targetLabel";
 import * as m from "~/paraglide/messages";
 
@@ -35,6 +36,7 @@ function resolveNodeSplitLabel(
   const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
   const semanticNames = splitNodeSemanticNamesFromKinds(
     splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg),
+    splitShapeBinding(cfg, node.x, node.y),
   );
   const index = pointNodes.findIndex((n) => n.id === node.id);
   return semanticNames?.[index]?.short ?? m["post_edit.split_node_label_short"]({ slotId: node.i + 1 });
@@ -210,6 +212,7 @@ export function buildCellInspection(
     const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
     semanticNames = splitNodeSemanticNamesFromKinds(
       splitPointFaceKindsByNode(nodesHere, byTile, directed, cfg),
+      splitShapeBinding(cfg, nodesHere[0].x, nodesHere[0].y),
     );
   }
 

@@ -20,6 +20,7 @@ import type { TileFace, TileFaceNode } from "../components/features/TileFaceEdit
 import type { SplitPattern } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { patternShapeOf } from "./shapeTemplates";
+import { anchorCanonicalFaces } from "./tessellationGeometry";
 
 export interface SplitNodeBlueprint {
   /** Unique within its own degree's list — used as a stable React `key`, nothing else (no label
@@ -151,8 +152,8 @@ export function fittingRotation(
  *  as a one-click starting point for a generation-time pattern instead of building one by hand in
  *  `AbstractPatternEditorDialog`. No boundary concept applies here (a pattern isn't tied to any
  *  specific field point — `face_index` stays abstract until the generator applies it), so this is
- *  a direct, unrotated conversion for native-face blueprints. Cairo canonical blueprints are
- *  resolved through the supplied anchor point before storage. Every declared face becomes a
+ *  a direct, unrotated conversion; each blueprint face is a side of the anchor tile and is stored
+ *  as that side's canonical face. Every declared face becomes a
  *  `passage` requirement, every
  *  other face is simply absent (core already treats "no entry" as `Wall`, see
  *  `splitPatternTile.ts`'s `tileFaceKindOf`). `weight: 1.0` matches `SplitSettingsDialog`'s own
@@ -161,11 +162,12 @@ export function blueprintToSplitPattern(
   blueprint: SplitNodeBlueprint,
   cfg: FieldConfig,
 ): SplitPattern {
+  const canonical = anchorCanonicalFaces(cfg);
   return {
     shape: patternShapeOf(cfg),
     node_count: blueprint.nodeFaces.length,
-    faces: blueprint.nodeFaces.map((faces) => faces.map((face_index) => (
-      { face_index, requirement: { kind: "passage" as const } }
+    faces: blueprint.nodeFaces.map((faces) => faces.map((side) => (
+      { face_index: canonical[side] ?? side, requirement: { kind: "passage" as const } }
     ))),
     weight: 1.0,
   };

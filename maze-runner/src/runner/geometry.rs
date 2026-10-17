@@ -42,11 +42,26 @@ pub struct GeometrySnapshot {
     pub cells: Vec<CellGeometry>,
 }
 
+fn allowed_group(shape: maze_core::space::shape::CellShape) -> Vec<Vec<usize>> {
+    shape
+        .allowed_transforms()
+        .iter()
+        .map(|&transform| shape.descriptor().group()[transform].clone())
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CellGeometry {
     pub cell: [i32; 2],
     pub center: [f64; 2],
     pub cell_scale: f64,
+    /// The key of the cell's shape template (`ShapeDescriptor::key`); `None` for a cell without
+    /// one.
+    pub shape: Option<String>,
+    /// The cell's allowed transform group: one permutation of canonical face indices per allowed
+    /// transform (`CellShape::allowed_transforms` resolved through `ShapeDescriptor::group`),
+    /// identity first; `None` for a cell without a shape template.
+    pub allowed_group: Option<Vec<Vec<usize>>>,
     pub boundary: BoundaryDto,
     /// One entry per face, in `faces_of` order.
     pub faces: Vec<FaceGeometry>,
@@ -215,6 +230,8 @@ impl TessellationVisitor for Snapshot<'_> {
                 cell: [x, y],
                 center: xy(tessellation.center(cell)),
                 cell_scale: tessellation.cell_scale(cell),
+                shape: shape.map(|shape| shape.descriptor().key().to_string()),
+                allowed_group: shape.map(allowed_group),
                 boundary: boundary_dto(&path, self.request.boundary),
                 faces,
             });
@@ -390,6 +407,10 @@ mod tests {
         let cell = &snapshot.cells[0];
         assert_eq!(cell.center, [0.5, 0.5]);
         assert_eq!(cell.cell_scale, 1.0);
+        assert_eq!(cell.shape.as_deref(), Some("regular:4"));
+        let group = cell.allowed_group.as_ref().expect("square cell has a group");
+        assert_eq!(group.len(), 8);
+        assert_eq!(group[0], vec![0, 1, 2, 3]);
         let BoundaryDto::Polyline { points } = &cell.boundary else {
             panic!("a polyline request returns a polyline");
         };
@@ -446,6 +467,8 @@ mod tests {
                         cell: [x, y],
                         center: xy(tessellation.center(cell)),
                         cell_scale: tessellation.cell_scale(cell),
+                        shape: shape.map(|shape| shape.descriptor().key().to_string()),
+                        allowed_group: shape.map(allowed_group),
                         boundary: BoundaryDto::Polyline {
                             points: path.flatten(0.01).into_iter().map(xy).collect(),
                         },

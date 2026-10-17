@@ -1,17 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
-import type { SplitPattern } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 import { getCellGeometry } from "../pixi/cartesianCache";
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord, cellsInDisplayRect, getCellPath } = await import("../pixi/tessellationGeometry");
-
-// Canonical (counter-clockwise) face order of `maze-core`'s shape templates (`Specs/space.md`,
-// GitHub issue #758) — used here only to name expected indices by face, not to duplicate the
-// mapping under test.
-const SQUARE_CORE_ORDER = ["E", "N", "W", "S"];
-const HEX_CORE_ORDER = ["E", "NE", "NW", "W", "SW", "SE"];
+const { canRotateSplit } = await import("../pixi/splitShape");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, anchorCanonicalFaces, nearestCellCoord, cellsInDisplayRect, getCellPath } = await import("../pixi/tessellationGeometry");
 
 // A face's `v0 -> v1` direction must agree with `getSharedEdgeSegment`'s own choice for that same
 // shared edge — both the split-node dialog's tile diagram (`TileFaceEditor`, via `getTileDiagram`)
@@ -135,13 +129,11 @@ describe("getSplitCircleRotationDeg", () => {
 });
 
 describe("rotateFaceIndex", () => {
-  it("steps Cairo faces cyclically in both directions", () => {
+  it("leaves Cairo faces in place: its allowed group has no rotation", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
-    const forward = rotateFaceIndex(cfg, 2, 1, 1, 1);
-    const backward = rotateFaceIndex(cfg, 2, 1, 1, -1);
-    expect(new Set([1, forward, backward]).size).toBe(3);
-    expect(rotateFaceIndex(cfg, 2, 1, forward, -1)).toBe(1);
-    expect(rotateFaceIndex(cfg, 2, 1, backward, 1)).toBe(1);
+    expect(rotateFaceIndex(cfg, 2, 1, 1, 1)).toBe(1);
+    expect(rotateFaceIndex(cfg, 2, 1, 1, -1)).toBe(1);
+    expect(canRotateSplit(cfg, 2, 1)).toBe(false);
   });
 
   it("keeps the established cyclic index behavior for square", () => {
@@ -574,67 +566,21 @@ describe("splitPointFaceKindsByNode", () => {
   });
 });
 
-// Web-authored `face_index` (per `getNeighborData`'s offset order) must land on the same physical
-// face in `maze-core`'s own `Tessellation::faces()` order once converted — GitHub issue #273.
-// Named by axial/cartesian delta (E/N/W/S, E/NE/NW/W/SW/SE) so this test fails if either side's
-// face-name-to-delta mapping ever changes, not just the permutation table.
-describe("splitFaceIndexToCore", () => {
-  it("maps every square web offset to its same-direction core index", () => {
-    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
-    const { offsets } = getNeighborData(cfg, 1, 1);
-    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "N", "-1,0": "W", "0,-1": "S" };
-    offsets.forEach(([dx, dy], webIndex) => {
-      const name = deltaToName[`${dx},${dy}`];
-      expect(SQUARE_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
-    });
-  });
-
-  it("maps every hex flat_top web offset to its same-direction core index", () => {
-    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
-    const { offsets } = getNeighborData(cfg, 1, 1);
-    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
-    offsets.forEach(([dx, dy], webIndex) => {
-      const name = deltaToName[`${dx},${dy}`];
-      expect(HEX_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
-    });
-  });
-
-  it("maps every hex pointy_top web offset to its same-direction core index", () => {
-    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "pointy_top");
-    const { offsets } = getNeighborData(cfg, 1, 1);
-    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
-    offsets.forEach(([dx, dy], webIndex) => {
-      const name = deltaToName[`${dx},${dy}`];
-      expect(HEX_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
-    });
-  });
-
-  it("maps triangle web faces to the same core indices", () => {
-    const cfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 3, rows: 3 });
-    expect([0, 1, 2].map((i) => splitFaceIndexToCore(cfg, i))).toEqual([0, 1, 2]);
-  });
-});
-
-// `splitFaceIndexToWeb`/`splitPatternsToWeb` must invert `splitFaceIndexToCore`/`splitPatternsToCore`
-// exactly — a repair/check strategy's `pattern_list`/`split_generation_config` param stores patterns
-// in core ordering (GitHub issue #273's `ParamFields.tsx` fix) but re-opening the editor converts
-// back to web ordering for `TileFaceEditor`; a round-trip must reproduce the original web indices.
-describe("splitFaceIndexToWeb / splitPatternsToWeb (round-trip with *ToCore)", () => {
+// A pattern's `face_index` is canonical; the anchor tile's sides must read as a permutation of the
+// template's canonical indices (`0..face_count`), so every canonical face is drawn exactly once.
+describe("anchorCanonicalFaces", () => {
   const cfgs: [string, FieldConfig][] = [
     ["square", fieldOf("square", { shape: "rect", cols: 3, rows: 3 })],
     ["hex flat_top", fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top")],
     ["hex pointy_top", fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "pointy_top")],
     ["triangle", fieldOf("tri", { shape: "rect", cols: 3, rows: 3 })],
+    ["cairo", fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 })],
   ];
 
-  it.each(cfgs)("round-trips every face index for %s", (_label, cfg) => {
-    const degree = getNeighborData(cfg, 1, 1).offsets.length;
-    for (let webIndex = 0; webIndex < degree; webIndex++) {
-      const core = splitFaceIndexToCore(cfg, webIndex);
-      expect(splitFaceIndexToWeb(cfg, core)).toBe(webIndex);
-    }
+  it.each(cfgs)("covers every canonical face once for %s", (_label, cfg) => {
+    const faces = anchorCanonicalFaces(cfg);
+    expect([...faces].sort((a, b) => a - b)).toEqual(faces.map((_, i) => i));
   });
-
 });
 
 describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
@@ -700,24 +646,5 @@ describe("cellsInDisplayRect", () => {
     // 600 x 500 cells = 300000 candidates, beyond MAX_REGION_CANDIDATES in one query.
     const cells = cellsInDisplayRect({ minX: 10, maxX: 600 * TILE_SIZE - 10, minY: 10, maxY: 500 * TILE_SIZE - 10 }, "center_inside", cfg);
     expect(cells).toHaveLength(300000);
-  });
-});
-
-describe("splitPatternsToWeb round-trip", () => {
-  it("splitPatternsToWeb undoes splitPatternsToCore for a full pattern", () => {
-    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
-    const original: SplitPattern[] = [
-      {
-        shape: "regular:4",
-        node_count: 2,
-        faces: [
-          [{ face_index: 0, requirement: { kind: "passage" } }, { face_index: 3, requirement: { kind: "wall" } }],
-          [{ face_index: 5, requirement: { kind: "one_way", direction: "forward" }, sibling_target: 0 }],
-        ],
-        weight: 1.0,
-      },
-    ];
-    const roundTripped = splitPatternsToWeb(splitPatternsToCore(original, cfg), cfg);
-    expect(roundTripped).toEqual(original);
   });
 });

@@ -7,6 +7,7 @@ import {
   buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement,
 } from "./postEditEndpoint";
 import { canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
+import { splitShapeBinding } from "./splitShape";
 import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
@@ -781,13 +782,14 @@ export function rotateSplitPointBreaksNeighborShape(
       ...neighborSlots.map((slotId) => splitEndpoint(neighbor, slotId, level)),
     ];
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+    const neighborBinding = splitShapeBinding(cfg, neighbor[0], neighbor[1]);
 
     const before = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, edges, splitPoints, activeSplitNode, nodes, level));
-    const beforeKind = detectSplitSpecialShapeKind(before);
+    const beforeKind = detectSplitSpecialShapeKind(before, neighborBinding);
     if (beforeKind === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, after, splitPoints, activeSplitNode, nodes, level));
-    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, neighborBinding) === null) return true;
   }
   return false;
 }

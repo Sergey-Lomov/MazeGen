@@ -10,17 +10,15 @@ import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
-import { splitPatternsToWeb } from "../../pixi/tessellationGeometry";
-import { activeFloorTessellationOf } from "../../store/storeHelpers";
 
 // Mirrors `parseRuleSplitPatterns` in `RuleStrategyPanel.tsx` -- a malformed or missing
 // `split_patterns` rule param reads as "no patterns" (empty topology), same "invalid falls back
 // to empty" contract `parse_split_patterns_param` follows on the Rust side (GitHub issue #389).
-function parseRuleSplitPatterns(raw: string | undefined, fieldConfig: ReturnType<typeof activeFloorTessellationOf>): SplitPattern[] {
+function parseRuleSplitPatterns(raw: string | undefined): SplitPattern[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, fieldConfig) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -41,10 +39,9 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const rule = rules.find((r) => r.id === ruleId);
   const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
-  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const floorCount = useMazeStore((s) => s.floors.length);
   const addSplitPatternsOverride = selectedId === "add_split"
-    ? parseRuleSplitPatterns(rule?.params.split_patterns, fieldConfig)
+    ? parseRuleSplitPatterns(rule?.params.split_patterns)
     : undefined;
 
   const candidates = availableStrategies

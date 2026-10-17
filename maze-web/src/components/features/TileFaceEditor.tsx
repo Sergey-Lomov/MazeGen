@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
+import { canRotateSplit } from "../../pixi/splitShape";
 import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
 import type { FieldConfig } from "../../fieldConfig";
@@ -231,7 +232,7 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
         <div style={styles.hint}>{m["post_edit.split_boundary_hint"]()}</div>
       )}
     </div>
-    {showRotateControls && (
+    {showRotateControls && canRotateSplit(cfg, point[0], point[1]) && (
       <div style={styles.rotateRow}>
         <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
         <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)} title={m["post_edit.split_rotate_ccw"]()}>

@@ -8,6 +8,7 @@ import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
 import type { NodeLockKind } from "../../wasm/types";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
@@ -77,7 +78,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
       presetEndpoint(point, slotId), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, undefined,
     ));
     const semanticNames = splitNodeSemanticNamesFromKinds(
-      faceKindsByNode,
+      faceKindsByNode, splitShapeBinding(cfg, point[0], point[1]),
     );
 
     return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };

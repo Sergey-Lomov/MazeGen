@@ -4,6 +4,7 @@ import { ElevatorFloorPicker, type ElevatorFloorRow, type ElevatorFloorStatus } 
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitPointShapeName } from "../../pixi/splitNodeNames";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import * as m from "~/paraglide/messages";
@@ -54,7 +55,7 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
       const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, rowCfg);
       if (!geometry) continue;
       const kind = detectSplitSpecialShapeKind(
-        geometry.faceKindsByNode,
+        geometry.faceKindsByNode, splitShapeBinding(rowCfg, point[0], point[1]),
       );
       result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
     }

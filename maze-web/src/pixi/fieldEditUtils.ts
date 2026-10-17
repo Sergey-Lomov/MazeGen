@@ -5,6 +5,7 @@ import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
+import { splitShapeBinding } from "./splitShape";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
 
@@ -834,16 +835,17 @@ export function rotatePresetSplitPointBreaksNeighborShape(
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
     const neighborEndpoints = allNodesAt(neighbor, presetSplitPoints, level);
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+    const neighborBinding = splitShapeBinding(cfg, neighbor[0], neighbor[1]);
 
     const before = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    if (detectSplitSpecialShapeKind(before) === null) continue; // wasn't recognized before — nothing to break
+    if (detectSplitSpecialShapeKind(before, neighborBinding) === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, after, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, neighborBinding) === null) return true;
   }
   return false;
 }
