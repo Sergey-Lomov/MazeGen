@@ -1,4 +1,5 @@
-import { hexOrientationOf, type FieldConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
+import { TESSELLATION_UI } from "../geometry/tessellationUi";
 
 /** A connector bend axis, as a unit direction vector — a segment along this axis can run either
  *  way (`(ux, uy)` and `(-ux, -uy)` are the same axis). */
@@ -17,12 +18,25 @@ function axisFromDeg(deg: number): Axis {
 export const SQUARE_AXES: Axis[] = [axisFromDeg(0), axisFromDeg(90)];
 
 // Bend axes must run *perpendicular* to a cell's own face directions (a connector crossing a wall
-// head-on, not running alongside it) — verified numerically from `hexVertices`' own vertex angles
-// (GitHub issue #297 follow-up). `flat_top` hex faces run along {0°,60°,120°} so their normals are
-// {30°,90°,150°}; `pointy_top` is flat_top rotated 30°, so its faces run along {30°,90°,150°} and
-// its normals land back on {0°,60°,120°} — the two orientations do NOT share one axis set.
-const AXES_0_60_120: Axis[] = [axisFromDeg(0), axisFromDeg(60), axisFromDeg(120)];
-const AXES_30_90_150: Axis[] = [axisFromDeg(30), axisFromDeg(90), axisFromDeg(150)];
+// head-on, not running alongside it) -- GitHub issue #297 follow-up. The canonical (`flat_top`)
+// hex faces run along {0°,60°,120°}, so their normals are {30°,90°,150°}; the display orientation
+// (`pointy_top` turns the lattice 30°) turns the axes with it, see `orientedAxes`.
+const HEX_CANONICAL_AXES_DEG = [30, 90, 150];
+const TRI_AXES: Axis[] = [axisFromDeg(0), axisFromDeg(60), axisFromDeg(120)];
+
+/** `degrees` (canonical directions) turned by the display orientation of `cfg`, as undirected
+ *  axes in ascending angle order. */
+function orientedAxes(cfg: FieldConfig, degrees: readonly number[]): Axis[] {
+  const o = TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation);
+  return degrees
+    .map((deg) => {
+      const rad = (deg * Math.PI) / 180;
+      const turned = (Math.atan2(o.b * Math.cos(rad) + o.d * Math.sin(rad), o.a * Math.cos(rad) + o.c * Math.sin(rad)) * 180) / Math.PI;
+      return Math.round((((turned % 180) + 180) % 180) * 1e9) / 1e9 % 180;
+    })
+    .sort((a, b) => a - b)
+    .map(axisFromDeg);
+}
 
 // Cairo's base pentagon has edge slopes 0 and +/-atan(1/3). Its four tile orientations produce
 // four useful oblique axes. The horizontal/vertical normals are deliberately excluded: on the
@@ -50,9 +64,9 @@ export function getConnectorAxes(cfg: FieldConfig): Axis[] {
     case "square":
       return SQUARE_AXES;
     case "hex":
-      return hexOrientationOf(cfg) === "pointy_top" ? AXES_0_60_120 : AXES_30_90_150;
+      return orientedAxes(cfg, HEX_CANONICAL_AXES_DEG);
     case "tri":
-      return AXES_0_60_120;
+      return TRI_AXES;
     case "cairo":
       return CAIRO_AXES;
   }

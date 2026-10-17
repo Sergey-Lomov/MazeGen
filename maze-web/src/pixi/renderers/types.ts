@@ -1,3 +1,4 @@
+import type { PathCommand } from "../../wasm/mazeService";
 import type { LabelFontWeight } from "./indexLabel";
 import type { TeleportFloorBadgeSettings, ElevatorBadgeSettings } from "../../store/imageExportTypes";
 
@@ -222,6 +223,9 @@ export type SplitStyleOverride = { nodeColors?: readonly number[]; specialShapes
 export type EdgeHL = {
   from: [number, number];
   to: [number, number];
+  /** The highlighted edge's exact path in display space (a curved edge keeps its shape); when
+   *  absent the highlight is the straight line `from` -> `to`. */
+  path?: readonly PathCommand[];
   color: number;
   alpha: number;
   width: number;

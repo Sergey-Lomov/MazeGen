@@ -4,10 +4,11 @@ import {
   getCellAt,
   getCellsInRegion,
   getGeometrySnapshot,
-  type PolylineCellGeometry,
+  type PathCellGeometry,
   type RegionMode,
   type WorldPoint,
 } from "../wasm/mazeService";
+import { flattenCommands } from "./geometry/pathFlatten";
 
 /// Geometry access layer over `maze-core`'s geometry snapshot (`Specs/space.md`, "Geometry
 /// snapshot lifecycle"). Every coordinate here is in core's world units (math convention, cell
@@ -28,16 +29,24 @@ export function cellId(x: number, y: number): CellId {
   return [x, y] as unknown as CellId;
 }
 
-/// `flatten` tolerance of the cached polylines, in world units (a cell's area is 1).
+/// Flatten tolerance of the derived polylines, in world units (a cell's area is 1).
 export const GEOMETRY_TOLERANCE = 1e-3;
+
+/// A cell's snapshot entry: core's exact path boundary (drawing) plus its polyline flattened at
+/// `GEOMETRY_TOLERANCE` (geometric operations). No consumer inspects the segment kinds.
+export type CellGeometryEntry = PathCellGeometry & { polyline: WorldPoint[] };
+
+function withPolyline(geometry: PathCellGeometry): CellGeometryEntry {
+  return { ...geometry, polyline: flattenCommands(geometry.boundary.commands, GEOMETRY_TOLERANCE) };
+}
 
 type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
 /// Cells of the current field: filled by one snapshot, never evicted until the field changes.
-const fieldCache = new Map<string, PolylineCellGeometry>();
+const fieldCache = new Map<string, CellGeometryEntry>();
 /// Cells outside the field (grid margin, hover, invalid endpoints): bounded, least recently used
 /// first out. `Map` iteration order is insertion order, so re-inserting on a hit keeps it LRU.
-const outsideCache = new Map<string, PolylineCellGeometry>();
+const outsideCache = new Map<string, CellGeometryEntry>();
 export const DEFAULT_MAX_OUTSIDE_CELLS = 100_000;
 let maxOutsideCells = DEFAULT_MAX_OUTSIDE_CELLS;
 
@@ -89,17 +98,17 @@ export function warmCartesianCache(cfg: FieldConfig): void {
   const snapshot = getGeometrySnapshot({
     tessellation: cfg.tessellation,
     cells,
-    boundary: { kind: "polyline", tolerance: GEOMETRY_TOLERANCE },
+    boundary: { kind: "path" },
     fieldVersion,
   });
-  for (const geometry of snapshot.cells) fieldCache.set(cellKey(geometry.cell[0], geometry.cell[1]), geometry);
+  for (const geometry of snapshot.cells) fieldCache.set(cellKey(geometry.cell[0], geometry.cell[1]), withPolyline(geometry));
 }
 
 /// Geometry of one cell. Served from the cache for any cell of the current field; a cell outside
 /// it (an invalid preset connection's endpoint, a boundary neighbor) costs one single-cell
 /// snapshot call and is cached in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`), so hovering the same cell every
 /// frame pays only once and field cells are never evicted.
-export function getCellGeometry(x: number, y: number, cfg: FieldConfig): PolylineCellGeometry {
+export function getCellGeometry(x: number, y: number, cfg: FieldConfig): CellGeometryEntry {
   if (instanceKey(cfg) !== cachedInstance) {
     // Defensive: queried before the cache was warmed for this tessellation.
     warmCartesianCache(cfg);
@@ -113,12 +122,13 @@ export function getCellGeometry(x: number, y: number, cfg: FieldConfig): Polylin
     outsideCache.set(key, outside);
     return outside;
   }
-  const [geometry] = getGeometrySnapshot({
+  const [raw] = getGeometrySnapshot({
     tessellation: cfg.tessellation,
     cells: [[x, y]],
-    boundary: { kind: "polyline", tolerance: GEOMETRY_TOLERANCE },
+    boundary: { kind: "path" },
     fieldVersion,
   }).cells;
+  const geometry = withPolyline(raw);
   outsideCache.set(key, geometry);
   if (outsideCache.size > maxOutsideCells) outsideCache.delete(outsideCache.keys().next().value!);
   return geometry;
@@ -135,7 +145,7 @@ export function getFieldWorldBounds(cfg: FieldConfig): Bounds | null {
   if (cells.length === 0) return null;
   const bounds: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (const [x, y] of cells) {
-    for (const [px, py] of getCellGeometry(x, y, cfg).boundary.points) {
+    for (const [px, py] of getCellGeometry(x, y, cfg).polyline) {
       bounds.minX = Math.min(bounds.minX, px);
       bounds.minY = Math.min(bounds.minY, py);
       bounds.maxX = Math.max(bounds.maxX, px);

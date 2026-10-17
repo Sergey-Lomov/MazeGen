@@ -1,6 +1,6 @@
 use maze_runner::runner::field_ops::{
-    self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetRequest, ReflectRequest,
-    TranslateRequest,
+    self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
+    PresetRequest, ReflectRequest, TranslateRequest,
 };
 use wasm_bindgen::prelude::*;
 
@@ -19,6 +19,17 @@ pub fn field_capabilities(request: JsValue) -> Result<JsValue, JsValue> {
 pub fn field_preset(request: JsValue) -> Result<JsValue, JsValue> {
     let request: PresetRequest = decode(request)?;
     cells_result(runner_field_ops::build_preset(&request))
+}
+
+/// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions
+/// (`directions`, each `[x, y]`). The error is `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_preset_extents(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PresetExtentsRequest = decode(request)?;
+    match runner_field_ops::preset_extents(&request) {
+        Ok(extents) => Ok(serde_wasm_bindgen::to_value(&extents).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
 }
 
 /// Cells moved by a world vector that must be a translation symmetry of the tessellation.

@@ -1,30 +1,10 @@
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { closestPointOnPolyline, fractionAlong } from "./geometry/polylineOps";
 import { makeProjection } from "./tessellationProjection";
 import { encodePoint } from "./tessellationProjection";
 import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
 import { tessellationFamily, type FieldConfig } from "../fieldConfig";
 import { canonicalize, edgeKey, type FieldEdge } from "./fieldEditUtils";
-
-interface SegmentHit {
-  distSq: number;
-  /** Fraction along the segment (0 = v0, 1 = v1) of the closest point to the query position. */
-  t: number;
-}
-
-function closestPointOnSegment(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number,
-): SegmentHit {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return { distSq: (px - ax) * (px - ax) + (py - ay) * (py - ay), t: 0 };
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-  const cx = ax + t * dx;
-  const cy = ay + t * dy;
-  return { distSq: (px - cx) * (px - cx) + (py - cy) * (py - cy), t };
-}
 
 /** Fraction of a segment's length, at each end, treated as a dead zone: hover/drag hit-testing
  * ignores the segment there so the cursor must clearly enter its interior before it registers.
@@ -81,9 +61,11 @@ export function pickEdgeAtPosition(
 
       const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
       if (!seg) continue;
-      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
-      if (deadZone && (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
-      const distSq = hit.distSq;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
+      const distSq = hit.distance * hit.distance;
       if (distSq < thresholdSq && distSq < bestDist) {
         bestDist = distSq;
         bestKey = key;
@@ -142,9 +124,10 @@ export function isInEdgeVertexDeadZone(
 
       const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
       if (!seg) continue;
-      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
-      if (hit.distSq >= thresholdSq) continue;
-      if (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit || hit.distance * hit.distance >= thresholdSq) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
     }
   }
   return false;

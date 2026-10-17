@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { cellsInDisplayRect, getCellVertices } from "../tessellationGeometry";
+import { cellsInDisplayRect, getCellPath } from "../tessellationGeometry";
+import { tracePath } from "../geometry/pathRenderer";
 import { TILE_SIZE } from "../constants";
 import { GRID_LINE_ALPHA } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -75,10 +76,7 @@ export class GridRenderer {
     this.g.setStrokeStyle({ width: 1 / scale, color, alpha: GRID_LINE_ALPHA });
 
     const drawCell = (xi: number, yi: number): void => {
-      const verts = getCellVertices(xi, yi, cfg);
-      if (!verts) return;
-      this.g.moveTo(verts[verts.length - 1].x, verts[verts.length - 1].y);
-      for (const v of verts) this.g.lineTo(v.x, v.y);
+      tracePath(this.g, getCellPath(xi, yi, cfg));
     };
 
     if (cells) {

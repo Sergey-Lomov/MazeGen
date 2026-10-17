@@ -1,9 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getCellVertices } from "../tessellationGeometry";
 import { buildRegionGeometry } from "../selectors/issueHighlightSelectors";
-import { drawCellHighlight, drawCellHighlightPath, getCellHighlightInset, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
+import { drawCellHighlightAt, drawCellHighlightPath, getCellHighlightInset, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
 import { cellBoundaryKey, drawCellBoundaryHighlight } from "./wallUtils";
 
 const REGION_FILL_ALPHA = 0.25;
@@ -57,7 +56,10 @@ function simplifyContour(points: { x: number; y: number }[]): { x: number; y: nu
  * though a vertex can coincide. Tracing them together would let the turn-angle rule cross from
  * one cell's boundary into the other's at that shared point, producing a self-intersecting
  * "bowtie" contour instead of two separate ones. */
-export function buildRegionContours(segments: { v0: { x: number; y: number }; v1: { x: number; y: number }; component: number }[]): { x: number; y: number }[][] {
+type ContourPoint = { x: number; y: number };
+type ContourSide = { v0: ContourPoint; v1: ContourPoint; polyline?: ContourPoint[] };
+
+export function buildRegionContours(segments: (ContourSide & { component: number })[]): { x: number; y: number }[][] {
   const contours: { x: number; y: number }[][] = [];
   const byComponent = new Map<number, typeof segments>();
   for (const seg of segments) {
@@ -69,15 +71,17 @@ export function buildRegionContours(segments: { v0: { x: number; y: number }; v1
   return contours;
 }
 
-function traceContours(segments: { v0: { x: number; y: number }; v1: { x: number; y: number } }[]): { x: number; y: number }[][] {
+function traceContours(segments: ContourSide[]): { x: number; y: number }[][] {
   // Keep the boundary as an undirected geometric graph. The old tracer indexed only `v0`, which
   // happened to work for square cells because every exposed side was oriented consistently. Hex
   // and triangle cells can expose the same vertex with the opposite segment orientation, so that
   // tracer stopped at a valid vertex and rendered separate cells. Half-edges make the merge
   // independent of the tessellation's local vertex winding.
+  // A side's interior points (an arc's flattening) travel with it, so a curved side keeps its
+  // shape in the contour while the turn rule still sees only its end points.
   const edges = segments
     .filter((seg) => pointKey(seg.v0) !== pointKey(seg.v1))
-    .map((seg) => ({ ...seg, used: false }));
+    .map((seg) => ({ ...seg, via: seg.polyline?.slice(1, -1) ?? [], used: false }));
   const byPoint = new Map<string, { edge: number; to: { x: number; y: number } }[]>();
   const addHalfEdge = (point: { x: number; y: number }, to: { x: number; y: number }, edge: number) => {
     const entries = byPoint.get(pointKey(point)) ?? [];
@@ -88,12 +92,14 @@ function traceContours(segments: { v0: { x: number; y: number }; v1: { x: number
     addHalfEdge(edge.v0, edge.v1, i);
     addHalfEdge(edge.v1, edge.v0, i);
   });
+  // The interior points of `edge` in the direction of travel that ends at `end`.
+  const viaTowards = (edge: (typeof edges)[number], end: ContourPoint) => pointKey(end) === pointKey(edge.v1) ? edge.via : [...edge.via].reverse();
 
   const contours: { x: number; y: number }[][] = [];
   for (const first of edges) {
     if (first.used) continue;
     first.used = true;
-    const contour = [first.v0, first.v1];
+    const contour = [first.v0, ...first.via, first.v1];
     const startKey = pointKey(first.v0);
     let previous = first.v0;
     let current = first.v1;
@@ -109,7 +115,7 @@ function traceContours(segments: { v0: { x: number; y: number }; v1: { x: number
       const chosen = candidates.sort((a, b) => a.clockwiseTurn - b.clockwiseTurn)[0];
       if (chosen === undefined) break;
       edges[chosen.edge].used = true;
-      contour.push(chosen.nextPoint);
+      contour.push(...viaTowards(edges[chosen.edge], chosen.nextPoint), chosen.nextPoint);
       previous = current;
       current = chosen.nextPoint;
     }
@@ -234,21 +240,19 @@ export class RegionHighlightRenderer {
       if (contours.length > 0) {
         renderRegionContours(this.g, contours, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth);
       } else for (const [x, y] of cells) {
-        const verts = getCellVertices(x, y, cfg);
-        if (verts) drawCellHighlight(this.g, verts, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth);
+        drawCellHighlightAt(this.g, x, y, cfg, style.color, style.fillAlpha ?? REGION_FILL_ALPHA, splitInset, cornerStyle, borderWidth);
       }
 
       if (skipPerimeter) continue;
       for (const seg of perimeterSegments) {
-        this.g.moveTo(seg.v0.x, seg.v0.y);
-        this.g.lineTo(seg.v1.x, seg.v1.y);
+        this.g.moveTo(seg.polyline[0].x, seg.polyline[0].y);
+        for (let i = 1; i < seg.polyline.length; i++) this.g.lineTo(seg.polyline[i].x, seg.polyline[i].y);
         this.g.stroke({ width, color, alpha });
       }
     }
     const cellsInset = insetMode === "outset" ? -Math.abs(inset) : inset;
     for (const [x, y] of cells) {
-      const verts = getCellVertices(x, y, cfg);
-      if (verts) drawCellHighlight(this.g, verts, color, REGION_FILL_ALPHA, cellsInset, cornerStyle, borderWidth);
+      drawCellHighlightAt(this.g, x, y, cfg, color, REGION_FILL_ALPHA, cellsInset, cornerStyle, borderWidth);
     }
     if (boundaryEdges.length > 0) {
       const nodeById = new Map(nodes.map((node) => [node.id, node]));

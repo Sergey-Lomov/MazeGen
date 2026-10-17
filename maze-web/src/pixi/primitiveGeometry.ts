@@ -3,7 +3,8 @@ import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "./triShapeHelpers";
 import { getCellNeighborOffsets } from "./tessellationGeometry";
-import { kindFieldConfig, triOrientationOf, type FieldConfig } from "../fieldConfig";
+import { TESSELLATION_UI, isIdentityLinear } from "./geometry/tessellationUi";
+import { kindFieldConfig, type FieldConfig } from "../fieldConfig";
 import type { TessellationKind } from "../store/mazeStore";
 
 export type { TessellationKind };
@@ -201,25 +202,24 @@ function equilateralTriangleDragShape(ctx: PrimitiveContext, config: FieldConfig
   };
 }
 
-function snapEquilateralAngle(angle: number, config: FieldConfig): number {
-  let step: number;
-  let offset: number;
-  if (config.tessellation.kind === "hex") {
-    step = Math.PI / 3;
-    offset = config.orientation === "pointy_top" ? 0 : Math.PI / 6;
-  } else if (config.tessellation.kind === "square") {
-    step = Math.PI / 2;
-    offset = -Math.PI / 2;
-  } else if (config.tessellation.kind === "tri") {
-    // An equilateral triangle can point along either normal of each of the
-    // three edge families in the triangular lattice: six directions total.
-    // The tessellation orientation selects the first direction in that set;
-    // it must not turn the snap into four right angles.
-    step = Math.PI / 3;
-    offset = ({ r0: -Math.PI / 2, r90: 0, r180: Math.PI / 2, r270: Math.PI } as const)[triOrientationOf(config)];
-  } else {
-    return angle;
-  }
+/** A hexagon-of-cells outline has points on the vertical axis while the display orientation is the
+ *  identity, and is turned a sixth of a revolution with any other instance of it. */
+function hexShapeIsPointy(config: FieldConfig): boolean {
+  return isIdentityLinear(TESSELLATION_UI[config.tessellation.kind].orientation(config.orientation));
+}
+
+export function snapEquilateralAngle(angle: number, config: FieldConfig): number {
+  const ui = TESSELLATION_UI[config.tessellation.kind];
+  if (!ui.equilateralSnap) return angle;
+  // The canonical snap directions turned by the display orientation: a tri lattice can point a
+  // triangle along either normal of its three edge families (six directions), and the display
+  // orientation picks the first of them; it must not turn the snap into four right angles.
+  const { step, offset: canonical } = ui.equilateralSnap;
+  const o = ui.orientation(config.orientation);
+  const offset = Math.atan2(
+    o.b * Math.cos(canonical) + o.d * Math.sin(canonical),
+    o.a * Math.cos(canonical) + o.c * Math.sin(canonical),
+  );
   const snapped = offset + Math.round((angle - offset) / step) * step;
   const difference = Math.atan2(Math.sin(angle - snapped), Math.cos(angle - snapped));
   return Math.abs(difference) <= Math.PI / 30 ? snapped : angle;
@@ -238,8 +238,7 @@ function centeredHexagon(radius: number): [number, number][] {
 }
 
 function centeredHexRadius(frame: WorldFrame, config: FieldConfig): number {
-  const orientation = config.orientation;
-  const diameter = orientation === "pointy_top" ? frame.width : frame.height;
+  const diameter = hexShapeIsPointy(config) ? frame.height : frame.width;
   return Math.max(1, Math.round(diameter / TILE_SIZE / 4));
 }
 
@@ -360,9 +359,7 @@ function equalSideParallelogramFrame(width: number, height: number): { width: nu
 
 function regularHexagonFrame(width: number, height: number, config: FieldConfig): { width: number; height: number } {
   const diameter = Math.max(TILE_SIZE, Math.min(width, height));
-  const tessellationOrientation = config.orientation;
-  const primitiveOrientation = tessellationOrientation === "pointy_top" ? "flat_top" : "pointy_top";
-  return primitiveOrientation === "pointy_top"
+  return hexShapeIsPointy(config)
     ? { width: diameter * Math.sqrt(3) / 2, height: diameter }
     : { width: diameter, height: diameter * Math.sqrt(3) / 2 };
 }

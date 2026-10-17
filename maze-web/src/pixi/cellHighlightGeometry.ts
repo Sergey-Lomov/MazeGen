@@ -1,6 +1,8 @@
 import type { Graphics } from "pixi.js";
 import { drawRoundedPolygon } from "./renderers/markerShapes";
-import type { Pos } from "./tessellationGeometry";
+import { getCellPath, getCellVertices, type Pos } from "./tessellationGeometry";
+import { tracePath } from "./geometry/pathRenderer";
+import type { FieldConfig } from "../fieldConfig";
 import { WALL_THICKNESS } from "./renderConstants";
 
 /** World-space gap kept between a cell highlight and its cell boundary. */
@@ -94,4 +96,30 @@ export function drawCellHighlightPath(g: Graphics, vertices: Pos[], inset = getC
   ))) / 2;
   if (cornerStyle === "round") drawRoundedPolygon(g, points, Math.min(Math.abs(inset) * 0.9, minEdgeHalf * 0.18));
   else g.poly(points);
+}
+
+/** `drawCellHighlight` for the cell `(x, y)`: an uninset highlight follows the cell's exact path
+ * (arcs stay arcs); an inset one works on the flattened polygon. */
+export function drawCellHighlightAt(
+  g: Graphics,
+  x: number,
+  y: number,
+  cfg: FieldConfig,
+  color: number,
+  alpha: number,
+  inset = getCellHighlightInset(),
+  cornerStyle: CellHighlightCornerStyle = "round",
+  borderWidth = inset > 0 ? 3 : 0,
+): void {
+  if (inset !== 0) {
+    drawCellHighlight(g, getCellVertices(x, y, cfg), color, alpha, inset, cornerStyle, borderWidth);
+    return;
+  }
+  const path = getCellPath(x, y, cfg);
+  tracePath(g, path);
+  g.closePath().fill({ color, alpha });
+  if (borderWidth > 0) {
+    tracePath(g, path);
+    g.closePath().stroke({ color, alpha: 1, width: borderWidth });
+  }
 }

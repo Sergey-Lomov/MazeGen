@@ -1,4 +1,5 @@
-import { hexOrientationOf, triOrientationOf, type FieldConfig, type TriOrientation } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { TESSELLATION_UI, isIdentityLinear, type Linear } from "./geometry/tessellationUi";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import { originCellOf } from "./splitPatternTile";
@@ -25,7 +26,7 @@ export type ShapeDefinition =
   | { kind: "rectangle"; width: number; height: number }
   | { kind: "parallelogram"; width: number; height: number; skewSign?: -1 | 1 }
   | { kind: "circle"; radius: number; width?: number; height?: number }
-  | { kind: "triangle"; side: number; width?: number; height?: number; orientation?: TriOrientation; polygon?: Point[] }
+  | { kind: "triangle"; side: number; width?: number; height?: number; orientation?: Linear; polygon?: Point[] }
   | { kind: "hexagon"; radius: number; width?: number; height?: number; orientation?: "flat_top" | "pointy_top"; polygon?: Point[] };
 
 type Point = { x: number; y: number };
@@ -46,7 +47,7 @@ export function shapeForPrimitive(
       : { kind: "circle", radius: Math.max(geometry.width, geometry.height) / 2, width: geometry.width, height: geometry.height };
   }
   if (primitive === "triangle") {
-    if (geometry.side !== undefined) return { kind: "triangle", side: geometry.side, orientation: triOrientationOf(cfg) };
+    if (geometry.side !== undefined) return { kind: "triangle", side: geometry.side, orientation: TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation) };
     return {
       kind: "triangle",
       side: 1,
@@ -57,7 +58,10 @@ export function shapeForPrimitive(
       ],
     };
   }
-  const orientation = hexOrientationOf(cfg) === "flat_top" ? "pointy_top" : "flat_top";
+  // The shape is axis-aligned (pointy) while the field's orientation is the identity, and turned a
+  // sixth of a revolution with any other instance of the display orientation.
+  const o = TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation);
+  const orientation = isIdentityLinear(o) ? "pointy_top" : "flat_top";
   const radius = Math.max(geometry.width, geometry.height) / 2;
   const width = geometry.width;
   const height = geometry.height;
@@ -176,14 +180,9 @@ export function polygonForShape(shape: ShapeDefinition): Point[] | null {
       if (shape.polygon) return shape.polygon;
       const width = shape.width ?? shape.side;
       const height = shape.height ?? shape.side * Math.sqrt(3) / 2;
-      const rotatePoint = (point: Point): Point => {
-        switch (shape.orientation) {
-          case "r90": return { x: -point.y, y: -point.x };
-          case "r180": return { x: -point.x, y: -point.y };
-          case "r270": return { x: point.y, y: point.x };
-          default: return point;
-        }
-      };
+      const o = shape.orientation;
+      const rotatePoint = (point: Point): Point =>
+        o ? { x: o.a * point.x + o.c * point.y, y: o.b * point.x + o.d * point.y } : point;
       return [
         { x: 0, y: -height * 2 / 3 },
         { x: width / 2, y: height / 3 },

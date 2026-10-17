@@ -460,9 +460,9 @@ rectangle) are built from lattice coordinates; `circle` (the tri circle takes wh
 cell geometry. The hex rectangle has screen-aligned sides on the flat-top lattice core uses.
 
 Wire (`maze-runner::runner::field_ops`, exported by `maze-wasm`): `field_capabilities`,
-`field_preset`, `field_translate_cells`, `field_reflect_cells`; failures are
+`field_preset`, `field_preset_extents`, `field_translate_cells`, `field_reflect_cells`; failures are
 `{ kind, message? }` with `kind` one of the reasons above (`invalid_request` for a malformed
-request; also returned for non-finite vector or axis coordinates). The web `configAllCells` treats
+request; also returned for non-finite vector or axis coordinates). `field_preset_extents` takes a preset plus two world directions and returns the `[min, max]` extent of the shape's cell boundaries along each, without shipping the cells (print-fit sizing evaluates many candidate sizes); it flattens only the cells whose centers lie within twice the cell reach (centre-to-farthest-boundary-point distance, sampled at the limit cells) of the center limits, which assumes near-uniform cell sizes. The pruning is correct only while no cell's reach exceeds twice the reach of the cells at the limits (true for square, hex, tri and Cairo; it would also hold for 4.8.8 and 3.6.3.6 but fail for 3.12.12). Future extension: let a tessellation choose its extent mode (for example a core-supplied upper bound of cell reach, or an exact full scan when none is given), with a shared test comparing every mode against the full scan on small fields. The web `configAllCells` treats
 `invalid_preset` as an empty field and caches built presets by tessellation, key and params.
 
 ### Display transform
@@ -504,7 +504,7 @@ over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a br
 test suite requires the wasm build (`tools/require-wasm.mjs`; `test.sh`/`test.ps1` rebuild it).
 
 Status (GitHub issue #761, second step): `maze-web/src/pixi/geometry/` holds the generic consumers
-of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache itself requests polylines; arcs are kept for the first curved tessellation) (`tracePath` onto Pixi `Graphics` or a
+of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache requests the path commands too, see #763) (`tracePath` onto Pixi `Graphics` or a
 canvas 2D context, `pathToSvg` for SVG; PNG export goes through Pixi) after a `WorldTransform` — a
 similarity (rotation, reflection, uniform scale, translation) so arcs stay arcs; a reflection
 reverses an arc's direction. `polylineOps.ts` works on flattened polylines: `closestPointOnPolyline`,
@@ -531,3 +531,17 @@ moving a selection, the symmetry tool and the preset shapes call `field_translat
 forms and tools the editor offers (a tool whose operation is unavailable is hidden). Refusals
 (`FieldOpError`) are shown to the user. The web does no arithmetic on `CellId`s outside the geometry
 access layer. Each floor holds one `selectedShape` instead of per-kind shape fields.
+
+Status (GitHub issue #763): drawing and hit-testing work from core geometry snapshots through the
+single display transform. The cache requests `{ kind: "path" }` boundaries and derives a flattened
+`polyline` per cell (`pixi/geometry/pathFlatten.ts`, tolerance `1e-3` world units). Cells, walls,
+one-way markers, edge highlights and the grid draw with `tracePath` on the display-space path
+(`getCellPath`, `SharedEdge.path`); geometric operations (hit-testing, wall chaining, boundary
+highlight bands, region contours, `closestPointOnPolyline`, `offsetPolyline`, `trimPolyline`) use
+polylines. `getSharedEdgeSegment` returns a `SharedEdge` (`v0`, `v1`, `path`, `polyline`, `contact`);
+markers and corridor crossings sit at the face's contact point (a single straight segment's midpoint is taken exactly from its end points); `getTileDiagram` sides carry the same `contact`, relative to the tile center. Print-fit treats a shape core refuses as not fitting. No consumer inspects the segment type. Print-fit sizing
+measures presets with `field_preset_extents` along the rows of the display transform. The
+triangle/hexagon selection shapes, equilateral snapping (`TessellationUi.equilateralSnap`: step and canonical offset in core space, turned by the orientation),
+primitive hexagon frames and hex connector axes take their orientation from the display
+transform's orientation instance, so orientation exists only as a `displayTransform` instance. The
+corridor contour engine stays polygon-based (convex cells); split-pattern geometry belongs to #764.

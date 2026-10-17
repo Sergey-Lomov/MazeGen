@@ -111,9 +111,7 @@ export function buildCorridorSegments(
       // keeps the renderer on the tessellation-independent contour engine for square, hex, triangle,
       // Cairo, and future convex cell families alike.
       const sharedFace = getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg);
-      const faceMidpoint = sharedFace
-        ? { x: (sharedFace.v0.x + sharedFace.v1.x) / 2, y: (sharedFace.v0.y + sharedFace.v1.y) / 2 }
-        : undefined;
+      const faceMidpoint = sharedFace?.contact;
       const faceLength = sharedFace
         ? Math.hypot(sharedFace.v1.x - sharedFace.v0.x, sharedFace.v1.y - sharedFace.v0.y)
         : undefined;

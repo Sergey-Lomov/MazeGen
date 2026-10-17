@@ -22,7 +22,7 @@ describe("geometry access layer", () => {
     warmCartesianCache(square);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(getCartesian(2, 1, square)).toEqual([2.5, 1.5]);
-    expect(getCellGeometry(0, 0, square).boundary.points).toHaveLength(4);
+    expect(getCellGeometry(0, 0, square).polyline).toHaveLength(4);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });

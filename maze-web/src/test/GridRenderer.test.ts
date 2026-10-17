@@ -87,7 +87,7 @@ describe("viewport grid density", () => {
     const visible = cellsInDisplayRect({ minX: 103, maxX: 403, minY: 102, maxY: 302 }, "intersects", cfg);
     expect(visible.length).toBeGreaterThan(0);
     for (const [x, y] of visible) {
-      const last = getCellVertices(x, y, cfg).at(-1)!;
+      const last = getCellVertices(x, y, cfg)[0];
       expect(drawn.has(`${Math.round(last.x)},${Math.round(last.y)}`)).toBe(true);
     }
     renderer.destroy();

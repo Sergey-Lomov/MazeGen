@@ -5,7 +5,7 @@ import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 import { getCellGeometry } from "../pixi/cartesianCache";
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord, cellsInDisplayRect } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord, cellsInDisplayRect, getCellPath } = await import("../pixi/tessellationGeometry");
 
 // Canonical (counter-clockwise) face order of `maze-core`'s shape templates (`Specs/space.md`,
 // GitHub issue #758) — used here only to name expected indices by face, not to duplicate the
@@ -81,6 +81,32 @@ describe("getSharedEdgeSegment returns null for a non-neighbor offset", () => {
 
   it("triangle: cells that only touch at a corner, not a real neighbor direction", () => {
     expect(getSharedEdgeSegment([0, 0], [1, 1], fieldOf("tri", { shape: "hexagon", radius: 3 }))).toBeNull();
+  });
+});
+
+describe("display-space paths", () => {
+  it("draws a cell's path through the same points as its vertices", () => {
+    for (const cfg of [fieldOf("square", { shape: "rect", cols: 3, rows: 3 }), fieldOf("hex", { shape: "hexagon", radius: 2 }, "pointy_top"), fieldOf("tri", { shape: "hexagon", radius: 2 }, "r90")]) {
+      const path = getCellPath(0, 0, cfg);
+      const vertices = getCellVertices(0, 0, cfg);
+      expect(path[0]).toMatchObject({ op: "move_to", to: [vertices[0].x, vertices[0].y] });
+      vertices.slice(1).forEach((vertex, index) => {
+        expect(path[index + 1]).toMatchObject({ op: "line_to", to: [vertex.x, vertex.y] });
+      });
+    }
+  });
+
+  it("serves a shared edge whose path, polyline and contact agree", () => {
+    const cfg = fieldOf("hex", { shape: "hexagon", radius: 2 }, "flat_top");
+    const { offsets } = getNeighborData(cfg, 0, 0);
+    for (const [dx, dy] of offsets) {
+      const edge = getSharedEdgeSegment([0, 0], [dx, dy], cfg)!;
+      expect(edge.path[0]).toMatchObject({ op: "move_to", to: [edge.v0.x, edge.v0.y] });
+      expect(edge.polyline[0]).toEqual([edge.v0.x, edge.v0.y]);
+      expect(edge.polyline[edge.polyline.length - 1]).toEqual([edge.v1.x, edge.v1.y]);
+      expect(edge.contact.x).toBeCloseTo((edge.v0.x + edge.v1.x) / 2, 9);
+      expect(edge.contact.y).toBeCloseTo((edge.v0.y + edge.v1.y) / 2, 9);
+    }
   });
 });
 

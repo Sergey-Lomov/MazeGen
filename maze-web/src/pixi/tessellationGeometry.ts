@@ -1,13 +1,16 @@
 import type { FieldConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
-import type { PolylineCellGeometry } from "../wasm/mazeService";
-import { cellAtSpacePoint, getCellGeometry } from "./cartesianCache";
+import { cellAtSpacePoint, getCellGeometry, type CellGeometryEntry } from "./cartesianCache";
 import { getCellsInRegion, type RegionMode } from "../wasm/mazeService";
+import type { PathCommand } from "../wasm/mazeService";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { flattenSegments, segmentsToCommands } from "./geometry/pathFlatten";
+import { GEOMETRY_TOLERANCE } from "./cartesianCache";
 import {
   applyTransform,
   invertTransform,
   isReflection,
+  transformCommand,
   type WorldTransform,
 } from "./geometry/worldTransform";
 
@@ -66,16 +69,16 @@ interface CellTopology {
   boundaryOrder: number[];
 }
 
-const topologies = new WeakMap<PolylineCellGeometry, CellTopology>();
+const topologies = new WeakMap<CellGeometryEntry, CellTopology>();
 const ENDPOINT_EPS = 1e-6;
 
-function vertexIndex(polyline: PolylineCellGeometry["boundary"]["points"], [x, y]: [number, number]): number {
+function vertexIndex(polyline: CellGeometryEntry["polyline"], [x, y]: [number, number]): number {
   const index = polyline.findIndex(([px, py]) => Math.abs(px - x) <= ENDPOINT_EPS && Math.abs(py - y) <= ENDPOINT_EPS);
   if (index === -1) throw new Error(`face endpoint (${x}, ${y}) is not a vertex of the cell boundary`);
   return index;
 }
 
-function topologyOf(geometry: PolylineCellGeometry): CellTopology {
+function topologyOf(geometry: CellGeometryEntry): CellTopology {
   let topology = topologies.get(geometry);
   if (!topology) {
     const [cx, cy] = geometry.cell;
@@ -86,7 +89,7 @@ function topologyOf(geometry: PolylineCellGeometry): CellTopology {
       offsets.push(face.neighbor ? [face.neighbor[0] - cx, face.neighbor[1] - cy] : [0, 0]);
       const first = face.segments[0];
       const last = face.segments[face.segments.length - 1];
-      edgeVerts.push([vertexIndex(geometry.boundary.points, first.from), vertexIndex(geometry.boundary.points, last.to)]);
+      edgeVerts.push([vertexIndex(geometry.polyline, first.from), vertexIndex(geometry.polyline, last.to)]);
     }
     const boundaryOrder = edgeVerts.map((_, i) => i).sort((a, b) => edgeVerts[a][0] - edgeVerts[b][0]);
     topology = { offsets, edgeVerts, boundaryOrder };
@@ -95,7 +98,7 @@ function topologyOf(geometry: PolylineCellGeometry): CellTopology {
   return topology;
 }
 
-const vertexCache = new WeakMap<PolylineCellGeometry, Map<WorldTransform, Pos[]>>();
+const vertexCache = new WeakMap<CellGeometryEntry, Map<WorldTransform, Pos[]>>();
 
 /// The cell's boundary polygon in display space (arcs flattened at the cache tolerance). Vertex
 /// order follows core's boundary; `getNeighborData`'s `edgeVerts` index into it.
@@ -109,13 +112,33 @@ export function getCellVertices(x: number, y: number, cfg: FieldConfig): Pos[] {
   }
   let vertices = byTransform.get(t);
   if (!vertices) {
-    vertices = geometry.boundary.points.map((point) => {
+    vertices = geometry.polyline.map((point) => {
       const [px, py] = applyTransform(t, point);
       return { x: px, y: py };
     });
     byTransform.set(t, vertices);
   }
   return vertices;
+}
+
+const pathCache = new WeakMap<CellGeometryEntry, Map<WorldTransform, PathCommand[]>>();
+
+/// The cell's boundary as path commands in display space (arcs stay arcs), ready for
+/// `tracePath`/`pathToSvg` with the identity transform. Cached per cell geometry and transform.
+export function getCellPath(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
+  const geometry = getCellGeometry(x, y, cfg);
+  const t = displayTransform(cfg);
+  let byTransform = pathCache.get(geometry);
+  if (!byTransform) {
+    byTransform = new Map();
+    pathCache.set(geometry, byTransform);
+  }
+  let commands = byTransform.get(t);
+  if (!commands) {
+    commands = geometry.boundary.commands.map((command) => transformCommand(t, command));
+    byTransform.set(t, commands);
+  }
+  return commands;
 }
 
 export function getCellCenter(x: number, y: number, cfg: FieldConfig): Pos {
@@ -333,6 +356,8 @@ export interface TileSide {
   offset: [number, number];
   v0: Pos;
   v1: Pos;
+  /** Core's contact point of the face, relative to the tile's center. */
+  contact: Pos;
 }
 
 /** Vertices and per-side segments of a single cell's tile shape, translated so the tile's own
@@ -362,41 +387,83 @@ export function getTileDiagram(x: number, y: number, cfg: FieldConfig): { vertic
   const sides: TileSide[] = edgeVerts.map(([vi, vj], index) => {
     const [dx, dy] = offsets[index];
     const nx = x + dx, ny = y + dy;
-    const selfIsLower = x < nx || (x === nx && y < ny);
-    if (selfIsLower) {
-      return { index, offset: offsets[index], v0: centered[vi], v1: centered[vj] };
-    }
-    // The neighbor is the canonical-lower cell for this shared edge — mirror
-    // `getSharedEdgeSegment`'s choice by deriving `v0`/`v1` from its own (absolute-coordinate)
-    // vertices/edgeVerts, then translating into this tile's own centered coordinate space.
     const shared = getSharedEdgeSegment([x, y], [nx, ny], cfg);
-    if (!shared) return { index, offset: offsets[index], v0: centered[vi], v1: centered[vj] };
-    return {
-      index,
-      offset: offsets[index],
-      v0: { x: shared.v0.x - center.x, y: shared.v0.y - center.y },
-      v1: { x: shared.v1.x - center.x, y: shared.v1.y - center.y },
-    };
+    const selfIsLower = x < nx || (x === nx && y < ny);
+    const own = { v0: centered[vi], v1: centered[vj] };
+    // The neighbor is the canonical-lower cell for this shared edge unless this cell is: mirror
+    // `getSharedEdgeSegment`'s choice, translated into this tile's own centered coordinate space.
+    const ends = !selfIsLower && shared
+      ? { v0: { x: shared.v0.x - center.x, y: shared.v0.y - center.y }, v1: { x: shared.v1.x - center.x, y: shared.v1.y - center.y } }
+      : own;
+    const contact = shared
+      ? { x: shared.contact.x - center.x, y: shared.contact.y - center.y }
+      : { x: (own.v0.x + own.v1.x) / 2, y: (own.v0.y + own.v1.y) / 2 };
+    return { index, offset: offsets[index], ...ends, contact };
   });
   return { vertices: centered, sides };
 }
+
+/// The shared boundary of two adjacent cells in display space: `v0 -> v1` are its end points, `path`
+/// its exact commands (for drawing) and `polyline` its flattening as coordinate pairs (for geometric operations).
+/// Consumers never inspect the segment kinds.
+export interface SharedEdge {
+  v0: Pos;
+  v1: Pos;
+  path: readonly PathCommand[];
+  polyline: readonly [number, number][];
+  /// Core's contact point of the face: where a passage crosses the edge, and where markers sit.
+  contact: Pos;
+}
+
+const sharedEdgeCache = new WeakMap<CellGeometryEntry, Map<WorldTransform, (SharedEdge | undefined)[]>>();
 
 export function getSharedEdgeSegment(
   a: [number, number],
   b: [number, number],
   cfg: FieldConfig,
-): { v0: Pos; v1: Pos } | null {
+): SharedEdge | null {
   const less = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
   const [fa, fb] = less ? [a, b] : [b, a];
-  const verts = getCellVertices(fa[0], fa[1], cfg);
-  const { offsets, edgeVerts } = getNeighborData(cfg, fa[0], fa[1]);
+  const geometry = getCellGeometry(fa[0], fa[1], cfg);
+  const { offsets } = topologyOf(geometry);
   const dx = fb[0] - fa[0];
   const dy = fb[1] - fa[1];
-  for (let i = 0; i < offsets.length; i++) {
-    if (offsets[i][0] === dx && offsets[i][1] === dy) {
-      const [vi, vj] = edgeVerts[i];
-      return { v0: verts[vi], v1: verts[vj] };
-    }
+  const face = offsets.findIndex(([ox, oy]) => ox === dx && oy === dy);
+  if (face === -1) return null;
+  const t = displayTransform(cfg);
+  let byTransform = sharedEdgeCache.get(geometry);
+  if (!byTransform) {
+    byTransform = new Map();
+    sharedEdgeCache.set(geometry, byTransform);
   }
-  return null;
+  let edges = byTransform.get(t);
+  if (!edges) {
+    edges = [];
+    byTransform.set(t, edges);
+  }
+  let edge = edges[face];
+  if (!edge) {
+    const { segments } = geometry.faces[face];
+    const toPos = (point: [number, number]): Pos => {
+      const [px, py] = applyTransform(t, point);
+      return { x: px, y: py };
+    };
+    const points = flattenSegments(segments, GEOMETRY_TOLERANCE).map((point) => applyTransform(t, point));
+    const v0 = toPos(segments[0].from);
+    const v1 = toPos(segments[segments.length - 1].to);
+    // A single straight segment's contact point is its midpoint; taking it from the end points
+    // keeps it exactly on the chord (the contact point of any other face comes from core).
+    const [cx, cy] = segments.length === 1 && segments[0].kind === "line"
+      ? [(v0.x + v1.x) / 2, (v0.y + v1.y) / 2]
+      : applyTransform(t, geometry.faces[face].contact_point);
+    edge = {
+      v0,
+      v1,
+      path: segmentsToCommands(segments).map((command) => transformCommand(t, command)),
+      polyline: points,
+      contact: { x: cx, y: cy },
+    };
+    edges[face] = edge;
+  }
+  return edge;
 }

@@ -430,6 +430,7 @@ export function buildInvalidEdgeHighlights(
       result.push({
         from: [seg.v0.x, seg.v0.y] as [number, number],
         to: [seg.v1.x, seg.v1.y] as [number, number],
+        path: seg.path,
         color: canvas.preset.invalid,
         alpha: 0.9,
         width: WALL_THICKNESS * 2.5,
@@ -460,6 +461,7 @@ export function buildHoverEdgeHighlight(
   return [{
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
+    path: seg.path,
     color,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,

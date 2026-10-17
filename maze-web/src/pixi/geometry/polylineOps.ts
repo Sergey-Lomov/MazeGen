@@ -137,3 +137,55 @@ export function offsetPolyline(polyline: readonly WorldPoint[], distance: number
   }
   return out;
 }
+
+/// Total length of an open polyline.
+export function polylineLength(polyline: readonly WorldPoint[]): number {
+  let length = 0;
+  for (let i = 1; i < polyline.length; i++) length += Math.hypot(polyline[i][0] - polyline[i - 1][0], polyline[i][1] - polyline[i - 1][1]);
+  return length;
+}
+
+/// The point at `fraction` (`0..1`) of the polyline's length; `null` for an empty polyline.
+export function pointAtFraction(polyline: readonly WorldPoint[], fraction: number): WorldPoint | null {
+  if (polyline.length === 0) return null;
+  let remaining = Math.min(1, Math.max(0, fraction)) * polylineLength(polyline);
+  for (let i = 1; i < polyline.length; i++) {
+    const [a, b] = [polyline[i - 1], polyline[i]];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (remaining <= length && length > 0) {
+      const t = remaining / length;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= length;
+  }
+  return polyline[polyline.length - 1];
+}
+
+/// Position of a `closestPointOnPolyline` hit along the open polyline's length, `0..1`; `0` for a
+/// zero-length polyline.
+export function fractionAlong(polyline: readonly WorldPoint[], hit: ClosestPoint): number {
+  const total = polylineLength(polyline);
+  if (total === 0) return 0;
+  let before = 0;
+  for (let i = 0; i < hit.segmentIndex; i++) before += Math.hypot(polyline[i + 1][0] - polyline[i][0], polyline[i + 1][1] - polyline[i][1]);
+  const [a, b] = [polyline[hit.segmentIndex], polyline[hit.segmentIndex + 1]];
+  return (before + Math.hypot(b[0] - a[0], b[1] - a[1]) * hit.t) / total;
+}
+
+/// The part of an open polyline between `start` and `end` (arc-length distances from its first
+/// vertex, clamped to its length). Empty when `end <= start`.
+export function trimPolyline(polyline: readonly WorldPoint[], start: number, end: number): WorldPoint[] {
+  const total = polylineLength(polyline);
+  const from = Math.max(0, start);
+  const to = Math.min(total, end);
+  if (polyline.length < 2 || to <= from) return [];
+  const at = (distance: number): WorldPoint => pointAtFraction(polyline, distance / total)!;
+  const out: WorldPoint[] = [at(from)];
+  let travelled = 0;
+  for (let i = 1; i < polyline.length; i++) {
+    travelled += Math.hypot(polyline[i][0] - polyline[i - 1][0], polyline[i][1] - polyline[i - 1][1]);
+    if (travelled > from && travelled < to) out.push(polyline[i]);
+  }
+  out.push(at(to));
+  return out;
+}

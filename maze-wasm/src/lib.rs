@@ -21,7 +21,10 @@ use wasm_bindgen::prelude::*;
 pub use analytics::compute_analytics;
 pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
-pub use field_ops::{field_capabilities, field_preset, field_reflect_cells, field_translate_cells};
+pub use field_ops::{
+    field_capabilities, field_preset, field_preset_extents, field_reflect_cells,
+    field_translate_cells,
+};
 pub use geometry::{
     geometry_cell_at, geometry_cells_in_region, geometry_snapshot, tessellation_shapes,
 };

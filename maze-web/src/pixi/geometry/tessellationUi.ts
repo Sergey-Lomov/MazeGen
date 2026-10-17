@@ -27,6 +27,10 @@ export interface TessellationUi {
   /// #223): half the angular spacing of the kind's faces, so the first node's point does not land
   /// on a tile vertex or an edge midpoint.
   splitCircleRotationDeg: number;
+  /// Directions an equilateral primitive snaps to, in core's canonical orientation: every `step`
+  /// radians from `offset`. The display orientation turns them like everything else. `null` for a
+  /// lattice without such directions.
+  equilateralSnap: { step: number; offset: number } | null;
   /// Length of one geometric cell side, in pixels.
   cellSidePx: number;
   /// The print-sizing measure of a cell, in pixels: the square's side, or a regular polygon's
@@ -37,6 +41,11 @@ export interface TessellationUi {
   originCell: readonly [number, number];
   /// Edge hover/click hit distance, in pixels.
   edgeHitThreshold: number;
+}
+
+/// Whether `linear` leaves every direction unchanged.
+export function isIdentityLinear(linear: Linear): boolean {
+  return linear.a === 1 && linear.b === 0 && linear.c === 0 && linear.d === 1;
 }
 
 const IDENTITY: Linear = { a: 1, b: 0, c: 0, d: 1 };
@@ -60,6 +69,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     base: FLIP_Y,
     orientation: () => IDENTITY,
     splitCircleRotationDeg: 45,
+    equilateralSnap: { step: Math.PI / 2, offset: -Math.PI / 2 },
     cellSidePx: TILE_SIZE,
     cellMeasurePx: TILE_SIZE,
     originCell: [0, 0],
@@ -73,6 +83,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     base: IDENTITY,
     orientation: (o) => (o === "pointy_top" ? rotation(30) : IDENTITY),
     splitCircleRotationDeg: 30,
+    equilateralSnap: { step: Math.PI / 3, offset: Math.PI / 6 },
     cellSidePx: TILE_SIZE,
     cellMeasurePx: TILE_SIZE * 2,
     originCell: [0, 0],
@@ -93,6 +104,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       }
     },
     splitCircleRotationDeg: 60,
+    equilateralSnap: { step: Math.PI / 3, offset: -Math.PI / 2 },
     cellSidePx: TILE_SIZE * 2,
     cellMeasurePx: (TILE_SIZE * 4) / Math.sqrt(3),
     originCell: [0, 0],
@@ -105,6 +117,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     base: FLIP_Y,
     orientation: () => IDENTITY,
     splitCircleRotationDeg: 36,
+    equilateralSnap: null,
     cellSidePx: TILE_SIZE,
     cellMeasurePx: TILE_SIZE,
     originCell: [2, 1],

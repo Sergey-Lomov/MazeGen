@@ -95,10 +95,9 @@ export const FAMILIES: Family[] = [
 const COLORS = ["#6fb5ff", "#ffb86b", "#9fe18a", "#e59aff"];
 
 /** Port in the middle of face `v0`-`v1` of a cell centred at the origin, normal pointing outward. */
-function facePort(cellId: string, v0: CorridorPoint, v1: CorridorPoint): CorridorPort {
+function facePort(cellId: string, v0: CorridorPoint, v1: CorridorPoint, midpoint: CorridorPoint = { x: (v0.x + v1.x) / 2, y: (v0.y + v1.y) / 2 }): CorridorPort {
   const dx = v1.x - v0.x;
   const dy = v1.y - v0.y;
-  const midpoint = { x: (v0.x + v1.x) / 2, y: (v0.y + v1.y) / 2 };
   const normalLength = Math.hypot(dx, dy) || 1;
   let normal = { x: -dy / normalLength, y: dx / normalLength };
   if (normal.x * midpoint.x + normal.y * midpoint.y < 0) {
@@ -172,7 +171,7 @@ export function prepareFamily(family: Family): PreparedFamily | null {
   const diagram = getTileDiagram(family.coordinate[0], family.coordinate[1], family.config);
   if (!diagram) return null;
 
-  const portsByFace = diagram.sides.map((side) => facePort(family.id, side.v0, side.v1));
+  const portsByFace = diagram.sides.map((side) => facePort(family.id, side.v0, side.v1, side.contact));
   const ports = portsByFace;
 
   return {

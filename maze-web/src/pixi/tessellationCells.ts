@@ -1,4 +1,4 @@
-import { getFieldPreset, type FieldOpError } from "../wasm/mazeService";
+import { getFieldPreset, getFieldPresetExtents, type FieldOpError } from "../wasm/mazeService";
 import { type FieldConfig, type ResolvedField } from "../fieldConfig";
 
 /**
@@ -40,46 +40,30 @@ function buildPresetCells(cfg: FieldConfig, preset: string, params: Record<strin
 }
 
 /**
+ * Extent of a preset shape along two world directions (`[min, max]` each), measured by core
+ * without materializing the cells. `null` for a custom shape or one core refuses (empty field).
+ */
+export function presetShapeExtents(
+  cfg: FieldConfig,
+  directions: [[number, number], [number, number]],
+): [[number, number], [number, number]] | null {
+  const { shape } = cfg;
+  if (shape.shape === "custom") return null;
+  const { shape: preset, ...params } = shape;
+  if (Object.values(params).some((value) => value < 1)) return null;
+  try {
+    return getFieldPresetExtents(cfg.tessellation, preset, params, directions);
+  } catch (error) {
+    if ((error as FieldOpError | undefined)?.kind === "invalid_preset") return null;
+    throw error;
+  }
+}
+
+/**
  * Converts the editor's preset shape into the only representation runtime code needs: the same
  * tessellation and orientation with an explicit cell list. Keep all preset-shape knowledge in
  * this module.
  */
 export function resolveFieldConfig(cfg: FieldConfig): ResolvedField {
   return { ...cfg, shape: { shape: "custom", points: configAllCells(cfg) } };
-}
-
-/** Returns the cells in the outer two fundamental-square layers of a Cairo rectangle. Cell
- * polygons are affine in this block layout, so this bounded set contains every possible x/y
- * extremum and is sufficient for exact print-fit bounds without materializing the full field. */
-export function cairoRectangleBoundaryCells(cols: number, rows: number): [number, number][] {
-  if (cols <= 0 || rows <= 0) return [];
-  const [originX, originY] = cairoRectangleOrigin(cols, rows);
-  const colCandidates = new Set([0, 1, cols - 2, cols - 1].filter((col) => col >= 0 && col < cols));
-  const rowCandidates = new Set([0, 1, rows - 2, rows - 1].filter((row) => row >= 0 && row < rows));
-  const cells: [number, number][] = [];
-  for (const cellY of rowCandidates) {
-    for (const cellX of colCandidates) {
-      cells.push(...cairoFundamentalSquareCells(cellX, cellY, originX, originY));
-    }
-  }
-  return cells;
-}
-
-function cairoRectangleOrigin(cols: number, rows: number): [number, number] {
-  // Cairo's checkerboard repeats after two fundamental blocks. Translate by complete blocks only
-  // and keep the combined block offset even; otherwise a valid core point lands in an empty
-  // position when the rectangle is centred for an odd width/height combination.
-  let blockX = Math.floor(cols / 2);
-  const blockY = Math.floor(rows / 2);
-  if ((blockX + blockY) % 2 !== 0) blockX++;
-  return [4 * blockX, 4 * blockY];
-}
-
-function cairoFundamentalSquareCells(cellX: number, cellY: number, originX: number, originY: number): [number, number][] {
-  const x = cellX * 4;
-  const y = cellY * 4;
-  const points: [number, number][] = (cellX + cellY) % 2 === 1
-    ? [[x + 1, y + 2], [x + 3, y + 2]]
-    : [[x + 2, y + 1], [x + 2, y + 3]];
-  return points.map(([pointX, pointY]) => [pointX - originX, pointY - originY]);
 }

@@ -162,7 +162,7 @@ export function buildOneWayWallIndicatorPositions(
     if (!edge.oneWayDir) continue;
     const seg = getSharedEdgeSegment(edge.a, edge.b, cfg);
     if (!seg) continue;
-    result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
+    result.push([seg.contact.x, seg.contact.y]);
   }
   return result;
 }

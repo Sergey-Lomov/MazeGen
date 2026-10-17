@@ -13,6 +13,15 @@ const printInput = {
 };
 
 describe("field print sizing", () => {
+  it("never picks a size core refuses to build", () => {
+    // A 0.05 mm cell would need a field far above core's size limit on A4.
+    const result = calculatePrintFieldConfig(fieldOf("hex", { shape: "circle", radius: 3 }, "flat_top"), { ...printInput, cellSizeMm: 0.05 });
+    if (result) {
+      expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+      expect(Number.isFinite(result.fieldHeightMm)).toBe(true);
+    }
+  });
+
   it("resolves paper orientation", () => {
     expect(resolvePrintPaperSizeMm(printInput)).toEqual({ widthMm: 210, heightMm: 297 });
     expect(resolvePrintPaperSizeMm({ ...printInput, orientation: "landscape" })).toEqual({ widthMm: 297, heightMm: 210 });

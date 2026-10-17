@@ -416,6 +416,16 @@ export function getFieldPreset(
   return getWasm().field_preset({ tessellation, preset, params }) as [number, number][];
 }
 
+/// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions.
+export function getFieldPresetExtents(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+  directions: [[number, number], [number, number]],
+): [[number, number], [number, number]] {
+  return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
+}
+
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
 export function translateFieldCells(
   tessellation: WasmTessellationConfig,
