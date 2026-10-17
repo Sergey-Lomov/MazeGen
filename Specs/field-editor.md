@@ -201,6 +201,11 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 | `hex` | `hexagon` |
 | `tri` | `triangle` |
 | `cairo` | `rect` |
+| `test` (dev) | none: custom field of all its cells |
+
+A **finite** kind (`TESSELLATION_UI[kind].finiteCells` is set; core reports no presets and no field
+operations) has no default (preset) mode. A new floor starts in custom mode with every cell of the
+kind selected, the Default toggle is disabled and `setFieldEditMode("default")` is ignored.
 
 When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
 including teleports, vertical passages, and elevators.

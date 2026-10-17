@@ -124,15 +124,16 @@ function worldFrame(ctx: PrimitiveContext, config: FieldConfig, primitive?: Shap
 }
 
 export function primitiveCells(primitive: ShapePrimitive, ctx: PrimitiveContext): [number, number][] {
-  if (primitive === "equilateral_triangle" && ctx.kind === "tri" && ctx.latticeSide !== undefined) {
+  const ui = TESSELLATION_UI[ctx.kind].editor;
+  if (primitive === "equilateral_triangle" && ui.latticeTriangle && ctx.latticeSide !== undefined) {
     return centeredTriangularTriangle(ctx.latticeSide);
   }
   const config = contextConfig(ctx);
-  if (primitive === "hexagon" && ctx.kind === "hex" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
+  if (primitive === "hexagon" && ui.latticeHexagon === "hex" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
     const radius = ctx.latticeRadius ?? centeredHexRadius(worldFrame(ctx, config, primitive), config);
     return translateCells(centeredHexagon(radius), ctx.startGrid);
   }
-  if (primitive === "hexagon" && ctx.kind === "tri" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
+  if (primitive === "hexagon" && ui.latticeHexagon === "tri" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
     const frame = worldFrame(ctx, config, primitive);
     const radius = ctx.latticeRadius ?? Math.max(1, Math.round(frame.height / TILE_SIZE / 4));
     return translateCells(centeredTriangularHexagon(radius), ctx.startGrid);
@@ -155,7 +156,7 @@ export function primitiveCells(primitive: ShapePrimitive, ctx: PrimitiveContext)
     startOffsetX: (frame.start.x - frame.origin.x) / TILE_SIZE,
     startOffsetY: (frame.start.y - frame.origin.y) / TILE_SIZE,
   });
-  const inclusion = primitive === "circle" && ctx.kind === "tri" ? "contained" : "center";
+  const inclusion = primitive === "circle" ? ui.circleInclusion : "center";
   return cellsInsideShape(config, shape, inclusion, frame.origin);
 }
 

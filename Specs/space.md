@@ -557,3 +557,39 @@ triangle/hexagon selection shapes, equilateral snapping (`TessellationUi.equilat
 primitive hexagon frames and hex connector axes take their orientation from the display
 transform's orientation instance, so orientation exists only as a `displayTransform` instance. The
 corridor contour engine stays polygon-based (convex cells); split-pattern geometry belongs to #764.
+
+### Test tessellation (GitHub issue #765)
+
+`TestTessellation` (`maze-core/src/space/test_tessellation.rs`) is a finite, dev-only tessellation
+that proves the contract end to end without a consumer knowing it exists. It is compiled under the
+`test-tessellation` cargo feature (`maze-core`, `maze-runner`, `maze-wasm`; always in core's own
+tests) and registered as `kind: "test"`. Production builds omit the feature; the web adds the
+option only under `import.meta.env.DEV`, and `wasm-rebuild.sh`/`.ps1` build wasm with it.
+
+- Nine cells (wire id `[id, 0]`): squares (A0, B1, D2, E3, G5, H6), two triangles (T7, T8), and F4
+  with no shape template.
+- D2 and E3 are geometrically identical, but E3 has five faces (its north side is split in two
+  faces with different neighbors, T8 and T7) and a registered `test:split_square` template.
+- G5 and H6 share one circular arc (`Segment::CircularArc`): the same edge seen from both sides,
+  reversed, with equal contact points.
+- `cell_scale` varies (unit squares 1, triangles ≈ 0.33, G above 1 and H below 1 by the arc bulge); no field operations and no presets, so a
+  finite kind starts as a custom field of all its cells (`TESSELLATION_UI[kind].finiteCells`).
+
+Tests: core unit tests (reciprocity, paired faces, boundary paths, `shape_of`, arc hit-testing),
+`maze-runner/tests/test_tessellation.rs` (full pipeline, split patterns, snapshot, `cell_at`) and
+web `curvedFace.test.ts` (arc rendering, corridor, shared edge, hit-testing from both sides and on
+the boundary, SVG data and bounds), repeated under display rotations `r0`–`r270`.
+`architectureKindBranching.test.ts` guards the rule above for the renderer layer and for core's
+generation, QC and repair.
+
+### UI registry and kind branching (web)
+
+`TESSELLATION_UI[kind]` is the only place the web names a kind outside serialization
+(`store/projectExport/`) and `fieldConfig.ts`. Besides display metadata it carries `finiteCells`
+(cells of a finite kind, else `null`), `orientationSlot` (which maze-wide orientation setting the
+kind uses) and an `editor` block of lattice-dependent behavior: axis-aligned grid, rect label,
+closed-form cell counts, lattice primitives, circle inclusion and the cell-size label of the print
+dialogs and PNG result. Per-kind connector axes live in a `Record` lookup next to the connector
+router. `architectureKindBranching.test.ts` fails on any `kind === "<kind>"` comparison elsewhere in
+`maze-web/src`. The dev `test` kind is accepted in project files only in dev builds
+(`import.meta.env.DEV`), matching the wasm that carries it.

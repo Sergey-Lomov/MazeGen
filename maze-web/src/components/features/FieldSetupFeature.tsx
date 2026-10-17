@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
+import { hasPresetMode } from "../../store/storeHelpers";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
 import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
@@ -174,7 +176,7 @@ export function FieldSetupFeature() {
       <Inline gap="itemGap">
         <Button
           variant={isCustom ? "toggle" : "toggle-selected"}
-          disabled={fieldEditLocked}
+          disabled={fieldEditLocked || !hasPresetMode(fieldConfig.tessellation.kind)}
           onClick={handleSwitchToDefault}
         >
           {m["field.default"]()}
@@ -356,7 +358,7 @@ function primitivesForField(cfg: FieldConfig): PrimitiveToolOption[] {
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
   const kind = cfg.tessellation.kind;
-  return primitives.filter((tool) => (kind !== "square" || tool.primitive !== "parallelogram")
+  return primitives.filter((tool) => (!TESSELLATION_UI[kind].editor.axisAlignedGrid || tool.primitive !== "parallelogram")
     && (tool.primitive !== "symmetry" || fieldOperationAvailable(cfg.tessellation, "reflect")));
 }
 
@@ -492,7 +494,7 @@ function operationIcon(operation: FieldOperation): React.ReactNode {
 
 function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string {
   switch (shape) {
-    case "rect": return kind === "hex" ? m["field.shape.rectangle"]() : m["field.shape.rect"]();
+    case "rect": return TESSELLATION_UI[kind].editor.rectLabelRectangle ? m["field.shape.rectangle"]() : m["field.shape.rect"]();
     case "circle": return m["field.shape.circle"]();
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
@@ -502,8 +504,8 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
 
 function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: string): string {
   switch (name) {
-    case "cols": return shape === "rect" && kind === "square" ? m["field.width"]() : m["field.cols"]();
-    case "rows": return shape === "rect" && kind === "square" ? m["field.height"]() : m["field.rows"]();
+    case "cols": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.width"]() : m["field.cols"]();
+    case "rows": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
     case "radius": return m["field.radius"]();
     case "side": return m["field.side"]();
     default: return name;
@@ -513,7 +515,7 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
 /** Upper bound of a size param in the editor — UI metadata; core only publishes minimums. */
 function paramMax(kind: TessellationKind, shape: PresetFieldShapeName, name: string): number {
   if (name === "cols" || name === "rows") return 200;
-  if (shape === "circle" || shape === "hexagon" || shape === "triangle") return SHAPE_PARAM_LIMITS[kind][shape];
+  if (shape === "circle" || shape === "hexagon" || shape === "triangle") return SHAPE_PARAM_LIMITS[kind]?.[shape] ?? 200;
   return 200;
 }
 
@@ -550,20 +552,16 @@ export function fieldSetupSubtitle(kind: TessellationKind, floorFields: FloorFie
 
 export function configCellCount(cfg: FieldConfig): number {
   const { shape } = cfg;
-  const kind = cfg.tessellation.kind;
+  const ui = TESSELLATION_UI[cfg.tessellation.kind].editor;
   switch (shape.shape) {
     case "custom": return 0;
     case "rect":
-      if (kind === "square") return shape.cols * shape.rows;
-      if (kind === "tri") return 2 * shape.cols * shape.rows;
-      return configAllCells(cfg).length;
+      return ui.rectCellsPerUnit === null ? configAllCells(cfg).length : ui.rectCellsPerUnit * shape.cols * shape.rows;
     case "parallelogram": return shape.cols * shape.rows;
     case "hexagon":
-      if (kind === "hex") { const r = shape.radius; return 3 * r * r + 3 * r + 1; }
-      return configAllCells(cfg).length;
+      return ui.hexagonCellCount === null ? configAllCells(cfg).length : ui.hexagonCellCount(shape.radius);
     case "triangle":
-      if (kind === "tri") { const n = shape.side; return n * n; }
-      return configAllCells(cfg).length;
+      return ui.triangleCellCount === null ? configAllCells(cfg).length : ui.triangleCellCount(shape.side);
     case "circle": return configAllCells(cfg).length;
   }
 }
@@ -581,7 +579,7 @@ function configSizeLabel(cfg: FieldConfig): string {
 }
 
 /** Upper bounds of the radial/side shape params per kind — UI registry metadata. */
-const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: number; triangle: number }> = {
+const SHAPE_PARAM_LIMITS: Partial<Record<TessellationKind, { circle: number; hexagon: number; triangle: number }>> = {
   square: { circle: 100, hexagon: 50, triangle: 100 },
   hex: { circle: 50, hexagon: 50, triangle: 100 },
   tri: { circle: 15, hexagon: 15, triangle: 30 },

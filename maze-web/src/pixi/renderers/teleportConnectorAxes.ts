@@ -1,4 +1,4 @@
-import type { FieldConfig } from "../../fieldConfig";
+import type { FieldConfig, TessellationKind } from "../../fieldConfig";
 import { TESSELLATION_UI } from "../geometry/tessellationUi";
 
 /** A connector bend axis, as a unit direction vector — a segment along this axis can run either
@@ -60,14 +60,14 @@ const CAIRO_AXES: Axis[] = [
  *  display-only routing concern (not a tessellation concept core cares about — some tessellations
  *  have no meaningful "face axis" at all), so it lives entirely on the web side. */
 export function getConnectorAxes(cfg: FieldConfig): Axis[] {
-  switch (cfg.tessellation.kind) {
-    case "square":
-      return SQUARE_AXES;
-    case "hex":
-      return orientedAxes(cfg, HEX_CANONICAL_AXES_DEG);
-    case "tri":
-      return TRI_AXES;
-    case "cairo":
-      return CAIRO_AXES;
-  }
+  return CONNECTOR_AXES[cfg.tessellation.kind](cfg);
 }
+
+/** Connector axes per kind -- a registry lookup, not a branch on the kind. */
+const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
+  square: () => SQUARE_AXES,
+  hex: (cfg) => orientedAxes(cfg, HEX_CANONICAL_AXES_DEG),
+  tri: () => TRI_AXES,
+  cairo: () => CAIRO_AXES,
+  test: () => SQUARE_AXES,
+};

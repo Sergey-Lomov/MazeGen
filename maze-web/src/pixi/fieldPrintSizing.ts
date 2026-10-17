@@ -82,7 +82,7 @@ function calculateConfig(
   cellSizeMm: number,
 ): FieldConfig | null {
   const { shape } = current;
-  if (shape.shape === "rect" && current.tessellation.kind === "square") {
+  if (shape.shape === "rect" && TESSELLATION_UI[current.tessellation.kind].editor.axisAlignedGrid) {
     const cols = Math.floor(usableWidthMm / cellSizeMm);
     const rows = Math.floor(usableHeightMm / cellSizeMm);
     return cols >= 1 && rows >= 1 ? { ...current, shape: { ...shape, cols, rows } } : null;

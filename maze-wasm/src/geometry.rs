@@ -127,4 +127,27 @@ mod tests {
             })
         );
     }
+
+    #[cfg(feature = "test-tessellation")]
+    #[test]
+    fn test_tessellation_binds_templates_per_cell() {
+        let cfg = TessellationShapesConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::Test,
+                params: serde_json::Map::new(),
+            },
+            // D (square), E (split square), F (no template), T7 (triangle).
+            points: vec![[2, 0], [3, 0], [4, 0], [7, 0]],
+        };
+        let shapes = tessellation_shapes_for(&cfg).unwrap();
+        assert_eq!(
+            shapes.point_shapes,
+            vec![
+                Some("regular:4".to_string()),
+                Some("test:split_square".to_string()),
+                None,
+                Some("regular:3".to_string()),
+            ]
+        );
+    }
 }

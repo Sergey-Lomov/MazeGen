@@ -9,6 +9,10 @@ rand_xoshiro = "0.7"
 bitflags = "2"
 maze-core-macros = { path = "../maze-core-macros" }
 
+[features]
+# Finite dev-only tessellation exercising the full Tessellation contract (GitHub issue #765).
+test-tessellation = []
+
 [dev-dependencies]
 trybuild = "1"
 

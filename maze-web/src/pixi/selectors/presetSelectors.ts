@@ -30,12 +30,13 @@ export function buildPresetWallGroups(
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
     const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) {
+      const neighborless = dx === 0 && dy === 0;
+      if (neighborless || !cellSet.has(`${nx},${ny}`)) {
         // boundary wall — always solid
-        preset.push({ a: [x, y], b: [nx, ny], kind: "none", style: "solid" });
+        preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
         continue;
       }
       if (splitPointKeys.has(`${nx},${ny}`)) continue; // rendered by buildPresetSplitPassages instead
@@ -84,11 +85,12 @@ export function buildPresetWallGroups(
   for (const [x, y] of cells) {
     if (!splitPointKeys.has(`${x},${y}`)) continue;
     const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
-      if (cellSet.has(`${nx},${ny}`)) continue;
-      preset.push({ a: [x, y], b: [nx, ny], kind: "none", style: "solid" });
+      const neighborless = dx === 0 && dy === 0;
+      if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
+      preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
   }
 

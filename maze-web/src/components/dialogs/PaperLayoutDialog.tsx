@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
@@ -71,7 +72,7 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
           marginLabel={m["field.print_sizing.margin"]()}
           inputNamePrefix="field-paper-layout"
         />
-        <NumberInputRow label={config.tessellation.kind === "square" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()} value={cellSize} onChange={setCellSize} />
+        <NumberInputRow label={TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()} value={cellSize} onChange={setCellSize} />
         {!valid && <span style={styles.error}>{m["field.paper_layout.invalid"]()}</span>}
       </Stack>
       <div style={styles.footer}>

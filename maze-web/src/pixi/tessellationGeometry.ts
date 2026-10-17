@@ -394,6 +394,18 @@ export function getSharedEdgeSegment(
   const dy = fb[1] - fa[1];
   const face = offsets.findIndex(([ox, oy]) => ox === dx && oy === dy);
   if (face === -1) return null;
+  return faceEdgeSegment(geometry, face, cfg);
+}
+
+/// The edge of `cell`'s `face` (core's `faces_of` order). Serves a face with no neighbor, whose
+/// offset `[0,0]` cannot address it through `getSharedEdgeSegment`.
+export function getFaceEdgeSegment(cell: [number, number], face: number, cfg: FieldConfig): SharedEdge | null {
+  const geometry = getCellGeometry(cell[0], cell[1], cfg);
+  if (face < 0 || face >= geometry.faces.length) return null;
+  return faceEdgeSegment(geometry, face, cfg);
+}
+
+function faceEdgeSegment(geometry: CellGeometryEntry, face: number, cfg: FieldConfig): SharedEdge {
   const t = displayTransform(cfg);
   let byTransform = sharedEdgeCache.get(geometry);
   if (!byTransform) {

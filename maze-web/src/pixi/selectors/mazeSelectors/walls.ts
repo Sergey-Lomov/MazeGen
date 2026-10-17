@@ -131,16 +131,17 @@ export function buildMazeWalls(
   const boundaryDrawn = new Set<string>();
   for (const n of nodes) {
     const { offsets } = getNeighborData(cfg, n.x, n.y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = n.x + dx;
       const ny = n.y + dy;
-      if (cellSet.has(`${nx},${ny}`)) continue;
+      const neighborless = dx === 0 && dy === 0;
+      if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
       // A split point has several nodes at the same (x,y) — dedupe so its boundary side isn't
       // pushed once per node.
-      const boundaryKey = `${n.x},${n.y}->${nx},${ny}`;
+      const boundaryKey = `${n.x},${n.y}->${nx},${ny}#${neighborless ? face : ""}`;
       if (boundaryDrawn.has(boundaryKey)) continue;
       boundaryDrawn.add(boundaryKey);
-      result.push({ a: [n.x, n.y], b: [nx, ny], kind: "none", style: "solid" });
+      result.push({ a: [n.x, n.y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
   }
 

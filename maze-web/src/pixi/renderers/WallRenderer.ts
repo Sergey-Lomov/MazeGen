@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
-import { getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
+import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
 import { tracePath } from "../geometry/pathRenderer";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
@@ -312,7 +312,7 @@ export class WallRenderer {
   }
 
   private getEdgeSegment(edge: WallEdge, cfg: FieldConfig): SharedEdge | null {
-    return getSharedEdgeSegment(edge.a, edge.b, cfg);
+    return edge.face === undefined ? getSharedEdgeSegment(edge.a, edge.b, cfg) : getFaceEdgeSegment(edge.a, edge.face, cfg);
   }
 
   destroy(): void {

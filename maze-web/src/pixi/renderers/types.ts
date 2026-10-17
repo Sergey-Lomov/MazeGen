@@ -65,6 +65,8 @@ export type OneWayStyleOverride = {
 export type WallEdge = {
   a: [number, number];
   b: [number, number];
+  /** Face of `a` this wall covers; set only for a face with no neighbor (`b` equals `a`). */
+  face?: number;
   kind: PassageKind;
   style: WallStyle;
   oneWayDir?: { dx: number; dy: number };

@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
@@ -339,7 +340,7 @@ export function PngExportSettingsPanel() {
                     })}
                   </span>
                   <span style={typography.caption}>
-                    {(cfg.tessellation.kind === "hex" || cfg.tessellation.kind === "tri"
+                    {(TESSELLATION_UI[cfg.tessellation.kind].editor.pngCellSize === "diameter"
                       ? m["image_export.format.png.result.cell_size_mm_diameter"]
                       : m["image_export.format.png.result.cell_size_mm_side"]
                     )({ size: printCellSizeMm.toFixed(2) })}

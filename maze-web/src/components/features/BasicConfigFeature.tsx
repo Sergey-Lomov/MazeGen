@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles } from "../../styles/shared";
@@ -33,8 +34,8 @@ export function BasicConfigFeature() {
 
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const isHex = previewKind === "hex";
-  const isTri = previewKind === "tri";
+  const isHex = TESSELLATION_UI[previewKind].orientationSlot === "hex";
+  const isTri = TESSELLATION_UI[previewKind].orientationSlot === "tri";
 
   // Read once on click rather than subscribed: the predicate filters every QC pattern list, and
   // a subscription would rerun it on each unrelated store update while the preview differs.
@@ -60,6 +61,7 @@ export function BasicConfigFeature() {
           <option value="hex">{m["tessellation.hex"]()}</option>
           <option value="tri">{m["tessellation.triangle"]()}</option>
           <option value="cairo">{m["tessellation.cairo"]()}</option>
+          {import.meta.env.DEV && <option value="test">{m["tessellation.test"]()}</option>}
         </select>
       </label>
       {isHex && (

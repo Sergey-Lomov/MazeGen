@@ -138,6 +138,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         square: new Set(),
         hex: new Set(),
         tri: new Set(),
+        test: new Set(),
         cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
       },
       isEditingField: true,
@@ -147,6 +148,26 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("cairo");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the dev test kind with its finite custom field", () => {
+    const state = makeState();
+    state.tessellationKind = "test";
+    const cells: [number, number][] = [[0, 0], [5, 0], [6, 0]];
+    const keys = new Set(cells.map(([x, y]) => (x << 16) | y));
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      fieldConfig: fieldOf("test", { shape: "custom", points: cells }),
+      freeFieldPoints: { square: new Set(), hex: new Set(), tri: new Set(), cairo: new Set(), test: keys },
+      isEditingField: true,
+      fieldPoints: keys,
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("test");
+    expect(reparsed.floorFields.floor_1.freeFieldPoints.test).toEqual(cells);
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 

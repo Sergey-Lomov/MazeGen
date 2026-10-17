@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
 import type { FloorFieldConfig } from "../../store/storeTypes";
@@ -126,7 +127,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
         />
 
         <NumberInputRow
-          label={config.tessellation.kind === "square" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
+          label={TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
           value={cellSizeText}
           suffix="mm"
           onChange={setCellSizeText}

@@ -75,6 +75,20 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 },
             ))
         }
+        #[cfg(feature = "test-tessellation")]
+        TessellationKind::Test => {
+            use maze_core::space::{TestCell, TestTessellation};
+            reject_params(config)?;
+            // The wire pair is `[cell id, 0]`; an out-of-range id maps to an invalid cell, which
+            // `Field::new` rejects.
+            Ok(visitor.visit(
+                Arc::new(TestTessellation),
+                CellCodec {
+                    from_xy: |id, _| TestCell(u8::try_from(id).unwrap_or(u8::MAX)),
+                    to_xy: |cell| (i32::from(cell.0), 0),
+                },
+            ))
+        }
     }
 }
 

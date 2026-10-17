@@ -1,4 +1,5 @@
-﻿import React, { useMemo, useRef } from "react";
+﻿import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import React, { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Save, FolderOpen, Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
@@ -82,6 +83,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     hex: m["tessellation.hex"],
     tri: m["tessellation.triangle"],
     cairo: m["tessellation.cairo"],
+    test: m["tessellation.test"],
   };
   return labels[kind]();
 }
@@ -247,8 +249,9 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   function basicConfigSubtitle(): string | undefined {
     if (!tessellationConfirmed) return undefined;
     const label = getTessellationKindLabel(tessellationKind);
-    if (tessellationKind === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
-    if (tessellationKind === "tri") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
+    const slot = TESSELLATION_UI[tessellationKind].orientationSlot;
+    if (slot === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
+    if (slot === "tri") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
     return label;
   }
 

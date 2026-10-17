@@ -94,6 +94,7 @@ export function validateFloorFieldConfig(v: unknown, path: string, kind: Tessell
     hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
     tri: validatePoints(freeObj.tri, `${path}.freeFieldPoints.tri`),
     cairo: validatePoints(freeObj.cairo, `${path}.freeFieldPoints.cairo`),
+    test: validatePoints(freeObj.test, `${path}.freeFieldPoints.test`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
   return { shape, savedShapes, freeFieldPoints, fieldEditMode };

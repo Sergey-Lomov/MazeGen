@@ -9,6 +9,7 @@ import {
   type ProjectFileFloors,
   type ProjectFileFloorField,
 } from "./types";
+import type { TessellationKind } from "../../fieldConfig";
 import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { FeatureId } from "../mazeStore";
@@ -23,6 +24,9 @@ import {
 } from "./validateSections";
 import { validateImageExport } from "./validateImageExport";
 import type { BackgroundImageLayerMode } from "../tessellationTypes";
+
+/// The dev-only `test` kind exists only where wasm is built with `test-tessellation` (dev builds).
+const TESSELLATION_KINDS = (import.meta.env.DEV ? ["square", "hex", "tri", "cairo", "test"] : ["square", "hex", "tri", "cairo"]) as readonly TessellationKind[];
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
 // No migrations currently registered — old files at an unregistered version fail to load with a
@@ -67,7 +71,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "tri", "cairo"] as const, "square");
+  const kind = optEnum(tessObj, "kind", TESSELLATION_KINDS, "square");
   const params = assertObject(tessObj.params, "tessellation.params");
   // The registered kinds take no params; core's tessellation factory rejects any others too.
   const unsupportedParam = Object.keys(params)[0];
@@ -276,7 +280,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
-      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [] }, fieldEditMode: "default" };
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], test: [] }, fieldEditMode: "default" };
   }
 
   return {
