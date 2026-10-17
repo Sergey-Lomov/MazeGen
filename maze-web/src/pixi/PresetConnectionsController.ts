@@ -12,6 +12,7 @@ import { activeFloorLevel } from "../store/storeHelpers";
 import { cancelPendingPointerAction, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
 import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnectionsInteraction";
 import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
+import { blurActiveElement, presetToolForShortcut } from "./toolShortcuts";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -20,6 +21,11 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 // Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
 // the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
 const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source", "move"]);
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
 
 type State = ReturnType<typeof useMazeStore.getState>;
 
@@ -62,10 +68,19 @@ export class PresetConnectionsController extends BaseController {
   private settingsHoverCache: { state: State; key: string; configurable: boolean } | null = null;
 
   private onKeyDown = (e: KeyboardEvent) => {
+    const state = useMazeStore.getState();
+    if (!isTypingTarget(e.target) && state.openCard === "preset_connections" && !isPresetConnectionsModalOpen(state)) {
+      const tool = presetToolForShortcut(e, state.floors.length > 1);
+      if (tool) {
+        e.preventDefault();
+        blurActiveElement();
+        state.setPresetConnectionsTool(tool);
+        return;
+      }
+    }
     if (e.code === "Escape") {
       if (this.hasArmedElement) this.cancelPointerGesture();
       this.cancelPendingTeleport();
-      const state = useMazeStore.getState();
       state.cancelPresetVerticalPassagePlacement();
       state.cancelPresetElevatorPlacement();
       state.cancelPresetSplitTarget();

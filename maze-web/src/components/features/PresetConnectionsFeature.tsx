@@ -28,6 +28,7 @@ import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSetti
 import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
+import { presetToolShortcut } from "../../pixi/toolShortcuts";
 
 function getEdgeTools(): [PresetConnectionTool, string, string?][] {
   return [
@@ -252,10 +253,11 @@ export function PresetConnectionsFeature() {
             ...getGenerationTools(),
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["clear", m["preset.clear_tool"](), m["preset.clear_tooltip"]()],
+            ["clear", m["preset.clear_tool"](), m["preset.clear_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={presetToolShortcut}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
       </div>

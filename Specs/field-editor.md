@@ -20,9 +20,9 @@ Two sub-modes toggled inside the card:
 cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move
 while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
 
-The mode and tool buttons use accessible tooltips. A mode label includes its selection hotkey in
-parentheses (for example, `Add (+)`). A separate tertiary-colored line explains any
-keyboard-modified behavior (for example, `Shift: move vertices freely`). Symmetry alone adds
+The mode and tool buttons use accessible tooltips. A mode tooltip renders its selection hotkey
+right-aligned as a muted keycap badge (for example, `Add` with `+`). A separate tertiary-colored line explains any
+keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Symmetry alone adds
 `Unavailable in Select mode.` while Select is active, because that operation cannot reflect cells.
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
@@ -320,7 +320,7 @@ candidate set is collapsed to existing field cells and replaced by a dashed expo
 the field is not changed and the selection remains visible until another gesture, tool, mode, or
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
-The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select.
+The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
 The tool works with square, hexagonal, triangular, and Cairo tessellations and does not apply
 primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.

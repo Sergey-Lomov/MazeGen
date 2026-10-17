@@ -1,28 +1,31 @@
 import type React from "react";
-import { ToolIconButton } from "./ToolIconButton";
+import { ToolIconButton, type ShortcutKey } from "./ToolIconButton";
 import { ToolGlyph } from "./features/ToolGlyph";
 import type { ToolGlyphKey } from "./features/toolGlyphs";
 import { spacing } from "../styles/theme";
 
 interface Props<T extends string> {
-  tools: readonly (readonly [T, string, string?])[];
+  tools: readonly (readonly [T, string, string?, readonly ShortcutKey[]?])[];
   activeTool: T;
   onPick: (tool: T) => void;
   glyphFor?: (tool: T) => ToolGlyphKey;
   isDanger?: (tool: T) => boolean;
+  shortcutFor?: (tool: T) => readonly ShortcutKey[] | undefined;
 }
 
 /** Generic tool-button row shared by preset and post-edit feature catalogs. */
-export function ToolIconRow<T extends string>({ tools, activeTool, onPick, glyphFor, isDanger }: Props<T>) {
+export function ToolIconRow<T extends string>({ tools, activeTool, onPick, glyphFor, isDanger, shortcutFor }: Props<T>) {
   return (
     <div style={styles.row}>
-      {tools.map(([tool, title, description]) => (
+      {tools.map(([tool, title, description, descriptionShortcut]) => (
         <ToolIconButton
           key={tool}
           selected={activeTool === tool}
           danger={isDanger?.(tool) ?? false}
           title={title}
           description={description}
+          descriptionShortcut={descriptionShortcut}
+          shortcut={shortcutFor?.(tool)}
           onClick={() => onPick(tool)}
         >
           <ToolGlyph tool={glyphFor?.(tool) ?? tool as ToolGlyphKey} />

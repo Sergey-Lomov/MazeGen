@@ -1,5 +1,7 @@
 # Post-Edit Feature — Web Client
 
+The post-edit tool row uses the same non-interactive tooltip keycaps and mnemonic shortcuts as the preset connection row: `W`, `P`, `Alt`+`P`, `S`, `F`, `T`, `Alt`+`T`, `V`, `Alt`+`V`, `E`, `N`, `M`, `C`, and `R`; `D` selects Delete. Vertical shortcuts are unavailable on a single-floor field. The focus left on a feature-card header is cleared after a keyboard tool selection.
+
 ## Current edge model
 
 ### Endpoint drag hit area

@@ -15,6 +15,8 @@ import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type 
 import { selectionBoundarySegments } from "./fieldSelectionGeometry";
 import { canvas } from "./colorTokens";
 import { connectedMagicWandCells } from "./magicWand";
+import { canActivateFieldPrimitive, fieldPrimitiveForShortcut } from "./fieldPrimitiveShortcuts";
+import { blurActiveElement } from "./toolShortcuts";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -102,7 +104,15 @@ export class FieldEditController {
             : null;
       if (operation) {
         e.preventDefault();
+        blurActiveElement();
         state.setFieldOperation(operation);
+        return;
+      }
+      const primitive = fieldPrimitiveForShortcut(e.code);
+      if (primitive && canActivateFieldPrimitive(primitive, field.fieldOperation, state.backgroundAutoFillPreview !== null)) {
+        e.preventDefault();
+        blurActiveElement();
+        state.setFieldPrimitive(primitive);
         return;
       }
     }

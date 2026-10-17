@@ -7,6 +7,7 @@ export const ui = {
     panelAlt: base.bgPanelAlt,
     hover: base.bgSurfaceRaised,
     input: base.bgSurfaceRaised,
+    keycap: base.bgKeycap,
     error: base.errorBg,
     warning: base.warningBg,
     success: base.successBg,

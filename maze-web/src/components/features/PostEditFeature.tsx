@@ -22,6 +22,7 @@ import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
 import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import { postEditToolShortcut } from "../../pixi/toolShortcuts";
 
 function getEdgeTools(): [PostEditTool, string][] {
   return [
@@ -169,11 +170,12 @@ export function PostEditFeature() {
             ...(floors.length > 1 ? getVerticalTools() : []),
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["reset", m["post_edit.reset_tool"](), m["post_edit.reset_tooltip"]()],
-            ["delete", m["post_edit.delete_tool"](), m["post_edit.delete_tooltip"]()],
+            ["reset", m["post_edit.reset_tool"](), m["post_edit.reset_tooltip"](), ["shift"]],
+            ["delete", m["post_edit.delete_tool"](), m["post_edit.delete_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={postEditToolShortcut}
           glyphFor={glyphKeyFor}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />

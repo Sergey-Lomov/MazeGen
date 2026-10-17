@@ -40,7 +40,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     expect(screen.getByRole("button", { name: "Standard" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add (+)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
   });
 
@@ -218,14 +218,27 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     const polygonTool = screen.getByRole("button", { name: /Polygon/ });
     const description = document.getElementById(polygonTool.parentElement?.getAttribute("aria-describedby")!);
-    expect(description).toHaveTextContent("PolygonShift: move vertices freely.");
-    fireEvent.click(screen.getByRole("button", { name: "Remove (-)" }));
+    expect(description).toHaveTextContent("Polygon8Move vertices freely.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
     const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
     expect(symmetryTool).toBeDisabled();
     const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
-    expect(symmetryDescription).toHaveTextContent("SymmetryUnavailable in Select mode.");
+    expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
+  });
+
+  it("offers the parallelogram tool for a square field", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const tool = screen.getByRole("button", { name: /Parallelogram/ });
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Parallelogram7");
   });
 
   it("labels the connected-area tool and explains its effect", () => {
@@ -238,7 +251,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     const tool = screen.getByRole("button", { name: /Connected Area/ });
     const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
-    expect(description).toHaveTextContent("Connected AreaAffects all connected cells.");
+    expect(description).toHaveTextContent("Connected AreaAAffects all connected cells.");
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {

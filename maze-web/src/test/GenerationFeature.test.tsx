@@ -60,6 +60,26 @@ describe("GenerationFeature — QC Only toggle", () => {
     expect(generateAsync).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["Enter", "Enter"],
+    ["Space", " "],
+  ])("starts generation from the open card with %s and clears header focus", (code, key) => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ generateAsync, openCard: "generation" });
+    render(<GenerationFeature canGenerate={true} />);
+    const header = document.createElement("button");
+    document.body.append(header);
+    header.focus();
+
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code, key });
+    header.dispatchEvent(event);
+
+    expect(generateAsync).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(header);
+    header.remove();
+  });
+
   it("shows a confirm modal instead of starting generation when post-edit is dirty", () => {
     const generateAsync = vi.fn(() => Promise.resolve());
     useMazeStore.setState({ generateAsync, postEditDirty: true });

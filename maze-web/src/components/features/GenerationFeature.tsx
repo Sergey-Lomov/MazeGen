@@ -4,6 +4,9 @@ import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
 import { ConfirmModal } from "../ConfirmModal";
+import { hasOpenModal } from "../Modal";
+import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
+import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
@@ -160,6 +163,26 @@ export function GenerationFeature({ canGenerate }: Props) {
   }
 
   const generateBlocked = !canGenerate || registryError !== null;
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        useMazeStore.getState().openCard !== "generation"
+        || generateBlocked
+        || generationInProgress
+        || algorithmDialogOpen
+        || historyDialogOpen
+        || pendingAction !== null
+        || hasOpenModal()
+        || !isFeatureCardConfirmShortcut(event)
+      ) return;
+      event.preventDefault();
+      blurActiveElement();
+      handleGenerate();
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [algorithmDialogOpen, generateBlocked, generationInProgress, handleGenerate, historyDialogOpen, pendingAction]);
   const canSeedBack = seedHistory.length > 0 && seedHistoryIndex > 0;
   const canSeedForward = seedHistoryIndex < seedHistory.length - 1;
   const seedBackDescription = canSeedBack

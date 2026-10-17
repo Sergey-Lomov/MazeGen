@@ -26,6 +26,7 @@ import { configAllCells } from "../../pixi/tessellationCells";
 import { colorToHex } from "../colorFormat";
 import { useFieldHint } from "../FieldHint";
 import { inputHintReason, type NormalizerResult } from "../inputNormalization";
+import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -91,6 +92,12 @@ function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeP
 }
 
 type ConfirmPending = "switchToDefault" | "clearField" | null;
+
+const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
+  add: ["+"],
+  remove: ["−"],
+  select: ["0"],
+};
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -334,6 +341,7 @@ export function FieldSetupFeature() {
                 selected={fieldOperation === operation}
                 disabled={fieldEditLocked}
                 title={m[`field.mode.${operation}` as "field.mode.add" | "field.mode.remove" | "field.mode.select"]()}
+                shortcut={OPERATION_SHORTCUTS[operation]}
                 onClick={() => setFieldOperation(operation)}
               >
                 {operationIcon(operation)}
@@ -342,24 +350,27 @@ export function FieldSetupFeature() {
           </Inline>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <Inline gap="itemGap" style={{ ...styles.nestedContent, flexWrap: "wrap" }}>
-          {primitivesForKind(tessellationKind).map((tool) => (
-            <ToolIconButton
+          {primitivesForKind().map((tool) => {
+            const shortcut = fieldPrimitiveShortcut(tool.primitive);
+            return <ToolIconButton
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
-              disabled={fieldEditLocked || (tool.primitive === "symmetry" && fieldOperation === "select")}
+              disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked)}
               title={tool.label}
+              shortcut={shortcut ? [shortcut] : undefined}
               description={tool.primitive === "symmetry" && fieldOperation === "select"
                 ? m["field.symmetry.select_disabled"]()
                 : tool.primitive === "polygon"
                 ? m["field.polygon.shift_tooltip"]()
                 : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
+              descriptionShortcut={tool.primitive === "polygon" ? ["shift"] : undefined}
               onClick={() => {
                 setFieldPrimitive(tool.primitive);
               }}
             >
               {primitiveIcon(tool.primitive)}
-            </ToolIconButton>
-          ))}
+            </ToolIconButton>;
+          })}
           </Inline>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
@@ -466,7 +477,7 @@ interface PrimitiveToolOption {
   label: string;
 }
 
-function primitivesForKind(_kind: TessellationKind): PrimitiveToolOption[] {
+function primitivesForKind(): PrimitiveToolOption[] {
   const primitives: PrimitiveToolOption[] = [
     { key: "point", primitive: "point", label: m["field.shape.point"]() },
     { key: "rectangle", primitive: "rectangle", label: m["field.shape.rectangle"]() },
@@ -479,7 +490,7 @@ function primitivesForKind(_kind: TessellationKind): PrimitiveToolOption[] {
     { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
-  return primitives.filter((tool) => _kind !== "square" || tool.primitive !== "parallelogram");
+  return primitives;
 }
 
 function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {

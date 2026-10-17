@@ -13,7 +13,7 @@ Selects the tessellation kind (square / hex / triangle / Cairo) and its orientat
 - Card is always available (status `default` or `set`).
 - Opening the card calls `syncPreviewToConfirmed()` — preview is reset to confirmed values so the user sees the current confirmed state, not stale values from a previous session.
 - User edits dropdowns → preview fields update, canvas grid redraws.
-- "Confirm tessellation" button calls `confirmTessellation()` — preview is written to confirmed, card remains open.
+- "Confirm tessellation" button calls `confirmTessellation()` — preview is written to confirmed, card remains open. While this card is open, `Enter` or `Space` invokes the same action unless focus is in a text-entry control; the handler runs before native activation of a focused non-text control and clears the previous feature-card focus.
 - Closing the card without confirming leaves preview dirty; next open resets it via `syncPreviewToConfirmed()`.
 
 ## Tessellation kinds and orientations

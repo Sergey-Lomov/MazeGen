@@ -78,6 +78,59 @@ afterEach(() => {
   activeControllers.length = 0;
 });
 
+describe("FieldEditController primitive shortcuts", () => {
+  it("selects field figures in list order and assigns mnemonic keys to special tools", () => {
+    makeController();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("parallelogram");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit8" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("magic_wand");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
+  });
+
+  it("does not select the disabled symmetry tool in select mode", () => {
+    makeController();
+    useMazeStore.getState().setFieldOperation("select");
+    useMazeStore.getState().setFieldPrimitive("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("does not select a tool while field editing is locked", () => {
+    makeController();
+    useMazeStore.getState().setFieldPrimitive("point");
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set() });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("clears the feature-card focus after a keyboard tool selection", () => {
+    makeController();
+    const header = document.createElement("button");
+    document.body.append(header);
+    header.focus();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+
+    expect(document.activeElement).not.toBe(header);
+    header.remove();
+  });
+});
+
 describe("FieldEditController polygon interaction", () => {
   it("updates the preview on pointer movement and marks the closing segment dashed", () => {
     const { controller, updates } = makeController();

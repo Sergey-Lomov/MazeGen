@@ -22,6 +22,7 @@ import { cancelPendingPointerAction, isPointerModalOpen, resetPointerHover } fro
 import {
   notifyEditRefusal, SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE,
 } from "../notifications/editRefusalNotifications";
+import { blurActiveElement, postEditToolForShortcut } from "./toolShortcuts";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -29,6 +30,11 @@ const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_pa
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
 
 type State = ReturnType<typeof useMazeStore.getState>;
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
 
 /** Whether a point currently has more than one node (a split point) — used by the unified Reset
  * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an
@@ -107,16 +113,26 @@ export class PostEditController extends BaseController {
   private settingsHoverCache: { state: State; key: string; configurable: boolean } | null = null;
 
   private onKeyDown = (e: KeyboardEvent) => {
+    const state = useMazeStore.getState();
+    if (!isTypingTarget(e.target) && state.openCard === "post_edit" && !isPostEditModalOpen(state)) {
+      const tool = postEditToolForShortcut(e, state.floors.length > 1);
+      if (tool) {
+        e.preventDefault();
+        blurActiveElement();
+        state.setPostEditTool(tool);
+        return;
+      }
+    }
     if (e.code === "Escape") {
       if (this.hasArmedElement) this.cancelPointerGesture();
-      useMazeStore.getState().cancelPostEditEntityPick();
-      useMazeStore.getState().cancelPostEditConnectionSettings();
+      state.cancelPostEditEntityPick();
+      state.cancelPostEditConnectionSettings();
       this.cancelPendingTeleport();
-      useMazeStore.getState().cancelPostEditVerticalPassagePlacement();
-      useMazeStore.getState().cancelPostEditElevatorPlacement();
-      useMazeStore.getState().cancelPostEditSplitTarget();
-      useMazeStore.getState().cancelPostEditEntityDelete();
-      useMazeStore.getState().cancelPostEditReset();
+      state.cancelPostEditVerticalPassagePlacement();
+      state.cancelPostEditElevatorPlacement();
+      state.cancelPostEditSplitTarget();
+      state.cancelPostEditEntityDelete();
+      state.cancelPostEditReset();
     }
   };
 
