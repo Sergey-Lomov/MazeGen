@@ -132,7 +132,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     state.tessellationKind = "cairo";
     state.floorFields.floor_1 = {
       ...state.floorFields.floor_1,
-      cairoShape: "free",
+      selectedShape: "rect",
       fieldConfig: fieldOf("cairo", { shape: "custom", points: [[-3, 2], [2, 1]] }),
       freeFieldPoints: {
         square: new Set(),

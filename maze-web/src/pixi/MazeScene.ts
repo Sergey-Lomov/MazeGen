@@ -236,10 +236,10 @@ export class MazeScene {
           if (_btn === 2) store.removeFieldPoints(cells);
           else if (_btn === 0) store.addFieldPoints(cells);
         },
-        onSelectionMove: (cells, dx, dy) => {
+        onSelectionMove: (cells, vector) => {
           const beforeState = useMazeStore.getState();
           const before = beforeState.floorFields[beforeState.activeFloorId].fieldPoints;
-          beforeState.moveFieldPoints(cells, dx, dy);
+          beforeState.moveFieldPoints(cells, vector);
           const afterState = useMazeStore.getState();
           const fieldPointsChanged = afterState.floorFields[afterState.activeFloorId].fieldPoints !== before;
           const moveQueuedForConfirmation = afterState.fieldEditConfirmation !== null
@@ -247,7 +247,7 @@ export class MazeScene {
           return fieldPointsChanged || moveQueuedForConfirmation;
         },
         onSymmetryPreviewUpdate: (axis, polygon) => {
-          this.fieldEditorOverlay.updateSymmetryPreview(axis, polygon);
+          this.fieldEditorOverlay.scheduleSymmetryPreview(axis, polygon);
         },
       },
     );

@@ -7,6 +7,9 @@ import { fakeTessellationShapes } from "./tessellationShapesFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
@@ -210,7 +213,7 @@ describe("mazeStore preview/confirm flow", () => {
       previewTriOrientation: "r0",
       floorFields: {
         ...s0.floorFields,
-        [otherFloorId]: baseFloorFieldConfig({ squareShape: "free", isEditingField: true, fieldPoints: new Set([1, 2, 3]) }),
+        [otherFloorId]: baseFloorFieldConfig({ isEditingField: true, fieldPoints: new Set([1, 2, 3]) }),
       },
     });
     useMazeStore.getState().confirmTessellation();
@@ -268,7 +271,7 @@ describe("mazeStore tessellation misc actions", () => {
     store.setFieldPrimitive("polygon");
     store.addFieldPoints([[2, 0]]);
     store.removeFieldPoints([[0, 0]]);
-    store.moveFieldPoints([[0, 0]], 3, 3);
+    store.moveFieldPoints([[0, 0]], [3, 3]);
     store.clearFieldPoints();
     store.setFieldConfig(fieldOf("square", { shape: "rect", cols: 8, rows: 8 }));
     store.setFieldEditMode("default");
@@ -309,14 +312,13 @@ describe("mazeStore tessellation misc actions", () => {
       },
     });
 
-    useMazeStore.getState().moveFieldPoints([[0, 0]], 1, 0);
+    useMazeStore.getState().moveFieldPoints([[0, 0]], [1, 0]);
 
     expect(activeField().fieldPoints).toEqual(points);
     expect(useMazeStore.getState().fieldEditConfirmation).toEqual({
       kind: "moveFieldPoints",
       cells: [[0, 0]],
-      dx: 1,
-      dy: 0,
+      vector: [1, 0],
     });
   });
 
@@ -364,9 +366,7 @@ describe("mazeStore tessellation misc actions", () => {
   it("setFieldEditMode('default') rebuilds predefined config", () => {
     useMazeStore.setState({ tessellationKind: "square" });
     setActiveField({
-      squareShape: "rect",
-      hexShape: "parallelogram",
-      triangleShape: "rect",
+      selectedShape: "rect",
       fieldEditMode: "custom",
       savedShapes: {},
     });

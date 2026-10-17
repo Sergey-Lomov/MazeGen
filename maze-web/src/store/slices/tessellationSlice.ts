@@ -36,6 +36,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   symmetrySourceSide: 1,
   symmetryPolygon: [],
   symmetryPolygonFinished: false,
+  fieldOpError: null,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
@@ -200,6 +201,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   }),
   setBackgroundAutoFillPreview: (points) => set({ backgroundAutoFillPreview: points }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
+  setFieldOpError: (error) => set({ fieldOpError: error }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),
   setSymmetryAxisPoints: (points) => set({ symmetryAxisPoints: points }),

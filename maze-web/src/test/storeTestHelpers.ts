@@ -19,10 +19,7 @@ export const TEST_FLOOR_ID = "floor_1";
  *  (square/rect, 10x10) — used as the base entry for `floorFields[TEST_FLOOR_ID]`. */
 export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}): FloorFieldConfig {
   return {
-    squareShape: "rect",
-    hexShape: "parallelogram",
-    triangleShape: "rect",
-    cairoShape: "rect",
+    selectedShape: "rect",
     savedShapes: {},
     fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
     freeFieldPoints: emptyFreePoints(),
@@ -212,10 +209,6 @@ export function baseStoreState() {
  *  fields land in `floorFields[TEST_FLOOR_ID]` (GitHub issue #338) — merge on top of `extra` when
  *  a test also needs to override other floorFields entries. */
 export function freeFieldEditState(kind: "square" | "hex" | "tri" | "cairo", pts: Set<number>) {
-  const squareShape: "free" | "rect" = kind === "square" ? "free" : "rect";
-  const hexShape: "free" | "parallelogram" = kind === "hex" ? "free" : "parallelogram";
-  const triangleShape: "free" | "rect" = kind === "tri" ? "free" : "rect";
-  const cairoShape: "free" | "rect" = kind === "cairo" ? "free" : "rect";
   return {
     tessellationKind: kind,
     hexOrientation: "flat_top" as const,
@@ -223,10 +216,6 @@ export function freeFieldEditState(kind: "square" | "hex" | "tri" | "cairo", pts
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape,
-        hexShape,
-        triangleShape,
-        cairoShape,
         isEditingField: true,
         fieldPoints: pts,
         freeFieldPoints: { ...emptyFreePoints(), [kind]: pts },
@@ -246,9 +235,7 @@ export function hexPredefinedState(extra?: Record<string, unknown> & { floorFiel
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        hexShape: "parallelogram",
-        squareShape: "rect",
-        triangleShape: "rect",
+        selectedShape: "parallelogram",
         ...floorFieldOverrides,
       }),
     },
@@ -266,9 +253,7 @@ export function trianglePredefinedState(extra?: Record<string, unknown> & { floo
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        triangleShape: "rect",
-        hexShape: "parallelogram",
-        squareShape: "rect",
+        selectedShape: "rect",
         ...floorFieldOverrides,
       }),
     },

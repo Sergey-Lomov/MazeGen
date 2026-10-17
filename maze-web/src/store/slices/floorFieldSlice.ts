@@ -2,11 +2,13 @@ import type { StateCreator } from "zustand";
 import type { FieldConfig } from "../../fieldConfig";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { computeSymmetryPreview, symmetryCandidateCells } from "../../pixi/symmetry";
+import { isFieldOpError } from "../../pixi/fieldOps";
+import { translateFieldCells } from "../../wasm/mazeService";
+import { computeSymmetryPreview } from "../../pixi/symmetry";
 import type { MazeStore, MazeState, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf,
-  withFieldPointsEdit, makeShapeSetter, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
+  withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
   buildResetDownstreamState,
 } from "../storeHelpers";
 
@@ -43,13 +45,11 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
       state.triOrientation,
       field.freeFieldPoints,
       field.savedShapes,
+      field.selectedShape,
     );
     floorFields[floor.id] = {
       ...field,
-      squareShape: derived.squareShape,
-      hexShape: derived.hexShape,
-      triangleShape: derived.triangleShape,
-      cairoShape: derived.cairoShape,
+      selectedShape: derived.selectedShape,
       savedShapes: derived.savedShapes,
       fieldConfig: cfg,
       freeFieldPoints: derived.freeFieldPoints,
@@ -81,10 +81,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   floorFields: {},
   fieldEditConfirmation: null,
 
-  setSquareShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSquareShape", shape }, () => makeShapeSetter("squareShape", "square")(shape)(state))),
-  setHexShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setHexShape", shape }, () => makeShapeSetter("hexShape", "hex")(shape)(state))),
-  setTriangleShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setTriangleShape", shape }, () => makeShapeSetter("triangleShape", "tri")(shape)(state))),
-  setCairoShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setCairoShape", shape }, () => makeShapeSetter("cairoShape", "cairo")(shape)(state))),
+  setSelectedShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSelectedShape", shape }, () => setSelectedShapeState(shape)(state))),
 
   setFieldConfig: (cfg: FieldConfig) => {
     get().setFieldConfigForFloors(cfg, false);
@@ -147,7 +144,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         debugStale: debugStaleOf(state),
       };
     }
-    const cfg = buildPredefinedConfig(state.tessellationKind, field.hexShape, field.triangleShape, state.hexOrientation, state.triOrientation, field.savedShapes, field.squareShape, field.cairoShape);
+    const cfg = buildPredefinedConfig(state.tessellationKind, field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       ...buildResetDownstreamState(),
@@ -174,26 +171,27 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return changed;
   })))),
 
-  moveFieldPoints: (cells, dx, dy) => set((state) => guardFieldEdit(state, { kind: "moveFieldPoints", cells, dx, dy }, () => {
-    if (!Number.isSafeInteger(dx) || !Number.isSafeInteger(dy) || (dx === 0 && dy === 0)) return {};
+  moveFieldPoints: (cells, vector) => set((state) => guardFieldEdit(state, { kind: "moveFieldPoints", cells, vector }, () => {
+    if (vector[0] === 0 && vector[1] === 0) return {};
     const field = activeFloorField(state);
-    const selected = cells
-      .filter(([x, y]) => Number.isSafeInteger(x) && Number.isSafeInteger(y) && field.fieldPoints.has(encodePoint(x, y)));
+    const selected = cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
     if (selected.length === 0) return {};
 
-    const minX = Math.max(...selected.map(([x]) => -32768 - x));
-    const maxX = Math.min(...selected.map(([x]) => 32767 - x));
-    const minY = Math.max(...selected.map(([, y]) => -32768 - y));
-    const maxY = Math.min(...selected.map(([, y]) => 32767 - y));
-    const safeDx = Math.max(minX, Math.min(maxX, dx));
-    const safeDy = Math.max(minY, Math.min(maxY, dy));
-    if (safeDx === 0 && safeDy === 0) return {};
-
-    return invalidateIfChanged(withFieldPointsEdit(state, (points) => {
-      for (const [x, y] of selected) points.delete(encodePoint(x, y));
-      for (const [x, y] of selected) points.add(encodePoint(x + safeDx, y + safeDy));
-      return true;
-    }));
+    let moved: [number, number][];
+    try {
+      moved = translateFieldCells(field.fieldConfig.tessellation, selected, vector);
+    } catch (error) {
+      // A refused move leaves the field unchanged.
+      if (!isFieldOpError(error)) throw error;
+      return {};
+    }
+    return {
+      ...invalidateIfChanged(withFieldPointsEdit(state, (points) => {
+        for (const [x, y] of selected) points.delete(encodePoint(x, y));
+        for (const [x, y] of moved) points.add(encodePoint(x, y));
+        return true;
+      })),
+    };
   })),
 
   clearFieldPoints: () => set((state) => guardFieldEdit(state, { kind: "clearFieldPoints" }, () => invalidateIfChanged(withFieldPointsEdit(state, (pts) => {
@@ -236,7 +234,6 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       && (state.symmetryPolygon.length < 3 || !state.symmetryPolygonFinished)) return {};
     const preview = computeSymmetryPreview(
       field.fieldPoints,
-      symmetryCandidateCells(field.fieldPoints, field.fieldConfig, axis, decodePoint),
       field.fieldConfig,
       {
         scope: state.symmetryScope,
@@ -245,7 +242,9 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         polygon: state.symmetryPolygon,
       },
       encodePoint,
+      decodePoint,
     );
+    if (preview.error) return { fieldOpError: preview.error };
     const fieldPointsPatch = withFieldPointsEdit(state, (points) => {
       let changed = false;
       for (const [x, y] of preview.mirroredCells) {
@@ -269,6 +268,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
           fieldPrimitive: "point",
         },
       },
+      fieldOpError: null,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
@@ -318,10 +318,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     if (!pending) return;
     set(buildResetDownstreamState());
     switch (pending.kind) {
-      case "setSquareShape": get().setSquareShape(pending.shape); break;
-      case "setHexShape": get().setHexShape(pending.shape); break;
-      case "setTriangleShape": get().setTriangleShape(pending.shape); break;
-      case "setCairoShape": get().setCairoShape(pending.shape); break;
+      case "setSelectedShape": get().setSelectedShape(pending.shape); break;
       case "setFieldConfig": get().setFieldConfig(pending.config); break;
       case "setFieldConfigForFloors": get().setFieldConfigForFloors(pending.config, pending.applyToAllStandardFloors); break;
       case "setFieldConfigsForFloors": get().setFieldConfigsForFloors(pending.configs, pending.applyToAllStandardFloors); break;
@@ -329,7 +326,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "removeFieldPoint": get().removeFieldPoint(pending.x, pending.y); break;
       case "addFieldPoints": get().addFieldPoints(pending.cells); break;
       case "removeFieldPoints": get().removeFieldPoints(pending.cells); break;
-      case "moveFieldPoints": get().moveFieldPoints(pending.cells, pending.dx, pending.dy); break;
+      case "moveFieldPoints": get().moveFieldPoints(pending.cells, pending.vector); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applySymmetry": get().applySymmetry(); break;

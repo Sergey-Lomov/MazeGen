@@ -1,11 +1,7 @@
+import type { FieldOpError } from "../wasm/mazeService";
 import type { FieldConfig, PresetFieldShape, PresetFieldShapeName, TessellationKind, HexOrientation, TriOrientation } from "../fieldConfig";
 
 export type { TessellationKind, HexOrientation, TriOrientation };
-/** Per-kind shape selection in the field editor; `free` selects the custom (free-drawn) shape. */
-export type SquareShape = "rect" | "circle" | "triangle" | "free";
-export type HexShape = "rect" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
-export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
-export type CairoShape = "rect" | "circle" | "triangle" | "hexagon" | "free";
 export type FieldPrimitive =
   | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry" | "magic_wand";
 export type FieldOperation = "add" | "remove" | "select";
@@ -33,10 +29,7 @@ export interface BackgroundImage {
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
-  | { kind: "setSquareShape"; shape: SquareShape }
-  | { kind: "setHexShape"; shape: HexShape }
-  | { kind: "setTriangleShape"; shape: TriangleShape }
-  | { kind: "setCairoShape"; shape: CairoShape }
+  | { kind: "setSelectedShape"; shape: PresetFieldShapeName }
   | { kind: "setFieldConfig"; config: FieldConfig }
   | { kind: "setFieldConfigForFloors"; config: FieldConfig; applyToAllStandardFloors: boolean }
   | { kind: "setFieldConfigsForFloors"; configs: Record<string, FieldConfig>; applyToAllStandardFloors: boolean }
@@ -44,7 +37,7 @@ export type PendingFieldEdit =
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
   | { kind: "removeFieldPoints"; cells: [number, number][] }
-  | { kind: "moveFieldPoints"; cells: [number, number][]; dx: number; dy: number }
+  | { kind: "moveFieldPoints"; cells: [number, number][]; vector: [number, number] }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
@@ -91,6 +84,8 @@ export interface TessellationState {
   symmetrySourceSide: -1 | 1;
   symmetryPolygon: SymmetryPoint[];
   symmetryPolygonFinished: boolean;
+  /** Why the last field operation (move, symmetry) was refused by core; shown in the field editor. */
+  fieldOpError: FieldOpError | null;
 }
 
 export interface TessellationActions {
@@ -119,6 +114,7 @@ export interface TessellationActions {
   setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
   setBackgroundAutoFillPreview: (points: Set<number> | null) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
+  setFieldOpError: (error: FieldOpError | null) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;
   setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;
@@ -133,10 +129,8 @@ export interface TessellationActions {
  * floor's field" lives here, keyed by floor id; kind/orientation stay maze-wide in
  * TessellationState (see Specs/field-editor.md). */
 export interface FloorFieldConfig {
-  squareShape: SquareShape;
-  hexShape: HexShape;
-  triangleShape: TriangleShape;
-  cairoShape: CairoShape;
+  /** The preset shape default mode shows; the tessellation must offer it (`field_capabilities`). */
+  selectedShape: PresetFieldShapeName;
   /** Saved params per preset shape, preserved across shape/mode switches. */
   savedShapes: Partial<Record<PresetFieldShapeName, PresetFieldShape>>;
   fieldConfig: FieldConfig;
@@ -144,7 +138,6 @@ export interface FloorFieldConfig {
   freeFieldPoints: Record<TessellationKind, Set<number>>;
   /**
    * True when the active field is custom (free-draw). Set by:
-   * - shape actions (setSquareShape/setHexShape/setTriangleShape) when shape === "free"
    * - setFieldEditMode("custom") / setFieldEditMode("default") for card-based editing
    * generate() reads this directly to decide whether to use fieldPoints.
    */
@@ -171,10 +164,7 @@ export interface FloorFieldsState {
 }
 
 export interface FloorFieldsActions {
-  setSquareShape: (shape: SquareShape) => void;
-  setHexShape: (shape: HexShape) => void;
-  setTriangleShape: (shape: TriangleShape) => void;
-  setCairoShape: (shape: CairoShape) => void;
+  setSelectedShape: (shape: PresetFieldShapeName) => void;
   setFieldConfig: (cfg: FieldConfig) => void;
   setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => void;
   setFieldConfigsForFloors: (configs: Record<string, FieldConfig>, applyToAllStandardFloors: boolean) => void;
@@ -183,7 +173,7 @@ export interface FloorFieldsActions {
   addFieldPoints: (cells: [number, number][]) => void;
   removeFieldPoints: (cells: [number, number][]) => void;
   /** Moves selected custom-field cells atomically, preserving destination collisions. */
-  moveFieldPoints: (cells: [number, number][], dx: number, dy: number) => void;
+  moveFieldPoints: (cells: [number, number][], vector: [number, number]) => void;
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldOperation: (operation: FieldOperation) => void;

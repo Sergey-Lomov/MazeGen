@@ -17,8 +17,8 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type DisplayOrientation = HexOrientation | TriOrientation;
 
 /**
- * A floor's field shape, independent of the tessellation kind. Which shapes a kind offers is UI
- * registry metadata (`FIELD_SHAPES_BY_KIND`); `custom` carries the cell list directly.
+ * A floor's field shape, independent of the tessellation kind. Which preset shapes a tessellation
+ * offers is decided by core (`field_capabilities`); `custom` carries the cell list directly.
  */
 export type FieldShape =
   | { shape: "rect"; cols: number; rows: number }
@@ -31,14 +31,6 @@ export type FieldShape =
 export type FieldShapeName = FieldShape["shape"];
 export type PresetFieldShape = Exclude<FieldShape, { shape: "custom" }>;
 export type PresetFieldShapeName = PresetFieldShape["shape"];
-
-/** Preset shapes each kind offers, in UI order. `custom` (free drawing) is available for every kind. */
-export const FIELD_SHAPES_BY_KIND: Record<TessellationKind, readonly PresetFieldShapeName[]> = {
-  square: ["rect", "circle", "triangle"],
-  hex: ["rect", "parallelogram", "hexagon", "circle", "triangle"],
-  tri: ["rect", "triangle", "hexagon", "circle"],
-  cairo: ["rect", "circle", "triangle", "hexagon"],
-};
 
 /**
  * A floor field as runtime code consumes it: the maze-wide tessellation config, its maze-wide

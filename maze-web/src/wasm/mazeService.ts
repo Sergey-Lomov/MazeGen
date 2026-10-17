@@ -393,7 +393,7 @@ export function getTessellationShapes(config: { tessellation: WasmTessellationCo
 
 /** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
 export type FieldOpError =
-  | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" | "connectivity_broken" }
+  | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" }
   | { kind: "invalid_preset" | "invalid_request"; message: string };
 
 /** Mirrors `maze-runner`'s `FieldCapabilities` — see `field_capabilities`'s doc comment. */

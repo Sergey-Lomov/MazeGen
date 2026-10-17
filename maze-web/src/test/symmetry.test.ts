@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { encodePoint } from "../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import {
   computeSymmetryPreview,
-  reflectPointAcrossAxis,
   snapSymmetryPoint,
   symmetryStatus,
   type SymmetryOptions,
@@ -15,25 +14,21 @@ function options(overrides: Partial<SymmetryOptions> = {}): SymmetryOptions {
   return {
     scope: "everything",
     sourceSide: 1,
-    axis: [{ x: 32, y: -100 }, { x: 32, y: 100 }],
+    axis: [{ x: 20, y: -100 }, { x: 20, y: 100 }],
     polygon: [],
     ...overrides,
   };
 }
 
 describe("symmetry geometry", () => {
-  it("reflects a point across an arbitrary axis", () => {
-    expect(reflectPointAcrossAxis({ x: 4, y: 1 }, [{ x: 0, y: 0 }, { x: 1, y: 1 }])).toEqual({ x: 1, y: 4 });
-  });
-
   it("mirrors filled cells and ignores cells on the axis", () => {
     const filled = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
     const preview = computeSymmetryPreview(
       filled,
-      [[-1, 0], [0, 0], [1, 0]],
       cfg,
       options({ axis: [{ x: 20, y: -100 }, { x: 20, y: 100 }] }),
       encodePoint,
+      decodePoint,
     );
     expect(preview.sourceCells).toEqual([[1, 0]]);
     expect(preview.mirroredCells).toEqual([[-1, 0]]);
@@ -43,10 +38,10 @@ describe("symmetry geometry", () => {
     const filled = new Set([encodePoint(1, 0)]);
     const preview = computeSymmetryPreview(
       filled,
-      [[-1, 0], [1, 0], [2, 0]],
       cfg,
       options({ axis: [{ x: 20, y: -100 }, { x: 20, y: 100 }] }),
       encodePoint,
+      decodePoint,
     );
     expect(preview.sourceCells).toEqual([[1, 0]]);
   });
@@ -55,23 +50,47 @@ describe("symmetry geometry", () => {
     const filled = new Set([encodePoint(0, 0), encodePoint(2, 0)]);
     const preview = computeSymmetryPreview(
       filled,
-      [[0, 0], [2, 0]],
       cfg,
       options({ scope: "one_side", sourceSide: -1 }),
-    encodePoint,
+      encodePoint,
+      decodePoint,
     );
     expect(preview.sourceCells).toEqual([[2, 0]]);
-    expect(preview.mirroredCells).toEqual([[-1, 0]]);
+    expect(preview.mirroredCells).toEqual([[-2, 0]]);
+  });
+
+  it("reports the core error for an axis that is not a symmetry of the tessellation", () => {
+    const preview = computeSymmetryPreview(
+      new Set([encodePoint(1, 0)]),
+      cfg,
+      options({ axis: [{ x: -100, y: -100 }, { x: 100, y: -60 }] }),
+      encodePoint,
+      decodePoint,
+    );
+    expect(preview.sourceCells).toEqual([[1, 0]]);
+    expect(preview.mirroredCells).toEqual([]);
+    expect(preview.error).toMatchObject({ kind: "not_a_symmetry" });
+  });
+
+  it("mirrors source cells that form several disconnected pieces", () => {
+    const preview = computeSymmetryPreview(new Set([encodePoint(1, 0), encodePoint(3, 0)]), cfg, options(), encodePoint, decodePoint);
+    expect(preview.error).toBeNull();
+    expect(preview.mirroredCells).toEqual([[-3, 0], [-1, 0]]);
+  });
+
+  it("has no error when the mirror image is computed", () => {
+    const preview = computeSymmetryPreview(new Set([encodePoint(1, 0)]), cfg, options(), encodePoint, decodePoint);
+    expect(preview.error).toBeNull();
   });
 
   it("uses the processing polygon as a source filter", () => {
     const filled = new Set([encodePoint(1, 0), encodePoint(1, 1)]);
     const preview = computeSymmetryPreview(
       filled,
-      [[1, 0], [1, 1]],
       cfg,
       options({ scope: "polygon", polygon: [{ x: 45, y: 0 }, { x: 75, y: 0 }, { x: 75, y: 40 }, { x: 45, y: 40 }] }),
       encodePoint,
+      decodePoint,
     );
     expect(preview.sourceCells).toEqual([[1, 0]]);
   });

@@ -19,6 +19,9 @@ function emptyDebugArena(): DebugArenaHandle {
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -348,7 +351,6 @@ describe("mazeStore generation misc actions", () => {
       tessellationKind: "cairo",
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
-          cairoShape: "free",
           fieldConfig: fieldOf("cairo", { shape: "custom", points: [first, second] }),
           freeFieldPoints: { ...baseStoreState().floorFields[TEST_FLOOR_ID].freeFieldPoints, cairo: points },
           isEditingField: true,
@@ -363,7 +365,6 @@ describe("mazeStore generation misc actions", () => {
 
     const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
     expect(field.fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: [first, second] }));
-    expect(field.cairoShape).toBe("free");
     expect(field.fieldPoints).toEqual(points);
     expect(field.freeFieldPoints.cairo).toEqual(points);
   });

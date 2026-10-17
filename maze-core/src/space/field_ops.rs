@@ -28,8 +28,6 @@ pub enum FieldOpError {
     NotASymmetry,
     /// A cell of the input does not exist in the tessellation, or its image does not.
     OutsideTessellation,
-    /// The resulting cell set is disconnected.
-    ConnectivityBroken,
     /// Unknown preset parameters, a missing or out-of-range value, or a preset too large to build.
     InvalidPreset(String),
 }
@@ -42,7 +40,6 @@ impl fmt::Display for FieldOpError {
             FieldOpError::OutsideTessellation => {
                 write!(f, "a cell is outside the tessellation")
             }
-            FieldOpError::ConnectivityBroken => write!(f, "the resulting field is disconnected"),
             FieldOpError::InvalidPreset(reason) => write!(f, "invalid preset: {reason}"),
         }
     }
@@ -296,9 +293,6 @@ fn map_cells<T: Tessellation + ?Sized>(
     }
     mapped.sort();
     mapped.dedup();
-    if !is_connected(tessellation, &mapped) {
-        return Err(FieldOpError::ConnectivityBroken);
-    }
     Ok(mapped)
 }
 

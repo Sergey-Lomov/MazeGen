@@ -9,7 +9,7 @@ import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { createFloorsSlice } from "./slices/floorsSlice";
-import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
+import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { resolveFieldConfig } from "../pixi/tessellationCells";
@@ -21,7 +21,7 @@ export type {
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
-  TessellationKind, SquareShape, HexShape, TriangleShape, CairoShape, HexOrientation, TriOrientation,
+  TessellationKind, HexOrientation, TriOrientation,
   BackgroundImageLayerMode,
   BackgroundAutoFillMode,
   FieldPrimitive, FieldOperation, FeatureId, RenderModeId, LinkIconVisibility, ExportFormatId, MazeState,
@@ -52,16 +52,16 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     for (const floor of file.floors.floors) {
       const ff = file.floorFields[floor.id];
       const fieldConfig = composeFieldConfig(kind, ff.shape, hexOrientation, triOrientation);
-      const { squareShape, hexShape, triangleShape, cairoShape } = kindAndShapeFromConfig(fieldConfig);
+      const selectedShape = selectedShapeFor(fieldConfig);
       const freeFieldPoints = {
         square: new Set(ff.freeFieldPoints.square.map(([x, y]) => encodePoint(x, y))),
         hex: new Set(ff.freeFieldPoints.hex.map(([x, y]) => encodePoint(x, y))),
         tri: new Set(ff.freeFieldPoints.tri.map(([x, y]) => encodePoint(x, y))),
         cairo: new Set(ff.freeFieldPoints.cairo.map(([x, y]) => encodePoint(x, y))),
       };
-      const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, cairoShape, freeFieldPoints);
+      const { isEditingField, fieldPoints } = deriveEditState(kind, fieldConfig, freeFieldPoints);
       floorFields[floor.id] = {
-        squareShape, hexShape, triangleShape, cairoShape,
+        selectedShape,
         savedShapes: Object.fromEntries(ff.savedShapes.map((shape) => [shape.shape, shape])),
         fieldConfig,
         freeFieldPoints,
@@ -237,6 +237,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       symmetrySourceSide: 1,
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
+      fieldOpError: null,
       openCard: file.ui.openCard,
       // clear transient UI flags
       highlightInvalidPresets: false,

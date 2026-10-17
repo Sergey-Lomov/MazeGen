@@ -8,6 +8,9 @@ import type { DebugArenaHandle } from "../store/storeTypes";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -231,7 +234,6 @@ describe("mazeStore.generate", () => {
       hexOrientation: "flat_top",
       triOrientation: "r0",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts },
       }) },
       rules: [],
@@ -246,7 +248,6 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       tessellationKind: "square",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: new Set([encodePoint(0, 0)]),
         freeFieldPoints: { ...emptyFreePoints(), square: new Set([encodePoint(0, 0)]) },
       }) },
@@ -260,7 +261,6 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       tessellationKind: "square",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: new Set<number>(), freeFieldPoints: emptyFreePoints(),
       }) },
     });

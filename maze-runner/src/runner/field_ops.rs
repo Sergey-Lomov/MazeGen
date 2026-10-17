@@ -15,7 +15,6 @@ pub enum FieldOpWireError {
     Unavailable,
     NotASymmetry,
     OutsideTessellation,
-    ConnectivityBroken,
     InvalidPreset { message: String },
     InvalidRequest { message: String },
 }
@@ -26,7 +25,6 @@ impl From<FieldOpError> for FieldOpWireError {
             FieldOpError::Unavailable => FieldOpWireError::Unavailable,
             FieldOpError::NotASymmetry => FieldOpWireError::NotASymmetry,
             FieldOpError::OutsideTessellation => FieldOpWireError::OutsideTessellation,
-            FieldOpError::ConnectivityBroken => FieldOpWireError::ConnectivityBroken,
             FieldOpError::InvalidPreset(message) => FieldOpWireError::InvalidPreset { message },
         }
     }

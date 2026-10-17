@@ -445,7 +445,6 @@ the error carries a reason:
 - `NotASymmetry`: the vector or axis is not a symmetry (decided geometrically: every cell around
   the origin, or around the axis, must map onto a cell with the same boundary vertices);
 - `OutsideTessellation`: an input cell is invalid, or a mapped cell does not exist;
-- `ConnectivityBroken`: the resulting cell set is disconnected;
 - `InvalidPreset(reason)`: unknown or missing params, a value below its minimum, a parameter
   product above 1,000,000 or a shape too large to build, or one that contains no cells.
 
@@ -524,3 +523,11 @@ the display transform (`pixel = pixelsPerUnit · Orient · Base · core`). Face 
 split blueprints, stored split patterns' `face_index`, face editors — follow core's `faces_of`
 order (counter-clockwise), the same order the generator reads. A pattern's `face_index` is stored as
 the shape template's canonical index through the anchor cell's `canonical_face`.
+
+Status (GitHub issue #762): the field editor is built on core's geometry and field operations.
+Selection, editor primitives, nearest-cell lookup and print layout use the snapshot geometry;
+moving a selection, the symmetry tool and the preset shapes call `field_translate_cells`,
+`field_reflect_cells` and `field_preset`. `field_capabilities` decides which shapes, parameter
+forms and tools the editor offers (a tool whose operation is unavailable is hidden). Refusals
+(`FieldOpError`) are shown to the user. The web does no arithmetic on `CellId`s outside the geometry
+access layer. Each floor holds one `selectedShape` instead of per-kind shape fields.

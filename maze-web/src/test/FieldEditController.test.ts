@@ -14,7 +14,7 @@ function makeController() {
   const symmetryUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
   const selectionMovePreviews: { source: [number, number][]; temporary: [number, number][] }[] = [];
-  const selectionMoves: { cells: [number, number][]; dx: number; dy: number }[] = [];
+  const selectionMoves: { cells: [number, number][]; vector: [number, number] }[] = [];
   const previewClear = vi.fn();
   const canvas = {
     addEventListener: vi.fn(),
@@ -34,8 +34,8 @@ function makeController() {
       onPreviewClear: previewClear,
       onPrimitiveCommit: (cells, button) => commits.push({ cells, button }),
       onSelectionMovePreview: (source, temporary) => selectionMovePreviews.push({ source, temporary }),
-      onSelectionMove: (cells, dx, dy) => {
-        selectionMoves.push({ cells, dx, dy });
+      onSelectionMove: (cells, vector) => {
+        selectionMoves.push({ cells, vector });
         return true;
       },
       onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
@@ -244,7 +244,7 @@ describe("FieldEditController select interaction", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
     expect(selectionMoves).toHaveLength(1);
-    expect(selectionMoves[0]).toMatchObject({ dx: 2, dy: 0 });
+    expect(selectionMoves[0]).toMatchObject({ vector: [2, 0] });
     expect(selectionMoves[0].cells).toEqual(expect.arrayContaining([[0, 0], [1, 0], [0, 1], [1, 1]]));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
   });
@@ -308,7 +308,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
     expect(controller.isGestureActive()).toBe(false);
   });
@@ -338,7 +338,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          fieldPoints: new Set([encodePoint(0, 0), encodePoint(2, 0)]),
+          fieldPoints: new Set([[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([x, y]) => encodePoint(x, y))),
         }),
       },
     });
@@ -346,16 +346,16 @@ describe("FieldEditController select interaction", () => {
 
     click(controller, 20, -20);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
-    controller.onPointerDown(100, -20, 0);
+    controller.onPointerDown(60, -20, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
 
     controller.onPointerDown(20, -20, 0);
-    controller.onPointerMove(60, -20, 0);
+    controller.onPointerMove(20, -60, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [2, 0]], dx: 1, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [0, 1] }]);
   });
 
   it("does nothing for RMB in select mode", () => {
@@ -399,7 +399,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
   });
 
@@ -424,7 +424,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     controller.onPointerDown(200, -200, 0);
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
   });
 

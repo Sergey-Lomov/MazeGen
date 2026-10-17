@@ -13,9 +13,10 @@ import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
 import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
-import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
+import { computeSymmetryPreview, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
+import type { FieldOpError } from "../wasm/mazeService";
 import { cellBounds } from "./tessellationGeometry";
 
 const CELL_HOVER_COLOR = 0x888888;
@@ -172,6 +173,7 @@ export class FieldEditorOverlay {
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
+    this.lastSymmetryDraw = null;
     if (this.root.visible) {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
@@ -273,32 +275,64 @@ export class FieldEditorOverlay {
     this.redrawSymmetry(useMazeStore.getState(), axisOverride, polygonOverride);
   }
 
+  private pendingSymmetry: { axis?: SymmetryAxisPoints; polygon?: SymmetryPoint[] } | null = null;
+  private symmetryFrameRequested = false;
+
+  /** Pointer-driven preview updates: pointer events can outpace the frame rate, so only the latest
+   * one per frame is drawn. Any other symmetry redraw supersedes a pending one. */
+  scheduleSymmetryPreview(axisOverride?: SymmetryAxisPoints, polygonOverride?: SymmetryPoint[]): void {
+    this.pendingSymmetry = { axis: axisOverride, polygon: polygonOverride };
+    if (this.symmetryFrameRequested) return;
+    this.symmetryFrameRequested = true;
+    requestAnimationFrame(() => {
+      this.symmetryFrameRequested = false;
+      const pending = this.pendingSymmetry;
+      if (pending) this.redrawSymmetry(useMazeStore.getState(), pending.axis, pending.polygon);
+    });
+  }
+
+  /** Publishes the preview's refusal so the field editor can show it; identical errors are not re-published. */
+  private reportFieldOpError(error: FieldOpError | null): void {
+    const store = useMazeStore.getState();
+    if (JSON.stringify(store.fieldOpError) !== JSON.stringify(error)) store.setFieldOpError(error);
+  }
+
+  /** Inputs of the last drawn symmetry preview; an identical redraw (a pointer move that snaps to
+   * the same point) is skipped, since the preview costs a core call and a cell re-render. */
+  private lastSymmetryDraw: { objects: unknown[]; shape: string } | null = null;
+
   private redrawSymmetry(
     state: ReturnType<typeof useMazeStore.getState>,
     axisOverride?: SymmetryAxisPoints,
     polygonOverride?: SymmetryPoint[],
   ): void {
+    this.pendingSymmetry = null;
     const field = state.floorFields[state.activeFloorId];
     const visible = state.openCard === "field_setup"
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "symmetry";
     this.symmetryContainer.visible = visible;
-    this.symmetryGraphics.clear();
-    if (!visible) {
-      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
-      return;
-    }
-
     const axisPoints = axisOverride ?? state.symmetryAxisPoints;
     const polygon = polygonOverride ?? state.symmetryPolygon;
     const color = field.fieldOperation === "remove"
       ? canvas.fieldEditor.previewRemove
       : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
+    const objects = [color, visible, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.symmetryScope, state.symmetrySourceSide, state.symmetryPolygonFinished];
+    const shape = JSON.stringify([axisPoints, polygon, polygonOverride !== undefined]);
+    const last = this.lastSymmetryDraw;
+    if (last && last.shape === shape && last.objects.every((value, index) => value === objects[index])) return;
+    this.lastSymmetryDraw = { objects, shape };
+    this.symmetryGraphics.clear();
+    if (!visible) {
+      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
+      this.reportFieldOpError(null);
+      return;
+    }
+
     if (axisPoints.length === 2) {
       const axis: [SymmetryPoint, SymmetryPoint] = [axisPoints[0], axisPoints[1]];
       const preview = computeSymmetryPreview(
         field.fieldPoints,
-        symmetryCandidateCells(field.fieldPoints, field.fieldConfig, axisPoints, decodePoint),
         field.fieldConfig,
         {
           scope: state.symmetryScope,
@@ -307,7 +341,9 @@ export class FieldEditorOverlay {
           polygon,
         },
         encodePoint,
+        decodePoint,
       );
+      this.reportFieldOpError(preview.error);
       this.symmetryCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.fieldConfig);
       const dx = axis[1].x - axis[0].x;
       const dy = axis[1].y - axis[0].y;
@@ -341,6 +377,7 @@ export class FieldEditorOverlay {
       }
     } else {
       this.symmetryCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
+      this.reportFieldOpError(null);
       if (axisPoints.length === 1) {
         this.symmetryGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.fill({ color, alpha: 0.95 });

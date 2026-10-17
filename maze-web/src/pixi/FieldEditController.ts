@@ -14,6 +14,9 @@ import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type 
 import { selectionBoundarySegments } from "./fieldSelectionGeometry";
 import { canvas } from "./colorTokens";
 import { connectedMagicWandCells } from "./magicWand";
+import { getCartesian } from "./cartesianCache";
+import { fieldOperationAvailable, isFieldOpError } from "./fieldOps";
+import { translateFieldCells, type WorldPoint } from "../wasm/mazeService";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -31,7 +34,7 @@ interface PrimitiveCallbacks {
   onPreviewClear: () => void;
   onPrimitiveCommit: (cells: [number, number][], button: number) => void;
   onSelectionMovePreview?: (sourceCells: [number, number][], temporaryCells: [number, number][]) => void;
-  onSelectionMove?: (cells: [number, number][], dx: number, dy: number) => boolean;
+  onSelectionMove?: (cells: [number, number][], vector: [number, number]) => boolean;
   onSymmetryPreviewUpdate?: (axis: SymmetryPoint[], polygon: SymmetryPoint[]) => void;
 }
 
@@ -51,11 +54,13 @@ export class FieldEditController {
   private selectionPreviewVisible = false;
   private selectionSourceCells: [number, number][] = [];
   private selectionCells: [number, number][] = [];
-  private selectionPendingDelta = { x: 0, y: 0 };
+  /** Pending move in `maze-core` world units; always a translation symmetry of the tessellation. */
+  private selectionPendingVector: [number, number] = [0, 0];
   private selectionDragActive = false;
   private selectionAdditiveGestureActive = false;
-  private selectionDragStartGrid: { x: number; y: number } | null = null;
-  private selectionDragBaseDelta = { x: 0, y: 0 };
+  /** World-space center of the cell the drag grabbed. */
+  private selectionDragStartCenter: WorldPoint | null = null;
+  private selectionDragBaseVector: [number, number] = [0, 0];
   private activePrimitive: FieldPrimitive = "point";
   // non-null only when activePrimitive !== "point" and gesture is active
   private activeShapePrimitive: ShapePrimitive | null = null;
@@ -234,10 +239,10 @@ export class FieldEditController {
       }
       const grid = button === 0 ? this.toGrid(canvasX, canvasY) : null;
       const selected = grid !== null && this.selectionCells.some(([x, y]) => x === grid.x && y === grid.y);
-      if (field.fieldOperation === "select" && selected) {
+      if (field.fieldOperation === "select" && selected && fieldOperationAvailable(field.fieldConfig.tessellation, "translate")) {
         this.selectionDragActive = true;
-        this.selectionDragStartGrid = grid;
-        this.selectionDragBaseDelta = { ...this.selectionPendingDelta };
+        this.selectionDragStartCenter = getCartesian(grid.x, grid.y, field.fieldConfig);
+        this.selectionDragBaseVector = [...this.selectionPendingVector];
         return;
       }
       this.commitSelectionMove();
@@ -587,7 +592,7 @@ export class FieldEditController {
       this.panCallbacks.endPan();
     } else if (this.selectionDragActive) {
       this.selectionDragActive = false;
-      this.selectionDragStartGrid = null;
+      this.selectionDragStartCenter = null;
       this.updateSelectionPreview();
     } else if (this.activePrimitive === "polygon") {
       if (this.draggedPolygonIndex !== null) {
@@ -965,9 +970,9 @@ export class FieldEditController {
     this.primitiveCallbacks.onPreviewClear();
     this.selectionSourceCells = cells.map(([x, y]) => [x, y]);
     this.selectionCells = cells.map(([x, y]) => [x, y]);
-    this.selectionPendingDelta = { x: 0, y: 0 };
+    this.selectionPendingVector = [0, 0];
     this.selectionDragActive = false;
-    this.selectionDragStartGrid = null;
+    this.selectionDragStartCenter = null;
     this.primitiveCallbacks.onPreviewUpdate(
       [],
       1,
@@ -1003,14 +1008,25 @@ export class FieldEditController {
   }
 
   private updateSelectionDrag(canvasX: number, canvasY: number): void {
-    if (!this.selectionDragStartGrid) return;
+    if (!this.selectionDragStartCenter) return;
     const grid = this.toGrid(canvasX, canvasY);
     if (!grid) return;
-    this.selectionPendingDelta = {
-      x: this.selectionDragBaseDelta.x + grid.x - this.selectionDragStartGrid.x,
-      y: this.selectionDragBaseDelta.y + grid.y - this.selectionDragStartGrid.y,
-    };
-    this.selectionCells = this.selectionSourceCells.map(([x, y]) => [x + this.selectionPendingDelta.x, y + this.selectionPendingDelta.y]);
+    const cfg = useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldConfig;
+    const center = getCartesian(grid.x, grid.y, cfg);
+    const vector: [number, number] = [
+      this.selectionDragBaseVector[0] + center[0] - this.selectionDragStartCenter[0],
+      this.selectionDragBaseVector[1] + center[1] - this.selectionDragStartCenter[1],
+    ];
+    try {
+      this.selectionCells = translateFieldCells(cfg.tessellation, this.selectionSourceCells, vector);
+      this.selectionPendingVector = vector;
+    } catch (error) {
+      // A pointer position core refuses (no translation symmetry, outside the tessellation)
+      // keeps the last valid preview, so the selection snaps between valid
+      // positions.
+      if (!isFieldOpError(error)) throw error;
+      return;
+    }
     this.updateSelectionPreview();
   }
 
@@ -1020,8 +1036,7 @@ export class FieldEditController {
     const cfg = field.fieldConfig;
     const kind = cfg.tessellation.kind;
     const hasPendingMove = this.selectionDragActive
-      || this.selectionPendingDelta.x !== 0
-      || this.selectionPendingDelta.y !== 0;
+      || this.hasPendingSelectionMove();
     this.primitiveCallbacks.onSelectionMovePreview?.(
       hasPendingMove ? this.selectionSourceCells : [],
       hasPendingMove ? this.selectionCells : [],
@@ -1040,15 +1055,17 @@ export class FieldEditController {
     );
   }
 
+  private hasPendingSelectionMove(): boolean {
+    return this.selectionPendingVector[0] !== 0 || this.selectionPendingVector[1] !== 0;
+  }
+
   private commitSelectionMove(): boolean {
     if (useMazeStore.getState().backgroundAutoFillPreview !== null) return false;
     if (!this.selectionPreviewVisible) return false;
-    const hasPendingMove = this.selectionPendingDelta.x !== 0 || this.selectionPendingDelta.y !== 0;
-    if (hasPendingMove) {
+    if (this.hasPendingSelectionMove()) {
       const applied = this.primitiveCallbacks.onSelectionMove?.(
         this.selectionSourceCells,
-        this.selectionPendingDelta.x,
-        this.selectionPendingDelta.y,
+        this.selectionPendingVector,
       ) ?? false;
       if (!applied) return false;
     }
@@ -1080,11 +1097,11 @@ export class FieldEditController {
     this.selectionPreviewVisible = false;
     this.selectionSourceCells = [];
     this.selectionCells = [];
-    this.selectionPendingDelta = { x: 0, y: 0 };
+    this.selectionPendingVector = [0, 0];
     this.selectionDragActive = false;
     this.selectionAdditiveGestureActive = false;
-    this.selectionDragStartGrid = null;
-    this.selectionDragBaseDelta = { x: 0, y: 0 };
+    this.selectionDragStartCenter = null;
+    this.selectionDragBaseVector = [0, 0];
   }
 
   destroy(): void {

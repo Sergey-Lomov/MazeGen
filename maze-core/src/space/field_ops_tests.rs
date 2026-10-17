@@ -207,10 +207,10 @@ fn translate_by_a_non_symmetry_is_refused() {
 }
 
 #[test]
-fn translate_refuses_a_disconnected_result_and_invalid_cells() {
+fn translate_keeps_disconnected_cells_and_refuses_invalid_ones() {
     assert_eq!(
         SquareTessellation.translate_cells(&[square(0, 0), square(5, 0)], Point::new(1.0, 0.0)),
-        Err(FieldOpError::ConnectivityBroken)
+        Ok(vec![square(1, 0), square(6, 0)])
     );
     assert_eq!(
         CairoTessellation.translate_cells(&[CairoPoint::new(0, 0)], Point::new(0.0, 0.0)),

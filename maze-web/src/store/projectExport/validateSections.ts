@@ -12,7 +12,8 @@ import type {
   ProjectFileNestedStrategy,
   ProjectFileFloorField,
 } from "./types";
-import { FIELD_SHAPES_BY_KIND, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
+import { availablePresetKeys } from "../../pixi/fieldOps";
+import { tessellationConfigOf, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
   assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
@@ -62,9 +63,9 @@ export function validateFieldShape(v: unknown, path: string): FieldShape {
 /** Validates one floor's own field-shape state (GitHub issue #338) — `shape`/`savedShapes` reuse
  * `validateFieldShape`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
  * itself is re-derived on load, same as the pre-#338 shape always did). */
-/** Rejects a preset shape the maze-wide tessellation kind does not offer (`FIELD_SHAPES_BY_KIND`). */
+/** Rejects a preset shape the maze-wide tessellation kind does not offer (`field_capabilities`). */
 function assertShapeOfKind(shape: FieldShape, kind: TessellationKind, path: string): void {
-  if (shape.shape !== "custom" && !FIELD_SHAPES_BY_KIND[kind].includes(shape.shape)) {
+  if (shape.shape !== "custom" && !availablePresetKeys(tessellationConfigOf(kind)).includes(shape.shape)) {
     throw new Error(`${path}: kind "${kind}" does not offer shape "${shape.shape}"`);
   }
 }

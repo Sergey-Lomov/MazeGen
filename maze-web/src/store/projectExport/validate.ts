@@ -9,7 +9,7 @@ import {
   type ProjectFileFloors,
   type ProjectFileFloorField,
 } from "./types";
-import { buildPredefinedConfig } from "../storeHelpers";
+import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { FeatureId } from "../mazeStore";
 import {
@@ -270,7 +270,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // entry (file saved before this issue, or hand-edited) falls back to the kind's bare default
   // shape, same convention `defaultFloorFieldConfig` (storeHelpers.ts) uses for a brand-new floor.
   const floorFieldsObj = migrated.floorFields != null ? assertObject(migrated.floorFields, "floorFields") : {};
-  const defaultConfig = buildPredefinedConfig(kind, kind === "hex" ? "hexagon" : "parallelogram", kind === "tri" ? "triangle" : "rect", hexOrientation, triOrientation);
+  const defaultConfig = buildPredefinedConfig(kind, defaultShapeOf(kind), hexOrientation, triOrientation);
   const floorFields: Record<string, ProjectFileFloorField> = {};
   for (const floor of floors.floors) {
     const raw = floorFieldsObj[floor.id];

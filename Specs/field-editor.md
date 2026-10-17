@@ -7,7 +7,7 @@ Defines the shape of the maze field before generation. Operates on a confirmed t
 Two parallel mechanisms for custom fields exist:
 
 ### Predefined shapes (legacy ControlPanel flow)
-Shape selector in ControlPanel includes a "free" option. Selecting it sets `squareShape/hexShape/triangleShape = "free"`, which sets `isEditingField = true` and exposes `freeFieldPoints[kind]` as `fieldPoints`. Points are drawn directly on the canvas at any time.
+The custom field is entered through the field edit mode (`setFieldEditMode("custom")`), which sets `isEditingField = true` and exposes `freeFieldPoints[kind]` as `fieldPoints`. Points are drawn directly on the canvas at any time. The preset shape selection (`selectedShape`) is kept while editing and applies again in default mode.
 
 ### Card-based editing (FieldSetupFeature)
 Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be confirmed first.
@@ -37,7 +37,13 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 | `hexagon` | `radius` |
 | `custom` | `points` (the free-drawn cell list) |
 
-Which preset shapes a kind offers is UI registry metadata (`FIELD_SHAPES_BY_KIND`):
+Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #762):
+`field_capabilities(tessellation)` lists the presets (`key`, plus `params: [{name, min}]`) and the
+operations (`translate`, `reflect`) it supports. `pixi/fieldOps.ts` caches the capabilities per
+tessellation. The shape selector lists exactly the offered presets; each preset's parameter form is
+built from its schema (one input per param, lower bound `min`). A tool whose operation is not
+offered is hidden (the Symmetry tool needs `reflect`; moving a selection needs `translate`). The
+current table, for reference:
 
 | Kind | Preset shapes |
 |---|---|
@@ -46,7 +52,11 @@ Which preset shapes a kind offers is UI registry metadata (`FIELD_SHAPES_BY_KIND
 | `tri` | rect, triangle, hexagon, circle |
 | `cairo` | rect, circle, triangle, hexagon |
 
-Project load rejects a floor `shape` or `savedShapes` entry the maze-wide kind does not offer
+Each floor keeps one `selectedShape` (a preset key); the default is the kind's default preset
+(square `rect`, hex `hexagon`, tri `triangle`, cairo `rect`). It falls back to the default when the
+tessellation does not offer the previous selection.
+
+Project load rejects a floor `shape` or `savedShapes` entry the maze-wide tessellation does not offer
 (for example a `square` field with a `parallelogram` shape); `custom` is accepted for every kind.
 
 Hex/tri display orientation is a maze-wide display setting (`hexOrientation`/`triOrientation`),
@@ -219,9 +229,10 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
-| `floorFields[floorId].cairoShape` | Cairo's rect/circle/triangle/hexagon standard shape or free custom mode |
+| `floorFields[floorId].selectedShape` | The preset shape chosen for that floor (a core preset key); applies in default mode and is remembered while a custom field is edited |
 | `floorFields[floorId].fieldConfig` | That floor's current `FieldConfig`; a preset shape in default mode, `custom` shape in free-draw mode |
 | `floorFields[floorId].savedShapes` | That floor's saved size params per preset shape, restored on shape/mode switch |
+| `fieldOpError` | The last refused symmetry preview/apply (`{kind, message?}`), shown in the symmetry panel status; cleared when the preview succeeds |
 
 `fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.
 
@@ -416,10 +427,20 @@ cancellable (cells are already committed individually on each move).
 On mouseup in Add/Remove mode: `addFieldPoints(cells)` or `removeFieldPoints(cells)` is called
 with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit
 divergence. Select mode initially only updates the transient boundary preview; a confirmed
-selection drag calls `moveFieldPoints(cells, dx, dy)` once on Enter, Space, clicking outside the
+selection drag calls `moveFieldPoints(cells, vector)` (a translation vector in core world units) once on Enter, Space, clicking outside the
 selection, releasing the pointer outside the canvas, or switching the primitive/operation mode,
 while Delete/Backspace calls
 `removeFieldPoints(cells)`.
+
+### Move (GitHub issue #762)
+
+A selection moves through core's `field_translate_cells`. During the drag, the pointer cell's center
+minus the drag start cell's center gives the translation vector; the preview is the translated
+selection. A pointer position that is not a translation symmetry of the tessellation, or that
+leaves it, keeps the last valid preview, so the selection snaps between valid positions. Every
+other refusal does the same. The drag only
+starts when `translate` is offered. `moveFieldPoints` translates the selected cells through core
+and replaces them in the field; a refusal leaves the field unchanged.
 
 ## Grid overlay
 
@@ -521,5 +542,22 @@ an unfinished polygon; when the symmetry status is ready, Enter confirms the ope
 operation applies the selected scope to the active cells in the current custom field, then merges
 or removes the reflected cells according to the active field-editor mode. After confirmation, the symmetry geometry is cleared and the normal
 point tool is restored; the symmetry settings remain unchanged.
+
+The reflected cells come from core's `field_reflect_cells` (GitHub issue #762); the axis is passed
+in core world space. Core accepts only axes that are true reflection symmetries of the tessellation.
+A free axis that is not one is not applied: the preview shows no mirrored cells and the core error
+(`not_a_symmetry`) is shown to the user; confirmation does not change the field. The tool is hidden
+when `reflect` is not offered.
+
+### Field operation errors
+
+The symmetry panel keeps the Apply button with the other action buttons; below them is the status
+area, which shows at most one bubble. A ready configuration shows nothing. When the user still has
+to act (build the axis, build or finish the polygon) it shows an info bubble. A refusal of core's
+reflection (`FieldOpError`: `unavailable`, `not_a_symmetry`, `outside_tessellation`) shows a warning bubble with the message (strings `field.op_error.*`), says
+why the axis does not fit and how to fix it, and disables Apply. The error is stored in
+`fieldOpError` and cleared when the preview is computed without error, the axis is incomplete, or
+the panel closes. The field setup card shows no operation errors. A selection move refused by core is not reported: the preview keeps its last
+valid position.
 - pointing-up: `cy = -(row × H + H/3)`
 - pointing-down: `cy = -(row × H + 2H/3)`

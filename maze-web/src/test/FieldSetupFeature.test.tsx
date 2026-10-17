@@ -154,12 +154,12 @@ describe("FieldSetupFeature — Copy floor button", () => {
     useMazeStore.setState({
       tessellationKind: "hex",
       mazeDirty: true,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ hexShape: "parallelogram" }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ selectedShape: "parallelogram", fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") }) },
     });
     render(<FieldSetupFeature />);
     fireEvent.change(screen.getByDisplayValue("Parallelogram"), { target: { value: "hexagon" } });
     expect(screen.getByText("Changing the field resets the current generation and post-edit results. Continue?")).toBeInTheDocument();
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].hexShape).toBe("parallelogram");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].selectedShape).toBe("parallelogram");
   });
 
   it("is hidden with a single floor", () => {
@@ -369,7 +369,7 @@ describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", (
 
   it("labels a Cairo rectangle with its fundamental-square dimensions", () => {
     const floors = [
-      baseFloorFieldConfig({ cairoShape: "rect", fieldConfig: fieldOf("cairo", { shape: "rect", cols: 2, rows: 3 }) }),
+      baseFloorFieldConfig({ selectedShape: "rect", fieldConfig: fieldOf("cairo", { shape: "rect", cols: 2, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("cairo", floors)).toContain("2×3");
   });

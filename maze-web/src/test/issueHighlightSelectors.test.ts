@@ -8,6 +8,9 @@ import { fieldOf } from "./fieldConfigFixtures";
 // tessellation families.
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
   getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
   getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,

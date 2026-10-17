@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const OTHER_FLOOR_ID = "floor_other";
@@ -29,8 +30,8 @@ describe("copyFloorField", () => {
       postEditDirty: true,
       postEditAnalytics: {} as never,
     });
-    useMazeStore.getState().setSquareShape("free");
-    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({ kind: "setSquareShape", shape: "free" });
+    useMazeStore.getState().setSelectedShape("circle");
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({ kind: "setSelectedShape", shape: "circle" });
     expect(useMazeStore.getState().nodes).toHaveLength(1);
     useMazeStore.getState().confirmFieldEdit();
     const state = useMazeStore.getState();
@@ -95,5 +96,42 @@ describe("setFieldConfigsForFloors", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(configs[TEST_FLOOR_ID]);
     expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(configs[OTHER_FLOOR_ID]);
     expect(useMazeStore.getState().fieldEditConfirmation).toBeNull();
+  });
+});
+
+describe("core-backed field operations", () => {
+  const customSquare = (points: [number, number][]) => baseFloorFieldConfig({
+    fieldConfig: fieldOf("square", { shape: "custom", points }),
+    fieldEditMode: "custom",
+    isEditingField: true,
+    fieldPoints: new Set(points.map(([x, y]) => encodePoint(x, y))),
+    freeFieldPoints: { ...emptyFreePoints(), square: new Set(points.map(([x, y]) => encodePoint(x, y))) },
+  });
+
+  it("moveFieldPoints translates the selection by a world vector", () => {
+    useMazeStore.setState({ floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[0, 0], [1, 0]]) } });
+    useMazeStore.getState().moveFieldPoints([[1, 0]], [0, 1]);
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect([...field.fieldPoints].map(decodePoint).sort()).toEqual([[0, 0], [1, 1]].sort());
+    expect(useMazeStore.getState().fieldOpError).toBeNull();
+  });
+
+  it("moveFieldPoints keeps the field when core refuses the move", () => {
+    useMazeStore.setState({ floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[0, 0], [1, 0]]) } });
+    useMazeStore.getState().moveFieldPoints([[0, 0]], [0.5, 0]);
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldPoints.size).toBe(2);
+    expect(useMazeStore.getState().fieldOpError).toBeNull();
+  });
+
+  it("applySymmetry reports a free axis instead of changing the field", () => {
+    useMazeStore.setState({
+      floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[1, 0]]) },
+      symmetryScope: "everything",
+      symmetryAxisPoints: [{ x: -100, y: -100 }, { x: 100, y: -60 }],
+    });
+    useMazeStore.getState().applySymmetry();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints.size).toBe(1);
+    expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
   });
 });

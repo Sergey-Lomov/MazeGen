@@ -1,8 +1,9 @@
 import type { FieldConfig } from "../fieldConfig";
-import { getCellVertices } from "./tessellationGeometry";
-import { configAllCells } from "./tessellationCells";
+import { displayTransform, getCellVertices } from "./tessellationGeometry";
 import { makeProjection } from "./tessellationProjection";
-import { TILE_SIZE } from "./constants";
+import { applyTransform, invertTransform } from "./geometry/worldTransform";
+import { reflectFieldCells, type FieldOpError } from "../wasm/mazeService";
+import { asFieldOpError } from "./fieldOps";
 import { cellsInsidePolygon } from "./polygonGeometry";
 
 export type SymmetrySnapMode = "centers" | "corners" | "free";
@@ -20,23 +21,19 @@ export interface SymmetryOptions {
 export interface SymmetryPreview {
   sourceCells: [number, number][];
   mirroredCells: [number, number][];
+  /** Why core refused the reflection; `mirroredCells` is empty then. */
+  error: FieldOpError | null;
 }
 
-export function reflectPointAcrossAxis(point: SymmetryPoint, axis: [SymmetryPoint, SymmetryPoint]): SymmetryPoint {
-  const [a, b] = axis;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) return { ...point };
-  const projection = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared;
-  const projected = { x: a.x + projection * dx, y: a.y + projection * dy };
-  return { x: 2 * projected.x - point.x, y: 2 * projected.y - point.y };
-}
+/** Distance (display units) under which a point counts as lying on the axis. */
+const AXIS_EPSILON = 1e-6;
 
-/** Signed side of a point relative to the directed axis. Positive means left of A→B. */
-export function sideOfAxis(point: SymmetryPoint, axis: [SymmetryPoint, SymmetryPoint]): number {
+/** Signed side of a point relative to the directed axis. Positive means left of A→B; 0 on the axis. */
+export function sideOfAxis(point: SymmetryPoint, axis: [SymmetryPoint, SymmetryPoint], axisLength?: number): number {
   const [a, b] = axis;
-  return Math.sign((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x));
+  const cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+  const length = axisLength ?? Math.hypot(b.x - a.x, b.y - a.y);
+  return length === 0 || Math.abs(cross) / length < AXIS_EPSILON ? 0 : Math.sign(cross);
 }
 
 export function worldPointForCell(cell: [number, number], cfg: FieldConfig): SymmetryPoint {
@@ -68,82 +65,47 @@ export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, 
   return best;
 }
 
+/** The axis in `maze-core` world units: symmetry space is y-up display space. */
+function axisInCoreSpace(axis: [SymmetryPoint, SymmetryPoint], cfg: FieldConfig): [[number, number], [number, number]] {
+  const inverse = invertTransform(displayTransform(cfg));
+  const toCore = (point: SymmetryPoint) => applyTransform(inverse, [point.x, -point.y]);
+  return [toCore(axis[0]), toCore(axis[1])];
+}
+
 /**
- * Computes the cells shown by the symmetry preview. `candidateCells` is the finite set of
- * editable cells; only active cells from that set can become sources.
+ * Computes the cells shown by the symmetry preview. Sources are the filled cells selected by the
+ * scope; their mirror image comes from `maze-core`, which refuses axes that are not true
+ * reflection symmetries of the tessellation (`error`, with no mirrored cells).
  */
 export function computeSymmetryPreview(
   filledCells: Set<number>,
-  candidateCells: [number, number][],
   cfg: FieldConfig,
   options: SymmetryOptions,
   encode: (x: number, y: number) => number,
+  decode: (key: number) => [number, number],
 ): SymmetryPreview {
   const sourceCells: [number, number][] = [];
-  const mirroredCells: [number, number][] = [];
-  const seenMirrors = new Set<number>();
+  const axisLength = Math.hypot(options.axis[1].x - options.axis[0].x, options.axis[1].y - options.axis[0].y);
+  if (axisLength === 0) return { sourceCells, mirroredCells: [], error: null };
   const polygonCells = options.scope === "polygon"
     ? new Set(cellsInsidePolygon(options.polygon, cfg).map(([x, y]) => encode(x, y)))
     : null;
-  const axisLength = Math.hypot(options.axis[1].x - options.axis[0].x, options.axis[1].y - options.axis[0].y);
-  if (axisLength === 0) return { sourceCells, mirroredCells };
 
-  for (const cell of candidateCells) {
-    const key = encode(cell[0], cell[1]);
-    if (!filledCells.has(key)) continue;
-
-    const point = worldPointForCell(cell, cfg);
-    const side = sideOfAxis(point, options.axis);
+  for (const key of filledCells) {
+    const cell = decode(key);
+    const side = sideOfAxis(worldPointForCell(cell, cfg), options.axis, axisLength);
     if (side === 0) continue;
     if (options.scope === "one_side" && side !== options.sourceSide) continue;
     if (options.scope === "polygon" && !polygonCells?.has(key)) continue;
-
-    const mirror = cellForWorldPoint(reflectPointAcrossAxis(point, options.axis), cfg);
-    const mirrorKey = encode(mirror[0], mirror[1]);
-    if (mirrorKey === key || seenMirrors.has(mirrorKey)) continue;
-    seenMirrors.add(mirrorKey);
     sourceCells.push(cell);
-    mirroredCells.push(mirror);
   }
-  return { sourceCells, mirroredCells };
-}
-
-/** Returns a finite editable universe around the current field and axis. */
-export function symmetryCandidateCells(
-  filledCells: Set<number>,
-  cfg: FieldConfig,
-  axisPoints: SymmetryAxisPoints,
-  decode: (key: number) => [number, number],
-): [number, number][] {
-  const cells = new Map<string, [number, number]>();
-  for (const cell of configAllCells(cfg)) cells.set(`${cell[0]},${cell[1]}`, cell);
-  for (const key of filledCells) {
-    const cell = decode(key);
-    cells.set(`${cell[0]},${cell[1]}`, cell);
+  if (sourceCells.length === 0) return { sourceCells, mirroredCells: [], error: null };
+  try {
+    const mirroredCells = reflectFieldCells(cfg.tessellation, sourceCells, axisInCoreSpace(options.axis, cfg));
+    return { sourceCells, mirroredCells, error: null };
+  } catch (error) {
+    return { sourceCells, mirroredCells: [], error: asFieldOpError(error) };
   }
-
-  const worldPoints = [
-    ...[...cells.values()].map((cell) => worldPointForCell(cell, cfg)),
-    ...axisPoints,
-  ];
-  if (worldPoints.length === 0) return [];
-  const minX = Math.min(...worldPoints.map((point) => point.x)) - TILE_SIZE * 2;
-  const maxX = Math.max(...worldPoints.map((point) => point.x)) + TILE_SIZE * 2;
-  const minY = Math.min(...worldPoints.map((point) => point.y)) - TILE_SIZE * 2;
-  const maxY = Math.max(...worldPoints.map((point) => point.y)) + TILE_SIZE * 2;
-  const projection = makeProjection(cfg);
-  const gridCorners = [
-    projection.screenToGrid(minX, -minY), projection.screenToGrid(maxX, -minY),
-    projection.screenToGrid(minX, -maxY), projection.screenToGrid(maxX, -maxY),
-  ];
-  const minGridX = Math.min(...gridCorners.map((point) => point.x)) - 2;
-  const maxGridX = Math.max(...gridCorners.map((point) => point.x)) + 2;
-  const minGridY = Math.min(...gridCorners.map((point) => point.y)) - 2;
-  const maxGridY = Math.max(...gridCorners.map((point) => point.y)) + 2;
-  for (let x = minGridX; x <= maxGridX; x++) {
-    for (let y = minGridY; y <= maxGridY; y++) cells.set(`${x},${y}`, [x, y]);
-  }
-  return [...cells.values()];
 }
 
 function cellVertices(x: number, y: number, cfg: FieldConfig): SymmetryPoint[] {
