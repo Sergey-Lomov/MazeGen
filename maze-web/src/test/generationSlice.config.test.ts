@@ -23,7 +23,9 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
@@ -33,7 +35,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 import { generateMaze, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
+import { configAllCells } from "../pixi/tessellationCells";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
@@ -339,13 +341,15 @@ describe("mazeStore generation misc actions", () => {
 
   it("loadProject restores Cairo custom field points on the floor state", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
-    const points = new Set([encodePoint(1, 2), encodePoint(2, 1)]);
+    // Valid Cairo cells only: core rejects any other coordinate.
+    const [first, second] = configAllCells(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }));
+    const points = new Set([encodePoint(...first), encodePoint(...second)]);
     useMazeStore.setState({
       tessellationKind: "cairo",
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
           cairoShape: "free",
-          fieldConfig: fieldOf("cairo", { shape: "custom", points: [[1, 2], [2, 1]] }),
+          fieldConfig: fieldOf("cairo", { shape: "custom", points: [first, second] }),
           freeFieldPoints: { ...baseStoreState().floorFields[TEST_FLOOR_ID].freeFieldPoints, cairo: points },
           isEditingField: true,
           fieldPoints: points,
@@ -358,7 +362,7 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.getState().loadProject(file);
 
     const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
-    expect(field.fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: [[1, 2], [2, 1]] }));
+    expect(field.fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: [first, second] }));
     expect(field.cairoShape).toBe("free");
     expect(field.fieldPoints).toEqual(points);
     expect(field.freeFieldPoints.cairo).toEqual(points);

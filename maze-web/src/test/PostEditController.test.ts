@@ -8,13 +8,14 @@ import { edgeKey, nodeEndpoint } from "../pixi/postEditEndpoint";
 import { PostEditController } from "../pixi/PostEditController";
 import type { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));

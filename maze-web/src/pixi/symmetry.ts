@@ -1,8 +1,7 @@
-import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { getCellVertices } from "./tessellationGeometry";
 import { configAllCells } from "./tessellationCells";
 import { makeProjection } from "./tessellationProjection";
-import { hexCenter, hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
 import { TILE_SIZE } from "./constants";
 import { cellsInsidePolygon } from "./polygonGeometry";
 
@@ -148,21 +147,7 @@ export function symmetryCandidateCells(
 }
 
 function cellVertices(x: number, y: number, cfg: FieldConfig): SymmetryPoint[] {
-  if (cfg.tessellation.kind === "square") {
-    const center = worldPointForCell([x, y], cfg);
-    const h = TILE_SIZE / 2;
-    return [
-      { x: center.x - h, y: center.y - h }, { x: center.x + h, y: center.y - h },
-      { x: center.x + h, y: center.y + h }, { x: center.x - h, y: center.y + h },
-    ];
-  }
-  if (cfg.tessellation.kind === "hex") {
-    const orientation = hexOrientationOf(cfg);
-    const center = hexCenter(x, y, orientation, cfg);
-    return hexVertices(center.x, center.y, orientation).map((point) => ({ x: point.x, y: -point.y }));
-  }
-  const orientation = triOrientationOf(cfg);
-  return triVertices(x, y, orientation).map((point) => ({ x: point.x, y: -point.y }));
+  return getCellVertices(x, y, cfg).map((point) => ({ x: point.x, y: -point.y }));
 }
 
 export function symmetryStatus(options: Pick<SymmetryOptions, "axis" | "scope" | "polygon"> | { axisPoints: SymmetryAxisPoints; scope: SymmetryScope; polygon: SymmetryPoint[]; polygonFinished?: boolean }): "axis" | "polygon" | "ready" {

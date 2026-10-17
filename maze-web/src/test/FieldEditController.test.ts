@@ -79,8 +79,8 @@ afterEach(() => {
 describe("FieldEditController polygon interaction", () => {
   it("updates the preview on pointer movement and marks the closing segment dashed", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
     controller.onPointerMove(120, -120);
 
     const geometry = lastPolygon(updates);
@@ -112,9 +112,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("snaps a dragged vertex to the cell center by default", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
 
     controller.onPointerDown(140, -60, 0);
     controller.onPointerMove(165, -165);
@@ -126,9 +126,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("allows a dragged vertex to move freely while Shift is held", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
     controller.onPointerDown(140, -60, 0);
@@ -141,20 +141,20 @@ describe("FieldEditController polygon interaction", () => {
 
   it("commits when a new vertex is double-clicked", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
-    click(controller, 200, -120);
-    controller.onDoubleClick(200, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
+    click(controller, 205, -125);
+    controller.onDoubleClick(205, -125);
 
     expect(commits).toHaveLength(1);
   });
 
   it("commits when the last installed vertex is double-clicked", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     controller.onDoubleClick(140, -140);
 
     expect(commits).toHaveLength(1);
@@ -172,9 +172,9 @@ describe("FieldEditController polygon interaction", () => {
       },
     });
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
     expect(commits).toHaveLength(1);
@@ -183,9 +183,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("does not commit a stale polygon after the tool changes", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "point" },
@@ -198,9 +198,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("cancels an in-progress polygon with Escape", () => {
     const { controller, commits, previewClear } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
 
     expect(commits).toHaveLength(0);
@@ -226,10 +226,10 @@ describe("FieldEditController select interaction", () => {
     const { controller, updates, previewCells, commits, selectionMoves } = makeController();
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
-    click(controller, 0, -10);
-    click(controller, 80, -10);
-    click(controller, 80, -90);
-    click(controller, 0, -90);
+    click(controller, 5, -10);
+    click(controller, 85, -10);
+    click(controller, 85, -90);
+    click(controller, 5, -90);
     expect(previewCells.at(-1)).toEqual(expect.arrayContaining([[0, 0], [1, 0], [0, 1], [1, 1]]));
     expect(previewCells.at(-1)).toHaveLength(4);
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
@@ -238,8 +238,8 @@ describe("FieldEditController select interaction", () => {
     expect(previewCells.at(-1)).toEqual([]);
     expect(commits).toHaveLength(0);
 
-    controller.onPointerDown(0, -10, 0);
-    controller.onPointerMove(80, -10, 0);
+    controller.onPointerDown(5, -10, 0);
+    controller.onPointerMove(85, -10, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 

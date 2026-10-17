@@ -1,23 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../wasm/wasmLoader", async (importActual) => {
-  const actual = await importActual<typeof import("../wasm/wasmLoader")>();
-  return {
-    ...actual,
-    getWasm: () => ({
-      ...actual.getWasm(),
-    // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
-    // comment on squareCenter.
-    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
-    }),
-  };
-});
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SplitSettingsDialog } from "../components/dialogs/SplitSettingsDialog";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import type { SplitPattern } from "../wasm/types";
-import { fakeCellCenters } from "./cellCentersFake";
 
 function pattern(weight: number): SplitPattern {
   return { shape: "regular:4", node_count: 2, faces: [[], []], weight };

@@ -19,7 +19,6 @@ import { splitPatternNodeColor } from "./splitPatternTile";
 import type { TileFace, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 import { patternShapeOf } from "./shapeTemplates";
 
 export interface SplitNodeBlueprint {
@@ -43,8 +42,6 @@ export interface SplitNodeBlueprint {
    *  blueprint with no recognizable/named counterpart — the panel falls back to a generic
    *  "split-tile" label. */
   titleKey?: string;
-  /** `nodeFaces` uses Cairo's canonical perimeter indices instead of the native core face slots. */
-  faceIndexMode?: "cairo_canonical";
 }
 
 const TRIANGLE_BLUEPRINTS: SplitNodeBlueprint[] = [
@@ -72,21 +69,18 @@ const CAIRO_BLUEPRINTS: SplitNodeBlueprint[] = [
     degree: 5,
     nodeFaces: [[2, 3], [1, 4]],
     titleKey: "split_pattern_title.parallel_divider",
-    faceIndexMode: "cairo_canonical",
   },
   {
     id: 1,
     degree: 5,
     nodeFaces: [[1, 2], [3, 4]],
     titleKey: "split_pattern_title.adjacent_divider",
-    faceIndexMode: "cairo_canonical",
   },
   {
     id: 2,
     degree: 5,
     nodeFaces: [[0, 2, 3], [1, 4]],
     titleKey: "split_pattern_title.bridge_2x3",
-    faceIndexMode: "cairo_canonical",
   },
 ];
 
@@ -105,23 +99,8 @@ export function blueprintsForDegree(degree: number): SplitNodeBlueprint[] {
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for `blueprint`'s preview thumbnail — same
  *  role as `splitPatternTile.ts`'s `tileNodesForPattern`, simpler here since a blueprint only ever
  *  declares `passage` faces (everything else defaults to `wall`), no `one_way`/`undefined`. */
-export function resolveBlueprintFaceIndex(
-  blueprint: SplitNodeBlueprint,
-  cfg: FieldConfig | undefined,
-  point: [number, number] | undefined,
-  faceIndex: number,
-): number {
-  if (blueprint.faceIndexMode !== "cairo_canonical" || cfg?.tessellation.kind !== "cairo" || !point) return faceIndex;
-  return cairoCanonicalFaceOrder(point[0], point[1])[faceIndex] ?? faceIndex;
-}
-
-export function tileNodesForBlueprint(
-  blueprint: SplitNodeBlueprint,
-  cfg?: FieldConfig,
-  point?: [number, number],
-): TileFaceNode[] {
-  return blueprint.nodeFaces.map((faces, nodeIndex): TileFaceNode => {
-    const resolvedFaces = faces.map((face) => resolveBlueprintFaceIndex(blueprint, cfg, point, face));
+export function tileNodesForBlueprint(blueprint: SplitNodeBlueprint): TileFaceNode[] {
+  return blueprint.nodeFaces.map((resolvedFaces, nodeIndex): TileFaceNode => {
     return {
       color: splitPatternNodeColor(nodeIndex),
       faces: Array.from({ length: blueprint.degree }, (_, faceIndex): TileFace => ({
@@ -181,15 +160,13 @@ export function fittingRotation(
 export function blueprintToSplitPattern(
   blueprint: SplitNodeBlueprint,
   cfg: FieldConfig,
-  point?: [number, number],
 ): SplitPattern {
   return {
     shape: patternShapeOf(cfg),
     node_count: blueprint.nodeFaces.length,
-    faces: blueprint.nodeFaces.map((faces) => faces.map((face) => {
-      const face_index = resolveBlueprintFaceIndex(blueprint, cfg, point, face);
-      return { face_index, requirement: { kind: "passage" as const } };
-    })),
+    faces: blueprint.nodeFaces.map((faces) => faces.map((face_index) => (
+      { face_index, requirement: { kind: "passage" as const } }
+    ))),
     weight: 1.0,
   };
 }

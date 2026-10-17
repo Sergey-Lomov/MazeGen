@@ -23,8 +23,7 @@ pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
 pub use field_ops::{field_capabilities, field_preset, field_reflect_cells, field_translate_cells};
 pub use geometry::{
-    cell_centers, geometry_cell_at, geometry_cells_in_region, geometry_snapshot,
-    tessellation_shapes,
+    geometry_cell_at, geometry_cells_in_region, geometry_snapshot, tessellation_shapes,
 };
 pub use strategies_catalog::available_strategies;
 

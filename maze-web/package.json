@@ -12,9 +12,9 @@
     "prebuild": "node tools/prepare-paraglide.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "pretest": "node tools/prepare-paraglide.mjs",
+    "pretest": "node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs",
     "test": "vitest run",
-    "pretest:watch": "node tools/prepare-paraglide.mjs",
+    "pretest:watch": "node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs",
     "test:watch": "vitest",
     "gen:msdf": "node tools/msdf/generate.mjs"
   },

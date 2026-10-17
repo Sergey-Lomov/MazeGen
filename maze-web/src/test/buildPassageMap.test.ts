@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { buildMazeWalls } from "../pixi/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -13,12 +12,14 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: vi.fn(() => ({ nodes: [], edges: [], start: null, finish: null })), subscribe: vi.fn(() => () => {}) },
 }));
 
-// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// getCellCenter (via cartesianCache's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const squareCfg = fieldOf("square", { shape: "rect", cols: 11, rows: 11 });

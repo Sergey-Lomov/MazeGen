@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { FAMILIES, cellSize, faceLength, labCellGeometry, prepareFamily, scaleCell, type LabCell } from "../components/CorridorGeometryTestPage";
 import { buildCorridorSegments } from "../pixi/selectors/mazeSelectors/corridors";
@@ -14,12 +14,10 @@ import {
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
 
-// Cell geometry for hex/triangle/Cairo comes from the real wasm projection, so this suite runs on
-// the local wasm build (`src/wasm/pkg/`, gitignored build output) and is skipped without it, same
-// convention as `registryConsistency.test.ts`. wasm-bindgen's default `init()` fetches its .wasm by
-// URL, which does not work under node — load the bytes from disk and hand the module to the loader.
+// Cell geometry comes from the real wasm build (`src/wasm/pkg/`, gitignored build output that
+// `npm test` requires). wasm-bindgen's default `init()` fetches its .wasm by URL, which does not
+// work under node — load the bytes from disk and hand the module to the loader.
 const wasmPath = resolve(dirname(__filename), "../wasm/pkg/maze_wasm_bg.wasm");
-const describeIfWasmBuilt = existsSync(wasmPath) ? describe : describe.skip;
 const wasmHolder = vi.hoisted(() => ({ module: null as unknown }));
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
@@ -31,13 +29,12 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 }));
 
 beforeAll(async () => {
-  if (!existsSync(wasmPath)) return;
   const wasm = await import("../wasm/pkg/maze_wasm");
   await wasm.default(readFileSync(wasmPath));
   wasmHolder.module = wasm;
 });
 
-describeIfWasmBuilt("lab geometry matches the production pipeline", () => {
+describe("lab geometry matches the production pipeline", () => {
   const translate = (paths: ContourPath[], offset: CorridorPoint) => paths.flatMap((path) => contourToPolyline(path, 2))
     .map((point) => ({ x: point.x + offset.x, y: point.y + offset.y }));
 
@@ -89,7 +86,7 @@ const insideDistance = (point: CorridorPoint, polygon: readonly CorridorPoint[])
 // A triangle cell with 40px faces (half the native size) covers every dead-end cap case within the
 // lab's thickness range. The cell centre is one inradius (11.5px) from the other faces; a cap
 // centred on the port would have 17.3px of room.
-describeIfWasmBuilt("40px triangle dead end", () => {
+describe("40px triangle dead end", () => {
   const deadEnd = 0b001;
   let triangle: LabCell;
   beforeAll(() => {

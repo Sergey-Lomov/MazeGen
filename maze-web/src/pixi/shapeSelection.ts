@@ -1,12 +1,8 @@
-import { hexOrientationOf, tessellationFamily, triOrientationOf, type FieldConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig, type TriOrientation } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
-import { squareVertices } from "./squareGeometry";
-import { hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
-import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import { isCairoPoint } from "./cairoGeometry";
-import type { TriOrientation } from "./triGeometry";
+import { originCellOf } from "./splitPatternTile";
+import { cellsInDisplayRect, getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 
 export type ShapeKind = "rectangle" | "circle" | "triangle" | "hexagon" | "parallelogram";
 export type ShapeInclusion = "center" | "contained";
@@ -254,21 +250,16 @@ function containsCell(shape: ShapeDefinition, vertices: Point[]): boolean {
   return vertices.every((p) => containsPoint(shape, p));
 }
 
-function candidateBounds(cfg: FieldConfig, shape: ShapeDefinition, origin: Point): { minX: number; maxX: number; minY: number; maxY: number } {
+function candidateCells(cfg: FieldConfig, shape: ShapeDefinition, origin: Point): [number, number][] {
   const b = shapeBounds(shape);
-  const projection = makeProjection(cfg);
-  const corners = [
-    projection.screenToGrid(b.minX + origin.x, -(b.minY + origin.y)),
-    projection.screenToGrid(b.minX + origin.x, -(b.maxY + origin.y)),
-    projection.screenToGrid(b.maxX + origin.x, -(b.minY + origin.y)),
-    projection.screenToGrid(b.maxX + origin.x, -(b.maxY + origin.y)),
-  ];
-  return {
-    minX: Math.min(...corners.map((p) => p.x)) - 3,
-    maxX: Math.max(...corners.map((p) => p.x)) + 3,
-    minY: Math.min(...corners.map((p) => p.y)) - 3,
-    maxY: Math.max(...corners.map((p) => p.y)) + 3,
-  };
+  // Shape coordinates are Y-up; display space is Y-down.
+  const y0 = -(b.minY + origin.y), y1 = -(b.maxY + origin.y);
+  return cellsInDisplayRect({
+    minX: b.minX + origin.x,
+    maxX: b.maxX + origin.x,
+    minY: Math.min(y0, y1),
+    maxY: Math.max(y0, y1),
+  }, "intersects", cfg);
 }
 
 function cellCenter(projection: ReturnType<typeof makeProjection>, origin: Point, x: number, y: number): Point {
@@ -276,23 +267,11 @@ function cellCenter(projection: ReturnType<typeof makeProjection>, origin: Point
   return { x: point.x - origin.x, y: -point.y - origin.y };
 }
 
-function cellVertices(cfg: FieldConfig, projection: ReturnType<typeof makeProjection>, origin: Point, x: number, y: number): Point[] {
-  const center = cellCenter(projection, origin, x, y);
-  const asPositiveY = (point: Point): Point => ({ x: point.x, y: -point.y });
-  switch (cfg.tessellation.kind) {
-    case "square":
-      return squareVertices(center.x, -center.y).map(asPositiveY);
-    case "hex":
-      return hexVertices(center.x, -center.y, hexOrientationOf(cfg)).map(asPositiveY);
-    case "tri":
-      return triVertices(x, y, triOrientationOf(cfg)).map(asPositiveY)
-        .map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
-    case "cairo":
-      return geometryCellVertices(x, y, cfg)?.map((point) => ({
-        x: point.x - origin.x,
-        y: -point.y - origin.y,
-      })) ?? [];
-  }
+function cellVertices(cfg: FieldConfig, origin: Point, x: number, y: number): Point[] {
+  return geometryCellVertices(x, y, cfg).map((point) => ({
+    x: point.x - origin.x,
+    y: -point.y - origin.y,
+  }));
 }
 
 /** Selects cells by one geometric rule for every tessellation and every predefined shape. */
@@ -313,21 +292,16 @@ export function cellsInsideShape(
     ...((shape.kind === "circle" || shape.kind === "triangle" || shape.kind === "hexagon") && shape.height !== undefined ? { height: shape.height * TILE_SIZE } : {}),
   } as ShapeDefinition;
   const projection = makeProjection(cfg);
-  const originScreen = projection.gridToScreen(0, 0);
+  const originScreen = projection.gridToScreen(...originCellOf(cfg));
   const shapeOrigin = origin ?? { x: originScreen.x, y: -originScreen.y };
-  const bounds = candidateBounds(cfg, pixelShape, shapeOrigin);
   const result: [number, number][] = [];
-  for (let x = bounds.minX; x <= bounds.maxX; x++) {
-    for (let y = bounds.minY; y <= bounds.maxY; y++) {
-      if (tessellationFamily(cfg) === "cairo" && !isCairoPoint(x, y)) continue;
-      const normalized = cellCenter(projection, shapeOrigin, x, y);
-      if (inclusion === "contained") {
-        if (!containsCell(pixelShape, cellVertices(cfg, projection, shapeOrigin, x, y))) continue;
-      } else if (!containsPoint(pixelShape, normalized)) {
-        continue;
-      }
-      result.push([x, y]);
+  for (const [x, y] of candidateCells(cfg, pixelShape, shapeOrigin)) {
+    if (inclusion === "contained") {
+      if (!containsCell(pixelShape, cellVertices(cfg, shapeOrigin, x, y))) continue;
+    } else if (!containsPoint(pixelShape, cellCenter(projection, shapeOrigin, x, y))) {
+      continue;
     }
+    result.push([x, y]);
   }
-  return result;
+  return result.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }

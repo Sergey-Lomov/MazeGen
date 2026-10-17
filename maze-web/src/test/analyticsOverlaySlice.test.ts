@@ -4,6 +4,9 @@ import { baseStoreState } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),

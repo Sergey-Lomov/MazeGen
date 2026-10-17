@@ -4,11 +4,12 @@ import { buildNodePositions } from "../pixi/tessellationGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });

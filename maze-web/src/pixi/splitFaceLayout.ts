@@ -11,16 +11,6 @@
 
 import type { SplitSpecialShapeKind } from "./renderers/types";
 
-/** Reorders a dense face-kind matrix from the tessellation's native face slots into a supplied
- * canonical perimeter order. Non-Cairo callers omit the order and keep their existing indices. */
-export function canonicalizeFaceKinds(
-  faceKindsByNode: SplitFaceKind[][],
-  canonicalFaceOrder?: readonly number[],
-): SplitFaceKind[][] {
-  if (!canonicalFaceOrder) return faceKindsByNode;
-  return faceKindsByNode.map((kinds) => canonicalFaceOrder.map((rawIndex) => kinds[rawIndex] ?? "wall"));
-}
-
 /** `"none"` deliberately doesn't exist here — every face always has a real decided-or-default
  *  kind (`wall` for post-edit, `undefined`/optional for presets); "no decision yet" is represented
  *  by `undefined`/`wall` themselves, not a separate absence state. */
@@ -98,10 +88,8 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
  *  so a recognized shape would hide the directionality. Falling back to `null` makes the caller
  *  render the ordinary per-node hub connectors, which draw the one-way arrow. */
 export function detectSplitSpecialShapeKind(
-  rawFaceKindsByNode: SplitFaceKind[][],
-  canonicalFaceOrder?: readonly number[],
+  faceKindsByNode: SplitFaceKind[][],
 ): SplitSpecialShapeKind | null {
-  const faceKindsByNode = canonicalizeFaceKinds(rawFaceKindsByNode, canonicalFaceOrder);
   const degree = faceKindsByNode[0]?.length ?? 0;
   const nodeCount = faceKindsByNode.length;
   if (faceKindsByNode.some((kinds) => kinds.some((k) => k === "one_way_out" || k === "one_way_in"))) return null;

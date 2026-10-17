@@ -4,12 +4,13 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { TeleportGroup } from "../pixi/selectors/teleportGroups";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 // Cell centers resolve through wasm, unavailable in unit tests — canonical square formula.
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const group = (edgeKeys: string[], links: [number, number][], points: [number, number][]): TeleportGroup => ({

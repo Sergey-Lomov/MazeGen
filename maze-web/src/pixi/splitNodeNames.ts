@@ -21,7 +21,7 @@
  *  - `"hex_triple_corridor"` — the single opposite-face pair is the "Middle corridor"; the two
  *    adjacent-face nodes are "Side corridor 1" / "Side corridor 2" by ascending lowest face index. */
 
-import { canonicalizeFaceKinds, detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
+import { detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import * as m from "~/paraglide/messages";
 
@@ -78,10 +78,8 @@ const sideCorridorN = (n: number): SemanticName => ({
  *  faces, in `offsets`/row order — original node first, then each slot), or `null` if this point's
  *  topology has no registered names. A non-`null` result always has exactly one entry per node. */
 export function splitNodeSemanticNamesFromKinds(
-  rawFaceKindsByNode: SplitFaceKind[][],
-  canonicalFaceOrder?: readonly number[],
+  faceKindsByNode: SplitFaceKind[][],
 ): SemanticName[] | null {
-  const faceKindsByNode = canonicalizeFaceKinds(rawFaceKindsByNode, canonicalFaceOrder);
   const kind = detectSplitSpecialShapeKind(faceKindsByNode);
   if (kind === null) return null;
 
@@ -168,8 +166,8 @@ export function splitNodeSemanticNamesFromKinds(
 
 /** Per-node semantic names for `nodes` (in row order: original node first, then each slot), or
  *  `null` if this point's topology has no registered names. */
-export function splitNodeSemanticNames(nodes: SplitNodeFaces[], canonicalFaceOrder?: readonly number[]): SemanticName[] | null {
-  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)), canonicalFaceOrder);
+export function splitNodeSemanticNames(nodes: SplitNodeFaces[]): SemanticName[] | null {
+  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)));
 }
 
 /** One name for the whole split point's recognized shape (not per-node) — e.g. for

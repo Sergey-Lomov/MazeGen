@@ -8,7 +8,6 @@ import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
-import { resolveBlueprintFaceIndex } from "../../pixi/splitBlueprints";
 import type { NodeLockKind } from "../../wasm/types";
 import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnectionsState, type PresetConnectionsActions } from "../storeTypes";
 import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
@@ -873,9 +872,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       const faceCount = Math.min(blueprint.degree, offsets.length);
       for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
         const endpoint = nodeEndpoints[nodeIndex];
-        const requiredFaces = new Set(blueprint.nodeFaces[nodeIndex].map((face) =>
-          resolveBlueprintFaceIndex(blueprint, field.fieldConfig, point, face),
-        ));
+        const requiredFaces = new Set(blueprint.nodeFaces[nodeIndex]);
         for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
           const [dx, dy] = offsets[faceIndex];
           const neighbor: [number, number] = [point[0] + dx, point[1] + dy];

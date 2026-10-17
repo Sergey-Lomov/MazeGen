@@ -278,15 +278,14 @@ per-node requirement lists are indexed by canonical face.
 
 ### Pattern UI
 
-Interim (#758): the store and the project file keep web authoring order (`getNeighborData` offsets
-at `patternAnchorPoint`); `SPLIT_FACE_INDEX_WEB_TO_CORE` now maps it to canonical indices (square
-identity, hex per display orientation, triangle and Cairo through the anchor cell's binding —
-pointing-up triangle, `D` Cairo tile). Target (#764):
+The store and the project file keep web authoring order: `face_index` follows core's `faces_of`
+(canonical CCW order) of the pattern anchor cell, `originCellOf(cfg)` (registry field `originCell`;
+Cairo `[2, 1]`, others `[0, 0]`). `splitFaceIndexToCore` / `splitFaceIndexToWeb` convert between that
+order and core's canonical indices through the anchor cell's `canonical_face` binding. No
+per-tessellation face tables exist in the web.
 
 `TileFaceEditor`, face rotation and bridge/diagonal detection are driven by the descriptor:
 - template geometry from core;
 - canonical face order;
 - the descriptor's full group while authoring (a pattern has no cell);
 - the cell's allowed group for post-edit/preset tiles.
-
-`SPLIT_FACE_INDEX_WEB_TO_CORE` is removed: web and core share canonical indices.

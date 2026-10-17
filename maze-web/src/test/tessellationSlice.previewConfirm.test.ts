@@ -4,7 +4,6 @@ import { encodePoint } from "../pixi/tessellationProjection";
 import { baseStoreState, emptyFreePoints, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -13,9 +12,9 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  // Cartesian coordinates aren't asserted on in this suite -- any deterministic per-point
-  // stand-in is fine, as long as its shape matches `getCellCenters`'s real return type.
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),

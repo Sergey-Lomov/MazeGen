@@ -7,12 +7,13 @@ import { computeAnalyticsAsync, generateMaze } from "../wasm/mazeService";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),

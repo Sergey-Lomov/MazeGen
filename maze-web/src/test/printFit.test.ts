@@ -1,14 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { PrintExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenter } from "./cellCentersFake";
-
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
 
 const { cellMeasureWorldUnits, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 

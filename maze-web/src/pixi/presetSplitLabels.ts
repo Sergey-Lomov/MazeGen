@@ -6,7 +6,6 @@ import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView
 import { formatTargetLabel } from "./targetLabel";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 /** Inputs needed to resolve a preset endpoint's compact split-node label at any floor. */
 export interface PresetSplitLabelContext {
@@ -41,7 +40,7 @@ function resolvePresetSplitNodeNames(
     ctx.splitPoints,
     ctx.activeSplitNode,
     normalizedLevel,
-  )), cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(endpoint.point[0], endpoint.point[1]) : undefined);
+  )));
   const index = nodes.findIndex((node) => presetEndpointsEqual(node, endpoint));
   return { nodes, names, index };
 }
@@ -124,10 +123,6 @@ export function resolvePresetSplitShapeLabel(
     node, point, ctx.cfgAt(level), ctx.inFieldCellsAt(level),
     ctx.presetConnections, ctx.splitPoints, ctx.activeSplitNode, normalizedLevel,
   ));
-  const cfg = ctx.cfgAt(level);
-  const kind = detectSplitSpecialShapeKind(
-    faceKindsByNode,
-    cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
-  );
+  const kind = detectSplitSpecialShapeKind(faceKindsByNode);
   return kind !== null ? splitPointShapeName(kind) : m["preset.split_tile"]();
 }

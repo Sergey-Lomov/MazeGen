@@ -29,7 +29,6 @@ describe("blueprintsForDegree", () => {
       degree: 5,
       nodeFaces: [[2, 3], [1, 4]],
       titleKey: "split_pattern_title.parallel_divider",
-      faceIndexMode: "cairo_canonical",
     });
   });
 
@@ -39,7 +38,6 @@ describe("blueprintsForDegree", () => {
       degree: 5,
       nodeFaces: [[1, 2], [3, 4]],
       titleKey: "split_pattern_title.adjacent_divider",
-      faceIndexMode: "cairo_canonical",
     });
   });
 
@@ -49,7 +47,6 @@ describe("blueprintsForDegree", () => {
       degree: 5,
       nodeFaces: [[0, 2, 3], [1, 4]],
       titleKey: "split_pattern_title.bridge_2x3",
-      faceIndexMode: "cairo_canonical",
     });
   });
 });
@@ -125,12 +122,12 @@ describe("blueprintToSplitPattern", () => {
     expect(pattern.faces[1]).toEqual([]);
   });
 
-  it("stores Cairo canonical blueprint faces in the anchor tile's native slots", () => {
+  it("stores Cairo blueprint faces unrotated", () => {
     const blueprint = blueprintsForDegree(5)[0];
-    const pattern = blueprintToSplitPattern(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), [2, 1]);
+    const pattern = blueprintToSplitPattern(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }));
     expect(pattern.shape).toBe("cairo_pentagon");
-    expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 4]);
-    expect(pattern.faces[1].map((face) => face.face_index)).toEqual([3, 1]);
+    expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 3]);
+    expect(pattern.faces[1].map((face) => face.face_index)).toEqual([1, 4]);
   });
 });
 
@@ -143,10 +140,10 @@ describe("tileNodesForBlueprint", () => {
     expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage"]);
   });
 
-  it("resolves Cairo canonical faces for a concrete tile preview", () => {
+  it("builds a Cairo tile preview", () => {
     const blueprint = blueprintsForDegree(5)[0];
-    const nodes = tileNodesForBlueprint(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), [2, 1]);
-    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "wall", "passage"]);
-    expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage", "wall"]);
+    const nodes = tileNodesForBlueprint(blueprint);
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "passage", "wall"]);
+    expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "wall", "passage"]);
   });
 });

@@ -7,10 +7,12 @@ import { VerticalConnectionRenderer } from "../pixi/renderers/VerticalConnection
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenter } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -20,12 +22,6 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
-// Cartesian coords come from wasm, unavailable here — same square-grid stand-in as other renderer tests.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
-
 const SECOND_FLOOR_ID = "floor_2";
 const TESS = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
 // Two floors of a 2x1 grid: (0,0) is node 0 / node 1, (1,0) is node 2 / node 3.

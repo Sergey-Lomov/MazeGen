@@ -8,9 +8,8 @@ import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICA
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { distributeOklchHues } from "../store/colorMath";
 import * as m from "~/paraglide/messages";
-import { fakeCellCenters } from "./cellCentersFake";
 
-// getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
+// getCellCenter (via cartesianCache's getCartesian, used by buildTeleportEdges for the Teleports
 // section's group list) delegates to wasm, unavailable in this unit-test environment — mocked with
 // the canonical square formula (see `maze-core/src/space/square.rs`'s `cartesian`), same as
 // `issueHighlightSelectors.test.ts`.
@@ -20,7 +19,9 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),

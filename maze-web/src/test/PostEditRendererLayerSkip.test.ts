@@ -13,10 +13,12 @@ import { EdgeHighlightRenderer } from "../pixi/renderers/EdgeHighlightRenderer";
 import { IssueHighlightOverlay } from "../pixi/IssueHighlightOverlay";
 import { canvas } from "../pixi/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenter } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -26,12 +28,6 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
-// Cartesian coords come from wasm, unavailable here — same square-grid stand-in as other renderer tests.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
-
 const n = nodeEndpoint;
 // Point (2,0) is split into nodes 2 and 3; (3,0) is an ordinary cell.
 const NODES = [

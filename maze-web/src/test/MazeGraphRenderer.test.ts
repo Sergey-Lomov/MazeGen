@@ -5,7 +5,9 @@ import { describe, it, expect, vi } from "vitest";
 // real wasm module.
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 // Minimal fake pixi (same pattern as `RegionOverlayRenderer.test.ts`).
@@ -54,7 +56,6 @@ const { Graphics: FakeGraphics, BitmapText: FakeText, Container } = await import
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });

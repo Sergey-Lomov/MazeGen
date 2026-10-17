@@ -6,6 +6,8 @@ import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "../pixi/triShape
 import { fieldOf } from "./fieldConfigFixtures";
 
 /** Core returns preset cells sorted by cell id (x, then y). */
+const SQUARE_CFG = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
+
 function sortedCells(cells: number[][]): number[][] {
   return [...cells].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
@@ -60,17 +62,17 @@ describe("field shape primitives", () => {
 
   it("removes isolated cells before and after smoothing", () => {
     const cells: [number, number][] = [[0, 0], [1, 0], [1, 1], [2, 0], [10, 10]];
-    expect(normalizePrimitiveCells(cells, "square", false)).toEqual([[0, 0], [1, 0], [1, 1], [2, 0]]);
-    expect(normalizePrimitiveCells(cells, "square", true)).toEqual([[1, 0]]);
+    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual([[0, 0], [1, 0], [1, 1], [2, 0]]);
+    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual([[1, 0]]);
   });
 
   it("preserves primitives smaller than the normalization threshold", () => {
     const cells: [number, number][] = [[0, 0]];
-    expect(normalizePrimitiveCells(cells, "square", false)).toEqual(cells);
-    expect(normalizePrimitiveCells(cells, "square", true)).toEqual(cells);
+    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual(cells);
+    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual(cells);
 
     const twoCellLine: [number, number][] = [[0, 0], [1, 0]];
-    expect(normalizePrimitiveCells(twoCellLine, "square", true)).toEqual(twoCellLine);
+    expect(normalizePrimitiveCells(twoCellLine, SQUARE_CFG, true)).toEqual(twoCellLine);
   });
 
   it("keeps predefined circle and rectangle shapes geometrically distinct", () => {

@@ -1,7 +1,7 @@
 import { splitSlotColor } from "./colorUtils";
 import { canvas } from "./colorTokens";
 import { getNeighborData, splitFaceIndexToCore } from "./tessellationGeometry";
-import { CAIRO_ANCHOR_POINT } from "./cairoGeometry";
+import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
@@ -16,14 +16,15 @@ import type { FieldConfig } from "../fieldConfig";
  *  Triangle cells alternate up/down parity by `(x+y) % 2`, but both parities have the same degree
  *  (3), so the origin's value is representative here too. */
 export function degreeFor(cfg: FieldConfig): number {
-  const [x, y] = patternAnchorPoint(cfg);
+  const [x, y] = originCellOf(cfg);
   return getNeighborData(cfg, x, y).offsets.length;
 }
 
-/** Stable point for split-pattern previews. Keep the origin for the existing tessellations so
- * triangle parity stays unchanged; Cairo needs one of its four occupied residue classes. */
-export function patternAnchorPoint(cfg: FieldConfig): [number, number] {
-  return cfg.tessellation.kind === "cairo" ? [...CAIRO_ANCHOR_POINT] : [0, 0];
+/** A valid cell near the lattice origin: split-pattern previews and the origin marker. The origin
+ * itself for tessellations where it is a cell (triangle parity stays unchanged); Cairo needs one
+ * of its occupied residue classes. */
+export function originCellOf(cfg: FieldConfig): [number, number] {
+  return [...TESSELLATION_UI[cfg.tessellation.kind].originCell];
 }
 
 export function colorToCss(color: number): string {

@@ -19,7 +19,6 @@ import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView
 import { formatTargetLabel } from "./targetLabel";
 import type { TileFace, TileFaceKind } from "../components/features/TileFaceEditor";
 import type { FieldConfig } from "../fieldConfig";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 /** Everything needed to resolve any point's per-node short labels, maze-wide (not pre-scoped to one
  *  floor — `resolveSplitNodeShortLabel` scopes to whichever floor `point`/`level` names, since a
@@ -170,10 +169,8 @@ export function resolveSplitNodeShortLabel(
     return endpointsEqual(a, b);
   };
 
-  const cfg = ctx.cfgAt(level);
   const semanticNames = splitNodeSemanticNames(
     nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ctx, floorNodes, level, point, ep) })),
-    cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
   );
   const idx = nodeEndpointsInOrder.findIndex((ep) => endpointsMatch(ep, endpoint));
   if (idx < 0) {

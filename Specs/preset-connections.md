@@ -464,7 +464,7 @@ Hit-test for click/hover:
 2. Check the cell and all its neighbors as candidates
 3. For each candidate pair both in field, compute distance from pointer to the actual polygon edge segment (`getSharedEdgeSegment`)
 4. If `deadZone` is passed and the closest point on a segment falls within `EDGE_ENDPOINT_DEAD_ZONE_FRACTION` (0.2) of either endpoint, skip that segment — this stops the cursor from hair-triggering a perpendicular edge while it passes near a shared grid vertex during a drag (#188)
-5. Accept the closest remaining edge within `threshold = TILE_SIZE * 0.4` (squares/hexes) or `TRI_TILE_SIZE * 0.12` (triangles — kept well under the incenter-to-side distance `≈ 0.29 * side`, so a triangle cell's own centroid never falls inside the edge-hit zone; a wider ratio tuned for squares made every dead-center triangle click misread as an edge click, GitHub issue #340 follow-up)
+5. Accept the closest remaining edge within `threshold = TESSELLATION_UI[family].edgeHitThreshold` (`TILE_SIZE * 0.08` for squares/hexes, `TILE_SIZE * 2 * 0.12` for triangles/Cairo — kept well under the incenter-to-side distance `≈ 0.29 * side`, so a triangle cell's own centroid never falls inside the edge-hit zone; a wider ratio tuned for squares made every dead-center triangle click misread as an edge click, GitHub issue #340 follow-up)
 
 `deadZone` defaults to `false` and is passed `true` only from `onPointerMove` (hover + drag-continuation) in both `PresetConnectionsController` and `PostEditController`; `onPointerDown` (plain click) calls omit it, so a single click can still hit an edge whose nearest point is close to a vertex.
 

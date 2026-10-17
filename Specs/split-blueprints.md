@@ -94,10 +94,8 @@ this only matters for a direct/programmatic call).
 standard pattern" shortcut, converting a blueprint into a fresh `SplitPattern` and appending it —
 no editor opens, matching `handleAddPattern`'s own instant-add behavior for a blank pattern. No
 boundary/rotation concept applies here: a pattern isn't tied to any specific field point. For a
-blueprint authored in native face order, conversion is direct and unrotated. A blueprint tagged
-`faceIndexMode: "cairo_canonical"` is translated to the native face slots of the stable Cairo
-anchor point before being stored; the resulting `SplitPattern` remains a normal native-slot
-pattern for the generator's tessellation-specific symmetry handling. Every declared face becomes a
+blueprint, conversion is direct and unrotated: face indices follow core's `faces_of` order, the
+same order the generator reads. Every declared face becomes a
 `Passage` requirement; every other face is simply absent from `faces[i]` (core already treats "no
 entry" as `Wall`). `weight` is always `1.0`, matching a freshly added blank pattern's default.
 
@@ -193,8 +191,8 @@ then follow the pentagon perimeter. Cor1 owns canonical faces `2-3`, while Cor2 
 
 The dedicated divider wall is the polyline corner `1-2` -> tile centre -> corner `3-4`. Marker
 anchors use the line from corner `2-3` to the midpoint of canonical edge `0`: Cor1 is at `1/4`
-and Cor2 at `3/4`. The blueprint is tagged `faceIndexMode: "cairo_canonical"`; concrete Cairo
-previews and point application translate these indices to the target tile's native face slots.
+and Cor2 at `3/4`. Concrete Cairo previews and point application use these indices directly: core's `faces_of`
+order is the canonical order.
 
 The second degree-5 template is **Смежный разделитель**: Cor1 owns canonical faces `1-2`, Cor2
 owns `3-4`. Its walls are the complete canonical side `0` and the straight segment from corner

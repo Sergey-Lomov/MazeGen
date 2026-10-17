@@ -8,13 +8,14 @@ import { PresetConnectionsController } from "../pixi/PresetConnectionsController
 import type { PresetConnectionsRenderer } from "../pixi/PresetConnectionsRenderer";
 import type { PresetConnectionEntry, PresetElevatorEntry, PresetTeleportEntry, PresetVerticalPassageEntry } from "../pixi/fieldEditUtils";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));

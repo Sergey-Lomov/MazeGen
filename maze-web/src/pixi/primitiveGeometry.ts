@@ -2,7 +2,7 @@ import { cellsInsideShape, polygonForShape, shapeForPrimitive, type PrimitiveSha
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "./triShapeHelpers";
-import { cairoNeighborOffsets } from "./cairoGeometry";
+import { getCellNeighborOffsets } from "./tessellationGeometry";
 import { kindFieldConfig, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import type { TessellationKind } from "../store/mazeStore";
 
@@ -246,54 +246,34 @@ function centeredHexRadius(frame: WorldFrame, config: FieldConfig): number {
 /** Removes one-cell-wide terminal spikes from a primitive result. */
 export function smoothPrimitiveCells(
   cells: [number, number][],
-  kind: TessellationKind,
+  cfg: FieldConfig,
 ): [number, number][] {
   if (cells.length < 4) return cells;
   const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  const offsets = kind === "square"
-    ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      : kind === "hex"
-        ? [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
-      : undefined;
-
   return cells.filter(([x, y]) => {
-    const neighbors = kind === "cairo"
-      ? cairoNeighborOffsets(x, y)
-      : offsets ?? ((x + y) % 2 === 0
-        ? [[-1, 0], [1, 0], [0, -1]]
-        : [[-1, 0], [1, 0], [0, 1]]);
     let count = 0;
-    for (const [dx, dy] of neighbors) if (selected.has(`${x + dx},${y + dy}`)) count++;
+    for (const [dx, dy] of getCellNeighborOffsets(cfg, x, y)) if (selected.has(`${x + dx},${y + dy}`)) count++;
     return count !== 1;
   });
 }
 
 export function normalizePrimitiveCells(
   cells: [number, number][],
-  kind: TessellationKind,
+  cfg: FieldConfig,
   smooth: boolean,
 ): [number, number][] {
-  let result = removeIsolatedPrimitiveCells(cells, kind);
-  if (smooth) result = smoothPrimitiveCells(result, kind);
-  return removeIsolatedPrimitiveCells(result, kind);
+  let result = removeIsolatedPrimitiveCells(cells, cfg);
+  if (smooth) result = smoothPrimitiveCells(result, cfg);
+  return removeIsolatedPrimitiveCells(result, cfg);
 }
 
-function removeIsolatedPrimitiveCells(cells: [number, number][], kind: TessellationKind): [number, number][] {
+function removeIsolatedPrimitiveCells(cells: [number, number][], cfg: FieldConfig): [number, number][] {
   // Fewer than two cells cannot contain an accidental isolated cell. This preserves a valid
   // one-cell primitive such as a 1×1 rectangle.
   if (cells.length < 2) return cells;
   const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  return cells.filter(([x, y]) => primitiveNeighborOffsets(kind, x, y)
+  return cells.filter(([x, y]) => getCellNeighborOffsets(cfg, x, y)
     .some(([dx, dy]) => selected.has(`${x + dx},${y + dy}`)));
-}
-
-function primitiveNeighborOffsets(kind: TessellationKind, x: number, y: number): number[][] {
-  if (kind === "square") return [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  if (kind === "hex") return [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
-  if (kind === "cairo") return cairoNeighborOffsets(x, y);
-  return (x + y) % 2 === 0
-    ? [[-1, 0], [1, 0], [0, -1]]
-    : [[-1, 0], [1, 0], [0, 1]];
 }
 
 export function primitiveWorldGeometry(primitive: ShapePrimitive, ctx: PrimitiveContext): PrimitiveWorldGeometry {

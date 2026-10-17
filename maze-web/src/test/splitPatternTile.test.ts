@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { degreeFor, patternAnchorPoint, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
+import { degreeFor, originCellOf, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../pixi/splitPatternTitles";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -19,7 +19,7 @@ describe("degreeFor", () => {
 
   it("returns 5 for Cairo even though the coordinate origin is not a tile", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
-    expect(patternAnchorPoint(cfg)).toEqual([2, 1]);
+    expect(originCellOf(cfg)).toEqual([2, 1]);
     expect(degreeFor(cfg)).toBe(5);
   });
 
@@ -120,16 +120,14 @@ describe("tileNodesForTopology", () => {
   const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
   it("converts core face positions to web face positions per node", () => {
-    // Hex flat_top canonical order is [E, NE, NW, W, SW, SE]; splitFaceIndexToCore's web->canonical
-    // table is [0, 5, 4, 3, 2, 1], so web position i reads canonical position table[i].
+    // Web authors faces in core's `faces_of` order, so web position i is core position i.
     const hexCfg = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const topology: SplitFaceRequirement[][] = [
-      [PASSAGE, PASSAGE, WALL, WALL, WALL, WALL], // canonical: E, NE = passage
+      [PASSAGE, PASSAGE, WALL, WALL, WALL, WALL],
     ];
     const nodes = tileNodesForTopology(topology, hexCfg);
     expect(nodes).toHaveLength(1);
-    // web0->E=passage, web1->SE=wall, …, web5->NE=passage
-    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["passage", "wall", "wall", "wall", "wall", "passage"]);
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["passage", "passage", "wall", "wall", "wall", "wall"]);
   });
 
   it("assigns each node a distinct color and no boundary flag", () => {

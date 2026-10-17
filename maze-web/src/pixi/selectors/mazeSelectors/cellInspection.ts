@@ -5,7 +5,6 @@ import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
 import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
 import { formatTargetLabel } from "../../targetLabel";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../../cairoGeometry";
 
 /** Semantic split-node short label for `node` (e.g. "Cor1"), when its point's face configuration
  *  matches a recognized special-split topology, else `undefined` for a non-split point/generic
@@ -36,7 +35,6 @@ function resolveNodeSplitLabel(
   const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
   const semanticNames = splitNodeSemanticNamesFromKinds(
     splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg),
-    cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(node.x, node.y) : undefined,
   );
   const index = pointNodes.findIndex((n) => n.id === node.id);
   return semanticNames?.[index]?.short ?? m["post_edit.split_node_label_short"]({ slotId: node.i + 1 });
@@ -212,7 +210,6 @@ export function buildCellInspection(
     const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
     semanticNames = splitNodeSemanticNamesFromKinds(
       splitPointFaceKindsByNode(nodesHere, byTile, directed, cfg),
-      cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(x, y) : undefined,
     );
   }
 

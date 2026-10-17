@@ -1,21 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/postEditTypes";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
-
-vi.mock("../wasm/wasmLoader", async (importActual) => {
-  const actual = await importActual<typeof import("../wasm/wasmLoader")>();
-  return {
-    ...actual,
-    getWasm: () => ({
-      ...actual.getWasm(),
-    cell_centers: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
-    }),
-  initWasm: vi.fn(() => Promise.resolve()),
-  };
-});
 
 const { buildSplitFloorGeometry } = await import("../pixi/splitFloorPreview");
 const { splitEndpoint, nodeEndpoint } = await import("../pixi/postEditEndpoint");

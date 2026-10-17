@@ -6,7 +6,6 @@ import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnecto
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
-import { cairoCanonicalFaceOrder } from "../../cairoGeometry";
 
 const BRIDGE_DECK_WIDTH_FRAC = 0.6;
 
@@ -388,16 +387,15 @@ export function buildSplitPassagesCore<Id>(
     const faceKindsByNode: SplitFaceKind[][] = pointNodes.map((_, nodeIndex) =>
       kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
     );
-    const canonicalFaceOrder = cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(px, py) : undefined;
-    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalFaceOrder);
+    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode);
     if (specialShapeKind === "cairo_diagonal_divider") {
       // Cairo's canonical template separates canonical faces 1-2 from 3-4. Its divider is a
       // deliberately bent wall: from the corner shared by 1/2 to the tile centre, then to the
       // corner shared by 3/4. The node assignments themselves are independent of row order.
       const verts = getCellVertices(px, py, cfg);
-      if (verts && canonicalFaceOrder && canonicalFaceOrder.length === 5) {
-        const cornerFor = (canonicalA: number, canonicalB: number): Point | null => {
-          const index = sharedCornerIndex(edgeVerts, canonicalFaceOrder[canonicalA], canonicalFaceOrder[canonicalB]);
+      if (verts) {
+        const cornerFor = (faceA: number, faceB: number): Point | null => {
+          const index = sharedCornerIndex(edgeVerts, faceA, faceB);
           return index === null ? null : verts[index];
         };
         const corner12 = cornerFor(1, 2);
@@ -405,10 +403,7 @@ export function buildSplitPassagesCore<Id>(
         if (corner12 && corner34) {
           const topNodeIndex = faceKindsByNode.findIndex((kinds) => {
             const faces = connectedFaces(kinds);
-            const canonicalFaces = canonicalFaceOrder
-              .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
-              .filter((face) => face >= 0);
-            return canonicalFaces.length === 2 && canonicalFaces.includes(2) && canonicalFaces.includes(3);
+            return faces.length === 2 && faces.includes(2) && faces.includes(3);
           });
           specialShapes.push(buildDiagonalShape(
             pointKey, corner12, corner34, undefined, [corner12, center, corner34], undefined,
@@ -420,9 +415,9 @@ export function buildSplitPassagesCore<Id>(
       // The adjacent Cairo template has two wall pieces: the complete canonical side 0 and a
       // straight segment from the corner shared by faces 2/3 to the midpoint of side 0.
       const verts = getCellVertices(px, py, cfg);
-      if (verts && canonicalFaceOrder && canonicalFaceOrder.length === 5) {
-        const edge0 = edgeVerts[canonicalFaceOrder[0]];
-        const corner23Index = sharedCornerIndex(edgeVerts, canonicalFaceOrder[2], canonicalFaceOrder[3]);
+      if (verts) {
+        const edge0 = edgeVerts[0];
+        const corner23Index = sharedCornerIndex(edgeVerts, 2, 3);
         if (edge0 && corner23Index !== null) {
           const side0Start = verts[edge0[0]], side0End = verts[edge0[1]];
           const side0Mid = { x: (side0Start.x + side0End.x) / 2, y: (side0Start.y + side0End.y) / 2 };
@@ -437,13 +432,9 @@ export function buildSplitPassagesCore<Id>(
       // emits only the bridge node's deck as the dedicated special shape.
       const perNodeFaces = faceKindsByNode.map(connectedFaces);
       const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
-      const bridgeNodeIndex = perNodeFaces.findIndex((faces) => {
-        if (!canonicalFaceOrder) return false;
-        const canonicalFaces = canonicalFaceOrder.map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1).filter((face) => face >= 0);
-        return isPair(canonicalFaces, 1, 4);
-      });
-      if (canonicalFaceOrder && bridgeNodeIndex >= 0) {
-        const bridgeFaces = [faceInputs[canonicalFaceOrder[1]], faceInputs[canonicalFaceOrder[4]]] as [Seg, Seg];
+      const bridgeNodeIndex = perNodeFaces.findIndex((faces) => isPair(faces, 1, 4));
+      if (bridgeNodeIndex >= 0) {
+        const bridgeFaces = [faceInputs[1], faceInputs[4]] as [Seg, Seg];
         specialShapes.push(buildBridgeShape(
           pointKey,
           null,

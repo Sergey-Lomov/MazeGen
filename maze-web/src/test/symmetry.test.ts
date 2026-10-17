@@ -77,7 +77,9 @@ describe("symmetry geometry", () => {
   });
 
   it("snaps square axes to cell corners", () => {
-    expect(snapSymmetryPoint({ x: 17, y: 15 }, "corners", cfg)).toEqual({ x: 0, y: 0 });
+    const snapped = snapSymmetryPoint({ x: 17, y: 15 }, "corners", cfg);
+    expect(snapped.x).toBeCloseTo(0);
+    expect(snapped.y).toBeCloseTo(0);
     expect(snapSymmetryPoint({ x: 17, y: 15 }, "free", cfg)).toEqual({ x: 17, y: 15 });
   });
 

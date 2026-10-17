@@ -9,7 +9,9 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getAvailableRuleParams: vi.fn(() => []),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
@@ -18,7 +20,6 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 
 import { generateMaze, computeAnalytics, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import { fakeCellCenters } from "./cellCentersFake";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());

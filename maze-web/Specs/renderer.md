@@ -15,14 +15,21 @@ export renders into its own explicitly sized `RenderTexture`, independent of the
 ## Cairo geometry
 
 Cairo uses the same integer point coordinates as `maze-core`, including Euclidean residue classes
-for negative coordinates. `pixi/cairoGeometry.ts` is the single browser-side source for its four
-tile orientations, five neighbor offsets, pentagon vertices, and shared-edge indices. Projection,
-grid bounds, selection, primitive inclusion, and edge hit-testing all consume that geometry through
-`tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
+for negative coordinates. Its geometry, like every tessellation's, comes from core's geometry snapshot
+(`Specs/space.md`) through `cartesianCache.ts`; no per-tessellation geometry lives in the web.
+Projection, grid bounds, selection, primitive inclusion, and edge hit-testing all consume it
+through `tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
 coordinate positions are never rendered or selected. The standard rectangular field follows the
 core `cairo_rect(cols, rows)` layout: each fundamental 4-by-4 block contributes two points, then
 the whole block rectangle is translated around the editor origin. Print sizing uses the same
 polygon geometry and a bounded outer block layer to evaluate exact field bounds.
+
+
+### Region queries and origin cell
+
+- `originCell` (registry, `pixi/geometry/tessellationUi.ts`) is the lattice cell used as the pattern anchor and origin marker. Cairo has unoccupied lattice coordinates, so it is `[2, 1]`; others `[0, 0]`. Read it through `originCellOf(cfg)`.
+- `cellsInDisplayRect(rect, mode, cfg)` returns the cells touching a display-space rect. It splits the rect into chunks of at most `RECT_CHUNK_CELLS` (150) cells per side, queries core per chunk (each stays under `MAX_REGION_CANDIDATES`), dedupes and sorts by x then y.
+- `GridRenderer` draws only cells returned by `cellsInDisplayRect` for the viewport plus `VIEWPORT_CELL_PAD` cells; it never iterates a lattice box, so unoccupied lattice coordinates are never requested.
 
 ## Shared pointer interaction primitives
 

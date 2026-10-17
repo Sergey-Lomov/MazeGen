@@ -11,10 +11,10 @@ import { buildValues } from "./useParamEditor";
 import { StatRow, SubsectionTitle, formatMs } from "./AnalyticsSections";
 import { styles, messageFor } from "./analyticsStyles";
 import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
+import { originCellOf } from "../../pixi/splitPatternTile";
 import { useLocale } from "../../i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
-const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
 const NOOP_FACE = () => {};
 const NOOP_ROTATE = () => {};
 
@@ -25,7 +25,7 @@ function SplitGroupPreviewTile({ topology, cfg }: { topology: SplitGroupDto["top
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
-        point={SPLIT_PREVIEW_ANCHOR} cfg={cfg} nodes={tileNodesForTopology(topology, cfg)} activeIndex={null}
+        point={originCellOf(cfg)} cfg={cfg} nodes={tileNodesForTopology(topology, cfg)} activeIndex={null}
         onFaceClick={NOOP_FACE} onFaceRightClick={NOOP_FACE} onRotate={NOOP_ROTATE} showRotateControls={false}
       />
     </div>

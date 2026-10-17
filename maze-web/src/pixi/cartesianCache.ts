@@ -1,27 +1,64 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
-import { getCellCenters } from "../wasm/mazeService";
+import {
+  getCellAt,
+  getCellsInRegion,
+  getGeometrySnapshot,
+  type PolylineCellGeometry,
+  type RegionMode,
+  type WorldPoint,
+} from "../wasm/mazeService";
 
-/// Cache of `maze-core`'s world-unit cell centers, keyed by "x,y" -- the single source of truth
-/// `tessellationGeometry.ts`'s low-level `squareCenter`/`hexCenter`/`triCenter` read from instead
-/// of duplicating `maze-core`'s geometry in TypeScript (see `maze-wasm::cell_centers`'s doc
-/// comment). Rebuilt whenever the tessellation config
-/// (`{ kind, params }`) changes via `warmCartesianCache` -- a single batched wasm call over every
-/// field cell, not one call per cell, since render loops call `getCellCenter` synchronously and
-/// per-call wasm round-trips would be far too slow for a hot path.
-const cache = new Map<string, [number, number]>();
-let cachedTessellation: string | null = null;
+/// Geometry access layer over `maze-core`'s geometry snapshot (`Specs/space.md`, "Geometry
+/// snapshot lifecycle"). Every coordinate here is in core's world units (math convention, cell
+/// area 1) -- the display transform (orientation, pixel scale) is applied by callers and never
+/// invalidates anything cached here.
+///
+/// The snapshot is bound to two things and rebuilt when either changes: the tessellation instance
+/// (the serialized `{ kind, params }` -- equal configs build equal instances) and the field
+/// version, a counter this module bumps whenever the field's cell set changes. Render loops read
+/// geometry synchronously every frame, so reads are served from the cached snapshot; a wasm call
+/// happens only on a warm-up or for a cell outside the field.
 
-/// Identity of a tessellation instance: the same `{ kind, params }` always builds an equivalent
-/// instance, so it is a complete cache key for the instance's projection. Memoized per config
-/// object: `getCartesian` runs on render hot paths and must not serialize on every call.
-const tessellationKeys = new WeakMap<TessellationConfig, string>();
+/// Identity of one cell of a tessellation: its wire coordinates, branded so a stray `[x, y]`
+/// (a world point, a pixel position) cannot be passed where a cell is expected.
+export type CellId = readonly [number, number] & { readonly __brand: "CellId" };
 
-function tessellationKey(cfg: FieldConfig): string {
-  let key = tessellationKeys.get(cfg.tessellation);
+export function cellId(x: number, y: number): CellId {
+  return [x, y] as unknown as CellId;
+}
+
+/// `flatten` tolerance of the cached polylines, in world units (a cell's area is 1).
+export const GEOMETRY_TOLERANCE = 1e-3;
+
+type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+/// Cells of the current field: filled by one snapshot, never evicted until the field changes.
+const fieldCache = new Map<string, PolylineCellGeometry>();
+/// Cells outside the field (grid margin, hover, invalid endpoints): bounded, least recently used
+/// first out. `Map` iteration order is insertion order, so re-inserting on a hit keeps it LRU.
+const outsideCache = new Map<string, PolylineCellGeometry>();
+export const DEFAULT_MAX_OUTSIDE_CELLS = 100_000;
+let maxOutsideCells = DEFAULT_MAX_OUTSIDE_CELLS;
+
+/// Resizes the outside-cell LRU (tests use a tiny limit); evicts down to the new limit at once.
+export function setMaxOutsideCells(limit: number): void {
+  maxOutsideCells = limit;
+  while (outsideCache.size > limit) outsideCache.delete(outsideCache.keys().next().value!);
+}
+let cachedInstance: string | null = null;
+let fieldVersion = 0;
+let fieldSignature = "";
+
+/// Identity of a tessellation instance. Memoized per config object: reads run on render hot
+/// paths and must not serialize on every call.
+const instanceKeys = new WeakMap<TessellationConfig, string>();
+
+function instanceKey(cfg: FieldConfig): string {
+  let key = instanceKeys.get(cfg.tessellation);
   if (key === undefined) {
     key = JSON.stringify(cfg.tessellation);
-    tessellationKeys.set(cfg.tessellation, key);
+    instanceKeys.set(cfg.tessellation, key);
   }
   return key;
 }
@@ -30,41 +67,116 @@ function cellKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-/// Batched prewarm -- call once when the tessellation config changes (confirmTessellation,
-/// project load, generateWithSeed), not per-frame. Clears the cache first: cached coordinates are
-/// only valid for the tessellation instance they were computed under (a "square" (2,3) and a
-/// "hex" (2,3) project to different points), so a config change invalidates everything already
-/// cached rather than merging in.
-export function warmCartesianCache(cfg: FieldConfig): void {
-  cache.clear();
-  cachedTessellation = tessellationKey(cfg);
-  const points = configAllCells(cfg);
-  if (points.length === 0) return;
-  const coords = getCellCenters({ tessellation: cfg.tessellation, points });
-  for (let i = 0; i < points.length; i++) {
-    const [x, y] = points[i];
-    cache.set(cellKey(x, y), coords[i]);
-  }
+/// Field version: incremented on every change of the cached cell set or tessellation instance.
+export function getFieldVersion(): number {
+  return fieldVersion;
 }
 
-/// World-unit center of one cell. Serves from the prewarmed
-/// cache for the common case (any point inside the current field); falls back to a single wasm
-/// call for a cache miss (points outside the field -- e.g. an invalid preset connection's
-/// endpoint, or a boundary neighbor -- are geometrically valid to query but never prewarmed,
-/// since prewarming covers exactly `configAllCells(cfg)`, not every possible coordinate).
-/// The fallback result is cached too, so a repeatedly-queried out-of-field point (e.g. hovering
-/// the same invalid preset edge every frame) only ever pays the wasm round-trip once.
-export function getCartesian(x: number, y: number, cfg: FieldConfig): [number, number] {
-  if (tessellationKey(cfg) !== cachedTessellation) {
-    // Defensive: a caller queried before the cache was warmed for this tessellation (or the
-    // config changed without going through warmCartesianCache) -- warm it now rather than
-    // silently serving stale/wrong-tessellation coordinates.
+/// Batched prewarm -- call when the field or tessellation changes (confirmTessellation, project
+/// load, generateWithSeed), not per frame. One snapshot call covers every field cell. Does nothing
+/// when neither the instance nor the cell set changed, so repeated calls keep the cache.
+export function warmCartesianCache(cfg: FieldConfig): void {
+  const instance = instanceKey(cfg);
+  const cells = configAllCells(cfg);
+  const signature = cells.map(([x, y]) => cellKey(x, y)).join(";");
+  if (instance === cachedInstance && signature === fieldSignature) return;
+  fieldCache.clear();
+  outsideCache.clear();
+  cachedInstance = instance;
+  fieldSignature = signature;
+  fieldVersion++;
+  if (cells.length === 0) return;
+  const snapshot = getGeometrySnapshot({
+    tessellation: cfg.tessellation,
+    cells,
+    boundary: { kind: "polyline", tolerance: GEOMETRY_TOLERANCE },
+    fieldVersion,
+  });
+  for (const geometry of snapshot.cells) fieldCache.set(cellKey(geometry.cell[0], geometry.cell[1]), geometry);
+}
+
+/// Geometry of one cell. Served from the cache for any cell of the current field; a cell outside
+/// it (an invalid preset connection's endpoint, a boundary neighbor) costs one single-cell
+/// snapshot call and is cached in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`), so hovering the same cell every
+/// frame pays only once and field cells are never evicted.
+export function getCellGeometry(x: number, y: number, cfg: FieldConfig): PolylineCellGeometry {
+  if (instanceKey(cfg) !== cachedInstance) {
+    // Defensive: queried before the cache was warmed for this tessellation.
     warmCartesianCache(cfg);
   }
   const key = cellKey(x, y);
-  const cached = cache.get(key);
-  if (cached) return cached;
-  const [coord] = getCellCenters({ tessellation: cfg.tessellation, points: [[x, y]] });
-  cache.set(key, coord);
-  return coord;
+  const inField = fieldCache.get(key);
+  if (inField) return inField;
+  const outside = outsideCache.get(key);
+  if (outside) {
+    outsideCache.delete(key);
+    outsideCache.set(key, outside);
+    return outside;
+  }
+  const [geometry] = getGeometrySnapshot({
+    tessellation: cfg.tessellation,
+    cells: [[x, y]],
+    boundary: { kind: "polyline", tolerance: GEOMETRY_TOLERANCE },
+    fieldVersion,
+  }).cells;
+  outsideCache.set(key, geometry);
+  if (outsideCache.size > maxOutsideCells) outsideCache.delete(outsideCache.keys().next().value!);
+  return geometry;
+}
+
+/// World-unit center of one cell.
+export function getCartesian(x: number, y: number, cfg: FieldConfig): WorldPoint {
+  return getCellGeometry(x, y, cfg).center;
+}
+
+/// Bounding box of the field's flattened cell boundaries, in world units; `null` for an empty field.
+export function getFieldWorldBounds(cfg: FieldConfig): Bounds | null {
+  const cells = configAllCells(cfg);
+  if (cells.length === 0) return null;
+  const bounds: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const [x, y] of cells) {
+    for (const [px, py] of getCellGeometry(x, y, cfg).boundary.points) {
+      bounds.minX = Math.min(bounds.minX, px);
+      bounds.minY = Math.min(bounds.minY, py);
+      bounds.maxX = Math.max(bounds.maxX, px);
+      bounds.maxY = Math.max(bounds.maxY, py);
+    }
+  }
+  return bounds;
+}
+
+/// The field cell whose closed boundary contains the world point (minimal `CellId` on a shared
+/// boundary), or `null`. Scoped to the field's own cells, so it never touches the unbounded space.
+export function cellAtWorldPoint(point: WorldPoint, cfg: FieldConfig): CellId | null {
+  const cells = configAllCells(cfg);
+  if (cells.length === 0) return null;
+  const hit = getCellAt({ tessellation: cfg.tessellation, point, scope: cells });
+  return hit ? cellId(hit[0], hit[1]) : null;
+}
+
+/// The cell of the whole tessellation space whose closed boundary contains the world point
+/// (minimal `CellId` on a shared boundary). A point query touches a handful of candidate cells,
+/// so it never meets core's `MAX_REGION_CANDIDATES` bound.
+export function cellAtSpacePoint(point: WorldPoint, cfg: FieldConfig): CellId | null {
+  const hit = getCellAt({ tessellation: cfg.tessellation, point, scope: null });
+  return hit ? cellId(hit[0], hit[1]) : null;
+}
+
+/// The field cells matching the closed polygon `region` under `mode`. Scoped to a cell set --
+/// the field's own cells unless `scope` narrows it -- so a selection drawn over a zoomed-out
+/// canvas never reaches core's `MAX_REGION_CANDIDATES` bound on an unscoped query.
+export function cellsInWorldRegion(
+  region: WorldPoint[],
+  mode: RegionMode,
+  cfg: FieldConfig,
+  scope: readonly CellId[] = configAllCells(cfg).map(([x, y]) => cellId(x, y)),
+): CellId[] {
+  if (scope.length === 0) return [];
+  const hits = getCellsInRegion({
+    tessellation: cfg.tessellation,
+    region,
+    mode,
+    scope: scope.map(([x, y]) => [x, y]),
+  });
+  return hits.map(([x, y]) => cellId(x, y));
 }

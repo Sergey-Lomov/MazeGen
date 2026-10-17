@@ -7,11 +7,14 @@ import { splitSlotColor } from "../pixi/colorUtils";
 import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
-import { TRI_TILE_SIZE } from "../pixi/triGeometry";
+import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -95,7 +98,7 @@ describe("mazeStore image export", () => {
       marginVMm: 5,
     }, fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }));
 
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TRI_TILE_SIZE * 2) / Math.sqrt(3)));
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TILE_SIZE * 2 * 2) / Math.sqrt(3)));
   });
 
   it("keeps the physical cell size stable when manually scaled print density changes", () => {

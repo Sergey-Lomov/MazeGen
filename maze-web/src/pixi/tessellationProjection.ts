@@ -1,8 +1,5 @@
-import { TILE_SIZE } from "./constants";
-import { INRADIUS } from "./hexGeometry";
-import { TRI_TILE_SIZE } from "./triGeometry";
-import { cairoCenter, CAIRO_CENTER_SCALE, isCairoPoint } from "./cairoGeometry";
-import { hexOrientationOf, tessellationFamily, triOrientationOf, type FieldConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
 
 export interface TessellationProjection {
   // viewport-space coords (after viewport transform) → grid coords
@@ -24,67 +21,24 @@ export function decodePoint(key: number): [number, number] {
   return [x, y];
 }
 
-class SquareProjection implements TessellationProjection {
+/// Cells at or beyond a viewport's corners are visible too, so the grid range is padded.
+const GRID_BOUNDS_PAD = 3;
+
+/// The projection of any tessellation: pointer positions resolve to cells through core's point
+/// query, cell positions come from the snapshot, both through the display transform.
+class SnapshotProjection implements TessellationProjection {
+  constructor(private readonly cfg: FieldConfig) {}
+
   screenToGrid(vx: number, vy: number) {
-    return {
-      x: Math.floor(vx / TILE_SIZE),
-      y: Math.floor(-vy / TILE_SIZE),
-    };
+    const [x, y] = nearestCellCoord(vx, vy, this.cfg);
+    return { x, y };
   }
 
   gridToScreen(x: number, y: number) {
-    return {
-      x: x * TILE_SIZE + TILE_SIZE / 2,
-      y: -y * TILE_SIZE - TILE_SIZE / 2,
-    };
+    return getCellCenter(x, y, this.cfg);
   }
 
   gridBounds(vpX: number, vpY: number, vpW: number, vpH: number, scale: number) {
-    const pad = 2;
-    const left = -vpX / scale;
-    const top = -vpY / scale;
-    const right = left + vpW / scale;
-    const bottom = top + vpH / scale;
-    return {
-      minX: Math.floor(left / TILE_SIZE) - pad,
-      maxX: Math.ceil(right / TILE_SIZE) + pad,
-      minY: Math.floor(-bottom / TILE_SIZE) - pad,
-      maxY: Math.ceil(-top / TILE_SIZE) + pad,
-    };
-  }
-}
-
-class HexProjection implements TessellationProjection {
-  constructor(private readonly orientation: "flat_top" | "pointy_top") {}
-
-  screenToGrid(vx: number, vy: number) {
-    if (this.orientation === "flat_top") {
-      const q = vx / (TILE_SIZE * 1.5);
-      const r = (-vy - q * INRADIUS) / (INRADIUS * 2);
-      return { x: Math.round(q), y: Math.round(r) };
-    } else {
-      const r = -vy / (TILE_SIZE * 1.5);
-      const q = (vx - r * INRADIUS) / (INRADIUS * 2);
-      return { x: Math.round(q), y: Math.round(r) };
-    }
-  }
-
-  gridToScreen(x: number, y: number) {
-    if (this.orientation === "flat_top") {
-      return {
-        x: x * TILE_SIZE * 1.5,
-        y: -(y * INRADIUS * 2 + x * INRADIUS),
-      };
-    } else {
-      return {
-        x: x * INRADIUS * 2 + y * INRADIUS,
-        y: -(y * TILE_SIZE * 1.5),
-      };
-    }
-  }
-
-  gridBounds(vpX: number, vpY: number, vpW: number, vpH: number, scale: number) {
-    const pad = 3;
     const corners = [
       this.screenToGrid(-vpX / scale, -vpY / scale),
       this.screenToGrid((-vpX + vpW) / scale, -vpY / scale),
@@ -92,137 +46,14 @@ class HexProjection implements TessellationProjection {
       this.screenToGrid((-vpX + vpW) / scale, (-vpY + vpH) / scale),
     ];
     return {
-      minX: Math.min(...corners.map(c => c.x)) - pad,
-      maxX: Math.max(...corners.map(c => c.x)) + pad,
-      minY: Math.min(...corners.map(c => c.y)) - pad,
-      maxY: Math.max(...corners.map(c => c.y)) + pad,
-    };
-  }
-}
-
-class TriProjection implements TessellationProjection {
-  constructor(private readonly orientation: "r0" | "r90" | "r180" | "r270") {}
-
-  private unrotate(x: number, y: number): { x: number; y: number } {
-    switch (this.orientation) {
-      case "r0":   return { x,    y    };
-      case "r90":  return { x: -y, y: -x };
-      case "r180": return { x: -x, y: -y };
-      case "r270": return { x:  y, y:  x };
-    }
-  }
-
-  screenToGrid(vx: number, vy: number) {
-    const { x: fx, y: fy } = this.unrotate(vx, vy);
-    const S = TRI_TILE_SIZE;
-    const H = S * Math.sqrt(3) / 2;
-    const row = Math.floor(-fy / H);
-    const col0 = Math.floor(fx / (S / 2));
-    // pick nearest centroid among col0-1, col0, col0+1 (triangles have diagonal boundaries)
-    let bestCol = col0;
-    let bestDist = Infinity;
-    for (const c of [col0 - 1, col0, col0 + 1]) {
-      const pointingUp = (c + row) % 2 === 0;
-      const cx = c * S / 2 + S / 4;
-      const cy = pointingUp ? -(row * H + H / 3) : -(row * H + 2 * H / 3);
-      const d = (fx - cx) * (fx - cx) + (fy - cy) * (fy - cy);
-      if (d < bestDist) { bestDist = d; bestCol = c; }
-    }
-    return { x: bestCol, y: row };
-  }
-
-  gridToScreen(x: number, y: number) {
-    const S = TRI_TILE_SIZE;
-    const H = S * Math.sqrt(3) / 2;
-    const pointingUp = (x + y) % 2 === 0;
-    const cx = x * S / 2 + S / 4;
-    const cy = pointingUp ? -(y * H + H / 3) : -(y * H + 2 * H / 3);
-    switch (this.orientation) {
-      case "r0":   return { x: cx,  y: cy  };
-      case "r90":  return { x: -cy, y: -cx };
-      case "r180": return { x: -cx, y: -cy };
-      case "r270": return { x:  cy, y:  cx };
-    }
-  }
-
-  gridBounds(vpX: number, vpY: number, vpW: number, vpH: number, scale: number) {
-    const pad = 3;
-    const corners = [
-      this.screenToGrid(-vpX / scale, -vpY / scale),
-      this.screenToGrid((-vpX + vpW) / scale, -vpY / scale),
-      this.screenToGrid(-vpX / scale, (-vpY + vpH) / scale),
-      this.screenToGrid((-vpX + vpW) / scale, (-vpY + vpH) / scale),
-    ];
-    return {
-      minX: Math.min(...corners.map(c => c.x)) - pad,
-      maxX: Math.max(...corners.map(c => c.x)) + pad,
-      minY: Math.min(...corners.map(c => c.y)) - pad,
-      maxY: Math.max(...corners.map(c => c.y)) + pad,
-    };
-  }
-}
-
-class CairoProjection implements TessellationProjection {
-  screenToGrid(vx: number, vy: number) {
-    const x = vx / (CAIRO_CENTER_SCALE * TILE_SIZE);
-    const y = -vy / (CAIRO_CENTER_SCALE * TILE_SIZE);
-    const baseX = Math.floor(x);
-    const baseY = Math.floor(y);
-    let best: { x: number; y: number; distance: number } | null = null;
-
-    // Cairo occupies four points in each 4×4 period. Searching the nearby integer cells is both
-    // exact for the nearest-cell hit test and avoids a geometric search over the whole field.
-    for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
-      for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
-        if (!isCairoPoint(candidateX, candidateY)) continue;
-        const candidate = cairoCenter(candidateX, candidateY);
-        const dx = candidate.x - vx;
-        const dy = candidate.y - vy;
-        const distance = dx * dx + dy * dy;
-        if (!best || distance < best.distance
-          || (distance === best.distance && (candidateX < best.x
-            || (candidateX === best.x && candidateY < best.y)))) {
-          best = { x: candidateX, y: candidateY, distance };
-        }
-      }
-    }
-    if (best) return { x: best.x, y: best.y };
-    // The search always finds a valid point for finite input. Keep the projection total for an
-    // invalid/non-finite pointer event without inventing a new Cairo coordinate class.
-    return { x: Math.round(x), y: Math.round(y) };
-  }
-
-  gridToScreen(x: number, y: number) {
-    return cairoCenter(x, y);
-  }
-
-  gridBounds(vpX: number, vpY: number, vpW: number, vpH: number, scale: number) {
-    const pad = 3;
-    const corners = [
-      this.screenToGrid(-vpX / scale, -vpY / scale),
-      this.screenToGrid((-vpX + vpW) / scale, -vpY / scale),
-      this.screenToGrid(-vpX / scale, (-vpY + vpH) / scale),
-      this.screenToGrid((-vpX + vpW) / scale, (-vpY + vpH) / scale),
-    ];
-    return {
-      minX: Math.min(...corners.map((c) => c.x)) - pad,
-      maxX: Math.max(...corners.map((c) => c.x)) + pad,
-      minY: Math.min(...corners.map((c) => c.y)) - pad,
-      maxY: Math.max(...corners.map((c) => c.y)) + pad,
+      minX: Math.min(...corners.map((c) => c.x)) - GRID_BOUNDS_PAD,
+      maxX: Math.max(...corners.map((c) => c.x)) + GRID_BOUNDS_PAD,
+      minY: Math.min(...corners.map((c) => c.y)) - GRID_BOUNDS_PAD,
+      maxY: Math.max(...corners.map((c) => c.y)) + GRID_BOUNDS_PAD,
     };
   }
 }
 
 export function makeProjection(cfg: FieldConfig): TessellationProjection {
-  const kind = tessellationFamily(cfg);
-  switch (kind) {
-    case "square":
-      return new SquareProjection();
-    case "hex":
-      return new HexProjection(hexOrientationOf(cfg));
-    case "tri":
-      return new TriProjection(triOrientationOf(cfg));
-    case "cairo":
-      return new CairoProjection();
-  }
+  return new SnapshotProjection(cfg);
 }

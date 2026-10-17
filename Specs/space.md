@@ -52,7 +52,7 @@ place where the runtime kind becomes a compile-time `T`: it builds the instance,
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
 `Arc<T>` plus the kind's wire point codec (`CellCodec`) to a `TessellationVisitor`. `maze-runner`
 (full run, canonical baselines, benchmarks, geometry snapshots) and `maze-wasm` (generate, compute
-analytics, `cell_centers`, `tessellation_shapes`, the geometry snapshot and point queries) all
+analytics, `tessellation_shapes`, the geometry snapshot and point queries) all
 dispatch through it.
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
@@ -476,14 +476,15 @@ nothing about it, and changing it never invalidates geometry.
 ### Geometry snapshot lifecycle
 
 `maze-wasm` exports immutable region snapshots for a cell set. A snapshot holds, per cell, the
-boundary path commands, the flattened polylines (at the requested tolerance), the center and
-`cell_scale`; per face, the contact point and segment data. Point queries (`cell_at`,
+boundary in the one representation the request asks for — exact path commands (`{ kind: "path" }`,
+arcs included, the caller decides how to flatten them) or a polyline flattened at a tolerance
+(`{ kind: "polyline", tolerance }`) — never both, plus the center and `cell_scale`; per face, the contact point and segment data. Point queries (`cell_at`,
 `cells_in_region`) are exported too. A snapshot is bound to the tessellation instance identity
 and the field version (incremented on every cell-set change). The web geometry access layer
 invalidates it when either changes, and never because of the display transform.
 
 Status (GitHub issue #759): `maze_runner::runner::geometry` builds snapshots
-(`geometry_snapshot(GeometrySnapshotRequest { tessellation, cells, tolerance, field_version })`,
+(`geometry_snapshot(GeometrySnapshotRequest { tessellation, cells, boundary, field_version })`,
 computing each canonical edge's segments and contact point once per snapshot and only for the
 requested cells, and assembling each boundary path from them) and answers
 `cell_at`/`cells_in_region` requests (scope: a cell list in any order, sorted and deduplicated by the
@@ -491,5 +492,35 @@ runner, or `None` for the whole space); `maze-wasm`
 exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`. The snapshot's
 `instance` is the serialized tessellation config (equal configs build equal instances) and
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
-cell or a non-positive tolerance is an error. The benchmark measures the snapshot as its
+cell or a polyline request with a non-positive tolerance is an error. The benchmark measures the snapshot as its
 `geometry` stage.
+
+Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is the web geometry
+access layer. It holds the snapshot of the current field's cells, invalidated by the tessellation
+instance (the serialized config) and a web-owned field version (bumped when the cell set or the
+instance changes) — never by the display transform. Reads (`getCellGeometry`, `getCartesian`) are
+synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. Point and region queries
+(`cellAtWorldPoint`, `cellsInWorldRegion`) are scoped to the field's cells by default, so a selection
+over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a branded tuple. The web
+test suite requires the wasm build (`tools/require-wasm.mjs`; `test.sh`/`test.ps1` rebuild it).
+
+Status (GitHub issue #761, second step): `maze-web/src/pixi/geometry/` holds the generic consumers
+of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache itself requests polylines; arcs are kept for the first curved tessellation) (`tracePath` onto Pixi `Graphics` or a
+canvas 2D context, `pathToSvg` for SVG; PNG export goes through Pixi) after a `WorldTransform` — a
+similarity (rotation, reflection, uniform scale, translation) so arcs stay arcs; a reflection
+reverses an arc's direction. `polylineOps.ts` works on flattened polylines: `closestPointOnPolyline`,
+`polylineIntersections` (touching ends count, parallel and collinear segments give none) and
+`offsetPolyline` (left of travel is positive, miter join bevelled past a limit, no self-overlap
+trimming). Coincidence tests use `GEOM_EPS` (`1e-9`), the same world-unit tolerance as core;
+results are exact for the polyline and within the snapshot's flatten tolerance of the true curve.
+
+Status (GitHub issue #761, third step): the web has no per-tessellation geometry code.
+`FaceGeometry` also carries `neighbor` (the adjacent cell, `None` at the field edge) and
+`canonical_face` (the template's canonical index of the local face), so the web needs no face tables.
+`pixi/geometry/tessellationUi.ts` holds only UI metadata per `kind` (name, orientations, default
+params, the display base transform and pixel sizes). `pixi/tessellationGeometry.ts` derives cell
+centers, vertices, shared edges, neighbor offsets, and nearest-cell lookup from the snapshot through
+the display transform (`pixel = pixelsPerUnit · Orient · Base · core`). Face indices in the web —
+split blueprints, stored split patterns' `face_index`, face editors — follow core's `faces_of`
+order (counter-clockwise), the same order the generator reads. A pattern's `face_index` is stored as
+the shape template's canonical index through the anchor cell's `canonical_face`.

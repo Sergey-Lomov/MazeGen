@@ -3,7 +3,6 @@ import { TILE_SIZE } from "./constants";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
 import { getSplitCircleRotationDeg, getCellCenter, getCellVertices, getNeighborData, type Pos } from "./tessellationGeometry";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 /** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
 export const SPLIT_HUB_RADIUS = TILE_SIZE / 4;
@@ -79,7 +78,7 @@ export function specialSplitNodePoint(
     if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
     const sharedCorner = (a: number, b: number): Pos | null => {
       const [a0, a1] = edgeVerts[a] ?? [];
@@ -112,7 +111,7 @@ export function specialSplitNodePoint(
     if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
     const sharedCorner = (a: number, b: number): Pos | null => {
       const [a0, a1] = edgeVerts[a] ?? [];
@@ -150,7 +149,7 @@ export function specialSplitNodePoint(
     if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
-    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    const order = edgeVerts.map((_, face) => face);
     if (!vertices || order.length !== 5) return null;
     const sharedCorner = (a: number, b: number): Pos | null => {
       const [a0, a1] = edgeVerts[a] ?? [];
@@ -382,17 +381,11 @@ export function buildNodePositions<Id extends string | number>(
     let kind: SplitSpecialShapeKind | null = null;
     if ((group.length === 2 || group.length === 3) && directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
-      const canonicalOrder = cfg.tessellation.kind === "cairo"
-        ? cairoCanonicalFaceOrder(group[0].x, group[0].y) : undefined;
-      kind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder);
+      kind = detectSplitSpecialShapeKind(faceKindsByNode);
     }
 
     const connectedFacesByNode = kind && faceKindsByNode
-      ? faceKindsByNode.map((kinds) => {
-        if (cfg.tessellation.kind !== "cairo") return connectedFaceIndices(kinds);
-        const order = cairoCanonicalFaceOrder(group[0].x, group[0].y);
-        return order.filter((rawFace) => kinds[rawFace] !== "wall");
-      })
+      ? faceKindsByNode.map(connectedFaceIndices)
       : null;
 
     for (let i = 0; i < group.length; i++) {

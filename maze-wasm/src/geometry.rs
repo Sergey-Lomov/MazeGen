@@ -10,59 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-/// Wire shape for `cell_centers` — a standalone point list plus its tessellation config,
-/// independent of `GenerateConfig`'s `level_fields`.
-#[derive(Deserialize)]
-struct CellCentersConfig {
-    tessellation: TessellationConfig,
-    points: Vec<[i32; 2]>,
-}
-
-/// World-unit center (`Tessellation::center`, math convention, no display orientation) of each
-/// point in `points`, in order. `maze-web`'s `cartesianCache.ts` is the single caller: it scales
-/// these to pixels and applies the display orientation. Superseded by `geometry_snapshot` once the
-/// web consumes core geometry (GitHub issue #761).
-#[wasm_bindgen]
-pub fn cell_centers(config: JsValue) -> Result<JsValue, JsValue> {
-    let cfg: CellCentersConfig = serde_wasm_bindgen::from_value(config)
-        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
-    let centers = cell_centers_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
-    Ok(serde_wasm_bindgen::to_value(&centers).unwrap())
-}
-
-fn cell_centers_for(cfg: &CellCentersConfig) -> Result<Vec<[f64; 2]>, String> {
-    build_tessellation(
-        &cfg.tessellation,
-        Centers {
-            points: &cfg.points,
-        },
-    )?
-}
-
-struct Centers<'a> {
-    points: &'a [[i32; 2]],
-}
-
-impl TessellationVisitor for Centers<'_> {
-    type Output = Result<Vec<[f64; 2]>, String>;
-
-    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
-        self.points
-            .iter()
-            .map(|&[x, y]| {
-                let cell = (codec.from_xy)(x, y);
-                if !tessellation.is_valid_cell(cell) {
-                    return Err(format!("invalid cell [{x}, {y}]"));
-                }
-                let center = tessellation.center(cell);
-                Ok([center.x, center.y])
-            })
-            .collect()
-    }
-}
-
-/// Immutable geometry snapshot of a cell set (boundary path commands, flattened polylines,
-/// centers, `cell_scale`, per-face contact points and segments), bound to the tessellation
+/// Immutable geometry snapshot of a cell set (boundary as path commands or a flattened polyline,
+/// as requested; centers, `cell_scale`, per-face contact points and segments), bound to the tessellation
 /// instance and the caller's field version — see `maze_runner::runner::geometry`.
 #[wasm_bindgen]
 pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
@@ -157,36 +106,9 @@ impl TessellationVisitor for Shapes<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CellCentersConfig, TessellationShapes, TessellationShapesConfig, cell_centers_for,
-        tessellation_shapes_for,
-    };
+    use super::{TessellationShapes, TessellationShapesConfig, tessellation_shapes_for};
     use crate::generation_config::TessellationConfig;
     use maze_runner::config::TessellationKind;
-
-    #[test]
-    fn cell_centers_are_core_centers_in_point_order() {
-        let cfg = CellCentersConfig {
-            tessellation: TessellationConfig {
-                kind: TessellationKind::Square,
-                params: serde_json::Map::new(),
-            },
-            points: vec![[2, -1], [0, 0]],
-        };
-        assert_eq!(cell_centers_for(&cfg), Ok(vec![[2.5, -0.5], [0.5, 0.5]]));
-    }
-
-    #[test]
-    fn cell_centers_rejects_invalid_cells() {
-        let cfg = CellCentersConfig {
-            tessellation: TessellationConfig {
-                kind: TessellationKind::Cairo,
-                params: serde_json::Map::new(),
-            },
-            points: vec![[0, 0]],
-        };
-        assert!(cell_centers_for(&cfg).is_err());
-    }
 
     #[test]
     fn tessellation_shapes_lists_templates_and_cell_bindings() {

@@ -8,7 +8,6 @@ import { STATIC_COLOR_FIELD_KEYS, parseColorFieldKey } from "../pixi/colorFieldK
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { ColorRow } from "../components/ColorRow";
 import { ColorVisibilityProvider, LayoutGate } from "../components/ColorVisibilityContext";
-import { fakeCellCenters } from "./cellCentersFake";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -16,7 +15,9 @@ import {
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const emptyMaze = { nodes: [], edges: [], floors: [{ id: "f", title: "F" }] } as never;

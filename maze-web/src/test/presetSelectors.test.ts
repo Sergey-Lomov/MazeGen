@@ -6,15 +6,16 @@ import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "../pixi/constants";
 import { canvas } from "../pixi/colorTokens";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
-// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// getCellCenter (via cartesianCache's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock it with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip -- those are applied
-// by `squareGeometry.ts` itself, not this mock).
+// by `cartesianCache.ts` itself, not this mock).
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");

@@ -4,14 +4,15 @@ import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
 import type { TeleportEdge } from "../pixi/renderers/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 // `getCellVertices` (square) delegates to wasm for cartesian coords via `getCartesian` — mocked with
 // the identity mapping square uses (see `maze-core/src/space/square.rs`'s `cartesian`), same
 // rationale as `VectorByWallsSettingsPanel.test.tsx`.
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {

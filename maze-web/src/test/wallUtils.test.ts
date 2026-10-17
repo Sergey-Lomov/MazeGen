@@ -1,14 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenter } from "./cellCentersFake";
-
-// `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
-// — same mock `tessellationGeometry.test.ts` uses, canonical (unit-tile-scale) square formula.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
 
 vi.mock("pixi.js", () => {
   class FakeGraphics {
@@ -406,13 +398,21 @@ describe("drawCellBoundaryHighlight", () => {
     const inset = newG();
     drawCellBoundaryHighlight(inset, [0, 0], [1, 0], cfg, 0xff0000, 1, 0, undefined, 0.3);
 
-    const startOf = (g: FakeG) => g.calls.find((call) => call.fn === "moveTo")!.args as [number, number];
-    const [plainX, plainY] = startOf(plain);
-    const [insetX, insetY] = startOf(inset);
+    // Extent of the drawn quad along each axis; endpoint order of the shared edge is not part of
+    // the contract, so compare spans rather than the first point.
+    const spans = (g: FakeG) => {
+      const pts = g.calls
+        .filter((call) => call.fn === "arcTo")
+        .map((call) => [call.args[0], call.args[1]] as [number, number]);
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      return { x: Math.max(...xs) - Math.min(...xs), y: Math.max(...ys) - Math.min(...ys) };
+    };
+    const plainSpan = spans(plain);
+    const insetSpan = spans(inset);
     // The shared edge for two horizontally adjacent square cells is vertical, so the tangent
     // shift is along y; the perpendicular (x) span must stay untouched.
-    expect(insetX).toBeCloseTo(plainX, 5);
-    expect(Math.abs(insetY)).toBeLessThan(Math.abs(plainY));
+    expect(insetSpan.x).toBeCloseTo(plainSpan.x, 5);
+    expect(insetSpan.y).toBeLessThan(plainSpan.y);
   });
 
 });

@@ -18,9 +18,19 @@ use std::sync::Arc;
 pub struct GeometrySnapshotRequest {
     pub tessellation: TessellationConfig,
     pub cells: Vec<[i32; 2]>,
-    /// `flatten` tolerance for `polyline`, in world units.
-    pub tolerance: f64,
+    /// Which representation of each cell's boundary to return.
+    pub boundary: BoundaryRequest,
     pub field_version: u64,
+}
+
+/// The boundary representation a snapshot carries: one per request, never both.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BoundaryRequest {
+    /// Exact drawing commands, arcs included; the caller decides how to flatten them.
+    Path,
+    /// The boundary flattened at `tolerance` (world units).
+    Polyline { tolerance: f64 },
 }
 
 /// A region snapshot bound to the tessellation instance (`instance`, the serialized config —
@@ -37,16 +47,29 @@ pub struct CellGeometry {
     pub cell: [i32; 2],
     pub center: [f64; 2],
     pub cell_scale: f64,
-    /// The boundary path's drawing commands.
-    pub path: Vec<PathCommandDto>,
-    /// The boundary flattened at the requested tolerance, first point not repeated.
-    pub polyline: Vec<[f64; 2]>,
+    pub boundary: BoundaryDto,
     /// One entry per face, in `faces_of` order.
     pub faces: Vec<FaceGeometry>,
 }
 
+/// A cell's boundary in the representation the request asked for.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BoundaryDto {
+    /// The boundary path's drawing commands.
+    Path { commands: Vec<PathCommandDto> },
+    /// The boundary flattened at the requested tolerance, first point not repeated.
+    Polyline { points: Vec<[f64; 2]> },
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct FaceGeometry {
+    /// The cell across this face (`Tessellation::neighbor`), `None` at the tessellation's edge.
+    /// It is a neighbor in the tessellation, not necessarily a cell of the caller's field.
+    pub neighbor: Option<[i32; 2]>,
+    /// This face's index in the cell's shape template (`CellShape::canonical_of_local`), the
+    /// index split patterns use; `None` for a cell without a template.
+    pub canonical_face: Option<usize>,
     pub contact_point: [f64; 2],
     /// The face's segments, counter-clockwise along this cell's boundary.
     pub segments: Vec<SegmentDto>,
@@ -113,12 +136,11 @@ pub struct CellsInRegionRequest {
 }
 
 pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySnapshot, String> {
-    // Also rejects NaN.
-    if request.tolerance.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
-        return Err(format!(
-            "tolerance must be positive, got {}",
-            request.tolerance
-        ));
+    if let BoundaryRequest::Polyline { tolerance } = request.boundary {
+        // Also rejects NaN.
+        if tolerance.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
+            return Err(format!("tolerance must be positive, got {tolerance}"));
+        }
     }
     let cells = build_tessellation(&request.tessellation, Snapshot { request })??;
     Ok(GeometrySnapshot {
@@ -164,7 +186,8 @@ impl TessellationVisitor for Snapshot<'_> {
             }
             let mut faces = Vec::new();
             let mut face_segments = Vec::new();
-            for &face in tessellation.faces_of(cell) {
+            let shape = tessellation.shape_of(cell);
+            for (local, &face) in tessellation.faces_of(cell).iter().enumerate() {
                 let key = tessellation.edge_owner(cell, face);
                 let (owner_segments, contact) = edges.entry(key).or_insert_with(|| {
                     let segments = tessellation.face_segments(key.0, key.1);
@@ -177,6 +200,10 @@ impl TessellationVisitor for Snapshot<'_> {
                     owner_segments.iter().rev().map(Segment::reversed).collect()
                 };
                 faces.push(FaceGeometry {
+                    neighbor: tessellation
+                        .neighbor(cell, face)
+                        .map(|(neighbor, _)| wire(neighbor, codec)),
+                    canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
                     contact_point: xy(*contact),
                     segments: segments.iter().map(segment_dto).collect(),
                 });
@@ -188,16 +215,22 @@ impl TessellationVisitor for Snapshot<'_> {
                 cell: [x, y],
                 center: xy(tessellation.center(cell)),
                 cell_scale: tessellation.cell_scale(cell),
-                path: path.path_commands().iter().map(command_dto).collect(),
-                polyline: path
-                    .flatten(self.request.tolerance)
-                    .into_iter()
-                    .map(xy)
-                    .collect(),
+                boundary: boundary_dto(&path, self.request.boundary),
                 faces,
             });
         }
         Ok(out)
+    }
+}
+
+fn boundary_dto(path: &BoundaryPath, request: BoundaryRequest) -> BoundaryDto {
+    match request {
+        BoundaryRequest::Path => BoundaryDto::Path {
+            commands: path.path_commands().iter().map(command_dto).collect(),
+        },
+        BoundaryRequest::Polyline { tolerance } => BoundaryDto::Polyline {
+            points: path.flatten(tolerance).into_iter().map(xy).collect(),
+        },
     }
 }
 
@@ -330,11 +363,21 @@ mod tests {
         }
     }
 
+    const POLYLINE: BoundaryRequest = BoundaryRequest::Polyline { tolerance: 0.01 };
+
     fn request(kind: TessellationKind, cells: Vec<[i32; 2]>) -> GeometrySnapshotRequest {
+        request_with(kind, cells, POLYLINE)
+    }
+
+    fn request_with(
+        kind: TessellationKind,
+        cells: Vec<[i32; 2]>,
+        boundary: BoundaryRequest,
+    ) -> GeometrySnapshotRequest {
         GeometrySnapshotRequest {
             tessellation: config(kind),
             cells,
-            tolerance: 0.01,
+            boundary,
             field_version: 7,
         }
     }
@@ -347,11 +390,15 @@ mod tests {
         let cell = &snapshot.cells[0];
         assert_eq!(cell.center, [0.5, 0.5]);
         assert_eq!(cell.cell_scale, 1.0);
-        assert_eq!(cell.path.len(), 5);
-        assert_eq!(cell.polyline.len(), 4);
+        let BoundaryDto::Polyline { points } = &cell.boundary else {
+            panic!("a polyline request returns a polyline");
+        };
+        assert_eq!(points.len(), 4);
         assert_eq!(
             cell.faces[0],
             FaceGeometry {
+                neighbor: Some([1, 0]),
+                canonical_face: Some(0),
                 contact_point: [1.0, 0.5],
                 segments: vec![SegmentDto::Line {
                     from: [1.0, 0.0],
@@ -377,10 +424,16 @@ mod tests {
                         continue;
                     }
                     let path = tessellation.boundary_path(cell);
+                    let shape = tessellation.shape_of(cell);
                     let faces = tessellation
                         .faces_of(cell)
                         .iter()
-                        .map(|&face| FaceGeometry {
+                        .enumerate()
+                        .map(|(local, &face)| FaceGeometry {
+                            neighbor: tessellation
+                                .neighbor(cell, face)
+                                .map(|(neighbor, _)| wire(neighbor, codec)),
+                            canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
                             contact_point: xy(tessellation.contact_point(cell, face)),
                             segments: tessellation
                                 .edge_segments(cell, face)
@@ -393,14 +446,29 @@ mod tests {
                         cell: [x, y],
                         center: xy(tessellation.center(cell)),
                         cell_scale: tessellation.cell_scale(cell),
-                        path: path.path_commands().iter().map(command_dto).collect(),
-                        polyline: path.flatten(0.01).into_iter().map(xy).collect(),
+                        boundary: BoundaryDto::Polyline {
+                            points: path.flatten(0.01).into_iter().map(xy).collect(),
+                        },
                         faces,
                     });
                 }
             }
             cells
         }
+    }
+
+    #[test]
+    fn snapshot_carries_only_the_requested_boundary() {
+        let path = geometry_snapshot(&request_with(
+            TessellationKind::Square,
+            vec![[0, 0]],
+            BoundaryRequest::Path,
+        ))
+        .unwrap();
+        let BoundaryDto::Path { commands } = &path.cells[0].boundary else {
+            panic!("a path request returns a path");
+        };
+        assert_eq!(commands.len(), 5);
     }
 
     #[test]
@@ -421,9 +489,21 @@ mod tests {
     #[test]
     fn snapshot_rejects_invalid_cells_and_tolerance() {
         assert!(geometry_snapshot(&request(TessellationKind::Cairo, vec![[0, 0]])).is_err());
-        let mut bad = request(TessellationKind::Square, vec![[0, 0]]);
-        bad.tolerance = 0.0;
-        assert!(geometry_snapshot(&bad).is_err());
+        for tolerance in [0.0, -1.0, f64::NAN] {
+            let bad = request_with(
+                TessellationKind::Square,
+                vec![[0, 0]],
+                BoundaryRequest::Polyline { tolerance },
+            );
+            assert!(geometry_snapshot(&bad).is_err());
+        }
+        // A path request has no tolerance to reject.
+        let path = request_with(
+            TessellationKind::Square,
+            vec![[0, 0]],
+            BoundaryRequest::Path,
+        );
+        assert!(geometry_snapshot(&path).is_ok());
     }
 
     #[test]

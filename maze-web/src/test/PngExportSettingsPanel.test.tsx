@@ -1,14 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
-import { fakeCellCenter } from "./cellCentersFake";
-
-// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
-// same square-tessellation mock as hexGeometry.test.ts / exportFit.test.ts.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
 
 const { PngExportSettingsPanel } = await import("../components/features/PngExportSettingsPanel");
 const { useMazeStore } = await import("../store/mazeStore");

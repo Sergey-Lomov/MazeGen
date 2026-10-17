@@ -2,14 +2,15 @@ import { describe, it, expect, vi } from "vitest";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
-// getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
+// getCellCenter/getCellVertices (via cartesianCache's getCartesian) delegate to wasm, unavailable
 // in this unit-test environment -- mock with the canonical projections used by the three
 // tessellation families.
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: (config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSelectors");

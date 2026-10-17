@@ -326,7 +326,7 @@ export class FieldEditController {
       const cfg = gs.floorFields[gs.activeFloorId].fieldConfig;
       const kind = cfg.tessellation.kind;
       const initialCells = primitiveCells(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
-      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(initialCells, kind, gs.smoothPrimitives));
+      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(initialCells, cfg, gs.smoothPrimitives));
       this.lastGridRadius = 1;
       this.lastEndGrid = grid;
       this.lastEndWorld = this.primitiveStartWorld;
@@ -464,7 +464,7 @@ export class FieldEditController {
       const cfg = ms.floorFields[ms.activeFloorId].fieldConfig;
       const kind = cfg.tessellation.kind;
       const nextCells = primitiveCells(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
-      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(nextCells, kind, ms.smoothPrimitives));
+      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(nextCells, cfg, ms.smoothPrimitives));
       this.lastGridRadius = gridRadius;
       this.lastEndGrid = currentGrid;
       this.lastEndWorld = currentWorld;
@@ -975,7 +975,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(cells, kind, cfg),
+        segments: selectionBoundarySegments(cells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 1,
       },
@@ -995,7 +995,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(this.lastPreviewCells, kind, cfg),
+        segments: selectionBoundarySegments(this.lastPreviewCells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },
@@ -1033,7 +1033,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(this.selectionCells, kind, cfg),
+        segments: selectionBoundarySegments(this.selectionCells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },

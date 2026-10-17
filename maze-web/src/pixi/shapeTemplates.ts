@@ -1,7 +1,7 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
 import { getTessellationShapes } from "../wasm/mazeService";
-import { patternAnchorPoint } from "./splitPatternTile";
+import { originCellOf } from "./splitPatternTile";
 
 /// Shape template keys per tessellation config (`{ kind, params }` fully identifies the built
 /// instance, same key `cartesianCache.ts` uses). Asked from core once per config, since store
@@ -35,9 +35,9 @@ export function splitPatternsFor(patterns: SplitPattern[], tessellation: Tessell
 }
 
 /** Shape template key a pattern authored against `cfg` belongs to — the template of the cell the
- *  pattern editor draws (`patternAnchorPoint`), as core's `Tessellation::shape_of` binds it. */
+ *  pattern editor draws (`originCellOf`), as core's `Tessellation::shape_of` binds it. */
 export function patternShapeOf(cfg: FieldConfig): string {
-  const anchor = patternAnchorPoint(cfg);
+  const anchor = originCellOf(cfg);
   const key = `${configKey(cfg.tessellation)}@${anchor[0]},${anchor[1]}`;
   let shape = anchorShapeCache.get(key);
   if (shape === undefined) {

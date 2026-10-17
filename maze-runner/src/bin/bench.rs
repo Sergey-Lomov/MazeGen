@@ -22,7 +22,7 @@
 
 use maze_core::space::Tessellation;
 use maze_runner::GenerateConfig;
-use maze_runner::runner::geometry::{GeometrySnapshotRequest, geometry_snapshot};
+use maze_runner::runner::geometry::{BoundaryRequest, GeometrySnapshotRequest, geometry_snapshot};
 use maze_runner::runner::prepare::{Prepared, PreparedVisitor, dispatch};
 use maze_runner::runner::stages::{run_check_only, run_generation, run_repair, seed_graph};
 use serde_json::{Map, Value, json};
@@ -74,7 +74,9 @@ impl PreparedVisitor for TimeStage<'_> {
         let snapshot_request = GeometrySnapshotRequest {
             tessellation: config.tessellation.clone(),
             cells: config.level_fields.concat(),
-            tolerance: GEOMETRY_TOLERANCE,
+            boundary: BoundaryRequest::Polyline {
+                tolerance: GEOMETRY_TOLERANCE,
+            },
             field_version: 0,
         };
         let started = Instant::now();

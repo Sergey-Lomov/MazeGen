@@ -3,11 +3,14 @@ import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { fieldOf } from "./fieldConfigFixtures";
 import { getTessellationShapes } from "../wasm/mazeService";
 import { patternShapeOf, shapeKeysOf, splitPatternsFor } from "../pixi/shapeTemplates";
-import { patternAnchorPoint } from "../pixi/splitPatternTile";
+import { originCellOf } from "../pixi/splitPatternTile";
 import { tessellationConfigOf } from "../fieldConfig";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
 }));
 
@@ -31,7 +34,7 @@ describe("shapeTemplates", () => {
     mock.mockClear();
     const cfg = fieldOf("cairo", { shape: "custom", points: [] });
     expect(patternShapeOf(cfg)).toBe("cairo_pentagon");
-    expect(mock).toHaveBeenCalledWith({ tessellation: cfg.tessellation, points: [patternAnchorPoint(cfg)] });
+    expect(mock).toHaveBeenCalledWith({ tessellation: cfg.tessellation, points: [originCellOf(cfg)] });
   });
 
   it("fails loudly when the anchor cell has no template", () => {

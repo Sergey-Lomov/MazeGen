@@ -45,7 +45,7 @@ describe("DefaultHoverProvider", () => {
 
   it("returns coords even far outside typical field bounds", () => {
     const provider = new DefaultHoverProvider(() => fakeViewport(0, 0), () => squareProjection);
-    const far = provider.getHoverInfo(TILE_SIZE * 1000, -TILE_SIZE * 1000);
+    const far = provider.getHoverInfo(TILE_SIZE * 1000.5, -TILE_SIZE * 1000.5);
     expect(far).toEqual({ x: 1000, y: 1000 });
   });
 

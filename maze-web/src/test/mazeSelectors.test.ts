@@ -4,13 +4,11 @@ import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoi
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
-import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig } from "../fieldConfig";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -21,12 +19,14 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: vi.fn(() => ({})), subscribe: vi.fn(() => () => {}) },
 }));
 
-// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// getCellCenter (via cartesianCache's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 // --- postEditEdgesToDto ---
@@ -692,8 +692,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo 2x2 divider as corner12 -> centre -> corner34", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(200 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(100, ...point), n(101, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 200 + face), e(200 + face, node)]);
@@ -725,8 +725,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo adjacent divider as side 0 plus corner23 -> side-0 midpoint", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(300 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(110, ...point), n(111, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 300 + face), e(300 + face, node)]);
@@ -746,8 +746,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo 2x3 bridge and preserves the fork's ordinary passages", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(400 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(120, ...point), n(121, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 400 + face), e(400 + face, node)]);
@@ -897,12 +897,11 @@ describe("hex special shapes", () => {
     const doublePassage = buildSplitPassages(nodes, edgesFor([[0, 2], [3, 5]]), hexCfg).specialShapes;
     expect(divider).toHaveLength(1);
     expect(doublePassage).toHaveLength(1);
-    expect(divider[0]).toMatchObject({
-      kind: "diagonal",
-      corner0: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner0 : null,
-      corner1: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner1 : null,
-    });
-    if (divider[0].kind !== "diagonal") throw new Error("unreachable");
+    if (divider[0].kind !== "diagonal" || doublePassage[0].kind !== "diagonal") throw new Error("unreachable");
+    // Same wall line; endpoint order follows face order and is not part of the contract.
+    expect([divider[0].corner0, divider[0].corner1]).toEqual(
+      expect.arrayContaining([doublePassage[0].corner0, doublePassage[0].corner1]),
+    );
     expect(divider[0].dividerJunctions).toHaveLength(2);
     expect(divider[0].dividerJunctions?.[0]).not.toEqual(divider[0].dividerJunctions?.[1]);
   });

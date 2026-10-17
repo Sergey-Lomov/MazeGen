@@ -6,7 +6,7 @@ import { TileFaceEditor } from "../features/TileFaceEditor";
 import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
-import { degreeFor, patternAnchorPoint, tileNodesForPattern } from "../../pixi/splitPatternTile";
+import { degreeFor, originCellOf, tileNodesForPattern } from "../../pixi/splitPatternTile";
 import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
@@ -33,7 +33,7 @@ const NOOP = () => {};
  *  with a fixed small size and no-op click handlers; `TileFaceEditor`'s own cursor is already
  *  `default` (not a pointer), so it doesn't visually suggest interactivity. */
 function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
-  const anchorPoint = patternAnchorPoint(cfg);
+  const anchorPoint = originCellOf(cfg);
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
@@ -56,7 +56,7 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
 export function SplitPatternListEditor({ patterns, onChange, withWeights, locked = false }: Props) {
   const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(fieldConfig);
-  const anchorPoint = patternAnchorPoint(fieldConfig);
+  const anchorPoint = originCellOf(fieldConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   function addPattern(pattern: SplitPattern) {
@@ -80,7 +80,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
 
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
-    addPattern(blueprintToSplitPattern(blueprint, fieldConfig, anchorPoint));
+    addPattern(blueprintToSplitPattern(blueprint, fieldConfig));
   }
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
@@ -174,7 +174,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                   onClick={() => handleAddBlueprint(blueprint)}
                 >
                   <TileFaceEditor
-                    point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint, fieldConfig, anchorPoint)}
+                    point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

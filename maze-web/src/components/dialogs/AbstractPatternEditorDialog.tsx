@@ -11,7 +11,7 @@ import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { typography, spacing } from "../../styles/theme";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
-import { degreeFor, patternAnchorPoint, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
+import { degreeFor, originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -60,7 +60,7 @@ type NodeRef = number;
 export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Props) {
   const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(fieldConfig);
-  const anchorPoint = patternAnchorPoint(fieldConfig);
+  const anchorPoint = originCellOf(fieldConfig);
   const [activeNode, setActiveNode] = useState(0);
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 

@@ -2,12 +2,15 @@ import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { getCellVertices } from "../tessellationGeometry";
+import { cellsInDisplayRect, getCellVertices } from "../tessellationGeometry";
+import { TILE_SIZE } from "../constants";
 import { GRID_LINE_ALPHA } from "../renderConstants";
 import { canvas } from "../colorTokens";
 
 /** Above this count the grid is visually too dense to be useful and too expensive to rebuild. */
 export const MAX_VIEWPORT_GRID_CELLS = 50_000;
+/// Cells drawn beyond the viewport edge on each side; a cell is at most two tiles across.
+const VIEWPORT_CELL_PAD = 6;
 
 export interface GridBounds {
   minX: number;
@@ -83,9 +86,18 @@ export class GridRenderer {
       // into the viewport/export margin around an irregular field.
       for (const [xi, yi] of cells) drawCell(xi, yi);
     } else if (bounds) {
-      for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
-        for (let yi = bounds.minY; yi <= bounds.maxY; yi++) drawCell(xi, yi);
-      }
+      // Not every lattice coordinate is a cell (Cairo skips some), so ask core which cells the
+      // viewport touches instead of walking the coordinate box.
+      // Wider than the cells the reuse bounds (`sameRender`) tolerate: a pan that keeps the
+      // bounds unchanged moves the viewport by less than `GRID_BOUNDS_PAD` cells.
+      const pad = VIEWPORT_CELL_PAD * TILE_SIZE;
+      const visible = cellsInDisplayRect({
+        minX: -x / scale - pad,
+        maxX: (-x + w) / scale + pad,
+        minY: -y / scale - pad,
+        maxY: (-y + h) / scale + pad,
+      }, "intersects", cfg);
+      for (const [xi, yi] of visible) drawCell(xi, yi);
     }
     this.g.stroke();
     this.lastRender = nextRender;

@@ -49,9 +49,9 @@ describe("field print sizing", () => {
   it("fits a Cairo rectangle from its pentagon bounds", () => {
     const result = calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }), printInput);
     expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["cairo", "rect"]);
-    expect(result?.config).toEqual(fieldOf("cairo", { shape: "rect", cols: 13, rows: 18 }));
-    expect(result?.fieldWidthMm).toBe(200);
-    expect(result?.fieldHeightMm).toBe(275);
+    expect(result?.config).toEqual(fieldOf("cairo", { shape: "rect", cols: 13, rows: 19 }));
+    expect(result?.fieldWidthMm).toBeCloseTo(188.5618, 3);
+    expect(result?.fieldHeightMm).toBeCloseTo(273.4146, 3);
     expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });

@@ -1,5 +1,5 @@
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
-import { cellCenter, mazeBounds } from "./hexGeometry";
+import { getCellCenter } from "./tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
 
 /** Computes the viewport transform that fits generated maze nodes onto the screen (GitHub issue
@@ -21,7 +21,7 @@ export function fitMazeViewport(
   for (const n of nodes) {
     const level = n.level ?? 0;
     const cfg = levelConfigs[level] ?? levelConfigs[0];
-    const center = cellCenter(n, cfg);
+    const center = getCellCenter(n.x, n.y, cfg);
     let list = byLevel.get(level);
     if (!list) { list = []; byLevel.set(level, list); }
     list.push(center);
@@ -30,7 +30,7 @@ export function fitMazeViewport(
   let maxW = 0, maxH = 0;
   let activeBounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
   for (const [level, centers] of byLevel) {
-    const bounds = mazeBounds(centers, TILE_SIZE);
+    const bounds = centersBounds(centers, TILE_SIZE);
     maxW = Math.max(maxW, bounds.maxX - bounds.minX);
     maxH = Math.max(maxH, bounds.maxY - bounds.minY);
     if (level === activeLevel) activeBounds = bounds;
@@ -50,4 +50,16 @@ export function fitMazeViewport(
     x: screenW / 2 - scale * cx,
     y: screenH / 2 - scale * cy,
   };
+}
+
+/** Bounding box of `centers`, expanded by `pad` on every side. */
+function centersBounds(centers: { x: number; y: number }[], pad: number): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of centers) {
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
 }

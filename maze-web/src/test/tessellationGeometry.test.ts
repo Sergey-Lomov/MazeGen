@@ -1,20 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { FieldConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
 import { fieldOf } from "./fieldConfigFixtures";
-import { fakeCellCenter } from "./cellCentersFake";
+import { getCellGeometry } from "../pixi/cartesianCache";
 
-// `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
-// — same mock `hexGeometry.test.ts` uses, the world-unit centers of `maze-core::space`'s
-// Tessellation impls.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] =>
-    fakeCellCenter(x, y, cfg.tessellation.kind),
-}));
-
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
-const { cairoCanonicalFaceOrder } = await import("../pixi/cairoGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord, cellsInDisplayRect } = await import("../pixi/tessellationGeometry");
 
 // Canonical (counter-clockwise) face order of `maze-core`'s shape templates (`Specs/space.md`,
 // GitHub issue #758) — used here only to name expected indices by face, not to duplicate the
@@ -118,13 +109,13 @@ describe("getSplitCircleRotationDeg", () => {
 });
 
 describe("rotateFaceIndex", () => {
-  it("follows Cairo's physical perimeter instead of its stable core slot order", () => {
+  it("steps Cairo faces cyclically in both directions", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
-
-    // At the D tile [2, 1], the stable slots 1 and 4 are adjacent in space while
-    // slot 2 is the next numeric slot. This is the skipped-edge regression.
-    expect(rotateFaceIndex(cfg, 2, 1, 1, 1)).toBe(4);
-    expect(rotateFaceIndex(cfg, 2, 1, 1, -1)).toBe(0);
+    const forward = rotateFaceIndex(cfg, 2, 1, 1, 1);
+    const backward = rotateFaceIndex(cfg, 2, 1, 1, -1);
+    expect(new Set([1, forward, backward]).size).toBe(3);
+    expect(rotateFaceIndex(cfg, 2, 1, forward, -1)).toBe(1);
+    expect(rotateFaceIndex(cfg, 2, 1, backward, 1)).toBe(1);
   });
 
   it("keeps the established cyclic index behavior for square", () => {
@@ -138,7 +129,7 @@ describe("Cairo special split node anchors", () => {
   it("places Cor1 at 1/4 and Cor2 at 3/4 from corner 2/3 toward face-0 midpoint", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
+    const order = [0, 1, 2, 3, 4];
     const vertices = getCellVertices(...point, cfg)!;
     const { edgeVerts } = getNeighborData(cfg, ...point);
     const shared = (a: number, b: number) => {
@@ -158,7 +149,7 @@ describe("Cairo special split node anchors", () => {
   it("places adjacent-divider markers between the divider center and edge 1/4 centers", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
+    const order = [0, 1, 2, 3, 4];
     const vertices = getCellVertices(...point, cfg)!;
     const { edgeVerts } = getNeighborData(cfg, ...point);
     const shared = (a: number, b: number) => {
@@ -189,7 +180,7 @@ describe("Cairo special split node anchors", () => {
   it("places Cairo 2x3 bridge at the edge-1/edge-4 midpoint and fork at 1/3", () => {
     const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
+    const order = [0, 1, 2, 3, 4];
     const vertices = getCellVertices(...point, cfg)!;
     const { edgeVerts } = getNeighborData(cfg, ...point);
     const shared = (a: number, b: number) => {
@@ -592,9 +583,9 @@ describe("splitFaceIndexToCore", () => {
     });
   });
 
-  it("maps triangle web faces [Left, Right, Base] through the anchor cell's template binding", () => {
+  it("maps triangle web faces to the same core indices", () => {
     const cfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 3, rows: 3 });
-    expect([0, 1, 2].map((i) => splitFaceIndexToCore(cfg, i))).toEqual([1, 2, 0]);
+    expect([0, 1, 2].map((i) => splitFaceIndexToCore(cfg, i))).toEqual([0, 1, 2]);
   });
 });
 
@@ -655,6 +646,34 @@ describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
     const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const farCenter = getCellCenter(50, 50, cfg);
     expect(nearestCellCoord(farCenter.x, farCenter.y, cfg)).toEqual([50, 50]);
+  });
+});
+
+describe("nearestCellCoord on Cairo", () => {
+  it("always answers with a cell of the tessellation, never an unoccupied coordinate", () => {
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
+    for (const [x, y] of [[0, 0], [37, -91], [-250, 400], [1234, 56]]) {
+      const [cx, cy] = nearestCellCoord(x, y, cfg);
+      expect(() => getCellGeometry(cx, cy, cfg)).not.toThrow();
+    }
+  });
+});
+
+describe("cellsInDisplayRect", () => {
+  it("joins chunks without gaps or duplicates when the rectangle spans several", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
+    // 400 cells wide: more than two chunks, one cell tall.
+    const cells = cellsInDisplayRect({ minX: 10, maxX: 400 * TILE_SIZE - 10, minY: 10, maxY: TILE_SIZE - 10 }, "center_inside", cfg);
+    expect(cells).toHaveLength(400);
+    expect(new Set(cells.map(([x, y]) => `${x},${y}`)).size).toBe(400);
+    expect(cells.map(([x]) => x)).toEqual(Array.from({ length: 400 }, (_, i) => i));
+  });
+
+  it("answers a rectangle whose candidate box exceeds core's bound", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
+    // 600 x 500 cells = 300000 candidates, beyond MAX_REGION_CANDIDATES in one query.
+    const cells = cellsInDisplayRect({ minX: 10, maxX: 600 * TILE_SIZE - 10, minY: 10, maxY: 500 * TILE_SIZE - 10 }, "center_inside", cfg);
+    expect(cells).toHaveLength(300000);
   });
 });
 

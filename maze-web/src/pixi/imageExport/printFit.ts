@@ -4,11 +4,10 @@ import type { ExportMargin } from "./exportMargins";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import { PAPER_SIZES_MM } from "./paperSizes";
 import { placeInBox } from "./exportFit";
-import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../constants";
-import { TRI_TILE_SIZE } from "../triGeometry";
+import { VIEWPORT_FIT_PADDING } from "../constants";
+import { TESSELLATION_UI } from "../geometry/tessellationUi";
 
 const MM_PER_INCH = 25.4;
-const SQRT_3 = Math.sqrt(3);
 
 export const DPI_BY_DENSITY: Record<PrintExportSettings["density"], number> = {
   screen_96: 96,
@@ -42,21 +41,12 @@ export function pxToMm(px: number, dpi: number): number {
 /** World-space length of the print-sizing measure at scale 1: square side, or circumcircle
  * diameter for regular hexagons and triangles. */
 export function cellMeasureWorldUnits(config: Pick<FieldConfig, "tessellation">): number {
-  if (config.tessellation.kind === "hex") {
-    return TILE_SIZE * 2;
-  }
-  if (config.tessellation.kind === "tri") {
-    return (TRI_TILE_SIZE * 2) / SQRT_3;
-  }
-  return TILE_SIZE;
+  return TESSELLATION_UI[config.tessellation.kind].cellMeasurePx;
 }
 
-/** World-space length of one geometric cell side at scale 1. Hexagons use TILE_SIZE as their
- * circumradius/side length, while triangles use TRI_TILE_SIZE as their side length. */
+/** World-space length of one geometric cell side at scale 1. */
 export function cellSideWorldUnits(config: Pick<FieldConfig, "tessellation">): number {
-  return config.tessellation.kind === "tri"
-    ? TRI_TILE_SIZE
-    : TILE_SIZE;
+  return TESSELLATION_UI[config.tessellation.kind].cellSidePx;
 }
 
 /** Converts the print-sizing measure (square side or polygon circumcircle diameter) to a

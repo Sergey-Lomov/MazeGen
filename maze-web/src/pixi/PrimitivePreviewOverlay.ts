@@ -1,10 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { TILE_SIZE } from "./constants";
-import { hexCenter, hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
 import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
-import type { PrimitiveWorldGeometry, TessellationKind } from "./primitiveGeometry";
+import type { FieldConfig } from "../fieldConfig";
+import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
 
 const ADD_COLOR = canvas.fieldEditor.previewAdd;
@@ -23,7 +21,6 @@ export class PrimitivePreviewOverlay {
   private rafPending = false;
   private pendingCells: [number, number][] | null = null;
   private pendingButton = 0;
-  private pendingKind: TessellationKind = "square";
   private pendingCfg: FieldConfig | null = null;
   private pendingGeometry: PrimitiveWorldGeometry | null = null;
   private frameVisible = true;
@@ -34,17 +31,16 @@ export class PrimitivePreviewOverlay {
     this.root.addChild(this.layer);
   }
 
-  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
+  update(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     this.pendingCells = cells;
     this.pendingButton = button;
-    this.pendingKind = kind;
     this.pendingCfg = cfg;
     this.pendingGeometry = geometry;
     if (!this.rafPending) {
       this.rafPending = true;
       requestAnimationFrame(() => {
         this.rafPending = false;
-        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
       });
     }
   }
@@ -52,11 +48,11 @@ export class PrimitivePreviewOverlay {
   setFrameVisible(visible: boolean): void {
     this.frameVisible = visible;
     if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
-      this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
     }
   }
 
-  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
+  private redraw(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
     const color = geometry.kind === "polygon" && geometry.cellColor !== undefined
@@ -66,7 +62,7 @@ export class PrimitivePreviewOverlay {
         : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
     const alpha = geometry.kind !== "ellipse" ? geometry.cellAlpha ?? PREVIEW_ALPHA : PREVIEW_ALPHA;
     for (const [x, y] of cells) {
-      const verts = getCellVertices(x, y, kind, cfg);
+      const verts = geometryCellVertices(x, y, cfg);
       if (!verts) continue;
       g.poly(verts.flatMap(v => [v.x, v.y]));
       g.fill({ color, alpha });
@@ -193,29 +189,3 @@ function drawDashedEllipse(
   }
 }
 
-function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: FieldConfig) {
-  switch (kind) {
-    case "square": {
-      const h = TILE_SIZE / 2;
-      const cx = x * TILE_SIZE + TILE_SIZE / 2;
-      const cy = -y * TILE_SIZE - TILE_SIZE / 2;
-      return [
-        { x: cx - h, y: cy - h },
-        { x: cx + h, y: cy - h },
-        { x: cx + h, y: cy + h },
-        { x: cx - h, y: cy + h },
-      ];
-    }
-    case "hex": {
-      const orientation = hexOrientationOf(cfg);
-      const center = hexCenter(x, y, orientation, cfg);
-      return hexVertices(center.x, center.y, orientation);
-    }
-    case "tri": {
-      const orientation = triOrientationOf(cfg);
-      return triVertices(x, y, orientation);
-    }
-    case "cairo":
-      return geometryCellVertices(x, y, cfg) ?? [];
-  }
-}

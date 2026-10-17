@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import { getTileDiagram } from "../pixi/tessellationGeometry";
 import {
   buildCorridorGeometryDebug,
@@ -174,12 +173,7 @@ export function prepareFamily(family: Family): PreparedFamily | null {
   if (!diagram) return null;
 
   const portsByFace = diagram.sides.map((side) => facePort(family.id, side.v0, side.v1));
-  const faceOrder = family.config.tessellation.kind === "cairo"
-    ? cairoCanonicalFaceOrder(family.coordinate[0], family.coordinate[1])
-    : [];
-  const ports = faceOrder.length === portsByFace.length
-    ? faceOrder.map((faceIndex) => portsByFace[faceIndex])
-    : portsByFace;
+  const ports = portsByFace;
 
   return {
     id: family.id,

@@ -11,13 +11,14 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { baseStoreState, baseFloorFieldConfig, postEditStatePatch, TEST_FLOOR_ID } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
-import { fakeCellCenters } from "./cellCentersFake";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
-  getCellCenters: vi.fn((config: Parameters<typeof fakeCellCenters>[0]) => fakeCellCenters(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));

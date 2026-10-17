@@ -1,5 +1,4 @@
-import { TILE_SIZE } from "./constants";
-import { TRI_TILE_SIZE } from "./triGeometry";
+import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import { makeProjection } from "./tessellationProjection";
 import { encodePoint } from "./tessellationProjection";
 import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
@@ -51,9 +50,6 @@ export function pickEdgeAtPosition(
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
   }
 
-  const kind = tessellationFamily(cfg);
-  const isTriangle = kind === "tri";
-  const isHex = kind === "hex";
   // Cell-center-to-nearest-side distance, as a fraction of the tile's own edge-length scale, is
   // much smaller for triangles/hexagons (incenter-to-side ≈ 0.29 * side for an equilateral
   // triangle; hexagon center-to-side is the apothem, ≈ 0.87 * (side/2) ≈ 0.43 * side) than for a
@@ -61,7 +57,7 @@ export function pickEdgeAtPosition(
   // tuned for one shape puts another shape's own cell center inside the edge-hit zone, so a
   // dead-center click is misread as an edge click (GitHub issue #340 follow-up). Each shape's own
   // threshold stays strictly under its own center-to-side ratio.
-  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
+  const threshold = TESSELLATION_UI[tessellationFamily(cfg)].edgeHitThreshold;
   const thresholdSq = threshold * threshold;
 
   let bestKey: string | null = null;
@@ -127,10 +123,7 @@ export function isInEdgeVertexDeadZone(
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
   }
 
-  const kind = tessellationFamily(cfg);
-  const isTriangle = kind === "tri";
-  const isHex = kind === "hex";
-  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
+  const threshold = TESSELLATION_UI[tessellationFamily(cfg)].edgeHitThreshold;
   const thresholdSq = threshold * threshold;
 
   const candidates: [number, number][] = [[cell.x, cell.y]];
