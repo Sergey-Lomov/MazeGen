@@ -3,9 +3,6 @@ name = "maze-runner"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-test-tessellation = ["maze-core/test-tessellation"]
-
 [dependencies]
 maze-core = { path = "../maze-core" }
 serde = { version = "1", features = ["derive"] }

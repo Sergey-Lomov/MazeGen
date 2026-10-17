@@ -37,7 +37,7 @@ describe("ParamizedDetail", () => {
     render(<Harness id="e1" onCommit={vi.fn()} />);
     expect(screen.getByText("Detail Title")).toBeInTheDocument();
     expect(screen.getByText("Detail description")).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton")).toHaveValue(1);
+    expect(screen.getByRole("spinbutton")).toHaveValue("1");
   });
 
   it("debounces onCommit after a field change", () => {

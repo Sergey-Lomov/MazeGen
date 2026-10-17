@@ -11,6 +11,8 @@ import { BaseController } from "./BaseController";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { cancelPendingPointerAction, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
 import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnectionsInteraction";
+import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
+import { blurActiveElement, presetToolForShortcut } from "./toolShortcuts";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -19,6 +21,11 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 // Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
 // the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
 const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source", "move"]);
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
 
 type State = ReturnType<typeof useMazeStore.getState>;
 
@@ -61,10 +68,19 @@ export class PresetConnectionsController extends BaseController {
   private settingsHoverCache: { state: State; key: string; configurable: boolean } | null = null;
 
   private onKeyDown = (e: KeyboardEvent) => {
+    const state = useMazeStore.getState();
+    if (!isTypingTarget(e.target) && state.openCard === "preset_connections" && !isPresetConnectionsModalOpen(state)) {
+      const tool = presetToolForShortcut(e, state.floors.length > 1);
+      if (tool) {
+        e.preventDefault();
+        blurActiveElement();
+        state.setPresetConnectionsTool(tool);
+        return;
+      }
+    }
     if (e.code === "Escape") {
       if (this.hasArmedElement) this.cancelPointerGesture();
       this.cancelPendingTeleport();
-      const state = useMazeStore.getState();
       state.cancelPresetVerticalPassagePlacement();
       state.cancelPresetElevatorPlacement();
       state.cancelPresetSplitTarget();
@@ -539,7 +555,10 @@ export class PresetConnectionsController extends BaseController {
       // resolve through the active node and would otherwise silently drag/cycle/complete on it
       // without the dialog. Right click (remove) still falls through to the hit-tests.
       if (button === 0) {
-        if (!inField) return;
+        if (!inField) {
+          if (TELEPORT_TOOLS.has(tool)) notifyEditRefusal("preset_connections", TELEPORT_OUTSIDE_FIELD);
+          return;
+        }
         const slotIds = store.presetSplitPoints[splitKeyOf(coords, level)];
         if (slotIds && slotIds.length > 0) {
           const sortedSlotIds = [...slotIds].sort((a, b) => a - b);
@@ -867,10 +886,13 @@ export class PresetConnectionsController extends BaseController {
     if (kind) useMazeStore.getState().setLockedNode(coords[0], coords[1], kind);
   }
 
-  /** Starts or completes a two-click teleport placement at `coords`. No-op if the cell is outside
-   * the field, or (on completion) equal to the pending origin cell. */
+  /** Starts or completes a two-click teleport placement at `coords`. Reports a refusal if the cell
+   * is outside the field; remains a no-op when completion targets the pending origin cell. */
   private tryTeleportClick(coords: [number, number], tool: string): void {
-    if (!this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]))) return;
+    if (!this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]))) {
+      notifyEditRefusal("preset_connections", TELEPORT_OUTSIDE_FIELD);
+      return;
+    }
     const store = useMazeStore.getState();
     const level = activeFloorLevel(store);
     const pendingFrom = store.presetTeleportPendingFrom;

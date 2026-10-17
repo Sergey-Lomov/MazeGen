@@ -102,7 +102,9 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `showCoords` | `boolean` | Show coordinate labels on graph |
 | `showMaze` | `boolean` | Show maze tile renderer |
 | `warnings` | `string[]` | Generation warnings |
-| `error` | `string \| null` | Last error message |
+| `error` | `GenerationError \| null` | Last generation-run error as data (`free_field_too_small` or `run_failed` + raw WASM message); written only by generation runs |
+| `registryError` | `string \| null` | WASM registry load failure (`loadRegistry`) |
+| `postEditRefreshError` | `string \| null` | Last failed `confirmPostEdit` analytics refresh |
 
 ### Debug
 
@@ -161,4 +163,11 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 
 ## Error Handling
 
-`generate()` catches WASM exceptions and stores message in `error`. Does not throw. `error` is cleared on successful generate or `setSeed`.
+`generate()` catches WASM exceptions and stores `{ kind: "run_failed", message }` in `error`; a free field with fewer than 2 cells stores `{ kind: "free_field_too_small" }`. The generation card turns it into text at render time (`generationErrorText`), so a locale switch re-translates it. Does not throw. `error` is cleared on successful generate or `setSeed`. It is shown only in the generation card while `generationStatus === "error"`; no other code writes it (GitHub issue #769).
+
+Other failures go through toasts (`Specs/notifications.md`):
+
+- `loadRegistry` failure sets `registryError` (untouched by seed changes and generation; cleared by a successful `loadRegistry`) and raises an `error` toast. The generation card shows it as a persistent status line and disables Generate with a `Tooltip` reason; the card header (`computeGenerationCard`) reads `critical` regardless of other config. Overlapping `loadRegistry` calls share one in-flight promise (React StrictMode mounts twice in dev), so one failure is one toast occurrence; a call after it settles starts a fresh load.
+- `confirmPostEdit` failure sets `postEditRefreshError` and raises an `error` toast; the post-edit card shows it as a persistent status line. Cleared by the next successful refresh and whenever post-edit state is rebuilt (generation, project load, downstream reset).
+- Project / style preset / quality preset load failures are `error` toasts; the load is aborted before any state change.
+- Removing a split node assigned as start/finish (post-edit) or start/finish/gen-source (presets) is rejected with a `notice` toast.

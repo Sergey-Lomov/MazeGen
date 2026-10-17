@@ -8,7 +8,6 @@ import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
@@ -29,12 +28,13 @@ import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSetti
 import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
+import { presetToolShortcut } from "../../pixi/toolShortcuts";
 
-function getEdgeTools(): [PresetConnectionTool, string][] {
+function getEdgeTools(): [PresetConnectionTool, string, string?][] {
   return [
     ["wall", m["preset.wall"]()],
     ["passage", m["preset.passage"]()],
-    ["reset", `${m["preset.reset"]()}\n${m["preset.reset_tooltip"]()}`],
+    ["reset", m["preset.reset"](), m["preset.reset_tooltip"]()],
     ["one_way", m["preset.one_way"]()],
   ];
 }
@@ -117,8 +117,6 @@ export function PresetConnectionsFeature() {
   const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
   const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
   const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
-  const presetDragFailureMessage = useMazeStore((s) => s.presetDragFailureMessage);
-  const dismissPresetDragFailureMessage = useMazeStore((s) => s.dismissPresetDragFailureMessage);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -255,10 +253,11 @@ export function PresetConnectionsFeature() {
             ...getGenerationTools(),
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["clear", m["preset.clear_tool"]()],
+            ["clear", m["preset.clear_tool"](), m["preset.clear_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={presetToolShortcut}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
       </div>
@@ -307,8 +306,6 @@ export function PresetConnectionsFeature() {
       {presetLockSettingsPrompt && (
         <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
       )}
-
-      {presetDragFailureMessage && <VerticalDragFailureAlert failure={presetDragFailureMessage} onClose={dismissPresetDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>

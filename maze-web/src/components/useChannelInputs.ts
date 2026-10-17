@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+export { normalizeChannelInput as parseChannelInput } from "./inputNormalization";
 
 /** Per-channel text-input buffers shared by the color-picker model editors (`RgbModelEditor`,
  *  `HslModelEditor`, and the models that follow). Each channel input keeps a local text buffer so
@@ -51,13 +52,4 @@ export function useChannelInputs<K extends string>(
   }, []);
 
   return { buffers, markSelfEdit, setBuffer, clearBuffer };
-}
-
-/** Parse a channel input's raw text into a clamped numeric value, or `null` if it should not
- *  commit yet (empty / non-numeric). Shared by every model editor's `handleInput`. */
-export function parseChannelInput(raw: string, max: number): number | null {
-  if (raw.trim() === "") return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(max, n));
 }

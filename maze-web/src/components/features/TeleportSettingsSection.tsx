@@ -27,6 +27,7 @@ import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
 import { distributeOklchHues } from "../../store/colorMath";
+import { Tooltip } from "../Tooltip";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -204,16 +205,15 @@ function TeleportGroupCell({
           ))}
         </div>
         <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
-          <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
+          <Tooltip content={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}><span style={styles.warningIcon}>
             {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
-          </span>
+          </span></Tooltip>
           <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
         </div>
       </div>
       <div style={styles.groupCellControls} onMouseEnter={() => setHovered(allNodeIds)}>
-        <select
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_shape"]()}><select
           name={`teleport-group-${index}-shape`}
-          title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
           style={sharedStyles.selectSm}
           value={effective?.shape ?? defaultShape}
           onChange={(e) => onChange({ shape: e.target.value as MarkerShape })}
@@ -221,25 +221,25 @@ function TeleportGroupCell({
           {MARKER_SHAPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label()}</option>
           ))}
-        </select>
+        </select></Tooltip>
         {linkToggle("shape", effective?.shape ?? defaultShape)}
-        <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()}>
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_color"]()}><span>
           <ColorSwatch
             color={fillColor}
             onChange={(c) => onChange({ fillColor: c })}
             priorityColors={[PC.teleportGroup(index, "border").at(borderColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "fill")}
           />
-        </span>
+        </span></Tooltip>
         {linkToggle("fillColor", fillColor)}
-        <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}>
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}><span>
           <ColorSwatch
             color={borderColor}
             onChange={(c) => onChange({ borderColor: c })}
             priorityColors={[PC.teleportGroup(index, "fill").at(fillColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "border")}
           />
-        </span>
+        </span></Tooltip>
         {linkToggle("borderColor", borderColor)}
       </div>
     </div>

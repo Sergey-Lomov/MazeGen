@@ -262,6 +262,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       wouldBreakNeighborShape={(direction) => rotatePresetSplitPointBreaksNeighborShape(
         presetConnections, point, slots, direction, cfg, inFieldCells, splitPoints, activeSplitNode, level,
       )}
+      notificationSource="preset_connections"
       onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
       onHoverElement={(_row, element) => {

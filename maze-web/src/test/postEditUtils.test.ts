@@ -296,6 +296,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     // Rotating by +1 moves the N-face connection to W, which is outside the field.
     const result = rotateSplitPointNodes(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {}, {});
     expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("rotation onto a field cell with no node there is refused entirely — sparse field, not a boundary", () => {
@@ -309,6 +310,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     // Rotating by +1 moves the E-face connection to N (0,1), which is in-field but nodeless.
     const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, sparseNodes, {}, {});
     expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("moves to whichever node is active at the new neighbor, not always its original node", () => {
@@ -410,7 +412,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     }]);
   });
 
-  it("every candidate at the neighbor already holds a finished bridge — the new face is refused outright (stays wall), not wired onto the least-bad option", () => {
+  it("every candidate at the neighbor already holds a finished bridge — the rotation returns an ambiguous-owner refusal", () => {
     // Both of the neighbor's nodes (original AND slot 0) already hold a complete opposite pair.
     // There is no safe node to hand the new face to — picking either would corrupt it, so the
     // rotate must leave this face disconnected rather than guess (this is the actual GitHub #580
@@ -436,10 +438,8 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     const splitPoints: Record<string, number[]> = { "0,1": [0] };
 
     const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
-    // (0,0)'s own E-face one-way move is refused (no safe owner at the neighbor) — the point ends
-    // up with no connection to (0,1) at all (absence reads as wall, same "nothing to draw" contract
-    // `currentSplitNodeFaces` already uses for a neighbor with no edge in either direction).
-    expect(result).toEqual([{ slotId: undefined, faces: [] }]);
+    expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("ambiguous_face_owner");
   });
 
   it("multi-move rotate: two moves land on the same finished-bridge neighbor — both avoid the bridge slot", () => {

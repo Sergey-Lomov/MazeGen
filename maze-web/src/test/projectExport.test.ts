@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseAndValidate, serializeProject } from "../store/projectExport";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { downloadProjectFile, parseAndValidate, serializeProject, projectFileAccept, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import type { MazeState } from "../store/mazeStore";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -110,6 +110,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
     vectorByCorridorsSectionsExpanded: {},
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+    floorLabelModeChosen: true,
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
@@ -138,7 +139,6 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         square: new Set(),
         hex: new Set(),
         tri: new Set(),
-        test: new Set(),
         cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
       },
       isEditingField: true,
@@ -148,26 +148,6 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("cairo");
-    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
-  });
-
-  it("round-trips the dev test kind with its finite custom field", () => {
-    const state = makeState();
-    state.tessellationKind = "test";
-    const cells: [number, number][] = [[0, 0], [5, 0], [6, 0]];
-    const keys = new Set(cells.map(([x, y]) => (x << 16) | y));
-    state.floorFields.floor_1 = {
-      ...state.floorFields.floor_1,
-      fieldConfig: fieldOf("test", { shape: "custom", points: cells }),
-      freeFieldPoints: { square: new Set(), hex: new Set(), tri: new Set(), cairo: new Set(), test: keys },
-      isEditingField: true,
-      fieldPoints: keys,
-      fieldEditMode: "custom",
-    };
-    const serialized = serializeProject(state);
-    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
-    expect(reparsed.tessellation.kind).toBe("test");
-    expect(reparsed.floorFields.floor_1.freeFieldPoints.test).toEqual(cells);
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 
@@ -764,6 +744,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2, activeFloorId: "floor_1" });
   });
 
+  it("round-trips a customized floor title", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [{ id: "floor_1", title: "Ground", titleCustomized: true }];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toEqual([{ id: "floor_1", title: "Ground", titleCustomized: true }]);
+  });
+
   it("drops a malformed floor entry (missing title) and keeps the rest", () => {
     const data = valid_without_optional_sections();
     (data.floors as { floors: unknown[] }).floors = [
@@ -835,6 +822,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });
@@ -891,11 +879,42 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     const state = makeState({
       activeRenderMode: "vector_by_walls",
       openRenderModeSettings: "vector_by_walls",
-      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, floorColor: 0x123456, wallThickness: 7, teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } } },
+      vectorByWallsSettings: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+        floorColor: 0x123456,
+        wallThickness: 7,
+        teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } },
+        floorLabel: {
+          ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+          positionsByFloorId: {
+            floor_1: { mode: "cell", cell: [2, 3] },
+            floor_2: { mode: "free", x: -12.5, y: 40 },
+          },
+        },
+      },
     });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.imageExport).toEqual(serialized.imageExport);
+  });
+
+  it("keeps valid floor-label positions and discards malformed entries", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId = {
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+      bad_anchor: { mode: "anchored", anchor: "outside" },
+      fractional_cell: { mode: "cell", cell: [1.5, 2] },
+      incomplete_free: { mode: "free", x: 1 },
+      unknown: { mode: "future" },
+    };
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId).toEqual({
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+    });
   });
 
   it("omits vectorByWallsLinks/vectorByCorridorsLinks when links are untouched (GitHub issue #651)", () => {
@@ -999,6 +1018,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });
@@ -1010,5 +1030,44 @@ describe("parseAndValidate — migrations", () => {
     const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
     data.version = 0;
     expect(() => parseAndValidate(data)).toThrow(/No migration for version/);
+  });
+});
+
+describe("downloadProjectFile", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("saves under the project extension with a MIME type browsers won't re-extension", () => {
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:mock-url");
+    // jsdom implements neither object URLs nor navigation — same stubs as `pngExport.test.ts`.
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    downloadProjectFile(makeState());
+
+    expect(PROJECT_FILE_EXTENSION).toBe(".maze");
+    expect(downloadName).toBe(`maze-project${PROJECT_FILE_EXTENSION}`);
+    // `application/json` would make Safari/mobile save `maze-project.maze.json`, which the load
+    // dialog's `accept` filter then hides.
+    expect(createObjectURL.mock.calls[0][0].type).toBe("application/octet-stream");
+  });
+});
+
+describe("projectFileAccept", () => {
+  const nav = (userAgent: string, platform: string, maxTouchPoints: number) => ({ userAgent, platform, maxTouchPoints });
+
+  it("filters by the project extension on desktop", () => {
+    expect(projectFileAccept(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 0))).toBe(PROJECT_FILE_EXTENSION);
+    expect(projectFileAccept(nav("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0))).toBe(PROJECT_FILE_EXTENSION);
+  });
+
+  it("drops the filter on iPhone and on iPadOS (which reports a desktop Mac user agent)", () => {
+    expect(projectFileAccept(nav("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", "iPhone", 5))).toBeUndefined();
+    expect(projectFileAccept(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5))).toBeUndefined();
   });
 });

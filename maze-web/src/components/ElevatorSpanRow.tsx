@@ -1,6 +1,7 @@
 import type React from "react";
 import { sharedStyles } from "../styles/shared";
 import { typography, spacing, controlRowHeight } from "../styles/theme";
+import { NumberInput } from "./NumberInput";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -18,29 +19,29 @@ export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled }
   return (
     <div style={styles.row}>
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{m["generation.elevator_span"]()}</span>
-      <input
-        type="number"
+      <NumberInput
         name="elevator-span-min"
         min={1}
+        integer
         style={{ ...sharedStyles.input, width: 56, height: controlRowHeight, boxSizing: "border-box" }}
-        value={min}
+        value={String(min)}
         disabled={disabled}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          if (Number.isFinite(v)) onMinChange(Math.max(1, Math.round(v)));
+        onChange={(raw) => {
+          const value = Number(raw);
+          if (Number.isFinite(value)) onMinChange(value);
         }}
       />
       <span style={styles.dash}>–</span>
-      <input
-        type="number"
+      <NumberInput
         name="elevator-span-max"
         min={1}
+        integer
         style={{ ...sharedStyles.input, width: 56, height: controlRowHeight, boxSizing: "border-box" }}
-        value={max}
+        value={String(max)}
         disabled={disabled}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          if (Number.isFinite(v)) onMaxChange(Math.max(1, Math.round(v)));
+        onChange={(raw) => {
+          const value = Number(raw);
+          if (Number.isFinite(value)) onMaxChange(value);
         }}
       />
     </div>

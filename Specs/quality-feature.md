@@ -11,7 +11,9 @@ The Quality feature manages active checks, their **rules** (the unit a fix strat
 
 Subtitle: `"N check(s) active"`.
 
-The card body (`QualityFeature` component) renders a status hint only when the panel is **closed**. When `qualityOpen` is true, `QualityFeature` returns `null`.
+The card body (`QualityFeature` component) shows `status.no_checks` when no check is active, otherwise the `quality.open_to_configure` hint while the panel is **closed** (no hint while it is open). Below that it always shows the repair limits (max iterations, time budget — each a switch plus a number input), then a divider, then "Save rules" / "Load rules" buttons that save and load the whole quality configuration as a standalone rules file (GitHub issue #751 — see `Specs/project-file.md`'s "Quality preset" section). Unknown ids skipped on load are listed in an `AlertModal`. Repair-limit drafts commit on blur/Enter; max iterations rounds to an integer and clamps to 1, while time budget clamps to 0.1. Each correction gets a field-anchored hint (GitHub issue #770), even when the corrected value equals the stored value.
+
+`QualityDetailPanel` shows the `quality.select_to_view` hint both for no selection and for a selection that no longer resolves (e.g. after a rules load replaced every rule).
 
 ## Canvas lifecycle
 
@@ -99,7 +101,7 @@ There is no separate "Checks" column — each rule card shows its own member che
 
 One card per rule (`slots: StrategySlotVM[]`, one entry per rule in the store, not deduplicated by kind). Each card is split left/right:
 
-- **Left half — checks list** (`RuleCheckRow`, one per member check instance): label, a `Switch` toggle bound to `CheckInstance.disabled` (see "What a rule is" above — dims the row and its params, and disables their controls, while off), params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck(ruleId, localId)`, which deletes this `CheckInstance` from the rule's `checks`). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` listing this rule's `kind`'s check descriptors via `RulesColumn.candidatesFor` (see "AddCheckToRuleDialog" below for which types are offered); if `candidatesFor` returns empty, opens an `AlertModal` instead (`quality.no_checks_for_kind`).
+- **Left half — checks list** (`RuleCheckRow`, one per member check instance): label, a `Switch` toggle bound to `CheckInstance.disabled` (see "What a rule is" above — dims the row and its params, and disables their controls, while off), params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck(ruleId, localId)`, which deletes this `CheckInstance` from the rule's `checks`). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` listing this rule's `kind`'s check descriptors via `RulesColumn.candidatesFor` (see "AddCheckToRuleDialog" below for which types are offered); if `candidatesFor` returns empty, the row is disabled (`aria-disabled`, dimmed, click ignored) and wrapped in a `Tooltip` with `quality.no_checks_for_kind` (GitHub issue #772) — there is no modal.
 - **Right half — strategy panel** (`RuleStrategyPanel`): strategy label (or `strategy.no_fix.label` if `strategyId` is null), a `WarningIcon` (⚠, shared component) next to the label when `strategy.experimental` is true, its params shown always-expanded underneath (same layout as the checks side), a `Switch` toggle (visible only when a strategy is set) bound to `disabled`, and a `✎` edit button opening `StrategySelectDialog`.
 - **Card title row**: rule name (or inline rename input), a `Switch` bound to `ruleDisabled`, `✎` rename button, `✖` remove button (opens a `ConfirmModal` before calling `removeRule`, since it deletes member checks too).
 
@@ -316,7 +318,7 @@ Modal using `ItemSelectDialog`, targets one specific existing rule (`ruleId`, `k
 - Right panel: check label, description.
 - Footer: `[Cancel]` `[Add]`.
 - Add: calls `addCheck(typeId, ruleId)` — mints a fresh `CheckInstance` directly into the target rule's `checks` array, not as a new rule (see `addCheck`'s `ruleId` parameter below). Closes.
-- If `candidatesFor` returns empty when the row is clicked (no check descriptor at all handles this `kind`), this dialog never opens — an `AlertModal` (`quality.no_checks_for_kind`) shows instead.
+- If `candidatesFor` returns empty when the row is clicked (no check descriptor at all handles this `kind`), this dialog never opens — the row is disabled with a `Tooltip` (`quality.no_checks_for_kind`) instead.
 
 ## StrategySelectDialog
 

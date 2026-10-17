@@ -6,6 +6,12 @@ import { buildPresetPointEntities } from "../pixi/pointEntities";
 import * as m from "~/paraglide/messages";
 import type { FieldConfig } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes, noticeParams } from "./notificationTestHelpers";
+import {
+  ELEVATOR_DRAG_FAILED, SPLIT_ROTATION_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED,
+} from "../notifications/editRefusalNotifications";
+import { formatTargetLabel } from "../pixi/targetLabel";
 
 /** Patches the active floor's own field config — presetConnectionsSlice reads fieldConfig/
  * fieldPoints/isEditingField through floorFields[activeFloorId] (GitHub issue #338). */
@@ -38,6 +44,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 }));
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     tessellationKind: "square",
@@ -51,6 +58,21 @@ beforeEach(() => {
 });
 
 describe("mazeStore preset connections", () => {
+  it("a boundary-refused split rotation emits one notice and preserves connections", () => {
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
+    const from = presetEndpoint([-1, -1]);
+    const to = presetEndpoint([-1, 0]);
+    const key = "-1,-1--1,0";
+    useMazeStore.setState({
+      presetConnections: new Map([[key, { from, to, state: "passage", source: "user" }]]),
+    });
+
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+
+    expect(useMazeStore.getState().presetConnections.get(key)?.state).toBe("passage");
+    expect(noticeCodes()).toEqual([`preset_connections/${SPLIT_ROTATION_OUTSIDE_FIELD}`]);
+  });
   it("setPresetConnectionsTool updates tool", () => {
     useMazeStore.getState().setPresetConnectionsTool("passage");
     expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
@@ -400,6 +422,7 @@ describe("mazeStore preset connections", () => {
       });
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       expect(useMazeStore.getState().presetActiveSplitNode["0,0"]).toBeUndefined();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("removePresetSplitNode leaves an unrelated connection untouched", () => {
@@ -420,7 +443,7 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
-      expect(s.error).toContain("start/finish/gen-source");
+      expect(noticeCodes()).toEqual(["preset_connections/preset_connections.remove_endpoint_node_rejected"]);
     });
 
     it("removePresetSplitNode is rejected when the slot is assigned as presetFinish", () => {
@@ -568,7 +591,7 @@ describe("mazeStore preset connections", () => {
 
     it("is a no-op (still recomputes, no error) when nothing at the point", () => {
       useMazeStore.getState().resetPresetPoint([9, 9]);
-      expect(useMazeStore.getState().error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
   });
 
@@ -624,7 +647,7 @@ describe("mazeStore preset connections", () => {
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
       expect(s.presetStart).toEqual(presetEndpoint([0, 0], 0));
-      expect(s.error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("moves occupied preset elements from a dropped slot onto the original node", () => {
@@ -967,7 +990,8 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetVerticalPassages[0].from).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
+        expect(noticeParams(VERTICAL_PASSAGE_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([9, 9], 1, true, undefined) });
       });
 
       it("picking a slot for the deferred vertical-passage drag commits with the split endpoint", () => {
@@ -1003,7 +1027,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().applyPresetSplitTargetPick(9);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
         expect(presetEndpointsEqual(s.presetVerticalPassages[0].from, presetEndpoint([0, 0]))).toBe(true);
       });
 
@@ -1052,7 +1076,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().applyPresetSplitTargetPick(4);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
       });
 
@@ -1073,7 +1097,7 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
       });
 
       it("elevator with two split target floors ends up created after both picks", () => {

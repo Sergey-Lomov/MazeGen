@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TextInput } from "../components/TextInput";
+import * as m from "~/paraglide/messages";
 
 function Controlled({ initial, normalize, isValid, onChange }: {
   initial: string;
@@ -54,11 +55,37 @@ describe("TextInput", () => {
     expect(onChange).toHaveBeenLastCalledWith("A");
   });
 
+  it("shows a hint immediately when normalize truncates text", () => {
+    render(<Controlled initial="" normalize={(raw) => raw.slice(0, 1)} />);
+    fireEvent.change(screen.getByLabelText("field"), { target: { value: "AB" } });
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.text_truncated"]());
+  });
+
+  it("shows a hint immediately when a character is rejected, then dismisses it on an accepted change", () => {
+    render(<Controlled initial="A" isValid={(raw) => raw === "A" || raw === "B"} />);
+    const input = screen.getByLabelText("field");
+    fireEvent.change(input, { target: { value: "Z" } });
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.character_rejected"]());
+    fireEvent.change(input, { target: { value: "B" } });
+    expect(screen.queryByTestId("field-hint")).toBeNull();
+  });
+
   it("restores the last valid value on blur when left invalid", () => {
     render(<Controlled initial="A" isValid={(raw) => raw === "" || raw === "A" || raw === "B"} />);
     const input = screen.getByLabelText("field");
     fireEvent.change(input, { target: { value: "Z" } });
     expect(input).toHaveValue("Z");
+    fireEvent.blur(input);
+    expect(input).toHaveValue("A");
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.restored"]());
+  });
+
+  it("restores the value that existed when editing started, not a later accepted draft", () => {
+    render(<Controlled initial="A" isValid={(raw) => raw === "A" || raw === "B"} />);
+    const input = screen.getByLabelText("field");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "B" } });
+    fireEvent.change(input, { target: { value: "Z" } });
     fireEvent.blur(input);
     expect(input).toHaveValue("A");
   });

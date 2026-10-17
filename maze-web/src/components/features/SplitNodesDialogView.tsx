@@ -13,6 +13,7 @@ import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
+import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
 
 /** 1-based node number for a split point's node, in row order (GitHub issue #468). Slot 0 is not a
  *  special node any more — every node of a split point, the point's original node included, gets the
@@ -137,6 +138,7 @@ interface Props<E> {
    *  gated behind a `ConfirmModal` instead of silently degrading the neighbor's rendering. Optional
    *  — omitted by the pattern editor, which has no neighbor-shape concept to check. */
   wouldBreakNeighborShape?: (direction: 1 | -1) => boolean;
+  notificationSource: EditRefusalSource;
   /** Hovering a link bubble highlights that specific connection on the canvas (GitHub issue #237)
    *  — same mechanism as `EdgeHighlightRenderer`'s existing hover highlight, driven here by the
    *  panel instead of a canvas pointermove. `row` is the bubble's own card row (the link's "from"
@@ -191,7 +193,7 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape, notificationSource,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
   onTopChange,
 }: Props<E>) {
@@ -291,6 +293,7 @@ export function SplitNodesDialogView<E>({
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
+          notificationSource={notificationSource}
         />
       </div>
 

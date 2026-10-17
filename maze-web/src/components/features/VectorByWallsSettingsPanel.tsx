@@ -147,6 +147,7 @@ export function VectorByWallsSettingsPanel() {
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeFieldConfig);
   const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
   // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
@@ -445,6 +446,7 @@ export function VectorByWallsSettingsPanel() {
           <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
           {isExpanded("floors") && (
             <FloorLabelSection
+              renderMode="vector_by_walls"
               settings={settings.floorLabel}
               onChange={patchFloorLabel}
               fields={{ fill: PC.floorLabelFill, border: PC.floorLabelBorder, text: PC.floorLabelText }}
@@ -454,6 +456,9 @@ export function VectorByWallsSettingsPanel() {
                 border: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelText.at(settings.floorLabel.textColor), background],
                 text: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), floor, background],
               }}
+              activeFloorId={activeFloorId}
+              activeFloorTitle={floors.find((item) => item.id === activeFloorId)?.title ?? ""}
+              floorIds={floors.map((item) => item.id)}
             />
           )}
           <div style={styles.divider} />

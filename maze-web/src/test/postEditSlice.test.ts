@@ -11,6 +11,13 @@ import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 import { compactPostEditCommands } from "../pixi/postEditCompaction";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails, noticeCodes, noticeParams } from "./notificationTestHelpers";
+import {
+  ELEVATOR_DRAG_FAILED, SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD,
+  VERTICAL_PASSAGE_DRAG_FAILED,
+} from "../notifications/editRefusalNotifications";
+import { formatTargetLabel } from "../pixi/targetLabel";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -70,6 +77,7 @@ function seedPostEdit(
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   vi.mocked(computeAnalytics).mockReset();
   vi.mocked(computeAnalytics).mockResolvedValue(mockSnapshot);
@@ -753,10 +761,31 @@ describe("mazeStore post-edit actions", () => {
     expect(computeAnalytics).not.toHaveBeenCalled();
   });
 
-  it("confirmPostEdit stores error message when computeAnalytics throws", async () => {
+  it("confirmPostEdit stores postEditRefreshError and raises an error toast when computeAnalytics throws (GitHub issue #769)", async () => {
     vi.mocked(computeAnalytics).mockImplementation(() => { throw new Error("analytics failed"); });
     await useMazeStore.getState().confirmPostEdit();
-    expect(useMazeStore.getState().error).toBe("analytics failed");
+    expect(useMazeStore.getState().postEditRefreshError).toBe("analytics failed");
+    expect(useMazeStore.getState().error).toBeNull();
+    expect(errorCards()).toEqual(["post_edit/post_edit.refresh_failed"]);
+    expect(errorDetails("post_edit.refresh_failed")).toBe("analytics failed");
+  });
+
+  it("confirmPostEdit clears postEditRefreshError without a toast on the next successful refresh", async () => {
+    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    await useMazeStore.getState().confirmPostEdit();
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+    expect(errorCards()).toEqual([]);
+  });
+
+  it("confirmPostEdit ignores a stale failure superseded by a newer request", async () => {
+    let rejectFirst: (err: Error) => void = () => {};
+    vi.mocked(computeAnalytics).mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }));
+    const first = useMazeStore.getState().confirmPostEdit();
+    await useMazeStore.getState().confirmPostEdit();
+    rejectFirst(new Error("stale"));
+    await first;
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+    expect(errorCards()).toEqual([]);
   });
 
   it("confirmPostEdit increments the request id on every call", async () => {
@@ -1360,22 +1389,25 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(3), to: n(2) });
   });
 
-  it("movePostEditVerticalPassageEndpoint reverts the whole move and sets a failure message when the other end's floor has no node at the target (x, y) (GitHub issue #566)", () => {
+  it("movePostEditVerticalPassageEndpoint reverts the whole move and emits one notice when the other end's floor has no node", () => {
     seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 0, y: 0, i: 0, level: 1 },
         { id: 2, x: 1, y: 0, i: 0, level: 1 },
+        { id: 3, x: 2, y: 0, i: 0, level: 1 },
       ],
       edges: [],
       start: null, finish: null,
       commands: [{ kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" }],
     }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().movePostEditVerticalPassageEndpoint("v1", "to", n(2));
+    useMazeStore.getState().movePostEditVerticalPassageEndpoint("v1", "to", n(3));
     const s = useMazeStore.getState();
     expect(s.postEditCommands).toHaveLength(1);
     expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(1) });
-    expect(s.postEditDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 0, point: [1, 0] });
+    expect(noticeCodes()).toEqual([`post_edit/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
+    expect(noticeParams(VERTICAL_PASSAGE_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([2, 0], 0, true, undefined) });
   });
 
   it("a single-direction generation-time vertical passage is extracted into the baseline as forward, from its edge's own from/to", () => {
@@ -1570,7 +1602,8 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     useMazeStore.getState().movePostEditElevatorEndpoint("e1", 0, n(2));
     const s = useMazeStore.getState();
     expect(s.postEditDraftElevators[0].floors).toEqual([n(0), n(1)]);
-    expect(s.postEditDragFailureMessage).toEqual({ level: 1, point: [1, 1], entityKind: "elevator" });
+    expect(noticeCodes()).toEqual([`post_edit/${ELEVATOR_DRAG_FAILED}`]);
+    expect(noticeParams(ELEVATOR_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([1, 1], 1, true, undefined) });
   });
 
   it("movePostEditElevatorEndpoint moves a split-addressed OTHER floor instead of leaving it stale (GitHub issue #566, split-floor regression)", () => {
@@ -1781,10 +1814,10 @@ describe("mazeStore applyPostEditSplitTargetPick move_* actions (GitHub issue #5
       edges: [],
       start: null, finish: null,
       commands: [{ kind: "addVerticalPassage", id: "v1", from: n(0), to: splitEndpoint([1, 1], 1, 1), direction: "two_way" }],
-    }, { _nextPostEditVerticalPassageId: 2, postEditDragFailureMessage: null });
+    }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().movePostEditVerticalPassageEndpoint("v1", "from", n(3));
     const s = useMazeStore.getState();
-    expect(s.postEditDragFailureMessage).toBeNull();
+    expect(noticeCodes()).toEqual([]);
     expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(3), to: n(4) });
   });
 
@@ -1973,7 +2006,19 @@ describe("mazeStore split-node actions", () => {
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["2,2"]).toEqual([0]);
-    expect(s.error).toContain("start/finish");
+    expect(noticeCodes()).toEqual(["post_edit/post_edit.remove_endpoint_node_rejected"]);
+  });
+
+  it("removeSplitNode raises no notice when the target is not an endpoint", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0, pointId: "s1" },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1, pointId: "s1" },
+      ],
+    });
+    useMazeStore.getState().removeSplitNode([2, 2], 1);
+    expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0]);
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("removeSplitNode resets the active node to the original when the removed slot was active", () => {
@@ -2366,6 +2411,58 @@ describe("mazeStore split-node actions", () => {
     expect(s.postEditDraftSplitPoints["2,2"]).toEqual([0]);
     expect(s.postEditDraftSplitPointIds["2,2"]).toBe("s1");
   });
+
+  it("a boundary-refused split rotation emits one notice and no command", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: -1, y: -1, i: 0 },
+        { id: 1, x: -1, y: 0, i: 0 },
+      ],
+      edges: [{ from: 0, to: 1, kind: "basic" }],
+      start: null,
+      finish: null,
+    }, { activeFieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
+
+    useMazeStore.getState().rotateSplitPoint([-1, -1], 1);
+    useMazeStore.getState().rotateSplitPoint([-1, -1], 1);
+
+    expect(useMazeStore.getState().postEditCommands).toEqual([]);
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_ROTATION_OUTSIDE_FIELD}`]);
+  });
+
+  it("an ambiguous face-owner rotation emits its dedicated notice and no command", () => {
+    const idOf = (x: number, y: number) => (x + 10) * 100 + (y + 10);
+    const nodes = [];
+    for (let x = -2; x <= 2; x++) {
+      for (let y = -2; y <= 2; y++) nodes.push({ id: idOf(x, y), x, y, i: 0 });
+    }
+    nodes.push({ id: 9001, x: 0, y: 1, i: 1 });
+    const center = idOf(0, 0);
+    const east = idOf(1, 0);
+    const north = idOf(0, 1);
+    const northEast = idOf(1, 1);
+    const northWest = idOf(-1, 1);
+    seedPostEdit({
+      nodes,
+      edges: [
+        { from: center, to: east, kind: "basic" },
+        { from: north, to: northEast, kind: "basic" },
+        { from: north, to: northWest, kind: "basic" },
+        { from: 9001, to: northEast, kind: "basic" },
+        { from: 9001, to: northWest, kind: "basic" },
+      ],
+      start: null,
+      finish: null,
+    }, {
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }),
+      postEditActiveSplitNode: { "0,1": splitEndpoint([0, 1], 0) },
+    });
+
+    useMazeStore.getState().rotateSplitPoint([0, 0], 1);
+
+    expect(useMazeStore.getState().postEditCommands).toEqual([]);
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_FACE_OWNER_AMBIGUOUS}`]);
+  });
 });
 
 describe("mazeStore applySplitBlueprint", () => {
@@ -2561,7 +2658,7 @@ describe("mazeStore applySplitBlueprint", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
     expect(s.postEditDraftMeta?.start).toEqual(target);
-    expect(s.error).toBeNull();
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("preserves a finish marker assigned to a slot while applying a blueprint", () => {
@@ -2579,7 +2676,7 @@ describe("mazeStore applySplitBlueprint", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
     expect(s.postEditDraftMeta?.finish).toEqual(target);
-    expect(s.error).toBeNull();
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("moves every occupied post-edit element from a dropped slot onto Node 0", () => {

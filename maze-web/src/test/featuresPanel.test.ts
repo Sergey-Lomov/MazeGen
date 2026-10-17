@@ -212,6 +212,7 @@ describe("computeGenerationCard", () => {
     const result = computeGenerationCard(true, "kruskal_algorithm", false, 0.0, 0);
     expect(result.status).toBe("set");
   });
+
 });
 
 describe("computeImageExportCard", () => {

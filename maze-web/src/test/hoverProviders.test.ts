@@ -660,6 +660,39 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("clears editor hover when the pointer moves from the canvas to a side panel", () => {
+    const canvas = document.createElement("canvas");
+    const clearHover = vi.fn();
+    const onHoverChanged = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: { x: 0, y: 0, scale: { x: 1, y: 1 } } as any,
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({
+        onPointerDown: vi.fn(),
+        onPointerMove: vi.fn(),
+        onPointerUp: vi.fn(),
+        cancelPointerGesture: vi.fn(),
+        clearHover,
+      }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged,
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    canvas.dispatchEvent(new Event("pointerleave"));
+
+    expect(clearHover).toHaveBeenCalledOnce();
+    expect(onHoverChanged).toHaveBeenCalledWith(null);
+    interaction.destroy();
+  });
+
   it("confirms a persistent field selection when the pointer is released outside the canvas", () => {
     const stageHandlers: Record<string, () => void> = {};
     const state = useMazeStore.getState();
@@ -829,5 +862,65 @@ describe("zoom reset controls", () => {
     interaction.destroy();
     useMazeStore.setState(previous);
     expect(stageHandlers.pointerdown).toBeDefined();
+  });
+
+  it("commits or restores floor-label dragging at its keyboard and outside-canvas boundaries", () => {
+    const previous = useMazeStore.getState();
+    const canvas = document.createElement("canvas");
+    const cancelPointerGesture = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({ cancelPointerGesture: vi.fn() }) as any,
+      fieldEditorOverlay: { updateHover: vi.fn() } as any,
+      getController: () => ({ onPointerDown: vi.fn(), onPointerMove: vi.fn(), onPointerUp: vi.fn(), cancelPointerGesture }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+    useMazeStore.setState({
+      activeRenderMode: "vector_by_walls",
+      vectorByWallsSettings: {
+        ...previous.vectorByWallsSettings,
+        floorLabel: {
+          ...previous.vectorByWallsSettings.floorLabel,
+          positionsByFloorId: { [previous.activeFloorId]: { mode: "free", x: 1, y: 2 } },
+        },
+      },
+    });
+
+    useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+    useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x: 9, y: 10 });
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x: 1, y: 2 });
+
+    for (const [code, x, y] of [["Enter", 3, 4], ["Space", 4, 5]] as const) {
+      useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+      useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x, y });
+      window.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true }));
+      expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x, y });
+    }
+
+    useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+    useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x: 5, y: 6 });
+    const dragButton = document.createElement("button");
+    dragButton.setAttribute("data-floor-label-drag-control", "true");
+    document.body.appendChild(dragButton);
+    dragButton.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).not.toBeNull();
+    dragButton.remove();
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x: 5, y: 6 });
+
+    interaction.destroy();
+    useMazeStore.setState(previous);
   });
 });

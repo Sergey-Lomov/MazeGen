@@ -6,6 +6,7 @@ import { SelectRow } from "./SelectRow";
 import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
 import { HoverIconButton } from "./HoverIconButton";
+import { Tooltip } from "./Tooltip";
 import { colorToHex, colorToOklch, oklchToColor, oklchMaxChroma, OKLCH_MAX_CHROMA, type Oklch } from "./colorFormat";
 import { ui, spacing, font, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -351,14 +352,12 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                 <span style={styles.analogousLabel}>{m["color_picker.tools.plus"]()}</span>
                 <div style={styles.swatchRow}>
                   {divergence.plus.map((color, i) => (
-                    <button
-                      key={i}
+                    <Tooltip key={i} content={colorToHex(color)}><button
                       type="button"
                       className="hoverable"
-                      title={colorToHex(color)}
                       style={{ ...styles.swatch, background: colorToHex(color) }}
                       onClick={() => onPick(color)}
-                    />
+                    /></Tooltip>
                   ))}
                 </div>
               </div>
@@ -366,14 +365,12 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                 <span style={styles.analogousLabel}>{m["color_picker.tools.minus"]()}</span>
                 <div style={styles.swatchRow}>
                   {divergence.minus.map((color, i) => (
-                    <button
-                      key={i}
+                    <Tooltip key={i} content={colorToHex(color)}><button
                       type="button"
                       className="hoverable"
-                      title={colorToHex(color)}
                       style={{ ...styles.swatch, background: colorToHex(color) }}
                       onClick={() => onPick(color)}
-                    />
+                    /></Tooltip>
                   ))}
                 </div>
               </div>
@@ -382,31 +379,27 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
           {type === "range_split" && (
             <div style={styles.swatchRow} data-testid="color-picker-range-split-swatches">
               {rangeSplit.colors.map((color, i) => (
-                <button
-                  key={i}
+                <Tooltip key={i} content={colorToHex(color)}><button
                   type="button"
                   className="hoverable"
-                  title={colorToHex(color)}
                   style={{
                     ...styles.swatch,
                     background: colorToHex(color),
                   }}
                   onClick={() => onPick(color)}
-                />
+                /></Tooltip>
               ))}
             </div>
           )}
           {type !== "divergence" && type !== "range_split" && (
             <div style={styles.swatchRow} data-testid="color-picker-tools-swatches">
               {(swatches ?? []).map((color, i) => (
-                <button
-                  key={i}
+                <Tooltip key={i} content={colorToHex(color)}><button
                   type="button"
                   className="hoverable"
-                  title={colorToHex(color)}
                   style={{ ...styles.swatch, background: colorToHex(color) }}
                   onClick={() => onPick(color)}
-                />
+                /></Tooltip>
               ))}
             </div>
           )}

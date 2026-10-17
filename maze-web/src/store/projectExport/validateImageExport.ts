@@ -1,7 +1,7 @@
 import {
   type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
-  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings,
+  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
@@ -83,6 +83,10 @@ function clampTextMargin(value: number): number {
 
 function readTextMargin(obj: Record<string, unknown> | null, fallback: number): number {
   return clampTextMargin(optNumber(obj, "textMargin", fallback));
+}
+
+function readTextAlignment(obj: Record<string, unknown> | null, fallback: TextHorizontalAlignment = "center"): TextHorizontalAlignment {
+  return optEnum(obj, "textAlignment", ["left", "center", "right"] as const, fallback);
 }
 
 /** `BadgeSettings` fields (GitHub issue #701): the shared marker look plus label type and the
@@ -262,9 +266,15 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
   try { obj = assertObject(v, path); } catch { return fallback; }
   return {
     enabled: optBool(obj, "enabled", fallback.enabled),
+    // Floor labels predate label modes (GitHub issue #747): keep index-based output for saved
+    // settings without a mode.
+    labelMode: obj.labelMode === undefined
+      ? "index"
+      : optEnum(obj, "labelMode", ["index", "title"] as const, fallback.labelMode),
     prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textAlignment: readTextAlignment(obj, fallback.textAlignment),
     textSize: Math.min(FLOOR_LABEL_TEXT_SIZE_RANGE.max, Math.max(FLOOR_LABEL_TEXT_SIZE_RANGE.min, optNumber(obj, "textSize", fallback.textSize))),
     textMargin: readTextMargin(obj, fallback.textMargin),
     textColor: optNumber(obj, "textColor", fallback.textColor),
@@ -276,7 +286,29 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    positionsByFloorId: validateFloorLabelPositions(obj.positionsByFloorId, fallback.positionsByFloorId),
   };
+}
+
+function validateFloorLabelPositions(v: unknown, fallback: FloorLabelSettings["positionsByFloorId"]): FloorLabelSettings["positionsByFloorId"] {
+  if (v == null) return fallback;
+  if (typeof v !== "object" || Array.isArray(v)) return fallback;
+  const result: FloorLabelSettings["positionsByFloorId"] = {};
+  const anchors = new Set<FloorLabelAnchor>(FLOOR_LABEL_ANCHORS);
+  for (const [floorId, raw] of Object.entries(v)) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const value = raw as Record<string, unknown>;
+    if (value.mode === "anchored" && typeof value.anchor === "string" && anchors.has(value.anchor as FloorLabelAnchor)) {
+      result[floorId] = { mode: "anchored", anchor: value.anchor as FloorLabelAnchor };
+    } else if (value.mode === "cell" && Array.isArray(value.cell) && value.cell.length === 2
+      && value.cell.every((n) => typeof n === "number" && Number.isInteger(n))) {
+      result[floorId] = { mode: "cell", cell: [value.cell[0] as number, value.cell[1] as number] };
+    } else if (value.mode === "free" && typeof value.x === "number" && Number.isFinite(value.x)
+      && typeof value.y === "number" && Number.isFinite(value.y)) {
+      result[floorId] = { mode: "free", x: value.x, y: value.y };
+    }
+  }
+  return result;
 }
 
 function validateMarkerIndexCoverage(v: unknown, path: string, fallback: MarkerIndexSettings["coverage"]): MarkerIndexSettings["coverage"] {
@@ -659,6 +691,11 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
   };
 }
 
+function hasFloorLabelSettings(obj: Record<string, unknown> | null): boolean {
+  return [obj?.vectorByWallsSettings, obj?.vectorByCorridorsSettings].some((settings) =>
+    settings != null && typeof settings === "object" && (settings as Record<string, unknown>).floorLabel != null);
+}
+
 export function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
@@ -684,6 +721,9 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)
       : {},
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
+    // A file saved before GitHub issue #747 that already carries floor-label settings keeps them
+    // as-is; one without them gets the mode chosen on the next first open of Image Export.
+    floorLabelModeChosen: optBool(obj, "floorLabelModeChosen", hasFloorLabelSettings(obj)),
     vectorByWallsLinks: linksMatchDefaults(vectorByWallsLinks, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : vectorByWallsLinks,
     vectorByCorridorsLinks: linksMatchDefaults(vectorByCorridorsLinks, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : vectorByCorridorsLinks,
   };

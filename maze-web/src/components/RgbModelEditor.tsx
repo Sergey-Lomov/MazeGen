@@ -3,7 +3,9 @@ import { sharedStyles } from "../styles/shared";
 import { typography, spacing } from "../styles/theme";
 import { colorToHex, colorToRgb, rgbToColor, type Rgb } from "./colorFormat";
 import { GradientSlider } from "./GradientSlider";
-import { useChannelInputs, parseChannelInput } from "./useChannelInputs";
+import { useChannelInputs } from "./useChannelInputs";
+import { ColorChannelInput } from "./ColorChannelInput";
+import type { NormalizerResult } from "./inputNormalization";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -41,10 +43,9 @@ export function RgbModelEditor({ color, onChange }: Props) {
     onChange(next);
   }
 
-  function handleInput(ch: Channel, raw: string) {
-    setBuffer(ch, raw);
-    const value = parseChannelInput(raw, 255);
-    if (value !== null) commit(ch, value);
+  function handleInput(ch: Channel, result: NormalizerResult<number | null>) {
+    setBuffer(ch, result.raw);
+    if (result.value !== null) commit(ch, result.value);
   }
 
   return (
@@ -62,16 +63,14 @@ export function RgbModelEditor({ color, onChange }: Props) {
             thumbColor={colorToHex(color)}
             onChange={(v) => { clearBuffer(key); commit(key, v); }}
           />
-          <input
-            type="number"
+          <ColorChannelInput
             name={`rgb-${key}`}
-            min={0}
             max={255}
             step={1}
             value={buffers[key] ?? String(rgb[key])}
-            aria-label={`${label()} value`}
+            ariaLabel={`${label()} value`}
             style={styles.number}
-            onChange={(e) => handleInput(key, e.target.value)}
+            onInput={(result) => handleInput(key, result)}
             onBlur={() => clearBuffer(key)}
           />
         </div>

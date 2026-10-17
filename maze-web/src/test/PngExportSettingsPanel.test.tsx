@@ -57,6 +57,22 @@ describe("PngExportSettingsPanel", () => {
     expect(screen.getByText(m["image_export.format.png.digital.height"]())).toBeInTheDocument();
   });
 
+  it("keeps empty digital fields out of the store and clamps negative values on blur", () => {
+    render(<PngExportSettingsPanel />);
+    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "margin_px" } });
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(20);
+    fireEvent.change(input, { target: { value: "-5" } });
+    fireEvent.blur(input);
+    expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(0);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.clamped_min"]({ min: "0", max: "∞" }),
+    );
+  });
+
   it("shows a digital overflow warning bubble with a fill percentage when content exceeds a fixed canvas", () => {
     setBaseState({
       pngExportSettings: {

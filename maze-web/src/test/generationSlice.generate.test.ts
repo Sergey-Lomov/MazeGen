@@ -5,6 +5,8 @@ import { fieldConfigToWasm, resolveAlgorithmKind } from "../store/slices/generat
 import { configAllCells } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import type { DebugArenaHandle } from "../store/storeTypes";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -32,6 +34,7 @@ import { fieldOf } from "./fieldConfigFixtures";
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  resetNotifications();
 });
 
 function source(kind: DebugArenaHandle["algorithmKind"]): DebugArenaHandle["sources"][number] {
@@ -89,6 +92,13 @@ describe("mazeStore.generate", () => {
     expect(s.finish).toBe(1);
     expect(s.error).toBeNull();
     expect(s.selectedNode).toBeNull();
+  });
+
+  it("clears a stale post-edit refresh error on a new generation (GitHub issue #769)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    useMazeStore.getState().generate();
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
   });
 
   it("normalizes the generated field for runtime consumers", () => {
@@ -253,8 +263,10 @@ describe("mazeStore.generate", () => {
       }) },
     });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBeTruthy();
+    expect(useMazeStore.getState().error).toEqual({ kind: "free_field_too_small" });
+    expect(useMazeStore.getState().generationStatus).toBe("error");
     expect(generateMaze).not.toHaveBeenCalled();
+    expect(errorCards()).toEqual(["generation/generation.free_field_too_small"]);
   });
 
   it("sets error when isEditingField and fieldPoints.size === 0", () => {
@@ -272,13 +284,15 @@ describe("mazeStore.generate", () => {
   it("stores error string on Error throw", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw new Error("bad wasm"); });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("bad wasm");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "bad wasm" });
+    expect(errorCards()).toEqual(["generation/generation.run_failed"]);
+    expect(errorDetails("generation.run_failed")).toBe("bad wasm");
   });
 
   it("stores string error when non-Error thrown", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw "raw error"; });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("raw error");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "raw error" });
   });
 
   it("clears selectedNode on generate", () => {

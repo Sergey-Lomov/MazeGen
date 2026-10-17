@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
@@ -6,6 +6,9 @@ import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { spacing, inset } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import { hasOpenModal } from "../Modal";
+import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
+import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -47,6 +50,17 @@ export function BasicConfigFeature() {
     }
   }
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (useMazeStore.getState().openCard !== "basic_config" || showConfirm || hasOpenModal() || !isFeatureCardConfirmShortcut(event)) return;
+      event.preventDefault();
+      blurActiveElement();
+      handleConfirmTessellation();
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [showConfirm, confirmTessellation]);
+
   return (
     <div style={styles.root}>
       <label style={styles.label}>
@@ -61,7 +75,6 @@ export function BasicConfigFeature() {
           <option value="hex">{m["tessellation.hex"]()}</option>
           <option value="tri">{m["tessellation.triangle"]()}</option>
           <option value="cairo">{m["tessellation.cairo"]()}</option>
-          {import.meta.env.DEV && <option value="test">{m["tessellation.test"]()}</option>}
         </select>
       </label>
       {isHex && (

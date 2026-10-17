@@ -8,6 +8,10 @@ import { PresetConnectionsController } from "../pixi/PresetConnectionsController
 import type { PresetConnectionsRenderer } from "../pixi/PresetConnectionsRenderer";
 import type { PresetConnectionEntry, PresetElevatorEntry, PresetTeleportEntry, PresetVerticalPassageEntry } from "../pixi/fieldEditUtils";
 import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes, noticeParams } from "./notificationTestHelpers";
+import { TELEPORT_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED } from "../notifications/editRefusalNotifications";
+import { formatTargetLabel } from "../pixi/targetLabel";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -96,6 +100,7 @@ function cellCenter(x: number, y = 0): [number, number] {
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     openCard: "preset_connections",
@@ -103,7 +108,6 @@ beforeEach(() => {
     presetStart: presetEndpoint([0, 0]),
     presetFinish: null,
     presetDragOverride: null,
-    presetDragFailureMessage: null,
     presetSplitTargetPrompt: null,
     presetEntityDeletePrompt: null,
     presetTeleportPendingFrom: null,
@@ -264,6 +268,21 @@ describe("PresetConnectionsController lifecycle and marker interactions", () => 
 
     controller.onPointerDown(140, -20, 0);
     expect(useMazeStore.getState().presetFinish).toEqual(presetEndpoint([2, 0]));
+  });
+
+  it("reports teleport placement outside the field once and accepts an in-field placement silently", () => {
+    const controller = makeController();
+    useMazeStore.setState({ presetConnectionsTool: "teleport_one_way", presetStart: null });
+
+    controller.onPointerDown(140, -20, 0);
+    controller.onPointerDown(140, -20, 0);
+    expect(useMazeStore.getState().presetTeleportPendingFrom).toBeNull();
+    expect(noticeCodes()).toEqual([`preset_connections/${TELEPORT_OUTSIDE_FIELD}`]);
+
+    resetNotifications();
+    controller.onPointerDown(...cellCenter(1), 0);
+    expect(useMazeStore.getState().presetTeleportPendingFrom).toEqual(presetEndpoint([1, 0]));
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("right-clicks markers away and gives the start marker priority when markers overlap", () => {
@@ -493,9 +512,8 @@ describe("PresetConnectionsController vertical interactions", () => {
     controller.onPointerUp(0);
 
     expect(useMazeStore.getState().presetVerticalPassages[0].from.point).toEqual([0, 0]);
-    expect(useMazeStore.getState().presetDragFailureMessage).toEqual({
-      entityKind: "vertical_passage", level: 1, point: [1, 0],
-    });
+    expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
+    expect(noticeParams(VERTICAL_PASSAGE_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([1, 0], 1, true, undefined) });
   });
 });
 

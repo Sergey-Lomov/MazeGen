@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { hasPresetMode } from "../../store/storeHelpers";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
 import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
@@ -27,6 +26,9 @@ import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { availablePresetKeys, fieldOperationAvailable, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
+import { useFieldHint } from "../FieldHint";
+import { inputHintReason, type NormalizerResult } from "../inputNormalization";
+import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -39,36 +41,65 @@ interface SizeParamProps {
 }
 
 function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeParamProps) {
+  const hint = useFieldHint();
   const [local, setLocal] = useState(String(value));
 
   useEffect(() => { setLocal(String(value)); }, [value]);
 
   function commit() {
     const n = Number(local);
-    if (!isNaN(n) && n >= min && n <= max) onCommit(n);
-    else setLocal(String(value));
+    const valid = local.trim() !== "" && Number.isFinite(n);
+    const result: NormalizerResult<number> = valid && n >= min && n <= max
+      ? { raw: local, value: n, reason: null }
+      : {
+          raw: local,
+          value,
+          reason: valid
+            ? { kind: "range_reverted", min: String(min), max: String(max), value: String(value) }
+            : { kind: "restored", value: String(value) },
+        };
+    if (result.reason) {
+      setLocal(String(result.value));
+      hint.show(inputHintReason(result.reason));
+    } else {
+      onCommit(result.value);
+    }
   }
 
   return (
-    <label style={styles.label}>
+    <label ref={hint.labelRef as React.Ref<HTMLLabelElement>} style={styles.label}>
       {label}
       <input
-        style={styles.input}
+        ref={hint.anchorRef as React.Ref<HTMLInputElement>}
+        style={{ ...styles.input, ...hint.fieldStyle }}
         type="number"
         name={label}
         min={min}
         max={max}
         value={local}
         disabled={disabled}
-        onChange={(e) => setLocal(e.target.value)}
+        aria-describedby={hint.describedBy}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setLocal(raw);
+          const n = Number(raw);
+          if (raw.trim() !== "" && Number.isFinite(n) && n >= min && n <= max) hint.dismiss();
+        }}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); } }}
       />
+      {hint.hint}
     </label>
   );
 }
 
 type ConfirmPending = "switchToDefault" | "clearField" | null;
+
+const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
+  add: ["+"],
+  remove: ["−"],
+  select: ["0"],
+};
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -176,7 +207,7 @@ export function FieldSetupFeature() {
       <Inline gap="itemGap">
         <Button
           variant={isCustom ? "toggle" : "toggle-selected"}
-          disabled={fieldEditLocked || !hasPresetMode(fieldConfig.tessellation.kind)}
+          disabled={fieldEditLocked}
           onClick={handleSwitchToDefault}
         >
           {m["field.default"]()}
@@ -213,6 +244,7 @@ export function FieldSetupFeature() {
                 selected={fieldOperation === operation}
                 disabled={fieldEditLocked}
                 title={m[`field.mode.${operation}` as "field.mode.add" | "field.mode.remove" | "field.mode.select"]()}
+                shortcut={OPERATION_SHORTCUTS[operation]}
                 onClick={() => setFieldOperation(operation)}
               >
                 {operationIcon(operation)}
@@ -221,23 +253,27 @@ export function FieldSetupFeature() {
           </Inline>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <Inline gap="itemGap" style={{ ...styles.nestedContent, flexWrap: "wrap" }}>
-          {primitivesForField(fieldConfig).map((tool) => (
-            <ToolIconButton
+          {primitivesForField(fieldConfig).map((tool) => {
+            const shortcut = fieldPrimitiveShortcut(tool.primitive);
+            return <ToolIconButton
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
-              disabled={fieldEditLocked || (tool.primitive === "symmetry" && fieldOperation === "select")}
-              title={tool.primitive === "polygon"
-                ? tool.label + "\n" + m["field.polygon.shift_tooltip"]()
-                : tool.primitive === "magic_wand"
-                  ? tool.label + "\n" + m["field.connected_area.tooltip"]()
-                  : tool.label}
+              disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked)}
+              title={tool.label}
+              shortcut={shortcut ? [shortcut] : undefined}
+              description={tool.primitive === "symmetry" && fieldOperation === "select"
+                ? m["field.symmetry.select_disabled"]()
+                : tool.primitive === "polygon"
+                ? m["field.polygon.shift_tooltip"]()
+                : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
+              descriptionShortcut={tool.primitive === "polygon" ? ["shift"] : undefined}
               onClick={() => {
                 setFieldPrimitive(tool.primitive);
               }}
             >
               {primitiveIcon(tool.primitive)}
-            </ToolIconButton>
-          ))}
+            </ToolIconButton>;
+          })}
           </Inline>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
@@ -357,9 +393,7 @@ function primitivesForField(cfg: FieldConfig): PrimitiveToolOption[] {
     { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
-  const kind = cfg.tessellation.kind;
-  return primitives.filter((tool) => (!TESSELLATION_UI[kind].editor.axisAlignedGrid || tool.primitive !== "parallelogram")
-    && (tool.primitive !== "symmetry" || fieldOperationAvailable(cfg.tessellation, "reflect")));
+  return primitives.filter((tool) => tool.primitive !== "symmetry" || fieldOperationAvailable(cfg.tessellation, "reflect"));
 }
 
 function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
@@ -515,7 +549,7 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
 /** Upper bound of a size param in the editor — UI metadata; core only publishes minimums. */
 function paramMax(kind: TessellationKind, shape: PresetFieldShapeName, name: string): number {
   if (name === "cols" || name === "rows") return 200;
-  if (shape === "circle" || shape === "hexagon" || shape === "triangle") return SHAPE_PARAM_LIMITS[kind]?.[shape] ?? 200;
+  if (shape === "circle" || shape === "hexagon" || shape === "triangle") return SHAPE_PARAM_LIMITS[kind][shape];
   return 200;
 }
 
@@ -579,7 +613,7 @@ function configSizeLabel(cfg: FieldConfig): string {
 }
 
 /** Upper bounds of the radial/side shape params per kind — UI registry metadata. */
-const SHAPE_PARAM_LIMITS: Partial<Record<TessellationKind, { circle: number; hexagon: number; triangle: number }>> = {
+const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: number; triangle: number }> = {
   square: { circle: 100, hexagon: 50, triangle: 100 },
   hex: { circle: 50, hexagon: 50, triangle: 100 },
   tri: { circle: 15, hexagon: 15, triangle: 30 },

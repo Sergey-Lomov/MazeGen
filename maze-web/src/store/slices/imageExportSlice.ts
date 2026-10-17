@@ -10,10 +10,13 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
+import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   DEFAULT_PNG_EXPORT_SETTINGS,
+  defaultFloorLabelMode,
+  withFloorLabelMode,
 } from "./imageExportDefaults";
 
 export {
@@ -41,6 +44,15 @@ const corridorsParam = (path: VectorByCorridorsParamPath, value: unknown) => (s:
 
 type VectorByWallsSettings = MazeStore["vectorByWallsSettings"];
 type VectorByCorridorsSettings = MazeStore["vectorByCorridorsSettings"];
+
+/** `preset` with `current`'s maze-bound fields — see `ImageExportActions.loadVisualPreset`. */
+function withMazeBound<S extends VectorByWallsSettings | VectorByCorridorsSettings>(preset: S, current: S): S {
+  return {
+    ...preset,
+    teleportGroupOverrides: current.teleportGroupOverrides,
+    floorLabel: { ...preset.floorLabel, positionsByFloorId: current.floorLabel.positionsByFloorId },
+  };
+}
 
 /** `set` as the slice sees it (GitHub issue #704): `vectorBy*Settings` may only be assigned a
  *  `Linked` value, so every write to them goes through a link-aware helper (`wallsParam`,
@@ -126,11 +138,13 @@ const FLOOR_LABEL_OVERRIDABLE = [
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
+  floorLabelDrag: null,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
   linkIconVisibility: "linked",
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+  floorLabelModeChosen: false,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   hoveredTeleportNodeIds: null,
@@ -139,7 +153,80 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   exportFormatSettingsCovered: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
-  setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
+  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  loadVisualPreset: (preset) => set((s) => {
+    const p = preset.imageExport;
+    const update = {
+      // A style saved before any mode was picked keeps this project's current choice.
+      activeRenderMode: p.activeRenderMode ?? s.activeRenderMode,
+      floorLabelDrag: null,
+      hoveredExportWarningKey: null,
+      showColorWarnings: p.showColorWarnings,
+      linkIconVisibility: p.linkIconVisibility,
+      pngExportSettings: p.pngExportSettings,
+      floorLabelModeChosen: p.floorLabelModeChosen,
+      vectorByWallsSettings: markLinked(withMazeBound(p.vectorByWallsSettings, s.vectorByWallsSettings)),
+      vectorByCorridorsSettings: markLinked(withMazeBound(p.vectorByCorridorsSettings, s.vectorByCorridorsSettings)),
+    };
+    // A preset saved before its floor-label mode was chosen gets one picked for this project's
+    // floors, same as a first open of the Image Export card.
+    return { ...update, ...chooseFloorLabelModeOnce({ ...s, ...update }) } as GuardedUpdate;
+  }),
+  startFloorLabelDrag: (renderMode) => set((s) => {
+    const floorLabel = renderMode === "vector_by_walls"
+      ? s.vectorByWallsSettings.floorLabel
+      : s.vectorByCorridorsSettings.floorLabel;
+    const position = floorLabel.positionsByFloorId[s.activeFloorId];
+    if (!position || position.mode === "anchored") return {};
+    return {
+      floorLabelDrag: {
+        renderMode,
+        floorId: s.activeFloorId,
+        initialPosition: position.mode === "cell"
+          ? { ...position, cell: [...position.cell] as [number, number] }
+          : { ...position },
+      },
+    };
+  }),
+  updateFloorLabelDragPosition: (position) => set((s) => {
+    const drag = s.floorLabelDrag;
+    if (!drag || drag.initialPosition.mode !== position.mode) return {};
+    if (drag.renderMode === "vector_by_walls") {
+      const floorLabel = s.vectorByWallsSettings.floorLabel;
+      return { vectorByWallsSettings: markLinked({
+        ...s.vectorByWallsSettings,
+        floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: position } },
+      }) };
+    }
+    const floorLabel = s.vectorByCorridorsSettings.floorLabel;
+    return { vectorByCorridorsSettings: markLinked({
+      ...s.vectorByCorridorsSettings,
+      floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: position } },
+    }) };
+  }),
+  finishFloorLabelDrag: () => set({ floorLabelDrag: null }),
+  cancelFloorLabelDrag: () => set((s) => {
+    const drag = s.floorLabelDrag;
+    if (!drag) return {};
+    if (drag.renderMode === "vector_by_walls") {
+      const floorLabel = s.vectorByWallsSettings.floorLabel;
+      return {
+        floorLabelDrag: null,
+        vectorByWallsSettings: markLinked({
+          ...s.vectorByWallsSettings,
+          floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: drag.initialPosition } },
+        }),
+      };
+    }
+    const floorLabel = s.vectorByCorridorsSettings.floorLabel;
+    return {
+      floorLabelDrag: null,
+      vectorByCorridorsSettings: markLinked({
+        ...s.vectorByCorridorsSettings,
+        floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: drag.initialPosition } },
+      }),
+    };
+  }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from
   // whatever the previously open format's covered state happened to be.
@@ -327,7 +414,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const { settings, links } = forceLinks(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links);
       return { vectorByCorridorsSettings: markLinked({ ...settings, links }) };
     }),
-  resetVectorByCorridorsSettings: () => set({ vectorByCorridorsSettings: markLinked(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS) }),
+  resetVectorByCorridorsSettings: () => set((s) => ({
+    vectorByCorridorsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, defaultFloorLabelMode(s.floors))),
+  })),
   setVectorByCorridorsLinkEnabled: (target, enabled) =>
     set((s) => {
       const { settings, links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target, enabled);
@@ -467,7 +556,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const { settings, links } = forceLinks(s.vectorByWallsSettings, s.vectorByWallsSettings.links);
       return { vectorByWallsSettings: markLinked({ ...settings, links }) };
     }),
-  resetVectorByWallsSettings: () => set({ vectorByWallsSettings: markLinked(DEFAULT_VECTOR_BY_WALLS_SETTINGS) }),
+  resetVectorByWallsSettings: () => set((s) => ({
+    vectorByWallsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_WALLS_SETTINGS, defaultFloorLabelMode(s.floors))),
+  })),
   setVectorByWallsLinkEnabled: (target, enabled) =>
     set((s) => {
       const { settings, links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, target, enabled);

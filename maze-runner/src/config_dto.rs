@@ -62,9 +62,6 @@ pub enum TessellationKind {
     Hex,
     Tri,
     Cairo,
-    /// Finite dev-only tessellation (GitHub issue #765); registered only with `test-tessellation`.
-    #[cfg(feature = "test-tessellation")]
-    Test,
 }
 
 /// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory

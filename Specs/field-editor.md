@@ -14,11 +14,16 @@ Opened via the Field Setup card in FeaturesPanel. Requires tessellation to be co
 
 Two sub-modes toggled inside the card:
 
-**Default** — predefined shape with configurable size parameters (width/height, cols/rows, radius, side). Canvas shows all cells of the shape centered around the grid origin. Camera centers on the shape when the card opens or when size params change.
+**Default** — predefined shape with configurable size parameters (width/height, cols/rows, radius, side). Canvas shows all cells of the shape centered around the grid origin. Camera centers on the shape when the card opens or when size params change. An invalid or out-of-range size is restored on blur and gets a field-anchored hint (GitHub issue #770), including when the restored value equals the stored value.
 
 **Custom** — free-draw mode. The active Add/Remove mode controls whether drawing adds or removes
 cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move
 while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
+
+The mode and tool buttons use accessible tooltips. A mode tooltip renders its selection hotkey
+right-aligned as a muted keycap badge (for example, `Add` with `+`). A separate tertiary-colored line explains any
+keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Symmetry alone adds
+`Unavailable in Select mode.` while Select is active, because that operation cannot reflect cells.
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
@@ -201,11 +206,6 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 | `hex` | `hexagon` |
 | `tri` | `triangle` |
 | `cairo` | `rect` |
-| `test` (dev) | none: custom field of all its cells |
-
-A **finite** kind (`TESSELLATION_UI[kind].finiteCells` is set; core reports no presets and no field
-operations) has no default (preset) mode. A new floor starts in custom mode with every cell of the
-kind selected, the Default toggle is disabled and `setFieldEditMode("default")` is ignored.
 
 When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
 including teleports, vertical passages, and elevators.
@@ -344,7 +344,7 @@ candidate set is collapsed to existing field cells and replaced by a dashed expo
 the field is not changed and the selection remains visible until another gesture, tool, mode, or
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
-The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select.
+The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
 The tool works with square, hexagonal, triangular, and Cairo tessellations and does not apply
 primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.
@@ -486,7 +486,7 @@ opacity are persisted with the image. Files saved before issue #674 default to t
 below-grid/50% behavior.
 
 Closing the settings panel or hiding the underlay cancels any in-progress auto-fill preview and
-restores the committed field; it does not apply an unconfirmed candidate.
+restores the committed field; it does not apply an unconfirmed candidate. While the preview is active, canvas edit clicks are ignored and raise the `field_edit.auto_fill_preview_active` notice (deduplicated; pan gestures with space or the middle button are not affected) (GitHub issue #772).
 
 The same settings panel provides a `Crop` mode (GitHub issue #680), separate from the existing
 manual positioning mode, here called `Transform`. The modes are mutually exclusive and can be

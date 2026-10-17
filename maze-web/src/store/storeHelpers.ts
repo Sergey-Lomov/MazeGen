@@ -186,24 +186,16 @@ export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: num
 }
 
 /** The kind's "full" preset shape (Specs/field-editor.md, "Default shape per kind"). */
-const DEFAULT_SHAPE_BY_KIND: Partial<Record<TessellationKind, PresetFieldShapeName>> = {
+const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   square: "rect",
   hex: "hexagon",
   tri: "triangle",
   cairo: "rect",
 };
 
-/** The stored selection of a kind without presets (finite kind): never offered, only keeps the
- * field's `selectedShape` well-typed. */
-const NO_PRESET_SELECTION: PresetFieldShapeName = "rect";
-
-function defaultShapeName(kind: TessellationKind): PresetFieldShapeName {
-  return DEFAULT_SHAPE_BY_KIND[kind] ?? NO_PRESET_SELECTION;
-}
-
 /** The kind's default preset shape. */
 export function defaultShapeOf(kind: TessellationKind): PresetFieldShapeName {
-  return defaultShapeName(kind);
+  return DEFAULT_SHAPE_BY_KIND[kind];
 }
 
 /** The preset shape the editor selects for `cfg`: its own shape for a preset field, otherwise
@@ -212,11 +204,11 @@ export function defaultShapeOf(kind: TessellationKind): PresetFieldShapeName {
 export function selectedShapeFor(cfg: FieldConfig, previous?: PresetFieldShapeName): PresetFieldShapeName {
   if (cfg.shape.shape !== "custom") return cfg.shape.shape;
   const offered = availablePresetKeys(cfg.tessellation);
-  return previous !== undefined && offered.includes(previous) ? previous : defaultShapeName(cfg.tessellation.kind);
+  return previous !== undefined && offered.includes(previous) ? previous : DEFAULT_SHAPE_BY_KIND[cfg.tessellation.kind];
 }
 
 /** Default params of each preset shape per kind — UI registry metadata. */
-const DEFAULT_PRESET_SHAPES: Partial<Record<TessellationKind, Partial<Record<PresetFieldShapeName, PresetFieldShape>>>> = {
+const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetFieldShapeName, PresetFieldShape>>> = {
   square: {
     rect: { shape: "rect", cols: 11, rows: 11 },
     circle: { shape: "circle", radius: 10 },
@@ -243,12 +235,6 @@ const DEFAULT_PRESET_SHAPES: Partial<Record<TessellationKind, Partial<Record<Pre
   },
 };
 
-/** The custom shape of all cells of a finite tessellation; `null` for an unbounded kind. */
-function finiteShapeOf(kind: TessellationKind): FieldShape | null {
-  const cells = TESSELLATION_UI[kind].finiteCells;
-  return cells === null ? null : { shape: "custom", points: cells.map(([x, y]) => [x, y]) };
-}
-
 /** The maze-wide display orientation a kind's field carries (hex/tri only). */
 export function orientationFor(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): DisplayOrientation | undefined {
   const slot = TESSELLATION_UI[kind].orientationSlot;
@@ -271,17 +257,15 @@ export function buildPredefinedConfig(
   triOrientation: TriOrientation,
   saved?: Partial<Record<PresetFieldShapeName, PresetFieldShape>>,
 ): FieldConfig {
-  const finite = finiteShapeOf(kind);
-  if (finite !== null) return composeFieldConfig(kind, finite, hexOrientation, triOrientation);
   const offered = availablePresetKeys(tessellationConfigOf(kind));
-  const name = offered.includes(selected) ? selected : defaultShapeName(kind);
+  const name = offered.includes(selected) ? selected : DEFAULT_SHAPE_BY_KIND[kind];
   const shape = saved?.[name] ?? defaultPresetShape(kind, name);
   return composeFieldConfig(kind, shape, hexOrientation, triOrientation);
 }
 
 /** The registry default of a preset shape; a shape without one starts at its schema minimums. */
 function defaultPresetShape(kind: TessellationKind, name: PresetFieldShapeName): PresetFieldShape {
-  const registered = DEFAULT_PRESET_SHAPES[kind]?.[name];
+  const registered = DEFAULT_PRESET_SHAPES[kind][name];
   if (registered) return registered;
   const params = Object.fromEntries(presetParams(tessellationConfigOf(kind), name).map(({ name: param, min }) => [param, min]));
   return { shape: name, ...params } as PresetFieldShape;
@@ -307,12 +291,11 @@ export function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOri
 }
 
 /** The kind's full default shape shown while choosing a tessellation in Basic configuration. */
-const PREVIEW_SHAPES: Record<TessellationKind, FieldShape> = {
+const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   square: { shape: "rect", cols: 11, rows: 11 },
   hex: { shape: "parallelogram", cols: 10, rows: 10 },
   tri: { shape: "rect", cols: 10, rows: 10 },
   cairo: { shape: "rect", cols: 5, rows: 5 },
-  test: finiteShapeOf("test")!,
 };
 
 export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
@@ -333,41 +316,26 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   hex: new Set<number>(),
   tri: new Set<number>(),
   cairo: new Set<number>(),
-  test: new Set<number>(),
 });
 
 /** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's
  * "full" predefined shape (see Specs/field-editor.md's "Default shape per kind" table), no custom
  * points, default mode. Used by floorsSlice's addFloor for a floor with no field config yet. */
 export function defaultFloorFieldConfig(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): FloorFieldConfig {
-  const selectedShape = defaultShapeName(kind);
+  const selectedShape = DEFAULT_SHAPE_BY_KIND[kind];
   const cfg = buildPredefinedConfig(kind, selectedShape, hexOrientation, triOrientation);
-  const base = { selectedShape, fieldConfig: cfg, fieldOperation: "add", fieldPrimitive: "point", fieldDirty: false } as const;
-  if (cfg.shape.shape === "custom") {
-    // A finite kind starts as a custom field of all its cells.
-    const points = new Set(cfg.shape.points.map(([x, y]) => encodePoint(x, y)));
-    return {
-      ...base,
-      savedShapes: {},
-      freeFieldPoints: { ...emptyFreePoints(), [kind]: points },
-      isEditingField: true,
-      fieldPoints: points,
-      fieldEditMode: "custom",
-    };
-  }
   return {
-    ...base,
-    savedShapes: { [cfg.shape.shape]: cfg.shape },
+    selectedShape,
+    savedShapes: cfg.shape.shape === "custom" ? {} : { [cfg.shape.shape]: cfg.shape },
+    fieldConfig: cfg,
     freeFieldPoints: emptyFreePoints(),
     isEditingField: false,
     fieldPoints: new Set<number>(),
     fieldEditMode: "default",
+    fieldOperation: "add",
+    fieldPrimitive: "point",
+    fieldDirty: false,
   };
-}
-
-/** Whether the kind offers preset shapes (default mode); a finite kind is always a custom field. */
-export function hasPresetMode(kind: TessellationKind): boolean {
-  return TESSELLATION_UI[kind].finiteCells === null;
 }
 
 export function deriveEditState(
@@ -497,8 +465,8 @@ export function buildResetDownstreamState() {
     postEditCommands: [], postEditBaseline: null, postEditDerived: null,
     postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null,
     _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null,
-    postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null,
-    postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null,
+    postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditRefreshError: null,
+    postEditDirty: false, mazeDirty: false, activeRenderMode: null, floorLabelDrag: null, openRenderModeSettings: null,
     postEditDraftSplitPoints: {},
     postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null,
     _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null,
@@ -506,7 +474,7 @@ export function buildResetDownstreamState() {
     postEditActiveSplitNode: {}, postEditDraftSplitPointIds: {}, _nextPostEditSplitPointId: 1,
     postEditFocusedPoint: null, postEditHoveredEntity: null, postEditEntityDeletePrompt: null,
     postEditResetPrompt: null, postEditChangesOpen: false, postEditChangesEntityFilter: null,
-    postEditDragOverride: null, postEditDragFailureMessage: null,
+    postEditDragOverride: null,
     postEditEntityPickPrompt: null, postEditMoveRequest: null, postEditConnectionSettingsPrompt: null,
   };
 }

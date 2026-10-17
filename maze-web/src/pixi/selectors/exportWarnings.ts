@@ -27,6 +27,7 @@ import type { VerticalConnectionStyle } from "../renderers/types";
 import { nearestCellCoord } from "../tessellationGeometry";
 import { textOverflows, type TextFitItem } from "../textFit";
 import { formatIndexLabel } from "../renderers/indexLabel";
+import { floorLabelText } from "../renderers/FloorLabelRenderer";
 import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
@@ -412,7 +413,7 @@ type ContrastEntry = {
   cells?: readonly { x: number; y: number; floorIndex: number }[];
 };
 
-type WarningFloor = { id: string };
+type WarningFloor = { id: string; title?: string };
 
 function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: NodeDto[]): ExportWarning[] {
   const byKey = new Map<string, ExportWarning>();
@@ -476,7 +477,7 @@ export function computeVectorByWallsWarningsAcrossFloors(
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
       floorCount: floors.length,
     };
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext);
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -494,7 +495,7 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
       floorCount: floors.length,
     };
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes);
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -687,6 +688,7 @@ function collectTextFitEntries(
   resolveNodeLevel: ReturnType<typeof selectNodeLevelResolver>,
   displayFloorIndex: number,
   unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
+  displayFloorTitle?: string,
 ): TextFitEntry[] {
   const entries: TextFitEntry[] = [];
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
@@ -749,7 +751,7 @@ function collectTextFitEntries(
   if (floorLabel.enabled && floorLabel.backgroundShape !== "none") {
     entries.push({
       kind: "floorLabel",
-      text: `${floorLabel.prefix}${formatIndexLabel(displayFloorIndex, floorLabel.labelType)}`,
+      text: floorLabelText(floorLabel, displayFloorIndex, displayFloorTitle),
       fontWeight: floorLabel.textFontWeight,
       shape: "square",
       plateSize: 0,
@@ -861,7 +863,7 @@ export function computeTextFitItemsAcrossFloors(
     };
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
-    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges })) {
+    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title)) {
       result[entry.kind].push({
         text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
         plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,
@@ -1109,6 +1111,7 @@ export function computeVectorByWallsWarnings(
   finish: number | null,
   unscopedNodes: NodeDto[] = nodes,
   teleportFloorContext?: TeleportFloorContext,
+  displayFloorTitle?: string,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -1271,6 +1274,7 @@ export function computeVectorByWallsWarnings(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, resolveNodeLevel,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    displayFloorTitle,
   ));
 
   const stopLineCovered = computeMarkerIndexStopLineWarning(
@@ -1307,6 +1311,7 @@ export function computeVectorByCorridorsWarnings(
   finish: number | null,
   unscopedNodesOrContext?: NodeDto[] | TeleportFloorContext,
   allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
+  displayFloorTitle?: string,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -1440,6 +1445,7 @@ export function computeVectorByCorridorsWarnings(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, selectNodeLevelResolver(allNodesForWarnings),
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    displayFloorTitle,
   ));
 
   const stopLineCovered = computeMarkerIndexStopLineWarning(

@@ -107,11 +107,12 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
 
 /** Shared text-style rows (GitHub issue #701) — font weight, absolute font size, margin and text color
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
- *  captions, elevator badges and teleport floor badges. Bare rows, like `MarkerAppearanceRows`. */
+ *  captions, elevator badges and teleport floor badges. Horizontal alignment stays centered for
+ *  these consumers and is exposed separately only by `FloorLabelSection`. */
 export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
-  linkTargets: { [K in keyof TextStyleFields]: P | null };
+  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
   field: ColorField;

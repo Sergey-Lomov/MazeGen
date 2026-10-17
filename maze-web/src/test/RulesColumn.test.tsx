@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { RulesColumn } from "../components/features/quality/RulesColumn";
 import { useMazeStore } from "../store/mazeStore";
 import type { StrategySlotVM, StrategyVM, CheckVM, QualityStageVM } from "../components/features/useQualityViewModel";
+import { getTooltipControl, getTooltipControlWithin, getTooltipControls } from "./tooltipTestUtils";
 
 // Wraps a flat `StrategySlotVM[]` fixture into a single-stage `QualityStageVM[]` — most tests
 // here don't care about stage grouping itself, just about rendering/interacting with rule cards,
@@ -116,10 +117,10 @@ describe("RulesColumn", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<LiveSlots slots={slots} selection={null} onSelect={vi.fn()} />);
     expect(screen.getByText("Check One")).toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Collapse rule"));
+    fireEvent.click(getTooltipControl("Collapse rule"));
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.collapsed).toBe(true);
     expect(screen.queryByText("Check One")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Expand rule"));
+    fireEvent.click(getTooltipControl("Expand rule"));
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.collapsed).toBe(false);
     expect(screen.getByText("Check One")).toBeInTheDocument();
   });
@@ -192,7 +193,7 @@ describe("RulesColumn", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], params: {}, nestedStrategies: [], collapsed: false }];
     render(<LiveSlots slots={slots} selection={{ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "threshold" }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove"));
+    fireEvent.click(getTooltipControlWithin(screen.getByText("Check One").closest("div")!, "Remove"));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
@@ -205,7 +206,7 @@ describe("RulesColumn", () => {
     // useQualityViewModel, otherwise RuleCheckRow renders a check whose backing rule entry the
     // click just removed.
     render(<LiveSlots slots={slots} selection={{ type: "check", id: "g1:0" }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove"));
+    fireEvent.click(getTooltipControlWithin(screen.getByText("Check One").closest("div")!, "Remove"));
     expect(onSelect).toHaveBeenCalledWith(null);
     expect(useMazeStore.getState().rules).toEqual([{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }]);
   });
@@ -285,8 +286,8 @@ describe("RulesColumn", () => {
 
     // The first entry's "up" arrow must be disabled (already top rank); the second's "down"
     // arrow must likewise be disabled (already lowest rank).
-    const upButtons = screen.getAllByTitle("Move up (higher priority)");
-    const downButtons = screen.getAllByTitle("Move down (lower priority)");
+    const upButtons = getTooltipControls("Move up (higher priority)");
+    const downButtons = getTooltipControls("Move down (lower priority)");
     expect(upButtons[0]).toBeDisabled();
     expect(upButtons[1]).not.toBeDisabled();
     expect(downButtons[0]).not.toBeDisabled();
@@ -300,7 +301,7 @@ describe("RulesColumn", () => {
     ]);
 
     // The (now second) entry's "up" arrow reorders it back above the first.
-    const upButtonsAfter = screen.getAllByTitle("Move up (higher priority)");
+    const upButtonsAfter = getTooltipControls("Move up (higher priority)");
     fireEvent.click(upButtonsAfter[1]);
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.nestedStrategies).toEqual([
       { slotId: "loop_seed_target", strategyId: "missing_loops_random", params: {}, nested: [] },
@@ -337,7 +338,7 @@ describe("RulesColumn", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove rule"));
+    fireEvent.click(getTooltipControl("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
@@ -346,7 +347,7 @@ describe("RulesColumn", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "check", id: "g1:0" }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove rule"));
+    fireEvent.click(getTooltipControl("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
@@ -355,7 +356,7 @@ describe("RulesColumn", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "other_rule", path: [{ slotId: "slot_a", index: 0 }] }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove rule"));
+    fireEvent.click(getTooltipControl("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -393,7 +394,7 @@ describe("RulesColumn", () => {
     // Remove the other check immediately, well inside the 300ms debounce window — each row's
     // debounce/flush is scoped to its own useParamEditor instance, so removing row 0 must not
     // interfere with row 1's still-pending edit.
-    fireEvent.click(screen.getAllByTitle("Remove")[0]);
+    fireEvent.click(getTooltipControl("Remove"));
     vi.runAllTimers();
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 1)?.params.threshold).toBe("7");
     vi.useRealTimers();
@@ -424,7 +425,7 @@ describe("RulesColumn", () => {
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "5" } });
-    fireEvent.click(screen.getByTitle("Edit strategy", { exact: false }));
+    fireEvent.click(getTooltipControl("Edit strategy"));
     expect(useMazeStore.getState().strategyParams.s2?.weight).toBe("5");
     vi.useRealTimers();
   });
@@ -433,7 +434,7 @@ describe("RulesColumn", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     expect(screen.queryByTestId("strategy-select-dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Edit strategy", { exact: false }));
+    fireEvent.click(getTooltipControl("Edit strategy"));
     expect(screen.getByTestId("strategy-select-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByText("close"));
     expect(screen.queryByTestId("strategy-select-dialog")).not.toBeInTheDocument();

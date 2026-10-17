@@ -25,6 +25,7 @@ import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "./PaperLayoutFields";
+import { NumberInput } from "../NumberInput";
 
 const CANVAS_MODE_OPTIONS: { value: PngCanvasMode; label: string }[] = [
   { value: "edge_to_edge", label: m["image_export.format.png.digital.canvas_edge_to_edge"]() },
@@ -214,12 +215,12 @@ export function PngExportSettingsPanel() {
             {(digital.canvasMode === "margin_px" || digital.canvasMode === "margin_cells") && (
               <Inline gap="itemGap" justify="space-between">
                 <span style={styles.label}>{m["image_export.format.png.digital.margin"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-margin"
+                  min={0}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.marginValue}
-                  onChange={(e) => setDigitalMarginValue(Number(e.target.value))}
+                  value={String(digital.marginValue)}
+                  onChange={(value) => setDigitalMarginValue(Number(value))}
                 />
               </Inline>
             )}
@@ -227,20 +228,20 @@ export function PngExportSettingsPanel() {
             {digital.canvasMode === "fixed_size" && (
               <Inline gap="itemGap">
                 <span style={styles.label}>{m["image_export.format.png.digital.width"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-width"
+                  min={1}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.fixedWidth}
-                  onChange={(e) => setDigitalFixedSize(Number(e.target.value), digital.fixedHeight)}
+                  value={String(digital.fixedWidth)}
+                  onChange={(value) => setDigitalFixedSize(Number(value), digital.fixedHeight)}
                 />
                 <span style={styles.label}>{m["image_export.format.png.digital.height"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-height"
+                  min={1}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.fixedHeight}
-                  onChange={(e) => setDigitalFixedSize(digital.fixedWidth, Number(e.target.value))}
+                  value={String(digital.fixedHeight)}
+                  onChange={(value) => setDigitalFixedSize(digital.fixedWidth, Number(value))}
                 />
               </Inline>
             )}

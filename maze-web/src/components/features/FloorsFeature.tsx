@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../pixi/selectors/mazeSelectors";
@@ -9,6 +9,8 @@ import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
 import { RemoveIconButton } from "../RemoveIconButton";
+import { Tooltip } from "../Tooltip";
+import { useFieldHint } from "../FieldHint";
 import * as m from "~/paraglide/messages";
 
 type PendingAction =
@@ -30,18 +32,47 @@ export function FloorsFeature() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [pending, setPending] = useState<PendingAction | null>(null);
+  // An empty rename is reverted on commit, which unmounts the input — the hint is therefore shown on
+  // the floor's title text once it is mounted (`revertedFloorId` + `titleEl`), not on the input.
+  const [revertedFloorId, setRevertedFloorId] = useState<string | null>(null);
+  const [hintPending, setHintPending] = useState(false);
+  const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
+  const hint = useFieldHint();
+  const setHintAnchor = hint.anchorRef;
+  const attachTitle = useCallback((el: HTMLElement | null) => {
+    setHintAnchor(el);
+    setTitleEl(el);
+  }, [setHintAnchor]);
+  const hintTargetId = renamingId ?? revertedFloorId;
 
   const lossGen = selectFloorChangeLosesGenerationData({ mazeDirty, postEditDirty });
 
   function startRename(id: string, title: string) {
+    hint.dismiss();
+    setRevertedFloorId(null);
     setRenamingId(id);
     setRenameDraft(title);
   }
 
   function commitRename() {
-    if (renamingId) renameFloor(renamingId, renameDraft);
+    if (renamingId) {
+      if (renameDraft.trim()) {
+        hint.dismiss();
+        setRevertedFloorId(null);
+        renameFloor(renamingId, renameDraft);
+      } else {
+        setRevertedFloorId(renamingId);
+        setHintPending(true);
+      }
+    }
     setRenamingId(null);
   }
+
+  useEffect(() => {
+    if (!hintPending || !titleEl) return;
+    hint.show({ key: "empty_floor_title", message: () => m["floors.empty_title_hint"]() });
+    setHintPending(false);
+  }, [hintPending, titleEl, hint]);
 
   function handleRemoveClick(floorId: string) {
     const lossField = selectFloorRemovalLosesFieldData({ floorFields }, floorId);
@@ -102,11 +133,16 @@ export function FloorsFeature() {
           <div key={floor.id} style={styles.floorRow}>
             {isRenaming ? (
               <input
-                style={styles.titleInput}
+                style={{ ...styles.titleInput, ...(floor.id === hintTargetId ? hint.fieldStyle : undefined) }}
                 name="floor-title"
+                ref={floor.id === hintTargetId ? attachTitle : undefined}
+                aria-describedby={hint.describedBy}
                 value={renameDraft}
                 autoFocus
-                onChange={(e) => setRenameDraft(e.target.value)}
+                onChange={(e) => {
+                  setRenameDraft(e.target.value);
+                  hint.dismiss();
+                }}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitRename();
@@ -114,29 +150,29 @@ export function FloorsFeature() {
                 }}
               />
             ) : (
-              <span style={styles.titleText}>{floor.title}</span>
+              <span ref={floor.id === hintTargetId ? attachTitle : undefined} style={styles.titleText}>{floor.title}</span>
             )}
             <div style={styles.tools}>
-              <button
+              <Tooltip content={m["floors.move_floor_up"]()}><button
                 className={isFirst ? undefined : "hoverable"}
                 style={{ ...styles.moveBtn, ...(isFirst ? styles.moveBtnDisabled : {}) }}
-                title={m["floors.move_floor_up"]()}
                 disabled={isFirst}
                 onClick={() => handleMoveClick(floor.id, "down")}
               >
                 <ChevronUp size={16} color={ui.text.tertiary} />
-              </button>
-              <button
+              </button></Tooltip>
+              <Tooltip content={m["floors.move_floor_down"]()}><button
                 className={isLast ? undefined : "hoverable"}
                 style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
-                title={m["floors.move_floor_down"]()}
                 disabled={isLast}
                 onClick={() => handleMoveClick(floor.id, "up")}
               >
                 <ChevronDown size={16} color={ui.text.tertiary} />
-              </button>
+              </button></Tooltip>
               <EditIconButton title={m["floors.rename_floor"]()} fontSize={15} onClick={() => startRename(floor.id, floor.title)} />
-              <RemoveIconButton title={m["floors.remove_floor"]()} disabled={floors.length === 1} onClick={() => handleRemoveClick(floor.id)} />
+              <Tooltip content={floors.length === 1 ? m["floors.remove_last_floor_hint"]() : undefined}>
+                <RemoveIconButton title={m["floors.remove_floor"]()} disabled={floors.length === 1} onClick={() => handleRemoveClick(floor.id)} />
+              </Tooltip>
             </div>
           </div>
         );
@@ -144,6 +180,7 @@ export function FloorsFeature() {
       <Button variant="primary" layoutStyle={styles.addFloorBtn} onClick={handleAddClick}>
         {m["floors.add_floor"]()}
       </Button>
+      {hint.hint}
       {pending !== null && (
         <ConfirmModal
           message={pending.kind === "remove" ? pending.message : pending.kind === "add" ? m["floors.confirm_add_generation"]() : m["floors.confirm_reorder"]()}

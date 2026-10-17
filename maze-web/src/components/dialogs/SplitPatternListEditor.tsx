@@ -11,6 +11,7 @@ import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } f
 import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "../Tooltip";
 
 interface Props {
   patterns: SplitPattern[];
@@ -119,9 +120,9 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         <div style={styles.sectionHeader}>
           <span style={styles.label}>{m["generation.split_patterns"]()}</span>
           {!locked && (
-            <button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern} title={m["generation.split_pattern_add"]()}>
+            <Tooltip content={m["generation.split_pattern_add"]()}><button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern}>
               <Plus size={14} />
-            </button>
+            </button></Tooltip>
           )}
         </div>
         {patterns.length === 0 ? (
@@ -155,8 +156,8 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
               </div>
               {!locked && (
                 <div style={styles.patternActions}>
-                  <button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)} title={m["generation.split_pattern_edit"]()}>✎</button>
-                  <button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)} title={m["generation.split_pattern_remove"]()}>✕</button>
+                  <Tooltip content={m["generation.split_pattern_edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)}>✎</button></Tooltip>
+                  <Tooltip content={m["generation.split_pattern_remove"]()}><button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)}>✕</button></Tooltip>
                 </div>
               )}
             </div>

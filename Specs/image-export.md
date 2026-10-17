@@ -1,6 +1,6 @@
 # Image Export Feature
 
-The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today.
+The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today. Below the export formats, "Save style" / "Load style" buttons save and load the card's whole visual configuration as a standalone style file (GitHub issue #750 — see `Specs/project-file.md`'s "Visual preset" section).
 
 ## Feature Card Status
 
@@ -227,7 +227,8 @@ passage between two geometrically adjacent cells draws as a stroked line between
 (`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
-Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Cells" section, a
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Corridor" section (section id `cells`, kept for
+persisted expand state), a
 collapsible "Waypoints" section, a "One-ways" section (GitHub issue #312, hidden entirely when the
 maze has no one-way basic edge — same `hasOneWays` check `VectorByWallsSettingsPanel` uses, placed
 before "Teleports" per that panel's own section order), a "Teleports" section (hidden entirely when
@@ -235,7 +236,7 @@ the maze has no teleport edge), and a warnings section (`vectorByCorridorsSectio
 collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
 `VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
-- **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
+- **"Corridor"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`), **Rendering mode** (a Contour/Line
   `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
   `join === "round"`-gated "Round junctions" toggle; shown only for the round join; see the "Rendering
@@ -254,7 +255,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `padding` param and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms; a
   "Marker widen shape" select sets `markerWidenShape` (`"match_marker"` default — each patch draws
   in that marker's own shape, `"circle"`/`"square"` — every patch draws in that one fixed shape
-  regardless of the marker's own, `"square"`'s corners following the Cells section's own `join`
+  regardless of the marker's own, `"square"`'s corners following the Corridor section's own `join`
   rather than a separate corner-style setting).
 - **"Waypoints"** (GitHub issue #311) — start/finish marker appearance, `startMarker`/`finishMarker:
   MarkerSettings` fields on `VectorByCorridorsSettings`, identical shape and defaults to
@@ -287,7 +288,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   corridor, default 0.5), `oneWayLength` (0.1-1, a *multiplier* of the chevron's own full opening
   width `oneWayWidth * thickness` rather than an absolute pixel size — so the chevron's opening angle
   stays constant as `oneWayWidth`/`thickness` change instead of visibly flattening/sharpening on its
-  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Cells section's own `join`).
+  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Corridor section's own `join`).
   Drawn via `drawOneWayChevronRow` (`pixi/renderers/wallUtils.ts`) — reuses `drawOneWayChevron` per
   chevron rather than a hand-rolled multi-chevron path, spacing adjacent chevrons by
   `chevronRowStep = length + gap + thickness` (both `VectorByCorridorsRenderer` and
@@ -332,7 +333,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   does, and a marker's floor-colored gap ring must cut through the corridor's own color rather than
   the canvas background behind it; and every teleport marker also gets its own widen patch under the corridor
   stroke (`buildTeleportWidenMarkers`, `VectorByCorridorsRenderer.ts` — exported, unit-tested
-  directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
+  directly), reusing the Corridor section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
   group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
   `TeleportRenderer` actually draws there). A cross-floor badge endpoint (a coordinate tagged
@@ -371,7 +372,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   actually read since `style` is always `"abstract"` for this mode. The occluding-color parameter
   reuses the convention this mode's Teleports/Waypoints sections already use in place of a separate
   `floorColor` field. Every vertical marker also gets its own widen patch under the corridor stroke
-  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Cells section's
+  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Corridor section's
   `markerWidenPadding`/`markerWidenShape` the same way `buildTeleportWidenMarkers` does. "Shared
   style" integration (GitHub issue #322, generalized by #643) is identical to "Vector by walls"':
   `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges`' own `cornerStyle`/
@@ -557,9 +558,9 @@ separately on every marker-like field that conceptually shares them:
 | `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportMarker.gapWidth`, `teleportConnectorGapWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
 | `markerTextSize` / `markerTextFontWeight` (GitHub issue #707) | 17 px / bold | `startMarker`/`finishMarker`, `teleportFloorBadge` and `elevatorBadges` `.textSize` / `.textFontWeight` — **all links disabled by default** (each kind keeps its own default size) |
 
-GitHub issue #707: the section's "Text" sub-section holds the shared font weight and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate's shape (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. Every text also has a "Margin" row (`textMargin`, 0–10 px in 0.5 steps (fractional values are used as-is), default 1; `TextStyleFields`, Shared style `markerTextMargin` linked to every `textMargin`, links disabled by default): the distance the glyph ink must keep from the plate edge, used by the overflow warnings and auto-fit only (never by rendering). The shared size has the same button, applying the smallest fit over all four shared-style controls (start, finish, elevator, teleport); floor-label text is intentionally independent and is excluded from this calculation. Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
+GitHub issue #707: the section's "Text" sub-section holds the shared font weight and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate or marker (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). Its custom tooltip uses a primary action label and a tertiary explanation of that fit rule. It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. Every text also has a "Margin" row (`textMargin`, 0–10 px in 0.5 steps (fractional values are used as-is), default 1; `TextStyleFields`, Shared style `markerTextMargin` linked to every `textMargin`, links disabled by default): the distance the glyph ink must keep from the plate edge. It drives overflow warnings and auto-fit for every text; rendering additionally uses it to inset left/right-aligned floor-label text. The shared size has the same button, applying the smallest fit over all four shared-style controls (start, finish, elevator, teleport); floor-label text is intentionally independent and is excluded from this calculation. Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
 
-**Floor labels** — On multi-floor exports, the collapsible "Floors" section contains independent "Label" and "Backplate" subsections. The label renders the full `prefix` plus the selected `labelType` value at the geometric centre of the active floor, over the maze content. Its `textSize` is independent from Shared style and ranges from 6–72 px; its auto-fit considers the widest label across all floors. The backplate supports `none`, a rounded rectangle, or a rounded parallelogram, with width 20–250 px, height, corner radius, gap (a surface-colour cutout), border width, fill and border colours. Text-fit and overflow checks use the same parallelogram skew as `FloorLabelRenderer`, with the configured text margin applied as an inner clearance. Width/height auto-fit uses the current text size and margin and considers every floor label; Roman labels are measured by glyph metrics rather than character count. The floor-label fill, border and text participate in the mode-specific contrast warnings. Floor-label text size is not driven by Shared style links.
+**Floor labels** — On multi-floor exports, the collapsible "Floors" section contains independent "Position", "Caption", and "Backplate" subsections plus a "Show floor captions" toggle; in the parameter-links tree that toggle sits directly under "Floors", after the subsections. The position header includes the active floor title in parentheses. `FloorLabelSettings.labelMode` selects the label content: `"title"` uses that floor's title from the Floors feature, while `"index"` renders the full `prefix` plus the selected `labelType` value. Title mode falls back to the index label when no non-empty title is available. Floor labels are disabled by default (`enabled: false`). The mode for both renderers is chosen once, on the first open of the Image Export card (`chooseFloorLabelModeOnce` in `store/floorLabelModeChoice.ts`, also applied when a loaded project lands on that card), and again on "Reset all": `title` if any floor has `titleCustomized` (was renamed in the Floors feature), `index` otherwise (`defaultFloorLabelMode`). `ImageExportState.floorLabelModeChosen` records that the choice was made and is persisted in the project file; a file without it counts as chosen when it already carries floor-label settings. Later renames never switch an existing setting. Persisted floor-label settings without `labelMode` (saved before GitHub issue #747) load as index mode, preserving their output. Its `textAlignment` (`"left"`, `"center"`, or `"right"`) aligns that text inside the configured label frame; it defaults to `"center"` for backward compatibility. Alignment moves only the text, never the frame's world position or placement anchor. Left/right placement uses the baked glyph-ink bounds rather than the `BitmapText` line box, respects `textMargin`, and stays inside the parallelogram's narrowed inner span. `textAlignment` belongs to the reusable `TextStyleFields`, while other label types remain centered and expose no alignment control. Position is stored per stable floor id in `FloorLabelSettings.positionsByFloorId`; a missing entry remains backward-compatible and uses the centered anchor. The active floor can use one of three modes: `anchored` aligns the corresponding point of the label frame with one of the 3×3 anchor points on that floor's exact cell bounds (for example, top-left frame corner to top-left bounds corner), `cell` follows the world-space center of the requested mathematical-grid cell whether or not that cell belongs to the field, and `free` uses arbitrary world coordinates. Coordinate inputs display the integer part only; hidden free-position precision is preserved until that axis is edited. Changing modes minimizes visual movement: free keeps the current world position, cell snaps that point to the nearest mathematical-grid cell, and anchored selects the closest of the nine anchor placements. Cell/free modes expose an explicit canvas-drag mode: dragging starts only on the label, cell placement snaps to the nearest grid coordinate and free placement follows the pointer; Enter, Space, or a pointer press outside the canvas commits and exits, while Escape restores the position captured when drag mode was enabled. The position section can copy the current floor's placement to every floor without changing the shared label or backplate style. Floor-label bounds participate in export margin measurement, so edge and free positions are included by auto-fit instead of being clipped. Its `textSize` is independent from Shared style and ranges from 6–72 px; its auto-fit considers the widest label across all floors. The backplate supports `none`, a rounded rectangle, or a rounded parallelogram, with width 20–250 px, height, corner radius, gap (a surface-colour cutout), border width, fill and border colours. Text-fit and overflow checks use the same parallelogram skew as `FloorLabelRenderer`, with the configured text margin applied as an inner clearance. Width/height auto-fit uses the current text size and margin and considers every floor label; Roman labels are measured by glyph metrics rather than character count. The floor-label fill, border and text participate in the mode-specific contrast warnings. Floor-label text size is not driven by Shared style links.
 
 GitHub issue #701: `markerFillColor`/`markerBorderColor` are also project colors (section "Shared style", `PC.sharedMarkerFill`/`sharedMarkerBorder`). The section is a single "Markers" sub-section rendered with the shared `MarkerAppearanceRows` (`MarkerFieldRows.tsx`) — same rows, labels and order as every marker (shape, corner style, size, fill color, border color, border width, gap width). `teleportFloorBadge` and `elevatorBadges` also get disabled links for corner style, size, border width and gap width. Edits go through `patchVectorBy{Walls,Corridors}SharedStyle` (propagate-on-change).
 
@@ -658,11 +659,18 @@ or disabled as an override); the blue **dependents indicator** (bottom-right) wh
 dependent link exists; and, only for an unsupported (`linkTarget: null`) field, a red **unsupported
 indicator** (bottom-right `X`) over a disabled-gray chain. A field with no link of any kind (but
 linkable) renders the chain alone, broken and disabled-gray, with no badge — the glyph itself says
-enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each followed by the link's
-modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and suffixed
-"(disabled)" when inactive, plus a click hint); clicking opens `LinkEditor` (add/edit) or, for a
+enough. Hovering shows a tooltip whose bubble alone can grow to 560px (other tooltips retain their
+normal cap): its relationship lines stay single-line until that cap, then wrap within the bubble.
+The semantic-colored header is
+green for an active driving link, blue when the field only has dependents, disabled gray for a
+disabled driving link, and primary for no links. The field's own driving/dependent lines follow,
+each with its modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and a
+disabled line is suffixed "(disabled)" and rendered disabled gray, followed by a click hint.
+For linkable fields, clicking opens `LinkEditor` (add/edit) or, for a
 disabled driving link, re-enables it directly (`onSetLinkEnabled`, equivalent to the old
-`OverrideResetButton`'s reset action) without a dialog. An unsupported field's click opens a small
+`OverrideResetButton`'s reset action) without a dialog. An unsupported field instead has an
+error-colored "Links not supported" heading and its tertiary explanation on the next line;
+its click opens a small
 info dialog instead, explaining why (a per-field `unsupportedHint` override is supported for a field
 whose unsupported reason isn't the generic "type not modeled yet", e.g. the random-wall-color-mode
 toggle).
@@ -1085,7 +1093,7 @@ Pure function: `(cfg, nodes, margin, settings: DigitalExportSettings, wallMargin
 | `margin_cells` | bbox + `wallMargin` + `marginValue * TILE_SIZE` on every side | same idea, in cell units — scales with `scale` (unlike `margin_px`, which stays a fixed output pixel amount) |
 | `fixed_size` | exactly `fixedWidth × fixedHeight` px | full `margin` (marker-inclusive — content is centered via `placeInBox`, and a marker must never get clipped by a coincidentally tight fixed canvas even if the maze happens to have no visible wall stroke there) |
 
-`contentWidth`/`contentHeight` (the maze's own rendered size after scaling) are always returned alongside `width`/`height` (the canvas/file's own pixel size — only differs from content size in `fixed_size`) so the panel can compute a fill percentage. `overflow` is `true` only for `fixed_size`, when content doesn't fit the fixed canvas — export still proceeds; content outside `PngExporter`'s `RenderTexture` bounds is simply not drawn (hardware clip), not an error.
+`contentWidth`/`contentHeight` (the maze's own rendered size after scaling) are always returned alongside `width`/`height` (the canvas/file's own pixel size — only differs from content size in `fixed_size`) so the panel can compute a fill percentage. `overflow` is `true` only for `fixed_size`, when content doesn't fit the fixed canvas — export still proceeds; content outside `PngExporter`'s `RenderTexture` bounds is simply not drawn (hardware clip), not an error. The digital margin and fixed-width/height controls use `NumberInput` (GitHub issue #770), so an empty draft never writes `NaN`; margin clamps to a minimum of 0 and fixed dimensions clamp to a minimum of 1 on blur, with a field-anchored correction hint.
 
 `worldX`/`worldY` (the canvas's own world-space top-left corner, distinct from `x`/`y` which are screen/canvas-pixel-space) exist solely for `ExportFrameOverlay`'s digital-mode frame — it lives in a viewport-synced container and needs the canvas rect in the same coordinate space the maze itself is drawn in.
 

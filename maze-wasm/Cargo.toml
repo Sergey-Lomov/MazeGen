@@ -9,9 +9,6 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
-[features]
-test-tessellation = ["maze-core/test-tessellation", "maze-runner/test-tessellation"]
-
 [dependencies]
 maze-core = { path = "../maze-core" }
 maze-core-macros = { path = "../maze-core-macros" }

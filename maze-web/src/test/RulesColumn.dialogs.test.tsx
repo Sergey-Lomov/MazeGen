@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { RulesColumn } from "../components/features/quality/RulesColumn";
 import { useMazeStore } from "../store/mazeStore";
 import type { StrategySlotVM, StrategyVM, CheckVM, QualityStageVM } from "../components/features/useQualityViewModel";
+import { getTooltipControl } from "./tooltipTestUtils";
 
 // Wraps a flat `StrategySlotVM[]` fixture into a single-stage `QualityStageVM[]` — most tests
 // here don't care about stage grouping itself, just about rendering/interacting with rule cards,
@@ -88,7 +89,7 @@ describe("RulesColumn dialogs and rule management", () => {
     useMazeStore.setState({ availableStrategies: [] });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
     expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     expect(screen.getByTestId("issue-select-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByText("pick-k1"));
     expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
@@ -97,7 +98,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("Back from the check dialog returns to the issue-select dialog", () => {
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("go-back"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
@@ -110,7 +111,7 @@ describe("RulesColumn dialogs and rule management", () => {
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
@@ -123,7 +124,7 @@ describe("RulesColumn dialogs and rule management", () => {
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     fireEvent.click(screen.getByText("go-back-2"));
@@ -138,7 +139,7 @@ describe("RulesColumn dialogs and rule management", () => {
       rules: [],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     fireEvent.click(screen.getByText("pick-strategy"));
@@ -155,7 +156,7 @@ describe("RulesColumn dialogs and rule management", () => {
       rules: [],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Add new rule"));
+    fireEvent.click(getTooltipControl("Add new rule"));
     fireEvent.click(screen.getByText("pick-k1"));
     fireEvent.click(screen.getByText("pick-checks"));
     expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
@@ -218,12 +219,51 @@ describe("RulesColumn dialogs and rule management", () => {
     expect(screen.getAllByText("Check One").length).toBeGreaterThan(1);
   });
 
-  it("shows an alert instead of an empty picker when no candidate checks are available", () => {
+  it("disables the add-check row with a tooltip instead of an alert when no candidate checks are available", () => {
     useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByText("+ Add check"));
-    expect(screen.getByText("All checks compatible with this rule are already added.")).toBeInTheDocument();
+    const row = screen.getByText("+ Add check");
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText("All checks compatible with this rule are already added.", { selector: "[hidden]" })).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getAllByText("Check One")).toHaveLength(1);
+  });
+
+  it("ignores keyboard activation of the disabled add-check row", () => {
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    const row = screen.getByText("+ Add check");
+    expect(row).not.toHaveAttribute("tabindex");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(screen.getAllByText("Check One")).toHaveLength(1);
+  });
+
+  it("opens the picker from the keyboard on the enabled add-check row", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }, { id: "c3", label: "Check Three", description: "", issue_kinds: ["k1"], params: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+    });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    fireEvent.keyDown(screen.getByText("+ Add check"), { key: "Enter" });
+    expect(screen.getByText("Check Three")).toBeInTheDocument();
+  });
+
+  it("keeps the add-check row enabled and tooltip-free when candidates exist", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }, { id: "c3", label: "Check Three", description: "", issue_kinds: ["k1"], params: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+    });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    const row = screen.getByText("+ Add check");
+    expect(row).toHaveAttribute("aria-disabled", "false");
+    expect(screen.queryByText("All checks compatible with this rule are already added.", { selector: "[hidden]" })).toBeNull();
+    fireEvent.click(row);
+    expect(screen.getByText("Check Three")).toBeInTheDocument();
   });
 
   it("toggles ruleDisabled and visually dims the card title row", () => {
@@ -238,7 +278,7 @@ describe("RulesColumn dialogs and rule management", () => {
     useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Rename rule"));
+    fireEvent.click(getTooltipControl("Rename rule"));
     const input = screen.getByDisplayValue("Rule 1");
     fireEvent.change(input, { target: { value: "My rule" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -252,7 +292,7 @@ describe("RulesColumn dialogs and rule management", () => {
     // LiveSlots, see comment in "removing a check..." above — removing the whole rule needs the
     // same store-tracking treatment.
     render(<LiveSlots slots={slots} selection={{ type: "strategy", ruleId: "g1", strategyId: "s1" }} onSelect={onSelect} />);
-    fireEvent.click(screen.getByTitle("Remove rule"));
+    fireEvent.click(getTooltipControl("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).toHaveBeenCalledWith(null);
     expect(useMazeStore.getState().rules).toEqual([]);
@@ -262,7 +302,7 @@ describe("RulesColumn dialogs and rule management", () => {
     useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
-    fireEvent.click(screen.getByTitle("Remove rule"));
+    fireEvent.click(getTooltipControl("Remove rule"));
     fireEvent.click(screen.getByText("Cancel"));
     expect(useMazeStore.getState().rules).toHaveLength(1);
   });

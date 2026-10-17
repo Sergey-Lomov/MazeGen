@@ -100,16 +100,21 @@ export interface PngExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
  *  captions, elevator badges and teleport floor badges all configure their text the same way:
- *  color, font weight, an **absolute** font size in px and a margin (not a fraction of the badge/marker
- *  diameter). `MarkerSettings` carries these optionally (only start/finish expose them in the UI);
- *  the badge settings require them. */
+ *  color, font weight, an **absolute** font size in px, a margin (not a fraction of the badge/marker
+ *  diameter), and reusable horizontal alignment. Alignment is optional while only floor labels
+ *  expose it; consumers that omit it remain centered. `MarkerSettings` carries these optionally
+ *  (only start/finish expose them in the UI); the badge settings require the original fields. */
+export type TextHorizontalAlignment = "left" | "center" | "right";
+
 export interface TextStyleFields {
   textColor: number;
   textFontWeight: LabelFontWeight;
+  /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
+  textAlignment?: TextHorizontalAlignment;
   /** Font size in px. */
   textSize: number;
   /** Margin in px (`TEXT_MARGIN_RANGE`, default `DEFAULT_TEXT_MARGIN`): how far the glyph ink must
-   *  stay from the plate edge. Used by the overflow warnings and auto-fit only. */
+   *  stay from the plate edge. Also positions left/right-aligned floor-label text. */
   textMargin: number;
 }
 
@@ -392,10 +397,27 @@ export interface BadgeSettings extends MarkerAppearance, TextStyleFields {
 }
 
 export type FloorLabelBackgroundShape = "none" | "rectangle" | "parallelogram";
+export type FloorLabelMode = "index" | "title";
 
-/** Label overlaid at the geometric center of the active floor for multi-floor mazes. */
+export const FLOOR_LABEL_ANCHORS = [
+  "top_left", "top_center", "top_right",
+  "center_left", "center", "center_right",
+  "bottom_left", "bottom_center", "bottom_right",
+] as const satisfies readonly Exclude<PrintAnchor, "custom">[];
+
+export type FloorLabelAnchor = (typeof FLOOR_LABEL_ANCHORS)[number];
+
+/** Per-floor label placement. Missing entries use the backward-compatible centered anchor. */
+export type FloorLabelPosition =
+  | { mode: "anchored"; anchor: FloorLabelAnchor }
+  | { mode: "cell"; cell: [number, number] }
+  | { mode: "free"; x: number; y: number };
+
+/** Label overlaid on the active floor for multi-floor mazes. */
 export interface FloorLabelSettings extends TextStyleFields {
+  textAlignment: TextHorizontalAlignment;
   enabled: boolean;
+  labelMode: FloorLabelMode;
   prefix: string;
   labelType: IndexLabelStyle;
   backgroundShape: FloorLabelBackgroundShape;
@@ -406,6 +428,15 @@ export interface FloorLabelSettings extends TextStyleFields {
   borderWidth: number;
   fillColor: number;
   borderColor: number;
+  /** Placement is keyed by stable floor id, so floor reorder and rename preserve it. */
+  positionsByFloorId: Record<string, FloorLabelPosition>;
+}
+
+/** Transient canvas-drag session. The snapshot lets Escape restore the activation position. */
+export interface FloorLabelDragState {
+  renderMode: RenderModeId;
+  floorId: string;
+  initialPosition: Extract<FloorLabelPosition, { mode: "cell" | "free" }>;
 }
 
 /** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
@@ -744,6 +775,7 @@ export interface ImageExportState {
    * the user hasn't picked one yet — a radio group with no default selection, not independent
    * toggles. */
   activeRenderMode: RenderModeId | null;
+  floorLabelDrag: FloorLabelDragState | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -763,6 +795,10 @@ export interface ImageExportState {
    *  removes the entry point, it does not disable the underlying link mechanism). */
   linkIconVisibility: LinkIconVisibility;
   vectorByWallsSettings: VectorByWallsSettings;
+  /** Whether both renderers' `floorLabel.labelMode` has been chosen from the floor titles yet
+   * (GitHub issue #747). False until the Image Export card is first opened; that open (or a
+   * project load that lands on it) picks `defaultFloorLabelMode` and sets this true. */
+  floorLabelModeChosen: boolean;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;
@@ -795,6 +831,14 @@ export interface ImageExportState {
 
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
+  /** Replaces the visual configuration and its parameter links with a loaded visual preset
+   *  (GitHub issue #750), keeping this project's maze-bound settings (floor-label positions,
+   *  teleport group overrides). Generation settings and maze data are untouched. */
+  loadVisualPreset: (preset: import("./projectExport").VisualPresetFile) => void;
+  startFloorLabelDrag: (renderMode: RenderModeId) => void;
+  updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
+  finishFloorLabelDrag: () => void;
+  cancelFloorLabelDrag: () => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;

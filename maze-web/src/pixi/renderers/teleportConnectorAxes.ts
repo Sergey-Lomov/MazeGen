@@ -69,5 +69,4 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   hex: (cfg) => orientedAxes(cfg, HEX_CANONICAL_AXES_DEG),
   tri: () => TRI_AXES,
   cairo: () => CAIRO_AXES,
-  test: () => SQUARE_AXES,
 };

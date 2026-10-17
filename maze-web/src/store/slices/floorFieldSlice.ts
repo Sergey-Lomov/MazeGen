@@ -9,7 +9,7 @@ import type { MazeStore, MazeState, FloorFieldsState, FloorFieldsActions, Pendin
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
-  buildResetDownstreamState, hasPresetMode,
+  buildResetDownstreamState,
 } from "../storeHelpers";
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
@@ -124,8 +124,6 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldEditMode: (mode) => set((state) => {
     if (state.backgroundAutoFillPreview !== null) return {};
     if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
-    // A finite kind has no default (preset) mode.
-    if (mode === "default" && !hasPresetMode(state.tessellationKind)) return {};
     const field = activeFloorField(state);
     if (mode === "custom") {
       const cfg = field.fieldConfig;

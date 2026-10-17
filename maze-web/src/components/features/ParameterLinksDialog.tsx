@@ -11,6 +11,7 @@ import { AddIconButton } from "../AddIconButton";
 import { SelectRow } from "../SelectRow";
 import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
+import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, disabled as disabledText, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel } from "../../store/parameterLinks";
@@ -120,9 +121,9 @@ function HierarchicalLabelSegments<P extends string>({
         </span>
       ))}
       {inactive && (
-        <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+        <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
           <EyeOff size={13} strokeWidth={2.5} />
-        </span>
+        </span></Tooltip>
       )}
     </>
   );
@@ -280,32 +281,30 @@ function BreadcrumbNav<P extends string>({
           ))
         )}
         {value.length > 0 && (
-          <button
+          <Tooltip content={m["image_export.param_links.breadcrumb_back"]()}><button
             type="button"
             className="hoverable"
             style={styles.breadcrumbPop}
-            title={m["image_export.param_links.breadcrumb_back"]()}
             onClick={(e) => {
               e.stopPropagation();
               onPopLast();
             }}
           >
             <ArrowLeft size={16} />
-          </button>
+          </button></Tooltip>
         )}
         {value.length > 0 && (
-          <button
+          <Tooltip content={m["image_export.param_links.breadcrumb_clear"]()}><button
             type="button"
             className="hoverable"
             style={styles.breadcrumbClear}
-            title={m["image_export.param_links.breadcrumb_clear"]()}
             onClick={(e) => {
               e.stopPropagation();
               onChange([]);
             }}
           >
             <X size={16} />
-          </button>
+          </button></Tooltip>
         )}
       </div>
       {open && children && children.length > 0 && (
@@ -405,10 +404,8 @@ function ParamPicker<P extends string>({
         const inactive = !activePaths.has(node.path);
         const disabled = disabledPaths?.has(node.path) ?? false;
         return (
-          <div
-            key={node.path}
+          <Tooltip key={node.path} content={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}><div
             className={disabled ? undefined : "hoverable"}
-            title={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}
             aria-disabled={disabled || undefined}
             style={{
               ...styles.pickerRow,
@@ -426,11 +423,11 @@ function ParamPicker<P extends string>({
               </span>
             )}
             {inactive && (
-              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+              <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
-              </span>
+              </span></Tooltip>
             )}
-          </div>
+          </div></Tooltip>
         );
       }
       const isExpanded = expanded.has(node.groupKey);
@@ -456,9 +453,9 @@ function ParamPicker<P extends string>({
               </span>
             )}
             {groupInactive && (
-              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+              <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
-              </span>
+              </span></Tooltip>
             )}
           </div>
           {isExpanded && renderNodes(node.children, depth + 1)}

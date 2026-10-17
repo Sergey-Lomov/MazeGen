@@ -92,9 +92,10 @@ describe("QualityDetailPanel", () => {
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] });
   });
 
-  it("renders empty panel when selected check no longer exists", () => {
+  it("shows the placeholder when selected check no longer exists", () => {
     render(<Harness selection={{ type: "check", id: "missing" }} vm={makeVm()} />);
     expect(screen.queryByText("Check One")).not.toBeInTheDocument();
+    expect(screen.getByText("Select an item to view details")).toBeInTheDocument();
   });
 
   it("renders nested strategy detail when a nested_strategy slot is selected", () => {
@@ -134,12 +135,13 @@ describe("QualityDetailPanel", () => {
     expect(screen.getByText("Param One")).toBeInTheDocument();
   });
 
-  it("renders empty panel when the selected nested_strategy path no longer resolves", () => {
+  it("shows the placeholder when the selected nested_strategy path no longer resolves", () => {
     const vm = makeVm({
       strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check], params: {}, nestedStrategies: [], collapsed: false }],
     });
     render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} vm={vm} />);
     expect(screen.queryByText("Strategy One")).not.toBeInTheDocument();
+    expect(screen.getByText("Select an item to view details")).toBeInTheDocument();
   });
 
   it("renders a check param's label read-only, with no editable control", () => {
@@ -189,10 +191,11 @@ describe("QualityDetailPanel", () => {
     expect(screen.getByText("Fallback Label")).toBeInTheDocument();
   });
 
-  it("renders empty panel when the selected param no longer resolves", () => {
+  it("shows the placeholder when the selected param no longer resolves", () => {
     const vm = makeVm();
     render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "missing" }, paramId: "threshold" }} vm={vm} />);
     expect(screen.queryByText("Threshold")).not.toBeInTheDocument();
+    expect(screen.getByText("Select an item to view details")).toBeInTheDocument();
   });
 
   it("renders option explanations for an enum param when selected (GitHub issue #435)", () => {

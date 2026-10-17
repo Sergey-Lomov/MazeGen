@@ -6,8 +6,14 @@ import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, postEditStatePatch } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { fieldOf } from "./fieldConfigFixtures";
+import { TileFaceEditor } from "../components/features/TileFaceEditor";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes } from "./notificationTestHelpers";
+import { SPLIT_BOUNDARY_FACE } from "../notifications/editRefusalNotifications";
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     // Node 5 is the split point (2,2)'s original node — the dialog resolves the "Node 1" row to
@@ -32,6 +38,44 @@ beforeEach(() => {
 });
 
 describe("ManageSplitNodesDialog", () => {
+  it("reports boundary-face left/right clicks as one deduplicated notice", () => {
+    render(
+      <TileFaceEditor
+        point={[0, 0]}
+        cfg={fieldOf("square", { shape: "rect", cols: 1, rows: 1 })}
+        nodes={[{ color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: true })) }]}
+        activeIndex={0}
+        onFaceClick={vi.fn()}
+        onFaceRightClick={vi.fn()}
+        onRotate={vi.fn()}
+        notificationSource="post_edit"
+      />,
+    );
+    const face = document.body.querySelector("svg g")!;
+    fireEvent.click(face);
+    fireEvent.contextMenu(face);
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_BOUNDARY_FACE}`]);
+    expect(screen.queryByText("This side has no neighboring tile in the field.")).toBeNull();
+  });
+  it.each([
+    ["preset_connections" as const, "preset_connections"],
+    [undefined, null],
+  ])("boundary-face click with notificationSource %s notifies under %s", (notificationSource, expectedSource) => {
+    render(
+      <TileFaceEditor
+        point={[0, 0]}
+        cfg={fieldOf("square", { shape: "rect", cols: 1, rows: 1 })}
+        nodes={[{ color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: true })) }]}
+        activeIndex={0}
+        onFaceClick={vi.fn()}
+        onFaceRightClick={vi.fn()}
+        onRotate={vi.fn()}
+        notificationSource={notificationSource}
+      />,
+    );
+    fireEvent.click(document.body.querySelector("svg g")!);
+    expect(noticeCodes()).toEqual(expectedSource ? [`${expectedSource}/${SPLIT_BOUNDARY_FACE}`] : []);
+  });
   it("renders one card for the original node plus one per slot, coordinates in the modal header", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     expect(screen.getByText("Manage split nodes: 2:2")).toBeInTheDocument();

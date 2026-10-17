@@ -92,6 +92,7 @@ const bgApp = "#111111";
 const bgPanel = lighten(bgApp, 0.03);
 const bgPanelAlt = lighten(bgPanel, 0.05);
 const bgSurfaceRaised = lighten(bgPanelAlt, 0.04); // hover fill and input background — same tone
+const bgKeycap = "#333333";
 
 export const base = {
   // Backgrounds
@@ -99,6 +100,7 @@ export const base = {
   bgPanel,
   bgPanelAlt,
   bgSurfaceRaised,
+  bgKeycap,
 
   // Borders
   borderStrong: "#444444",

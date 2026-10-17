@@ -1,3 +1,4 @@
+import { notifyAutoFillPreviewActive } from "../notifications/fieldSetupNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
@@ -17,6 +18,8 @@ import { connectedMagicWandCells } from "./magicWand";
 import { getCartesian } from "./cartesianCache";
 import { fieldOperationAvailable, isFieldOpError } from "./fieldOps";
 import { translateFieldCells, type WorldPoint } from "../wasm/mazeService";
+import { canActivateFieldPrimitive, fieldPrimitiveForShortcut } from "./fieldPrimitiveShortcuts";
+import { blurActiveElement } from "./toolShortcuts";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -106,7 +109,15 @@ export class FieldEditController {
             : null;
       if (operation) {
         e.preventDefault();
+        blurActiveElement();
         state.setFieldOperation(operation);
+        return;
+      }
+      const primitive = fieldPrimitiveForShortcut(e.code);
+      if (primitive && canActivateFieldPrimitive(primitive, field.fieldOperation, state.backgroundAutoFillPreview !== null)) {
+        e.preventDefault();
+        blurActiveElement();
+        state.setFieldPrimitive(primitive);
         return;
       }
     }
@@ -208,6 +219,8 @@ export class FieldEditController {
         this.gestureActive = true;
         this.gestureButton = button;
         this.panCallbacks.startPan(canvasX, canvasY);
+      } else {
+        notifyAutoFillPreviewActive();
       }
       return;
     }

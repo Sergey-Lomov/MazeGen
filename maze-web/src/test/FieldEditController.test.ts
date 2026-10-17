@@ -5,6 +5,8 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
+import { AUTO_FILL_PREVIEW_ACTIVE } from "../notifications/fieldSetupNotifications";
 
 const activeControllers: FieldEditController[] = [];
 
@@ -57,6 +59,7 @@ function lastPolygon(updates: PrimitiveWorldGeometry[]): Extract<PrimitiveWorldG
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState({
     ...baseStoreState(),
     backgroundAutoFillPreview: null,
@@ -74,6 +77,59 @@ beforeEach(() => {
 afterEach(() => {
   for (const controller of activeControllers) controller.destroy();
   activeControllers.length = 0;
+});
+
+describe("FieldEditController primitive shortcuts", () => {
+  it("selects field figures in list order and assigns mnemonic keys to special tools", () => {
+    makeController();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("parallelogram");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit8" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("magic_wand");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
+  });
+
+  it("does not select the disabled symmetry tool in select mode", () => {
+    makeController();
+    useMazeStore.getState().setFieldOperation("select");
+    useMazeStore.getState().setFieldPrimitive("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("does not select a tool while field editing is locked", () => {
+    makeController();
+    useMazeStore.getState().setFieldPrimitive("point");
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set() });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("clears the feature-card focus after a keyboard tool selection", () => {
+    makeController();
+    const header = document.createElement("button");
+    document.body.append(header);
+    header.focus();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+
+    expect(document.activeElement).not.toBe(header);
+    header.remove();
+  });
 });
 
 describe("FieldEditController polygon interaction", () => {
@@ -546,6 +602,36 @@ describe("FieldEditController point interaction", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(originalPoints);
     expect(commits).toHaveLength(0);
     expect(controller.getHoverCell(20, -20)).toBeNull();
+  });
+
+  it("explains ignored canvas clicks during an auto-fill preview with a notice", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+
+    const notices = useNotificationStore.getState().notices;
+    expect(notices.map((n) => n.code)).toEqual([AUTO_FILL_PREVIEW_ACTIVE]);
+  });
+
+  it("does not show the auto-fill notice for pan gestures during a preview", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 1);
+    controller.onPointerUp();
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
+  });
+
+  it("does not show the auto-fill notice for clicks without a preview", () => {
+    const { controller } = makeController();
+    click(controller, 20, -20);
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
   });
 
   it("inverts add/remove with RMB", () => {

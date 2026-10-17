@@ -17,9 +17,12 @@ import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
+import { readJsonFile } from "./jsonFile";
+import { registerNotificationCode } from "../notifications/notificationRegistry";
+import { notify } from "../notifications/notificationStore";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
@@ -27,6 +30,17 @@ import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
+
+const PROJECT_LOAD_SOURCE = "project_load";
+
+const PROJECT_LOAD_CODES = {
+  invalid: "project.load_error",
+  qualityPreset: "project.load_error_quality_preset",
+  visualPreset: "project.load_error_visual_preset",
+} as const;
+for (const code of Object.values(PROJECT_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,
@@ -83,7 +97,6 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     hex: m["tessellation.hex"],
     tri: m["tessellation.triangle"],
     cairo: m["tessellation.cairo"],
-    test: m["tessellation.test"],
   };
   return labels[kind]();
 }
@@ -185,7 +198,6 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const loadProject = useMazeStore((s) => s.loadProject);
-  const setError = useMazeStore((s) => s.setError);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -213,26 +225,21 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const reader = new FileReader();
-    reader.onerror = () => setError(m["project.load_error_io"]());
-    reader.onload = (ev) => {
+    readJsonFile(file, PROJECT_LOAD_SOURCE, (json) => {
+      // Validation runs before `loadProject`, so a rejected file leaves the store untouched.
+      let project: ReturnType<typeof parseAndValidate>;
       try {
-        const text = ev.target?.result as string;
-        let json: unknown;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          setError(m["project.load_error_json"]());
+        project = parseAndValidate(json);
+      } catch (err) {
+        if (err instanceof FileKindMismatchError) {
+          notify({ source: PROJECT_LOAD_SOURCE, code: err.found === "quality_preset" ? PROJECT_LOAD_CODES.qualityPreset : PROJECT_LOAD_CODES.visualPreset });
           return;
         }
-        const projectFile = parseAndValidate(json);
-        loadProject(projectFile);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(m["project.load_error"]({ message }));
+        notify({ source: PROJECT_LOAD_SOURCE, code: PROJECT_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
+        return;
       }
-    };
-    reader.readAsText(file);
+      loadProject(project);
+    });
   }
 
   function handleToggle(id: FeatureId) {
@@ -445,7 +452,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
           ref={fileInputRef}
           type="file"
           name="project-file"
-          accept=".json"
+          accept={projectFileAccept(navigator)}
           style={{ display: "none" }}
           onChange={handleFileChange}
         />

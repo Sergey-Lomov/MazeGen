@@ -2,6 +2,7 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
+import { Tooltip } from "../../Tooltip";
 import { RemoveIconButton } from "../../RemoveIconButton";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
@@ -59,13 +60,12 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
         onMouseLeave={() => onHoverChange(false)}
       >
         <span style={styles.cardLabel}>{check.cardLabel}</span>
-        <div
+        <Tooltip content={check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}><div
           style={styles.toggleWrap}
-          title={check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}
           onClick={(e) => e.stopPropagation()}
         >
           <Switch checked={!check.disabled} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
-        </div>
+        </div></Tooltip>
         <RemoveIconButton
           title={m["quality.remove"]()}
           onClick={(e) => {

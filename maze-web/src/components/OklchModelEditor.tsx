@@ -13,7 +13,9 @@ import {
   type Oklch,
 } from "./colorFormat";
 import { GradientSlider } from "./GradientSlider";
-import { useChannelInputs, parseChannelInput } from "./useChannelInputs";
+import { useChannelInputs } from "./useChannelInputs";
+import { ColorChannelInput } from "./ColorChannelInput";
+import type { NormalizerResult } from "./inputNormalization";
 import { usePickerDrag } from "./usePickerDrag";
 import { pickerAreaStyles } from "./pickerAreaStyles";
 import * as m from "~/paraglide/messages";
@@ -129,10 +131,9 @@ export function OklchModelEditor({ color, onChange }: Props) {
     commit({ [ch]: value });
   }
 
-  function handleInput(ch: Channel, raw: string, max: number) {
-    setBuffer(ch, raw);
-    const value = parseChannelInput(raw, max);
-    if (value !== null) commitChannel(ch, value);
+  function handleInput(ch: Channel, result: NormalizerResult<number | null>) {
+    setBuffer(ch, result.raw);
+    if (result.value !== null) commitChannel(ch, result.value);
   }
 
   // --- 2D area (chroma X, lightness Y — Y inverted so lighter is at the top) ---
@@ -277,16 +278,14 @@ export function OklchModelEditor({ color, onChange }: Props) {
             thumbColor={hex}
             onChange={(v) => { clearBuffer(key); commitChannel(key, v); }}
           />
-          <input
-            type="number"
+          <ColorChannelInput
             name={`oklch-${key}`}
-            min={0}
             max={max}
             step={step}
             value={buffers[key] ?? oklch[key].toFixed(decimals)}
-            aria-label={`${label()} value`}
+            ariaLabel={`${label()} value`}
             style={styles.number}
-            onChange={(e) => handleInput(key, e.target.value, max)}
+            onInput={(result) => handleInput(key, result)}
             onBlur={() => clearBuffer(key)}
           />
         </div>

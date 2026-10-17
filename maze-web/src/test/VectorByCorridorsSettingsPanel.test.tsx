@@ -218,7 +218,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_shape"]())).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
+    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_corridors"]()));
     expect(screen.queryByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).not.toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
   });
@@ -234,7 +234,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("clicking the section header toggles expand/collapse", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);
-    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
+    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_corridors"]()));
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.cells).toBe(true);
   });
 
@@ -353,7 +353,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       });
       render(<VectorByCorridorsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+      expect(document.querySelectorAll('select[name^="teleport-group-"]')).toHaveLength(1);
     });
   });
 

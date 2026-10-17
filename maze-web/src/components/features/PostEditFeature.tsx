@@ -3,8 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
-import { typography, spacing, indent } from "../../styles/theme";
+import { typography, spacing, indent, ui } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
@@ -23,6 +22,7 @@ import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
 import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import { postEditToolShortcut } from "../../pixi/toolShortcuts";
 
 function getEdgeTools(): [PostEditTool, string][] {
   return [
@@ -75,6 +75,7 @@ export function PostEditFeature() {
   const confirmPostEdit     = useMazeStore((s) => s.confirmPostEdit);
   const resetPostEdit       = useMazeStore((s) => s.resetPostEdit);
   const postEditAnalytics   = useMazeStore((s) => s.postEditAnalytics);
+  const postEditRefreshError = useMazeStore((s) => s.postEditRefreshError);
   const postEditFocusedPoint = useMazeStore((s) => s.postEditFocusedPoint);
   const setPostEditFocusedPoint = useMazeStore((s) => s.setPostEditFocusedPoint);
   const openCard = useMazeStore((s) => s.openCard);
@@ -93,8 +94,6 @@ export function PostEditFeature() {
   const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
   const postEditResetPrompt = useMazeStore((s) => s.postEditResetPrompt);
   const cancelPostEditReset = useMazeStore((s) => s.cancelPostEditReset);
-  const postEditDragFailureMessage = useMazeStore((s) => s.postEditDragFailureMessage);
-  const dismissPostEditDragFailureMessage = useMazeStore((s) => s.dismissPostEditDragFailureMessage);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
@@ -155,6 +154,9 @@ export function PostEditFeature() {
 
   return (
     <Stack gap="groupGap">
+      {postEditRefreshError !== null && (
+        <div style={styles.statusError}>{m["post_edit.refresh_error"]({ message: postEditRefreshError })}</div>
+      )}
       {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.tools"]()}</span>
@@ -166,13 +168,14 @@ export function PostEditFeature() {
             ...getTeleportTools(),
             ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
             ...(floors.length > 1 ? getVerticalTools() : []),
-            ["reset", m["post_edit.reset_tool"]()],
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["delete", m["post_edit.delete_tool"]()],
+            ["reset", m["post_edit.reset_tool"](), m["post_edit.reset_tooltip"](), ["shift"]],
+            ["delete", m["post_edit.delete_tool"](), m["post_edit.delete_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={postEditToolShortcut}
           glyphFor={glyphKeyFor}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
@@ -205,8 +208,6 @@ export function PostEditFeature() {
       {postEditResetPrompt && (
         <PostEditResetDialog onClose={cancelPostEditReset} />
       )}
-
-      {postEditDragFailureMessage && <VerticalDragFailureAlert failure={postEditDragFailureMessage} onClose={dismissPostEditDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <div style={styles.nestedContent}>
@@ -287,5 +288,9 @@ const styles: Record<string, React.CSSProperties> = {
   // One indent level for a section's own content, relative to its `sectionLabel`.
   nestedContent: {
     paddingLeft: indent.tree,
+  },
+  statusError: {
+    ...typography.body,
+    color: ui.text.error,
   },
 };

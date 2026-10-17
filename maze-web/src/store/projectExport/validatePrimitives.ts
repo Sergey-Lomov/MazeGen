@@ -88,7 +88,7 @@ export function optSection(parent: Record<string, unknown>, key: string, path: s
  * entry is dropped individually rather than failing the whole load, same leniency
  * `validateSplitGeneration`'s pattern list applies; an empty result after dropping falls back to
  * the single-floor default too (floors must never end up empty). */
-export function validateFloors(v: unknown, path: string): { floors: { id: string; title: string }[]; nextFloorNumber: number; activeFloorId: string } {
+export function validateFloors(v: unknown, path: string): { floors: { id: string; title: string; titleCustomized?: boolean }[]; nextFloorNumber: number; activeFloorId: string } {
   const fallbackFloor = { id: `floor_${crypto.randomUUID()}`, title: "Floor 1" };
   const fallback = { floors: [fallbackFloor], nextFloorNumber: 2, activeFloorId: fallbackFloor.id };
   if (v == null) return fallback;
@@ -99,7 +99,7 @@ export function validateFloors(v: unknown, path: string): { floors: { id: string
     return fallback;
   }
   const rawFloors = Array.isArray(obj.floors) ? obj.floors : [];
-  const floors: { id: string; title: string }[] = [];
+  const floors: { id: string; title: string; titleCustomized?: boolean }[] = [];
   const seenIds = new Set<string>();
   for (const raw of rawFloors) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
@@ -112,7 +112,9 @@ export function validateFloors(v: unknown, path: string): { floors: { id: string
     // here it's just as likely a hand-edited file, and the file otherwise loads fine either way).
     if (seenIds.has(entry.id)) continue;
     seenIds.add(entry.id);
-    floors.push({ id: entry.id, title: entry.title });
+    floors.push(entry.titleCustomized === true
+      ? { id: entry.id, title: entry.title, titleCustomized: true }
+      : { id: entry.id, title: entry.title });
   }
   if (floors.length === 0) return fallback;
   const nextFloorNumber = Math.max(1, Math.trunc(optNumber(obj, "nextFloorNumber", floors.length + 1)));
@@ -214,8 +216,8 @@ export function validatePairArray<T>(
  * `quality.rules[].checks`, `presets.teleports`), where a duplicate signals file corruption
  * rather than something recoverable with a default. `label` names the id field in the error
  * message (e.g. "teleport id", "localId"). */
-export function assertUniqueIds<T>(items: T[], getId: (item: T) => number, label: string, path: string): void {
-  const seen = new Set<number>();
+export function assertUniqueIds<T, K extends number | string>(items: T[], getId: (item: T) => K, label: string, path: string): void {
+  const seen = new Set<K>();
   for (const item of items) {
     const id = getId(item);
     if (seen.has(id)) throw new Error(`Duplicate ${label} ${id} at ${path}`);

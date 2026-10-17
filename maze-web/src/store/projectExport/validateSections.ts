@@ -11,12 +11,13 @@ import type {
   ProjectFileStage,
   ProjectFileNestedStrategy,
   ProjectFileFloorField,
+  ProjectFileQuality,
 } from "./types";
 import { availablePresetKeys } from "../../pixi/fieldOps";
 import { tessellationConfigOf, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
-  assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
+  assertStringRecord, assertStringRecordRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
@@ -94,7 +95,6 @@ export function validateFloorFieldConfig(v: unknown, path: string, kind: Tessell
     hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
     tri: validatePoints(freeObj.tri, `${path}.freeFieldPoints.tri`),
     cairo: validatePoints(freeObj.cairo, `${path}.freeFieldPoints.cairo`),
-    test: validatePoints(freeObj.test, `${path}.freeFieldPoints.test`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
   return { shape, savedShapes, freeFieldPoints, fieldEditMode };
@@ -538,4 +538,64 @@ export function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
   if (kind !== "in" && kind !== "out" && kind !== "both")
     throw new Error(`Invalid NodeLockKind at ${path}: ${kind}`);
   return kind;
+}
+
+/** The quality control section — the project file's `quality` and a quality preset's whole
+ *  payload (GitHub issue #751). Shape problems in a present key throw; keys absent in older files
+ *  fall back to their defaults. */
+export function validateQuality(v: unknown, path: string): ProjectFileQuality {
+  const qualObj = assertObject(v, path);
+  // Rules with no kind (e.g. corrupted or saved before rules carried a kind) can never accept a
+  // check via "add check to rule" again (the candidate filter matches by kind) — drop them on load
+  // rather than keep them around as permanently inert cards.
+  const rules = assertArray(qualObj.rules, `${path}.rules`)
+    .map((v, i) => validateQcRule(v, `${path}.rules[${i}]`))
+    .filter((r) => r.kind !== "");
+  assertUniqueIds(rules, (r) => r.id, "rule id", `${path}.rules`);
+  // See GitHub issue #65 and Specs/quality-feature.md's "Project file persistence" section.
+  // Two cases: the key is absent entirely (file saved before this feature — recovery synthesizes
+  // one stage covering every rule, not a registered migration, same pattern as
+  // repairMaxIterations/ruleDisabled below) vs. the key is present (validated for full
+  // consistency against `rules` — any violation is a hard parse error, not a silent recovery,
+  // since a present-but-inconsistent key means the file is corrupted, not merely old).
+  const ruleIds = new Set(rules.map((r) => r.id));
+  let stages: ProjectFileStage[];
+  if (!("stages" in qualObj)) {
+    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false, collapsed: false }];
+  } else {
+    const parsedStages = assertArray(qualObj.stages, `${path}.stages`).map((v, i) => validateQcStage(v, `${path}.stages[${i}]`));
+    assertUniqueIds(parsedStages, (s) => s.id, "stage id", `${path}.stages`);
+    // A `ruleId` in a stage that doesn't resolve to a surviving rule is only ever a rule dropped
+    // by the kind-drop recovery above (see "Rules with no kind" comment) — that rule never
+    // reaches `rules`/`ruleIds`, so a strict "unknown rule id" error here would fire on every
+    // legacy file exercising that same recovery path. Scrub it silently instead; genuinely
+    // unknown ids (never present in the file's own `quality.rules` at all) are indistinguishable
+    // from this case at this point and get the same silent scrub — a stricter check would need to
+    // track "known but kind-dropped" separately, which isn't worth the complexity for a
+    // stale-reference cleanup that's a no-op either way.
+    stages = parsedStages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => ruleIds.has(id)) }));
+    const seenInStage = new Set<string>();
+    for (const stage of stages) {
+      for (const ruleId of stage.ruleIds) {
+        if (seenInStage.has(ruleId)) throw new Error(`${path}.stages: rule id ${ruleId} appears in more than one stage`);
+        seenInStage.add(ruleId);
+      }
+    }
+    for (const r of rules) {
+      if (!seenInStage.has(r.id)) throw new Error(`${path}.stages: rule id ${r.id} is not assigned to any stage`);
+    }
+  }
+  const strategyParams = assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`);
+  // Optional — files saved before this setting existed (key absent entirely) default to the same
+  // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
+  // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
+  // stay `null`, not fall back to the default — checked via `in`, not `typeof === "number"`,
+  // which would also catch the legitimate "disabled" case and silently re-enable it on load.
+  const repairMaxIterations = "repairMaxIterations" in qualObj
+    ? (typeof qualObj.repairMaxIterations === "number" ? qualObj.repairMaxIterations : null)
+    : 100;
+  const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
+    ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
+    : 10;
+  return { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs };
 }

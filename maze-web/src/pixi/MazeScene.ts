@@ -21,6 +21,7 @@ import { backgroundImageEditMode } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
+import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
 import { RenderScheduler } from "./renderScheduler";
 import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
@@ -92,6 +93,7 @@ export class MazeScene {
   private pngExporter: PngExporter;
   private interaction: SceneInteraction;
   private backgroundImageController: BackgroundImageController;
+  private floorLabelDragController: FloorLabelDragController;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
@@ -166,6 +168,7 @@ export class MazeScene {
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
+    this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
 
     this.viewportListeners = [
       this.generationRenderer,
@@ -265,6 +268,7 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
+    if (st.floorLabelDrag !== null) return this.floorLabelDragController;
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }

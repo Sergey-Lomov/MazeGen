@@ -8,6 +8,7 @@ import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, d
 import { splitShapeBinding } from "./splitShape";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
+import { refusedRotation, type SplitRotationResult } from "./splitRotationResult";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -700,8 +701,8 @@ function resolvePresetFaceOwner(
  * resolved via `resolvePresetFaceOwner` (geometry evidence, then a bridge-safety-aware fallback),
  * not simply the new neighbor's original node.
  *
- * Refuses (returns the input map unchanged, same reference) if any face that currently carries a
- * connection would land on a neighbor outside the field — there'd be nowhere left to draw it. */
+ * Refuses with `refusalReason: "outside_field"` if any face that currently carries a connection
+ * would land on a neighbor outside the field — there'd be nowhere left to draw it. */
 export function rotatePresetSplitPoint(
   presetConnections: Map<string, PresetConnectionEntry>,
   point: [number, number],
@@ -712,7 +713,7 @@ export function rotatePresetSplitPoint(
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
   level?: number,
-): Map<string, PresetConnectionEntry> {
+): SplitRotationResult<Map<string, PresetConnectionEntry>> {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const n = offsets.length;
   if (n === 0) return presetConnections;
@@ -739,7 +740,9 @@ export function rotatePresetSplitPoint(
 
       const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
-      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return presetConnections; // boundary — refuse entirely
+      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) {
+        return refusedRotation(new Map(presetConnections), "outside_field");
+      }
 
       moves.push({ key, ep, oldNeighborNode, newNeighbor, entry });
     }
@@ -828,7 +831,7 @@ export function rotatePresetSplitPointBreaksNeighborShape(
   const after = rotatePresetSplitPoint(
     presetConnections, point, slotIds, direction, cfg, cellSet, presetSplitPoints, presetActiveSplitNode, level,
   );
-  if (after === presetConnections) return false; // refused — nothing changes
+  if (after.refusalReason) return false; // refused — nothing changes
 
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   for (const [dx, dy] of offsets) {

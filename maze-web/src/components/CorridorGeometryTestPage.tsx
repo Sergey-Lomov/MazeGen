@@ -10,6 +10,7 @@ import {
   type CorridorSegmentInput,
 } from "../pixi/imageExport/vectorByCorridorsContour";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
+import { Tooltip } from "./Tooltip";
 
 export type Family = {
   id: string;
@@ -340,9 +341,8 @@ function CombinationCard({ family, mask, thickness, cornerRadius, color, grayRen
   const interactive = !expanded && Boolean(onOpen);
 
   return (
-    <div
+    <Tooltip content={interactive ? "Click to enlarge" : undefined}><div
       style={expanded ? styles.expandedCard : styles.card}
-      title={interactive ? `Click to enlarge · ports: ${selected.length}/${family.ports.length}` : undefined}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? `Enlarge ${family.label} combination ${label}` : undefined}
@@ -368,7 +368,7 @@ function CombinationCard({ family, mask, thickness, cornerRadius, color, grayRen
         <code>{label}</code>
         <span>{selected.length === 0 ? "empty" : `${selected.length} port${selected.length === 1 ? "" : "s"}`}</span>
       </div>}
-    </div>
+    </div></Tooltip>
   );
 }
 

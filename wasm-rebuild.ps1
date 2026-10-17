@@ -7,7 +7,7 @@ $webPkg  = "$root\maze-web\src\wasm\pkg"
 (Get-Item "$root\maze-wasm\src\lib.rs").LastWriteTime = Get-Date
 
 Write-Host "Building WASM..." -ForegroundColor Cyan
-wasm-pack build "$root\maze-wasm" --target web -- --features test-tessellation
+wasm-pack build "$root\maze-wasm" --target web
 if ($LASTEXITCODE -ne 0) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "Copying artifacts to $webPkg..." -ForegroundColor Cyan

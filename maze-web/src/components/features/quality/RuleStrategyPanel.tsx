@@ -3,6 +3,7 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
+import { Tooltip } from "../../Tooltip";
 import { WarningIcon } from "../../WarningIcon";
 import { EditIconButton } from "../../EditIconButton";
 import * as m from "~/paraglide/messages";
@@ -89,12 +90,11 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
         </span>
         {strategy?.experimental && <WarningIcon />}
         {strategy && (
-          <div
+          <Tooltip content={slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
             style={styles.toggleWrap}
-            title={slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}
           >
             <Switch checked={!slot.disabled} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
-          </div>
+          </div></Tooltip>
         )}
         <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
       </div>

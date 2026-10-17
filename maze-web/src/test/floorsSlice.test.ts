@@ -4,6 +4,7 @@ import { baseFloorFieldConfig } from "./storeTestHelpers";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { presetEdgeKey } from "../pixi/fieldEditUtils";
 import { fieldOf } from "./fieldConfigFixtures";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -158,6 +159,18 @@ describe("floorsSlice", () => {
       const id = useMazeStore.getState().floors[0].id;
       useMazeStore.getState().renameFloor(id, "Ground Floor");
       expect(useMazeStore.getState().floors[0].title).toBe("Ground Floor");
+      expect(useMazeStore.getState().floors[0].titleCustomized).toBe(true);
+    });
+
+    it("makes reset renderer settings default to title-based floor labels", () => {
+      useMazeStore.getState().resetVectorByWallsSettings();
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+      useMazeStore.getState().renameFloor(useMazeStore.getState().floors[0].id, "Ground");
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+      useMazeStore.getState().resetVectorByWallsSettings();
+      useMazeStore.getState().resetVectorByCorridorsSettings();
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("title");
+      expect(useMazeStore.getState().vectorByCorridorsSettings.floorLabel.labelMode).toBe("title");
     });
 
     it("trims surrounding whitespace", () => {
@@ -170,6 +183,36 @@ describe("floorsSlice", () => {
       const id = useMazeStore.getState().floors[0].id;
       useMazeStore.getState().renameFloor(id, "   ");
       expect(useMazeStore.getState().floors[0].title).toBe("Floor 1");
+      expect(useMazeStore.getState().floors[0].titleCustomized).toBeUndefined();
+    });
+
+    it("does not mark the title customized when committed unchanged", () => {
+      useMazeStore.getState().renameFloor("floor_1", " Floor 1 ");
+      expect(useMazeStore.getState().floors[0].titleCustomized).toBeUndefined();
+    });
+  });
+
+  describe("floor-label mode on first Image Export open", () => {
+    it("picks title mode once when a floor was renamed, then keeps manual choices", () => {
+      useMazeStore.setState({ floorLabelModeChosen: false, vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS, vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS });
+      useMazeStore.getState().renameFloor("floor_1", "Ground");
+      useMazeStore.getState().setOpenCard("image_export");
+      expect(useMazeStore.getState().floorLabelModeChosen).toBe(true);
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("title");
+      expect(useMazeStore.getState().vectorByCorridorsSettings.floorLabel.labelMode).toBe("title");
+
+      const walls = useMazeStore.getState().vectorByWallsSettings;
+      useMazeStore.setState({ vectorByWallsSettings: { ...walls, floorLabel: { ...walls.floorLabel, labelMode: "index" } } });
+      useMazeStore.getState().setOpenCard("basic_config");
+      useMazeStore.getState().setOpenCard("image_export");
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+    });
+
+    it("keeps index mode when no floor was renamed", () => {
+      useMazeStore.setState({ floorLabelModeChosen: false, vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS, vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS });
+      useMazeStore.getState().setOpenCard("image_export");
+      expect(useMazeStore.getState().floorLabelModeChosen).toBe(true);
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
     });
   });
 

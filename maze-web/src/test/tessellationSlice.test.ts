@@ -128,14 +128,14 @@ describe("mazeStore setters", () => {
   });
 
   it("setSeed updates seed and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
     useMazeStore.getState().setSeed(99);
     expect(useMazeStore.getState().seed).toBe(99);
     expect(useMazeStore.getState().error).toBeNull();
   });
 
   it("setFieldConfig updates config and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
     useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 7 }, "pointy_top"));
     const cfg = activeField().fieldConfig;
     expect(cfg).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "parallelogram", cols: 5, rows: 7 } });
@@ -252,7 +252,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
   it("setTessellationKind resets freeFieldPoints for target kind", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), tri: new Set(), cairo: new Set(), test: new Set() } });
+    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), tri: new Set(), cairo: new Set() } });
     useMazeStore.getState().setTessellationKind("square");
     const field = activeField();
     // setTessellationKind resets every floor's FloorFieldConfig to a fresh default (GitHub issue

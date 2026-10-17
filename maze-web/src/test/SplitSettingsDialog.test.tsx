@@ -5,6 +5,7 @@ import { SplitSettingsDialog } from "../components/dialogs/SplitSettingsDialog";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import type { SplitPattern } from "../wasm/types";
+import { getTooltipControls } from "./tooltipTestUtils";
 
 function pattern(weight: number): SplitPattern {
   return { shape: "regular:4", node_count: 2, faces: [[], []], weight };
@@ -23,11 +24,11 @@ describe("SplitSettingsDialog", () => {
   it("removing a pattern before the one being edited re-targets the editor to the shifted index", () => {
     render(<SplitSettingsDialog onClose={vi.fn()} />);
     // Open the editor for pattern index 1 (weight 2).
-    fireEvent.click(screen.getAllByTitle("Edit pattern")[1]);
+    fireEvent.click(getTooltipControls("Edit pattern")[1]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
 
     // Remove pattern index 0 — pattern 1 (still being edited) shifts down to index 0.
-    fireEvent.click(screen.getAllByTitle("Remove pattern")[0]);
+    fireEvent.click(getTooltipControls("Remove pattern")[0]);
 
     expect(useMazeStore.getState().splitPatterns).toHaveLength(2);
     // The editor must still be open, now pointing at the shifted pattern (still weight 2) —
@@ -37,10 +38,10 @@ describe("SplitSettingsDialog", () => {
 
   it("removing the pattern currently being edited closes its editor", () => {
     render(<SplitSettingsDialog onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByTitle("Edit pattern")[1]);
+    fireEvent.click(getTooltipControls("Edit pattern")[1]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByTitle("Remove pattern")[1]);
+    fireEvent.click(getTooltipControls("Remove pattern")[1]);
 
     expect(useMazeStore.getState().splitPatterns).toHaveLength(2);
     expect(screen.queryByText("Edit split pattern")).not.toBeInTheDocument();
@@ -48,10 +49,10 @@ describe("SplitSettingsDialog", () => {
 
   it("removing a pattern after the one being edited leaves the editor's index untouched", () => {
     render(<SplitSettingsDialog onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByTitle("Edit pattern")[0]);
+    fireEvent.click(getTooltipControls("Edit pattern")[0]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByTitle("Remove pattern")[2]);
+    fireEvent.click(getTooltipControls("Remove pattern")[2]);
 
     expect(useMazeStore.getState().splitPatterns).toHaveLength(2);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
@@ -68,7 +69,7 @@ describe("SplitSettingsDialog", () => {
   it("closing the editor on a pattern left with no faces on any node drops it from the list", () => {
     useMazeStore.setState({ splitPatterns: [pattern(1), { shape: "regular:4", node_count: 2, faces: [[], []], weight: 5 }] });
     render(<SplitSettingsDialog onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByTitle("Edit pattern")[1]);
+    fireEvent.click(getTooltipControls("Edit pattern")[1]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
 
     closePatternEditor();
@@ -87,7 +88,7 @@ describe("SplitSettingsDialog", () => {
     };
     useMazeStore.setState({ splitPatterns: [withFace] });
     render(<SplitSettingsDialog onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByTitle("Edit pattern")[0]);
+    fireEvent.click(getTooltipControls("Edit pattern")[0]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
 
     closePatternEditor();

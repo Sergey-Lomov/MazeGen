@@ -1,5 +1,6 @@
 import React from "react";
 import { spacing } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 type Gap = keyof typeof spacing;
 
@@ -19,7 +20,8 @@ export function Inline({ gap, align = "center", justify, children, style, title 
   gap: Gap; align?: React.CSSProperties["alignItems"]; justify?: React.CSSProperties["justifyContent"];
   children: React.ReactNode; style?: SafeStyle; title?: string;
 }) {
-  return <div title={title} style={{ display: "flex", alignItems: align, justifyContent: justify, gap: spacing[gap], ...style }}>{children}</div>;
+  const row = <div style={{ display: "flex", alignItems: align, justifyContent: justify, gap: spacing[gap], ...style }}>{children}</div>;
+  return title ? <Tooltip content={title} block>{row}</Tooltip> : row;
 }
 
 export function Grid({ templateColumns, gap, children, style }: {

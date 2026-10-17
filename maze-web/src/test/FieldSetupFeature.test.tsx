@@ -8,6 +8,7 @@ import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import * as m from "~/paraglide/messages";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -18,6 +19,17 @@ beforeEach(() => {
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("explains an out-of-range field size on blur, even when it restores the stored value", () => {
+    render(<FieldSetupFeature />);
+    const width = screen.getByRole("spinbutton", { name: m["field.width"]() });
+    fireEvent.change(width, { target: { value: "999" } });
+    fireEvent.blur(width);
+    expect(width).toHaveValue(10);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.range_reverted"]({ min: "1", max: "200" }),
+    );
+  });
+
   it("disables field editing controls while an auto-fill preview is active", () => {
     useMazeStore.setState({
       floorFields: {
@@ -29,7 +41,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     expect(screen.getByRole("button", { name: "Standard" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add (+)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
   });
 
@@ -202,11 +214,28 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const polygonTool = screen.getByRole("button", { name: /Polygon/ });
-    expect(polygonTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
-    fireEvent.click(screen.getByRole("button", { name: "Remove (-)" }));
+    const description = document.getElementById(polygonTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Polygon8Move vertices freely.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
-    expect(screen.getByRole("button", { name: /Symmetry/ })).toBeDisabled();
+    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
+    expect(symmetryTool).toBeDisabled();
+    const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
+  });
+
+  it("offers the parallelogram tool for a square field", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const tool = screen.getByRole("button", { name: /Parallelogram/ });
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Parallelogram7");
   });
 
   it("labels the connected-area tool and explains its effect", () => {
@@ -218,7 +247,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const tool = screen.getByRole("button", { name: /Connected Area/ });
-    expect(tool).toHaveAttribute("title", "Connected Area\nAffects all connected cells.");
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Connected AreaAAffects all connected cells.");
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {

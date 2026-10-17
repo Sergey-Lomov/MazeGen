@@ -8,7 +8,9 @@ import { createGenerationSlice, generateWithSeed } from "./slices/generationSlic
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
+import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
+import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
@@ -58,7 +60,6 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         hex: new Set(ff.freeFieldPoints.hex.map(([x, y]) => encodePoint(x, y))),
         tri: new Set(ff.freeFieldPoints.tri.map(([x, y]) => encodePoint(x, y))),
         cairo: new Set(ff.freeFieldPoints.cairo.map(([x, y]) => encodePoint(x, y))),
-        test: new Set(ff.freeFieldPoints.test.map(([x, y]) => encodePoint(x, y))),
       };
       const { isEditingField, fieldPoints } = deriveEditState(kind, fieldConfig, freeFieldPoints);
       floorFields[floor.id] = {
@@ -129,12 +130,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       seedAttachedToHistory: file.generation.seedHistory.length > 0
         && file.generation.seedHistory[file.generation.seedHistoryIndex] === file.generation.seed,
       // quality
-      // nextLocalCheckId recomputed below, not stored in the project file — see CheckInstance's
-      // doc comment in storeTypes.ts.
-      rules: file.quality.rules.map((rule) => ({
-        ...rule,
-        nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
-      })),
+      rules: rulesFromFile(file.quality.rules),
       stages: file.quality.stages,
       strategyParams: file.quality.strategyParams,
       repairMaxIterations: file.quality.repairMaxIterations,
@@ -191,6 +187,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
+      postEditRefreshError: null,
       postEditTool: "wall" as const,
       postEditDirty: file.dirtyFlags.postEdit,
       presetsDirty: file.dirtyFlags.presets,
@@ -256,11 +253,14 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       vectorByCorridorsSettings: file.imageExport.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,
+      floorLabelModeChosen: file.imageExport.floorLabelModeChosen,
       // floors
       floors: file.floors.floors,
       nextFloorNumber: file.floors.nextFloorNumber,
       activeFloorId,
     });
+    // A project saved with Image Export open lands on it without a `setOpenCard` call.
+    if (file.ui.openCard === "image_export") set(chooseFloorLabelModeOnce(get()));
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
     // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below

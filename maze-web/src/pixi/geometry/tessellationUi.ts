@@ -53,9 +53,6 @@ export interface TessellationUi {
   orientations: readonly DisplayOrientation[];
   /// Params of the kind's default `{ kind, params }` config.
   defaultParams: Record<string, unknown>;
-  /// The cells of a finite tessellation (no presets, no field operations); `null` for an unbounded
-  /// one. A finite kind starts as a custom field of exactly these cells.
-  finiteCells: readonly [number, number][] | null;
   /// Which maze-wide orientation setting (`hexOrientation`/`triOrientation`) this kind carries.
   orientationSlot: "hex" | "tri" | null;
   /// Editor and sizing behavior that follows the lattice, so no consumer branches on the kind.
@@ -119,7 +116,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     orientationSlot: null,
     editor: AXIS_ALIGNED,
     orientations: [],
-    finiteCells: null,
     defaultParams: {},
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -146,7 +142,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       pngCellSize: "diameter",
     },
     orientations: ["flat_top", "pointy_top"],
-    finiteCells: null,
     defaultParams: {},
     // A hexagon is drawn with side `TILE_SIZE`.
     pixelsPerUnit: TILE_SIZE / HEX_WORLD_SIDE,
@@ -174,7 +169,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       pngCellSize: "diameter",
     },
     orientations: ["r0", "r90", "r180", "r270"],
-    finiteCells: null,
     defaultParams: {},
     // A triangle is drawn with side `2 * TILE_SIZE`, so it is comparable to squares and hexagons.
     pixelsPerUnit: (2 * TILE_SIZE) / TRI_WORLD_SIDE,
@@ -191,7 +185,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     orientationSlot: null,
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
     orientations: [],
-    finiteCells: null,
     defaultParams: {},
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -201,24 +194,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     cellSidePx: TILE_SIZE,
     cellMeasurePx: TILE_SIZE,
     originCell: [2, 1],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
-  // Dev-only finite tessellation of `maze-core` (GitHub issue #765), built with `test-tessellation`.
-  test: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, rectCellsPerUnit: null },
-    orientations: [],
-    finiteCells: Array.from({ length: 9 }, (_, id): [number, number] => [id, 0]),
-    defaultParams: {},
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    // Not user-selectable (`orientations` is empty); a config that carries one is still honored.
-    orientation: quarterTurn,
-    splitCircleRotationDeg: 45,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    cellMeasurePx: TILE_SIZE,
-    originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
 };

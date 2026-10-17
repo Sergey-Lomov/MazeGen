@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 /// A tessellation kind may be branched on only in factories, registries and serialization
 /// (Specs/space.md). Renderers read everything kind-specific from `TESSELLATION_UI`/core geometry.
 
-const KIND_BRANCH = /[kK]ind\s*(===|!==|==|!=)\s*"(square|hex|tri|cairo|test)"|TessellationKind::/;
+const KIND_BRANCH = /[kK]ind\s*(===|!==|==|!=)\s*"(square|hex|tri|cairo)"|TessellationKind::/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

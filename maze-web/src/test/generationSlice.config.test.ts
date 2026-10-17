@@ -342,6 +342,27 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().activeFloorId).toBe(secondFloorId);
   });
 
+  it("loadProject landing on Image Export picks the floor-label mode only if not chosen yet (GitHub issue #747)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], openCard: "image_export", floorLabelModeChosen: false });
+    useMazeStore.getState().renameFloor(useMazeStore.getState().floors[0].id, "Ground");
+    const file = serializeProject(useMazeStore.getState());
+
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().floorLabelModeChosen).toBe(true);
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("title");
+
+    useMazeStore.getState().loadProject({
+      ...file,
+      imageExport: {
+        ...file.imageExport,
+        floorLabelModeChosen: true,
+        vectorByWallsSettings: { ...file.imageExport.vectorByWallsSettings, floorLabel: { ...file.imageExport.vectorByWallsSettings.floorLabel, labelMode: "index" } },
+      },
+    });
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+  });
+
   it("loadProject restores Cairo custom field points on the floor state", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     // Valid Cairo cells only: core rejects any other coordinate.
@@ -419,13 +440,6 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState()._nextSplitSlotId["0,0"]).toBe(1);
     useMazeStore.getState().addSplitNode([0, 0]);
     expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0, 1]);
-  });
-
-  it("setError sets and clears the error message", () => {
-    useMazeStore.getState().setError("boom");
-    expect(useMazeStore.getState().error).toBe("boom");
-    useMazeStore.getState().setError(null);
-    expect(useMazeStore.getState().error).toBeNull();
   });
 });
 

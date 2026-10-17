@@ -6,8 +6,6 @@ import { EntityChoiceDialog } from "../components/dialogs/EntityChoiceDialog";
 import { SplitTargetPicker, numberToCssColor, shownSplitTargets } from "../components/dialogs/SplitTargetPicker";
 import { VerticalDirectionPicker } from "../components/dialogs/VerticalDirectionPicker";
 import { ToolIconRow } from "../components/ToolIconRow";
-import { VerticalDragFailureAlert } from "../components/VerticalDragFailureAlert";
-import { formatTargetLabel } from "../pixi/targetLabel";
 
 vi.mock("../components/features/ToolGlyph", () => ({
   ToolGlyph: ({ tool }: { tool: string }) => <span data-testid={`glyph-${tool}`} />,
@@ -125,15 +123,4 @@ describe("shared preset/post-edit dialog components", () => {
     expect(onPick).toHaveBeenCalledWith("wall");
   });
 
-  it("formats both vertical drag-failure variants in the shared alert", () => {
-    const point: [number, number] = [2, 3];
-    const coords = formatTargetLabel(point, 1, true, undefined);
-    const { rerender } = render(
-      <VerticalDragFailureAlert failure={{ entityKind: "vertical_passage", point, level: 1 }} onClose={vi.fn()} />,
-    );
-    expect(screen.getByText(m["vertical_drag.failed_passage"]({ coords }))).toBeInTheDocument();
-
-    rerender(<VerticalDragFailureAlert failure={{ entityKind: "elevator", point, level: 1 }} onClose={vi.fn()} />);
-    expect(screen.getByText(m["vertical_drag.failed_elevator"]({ coords }))).toBeInTheDocument();
-  });
 });

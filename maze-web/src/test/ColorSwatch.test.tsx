@@ -9,6 +9,7 @@ import { PC } from "../pixi/selectors/projectColorsSelector";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipControl, getTooltipControls } from "./tooltipTestUtils";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -852,7 +853,7 @@ describe("ColorSwatch", () => {
       screen.getByTestId("color-picker-divergence-swatches").parentElement!.querySelectorAll('input[type="range"]'),
     ) as HTMLInputElement[];
     fireEvent.change(countSlider, { target: { value: "6" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    fireEvent.click(getTooltipControl(m["color_picker.tools.auto_step"]()));
     expect(stepSlider.value).toBe("30"); // 180 / 6
   });
 
@@ -866,7 +867,7 @@ describe("ColorSwatch", () => {
     ) as HTMLInputElement[];
     // 180 / 1 = 180, which would exceed the step slider's max=60 (Hue scale) if uncapped.
     fireEvent.change(countSlider, { target: { value: "1" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    fireEvent.click(getTooltipControl(m["color_picker.tools.auto_step"]()));
     expect(stepSlider.value).toBe("60");
     expect(Number(stepSlider.max)).toBe(60);
   });
@@ -1071,7 +1072,7 @@ describe("ColorSwatch", () => {
     fireEvent.change(maxSlider, { target: { value: "60" } });
     expect(minSlider.value).toBe("30");
     expect(maxSlider.value).toBe("60");
-    const resetButtons = screen.getAllByTitle(m["color_picker.tools.reset_auto"]());
+    const resetButtons = getTooltipControls(m["color_picker.tools.reset_auto"]());
     fireEvent.click(resetButtons[0]);
     fireEvent.click(resetButtons[1]);
     expect(minSlider.value).toBe(String(RANGE_SPLIT_AUTO_MIN_L));

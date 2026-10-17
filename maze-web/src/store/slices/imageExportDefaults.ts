@@ -11,6 +11,8 @@ import type {
   MarkerSettings,
   MarkerIndexSettings,
   FloorLabelSettings,
+  FloorLabelMode,
+  FloorState,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -67,11 +69,13 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
 };
 
 export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
-  enabled: true,
+  enabled: false,
+  labelMode: "index",
   prefix: "Floor ",
   labelType: "letters",
   textColor: canvas.floor.default,
   textFontWeight: "bold",
+  textAlignment: "center",
   textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
   textMargin: DEFAULT_TEXT_MARGIN,
   backgroundShape: "rectangle",
@@ -82,7 +86,19 @@ export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
   borderWidth: 2,
   fillColor: 0xf0c900,
   borderColor: canvas.vertical.default,
+  positionsByFloorId: {},
 };
+
+/** Floor-label mode picked on the first Image Export open or on "Reset all" (GitHub issue #747):
+ * floor titles once the user has renamed any floor, the generated index label otherwise. A later
+ * rename never switches an existing setting. */
+export function defaultFloorLabelMode(floors: readonly Pick<FloorState, "titleCustomized">[]): FloorLabelMode {
+  return floors.some((floor) => floor.titleCustomized) ? "title" : "index";
+}
+
+export function withFloorLabelMode<S extends { floorLabel: FloorLabelSettings }>(settings: S, labelMode: FloorLabelMode): S {
+  return { ...settings, floorLabel: { ...settings.floorLabel, labelMode } };
+}
 
 /** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub
  *  issue #668) — every link out of these starts disabled (`parameterLinksDefaults.ts`), so these

@@ -6,6 +6,7 @@ import { SidePanel } from "./SidePanel";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
+import { Tooltip } from "./Tooltip";
 import * as m from "~/paraglide/messages";
 import type { EventedEventKind } from "../wasm/mazeService";
 
@@ -109,26 +110,24 @@ export function DebugPanel() {
     >
       <div style={styles.controls}>
         {/* Step buttons */}
-        <button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>❮</button>
-        <button className="hoverable" style={styles.toolbarBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>❯</button>
+        <Tooltip content={m["debug.prev_step"]()}><button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }}>❮</button></Tooltip>
+        <Tooltip content={m["debug.next_step"]()}><button className="hoverable" style={styles.toolbarBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }}>❯</button></Tooltip>
 
         {/* Autoplay */}
-        <button
+        <Tooltip content={playing ? m["debug.stop"]() : m["debug.play"]()}><button
           className="hoverable"
           style={styles.toolbarBtn}
           onClick={() => setPlaying(p => !p)}
-          title={playing ? m["debug.stop"]() : m["debug.play"]()}
         >
           {playing ? "⏹" : "▶"}
-        </button>
+        </button></Tooltip>
 
         {/* Delay */}
-        <input
+        <Tooltip content={m["debug.delay_ms"]()}><input
           type="text"
           name="debug-delay-ms"
           style={styles.delayInput}
           value={delayDraft}
-          title={m["debug.delay_ms"]()}
           onChange={(e) => setDelayDraft(e.target.value)}
           onBlur={() => {
             const v = Math.max(50, Math.min(9999, parseInt(delayDraft, 10) || delayMs));
@@ -138,7 +137,7 @@ export function DebugPanel() {
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-        />
+        /></Tooltip>
         <span style={styles.label}>ms</span>
       </div>
 
@@ -153,16 +152,15 @@ export function DebugPanel() {
       )}
 
       <div style={styles.stepRow}>
-        <span
+        <Tooltip content={m["debug.focus_step"]()}><span
           className="hoverable"
           style={styles.stepLabel}
-          title={m["debug.focus_step"]()}
           onClick={focusDebugStep}
         >
           <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{total === 0 ? 0 : debugStep + 1}</span>
           {" / "}
           <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
-        </span>
+        </span></Tooltip>
         <StepSlider
           value={debugStep}
           max={total - 1}

@@ -14,8 +14,6 @@ pub mod shape;
 pub mod square;
 #[cfg(test)]
 pub(crate) mod test_support;
-#[cfg(any(test, feature = "test-tessellation"))]
-pub mod test_tessellation;
 pub mod triangle;
 
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
@@ -32,8 +30,6 @@ pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram
 pub use multi_level::{LevelId, MultiLevelField};
 pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
-#[cfg(any(test, feature = "test-tessellation"))]
-pub use test_tessellation::{TestCell, TestFace, TestTessellation};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by

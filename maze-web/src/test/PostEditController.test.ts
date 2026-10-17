@@ -8,6 +8,10 @@ import { edgeKey, nodeEndpoint } from "../pixi/postEditEndpoint";
 import { PostEditController } from "../pixi/PostEditController";
 import type { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes } from "./notificationTestHelpers";
+import { SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE } from "../notifications/editRefusalNotifications";
+import { splitEndpoint } from "../pixi/postEditEndpoint";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -32,6 +36,10 @@ const cells = new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(2, 0)])
 const activeControllers: PostEditController[] = [];
 
 function makeController(): PostEditController {
+  return makeHarness().controller;
+}
+
+function makeHarness(): { controller: PostEditController; renderer: PostEditRenderer } {
   const renderer = {
     getCachedCellSet: () => cells,
     getCachedCells: () => [[0, 0], [1, 0], [2, 0]],
@@ -45,7 +53,7 @@ function makeController(): PostEditController {
     vi.fn(),
   );
   activeControllers.push(controller);
-  return controller;
+  return { controller, renderer };
 }
 
 /** Square cell centers: (20, -20), (60, -20), (100, -20). */
@@ -74,6 +82,7 @@ function seed(overrides: Partial<PostEditSeed> = {}, extra: Partial<ReturnType<t
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     openCard: "post_edit",
@@ -97,6 +106,16 @@ afterEach(() => {
 });
 
 describe("PostEditController element tools (GitHub issue #748)", () => {
+  it("clears edge, cell, and teleport-preview hover together", () => {
+    const { controller, renderer } = makeHarness();
+
+    controller.clearHover();
+
+    expect(renderer.updateHover).toHaveBeenLastCalledWith(null);
+    expect(renderer.updateCellHover).toHaveBeenLastCalledWith(null);
+    expect(renderer.updateTeleportPreview).toHaveBeenLastCalledWith(null, 0, 0);
+  });
+
   it("a placement click on an occupied node adds the tool's element; a press that leaves the cell drags instead", () => {
     useMazeStore.setState({ postEditTool: "set_finish" });
     const controller = makeController();
@@ -173,6 +192,39 @@ describe("PostEditController element tools (GitHub issue #748)", () => {
     // The 1|2 face is a wall: the settings tool has nothing to configure there.
     controller.onPointerDown(80, -20, 0);
     expect(useMazeStore.getState().postEditCommands).toHaveLength(1);
+    expect(noticeCodes()).toEqual([]);
+  });
+
+  it("reports a reset attempt on a split connection once", () => {
+    seed({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 3, x: 0, y: 0, i: 1 },
+        { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 2, y: 0, i: 0 },
+      ],
+      start: null,
+    }, { postEditTool: "reset" });
+    const controller = makeController();
+
+    controller.onPointerDown(40, -20, 0);
+    controller.onPointerDown(40, -20, 0);
+
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_CONNECTION_RESET}`]);
+  });
+
+  it("reports assignment to an unconfirmed split node and leaves metadata unchanged", () => {
+    seed({
+      edges: [], start: null, finish: null,
+      commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
+    }, {
+      postEditTool: "set_finish",
+      postEditActiveSplitNode: { "0,0": splitEndpoint([0, 0], 0) },
+    });
+    const controller = makeController();
+
+    click(controller, 0);
+
+    expect(useMazeStore.getState().postEditDraftMeta?.finish).toBeNull();
+    expect(noticeCodes()).toEqual([`post_edit/${UNCONFIRMED_SPLIT_NODE}`]);
   });
 
   it("moving a teleport endpoint onto its other endpoint's split tile takes the free node", () => {
