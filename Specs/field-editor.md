@@ -412,7 +412,8 @@ the white selection color and ignores RMB.
 Custom mode also provides a `Primitive frame` switch. When enabled, a thin outline shows the
 ideal world-space primitive behind the tile preview; it is visual only and does not affect the
 committed cells. Hover highlighting is hidden for the duration of a drag so it cannot obscure the
-primitive preview.
+primitive preview. Control strokes (solid and dashed frames, including vertex outlines) keep a
+minimum 1.25px screen-space thickness at every zoom level.
 
 Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
 one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
@@ -540,7 +541,8 @@ exposes a direction toggle. Polygon mode reuses the field editor's editable poly
 has reset and explicit finish actions.
 
 The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
-toward the reflected side. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
+toward the reflected side. Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
+screen-space thickness at every zoom level. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes
 an unfinished polygon; when the symmetry status is ready, Enter confirms the operation. The

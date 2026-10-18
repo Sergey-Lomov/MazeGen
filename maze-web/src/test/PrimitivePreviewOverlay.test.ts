@@ -75,4 +75,21 @@ describe("PrimitivePreviewOverlay selection frames", () => {
     expect(calls.filter(({ name }) => name === "stroke").length).toBeGreaterThan(1);
     overlay.destroy();
   });
+
+  it("keeps an active frame at the minimum screen-space stroke width after zooming out", () => {
+    const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
+
+    overlay.update(
+      [],
+      1,
+      "square",
+      cfg,
+      { kind: "ellipse", center: { x: 20, y: 20 }, width: 80, height: 40 },
+    );
+    overlay.onViewportChanged(0, 0, 800, 600, 0.18);
+
+    const stroke = stubs.graphics[0].calls.filter(({ name }) => name === "stroke").at(-1);
+    expect(stroke?.args[0]).toMatchObject({ width: 1.25 / 0.18 });
+    overlay.destroy();
+  });
 });

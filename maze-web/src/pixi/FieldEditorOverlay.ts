@@ -18,6 +18,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
 import type { FieldOpError } from "../wasm/mazeService";
 import { cellBounds } from "./tessellationGeometry";
+import { controlLineWidth } from "./controlLineWidth";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
@@ -355,7 +356,7 @@ export class FieldEditorOverlay {
         const my = (axis[0].y + axis[1].y) / 2;
         this.symmetryGraphics.moveTo(mx - ux * 100000, -my + uy * 100000);
         this.symmetryGraphics.lineTo(mx + ux * 100000, -my - uy * 100000);
-        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: 1.5 });
+        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: this.strokeWidth(1.5) });
         this.symmetryGraphics.circle(axis[0].x, -axis[0].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.circle(axis[1].x, -axis[1].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.fill({ color, alpha: 0.95 });
@@ -367,12 +368,12 @@ export class FieldEditorOverlay {
           const to = { x: mx + normalX * TILE_SIZE * 0.7, y: my + normalY * TILE_SIZE * 0.7 };
           this.symmetryGraphics.moveTo(from.x, -from.y);
           this.symmetryGraphics.lineTo(to.x, -to.y);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
           const head = TILE_SIZE * 0.18;
           this.symmetryGraphics.moveTo(to.x - normalX * head + normalY * head, -to.y + normalY * head + normalX * head);
           this.symmetryGraphics.lineTo(to.x, -to.y);
           this.symmetryGraphics.lineTo(to.x - normalX * head - normalY * head, -to.y + normalY * head - normalX * head);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
         }
       }
     } else {
@@ -398,6 +399,7 @@ export class FieldEditorOverlay {
             { x: polygon[i - 1].x, y: -polygon[i - 1].y },
             { x: polygon[i].x, y: -polygon[i].y },
             SYMMETRY_POLYGON_COLOR,
+            this.strokeWidth(SYMMETRY_POLYGON_WIDTH),
           );
         }
       }
@@ -407,9 +409,9 @@ export class FieldEditorOverlay {
         if (state.symmetryPolygonFinished) {
           this.symmetryGraphics.moveTo(last.x, last.y);
           this.symmetryGraphics.lineTo(first.x, first.y);
-          this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+          this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: this.strokeWidth(SYMMETRY_POLYGON_WIDTH) });
         } else {
-          drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR);
+          drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR, this.strokeWidth(SYMMETRY_POLYGON_WIDTH));
         }
       }
       for (const point of state.symmetryPolygon) {
@@ -439,6 +441,10 @@ export class FieldEditorOverlay {
     this.originContainer.destroy();
     this.hoverContainer.destroy();
   }
+
+  private strokeWidth(width: number): number {
+    return controlLineWidth(width, this.viewport.scale);
+  }
 }
 
 function drawDashedSegment(
@@ -446,6 +452,7 @@ function drawDashedSegment(
   start: { x: number; y: number },
   end: { x: number; y: number },
   color: number,
+  width: number,
 ): void {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -458,7 +465,7 @@ function drawDashedSegment(
     const dashEnd = Math.min(travelled + SYMMETRY_POLYGON_DASH_LENGTH, length);
     graphics.moveTo(start.x + ux * travelled, start.y + uy * travelled);
     graphics.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
-    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width });
   }
 }
 
