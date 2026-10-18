@@ -62,6 +62,13 @@ export function Tooltip({ content, children, placement = "bottom", block = false
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, refs]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onWindowBlur = () => setOpen(false);
+    window.addEventListener("blur", onWindowBlur);
+    return () => window.removeEventListener("blur", onWindowBlur);
+  }, [open]);
+
   const Wrapper = block ? "div" : "span";
   return (
     <Wrapper
