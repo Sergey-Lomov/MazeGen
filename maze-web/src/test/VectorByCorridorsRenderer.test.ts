@@ -698,6 +698,28 @@ describe("VectorByCorridorsRenderer", () => {
     ] as never);
   };
 
+  it("uses the active floor's tessellation config for rendered geometry", () => {
+    const secondFloorCfg = { type: "square" as const, width: 9, height: 2 };
+    currentState = baseState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      activeFloorId: "floor_2",
+      floorFields: {
+        floor_1: { tessellationConfig: stableCfg },
+        floor_2: { tessellationConfig: secondFloorCfg },
+      },
+    });
+
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const internals = renderer as unknown as {
+      backgroundGrid: { render: (settings: VectorByCorridorsSettings, cfg: TessellationConfig) => void };
+      renderAll: (state: typeof currentState) => void;
+    };
+    const renderGrid = vi.spyOn(internals.backgroundGrid, "render");
+    internals.renderAll(currentState);
+
+    expect(renderGrid).toHaveBeenCalledWith(settingsA, secondFloorCfg);
+  });
+
   it("round contour style fills one tinted contour tile per cell (no per-segment stroke)", () => {
     turn({ x: 0, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 80 });
     currentState = baseState({ vectorByCorridorsSettings: settingsA }); // join: "round"

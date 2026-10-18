@@ -420,6 +420,23 @@ describe("resolveEffectiveEndpoints", () => {
 });
 
 describe("VectorByWallsRenderer", () => {
+  it("uses the active floor's tessellation config for rendered geometry", () => {
+    const secondFloorCfg = { type: "square" as const, width: 9, height: 2 };
+    currentState = baseState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      activeFloorId: "floor_2",
+      floorFields: {
+        floor_1: { tessellationConfig: stableCfg },
+        floor_2: { tessellationConfig: secondFloorCfg },
+      },
+    });
+
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    const floor = (renderer as unknown as { floor: { render: ReturnType<typeof vi.fn> } }).floor;
+
+    expect(floor.render).toHaveBeenCalledWith(expect.anything(), secondFloorCfg);
+  });
+
   it("keeps the original background grid separate from the optional inner grid", () => {
     const nodes: NodeDto[] = [
       { id: 10, x: 0, y: 0, i: 0 },

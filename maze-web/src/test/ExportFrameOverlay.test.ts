@@ -4,7 +4,7 @@ import { Container } from "pixi.js";
 const { ExportFrameOverlay } = await import("../pixi/imageExport/ExportFrameOverlay");
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } = await import("../store/slices/imageExportSlice");
-const { baseStoreState } = await import("./storeTestHelpers");
+const { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } = await import("./storeTestHelpers");
 
 const SCREEN = { width: 1000, height: 1000 };
 
@@ -35,6 +35,31 @@ function makeOverlay(setViewportTransform = vi.fn()) {
 }
 
 describe("ExportFrameOverlay — print anchor guard", () => {
+  it("re-centers print placement after switching the active floor", () => {
+    const secondFloorId = "floor_2";
+    setBaseState({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: secondFloorId, title: "Floor 2" }],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 2 } }),
+        [secondFloorId]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 8, height: 3 } }),
+      },
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+        { id: 3, x: 7, y: 2, i: 0, level: 1 },
+      ],
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
+    });
+    const { overlay, setViewportTransform } = makeOverlay();
+    setViewportTransform.mockClear();
+
+    useMazeStore.getState().setActiveFloorId(secondFloorId);
+
+    expect(setViewportTransform).toHaveBeenCalledOnce();
+    overlay.destroy();
+  });
+
   it("does not overwrite a fixed anchor when onViewportChanged reports the same x/y/scale as before (resize echo, not a real pan/zoom)", () => {
     setBaseState({
       pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
