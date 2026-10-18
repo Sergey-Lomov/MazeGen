@@ -182,6 +182,8 @@ export interface FloorFieldsActions {
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;
+  /** Replaces every other floor's field config with a copy of the active floor's config. */
+  copyCurrentFloorFieldToAll: () => void;
   applyBackgroundAutoFill: (points: Set<number>) => void;
   confirmFieldEdit: () => void;
   cancelFieldEdit: () => void;

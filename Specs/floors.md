@@ -35,6 +35,8 @@ Field shape is per-floor (GitHub issue #338, see `Specs/field-editor.md`). Prese
 
 **`copyFloorField(sourceFloorId)`** (`floorFieldSlice.ts`) — replaces the active floor's `FloorFieldConfig` with a copy of `sourceFloorId`'s. Not floors-card UI: exposed as a "Copy floor" button at the bottom of the Field Setup card (`FieldSetupFeature.tsx`, shown only when more than one floor exists), which opens `CopyFloorDialog` — a narrow list of every floor (current floor disabled) plus a Confirm button. Lets a user re-sync a floor's shape to match another floor's at any time, not just at `addFloor` time (see `Specs/field-editor.md`).
 
+**`copyCurrentFloorFieldToAll()`** (`floorFieldSlice.ts`, GitHub issue #794) — replaces every other floor's `FloorFieldConfig` with an independent copy of the active floor's config, marking each changed field dirty. It is exposed as the **"Synchronize floors"** action in `FieldSetupFeature` only when more than one floor exists, beside "Copy floor". The action always opens `ConfirmModal` first, warning that all floors will use the current layout and that generation/post-edit results will reset; cancellation leaves every floor unchanged. Confirmation clears those results because their graph no longer matches the replaced field layouts. Floor titles, ordering, and presets are preserved.
+
 ## Loss detection and confirmation
 
 Three distinct warnings, per the issue's own contract — removing a floor can lose two independent things, and reordering only ever risks one of them:

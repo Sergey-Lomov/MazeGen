@@ -20,6 +20,46 @@ beforeEach(() => {
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("applies the current field to every other floor after confirmation", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
+        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 } }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
+    expect(screen.getByText(m["floors.confirm_from_current"]())).toBeInTheDocument();
+    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+
+    fireEvent.click(screen.getByRole("button", { name: m["common.ok"]() }));
+    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 3, height: 4 });
+  });
+
+  it("keeps other floors unchanged when the confirmation is cancelled", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
+        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 } }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
+    fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
+
+    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+  });
+
   it("explains an out-of-range field size on blur, even when it restores the stored value", () => {
     render(<FieldSetupFeature />);
     const width = screen.getByRole("spinbutton", { name: m["field.width"]() });
@@ -178,6 +218,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
   it("is hidden with a single floor", () => {
     render(<FieldSetupFeature />);
     expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();
+    expect(screen.queryByText(m["floors.from_current"]())).not.toBeInTheDocument();
   });
 
   it("is shown once more than one floor exists", () => {
@@ -190,6 +231,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
     expect(screen.getByText("Copy floor")).toBeInTheDocument();
+    expect(screen.getByText(m["floors.from_current"]())).toBeInTheDocument();
   });
 
   it("describes primitive smoothing and its always-on isolated-cell cleanup", () => {

@@ -19,13 +19,15 @@ export const TOOLTIP_HOVER_DELAY_MS = 300;
  *  Meant for disabled controls and other non-focusable content (epic #766 rule 3). With empty
  *  `content` the wrapper stays in place (so toggling a control's `disabled` never remounts it) but is
  *  inert: no tab stop, no description, no bubble. */
-export function Tooltip({ content, children, placement = "bottom", block = false, bubbleStyle }: {
+export function Tooltip({ content, children, placement = "bottom", block = false, stretch = false, bubbleStyle }: {
   content: React.ReactNode;
   children: React.ReactNode;
   placement?: Placement;
   /** Render the wrapper as a block-level `div` (e.g. a whole settings row) instead of an
    *  `inline-flex` `span`. */
   block?: boolean;
+  /** Make the wrapper fill its parent flex row's cross axis. */
+  stretch?: boolean;
   /** Optional presentation override for one tooltip bubble. Most callers use the shared style. */
   bubbleStyle?: React.CSSProperties;
 }) {
@@ -67,7 +69,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
       data-testid="tooltip-anchor"
       tabIndex={active ? 0 : undefined}
       aria-describedby={active ? descriptionId : undefined}
-      style={block ? styles.block : styles.inline}
+      style={{ ...(block ? styles.block : styles.inline), ...(stretch ? { alignSelf: "stretch" } : {}) }}
       onPointerEnter={(e) => {
         if (!active || e.pointerType === "touch") return;
         clearHoverTimer();

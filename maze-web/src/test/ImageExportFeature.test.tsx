@@ -72,6 +72,12 @@ describe("ImageExportFeature", () => {
     expect(btn).toBeDisabled();
   });
 
+  it("stretches the PNG settings gear to the export button height", () => {
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    const gear = getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() }));
+    expect(gear.parentElement).toHaveStyle({ alignSelf: "stretch" });
+  });
+
   it("clicking the PNG button calls onExportPng with the current settings", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls" });
     const onExportPng = vi.fn(() => Promise.resolve(null));

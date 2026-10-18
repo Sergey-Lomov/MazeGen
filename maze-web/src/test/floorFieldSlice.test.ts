@@ -16,6 +16,7 @@ beforeEach(() => {
     },
     mazeDirty: false,
     postEditDirty: false,
+    backgroundAutoFillPreview: null,
     fieldEditConfirmation: null,
   });
 });
@@ -69,6 +70,69 @@ describe("copyFloorField", () => {
     const before = useMazeStore.getState().floorFields;
     useMazeStore.getState().copyFloorField("not_a_real_id");
     expect(useMazeStore.getState().floorFields).toBe(before);
+  });
+});
+
+describe("copyCurrentFloorFieldToAll", () => {
+  it("replaces every other floor with independent copies of the active floor field", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: OTHER_FLOOR_ID, title: "Floor 2" },
+        { id: "floor_third", title: "Floor 3" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[1, 2]] }),
+          fieldPoints: new Set([65538]),
+          freeFieldPoints: {
+            ...emptyFreePoints(), square: new Set([65538]),
+          },
+          fieldDirty: false,
+        }),
+        [OTHER_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+        floor_third: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 11, rows: 13 }) }),
+      },
+    });
+
+    useMazeStore.getState().copyCurrentFloorFieldToAll();
+
+    const { floorFields } = useMazeStore.getState();
+    expect(floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[1, 2]] }));
+    expect(floorFields.floor_third.fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[1, 2]] }));
+    expect(floorFields[OTHER_FLOOR_ID]).not.toBe(floorFields.floor_third);
+    expect(floorFields[OTHER_FLOOR_ID].fieldConfig).not.toBe(floorFields.floor_third.fieldConfig);
+    expect((floorFields[OTHER_FLOOR_ID].fieldConfig.shape as { points: [number, number][] }).points)
+      .not.toBe((floorFields.floor_third.fieldConfig.shape as { points: [number, number][] }).points);
+    expect(floorFields[OTHER_FLOOR_ID].fieldPoints).not.toBe(floorFields.floor_third.fieldPoints);
+    expect(floorFields[OTHER_FLOOR_ID].freeFieldPoints.square).not.toBe(floorFields.floor_third.freeFieldPoints.square);
+    expect(floorFields[OTHER_FLOOR_ID].fieldDirty).toBe(true);
+    expect(floorFields[TEST_FLOOR_ID].fieldDirty).toBe(false);
+  });
+
+  it("clears generated results", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 1, x: 0, y: 0, i: 0 }],
+      edges: [{ from: 1, to: 1, kind: "basic" }],
+      mazeDirty: true,
+      postEditDirty: true,
+    });
+
+    useMazeStore.getState().copyCurrentFloorFieldToAll();
+
+    expect(useMazeStore.getState().nodes).toEqual([]);
+    expect(useMazeStore.getState().edges).toEqual([]);
+    expect(useMazeStore.getState().mazeDirty).toBe(false);
+    expect(useMazeStore.getState().postEditDirty).toBe(false);
+  });
+
+  it("does nothing while the background auto-fill preview is active", () => {
+    const floorFields = useMazeStore.getState().floorFields;
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([0]) });
+
+    useMazeStore.getState().copyCurrentFloorFieldToAll();
+
+    expect(useMazeStore.getState().floorFields).toBe(floorFields);
   });
 });
 

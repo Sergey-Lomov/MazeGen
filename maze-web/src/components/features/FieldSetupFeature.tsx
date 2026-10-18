@@ -93,7 +93,7 @@ function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeP
   );
 }
 
-type ConfirmPending = "switchToDefault" | "clearField" | null;
+type ConfirmPending = "switchToDefault" | "clearField" | "copyAll" | null;
 
 const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
   add: ["+"],
@@ -118,6 +118,7 @@ export function FieldSetupFeature() {
   const setFieldOperation = useMazeStore((s) => s.setFieldOperation);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
+  const copyCurrentFloorFieldToAll = useMazeStore((s) => s.copyCurrentFloorFieldToAll);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
   const confirmFieldEdit = useMazeStore((s) => s.confirmFieldEdit);
   const cancelFieldEdit = useMazeStore((s) => s.cancelFieldEdit);
@@ -162,6 +163,7 @@ export function FieldSetupFeature() {
   function handleConfirm() {
     if (confirmPending === "switchToDefault") setFieldEditMode("default");
     if (confirmPending === "clearField") clearFieldPoints();
+    if (confirmPending === "copyAll") copyCurrentFloorFieldToAll();
     setConfirmPending(null);
   }
 
@@ -201,6 +203,7 @@ export function FieldSetupFeature() {
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
     switchToDefault: m["field.confirm_switch_to_default"](),
     clearField: m["field.confirm_clear"](),
+    copyAll: m["floors.confirm_from_current"](),
   };
 
   return (
@@ -317,14 +320,24 @@ export function FieldSetupFeature() {
         </>
       )}
       {floorCount > 1 && (
-        <Button
-          variant="secondary"
-          disabled={fieldEditLocked}
-          layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-          onClick={() => setCopyFloorDialogOpen(true)}
-        >
-          {m["field.copy_floor"]()}
-        </Button>
+        <>
+          <Button
+            variant="secondary"
+            disabled={fieldEditLocked}
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={() => setCopyFloorDialogOpen(true)}
+          >
+            {m["field.copy_floor"]()}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={fieldEditLocked}
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={() => setConfirmPending("copyAll")}
+          >
+            {m["floors.from_current"]()}
+          </Button>
+        </>
       )}
       {confirmPending !== null && (
         <ConfirmModal

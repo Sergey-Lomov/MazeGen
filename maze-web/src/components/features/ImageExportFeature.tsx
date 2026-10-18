@@ -114,6 +114,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
             {format.label()}
           </Button>
           <HoverIconButton
+            stretch
             onClick={() => handleFormatGearClick(format.id)}
             title={m["image_export.format.settings_tooltip"]({ format: format.label() })}
           >

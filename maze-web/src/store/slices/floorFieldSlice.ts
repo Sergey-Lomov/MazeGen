@@ -5,7 +5,7 @@ import { configAllCells } from "../../pixi/tessellationCells";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
-import type { MazeStore, MazeState, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
+import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
@@ -14,6 +14,10 @@ import {
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
   return Object.keys(patch).length === 0 ? {} : { ...patch, ...buildResetDownstreamState() };
+}
+
+function cloneFloorField(field: FloorFieldConfig): FloorFieldConfig {
+  return structuredClone(field);
 }
 
 function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () => Partial<MazeState>) {
@@ -281,7 +285,22 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     if (state.backgroundAutoFillPreview !== null) return {};
     if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId } };
     return {
-      ...withActiveFloorField(state, { ...source, fieldDirty: true }),
+      ...withActiveFloorField(state, { ...cloneFloorField(source), fieldDirty: true }),
+      ...buildResetDownstreamState(),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  copyCurrentFloorFieldToAll: () => set((state) => {
+    const source = state.floorFields[state.activeFloorId];
+    if (!source || state.floors.length <= 1 || state.backgroundAutoFillPreview !== null) return {};
+    return {
+      floorFields: Object.fromEntries(state.floors.map((floor) => [
+        floor.id,
+        floor.id === state.activeFloorId
+          ? source
+          : { ...cloneFloorField(source), fieldDirty: true },
+      ])),
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
