@@ -4,6 +4,8 @@ import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
 import type { Graphics } from "pixi.js";
 import { drawCellHighlightAt } from "../pixi/cellHighlightGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
+import { buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import type { EdgeDto, NodeDto } from "../wasm/types";
 
 /** Pixels per unit of core space: the underlying square's side. */
 const UNIT = TESSELLATION_UI.curved_quadrilateral.pixelsPerUnit;
@@ -108,6 +110,29 @@ describe("curved quadrilateral cell highlight", () => {
     expect(flat.length / 2).toBe(vertices.length);
     for (let i = 0; i < flat.length; i += 2) {
       expect(pointInPolygon({ x: flat[i], y: flat[i + 1] }, vertices)).toBe(true);
+    }
+  });
+});
+
+describe("curved quadrilateral split passages (GitHub issue #800)", () => {
+  const node = (id: number, x: number, y: number): NodeDto => ({ id, x, y, i: 0 });
+  const link = (a: number, b: number): EdgeDto[] => [{ from: a, to: b, kind: "basic" }, { from: b, to: a, kind: "basic" }];
+  // Point (1, 1) split into an east-west node (0) and a north-south node (4), each passing to a neighbor.
+  const nodes = [node(0, 1, 1), node(1, 2, 1), node(2, 1, 2), node(3, 0, 1), node(4, 1, 1), node(5, 1, 0)];
+  const edges = [...link(0, 1), ...link(0, 3), ...link(4, 2), ...link(4, 5)];
+
+  it("ends each node's share on the arc's contact point and keeps it on the arc", () => {
+    const { passages } = buildSplitPassages(nodes, edges, cfg);
+    expect(passages).toHaveLength(2);
+    for (const passage of passages) {
+      expect(passage.wallSegments).toHaveLength(2);
+      for (const segment of passage.wallSegments) {
+        expect(segment.polyline!.length).toBeGreaterThan(2);
+        const neighbor = getNeighborData(cfg, 1, 1).offsets
+          .map(([dx, dy]) => getSharedEdgeSegment([1, 1], [1 + dx, 1 + dy], cfg)!)
+          .find((edge) => Math.hypot(edge.contact.x - segment.center.x, edge.contact.y - segment.center.y) < 0.01 * UNIT);
+        expect(neighbor).toBeDefined();
+      }
     }
   });
 });

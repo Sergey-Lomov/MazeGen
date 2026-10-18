@@ -103,6 +103,8 @@ export type SplitPassage = {
   wallSegments: {
     v0: { x: number; y: number };
     v1: { x: number; y: number };
+    /** The share's boundary from `v0` to `v1` — absent for a straight share, the flattened arc for a curved face. */
+    polyline?: { x: number; y: number }[];
     center: { x: number; y: number };
     /** Optional/undecided ("optional connection") share — draw in `disabledOfNumber(color)`
      *  instead of `color`, same tentative-color rule as `TileFaceEditor`'s `disabledOf`. Named

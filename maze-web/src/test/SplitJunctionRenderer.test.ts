@@ -46,6 +46,12 @@ describe("collectSplitWallPaths", () => {
     expect(noCapPoints).toHaveLength(0);
   });
 
+  it("returns a curved wallFace as its whole polyline", () => {
+    const arc = [{ x: 0, y: 0 }, { x: 4, y: 3 }, { x: 10, y: 0 }];
+    const { paths } = collectSplitWallPaths([{ v0: arc[0], v1: arc[2], polyline: arc }], undefined);
+    expect(paths).toEqual([arc]);
+  });
+
   it("includes a 'diagonal' special shape as its own corner-to-corner path", () => {
     const diagonal = { kind: "diagonal" as const, pointKey: "2,2", corner0: { x: 20, y: 10 }, corner1: { x: 30, y: 20 } };
     const { paths } = collectSplitWallPaths([], [diagonal]);

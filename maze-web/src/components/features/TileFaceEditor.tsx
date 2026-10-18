@@ -139,7 +139,8 @@ export function TileFaceEditor({
     return `${tipX},${tipY} ${baseX + perpX * size},${baseY + perpY * size} ${baseX - perpX * size},${baseY - perpY * size}`;
   };
 
-  const faceInputs = sides.map((side) => ({ v0: side.v0, v1: side.v1 }));
+  const faceInputs = sides.map((side) => ({ v0: side.v0, v1: side.v1, polyline: side.polyline }));
+  const sidePoints = (polyline: readonly { x: number; y: number }[]) => polyline.map((p) => `${p.x},${p.y}`).join(" ");
   // `?? "wall"` is a defensive fallback for a malformed `faces` array (shorter than the
   // tessellation's real face count) — should never happen with consistent caller data, but
   // `"none"` isn't a valid `SplitFaceKind` (see splitFaceLayout.ts's module doc comment) and a
@@ -166,11 +167,11 @@ export function TileFaceEditor({
   // node last), so rendering each node's connector immediately followed by its own face segments,
   // node by node in that same order, keeps the active node's entire drawing on top everywhere, not
   // just within the connector or segment group separately (GitHub issue #234 follow-up).
-  const segmentsByNode = new Map<number, { faceIndex: number; v0: { x: number; y: number }; v1: { x: number; y: number }; kind: TileFaceKind }[]>();
+  const segmentsByNode = new Map<number, { faceIndex: number; polyline: { x: number; y: number }[]; kind: TileFaceKind }[]>();
   faceLayouts.forEach((layout, faceIndex) => {
     for (const seg of layout.segments) {
       const list = segmentsByNode.get(seg.nodeIndex);
-      const entry = { faceIndex, v0: seg.v0, v1: seg.v1, kind: seg.kind };
+      const entry = { faceIndex, polyline: seg.polyline, kind: seg.kind };
       if (list) list.push(entry); else segmentsByNode.set(seg.nodeIndex, [entry]);
     }
   });
@@ -198,7 +199,7 @@ export function TileFaceEditor({
               }}
               style={{ cursor: "default" }}
             >
-              <line x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
+              <polyline points={sidePoints(side.polyline)} fill="none"
                 stroke="transparent" strokeWidth={strokeWidth * 4} />
             </g>
           );
@@ -209,8 +210,8 @@ export function TileFaceEditor({
         {sides.map((side) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return boundary ? (
-            <line key={`b${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.text.inverse} strokeWidth={strokeWidth} strokeLinecap="round"
+            <polyline key={`b${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.text.inverse} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
               style={{ pointerEvents: "none" }} />
           ) : null;
         })}
@@ -220,8 +221,8 @@ export function TileFaceEditor({
         {sides.map((side, sideIndex) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return !boundary && faceLayouts[sideIndex].allWall ? (
-            <line key={`w${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.border.strong} strokeWidth={strokeWidth} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+            <polyline key={`w${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.border.strong} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           ) : null;
         })}
         {/* A face with no connected node at all draws once as a shared neutral line (not
@@ -229,8 +230,8 @@ export function TileFaceEditor({
         {sides.map((side, sideIndex) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return !boundary && faceLayouts[sideIndex].segments.length === 0 && !faceLayouts[sideIndex].allWall ? (
-            <line key={`n${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.border.default} strokeWidth={strokeWidth} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+            <polyline key={`n${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.border.default} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           ) : null;
         })}
         {/* Pale per-face index just outside each physical face's midpoint, so two faces lying on
@@ -246,7 +247,9 @@ export function TileFaceEditor({
           const label = String(side.index);
           const halfW = faceIndexFontSize * FACE_INDEX_GLYPH_WIDTH * label.length / 2;
           const halfH = faceIndexFontSize * FACE_INDEX_GLYPH_HEIGHT / 2;
-          const dist = faceIndexOffset + Math.abs(nx) * halfW + Math.abs(ny) * halfH;
+          // A convex side bulges past its chord, so the label also clears the farthest outward point.
+          const bulge = Math.max(0, ...side.polyline.map((p) => (p.x - mx) * nx + (p.y - my) * ny));
+          const dist = faceIndexOffset + bulge + Math.abs(nx) * halfW + Math.abs(ny) * halfH;
           return (
             <text key={`i${side.index}`} x={mx + nx * dist} y={my + ny * dist}
               textAnchor="middle" dy={`${FACE_INDEX_GLYPH_HEIGHT / 2}em`} fontSize={faceIndexFontSize} fontWeight="600"
@@ -264,8 +267,8 @@ export function TileFaceEditor({
           return (
             <g key={connector.nodeIndex} style={{ pointerEvents: "none" }}>
               {(segmentsByNode.get(connector.nodeIndex) ?? []).map((seg, i) => (
-                <line key={`s${i}`} x1={seg.v0.x} y1={seg.v0.y} x2={seg.v1.x} y2={seg.v1.y}
-                  stroke={colorFor(connector.nodeIndex, seg.kind)} strokeWidth={strokeWidth} strokeLinecap="round" />
+                <polyline key={`s${i}`} points={sidePoints(seg.polyline)} fill="none"
+                  stroke={colorFor(connector.nodeIndex, seg.kind)} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
               ))}
               {connector.lines.map((line, i) => (
                 <line key={`c${i}`} x1={line.from.x} y1={line.from.y} x2={line.to.x} y2={line.to.y}

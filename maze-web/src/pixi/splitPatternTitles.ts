@@ -14,7 +14,7 @@
  *  template, computed once (not derived at runtime) as the minimum, over the template's dihedral
  *  group, of the sorted node rows — the same reduction `canonical_split_topology` performs.
  *
- *  Filtered by tile degree (`topology[0].length`), same convention as `blueprintsForDegree`. */
+ *  Filtered by tile degree (`topology[0].length`), same convention as `blueprintsFor`. */
 
 import type { SplitFaceRequirement } from "../wasm/types";
 import * as m from "~/paraglide/messages";

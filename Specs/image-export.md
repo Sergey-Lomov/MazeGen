@@ -443,15 +443,22 @@ and contexts no tile uses are destroyed.
 
 With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
 built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
-no polygon boolean union. The pure geometry engine (`buildCorridorGeometry`) accepts convex cell
-polygons and face ports; `buildCorridorContour` is only the compatibility adapter from the selector's
+no polygon boolean union. The pure geometry engine (`buildCorridorGeometry`) accepts cell
+polygons (convex, or with arc sides flattened — a concave side is allowed) and face ports; `buildCorridorContour` is only the compatibility adapter from the selector's
 centre-to-centre records (`vectorByCorridorsContour.ts`).
 
-**Ports.** A cell supplies its centre and convex polygon, while each passage supplies one *port* —
+**Ports.** A cell supplies its centre and polygon, while each passage supplies one *port* —
 the middle of a finite shared face, its outward unit normal, and (when available) the face endpoints.
 A port's drawn border is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on
 the border middle. Selector-specific centre-to-centre records are adapted to this same shape before
 geometry generation (a cell with no known polygon gets a square of half-side `thickness`).
+**Curved faces.** A port on an arc side also carries the face's flattened curve (`facePolyline`, three or
+more points, from the shared edge's polyline; both cells of the face get the same one). Its mouth
+ends are then the curve points `thickness/2` of arc length either side of the port midpoint, and its
+normal is the curve's direction around the midpoint rotated a quarter turn, so the two mirrored mouths coincide. Straight faces keep the
+`mid ± tangent · thickness/2` border. Containment checks use the supporting (convex) polygon edges
+as half-plane limits and sampled points for the rest (`pointsInside`), so a concave side limits dead-end
+caps and closure arcs too. Split-passage segments (`bridgeUnderlaySegments`, diagonal ribbons) still use straight chords.
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
 two filled shapes meet edge-to-edge with no seam and no overlap. The half-width is clamped once for
 the whole call to half the shortest finite face, so mirrored mouths always match.
@@ -496,7 +503,7 @@ instances into world-space paths. Drawing: see "Corridor tiles" below.
 
 **Junction closure near a face.** At a junction, two neighbouring sides that never cross are joined
 by an arc centred on the target with the radius of the nearer side end, plus a straight piece to the
-farther one. When that arc would cross a face (checked exactly: `arcInsideConvexCell`), it is
+farther one. When that arc would cross a face (checked exactly against convex edges, plus sampled points for concave sides: `arcInsideCell`), it is
 replaced by the deepest arc straight between the two side ends that fits (`deepestChordArc`, the
 same closed form as the kinked dead-end cap), kinked at both ends. Not seen on the real
 tessellations; the lab's "Overflow problems" view shows irregular cells where it applies.

@@ -141,6 +141,7 @@ export function scaleCell<T extends LabCell>(cell: T, factor: number): T {
       ...port,
       midpoint: scale(port.midpoint),
       face: port.face ? [scale(port.face[0]), scale(port.face[1])] as const : undefined,
+      facePolyline: port.facePolyline?.map(scale),
     })),
   };
 }
@@ -186,7 +187,10 @@ export function prepareFamily(family: Family): PreparedFamily | null {
   const diagram = getTileDiagram(family.coordinate[0], family.coordinate[1], family.config);
   if (!diagram) return null;
 
-  const portsByFace = diagram.sides.map((side) => facePort(family.id, side.v0, side.v1, side.contact));
+  const portsByFace = diagram.sides.map((side) => ({
+    ...facePort(family.id, side.v0, side.v1, side.contact),
+    ...(side.polyline.length >= 3 ? { facePolyline: side.polyline } : {}),
+  }));
   const ports = portsByFace;
 
   return {
@@ -217,6 +221,7 @@ export function labCellGeometry(cell: LabCell, mask: number, thickness: number, 
     faceMidpoint: port.midpoint,
     faceNormal: port.normal,
     faceLength: faceLengths[index],
+    facePolyline: port.facePolyline,
     cellVertices0: cell.polygon,
   }]);
   const { cells, ports } = corridorSegmentsToGeometryInput(segments, clampedThickness);
@@ -279,15 +284,19 @@ function CombinationArtwork({ family, mask, thickness, cornerRadius, color, gray
         const labelY = port.midpoint.y + port.normal.y * labelOffset;
         return (
           <g key={index}>
-            <line
-              x1={port.face?.[0].x ?? port.midpoint.x}
-              y1={port.face?.[0].y ?? port.midpoint.y}
-              x2={port.face?.[1].x ?? port.midpoint.x}
-              y2={port.face?.[1].y ?? port.midpoint.y}
-              stroke="#87909a"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
+            {port.facePolyline ? (
+              <polyline points={pointsAttribute(port.facePolyline)} fill="none" stroke="#87909a" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            ) : (
+              <line
+                x1={port.face?.[0].x ?? port.midpoint.x}
+                y1={port.face?.[0].y ?? port.midpoint.y}
+                x2={port.face?.[1].x ?? port.midpoint.x}
+                y2={port.face?.[1].y ?? port.midpoint.y}
+                stroke="#87909a"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
             <text x={labelX} y={labelY} textAnchor="middle" dominantBaseline="middle" fontSize={labelFontSize} fontWeight="600" fill="#d8dee5">{index}</text>
           </g>
         );
