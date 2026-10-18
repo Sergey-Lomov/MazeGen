@@ -166,8 +166,9 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                 onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
                 onMouseLeave={clearHover}
               >
-                {row.entityId !== undefined && (
-                  <div style={styles.idBubbleAnchor}>
+                <div style={styles.titleRow}>
+                  <span style={styles.action}>{row.action}</span>
+                  {row.entityId !== undefined && (
                     <ToolTooltip title={m["post_edit.changes_id_bubble_primary"]()}><span
                       className="hoverable"
                       style={styles.idBubble}
@@ -177,9 +178,8 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                     >
                       id: {row.entityId}
                     </span></ToolTooltip>
-                  </div>
-                )}
-                <span style={styles.action}>{row.action}</span>
+                  )}
+                </div>
                 <div style={styles.bubblesRow}>
                   <EntityBubbleRow
                     bubbles={row.bubbles}
@@ -275,6 +275,8 @@ const styles: Record<string, React.CSSProperties> = {
   filterClear: {
     position: "absolute",
     right: spacing.rowGap + 2,
+    top: "calc(50% + 1px)",
+    transform: "translateY(-50%)",
   },
   list: {
     display: "flex",
@@ -331,16 +333,23 @@ const styles: Record<string, React.CSSProperties> = {
   rowDeletePreview: {
     background: ui.bg.error,
   },
-  // Reserves room on the right so a wrapped/long action text never runs under the pinned `idBubble`.
+  // Same title-row layout as `PresetCell`: the badge stays in normal flow and therefore cannot
+  // overlap the action controls on the details row.
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+    minWidth: 0,
+  },
   action: {
     ...typography.body,
-    paddingRight: 56,
+    flex: "1 1 auto",
+    minWidth: 0,
   },
   // The entity id bubble (GitHub issue #573) — split out of `action`'s own text (previously
-  // `"Action (#id)"`) into its own hoverable/clickable chip, pinned to the row's own top-right
-  // corner (`position: absolute` against `row`'s `position: relative`) rather than flowing inline
-  // with the action text, so it reads as a row-level tag rather than part of the action's own
-  // sentence. Green (`ui.bg.success`/`ui.text.success` — same pairing convention
+  // `"Action (#id)"`) into its own hoverable/clickable chip in the title row, so it reads as a
+  // row-level tag rather than part of the action's own sentence. Green (`ui.bg.success`/
+  // `ui.text.success` — same pairing convention
   // `debug.refHighlight`/`debug.issueHighlight` use, a dedicated bg+text pair rather than a computed
   // alpha) rather than the point bubbles' cyan (`debug.refHighlight`) so it reads as a distinct kind
   // of reference at a glance. Hovering highlights every other row sharing this id (`hoveredEntityId`,
@@ -361,7 +370,6 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  idBubbleAnchor: { position: "absolute", top: spacing.itemGap, right: spacing.groupGap },
   empty: {
     ...muted(typography.body),
     padding: spacing.groupGap,
