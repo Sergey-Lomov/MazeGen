@@ -880,7 +880,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       // would leave a blueprint's "no connection here" faces looking undecided instead of forbidden.
       // Bounded by `offsets.length` (the tile's real degree), not `blueprint.degree` — guards
       // against a caller passing a blueprint authored for a different tile degree (normal UI flow
-      // always picks one via `blueprintsForDegree`, so this only matters for a direct call).
+      // always picks one via `blueprintsFor`, so this only matters for a direct call).
       const faceCount = Math.min(blueprint.degree, offsets.length);
       for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
         const endpoint = nodeEndpoints[nodeIndex];

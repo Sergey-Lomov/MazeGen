@@ -21,6 +21,7 @@ import type { SplitPattern } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { patternShapeOf } from "./shapeTemplates";
 import { anchorCanonicalFaces } from "./tessellationGeometry";
+import type { SplitShapeBinding } from "./splitShape";
 
 export interface SplitNodeBlueprint {
   /** Unique within its own degree's list — used as a stable React `key`, nothing else (no label
@@ -85,6 +86,21 @@ const CAIRO_BLUEPRINTS: SplitNodeBlueprint[] = [
   },
 ];
 
+/** The curved quadrilateral's templates (GitHub issue #800). Its group is only the two axis
+ *  mirrors, but node order carries no geometry (the curved template has no layered special shape),
+ *  so swapping the nodes of the bridge gives the same split and one bridge suffices. One adjacent
+ *  divider covers every orientation (each adjacent pair is one convex plus one concave side, and
+ *  the mirrors map the two partitions onto each other). */
+const CURVED_QUADRILATERAL_BLUEPRINTS: SplitNodeBlueprint[] = [
+  { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]], titleKey: "split_pattern_title.bridge" },
+  { id: 1, degree: 4, nodeFaces: [[0, 1], [2, 3]], titleKey: "split_pattern_title.diagonal_divider" },
+];
+
+/** Blueprints of a shape template whose faces differ from the other templates of the same degree. */
+const BLUEPRINTS_BY_SHAPE: Record<string, SplitNodeBlueprint[]> = {
+  "curved_quadrilateral:curved_quadrilateral": CURVED_QUADRILATERAL_BLUEPRINTS,
+};
+
 const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {
   3: TRIANGLE_BLUEPRINTS,
   4: SQUARE_BLUEPRINTS,
@@ -92,9 +108,10 @@ const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {
   6: HEX_BLUEPRINTS,
 };
 
-/** Every built-in blueprint for a tile of the given degree, or `[]` if none are defined. */
-export function blueprintsForDegree(degree: number): SplitNodeBlueprint[] {
-  return BLUEPRINTS_BY_DEGREE[degree] ?? [];
+/** Every built-in blueprint for a tile of the given shape template and degree: the template's own
+ *  set when it has one, otherwise the set of its degree, or `[]` if none are defined. */
+export function blueprintsFor(shape: string | null, degree: number): SplitNodeBlueprint[] {
+  return (shape === null ? undefined : BLUEPRINTS_BY_SHAPE[shape]) ?? BLUEPRINTS_BY_DEGREE[degree] ?? [];
 }
 
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for `blueprint`'s preview thumbnail — same
@@ -112,39 +129,48 @@ export function tileNodesForBlueprint(blueprint: SplitNodeBlueprint): TileFaceNo
   });
 }
 
-/** Rotates every face index in `blueprint` by `offset` steps around the tile's faces (mod
- *  `degree`) — used by `fittingRotation` to search for an orientation whose required faces avoid
- *  the field boundary. */
-export function rotateBlueprint(blueprint: SplitNodeBlueprint, offset: number): SplitNodeBlueprint {
-  const d = blueprint.degree;
-  const norm = ((offset % d) + d) % d;
-  if (norm === 0) return blueprint;
-  return {
-    ...blueprint,
-    nodeFaces: blueprint.nodeFaces.map((faces) => faces.map((f) => (f + norm) % d)),
-  };
+/** `blueprint` with every face index sent through `image` (a map from a face to its image) — one orientation of the tile. */
+export function mapBlueprintFaces(blueprint: SplitNodeBlueprint, image: (face: number) => number): SplitNodeBlueprint {
+  return { ...blueprint, nodeFaces: blueprint.nodeFaces.map((faces) => faces.map(image)) };
 }
 
 function fitsBoundary(blueprint: SplitNodeBlueprint, isBoundary: (faceIndex: number) => boolean): boolean {
   return blueprint.nodeFaces.every((faces) => faces.every((f) => !isBoundary(f)));
 }
 
-/** Tries every rotation of `blueprint` (0..degree-1) around the tile's faces and returns the
- *  first one whose required faces avoid the field boundary at the target point — a point at the
- *  field's edge shows a boundary on some of its faces, and a blueprint's required passage can
- *  never land there (no neighbor to connect to). `isBoundary(faceIndex)` reports whether a given
- *  0-indexed face offset is a field boundary for that point. Returns `null` if no rotation fits
- *  (the point's boundary faces leave no valid orientation for this blueprint at all) — the caller
- *  should offer the blueprint as disabled in that case. */
+/** Tries every orientation of `blueprint` the tile allows and returns the first whose required
+ *  faces avoid the field boundary at the target point — a point at the field's edge shows a
+ *  boundary on some of its faces, and a blueprint's required passage can never land there (no
+ *  neighbor to connect to). `orientations` are the tile's allowed face maps, identity first (for
+ *  a tile with a full rotation group, its rotations; a curved quadrilateral allows only its
+ *  mirrors). `isBoundary(faceIndex)` reports whether a given 0-indexed face offset is a field
+ *  boundary for that point. Returns `null` if no orientation fits (the point's boundary faces leave
+ *  no valid orientation for this blueprint at all) — the caller should offer the blueprint as
+ *  disabled in that case. */
 export function fittingRotation(
   blueprint: SplitNodeBlueprint,
   isBoundary: (faceIndex: number) => boolean,
+  orientations: readonly ((face: number) => number)[] = rotationsOf(blueprint.degree),
 ): SplitNodeBlueprint | null {
-  for (let offset = 0; offset < blueprint.degree; offset++) {
-    const rotated = rotateBlueprint(blueprint, offset);
-    if (fitsBoundary(rotated, isBoundary)) return rotated;
+  for (const image of orientations) {
+    const oriented = mapBlueprintFaces(blueprint, image);
+    if (fitsBoundary(oriented, isBoundary)) return isIdentity(image, blueprint.degree) ? blueprint : oriented;
   }
   return null;
+}
+
+function rotationsOf(degree: number): ((face: number) => number)[] {
+  return Array.from({ length: degree }, (_, offset) => (face: number) => (face + offset) % degree);
+}
+
+function isIdentity(image: (face: number) => number, degree: number): boolean {
+  return Array.from({ length: degree }, (_, face) => image(face) === face).every(Boolean);
+}
+
+/** The face maps of the cell's allowed group, in the cell's own (`faces_of`) face indices: the
+ *  template's canonical permutations conjugated by the cell's face binding. */
+export function orientationsOf(binding: SplitShapeBinding): ((face: number) => number)[] {
+  return binding.group.map((perm) => (face: number) => binding.localOfCanonical[perm[binding.canonicalOfLocal[face]]]);
 }
 
 /** Converts `blueprint` into a fresh `SplitPattern` (GitHub issue #235 follow-up) — for

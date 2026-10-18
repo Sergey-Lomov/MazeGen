@@ -189,9 +189,55 @@ export function connectedFaceIndices(kinds: SplitFaceKind[]): number[] {
  *  forbidden, whether by an explicit decision or by post-edit's default). */
 const NO_OWN_SEGMENT_KINDS = new Set<SplitFaceKind>(["wall"]);
 
+type Pt = { x: number; y: number };
+
 export interface SplitFaceInput {
-  v0: { x: number; y: number };
-  v1: { x: number; y: number };
+  v0: Pt;
+  v1: Pt;
+  /** The face's flattened boundary from `v0` to `v1` (both included). Absent for a straight face,
+   *  which is the chord `v0 -> v1`; present for a curved one, so a node's share follows the arc. */
+  polyline?: readonly Pt[];
+}
+
+/** `face`'s boundary as a point list from `v0` to `v1`. */
+export function facePolyline(face: SplitFaceInput): readonly Pt[] {
+  return face.polyline && face.polyline.length >= 2 ? face.polyline : [face.v0, face.v1];
+}
+
+/** The point at fraction `t` (0..1) of `polyline`'s length. */
+export function pointAlongPolyline(polyline: readonly Pt[], t: number): Pt {
+  return subPolyline(polyline, t, t)[0];
+}
+
+/** The part of `polyline` between the fractions `t0 <= t1` of its length, end points exact. */
+export function subPolyline(polyline: readonly Pt[], t0: number, t1: number): Pt[] {
+  if (polyline.length === 2) {
+    const [a, b] = polyline;
+    const lerp = (t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    return [lerp(t0), lerp(t1)];
+  }
+  const lengths: number[] = [0];
+  for (let i = 1; i < polyline.length; i++) {
+    lengths.push(lengths[i - 1] + Math.hypot(polyline[i].x - polyline[i - 1].x, polyline[i].y - polyline[i - 1].y));
+  }
+  const total = lengths[lengths.length - 1];
+  if (total === 0) return [polyline[0], polyline[polyline.length - 1]];
+  const at = (distance: number): Pt => {
+    let i = 1;
+    while (i < polyline.length - 1 && lengths[i] < distance) i++;
+    const span = lengths[i] - lengths[i - 1];
+    const f = span === 0 ? 0 : (distance - lengths[i - 1]) / span;
+    return {
+      x: polyline[i - 1].x + (polyline[i].x - polyline[i - 1].x) * f,
+      y: polyline[i - 1].y + (polyline[i].y - polyline[i - 1].y) * f,
+    };
+  };
+  const d0 = t0 * total, d1 = t1 * total;
+  const inner: Pt[] = [];
+  for (let i = 1; i < polyline.length - 1; i++) {
+    if (lengths[i] > d0 && lengths[i] < d1) inner.push(polyline[i]);
+  }
+  return [t0 <= 0 ? polyline[0] : at(d0), ...inner, t1 >= 1 ? polyline[polyline.length - 1] : at(d1)];
 }
 
 /** One node's kind on one face, alongside the node's own index (its position in the node list —
@@ -206,6 +252,11 @@ export interface SplitFaceSegment {
   kind: SplitFaceKind;
   v0: { x: number; y: number };
   v1: { x: number; y: number };
+  /** The share's boundary from `v0` to `v1` — two points for a straight face, the flattened arc
+   *  for a curved one. */
+  polyline: Pt[];
+  /** The middle of the share along `polyline`, where its connector ends. */
+  mid: Pt;
   /** `true` when `v0`/`v1` lands exactly on the face's own real endpoint (`face.v0`/`face.v1`, the
    *  boundary shared with a neighboring tile/wall) rather than an internal division point between
    *  two nodes sharing this face (GitHub issue #317) — a shape sharing this face with another node
@@ -270,13 +321,16 @@ export function computeSplitFaceLayouts(
     // fixed, so switching the active node only changes z-order, not layout.
     const byNodeIndex = [...connected].sort((a, b) => a.nodeIndex - b.nodeIndex);
     const n = byNodeIndex.length;
+    const boundary = facePolyline(face);
     const segmentsByNodeIndex = byNodeIndex.map((entry, i) => {
-      const t0 = i / n, t1 = (i + 1) / n;
+      const polyline = subPolyline(boundary, i / n, (i + 1) / n);
       return {
         nodeIndex: entry.nodeIndex,
         kind: entry.kind,
-        v0: { x: face.v0.x + (face.v1.x - face.v0.x) * t0, y: face.v0.y + (face.v1.y - face.v0.y) * t0 },
-        v1: { x: face.v0.x + (face.v1.x - face.v0.x) * t1, y: face.v0.y + (face.v1.y - face.v0.y) * t1 },
+        v0: polyline[0],
+        v1: polyline[polyline.length - 1],
+        polyline,
+        mid: pointAlongPolyline(boundary, (i + 0.5) / n),
         atFaceStart: i === 0,
         atFaceEnd: i === n - 1,
       };
@@ -344,7 +398,7 @@ export function computeSplitConnectors(
     const shares = faceLayouts
       .flatMap((layout) => layout.segments.filter((s) => s.nodeIndex === nodeIndex))
       .map((s) => ({
-        point: { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 },
+        point: s.mid,
         kind: s.kind,
         face: { dx: s.v1.x - s.v0.x, dy: s.v1.y - s.v0.y },
       }));

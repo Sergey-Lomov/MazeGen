@@ -320,6 +320,9 @@ export interface TileSide {
   offset: [number, number];
   v0: Pos;
   v1: Pos;
+  /** The side's flattened boundary from `v0` to `v1`, relative to the tile's center: the chord's
+   *  two end points for a straight side, the arc for a curved one. */
+  polyline: Pos[];
   /** Core's contact point of the face, relative to the tile's center. */
   contact: Pos;
 }
@@ -353,6 +356,7 @@ export function getTileDiagram(x: number, y: number, cfg: FieldConfig): { vertic
     const nx = x + dx, ny = y + dy;
     const shared = getSharedEdgeSegment([x, y], [nx, ny], cfg);
     const selfIsLower = x < nx || (x === nx && y < ny);
+    const ownEdge = getFaceEdgeSegment([x, y], index, cfg);
     const own = { v0: centered[vi], v1: centered[vj] };
     // The neighbor is the canonical-lower cell for this shared edge unless this cell is: mirror
     // `getSharedEdgeSegment`'s choice, translated into this tile's own centered coordinate space.
@@ -362,7 +366,11 @@ export function getTileDiagram(x: number, y: number, cfg: FieldConfig): { vertic
     const contact = shared
       ? { x: shared.contact.x - center.x, y: shared.contact.y - center.y }
       : { x: (own.v0.x + own.v1.x) / 2, y: (own.v0.y + own.v1.y) / 2 };
-    return { index, offset: offsets[index], ...ends, contact };
+    const edge = !selfIsLower && shared ? shared : ownEdge;
+    const polyline = edge
+      ? edge.polyline.map(([px, py]) => ({ x: px - center.x, y: py - center.y }))
+      : [ends.v0, ends.v1];
+    return { index, offset: offsets[index], ...ends, polyline, contact };
   });
   return { vertices: centered, sides };
 }

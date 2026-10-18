@@ -4,7 +4,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { fittingRotation, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -12,6 +12,7 @@ import * as m from "~/paraglide/messages";
 import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
 
@@ -218,9 +219,11 @@ export function SplitNodesDialogView<E>({
   // faces (see `fittingRotation`) — a point at the field's edge has some faces with no neighbor
   // at all, so a blueprint requiring a passage there can never be applied as authored. `null`
   // means no rotation fits; the button stays disabled.
+  const shapeBinding = splitShapeBinding(cfg, point[0], point[1]);
+  const orientations = shapeBinding === null ? undefined : orientationsOf(shapeBinding);
   const fittedBlueprints = (blueprints ?? []).map((bp) => ({
     original: bp,
-    fitted: fittingRotation(bp, (faceIndex) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false),
+    fitted: fittingRotation(bp, (faceIndex) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false, orientations),
   }));
   const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
 

@@ -1181,7 +1181,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (!endpoint) continue;
       for (const faceIndex of blueprint.nodeFaces[nodeIndex]) {
         // Guards against a caller passing a blueprint authored for a different tile degree
-        // (normal UI flow always picks one via `blueprintsForDegree`, so this only matters for
+        // (normal UI flow always picks one via `blueprintsFor`, so this only matters for
         // a direct/programmatic `applySplitBlueprint` call) — `offsets[faceIndex]` would
         // otherwise be `undefined` and the destructure below would throw.
         if (faceIndex >= offsets.length) continue;

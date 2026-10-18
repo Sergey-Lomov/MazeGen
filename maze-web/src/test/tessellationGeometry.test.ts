@@ -648,3 +648,32 @@ describe("cellsInDisplayRect", () => {
     expect(cells).toHaveLength(300000);
   });
 });
+
+describe("getTileDiagram on arc sides (GitHub issue #800)", () => {
+  const cfg = fieldOf("curved_quadrilateral", { shape: "rect", cols: 4, rows: 4 });
+
+  it("gives every side a polyline from v0 to v1, curved for the arcs", () => {
+    const { sides } = getTileDiagram(1, 1, cfg)!;
+    for (const side of sides) {
+      const last = side.polyline[side.polyline.length - 1];
+      expect(side.polyline[0].x).toBeCloseTo(side.v0.x);
+      expect(side.polyline[0].y).toBeCloseTo(side.v0.y);
+      expect(last.x).toBeCloseTo(side.v1.x);
+      expect(last.y).toBeCloseTo(side.v1.y);
+      expect(side.polyline.length).toBeGreaterThan(2);
+    }
+  });
+
+  it("traces a shared edge identically from both neighbors", () => {
+    const east = getTileDiagram(1, 1, cfg)!.sides[0];
+    const west = getTileDiagram(2, 1, cfg)!.sides[2];
+    const c1 = getCellCenter(1, 1, cfg), c2 = getCellCenter(2, 1, cfg);
+    const absolute = (side: typeof east, c: { x: number; y: number }) => side.polyline.map((p) => [p.x + c.x, p.y + c.y]);
+    const a = absolute(east, c1), b = absolute(west, c2);
+    expect(a).toHaveLength(b.length);
+    a.forEach(([x, y], i) => {
+      expect(x).toBeCloseTo(b[i][0]);
+      expect(y).toBeCloseTo(b[i][1]);
+    });
+  });
+});

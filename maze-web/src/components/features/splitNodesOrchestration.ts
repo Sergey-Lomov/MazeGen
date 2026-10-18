@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { blueprintsForDegree } from "../../pixi/splitBlueprints";
+import { blueprintsFor } from "../../pixi/splitBlueprints";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
@@ -80,7 +81,10 @@ export function useSplitNodesDialogOrchestration<E>({
   );
 
   const blueprints = useMemo(
-    () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
+    () => blueprintsFor(
+      splitShapeBinding(cfg, point[0], point[1])?.shape ?? null,
+      getNeighborData(cfg, point[0], point[1]).offsets.length,
+    ),
     [cfg, point],
   );
 

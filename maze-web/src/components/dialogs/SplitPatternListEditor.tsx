@@ -7,7 +7,7 @@ import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
 import { degreeFor, originCellOf, tileNodesForPattern } from "../../pixi/splitPatternTile";
-import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -78,7 +78,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
     setEditingIndex(patterns.length);
   }
 
-  const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
+  const blueprints = useMemo(() => blueprintsFor(patternShapeOf(fieldConfig), degree), [fieldConfig, degree]);
 
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
     addPattern(blueprintToSplitPattern(blueprint, fieldConfig));

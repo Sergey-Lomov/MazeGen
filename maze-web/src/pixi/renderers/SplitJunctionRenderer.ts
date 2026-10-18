@@ -5,11 +5,18 @@ import { chainSegmentsAtSharedVertices } from "./WallRenderer";
 import { WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
+import { facePolyline } from "../splitFaceLayout";
 
 const pointKeyOf = (p: { x: number; y: number }) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
 
 type Point = { x: number; y: number };
-type Segment = { v0: Point; v1: Point };
+type Segment = { v0: Point; v1: Point; polyline?: readonly Point[] };
+
+/** `segment` as consecutive straight pieces along its polyline (the chord when it has none). */
+function straightPieces(segment: Segment): { v0: Point; v1: Point }[] {
+  const line = facePolyline(segment);
+  return line.slice(1).map((end, i) => ({ v0: line[i], v1: end }));
+}
 
 const DEFAULT_JOIN = "round" as const;
 
@@ -24,7 +31,7 @@ function collectJoinablePaths(
   specialShapes: SplitSpecialShape[],
   syntheticEnds: Point[],
 ): Point[][] {
-  return [...wallFaces.map((f) => [f.v0, f.v1]), ...specialShapeJoinablePaths(specialShapes, syntheticEnds)];
+  return [...wallFaces.map((f) => [...facePolyline(f)]), ...specialShapeJoinablePaths(specialShapes, syntheticEnds)];
 }
 
 /** A `"bridge"` shape's own silhouette polygon — `edge0` forward + `edge1` reversed. Used to find
@@ -208,7 +215,7 @@ export class SplitJunctionRenderer {
   render(
     data: {
       passages: SplitPassage[];
-      wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+      wallFaces: Segment[];
       specialShapes?: SplitSpecialShape[];
     },
     wallFaceStyleOverride?: WallStyleOverride,
@@ -333,7 +340,7 @@ export class SplitJunctionRenderer {
         [definedSegments, passage.color],
         [undefinedSegments, disabledColor],
       ] as const) {
-        for (const path of chainSegmentsAtSharedVertices(segs)) {
+        for (const path of chainSegmentsAtSharedVertices(segs.flatMap(straightPieces))) {
           const startsFree = freeEnds.has(pointKeyOf(path[0]));
           const endsFree = freeEnds.has(pointKeyOf(path[path.length - 1]));
           // Pixi's `stroke()` applies one `cap` to both of a path's ends. Both free (e.g. a lone

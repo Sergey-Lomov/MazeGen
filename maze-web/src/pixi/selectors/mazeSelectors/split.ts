@@ -3,7 +3,7 @@ import type { FieldConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
 import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
 import { splitShapeBinding, canonicalFaceKinds } from "../../splitShape";
-import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceKind } from "../../splitFaceLayout";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, facePolyline, pointAlongPolyline, type SplitFaceInput, type SplitFaceKind } from "../../splitFaceLayout";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
@@ -107,7 +107,7 @@ export type SplitPassagesResult = {
   /** Faces where every one of a split point's nodes explicitly has `wall` — drawn as one plain
    *  solid wall spanning the whole face, same as an ordinary (non-split) wall, since it isn't
    *  attributable to any single node's color. Mirrors `TileFaceEditor`'s `allWall` case. */
-  wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+  wallFaces: SplitFaceInput[];
   /** One entry per split point recognized as a "bridge"/"diagonal divider" topology (GitHub issue
    *  #294) — always populated regardless of `SplitStyleOverride.specialShapes`, so the renderer
    *  decides whether to use it without a second geometry pass. Empty unless the point is degree-4
@@ -347,7 +347,7 @@ export function buildSplitPassagesCore<Id>(
   };
 
   const result: SplitPassage[] = [];
-  const wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+  const wallFaces: SplitFaceInput[] = [];
   const specialShapes: SplitSpecialShape[] = [];
 
   for (const [pointKey, pointNodes] of byPoint) {
@@ -362,7 +362,7 @@ export function buildSplitPassagesCore<Id>(
     // a face this point has no actual geometric neighbor for (or whose neighbor isn't in `nodes`)
     // is skipped entirely (empty per-node kinds list, not a `SplitFaceKind` value — "none" doesn't
     // exist as a per-node decision state, see `splitFaceLayout.ts`).
-    const faceInputs: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+    const faceInputs: SplitFaceInput[] = [];
     const kindsByFace: { nodeIndex: number; kind: SplitFaceKind }[][] = [];
 
     for (const [dx, dy] of offsets) {
@@ -371,7 +371,7 @@ export function buildSplitPassagesCore<Id>(
       const seg = anyNeighbor ? getSharedEdgeSegment([px, py], [anyNeighbor.x, anyNeighbor.y], cfg) : null;
       if (!neighbors || !seg) { faceInputs.push({ v0: center, v1: center }); kindsByFace.push([]); continue; }
 
-      faceInputs.push(seg);
+      faceInputs.push({ v0: seg.v0, v1: seg.v1, polyline: seg.polyline.map(([x, y]) => ({ x, y })) });
       kindsByFace.push(pointNodes.map((node, nodeIndex) => {
         const other = resolveOther(node, neighbors);
         const fwd = directed.has(`${String(node.id)}->${String(other.id)}`);
@@ -603,22 +603,20 @@ export function buildSplitPassagesCore<Id>(
           .map((s, indexInFace) => ({ s, faceIndex, indexInFace, faceCount: layout.segments.length }))
           .filter((entry) => entry.s.nodeIndex === nodeIndex))
         .map(({ s, faceIndex, indexInFace, faceCount }) => {
-          let center = { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 };
+          let center = s.mid;
           if (corridorConnectorWidth !== undefined) {
             // Divide the ordinary corridor's own width (not the whole face) evenly among every
             // node sharing this face, centered on the face's own midpoint — see this function's
-            // own `corridorConnectorWidth` doc comment.
-            const face = faceInputs[faceIndex];
-            const faceMid = { x: (face.v0.x + face.v1.x) / 2, y: (face.v0.y + face.v1.y) / 2 };
-            const fdx = face.v1.x - face.v0.x, fdy = face.v1.y - face.v0.y;
-            const flen = Math.hypot(fdx, fdy) || 1;
-            const ux = fdx / flen, uy = fdy / flen;
+            // own `corridorConnectorWidth` doc comment. The offset runs along the face's own
+            // boundary, so a curved face keeps the share on its arc.
+            const boundary = facePolyline(faceInputs[faceIndex]);
+            let faceLength = 0;
+            for (let i = 1; i < boundary.length; i++) faceLength += Math.hypot(boundary[i].x - boundary[i - 1].x, boundary[i].y - boundary[i - 1].y);
             const t = (indexInFace + 0.5) / faceCount - 0.5; // -0.5..0.5, centered
-            const offset = t * corridorConnectorWidth;
-            center = { x: faceMid.x + ux * offset, y: faceMid.y + uy * offset };
+            center = pointAlongPolyline(boundary, 0.5 + (faceLength === 0 ? 0 : (t * corridorConnectorWidth) / faceLength));
           }
           return {
-            v0: s.v0, v1: s.v1, center,
+            v0: s.v0, v1: s.v1, polyline: s.polyline, center,
             isUndefined: s.kind === "undefined",
             oneWayOut: s.kind === "one_way_out" ? true : s.kind === "one_way_in" ? false : undefined,
             atFaceStart: s.atFaceStart,

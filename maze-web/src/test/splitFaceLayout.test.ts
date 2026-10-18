@@ -350,3 +350,34 @@ describe("detectSplitSpecialShapeKind", () => {
     expect(detectIdentity([passage([0, 2], 4), passage([1, 3], 4), passage([0, 1], 4)])).toBeNull(); // degree 4, 3 nodes
   });
 });
+
+describe("computeSplitFaceLayouts on a curved face", () => {
+  // A quarter-circle arc from (1, 0) to (0, 1) around the origin, flattened to 3 pieces.
+  const arc = [0, 1, 2, 3].map((i) => ({ x: Math.cos((i * Math.PI) / 6), y: Math.sin((i * Math.PI) / 6) }));
+  const face = { v0: arc[0], v1: arc[3], polyline: arc };
+
+  it("divides the share along the arc, not the chord", () => {
+    const [layout] = computeSplitFaceLayouts([face], [[
+      { nodeIndex: 0, kind: "passage" }, { nodeIndex: 1, kind: "passage" },
+    ]], null);
+    const [first, second] = layout.segments;
+    for (const segment of layout.segments) {
+      for (const p of segment.polyline) expect(Math.hypot(p.x, p.y)).toBeCloseTo(1, 1); // within the flattening's sag
+      expect(Math.hypot(segment.mid.x, segment.mid.y)).toBeCloseTo(1, 1);
+    }
+    expect(first.v0).toEqual(arc[0]);
+    expect(second.v1).toEqual(arc[3]);
+    expect(first.v1.x).toBeCloseTo(second.v0.x, 9);
+    expect(first.v1.y).toBeCloseTo(second.v0.y, 9);
+    // The middle of the flattened arc is the middle of its central piece.
+    expect(first.v1.x).toBeCloseTo((Math.cos(Math.PI / 6) + Math.cos(Math.PI / 3)) / 2, 9);
+  });
+
+  it("ends a lone node's connector at the arc's middle", () => {
+    const layouts = computeSplitFaceLayouts([face], [[{ nodeIndex: 0, kind: "passage" }]], null);
+    expect(layouts[0].segments[0].mid.x).toBeCloseTo((Math.cos(Math.PI / 6) + Math.cos(Math.PI / 3)) / 2, 9);
+    expect(layouts[0].segments[0].mid.x).toBeCloseTo(layouts[0].segments[0].mid.y, 9);
+    const [connectors] = computeSplitConnectors(layouts, 1, null, { x: 0, y: 0 }, 0.1, 0);
+    expect(connectors.lines[0].to).toEqual(layouts[0].segments[0].mid);
+  });
+});
