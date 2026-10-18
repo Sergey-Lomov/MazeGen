@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
+pub mod brick;
 pub mod cairo;
 pub mod field_ops;
 pub mod geometry;
@@ -17,6 +18,7 @@ pub mod square_octagon;
 pub(crate) mod test_support;
 pub mod triangle;
 
+pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
 pub use field_ops::{
     FieldOpError, FieldOperation, FieldOps, PresetDescriptor, PresetParam, PresetParams,

@@ -104,7 +104,7 @@ pub(super) const HEXAGON_PRESET: PresetDescriptor = PresetDescriptor {
 
 /// Largest product of a preset's parameters accepted: bounds a rectangle's cell count and keeps
 /// every coordinate far from `i32` overflow.
-const MAX_PRESET_SIZE: u64 = 1_000_000;
+pub(super) const MAX_PRESET_SIZE: u64 = 1_000_000;
 
 /// Checks `params` against the schema of preset `key` among `presets`: the preset must exist and
 /// every parameter must be present exactly once, known and at least its minimum, and the product

@@ -33,6 +33,55 @@ describe("universal corridor contour", () => {
     normal,
   });
 
+  it("turns two side-by-side ports facing the same way in a U without folding the ribbon", () => {
+    // The two half faces of a brick edge: collinear, 20 apart, both looking out of the cell.
+    const brick: CorridorCell = {
+      id: "square",
+      center: { x: 0, y: 0 },
+      polygon: [{ x: -20, y: -20 }, { x: 20, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }],
+    };
+    const ports = [port({ x: -10, y: 20 }, { x: 0, y: 1 }), port({ x: 10, y: 20 }, { x: 0, y: 1 })];
+    for (const thickness of [4, 10, 16]) {
+      const [debug] = buildCorridorGeometryDebug([brick], ports, thickness);
+      // Half a circle over the chord: the target sits one radius (10) below the faces.
+      expect(debug.target.y).toBeCloseTo(10, 6);
+      for (const ribbon of debug.rawRibbons) {
+        for (const side of [ribbon.left, ribbon.right]) {
+          // Each side only ever goes down and towards the middle, never back out past its port.
+          for (const point of side) expect(point.y).toBeLessThanOrEqual(20 + 1e-9);
+          for (let index = 1; index < side.length; index++) {
+            expect(side[index].y).toBeLessThanOrEqual(side[index - 1].y + 1e-9);
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps the pass through the cell centre when another port faces the same way as one of its ends", () => {
+    // Half faces of one brick: south ports at x = ±10 and a north port at x = -10. The north port
+    // is opposite both south ports; the pair mirrored through the centre (x = 10 and x = -10)
+    // is the straight pass and the other south port branches off it.
+    const brick: CorridorCell = {
+      id: "square",
+      center: { x: 0, y: 0 },
+      polygon: [{ x: -20, y: -20 }, { x: 20, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }],
+    };
+    const south = (x: number) => port({ x, y: -20 }, { x: 0, y: -1 });
+    const north = port({ x: -10, y: 20 }, { x: 0, y: 1 });
+    const [debug] = buildCorridorGeometryDebug([brick], [south(10), south(-10), north], 6);
+    expect(debug.target.x).toBeCloseTo(0, 6);
+    expect(debug.target.y).toBeCloseTo(0, 6);
+    // The straight pass meets the target from opposite sides along one tangent.
+    const arrivals = debug.centerCurves.map((curve) => {
+      const bezier = curve.path[1];
+      return bezier.kind === "bezier" ? { from: bezier.cp2, to: bezier.to } : undefined;
+    });
+    const tangents = arrivals.map((arrival) => arrival && { x: arrival.to.x - arrival.from.x, y: arrival.to.y - arrival.from.y });
+    const smoothPairs = tangents.flatMap((a, i) => tangents.slice(i + 1).map((b) => ({ a, b })))
+      .filter(({ a, b }) => a && b && Math.abs(a.x * b.y - a.y * b.x) < 1e-6 && a.x * b.x + a.y * b.y < 0);
+    expect(smoothPairs).toHaveLength(1);
+  });
+
   it("serializes every universal command without changing its geometry type", () => {
     const d = contourToSvgPath([{
       hole: false,

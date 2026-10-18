@@ -118,6 +118,7 @@
   "tessellation.triangle": "Треугольник",
   "tessellation.cairo": "Кайро (пятиугольник)",
   "tessellation.square_octagon": "Квадрат-восьмиугольник (4.8.8)",
+  "tessellation.brick": "Кирпичная кладка (смещённые ряды)",
   "tessellation.orientation": "Ориентация",
   "tessellation.flat_top": "Плоская верхушка",
   "tessellation.pointy_top": "Остроконечная верхушка",

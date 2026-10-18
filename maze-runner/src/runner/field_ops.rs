@@ -458,6 +458,13 @@ mod tests {
                 "circle",
                 vec![("radius", 4)],
             ),
+            (
+                TessellationKind::Brick,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (TessellationKind::Brick, "circle", vec![("radius", 4)]),
+            (TessellationKind::Brick, "triangle", vec![("side", 6)]),
         ];
         for (kind, key, params) in cases {
             let request = PresetExtentsRequest {

@@ -214,4 +214,23 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  brick: {
+    orientationSlot: null,
+    // A rect preset is `cols x rows` bricks, but odd rows shift half a cell, so it is not a
+    // rectangle of exact width.
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false },
+    orientations: [],
+    defaultParams: {},
+    // Bricks are unit squares, drawn `TILE_SIZE` wide.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // The faces' neighbor directions are about 63 degrees apart at the top and bottom.
+    splitCircleRotationDeg: 30,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    cellMeasurePx: TILE_SIZE,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
+  },
 };

@@ -505,6 +505,7 @@ mod tests {
             TessellationKind::Tri,
             TessellationKind::Cairo,
             TessellationKind::SquareOctagon,
+            TessellationKind::Brick,
         ] {
             let expected = build_tessellation(&config(kind), CoreGeometry).unwrap();
             let cells = expected.iter().map(|cell| cell.cell).collect();

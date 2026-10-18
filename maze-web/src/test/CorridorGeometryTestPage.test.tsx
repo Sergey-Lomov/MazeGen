@@ -25,6 +25,8 @@ describe("CorridorGeometryTestPage", () => {
     expect(cards()).toHaveLength(16); // square: 2^4
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "hex" } });
     expect(cards()).toHaveLength(64); // hex: 2^6
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "brick" } });
+    expect(cards()).toHaveLength(64); // brick: 2^6, four of its faces are half edges
   });
 
   it("draws one filled contour per non-empty combination", () => {

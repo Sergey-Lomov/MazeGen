@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Five implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Six implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -39,14 +39,14 @@ fixture keys (`split_points`, `[x, y]` coordinates) are unchanged here — they 
 
 **Instance (GitHub issue #755).** A tessellation is an instance: methods take `&self`, and one
 instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (accessors
-`tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The five built-in tessellations
+`tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The six built-in tessellations
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
 (`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
 `floor_aware_distance`) take the instance as their first argument; consumers resolve it from
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo" | "square_octagon", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon" | "brick", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -578,3 +578,14 @@ Status (GitHub issue #784): `space::square_octagon` (`SquareOctagonTessellation`
 - **Geometry.** Every vertex coordinate is `(m + n·√2) / 2` for integers `m`, `n` derived from the lattice point, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts the valid lattice cells in the box exactly before building any.
 - **Presets.** `rect` (`cols × rows` octagons plus the squares between them, origin octagon at `size / 2`), `circle` and `triangle`; translate and reflect are derived geometrically.
 - **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. Tessellation-specific split templates are not part of this ticket.
+
+### Brick tessellation (offset-row squares)
+
+Status (GitHub issue #789): `space::brick` (`BrickTessellation`, kind `brick`, no params) is the running-bond layout: unit squares in rows, every odd row shifted right by half a cell. Cell `(x, y)` is row `y`, column `x` and spans `[x + s, x + s + 1] × [y, y + 1]` with `s = 1/2` on odd rows (`rem_euclid`, so negative rows follow the same rule) and `0` on even ones. Area 1, one shape template.
+
+- **Faces.** One `BrickFace` enum `E, NE, NW, W, SW, SE`, counter-clockwise from `E` (also the canonical order). `E`/`W` are whole vertical edges; the top and bottom edges are each shared with two cells of the adjacent row, so they are split into the half faces `NE`/`NW` and `SW`/`SE` (each of world length 1/2). Template `brick:brick` (6 faces); its group is the closure of the two axis mirrors (`[3,2,1,0,5,4]`, `[0,5,4,3,2,1]`), so 4 elements including the half turn.
+- **Neighbors.** `step(face)`: `E`/`W` are `x ± 1`; from an even row `NE`/`NW` are `(x, y+1)`/`(x-1, y+1)` and `SE`/`SW` are `(x, y-1)`/`(x-1, y-1)`; from an odd row `NE`/`NW` are `(x+1, y+1)`/`(x, y+1)` and `SE`/`SW` are `(x+1, y-1)`/`(x, y-1)`. Every cell is valid and has exactly six distinct neighbors; `neighbor` returns the opposite face, and `None` on `i32` overflow.
+- **Straightness.** A pass is straight iff it leaves through the opposite face (`NE`↔`SW`, `NW`↔`SE`, `E`↔`W`); the centers of such a pair of neighbors are collinear with the cell's center.
+- **Geometry.** All vertex coordinates are multiples of 1/2, computed from integer half units, so a vertex (including the one splitting a top edge) is bit-identical from every cell sharing it and a half face of one cell reversed equals the matching half face of its neighbor. `candidate_cells` is the exact index box around the query box.
+- **Presets.** `rect` (`cols × rows` cells, origin cell at `size / 2` rounded down; ragged because of the shifted rows), `circle` by cell center, and `triangle`, a pyramid rather than an equilateral triangle: `side` is the number of bricks in the bottom row and every row above has one brick fewer, each resting on two below it (sides rise at `atan(2)` ≈ 63.4°, which the half-cell row shift follows exactly, where an equilateral triangle's 60° would leave a ragged edge; `side (side + 1) / 2` cells, at most 1 000 000). Translate and reflect are derived geometrically (a vector must keep the row parity shift, e.g. `(1, 0)` or `(1/2, 1)`; `(0, 1)` is not a symmetry).
+- **Wire and web.** `{ "kind": "brick", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.brick` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 0° and 90°. Tessellation-specific split templates are not part of this ticket.

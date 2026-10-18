@@ -65,6 +65,23 @@ describe("field operations over wasm", () => {
     }
   });
 
+  it("builds brick presets and accepts only translations that keep the row shift", () => {
+    const brick = tessellationConfigOf("brick");
+    expect(getFieldPreset(brick, "rect", { cols: 2, rows: 2 })).toEqual([[-1, -1], [-1, 0], [0, -1], [0, 0]]);
+    // Rows of 3, 2 and 1 bricks: each row rests on two bricks of the one below.
+    expect(getFieldPreset(brick, "triangle", { side: 3 })).toHaveLength(6);
+    // Half a cell right and one row up lands on the neighboring row's shifted cell.
+    expect(translateFieldCells(brick, [[0, 0], [1, 0]], [0.5, 1])).toEqual([[0, 1], [1, 1]]);
+    expect(translateFieldCells(brick, [[0, 0]], [1, 2])).toEqual([[1, 2]]);
+    try {
+      // One row up without the half-cell shift maps even-row cells off the lattice.
+      translateFieldCells(brick, [[0, 0]], [0, 1]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+  });
+
   it("translates and reflects cells on symmetric vectors and axes", () => {
     expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
     expect(reflectFieldCells(square, [[0, 0], [1, 0]], [[2, 0], [2, 1]])).toEqual([[2, 0], [3, 0]]);

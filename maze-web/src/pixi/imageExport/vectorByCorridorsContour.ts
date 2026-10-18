@@ -85,28 +85,42 @@ function buildTilesFromCells(cells: readonly CorridorCell[], ports: readonly Cor
   return [...tiles.values()];
 }
 
+/** How far a pair of ports is from a pass straight through the cell: the distance between the
+ *  midpoint of their mouths and the cell centre. Zero for two faces mirrored through the centre
+ *  (opposite faces of a hexagon or of a brick), larger for faces that face each other off-centre. */
+function pairCentreOffset(first: Port, second: Port): number {
+  return len(sub(mul(add(first.mid, second.mid), 0.5), first.centre));
+}
+
 /** Returns the pair of ports whose normals are farthest apart in angle. The angle between two
  *  directions is taken the short way round, so it never exceeds 180°: a pair 270° apart counts as
  *  90° and loses to a pair 170° apart. Each unordered pair is considered once (1-2 and 2-1 are the
- *  same pair). When several distinct pairs share the maximum angle there is no preferred one, and
- *  `null` sends the target to the cell centre. */
+ *  same pair). When several distinct pairs share the maximum angle the one passing closest to the
+ *  cell centre wins (the pass the tessellation calls straight keeps its line when a third port
+ *  joins it, instead of being bent through the centre). When that is tied too there is no
+ *  preferred pair, and `null` sends the target to the cell centre. */
 function mostOppositePortPair(ports: readonly Port[]): [Port, Port] | null {
   if (ports.length < 2) return null;
-  let best: [Port, Port] | null = null;
   let smallestNormalDot = Number.POSITIVE_INFINITY;
-  let tied = false;
   for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
     for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
-      const normalDot = dot(ports[firstIndex].out, ports[secondIndex].out);
-      if (normalDot < smallestNormalDot - 1e-9) {
-        best = [ports[firstIndex], ports[secondIndex]];
-        smallestNormalDot = normalDot;
-        tied = false;
-      } else if (normalDot <= smallestNormalDot + 1e-9) tied = true;
+      smallestNormalDot = Math.min(smallestNormalDot, dot(ports[firstIndex].out, ports[secondIndex].out));
     }
   }
-  return tied ? null : best;
+  const widest: Array<{ pair: [Port, Port]; offset: number }> = [];
+  for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
+      const pair: [Port, Port] = [ports[firstIndex], ports[secondIndex]];
+      if (dot(pair[0].out, pair[1].out) <= smallestNormalDot + 1e-9) widest.push({ pair, offset: pairCentreOffset(...pair) });
+    }
+  }
+  const closest = Math.min(...widest.map((candidate) => candidate.offset));
+  const best = widest.filter((candidate) => candidate.offset <= closest + PAIR_OFFSET_EPSILON);
+  return best.length === 1 ? best[0].pair : null;
 }
+
+/** Offsets closer than this (world units) count as equally close to the centre. */
+const PAIR_OFFSET_EPSILON = 1e-6;
 
 function directPairCurveCenter(from: Port, to: Port): Pt {
   // This provisional pair curve is used only to locate the target. The target-side tangents of the
@@ -606,12 +620,20 @@ function lineIntersect(p: Pt, dp: Pt, q: Pt, dq: Pt): Pt | null {
   return add(p, mul(dp, cross(sub(q, p), dq) / denominator));
 }
 
+/** Handle length over chord length of a cubic that approximates a half circle over the chord. */
+const U_TURN_HANDLE_RATIO = 2 / 3;
+
 /** Returns the cubic handle ratio for a pair of ports. The pre-726 renderer's turn was a
  * circular arc around the intersection of the two supporting side lines: neighboring faces have
  * a nearby corner and need a stronger bend, while faces with one side between them have a farther
  * corner and need a flatter bend (`arcHandleRatio` of the arc's sweep around that corner); parallel
  * sides naturally fall back to the straight-line ratio 1/3. */
 function pairCurveHandleRatio(from: Port, to: Port): number {
+  // Two faces looking the same way (the half faces of one brick edge) have no corner to turn
+  // around: the pair curve is a U-turn, a half circle over the chord, whose cubic handles are 2/3
+  // of the chord. The straight-line ratio would flatten it to a quarter of the chord's depth,
+  // and the ribbon's inner side would then fold over itself.
+  if (dot(from.out, to.out) > 1 - 1e-9) return U_TURN_HANDLE_RATIO;
   const corner = lineIntersect(from.mid, leftN(from.out), to.mid, leftN(to.out));
   return corner ? arcHandleRatio(sub(from.mid, corner), sub(to.mid, corner)) : 1 / 3;
 }

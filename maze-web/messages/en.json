@@ -103,6 +103,7 @@
   "tessellation.triangle": "Triangle",
   "tessellation.cairo": "Cairo (pentagon)",
   "tessellation.square_octagon": "Square-octagon (4.8.8)",
+  "tessellation.brick": "Brick (offset rows)",
   "tessellation.orientation": "Orientation",
   "tessellation.flat_top": "Flat top",
   "tessellation.pointy_top": "Pointy top",

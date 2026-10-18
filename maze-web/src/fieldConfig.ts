@@ -1,5 +1,5 @@
 /** Registered tessellation kinds — mirrors `maze-runner`'s `TessellationKind` wire values. */
-export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon";
+export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick";
 
 /**
  * A tessellation instance config, `{ kind, params }` — the same shape the wasm wire and project

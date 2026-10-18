@@ -91,6 +91,13 @@ export const FAMILIES: Family[] = [
     config: { tessellation: tessellationConfigOf("cairo"), shape: { shape: "rect", cols: 3, rows: 3 } },
     coordinate: [2, 1],
   },
+  {
+    id: "brick",
+    label: "Brick",
+    note: "6 faces · 64 combinations",
+    config: { tessellation: tessellationConfigOf("brick"), shape: { shape: "rect", cols: 3, rows: 3 } },
+    coordinate: [0, 0],
+  },
 ];
 
 const COLORS = ["#6fb5ff", "#ffb86b", "#9fe18a", "#e59aff"];

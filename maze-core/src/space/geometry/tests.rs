@@ -2,8 +2,9 @@ use super::segment::segments_cross;
 use super::*;
 use crate::space::test_support::ScaledSquareTessellation;
 use crate::space::{
-    CairoPoint, CairoTessellation, HexPoint, HexTessellation, SquareOctagonPoint,
-    SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint, TriTessellation,
+    BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
+    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint,
+    TriTessellation,
 };
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -33,6 +34,10 @@ fn square_octagon_cells() -> Vec<SquareOctagonPoint> {
         .collect()
 }
 
+fn brick_cells() -> Vec<BrickPoint> {
+    grid(6).map(|(x, y)| BrickPoint { x, y }).collect()
+}
+
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
     (-radius..=radius).flat_map(move |x| (-radius..=radius).map(move |y| (x, y)))
 }
@@ -45,6 +50,7 @@ macro_rules! for_each_tessellation {
         $check(&TriTessellation, &tri_cells());
         $check(&CairoTessellation, &cairo_cells());
         $check(&SquareOctagonTessellation, &square_octagon_cells());
+        $check(&BrickTessellation, &brick_cells());
         $check(&ScaledSquareTessellation { scale: 2.5 }, &square_cells());
     };
 }

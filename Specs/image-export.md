@@ -465,8 +465,9 @@ instances into world-space paths. Drawing: see "Corridor tiles" below.
 **Per-tile shape** (`buildTileGeometry`) — one algorithm for every port count and cell shape:
 
 1. **Target.** The *most opposite pair* is the port pair whose normals are farthest apart (ties →
-   no pair). The target is the middle of a cubic joining that pair's mouths, its handles following an
-   arc around the intersection of the two faces' lines; with no pair (one port, or a tie) the target
+   the pair passing closest to the cell centre, so the pass the tessellation calls straight keeps its
+   line when a third port joins it, GitHub issue #789; still tied → no pair). The target is the middle of a cubic joining that pair's mouths, its handles following an
+   arc around the intersection of the two faces' lines (parallel opposite faces: straight-line handles; two faces looking the same way, like the half faces of a brick edge: a half-circle U-turn, handles 2/3 of the chord, GitHub issue #789); with no pair (one port, or a tie) the target
    is the cell centre. The target is pulled inside the cell polygon if needed. A **dead end** (one
    port) caps its ribbon with a half-disc of the half-width around the target, facing along the
    centre curve. When that half-disc does not fit the cell (checked exactly against every face),
@@ -506,7 +507,7 @@ ribbons, the radius-0 and final contours) for the geometry lab (`/corridor-geome
 `buildCorridorContour` is `corridorSegmentsToGeometryInput` (segment records → cells and ports)
 followed by `buildCorridorGeometry`.
 
-**Geometry lab.** Shows every port combination of one cell per tessellation. A "Cell size" slider
+**Geometry lab.** Shows every port combination of one cell per tessellation. `FAMILIES` lists square, hex, triangle, Cairo and brick (GitHub issue #789; its four half-edge faces are ports like any other, so the 6-face cell has 64 combinations). A "Cell size" slider
 sets the cell's longest face in pixels, per tessellation (`cellSize`/`scaleCell`), while thickness
 stays in pixels too — e.g. the triangle at 40px (half its native 80px) shows a dead-end cap moving
 toward the port above thickness 23.1 and bending into a kinked arc on the port's face above 34.6.

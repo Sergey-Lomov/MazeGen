@@ -55,6 +55,10 @@ const CAIRO_AXES: Axis[] = [
 // 45 degrees apart; the display transform is a reflection, which keeps this set unchanged.
 const SQUARE_OCTAGON_AXES: Axis[] = [0, 45, 90, 135].map(axisFromDeg);
 
+// Bricks have vertical side edges and horizontal (half) top and bottom edges, so the face normals
+// are the horizontal and vertical axes.
+const BRICK_AXES: Axis[] = [0, 90].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -74,4 +78,5 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   tri: () => TRI_AXES,
   cairo: () => CAIRO_AXES,
   square_octagon: () => SQUARE_OCTAGON_AXES,
+  brick: () => BRICK_AXES,
 };
