@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { renderHook, cleanup } from "@testing-library/react";
+import { act, renderHook, cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { useQualityViewModel } from "../components/features/useQualityViewModel";
@@ -41,7 +41,7 @@ describe("useQualityViewModel", () => {
   it("reflects a live toggleCheckDisabled call in the next render's CheckVM.disabled", () => {
     const { result, rerender } = renderHook(() => useQualityViewModel());
     expect(result.current.checks.find((c) => c.localId === 0)?.disabled).toBe(false);
-    useMazeStore.getState().toggleCheckDisabled("g1", 0);
+    act(() => useMazeStore.getState().toggleCheckDisabled("g1", 0));
     rerender();
     expect(result.current.checks.find((c) => c.localId === 0)?.disabled).toBe(true);
   });

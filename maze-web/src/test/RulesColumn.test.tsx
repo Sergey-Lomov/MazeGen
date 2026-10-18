@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { RulesColumn } from "../components/features/quality/RulesColumn";
 import { useMazeStore } from "../store/mazeStore";
 import type { StrategySlotVM, StrategyVM, CheckVM, QualityStageVM } from "../components/features/useQualityViewModel";
@@ -370,7 +370,7 @@ describe("RulesColumn", () => {
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "7" } });
-    vi.runAllTimers();
+    act(() => { vi.runAllTimers(); });
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 0)?.params.threshold).toBe("7");
     vi.useRealTimers();
   });
@@ -395,7 +395,7 @@ describe("RulesColumn", () => {
     // debounce/flush is scoped to its own useParamEditor instance, so removing row 0 must not
     // interfere with row 1's still-pending edit.
     fireEvent.click(getTooltipControl("Remove"));
-    vi.runAllTimers();
+    act(() => { vi.runAllTimers(); });
     expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 1)?.params.threshold).toBe("7");
     vi.useRealTimers();
   });
@@ -483,7 +483,7 @@ describe("RulesColumn", () => {
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "5" } });
-    vi.runAllTimers();
+    act(() => { vi.runAllTimers(); });
     expect(useMazeStore.getState().strategyParams.s2?.weight).toBe("5");
     vi.useRealTimers();
   });

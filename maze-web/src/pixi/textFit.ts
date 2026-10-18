@@ -57,7 +57,10 @@ export interface TextFitItem {
 /** Ink extent of `text` at `fontSize` px. Falls back to a rough per-glyph estimate when the font
  *  isn't installed (e.g. before `loadMsdfFont` resolves). */
 export function measureText(text: string, fontWeight: LabelFontWeight, fontSize: number): TextExtent {
-  const font = Cache.get<AbstractBitmapFont<unknown>>(`${msdfFontFamily(fontWeight)}-bitmap`);
+  const cacheKey = `${msdfFontFamily(fontWeight)}-bitmap`;
+  const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
+    ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
+    : undefined;
   const glyphs = Array.from(text);
   if (glyphs.length === 0) return { width: 0, height: 0, left: 0, right: 0 };
   if (!font) {
@@ -221,7 +224,10 @@ function glyphInk(family: string, ch: string, texture: AtlasTexture): number[] |
  *  `null` when any glyph's ink is unavailable — callers fall back to the bounding rectangle. */
 function textInk(text: string, fontWeight: LabelFontWeight): { points: number[]; base: number } | null {
   const family = msdfFontFamily(fontWeight);
-  const font = Cache.get<AbstractBitmapFont<unknown>>(`${family}-bitmap`);
+  const cacheKey = `${family}-bitmap`;
+  const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
+    ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
+    : undefined;
   if (!font) return null;
   const raw: number[] = [];
   let cursor = 0;

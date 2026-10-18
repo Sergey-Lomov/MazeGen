@@ -114,8 +114,11 @@ describe("NotificationHost", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Details" }));
     const items = within(screen.getByTestId("error-details")).getAllByRole("listitem");
     // The latest occurrence's message is the headline, so only its details are added; an older
-    // occurrence with a different message shows that message too.
-    expect(items.map((li) => li.textContent)).toEqual(["trace 2", "Failed 1trace 1"]);
+    // occurrence with a different message shows that message too. Copy buttons are separate
+    // controls, so assert the displayed occurrence content rather than each row's full text.
+    expect(within(items[0]).getByText("trace 2")).toBeInTheDocument();
+    expect(within(items[1]).getByText("Failed 1")).toBeInTheDocument();
+    expect(within(items[1]).getByText("trace 1")).toBeInTheDocument();
     expect(within(items[0]).getByRole("button", { name: "Copy" })).toBeInTheDocument();
     fireEvent.click(within(card).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByTestId("error-card")).toBeNull();
@@ -207,7 +210,8 @@ describe("NotificationHost", () => {
     const buttons = Array.from(host().querySelectorAll("button"));
     expect(buttons.length).toBeGreaterThan(0);
     const reached = new Set<Element>();
-    for (let i = 0; i < buttons.length; i++) {
+    const focusableElements = host().querySelectorAll("button, [tabindex='0']");
+    for (let i = 0; i < focusableElements.length; i++) {
       await user.tab();
       if (document.activeElement) reached.add(document.activeElement);
     }
@@ -271,12 +275,12 @@ describe("NotificationHost", () => {
     renderHost();
     await act(async () => notify({ source: "a", code: "host.notice" }));
     const close = within(host()).getByRole("button", { name: "Close" });
-    close.focus();
+    act(() => { close.focus(); });
     const sibling = document.createElement("div");
     await act(async () => { document.body.appendChild(sibling); });
     expect(document.activeElement).toBe(close);
-    expect(document.body.lastElementChild).toBe(sibling);
-    close.blur();
+    expect(host().compareDocumentPosition(sibling) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    act(() => { close.blur(); });
     const another = document.createElement("div");
     await act(async () => { document.body.appendChild(another); });
     expect(document.body.lastElementChild).toBe(host());

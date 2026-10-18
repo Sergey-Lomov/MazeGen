@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -255,7 +255,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("changing the start marker fill color updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).not.toBe(0x654321);
-    useMazeStore.getState().setVectorByCorridorsStartMarkerFillColor(0x654321);
+    act(() => useMazeStore.getState().setVectorByCorridorsStartMarkerFillColor(0x654321));
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
   });
 

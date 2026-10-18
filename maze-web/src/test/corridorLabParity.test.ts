@@ -30,7 +30,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
 
 beforeAll(async () => {
   const wasm = await import("../wasm/pkg/maze_wasm");
-  await wasm.default(readFileSync(wasmPath));
+  await wasm.default({ module_or_path: readFileSync(wasmPath) });
   wasmHolder.module = wasm;
 });
 

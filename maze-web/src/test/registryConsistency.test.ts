@@ -36,9 +36,9 @@ describe("wasm registry vs web i18n consistency", () => {
 
   beforeAll(async () => {
     // wasm-bindgen's default `init()` fetches its .wasm by URL, which doesn't work under
-    // vitest's node environment — load the bytes from disk instead and pass them directly.
+    // vitest's node environment — load the bytes from disk instead and pass them to the loader.
     const wasm = await import("../wasm/pkg/maze_wasm");
-    await wasm.default(readFileSync(wasmPath));
+    await wasm.default({ module_or_path: readFileSync(wasmPath) });
     checks = wasm.available_checks() as CheckDescriptor[];
     strategies = wasm.available_strategies() as StrategyDescriptor[];
   });

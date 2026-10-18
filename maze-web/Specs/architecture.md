@@ -56,6 +56,10 @@ User input → ControlPanel → mazeStore.generate()
 3. WASM lazy-loaded on first `generate()` call via `initWasm()` in `wasmLoader`
 4. Subsequent calls skip init (singleton promise guards)
 
+Before React mounts, `main.tsx` installs PixiJS's `unsafe-eval` compatibility module. It replaces
+Pixi's dynamic `new Function()` synchronization paths with static implementations, so the canvas
+renderer works under a strict CSP without adding `unsafe-eval` to `script-src`.
+
 ## Rendering
 
 See [renderer.md](renderer.md).

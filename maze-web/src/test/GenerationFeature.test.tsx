@@ -50,12 +50,12 @@ describe("GenerationFeature — QC Only toggle", () => {
     expect(setQcExperiment).toHaveBeenCalledWith(true);
   });
 
-  it("starts async generation directly when post-edit is not dirty", () => {
+  it("starts async generation directly when post-edit is not dirty", async () => {
     const generateAsync = vi.fn(() => Promise.resolve());
     useMazeStore.setState({ generateAsync });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByText(m["generation.generate"]()));
+    await act(async () => { fireEvent.click(screen.getByText(m["generation.generate"]())); });
 
     expect(generateAsync).toHaveBeenCalledTimes(1);
   });
@@ -63,7 +63,7 @@ describe("GenerationFeature — QC Only toggle", () => {
   it.each([
     ["Enter", "Enter"],
     ["Space", " "],
-  ])("starts generation from the open card with %s and clears header focus", (code, key) => {
+  ])("starts generation from the open card with %s and clears header focus", async (code, key) => {
     const generateAsync = vi.fn(() => Promise.resolve());
     useMazeStore.setState({ generateAsync, openCard: "generation" });
     render(<GenerationFeature canGenerate={true} />);
@@ -72,7 +72,7 @@ describe("GenerationFeature — QC Only toggle", () => {
     header.focus();
 
     const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code, key });
-    header.dispatchEvent(event);
+    await act(async () => { header.dispatchEvent(event); });
 
     expect(generateAsync).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);

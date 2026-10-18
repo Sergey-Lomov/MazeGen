@@ -107,7 +107,7 @@ describe("shared preset/post-edit dialog components", () => {
   it("keeps generic tool glyph mapping and destructive selection in the shared row", () => {
     const onPick = vi.fn();
     render(
-      <ToolIconRow
+      <ToolIconRow<"wall" | "delete">
         tools={[["wall", "Wall"], ["delete", "Delete"]]}
         activeTool="delete"
         onPick={onPick}

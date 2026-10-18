@@ -1,3 +1,6 @@
+// PixiJS's default WebGL/WebGPU synchronization paths probe and generate functions with
+// `new Function()`. Install its official CSP-safe implementations before any renderer is created.
+import "pixi.js/unsafe-eval";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initWasm } from "./wasm/wasmLoader";

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { PostEditFeature } from "../components/features/PostEditFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
@@ -34,10 +34,10 @@ describe("PostEditFeature auto-confirm/auto-compact info icons", () => {
 });
 
 describe("PostEditFeature refresh error status line (GitHub issue #769)", () => {
-  afterEach(() => useMazeStore.setState({ postEditRefreshError: null }));
+  afterEach(() => act(() => useMazeStore.setState({ postEditRefreshError: null })));
 
   it("shows the last refresh failure", () => {
-    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    act(() => useMazeStore.setState({ postEditRefreshError: "analytics failed" }));
     render(<PostEditFeature />);
     expect(screen.getByText(m["post_edit.refresh_error"]({ message: "analytics failed" }))).toBeInTheDocument();
   });

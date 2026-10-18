@@ -4,10 +4,10 @@ import { BasicConfigFeature } from "../components/features/BasicConfigFeature";
 import { useMazeStore } from "../store/mazeStore";
 
 describe("BasicConfigFeature keyboard confirmation", () => {
-  let confirmTessellation: ReturnType<typeof vi.fn<() => void>>;
+  let confirmTessellation = vi.fn<() => void>();
 
   beforeEach(() => {
-    confirmTessellation = vi.fn();
+    confirmTessellation = vi.fn<() => void>();
     useMazeStore.setState({
       openCard: "basic_config",
       previewKind: "square",

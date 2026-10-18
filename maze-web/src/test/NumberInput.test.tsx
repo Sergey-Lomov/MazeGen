@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { NumberInput } from "../components/NumberInput";
 import * as m from "~/paraglide/messages";
 
@@ -178,12 +178,14 @@ describe("NumberInput", () => {
       expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
     });
 
-    it("keeps pasted decimal separators visible and explains why they are rejected", () => {
+    it("keeps pasted decimal separators visible and explains why they are rejected", async () => {
       render(<NumberInput value="5" integer onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
       const event = new Event("paste", { bubbles: true, cancelable: true }) as unknown as ClipboardEvent;
       Object.defineProperty(event, "clipboardData", { value: { getData: () => "7.5" } });
-      expect(input.dispatchEvent(event)).toBe(true);
+      let dispatched = false;
+      await act(async () => { dispatched = input.dispatchEvent(event); });
+      expect(dispatched).toBe(true);
       fireEvent.change(input, { target: { value: "7.5" } });
       expect(input).toHaveValue("7.5");
       expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());

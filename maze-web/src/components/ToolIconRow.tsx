@@ -4,8 +4,12 @@ import { ToolGlyph } from "./features/ToolGlyph";
 import type { ToolGlyphKey } from "./features/toolGlyphs";
 import { spacing } from "../styles/theme";
 
+type ToolDefinition<T extends string> =
+  | readonly [T, string, string?]
+  | readonly [T, string, string, readonly ShortcutKey[]];
+
 interface Props<T extends string> {
-  tools: readonly (readonly [T, string, string?, (readonly ShortcutKey[])?])[];
+  tools: readonly ToolDefinition<T>[];
   activeTool: T;
   onPick: (tool: T) => void;
   glyphFor?: (tool: T) => ToolGlyphKey;

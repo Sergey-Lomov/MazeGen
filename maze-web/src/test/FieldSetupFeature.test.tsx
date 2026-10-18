@@ -8,6 +8,7 @@ import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipControlWithin } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
@@ -72,7 +73,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const dialogQueries = within(dialog!);
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
     fireEvent.change(inputs[4], { target: { value: "10" } });
-    fireEvent.click(dialogQueries.getByTitle("Portrait"));
+    fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
@@ -303,7 +304,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const cellInput = dialogQueries.getAllByRole("spinbutton")[4] as HTMLInputElement;
     fireEvent.change(cellInput, { target: { value: "10" } });
     expect(cellInput.value).toBe("10");
-    fireEvent.click(dialogQueries.getByTitle("Portrait"));
+    fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     expect(dialogQueries.getByRole("checkbox")).toBeChecked();
     expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled();
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
