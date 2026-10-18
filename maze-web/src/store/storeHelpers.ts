@@ -193,6 +193,7 @@ const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   cairo: "rect",
   square_octagon: "rect",
   brick: "rect",
+  trihexagonal: "rect",
 };
 
 /** The kind's default preset shape. */
@@ -241,6 +242,11 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     triangle: { shape: "triangle", side: 16 },
   },
   brick: {
+    rect: { shape: "rect", cols: 8, rows: 8 },
+    circle: { shape: "circle", radius: 8 },
+    triangle: { shape: "triangle", side: 16 },
+  },
+  trihexagonal: {
     rect: { shape: "rect", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
@@ -310,6 +316,7 @@ const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   cairo: { shape: "rect", cols: 5, rows: 5 },
   square_octagon: { shape: "rect", cols: 5, rows: 5 },
   brick: { shape: "rect", cols: 5, rows: 5 },
+  trihexagonal: { shape: "rect", cols: 5, rows: 5 },
 };
 
 export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
@@ -332,6 +339,7 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   cairo: new Set<number>(),
   square_octagon: new Set<number>(),
   brick: new Set<number>(),
+  trihexagonal: new Set<number>(),
 });
 
 /** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's

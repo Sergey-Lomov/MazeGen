@@ -11,6 +11,7 @@ const KEYS: Record<TessellationConfig["kind"], string> = {
   cairo: "cairo_pentagon",
   square_octagon: "regular:8",
   brick: "brick:brick",
+  trihexagonal: "regular:6",
 };
 
 export function fakeTessellationShapes(config: { tessellation: TessellationConfig; points: [number, number][] }): TessellationShapes {

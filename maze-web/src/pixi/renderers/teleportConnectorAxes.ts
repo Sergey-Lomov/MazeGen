@@ -59,6 +59,10 @@ const SQUARE_OCTAGON_AXES: Axis[] = [0, 45, 90, 135].map(axisFromDeg);
 // are the horizontal and vertical axes.
 const BRICK_AXES: Axis[] = [0, 90].map(axisFromDeg);
 
+// Hexagon and triangle faces are the sides of a flat-top hexagon, whose normals are 30, 90 and 150
+// degrees; the display transform is a reflection, which keeps this set unchanged.
+const TRIHEXAGONAL_AXES: Axis[] = [30, 90, 150].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -79,4 +83,5 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   cairo: () => CAIRO_AXES,
   square_octagon: () => SQUARE_OCTAGON_AXES,
   brick: () => BRICK_AXES,
+  trihexagonal: () => TRIHEXAGONAL_AXES,
 };

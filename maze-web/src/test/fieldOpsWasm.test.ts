@@ -82,6 +82,23 @@ describe("field operations over wasm", () => {
     }
   });
 
+  it("builds trihexagonal presets and translates only by lattice vectors", () => {
+    const kagome = tessellationConfigOf("trihexagonal");
+    // Wire cells are `[3q + kind, r]` with kind 0 hexagon, 1 up triangle, 2 down triangle.
+    const hexagons = getFieldPreset(kagome, "rect", { cols: 3, rows: 3 }).filter(([x]) => x % 3 === 0);
+    expect(hexagons).toHaveLength(9);
+    expect(getFieldPreset(kagome, "triangle", { side: 4 }).length).toBeGreaterThan(0);
+    // One hexagon pitch along x moves the hexagon at q = 0 to q = 1.
+    expect(translateFieldCells(kagome, [[0, 0]], [2, 0])).toEqual([[3, 0]]);
+    try {
+      // Half a pitch lands on a triangle vertex, not on a lattice translation.
+      translateFieldCells(kagome, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+  });
+
   it("translates and reflects cells on symmetric vectors and axes", () => {
     expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
     expect(reflectFieldCells(square, [[0, 0], [1, 0]], [[2, 0], [2, 1]])).toEqual([[2, 0], [3, 0]]);

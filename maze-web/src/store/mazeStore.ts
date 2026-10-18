@@ -62,6 +62,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         cairo: new Set(ff.freeFieldPoints.cairo.map(([x, y]) => encodePoint(x, y))),
         square_octagon: new Set(ff.freeFieldPoints.square_octagon.map(([x, y]) => encodePoint(x, y))),
         brick: new Set(ff.freeFieldPoints.brick.map(([x, y]) => encodePoint(x, y))),
+        trihexagonal: new Set(ff.freeFieldPoints.trihexagonal.map(([x, y]) => encodePoint(x, y))),
       };
       const { isEditingField, fieldPoints } = deriveEditState(kind, fieldConfig, freeFieldPoints);
       floorFields[floor.id] = {

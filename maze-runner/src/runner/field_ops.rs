@@ -459,6 +459,16 @@ mod tests {
                 vec![("radius", 4)],
             ),
             (
+                TessellationKind::Trihexagonal,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::Trihexagonal,
+                "triangle",
+                vec![("side", 6)],
+            ),
+            (
                 TessellationKind::Brick,
                 "rect",
                 vec![("cols", 5), ("rows", 4)],

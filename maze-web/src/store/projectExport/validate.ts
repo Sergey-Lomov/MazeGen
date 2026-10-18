@@ -71,7 +71,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "tri", "cairo", "square_octagon", "brick"] as const, "square");
+  const kind = optEnum(tessObj, "kind", ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal"] as const, "square");
   const params = assertObject(tessObj.params, "tessellation.params");
   // The registered kinds take no params; core's tessellation factory rejects any others too.
   const unsupportedParam = Object.keys(params)[0];
@@ -229,7 +229,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
-      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [] }, fieldEditMode: "default" };
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [] }, fieldEditMode: "default" };
   }
 
   return {

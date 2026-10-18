@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Six implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Seven implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -46,7 +46,7 @@ are zero-sized instances (`#[derive(Default)]`). Free functions built on the tra
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo" | "square_octagon" | "brick", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -589,3 +589,15 @@ Status (GitHub issue #789): `space::brick` (`BrickTessellation`, kind `brick`, n
 - **Geometry.** All vertex coordinates are multiples of 1/2, computed from integer half units, so a vertex (including the one splitting a top edge) is bit-identical from every cell sharing it and a half face of one cell reversed equals the matching half face of its neighbor. `candidate_cells` is the exact index box around the query box.
 - **Presets.** `rect` (`cols × rows` cells, origin cell at `size / 2` rounded down; ragged because of the shifted rows), `circle` by cell center, and `triangle`, a pyramid rather than an equilateral triangle: `side` is the number of bricks in the bottom row and every row above has one brick fewer, each resting on two below it (sides rise at `atan(2)` ≈ 63.4°, which the half-cell row shift follows exactly, where an equilateral triangle's 60° would leave a ragged edge; `side (side + 1) / 2` cells, at most 1 000 000). Translate and reflect are derived geometrically (a vector must keep the row parity shift, e.g. `(1, 0)` or `(1/2, 1)`; `(0, 1)` is not a symmetry).
 - **Wire and web.** `{ "kind": "brick", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.brick` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 0° and 90°. Tessellation-specific split templates are not part of this ticket.
+
+### Trihexagonal tessellation (3.6.3.6)
+
+Status (GitHub issue #792): `space::trihexagonal` (`TrihexagonalTessellation`, kind `trihexagonal`, no params) is the kagome tiling: regular hexagons and equilateral triangles of edge length 1 alternate around every vertex. A hexagon has six triangle neighbors, a triangle three hexagon neighbors. Hexagon area `3√3 / 2`, triangle area `√3 / 4`, so `cell_scale` differs between the two. Split patterns are not part of this ticket.
+
+- **Cell ids.** `TrihexagonalPoint { q, r, kind }` with `kind` one of `Hexagon`, `Up`, `Down`. Hexagon centers form a triangular lattice with axial coordinates `(q, r)` (flat-top hexagons, neighbors touch at a vertex, center distance 2). Every lattice triangle holds one kagome triangle: `Down(q, r)` (apex down) sits between hexagons `(q, r)`, `(q+1, r)`, `(q, r+1)`; `Up(q, r)` (apex up) between `(q+1, r)`, `(q, r+1)`, `(q+1, r+1)`. Every id is a valid cell. Wire encoding: `[x, y] = [3q + kind, r]` with kind 0 hexagon, 1 up, 2 down (`to_xy`/`from_xy`; `q` beyond `±i32::MAX / 3` wraps).
+- **Faces.** One `TrihexagonalFace` enum of the compass directions `NE, N, NW, SW, S, SE`. A hexagon has all six, counter-clockwise from `NE` (`regular:6`); an up triangle `NE, NW, S` and a down triangle `N, SW, SE` (`regular:3`, both counter-clockwise). `opposite()` is the 180° turn; neighbors always meet across opposite faces.
+- **Neighbors.** `step(face)` returns `None` for a face the cell lacks or on `i32` overflow. A hexagon's `NE, NW, S` lead to down triangles and `N, SW, SE` to up triangles.
+- **Straightness.** A hexagon is passed straight iff the pass leaves by the opposite face; no pass through a triangle is straight (every pass turns by 60°). Checked against the geometric definition.
+- **Geometry.** Vertices sit on the integer lattice `x = i / 2`, `y = j·√3 / 2`, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts exactly (three cells per lattice anchor) before building any.
+- **Presets.** `rect` (`cols × rows` hexagons in screen-aligned rows, every row shifted by half a pitch, plus every triangle whose three hexagons are all in the set; origin hexagon at `size / 2`, rounded down), `circle` by cell center and `triangle` by whole cell; translate and reflect are derived geometrically.
+- **Wire and web.** `{ "kind": "trihexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.trihexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 30°, 90°, 150°.
