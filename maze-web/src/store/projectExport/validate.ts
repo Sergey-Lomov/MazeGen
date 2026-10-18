@@ -71,7 +71,11 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal"] as const, "square");
+  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal"] as const;
+  const rawKind = assertString(tessObj.kind, "tessellation.kind");
+  if (!(tessellationKinds as readonly string[]).includes(rawKind))
+    throw new Error(`Invalid tessellation kind at tessellation.kind: ${rawKind}`);
+  const kind = rawKind as typeof tessellationKinds[number];
   const params = assertObject(tessObj.params, "tessellation.params");
   // The registered kinds take no params; core's tessellation factory rejects any others too.
   const unsupportedParam = Object.keys(params)[0];

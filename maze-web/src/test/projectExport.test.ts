@@ -128,6 +128,27 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed).toEqual(serialized);
   });
 
+  it("rejects an unknown tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.tessellation.kind = "octagonal";
+
+    expect(() => parseAndValidate(raw)).toThrow("Invalid tessellation kind at tessellation.kind: octagonal");
+  });
+
+  it("rejects a missing tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.tessellation.kind;
+
+    expect(() => parseAndValidate(raw)).toThrow("Expected string at tessellation.kind, got undefined");
+  });
+
+  it("rejects a non-string tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.tessellation.kind = 42;
+
+    expect(() => parseAndValidate(raw)).toThrow("Expected string at tessellation.kind, got number");
+  });
+
   it("round-trips Cairo kind and floor-specific custom coordinates", () => {
     const state = makeState();
     state.tessellationKind = "cairo";

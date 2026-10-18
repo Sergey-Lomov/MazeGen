@@ -69,6 +69,17 @@ describe("FeaturesPanel project load", () => {
     expect(loadProject).not.toHaveBeenCalled();
   });
 
+  it("rejects an unknown tessellation kind with an error toast", async () => {
+    const { container } = renderPanel();
+    const project = serializeProject(useMazeStore.getState());
+    project.tessellation.kind = "octagonal" as never;
+    pickProjectFile(JSON.stringify(project), container);
+
+    await waitFor(() => expect(errorCards()).toEqual(["project_load/project.load_error"]));
+    expect(errorDetails("project.load_error")).toContain("tessellation.kind");
+    expect(loadProject).not.toHaveBeenCalled();
+  });
+
   it("raises an error toast for a file that is not JSON", async () => {
     const { container } = renderPanel();
     pickProjectFile("{not json", container);
