@@ -95,9 +95,10 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
 
   const footer = (
     <>
-      <Button variant="secondary" layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
+      <Button variant="secondary" dialogAction layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
       <Button
         variant="primary"
+        dialogAction
         layoutStyle={styles.btnPrimary}
         disabled={!selectedId}
         onClick={handleAdd}

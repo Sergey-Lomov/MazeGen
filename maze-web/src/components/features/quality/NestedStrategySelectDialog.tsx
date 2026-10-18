@@ -96,8 +96,8 @@ export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStra
 
   const footer = (
     <>
-      <Button variant="secondary" layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
-      <Button variant="primary" layoutStyle={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</Button>
+      <Button variant="secondary" dialogAction layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
+      <Button variant="primary" dialogAction layoutStyle={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</Button>
     </>
   );
 

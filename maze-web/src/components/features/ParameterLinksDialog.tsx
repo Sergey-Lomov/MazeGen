@@ -547,8 +547,8 @@ function ModifierStepDialog({
           </Inline>
           {divideByZero && <span style={styles.modifierError}>{m["image_export.param_links.modifier_divide_by_zero"]()}</span>}
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" disabled={!canSave} onClick={save}>
+            <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
               {m["image_export.param_links.save_link"]()}
             </Button>
           </div>
@@ -669,8 +669,8 @@ function ColorModifierStepDialog({
           </Inline>
           {divideByZero && <span style={styles.modifierError}>{m["image_export.param_links.modifier_divide_by_zero"]()}</span>}
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" disabled={!canSave} onClick={save}>
+            <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
               {m["image_export.param_links.save_link"]()}
             </Button>
           </div>
@@ -857,8 +857,8 @@ export function LinkEditor<P extends string>({
                 layoutStyle={styles.showInactiveToggle}
               />
               <div style={styles.editorFooter}>
-                <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-                <Button variant="primary" disabled={!canSave} onClick={save}>
+                <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+                <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
                   {m["image_export.param_links.save_link"]()}
                 </Button>
               </div>
@@ -876,8 +876,8 @@ export function LinkEditor<P extends string>({
             {m["image_export.param_links.replace_message"]({ source: hierarchicalLabel(existingLink.source, registry), modifiers: linkModifiersSuffix(existingLink) })}
           </div>
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" onClick={save}>{m["image_export.param_links.replace_confirm"]()}</Button>
+            <Button variant="secondary" dialogAction onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction onClick={save}>{m["image_export.param_links.replace_confirm"]()}</Button>
           </div>
         </Modal>
       )}
