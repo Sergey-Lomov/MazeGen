@@ -442,6 +442,26 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     expect(result.refusalReason).toBe("ambiguous_face_owner");
   });
 
+  it("rotating onto a plain (non-split) neighbor that is a straight corridor extends it instead of refusing", () => {
+    const plainNodes = ringNodes.filter((n) => n.i === 0);
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward" };
+    // The neighbor's only node already passes straight E-W; with no second node it is no bridge.
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeOriginal, eastOfNeighbor)] = { from: bridgeOriginal, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeOriginal, westOfNeighbor)] = { from: bridgeOriginal, to: westOfNeighbor, kind: "basic" };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, plainNodes, {}, {});
+    expect(result.refusalReason).toBeUndefined();
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(bridgeOriginal, { kind: "one_way_forward", from: center, to: bridgeOriginal }, wallTo(bridgeOriginal, center))],
+    }]);
+  });
+
   it("multi-move rotate: two moves land on the same finished-bridge neighbor — both avoid the bridge slot", () => {
     // Point (0,0) has an original node and slot 0, both with a connection on their E face; rotating
     // moves both onto the N face, landing on the same neighbor (0,1) which has a finished bridge on

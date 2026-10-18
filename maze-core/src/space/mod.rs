@@ -11,6 +11,7 @@ pub mod field_ops;
 pub mod geometry;
 pub mod hex;
 pub mod multi_level;
+pub mod rhombitrihexagonal;
 pub mod shape;
 pub mod snub_hexagonal;
 pub mod square;
@@ -33,6 +34,10 @@ pub use geometry::{
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
+pub use rhombitrihexagonal::{
+    RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
+    RhombitrihexagonalTessellation,
+};
 pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
 pub use snub_hexagonal::{
     SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation,

@@ -66,6 +66,7 @@ pub enum TessellationKind {
     Brick,
     Trihexagonal,
     SnubHexagonal,
+    Rhombitrihexagonal,
 }
 
 /// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory

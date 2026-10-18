@@ -508,6 +508,7 @@ mod tests {
             TessellationKind::Brick,
             TessellationKind::Trihexagonal,
             TessellationKind::SnubHexagonal,
+            TessellationKind::Rhombitrihexagonal,
         ] {
             let expected = build_tessellation(&config(kind), CoreGeometry).unwrap();
             let cells = expected.iter().map(|cell| cell.cell).collect();

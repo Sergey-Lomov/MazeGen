@@ -121,6 +121,7 @@
   "tessellation.brick": "Кирпичная кладка (смещённые ряды)",
   "tessellation.trihexagonal": "Трёхгексагональная (3.6.3.6)",
   "tessellation.snub_hexagonal": "Курносая шестиугольная (3.3.3.3.6)",
+  "tessellation.rhombitrihexagonal": "Ромбитригексагональная (3.4.6.4)",
   "tessellation.orientation": "Ориентация",
   "tessellation.flat_top": "Плоская верхушка",
   "tessellation.pointy_top": "Остроконечная верхушка",

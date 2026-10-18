@@ -10,7 +10,7 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal"` | Confirmed tessellation kind (params are always `{}` for the registered kinds) |
+| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal"` | Confirmed tessellation kind (params are always `{}` for the registered kinds) |
 | `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
 | `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
 | `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |

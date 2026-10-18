@@ -911,6 +911,21 @@ describe("rotatePresetSplitPoint", () => {
     expect(result.get(presetEdgeKey(bridgeSlot, westOfNeighbor))?.state).toBe("passage");
   });
 
+  it("rotating onto a plain (non-split) neighbor that is a straight corridor extends it instead of refusing", () => {
+    // Neighbor (0,1) has one node passing straight E-W; with no second node it is no bridge.
+    const eastOfNeighbor = presetEndpoint([1, 1]);
+    const westOfNeighbor = presetEndpoint([-1, 1]);
+    const neighbor = presetEndpoint([0, 1]);
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const }],
+      [presetEdgeKey(neighbor, eastOfNeighbor), { from: neighbor, to: eastOfNeighbor, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighbor, westOfNeighbor), { from: neighbor, to: westOfNeighbor, state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, {}, {});
+    expect(result.refusalReason).toBeUndefined();
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), neighbor))?.state).toBe("one_way_forward");
+  });
+
   it("rotating a bridge tile re-stitches the static neighbor's existing bridge slot onto the original node that lands on the shared face — and a SECOND rotation still resolves it correctly (GitHub issue #580 preset second-rotation repro)", () => {
     // Mirrors post-edit's own #580 user repro: two adjacent bridge tiles, (0,0) rotating, (0,1)
     // static, both wired to each other via their own slot 0. After the first rotation, (0,0)'s

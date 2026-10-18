@@ -52,6 +52,7 @@ fn every_builtin_preset_builds_valid_connected_sorted_cells() {
     check_presets_build_valid_connected_sorted_cells(&SquareOctagonTessellation);
     check_presets_build_valid_connected_sorted_cells(&TrihexagonalTessellation);
     check_presets_build_valid_connected_sorted_cells(&SnubHexagonalTessellation);
+    check_presets_build_valid_connected_sorted_cells(&RhombitrihexagonalTessellation);
     check_presets_build_valid_connected_sorted_cells(&BrickTessellation);
 }
 
@@ -87,6 +88,10 @@ fn presets_per_kind_match_the_spec_table() {
     );
     assert_eq!(
         preset_keys(&SnubHexagonalTessellation),
+        ["rect", "circle", "triangle"]
+    );
+    assert_eq!(
+        preset_keys(&RhombitrihexagonalTessellation),
         ["rect", "circle", "triangle"]
     );
 }

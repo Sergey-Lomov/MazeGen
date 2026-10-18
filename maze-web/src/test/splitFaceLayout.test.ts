@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectIdentity } from "./splitBindingFixture";
-import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, MIN_STRAIGHT_CONNECTOR_ANGLE_DEG, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, isFinishedSplitPair, MIN_STRAIGHT_CONNECTOR_ANGLE_DEG, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
@@ -233,6 +233,15 @@ describe("circularDist", () => {
     expect(circularDist(5, 0, 6)).toBe(1);
     expect(circularDist(0, 2, 6)).toBe(2);
     expect(circularDist(1, 1, 6)).toBe(0);
+  });
+});
+
+describe("isFinishedSplitPair", () => {
+  it("protects an opposite pair only on a split point", () => {
+    expect(isFinishedSplitPair(new Set([0, 3]), 6, 2)).toBe(true);
+    expect(isFinishedSplitPair(new Set([0, 3]), 6, 1)).toBe(false);
+    expect(isFinishedSplitPair(new Set([0, 2]), 6, 2)).toBe(false);
+    expect(isFinishedSplitPair(new Set([0, 3, 1]), 6, 2)).toBe(false);
   });
 });
 

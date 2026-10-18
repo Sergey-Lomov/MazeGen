@@ -3,6 +3,7 @@ use super::*;
 use crate::space::test_support::ScaledSquareTessellation;
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
+    RhombitrihexagonalKind, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
     SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint,
     SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint, TriTessellation,
     TrihexagonalPoint, TrihexagonalTessellation,
@@ -61,6 +62,16 @@ fn snub_hexagonal_cells() -> Vec<SnubHexagonalPoint> {
         .collect()
 }
 
+fn rhombitrihexagonal_cells() -> Vec<RhombitrihexagonalPoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            RhombitrihexagonalKind::ALL
+                .into_iter()
+                .map(move |kind| RhombitrihexagonalPoint::new(q, r, kind))
+        })
+        .collect()
+}
+
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
     (-radius..=radius).flat_map(move |x| (-radius..=radius).map(move |y| (x, y)))
 }
@@ -76,6 +87,7 @@ macro_rules! for_each_tessellation {
         $check(&BrickTessellation, &brick_cells());
         $check(&TrihexagonalTessellation, &trihexagonal_cells());
         $check(&SnubHexagonalTessellation, &snub_hexagonal_cells());
+        $check(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
         $check(&ScaledSquareTessellation { scale: 2.5 }, &square_cells());
     };
 }

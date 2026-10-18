@@ -124,6 +124,27 @@ describe("field operations over wasm", () => {
     }
   });
 
+  it("builds rhombitrihexagonal presets and translates and reflects on its symmetries", () => {
+    const rhombi = tessellationConfigOf("rhombitrihexagonal");
+    // Wire cells are `[6q + kind, r]` with kind 0 hexagon, 1..3 squares, 4 and 5 triangles.
+    const preset = getFieldPreset(rhombi, "rect", { cols: 3, rows: 3 });
+    for (const kind of [0, 1, 4]) {
+      expect(preset.some(([x]) => ((x % 6) + 6) % 6 === kind)).toBe(true);
+    }
+    expect(getFieldPreset(rhombi, "triangle", { side: 4 }).length).toBeGreaterThan(0);
+    // The lattice vector (1 + sqrt(3)) * (cos 30deg, sin 30deg) moves the hexagon at q = 0 to q = 1.
+    expect(translateFieldCells(rhombi, [[0, 0]], [(3 + Math.sqrt(3)) / 2, (1 + Math.sqrt(3)) / 2])).toEqual([[6, 0]]);
+    try {
+      translateFieldCells(rhombi, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+    // The vertical axis through the origin hexagon maps the square at 30 degrees onto the one at 150 degrees.
+    expect(fieldOperationAvailable(rhombi, "reflect")).toBe(true);
+    expect(reflectFieldCells(rhombi, [[1, 0]], [[0, 0], [0, 1]])).toEqual([[3, 0]]);
+  });
+
   it("translates and reflects cells on symmetric vectors and axes", () => {
     expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
     expect(reflectFieldCells(square, [[0, 0], [1, 0]], [[2, 0], [2, 1]])).toEqual([[2, 0], [3, 0]]);

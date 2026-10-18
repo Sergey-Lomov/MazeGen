@@ -63,6 +63,11 @@ const BRICK_AXES: Axis[] = [0, 90].map(axisFromDeg);
 // degrees; the display transform is a reflection, which keeps this set unchanged.
 const TRIHEXAGONAL_AXES: Axis[] = [30, 90, 150].map(axisFromDeg);
 
+// Hexagon faces have normals at 30, 90 and 150 degrees, square faces (three orientations, 60 degrees
+// apart) add 0, 60 and 120 degrees, so the face normals give six axes 30 degrees apart; the display
+// transform is a reflection, which keeps this set unchanged.
+const RHOMBITRIHEXAGONAL_AXES: Axis[] = [0, 30, 60, 90, 120, 150].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -86,4 +91,5 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   trihexagonal: () => TRIHEXAGONAL_AXES,
   // Every edge is a unit step of the triangular lattice, so the face normals are the trihexagonal ones.
   snub_hexagonal: () => TRIHEXAGONAL_AXES,
+  rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
 };

@@ -6,7 +6,7 @@ import {
   type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointKey, endpointsEqual,
   buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement,
 } from "./postEditEndpoint";
-import { canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
+import { canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
 import { splitShapeBinding } from "./splitShape";
 import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
@@ -564,7 +564,7 @@ function resolveFaceOwner(
 
   const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
   const active = activeSplitNode[pointKey(newNeighbor)];
-  const safeCandidates = candidates.filter((c) => !hasCompleteOppositePair(decidedFaceIndicesOf(newNeighbor, c.forms, edges, cfg, nodes), degree));
+  const safeCandidates = candidates.filter((c) => !isFinishedSplitPair(decidedFaceIndicesOf(newNeighbor, c.forms, edges, cfg, nodes), degree, candidates.length));
   // Every candidate already holds a finished opposite pair — there is no safe node to hand this new
   // face to at all, not even "the least bad" one (that would still corrupt whichever candidate gets
   // picked). Refuse the new connection outright (the face reverts to wall) rather than guess.

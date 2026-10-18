@@ -4,7 +4,7 @@ import { getCellNeighborOffsets, getNeighborData, rotateFaceIndex } from "./tess
 import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
-import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
+import { type SplitFaceKind, canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { splitShapeBinding } from "./splitShape";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
@@ -640,8 +640,8 @@ function selectExistingPresetFaceOwner(
  * (`selectExistingPresetFaceOwner`) first, then geometry evidence (`canCompleteOppositePair`, does
  * this candidate's OWN other decided faces complete a bridge/diagonal pair with the new face), then
  * the neighbor's active UI slot or original node, restricted to candidates that do NOT already hold a
- * finished opposite pair (`hasCompleteOppositePair` — a 0/1-decided-face candidate is always safe to
- * extend). `assignedThisRotation` guards the geometry tier against the same neighbor node being
+ * finished opposite pair (`isFinishedSplitPair` — a 0/1-decided-face candidate, or the only
+ * node of a plain point, is always safe to extend). `assignedThisRotation` guards the geometry tier against the same neighbor node being
  * claimed by two different new faces within one multi-move rotation, same as the post-edit side.
  *
  * Returns `null` when EVERY candidate at `newNeighbor` already holds a finished pair (e.g. rotating
@@ -678,7 +678,7 @@ function resolvePresetFaceOwner(
     }
   }
 
-  const safeCandidates = candidates.filter((c) => !hasCompleteOppositePair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), degree));
+  const safeCandidates = candidates.filter((c) => !isFinishedSplitPair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), degree, candidates.length));
   if (safeCandidates.length === 0) return null;
 
   const active = resolvePresetActiveEndpoint(newNeighbor, presetActiveSplitNode, level);
