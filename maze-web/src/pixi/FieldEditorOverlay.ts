@@ -406,13 +406,7 @@ export class FieldEditorOverlay {
       if (polygon.length >= 2) {
         const last = { x: polygon[polygon.length - 1].x, y: -polygon[polygon.length - 1].y };
         const first = { x: polygon[0].x, y: -polygon[0].y };
-        if (state.symmetryPolygonFinished) {
-          this.symmetryGraphics.moveTo(last.x, last.y);
-          this.symmetryGraphics.lineTo(first.x, first.y);
-          this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: this.strokeWidth(SYMMETRY_POLYGON_WIDTH) });
-        } else {
-          drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR, this.strokeWidth(SYMMETRY_POLYGON_WIDTH));
-        }
+        drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR, this.strokeWidth(SYMMETRY_POLYGON_WIDTH));
       }
       for (const point of state.symmetryPolygon) {
         this.symmetryGraphics.circle(point.x, -point.y, TILE_SIZE * 0.12);

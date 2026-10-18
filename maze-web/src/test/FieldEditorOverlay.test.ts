@@ -222,7 +222,7 @@ describe("FieldEditorOverlay", () => {
     useMazeStore.setState({
       symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
       symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+      symmetryPolygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }],
       symmetryPolygonFinished: true,
       floorFields: {
         ...state.floorFields,
@@ -237,6 +237,11 @@ describe("FieldEditorOverlay", () => {
     );
     expect((stubs.graphics[0] as { calls: { name: string }[] }).calls.some(call => call.name === "stroke")).toBe(true);
     expect((stubs.graphics[0] as { calls: { name: string }[] }).calls.some(call => call.name === "circle")).toBe(true);
+    const calls = (stubs.graphics[0] as { calls: { name: string; args: unknown[] }[] }).calls;
+    const closingStart = calls.findIndex((call) => call.name === "moveTo"
+      && call.args[0] === 100 && call.args[1] === -100);
+    expect(calls[closingStart + 1]).toMatchObject({ name: "lineTo" });
+    expect(calls[closingStart + 1]?.args).not.toEqual([0, 0]);
 
     useMazeStore.setState({
       floorFields: {

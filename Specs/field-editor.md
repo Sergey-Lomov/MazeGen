@@ -539,9 +539,13 @@ Only active cells are used as the source.
 One-side mode chooses the initial source side from the field when the axis is completed and
 exposes a direction toggle. Polygon mode reuses the field editor's editable polygon gesture and
 has reset and explicit finish actions.
+Resetting the axis keeps a completed processing polygon so it can be reused with a replacement axis.
+When a replacement axis is completed, it is validated before the panel asks for a processing polygon;
+an invalid axis shows its warning instead.
 
 The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
-toward the reflected side. Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
+toward the reflected side. Every processing-polygon edge, including its closing edge, is dashed.
+Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
 screen-space thickness at every zoom level. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes
