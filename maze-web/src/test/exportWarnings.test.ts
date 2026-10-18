@@ -594,6 +594,42 @@ describe("computeVectorByCorridorsWarnings", () => {
     });
   });
 
+  describe("marker extension warnings (GitHub issue #802)", () => {
+    it("flags a start marker extension that reaches another corridor", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+      const warning = warnings.find((item) => item.id === "marker_extension_hits_corridor");
+
+      expect(warning?.nodes).toEqual([0]);
+      expect(warning?.edges).toEqual([]);
+    });
+
+    it("uses the rendered contour instead of the requested corridor thickness", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ thickness: 10, markerWidenPadding: 28 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
+    });
+
+    it("uses the rendered stroke width in legacy-line mode", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ renderStyle: "legacy_line", thickness: 10, markerWidenPadding: 29 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(true);
+    });
+
+    it("does not flag the corridor attached to the marker itself", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(0, 1), e(1, 0)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
+    });
+  });
+
   describe("color contrast warnings", () => {
     it("does not flag colors with a clearly visible luminance difference", () => {
       expect(hasLowContrast(0x666666, 0x333333)).toBe(false);

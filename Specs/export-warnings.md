@@ -73,6 +73,9 @@ network.
   the corridor or exceeds the corridor width; only drawable one-way segments are included.
 - `split_gap_may_shrink` — corridor thickness plus both sides of the split gap exceeds the safe
   split width, so the split gap may be reduced by the renderer.
+- `marker_extension_hits_corridor` — a corridor-colored extension beneath a start or finish marker
+  overlaps a rendered corridor that is not incident to that marker's node. The warning highlights
+  only the marker cell.
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance

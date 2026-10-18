@@ -2036,6 +2036,8 @@
   "image_export.vector_by_corridors.warning_one_way_arrows_overflow_description": "Количество, зазор и вытянутость стрелок одностороннего прохода в сумме превышают размер клетки вдоль коридора, либо их ширина превышает толщину коридора. Уменьшите эти настройки, чтобы ряд стрелок помещался в одну клетку.",
   "image_export.vector_by_corridors.warning_split_gap_may_shrink": "Ширина прохода слишком большая",
   "image_export.vector_by_corridors.warning_split_gap_may_shrink_description": "Ширина прохода плюс удвоенная ширина зазора на сплитах превышает 40 пикселей. Зазор на сплит-тайлах может быть уменьшен.",
+  "image_export.vector_by_corridors.warning_marker_extension_hits_corridor": "Расширение маркера достигает другого коридора",
+  "image_export.vector_by_corridors.warning_marker_extension_hits_corridor_description": "Расширение цвета коридора под маркером старта или финиша достигает другого коридора. Уменьшите размер маркера, рамку, зазор или отступ расширения.",
   "image_export.settings_empty": "У этого режима рендера пока нет настроек",
   "image_export.visual_preset.save": "Сохранить стиль",
   "image_export.visual_preset.load": "Загрузить стиль",
