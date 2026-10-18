@@ -13,7 +13,18 @@ export function getCellHighlightInset(wallThickness = WALL_THICKNESS): number {
 
 export type CellHighlightCornerStyle = "round" | "sharp";
 
-function insetPolygon(vertices: Pos[], inset: number): Pos[] {
+/** Drops consecutive coincident vertices (a flattened curved tile repeats the point where two
+ * segments meet): a zero-length edge has no normal, so its corner would stay un-inset. */
+function withoutRepeats(vertices: Pos[]): Pos[] {
+  const unique = vertices.filter((v, i) => {
+    const previous = vertices[(i + vertices.length - 1) % vertices.length];
+    return Math.hypot(v.x - previous.x, v.y - previous.y) > 1e-9;
+  });
+  return unique;
+}
+
+export function insetPolygon(rawVertices: Pos[], inset: number): Pos[] {
+  const vertices = withoutRepeats(rawVertices);
   const area = vertices.reduce((sum, a, i) => {
     const b = vertices[(i + 1) % vertices.length];
     return sum + a.x * b.y - b.x * a.y;

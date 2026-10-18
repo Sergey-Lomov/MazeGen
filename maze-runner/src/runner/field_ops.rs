@@ -489,6 +489,16 @@ mod tests {
                 vec![("side", 6)],
             ),
             (
+                TessellationKind::CurvedQuadrilateral,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::CurvedQuadrilateral,
+                "triangle",
+                vec![("side", 6)],
+            ),
+            (
                 TessellationKind::Brick,
                 "rect",
                 vec![("cols", 5), ("rows", 4)],

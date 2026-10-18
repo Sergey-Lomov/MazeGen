@@ -173,14 +173,28 @@ impl Segment {
     pub fn flatten(&self, tolerance: f64) -> Vec<Point> {
         match *self {
             Segment::Line { from, to } => vec![from, to],
-            Segment::CircularArc { radius, sweep, .. } => {
+            Segment::CircularArc {
+                from,
+                to,
+                center,
+                radius,
+                sweep,
+                ..
+            } => {
                 let pieces = arc_pieces(radius, sweep, tolerance);
+                // Interior points are spherical interpolations between the endpoint vectors. The
+                // two weights are built from the integer indices alone and added, so an arc and
+                // its `reversed()` flatten to bit-identical point lists (one the reverse of the
+                // other), which paired faces rely on.
+                let (u, v) = (from - center, to - center);
+                let angle = sweep.abs();
+                let weight = |i: usize| (angle * (i as f64 / pieces as f64)).sin() / angle.sin();
                 let mut points = Vec::with_capacity(pieces + 1);
-                points.push(self.start());
+                points.push(from);
                 for i in 1..pieces {
-                    points.push(self.point(i as f64 / pieces as f64));
+                    points.push(center + (u * weight(pieces - i) + v * weight(i)));
                 }
-                points.push(self.end());
+                points.push(to);
                 points
             }
         }

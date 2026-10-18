@@ -166,6 +166,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set(),
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
@@ -194,6 +195,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set(),
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-2 << 16) | 0, 0]),
@@ -221,6 +223,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set(),
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set(),
         brick: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
       },
       isEditingField: true,
@@ -250,6 +253,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 0, 0]),
@@ -278,6 +282,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set(),
         snub_hexagonal: new Set([(-9 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-9 << 16) | 0, 0]),
@@ -306,6 +311,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         trihexagonal: new Set(),
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        curved_quadrilateral: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-6 << 16) | 0, 0]),
@@ -314,6 +320,35 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("rhombitrihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the curved_quadrilateral kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "curved_quadrilateral";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("curved_quadrilateral", { shape: "custom", points: [[-3, 0], [-2, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        curved_quadrilateral: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-3 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("curved_quadrilateral");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 

@@ -37,8 +37,9 @@ pub use ids::{IdGenerator, NodeId};
 pub use meta::MazeMeta;
 pub use space::{
     BrickFace, BrickPoint, BrickTessellation, CairoFace, CairoPoint, CairoTessellation,
-    CairoTileKind, Field, HexFace, HexPoint, HexTessellation, LevelId, MultiLevelField,
-    RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
+    CairoTileKind, CurvedQuadrilateralFace, CurvedQuadrilateralPoint,
+    CurvedQuadrilateralTessellation, Field, HexFace, HexPoint, HexTessellation, LevelId,
+    MultiLevelField, RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
     RhombitrihexagonalTessellation, SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint,
     SnubHexagonalTessellation, SquareFace, SquareOctagonFace, SquareOctagonPoint,
     SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,

@@ -107,6 +107,7 @@
   "tessellation.trihexagonal": "Trihexagonal (3.6.3.6)",
   "tessellation.snub_hexagonal": "Snub hexagonal (3.3.3.3.6)",
   "tessellation.rhombitrihexagonal": "Rhombitrihexagonal (3.4.6.4)",
+  "tessellation.curved_quadrilateral": "Curved quadrilateral",
   "tessellation.orientation": "Orientation",
   "tessellation.flat_top": "Flat top",
   "tessellation.pointy_top": "Pointy top",

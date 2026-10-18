@@ -50,7 +50,7 @@ describe("lab geometry matches the production pipeline", () => {
     const neighbourOfPort = cell.ports.map((port) => offsets.find(([dx, dy]) => {
       const face = getSharedEdgeSegment([cx, cy], [cx + dx, cy + dy], cfg);
       if (!face) return false;
-      return Math.hypot((face.v0.x + face.v1.x) / 2 - centre.x - port.midpoint.x, (face.v0.y + face.v1.y) / 2 - centre.y - port.midpoint.y) < 1e-6;
+      return Math.hypot(face.contact.x - centre.x - port.midpoint.x, face.contact.y - centre.y - port.midpoint.y) < 1e-6;
     })!);
     expect(neighbourOfPort.every(Boolean)).toBe(true);
     const shortestFace = Math.min(...cell.ports.map(faceLength));

@@ -14,6 +14,7 @@ const KEYS: Record<TessellationConfig["kind"], string> = {
   trihexagonal: "regular:6",
   snub_hexagonal: "regular:6",
   rhombitrihexagonal: "regular:6",
+  curved_quadrilateral: "curved_quadrilateral:curved_quadrilateral",
 };
 
 export function fakeTessellationShapes(config: { tessellation: TessellationConfig; points: [number, number][] }): TessellationShapes {
