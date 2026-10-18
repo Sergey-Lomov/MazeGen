@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
-import { CorridorGeometryTestPage, PROBLEM_TYPES, labCellGeometry } from "../components/CorridorGeometryTestPage";
+import { CorridorGeometryTestPage, FAMILIES, PROBLEM_TYPES, labCellGeometry, prepareFamily } from "../components/CorridorGeometryTestPage";
 import { contourToPolyline } from "../pixi/imageExport/vectorByCorridorsContour";
 import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
 
@@ -143,5 +143,57 @@ describe("overflow problem examples stay inside their cell", () => {
     expect(Math.max(...contourToPolyline(contour, 0.25).map((point) => convexPolygonOutsideDistance(point, example.cell.polygon)))).toBeLessThan(1e-6);
     // The closure no longer runs around the junction target.
     expect(contour.cmds.some((command) => command.kind === "arc" && Math.hypot(command.c.x - geometry!.target.x, command.c.y - geometry!.target.y) < 1e-6)).toBe(false);
+  });
+});
+
+describe("curved quadrilateral cell", () => {
+  const family = prepareFamily(FAMILIES.find((candidate) => candidate.id === "curved_quadrilateral")!)!;
+  type Point = { x: number; y: number };
+
+  function distanceToEdges(point: Point, polygon: readonly Point[]): number {
+    return Math.min(...polygon.map((a, index) => {
+      const b = polygon[(index + 1) % polygon.length];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy);
+    }));
+  }
+
+  function inside(point: Point, polygon: readonly Point[]): boolean {
+    let result = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i];
+      const b = polygon[j];
+      if ((a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) result = !result;
+    }
+    return result;
+  }
+
+  it("has curved faces", () => {
+    expect(family.ports.some((port) => (port.facePolyline?.length ?? 0) >= 3)).toBe(true);
+  });
+
+  it("puts the mouth ends of every port on its face curve", () => {
+    for (let mask = 1; mask < 1 << family.ports.length; mask++) {
+      const { geometry } = labCellGeometry(family, mask, 12, 4);
+      const polyline = contourToPolyline(geometry!.contour[0], 0.25);
+      family.ports.forEach((port, index) => {
+        if ((mask & (1 << index)) === 0 || !port.facePolyline) return;
+        const nearest = Math.min(...port.facePolyline.map((point) => Math.min(...polyline.map((other) => Math.hypot(point.x - other.x, point.y - other.y)))));
+        expect(nearest).toBeLessThan(2);
+        const onCurve = polyline.filter((point) => distanceToEdges(point, port.facePolyline!) < 1e-6);
+        expect(onCurve.length).toBeGreaterThanOrEqual(2);
+      });
+    }
+  });
+
+  it("keeps every contour inside the cell", () => {
+    for (let mask = 1; mask < 1 << family.ports.length; mask++) {
+      const { geometry } = labCellGeometry(family, mask, 12, 4);
+      for (const point of contourToPolyline(geometry!.contour[0], 0.25)) {
+        expect(inside(point, family.polygon) || distanceToEdges(point, family.polygon) < 0.05).toBe(true);
+      }
+    }
   });
 });

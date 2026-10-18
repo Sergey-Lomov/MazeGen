@@ -21,7 +21,9 @@ export type CorridorSegment = {
   faceNormal?: { x: number; y: number };
   /** Real shared-face length, used by contour width clamping. */
   faceLength?: number;
-  /** Convex cell polygons, used by the contour engine's containment guard. */
+  /** The shared face's flattened boundary; three or more points mark a curved face. */
+  facePolyline?: { x: number; y: number }[];
+  /** Cell polygons (arc sides flattened, so possibly concave), used by the contour engine's containment guard. */
   cellVertices0?: { x: number; y: number }[];
   cellVertices1?: { x: number; y: number }[];
   oneWayDir?: { dx: number; dy: number };
@@ -144,6 +146,7 @@ export function buildCorridorSegments(
           faceMidpoint,
           faceNormal,
           faceLength,
+          ...(sharedFace && sharedFace.polyline.length >= 3 ? { facePolyline: sharedFace.polyline.map(([px, py]) => ({ x: px, y: py })) } : {}),
           cellVertices0: getCellVertices(n.x, n.y, cfg) ?? undefined,
           cellVertices1: getCellVertices(nx, ny, cfg) ?? undefined,
         } : {}),

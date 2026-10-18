@@ -289,6 +289,17 @@ describe("buildCorridorSegments", () => {
     expect(segments[0].v1).toEqual(getCellCenter(1, 0, squareCfg));
   });
 
+  it("curved-quadrilateral segments carry the shared face's curve; straight faces carry none", () => {
+    const curvedCfg: FieldConfig = fieldOf("curved_quadrilateral", { shape: "rect", cols: 4, rows: 4 });
+    const curved = buildCorridorSegments([n(0, 0, 0), n(1, 1, 0)], [e(0, 1), e(1, 0)], curvedCfg);
+    expect(curved).toHaveLength(1);
+    const face = getSharedEdgeSegment([0, 0], [1, 0], curvedCfg)!;
+    expect(face.polyline.length).toBeGreaterThanOrEqual(3);
+    expect(curved[0].facePolyline).toEqual(face.polyline.map(([x, y]) => ({ x, y })));
+    const straight = buildCorridorSegments([n(0, 0, 0), n(1, 1, 0)], [e(0, 1), e(1, 0)], squareCfg);
+    expect(straight[0].facePolyline).toBeUndefined();
+  });
+
   it("Cairo segments use the shared-face midpoint and its perpendicular outward normal", () => {
     const cfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const a: [number, number] = [2, 1];

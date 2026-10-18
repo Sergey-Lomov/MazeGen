@@ -9,6 +9,10 @@ export type CorridorPort = {
   midpoint: CorridorPoint;
   normal: CorridorPoint;
   face?: readonly [CorridorPoint, CorridorPoint];
+  /** The shared face's flattened boundary, for a curved side. With three or more points the mouth
+   *  ends lie on this curve and the normal follows its tangent at `midpoint`; both cells sharing the
+   *  face get the same curve, so their corridor mouths agree. */
+  facePolyline?: readonly CorridorPoint[];
 };
 export type PathCmd =
   | { kind: "move"; to: Pt }
@@ -47,11 +51,14 @@ export type CorridorSegmentInput = {
   faceMidpoint?: Pt;
   faceNormal?: Pt;
   faceLength?: number;
+  /** The shared face's flattened boundary (see `CorridorPort.facePolyline`). */
+  facePolyline?: readonly Pt[];
   cellVertices0?: Pt[];
   cellVertices1?: Pt[];
   v1TouchesSplit?: boolean;
 };
-type Port = { centre: Pt; mid: Pt; out: Pt };
+/** `ends`, given for a curved face, are the mouth's two border points on that face's curve. */
+type Port = { centre: Pt; mid: Pt; out: Pt; ends?: { left: Pt; right: Pt } };
 type Tile = { id: CorridorCellId; centre: Pt; ports: Port[]; boundary: readonly Pt[] };
 
 /** Angular tolerance, in radians, for treating a port as lying on the atan2 branch cut. */
@@ -72,14 +79,30 @@ function halfWidthForPorts(ports: readonly CorridorPort[], requested: number): n
   return Number.isFinite(shortest) ? Math.min(requested, shortest / 2) : requested;
 }
 
-function buildTilesFromCells(cells: readonly CorridorCell[], ports: readonly CorridorPort[]): Tile[] {
+/** Mouth border points of a port on a curved face: the points `halfWidth` along the face's curve to
+ *  either side of the port's midpoint. `undefined` for a straight (or unknown) face. */
+function curvedMouthEnds(port: CorridorPort, out: Pt, halfWidth: number): Port["ends"] {
+  const curve = port.facePolyline;
+  if (!curve || curve.length < 3) return undefined;
+  const total = polylineLength(curve);
+  const at = distanceAlongPolyline(curve, port.midpoint);
+  const first = pointAtPolylineDistance(curve, Math.max(0, at - halfWidth)).point;
+  const second = pointAtPolylineDistance(curve, Math.min(total, at + halfWidth)).point;
+  const across = leftN(out);
+  return dot(sub(first, port.midpoint), across) >= dot(sub(second, port.midpoint), across)
+    ? { left: first, right: second }
+    : { left: second, right: first };
+}
+
+function buildTilesFromCells(cells: readonly CorridorCell[], ports: readonly CorridorPort[], halfWidth: number): Tile[] {
   const cellById = new Map<CorridorCellId, CorridorCell>(cells.map((cell) => [cell.id, cell]));
   const tiles = new Map<CorridorCellId, Tile>();
   for (const port of ports) {
     const cell = cellById.get(port.cellId);
     if (!cell || cell.polygon.length < 3) continue;
     const tile = tiles.get(cell.id) ?? { id: cell.id, centre: cell.center, ports: [], boundary: cell.polygon };
-    tile.ports.push({ centre: cell.center, mid: port.midpoint, out: norm(port.normal) });
+    const out = norm(port.normal);
+    tile.ports.push({ centre: cell.center, mid: port.midpoint, out, ends: curvedMouthEnds(port, out, halfWidth) });
     tiles.set(cell.id, tile);
   }
   return [...tiles.values()];
@@ -180,6 +203,7 @@ function biarcTargetTangents(first: Port, second: Port, target: Pt): {
 }
 
 function portBorderEnds(port: Port, halfWidth: number): { left: Pt; right: Pt } {
+  if (port.ends) return port.ends;
   const tangent = leftN(port.out);
   return { left: add(port.mid, mul(tangent, halfWidth)), right: sub(port.mid, mul(tangent, halfWidth)) };
 }
@@ -378,26 +402,80 @@ function ribbonAlong(port: Port, curve: Cubic, halfWidth: number): Ribbon {
   };
 }
 
-/** Outward unit normal and room (signed distance from `point`) for every face of a convex cell. */
-function facesSeenFrom(point: Pt, boundary: readonly Pt[]): Array<{ outward: Pt; room: number }> {
+type SupportingFace = { outward: Pt; anchor: Pt };
+const supportingFacesByBoundary = new WeakMap<readonly Pt[], SupportingFace[]>();
+
+/** The faces of a cell with the whole cell behind their line, outward normal each. A face bulging
+ *  into a cell (a concave arc side, flattened) is no half-plane limit, so it is left out and covered
+ *  by the sampled checks (`pointsInside`). Cached per boundary: finding them is quadratic in its size. */
+function supportingFaces(boundary: readonly Pt[]): SupportingFace[] {
+  const cached = supportingFacesByBoundary.get(boundary);
+  if (cached) return cached;
   const interior = mul(boundary.reduce((sum, vertex) => add(sum, vertex), { x: 0, y: 0 }), 1 / boundary.length);
-  return boundary.map((a, index) => {
-    let outward = norm(leftN(sub(boundary[(index + 1) % boundary.length], a)));
+  const faces: SupportingFace[] = [];
+  boundary.forEach((a, index) => {
+    const edge = sub(boundary[(index + 1) % boundary.length], a);
+    if (len(edge) <= 1e-9) return;
+    let outward = norm(leftN(edge));
     if (dot(outward, sub(a, interior)) < 0) outward = mul(outward, -1);
-    return { outward, room: dot(sub(a, point), outward) };
+    if (boundary.some((vertex) => dot(sub(vertex, a), outward) > 1e-7)) return;
+    faces.push({ outward, anchor: a });
+  });
+  supportingFacesByBoundary.set(boundary, faces);
+  return faces;
+}
+
+/** Outward unit normal and room (signed distance from `point`) for every supporting face of a cell. */
+function facesSeenFrom(point: Pt, boundary: readonly Pt[]): Array<{ outward: Pt; room: number }> {
+  return supportingFaces(boundary).map(({ outward, anchor }) => ({ outward, room: dot(sub(anchor, point), outward) }));
+}
+
+/** Whether `point` lies on an edge of `boundary` (within float noise). */
+function pointOnPolygonEdge(point: Pt, boundary: readonly Pt[]): boolean {
+  return boundary.some((a, index) => {
+    const edge = sub(boundary[(index + 1) % boundary.length], a);
+    const edgeLength = len(edge);
+    if (edgeLength <= 1e-9) return len(sub(point, a)) <= 1e-6;
+    const along = dot(sub(point, a), edge) / edgeLength;
+    if (along < -1e-6 || along > edgeLength + 1e-6) return false;
+    return Math.abs(cross(edge, sub(point, a))) / edgeLength <= 1e-6;
   });
 }
 
+/** Whether `point` is inside `boundary` or on its edge; the boundary may be concave. */
+function pointInPolygon(point: Pt, boundary: readonly Pt[]): boolean {
+  if (pointOnPolygonEdge(point, boundary)) return true;
+  let inside = false;
+  for (let index = 0, previous = boundary.length - 1; index < boundary.length; previous = index++) {
+    const a = boundary[index];
+    const b = boundary[previous];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function pointsInside(points: readonly Pt[], boundary: readonly Pt[]): boolean {
+  return points.every((point) => pointInPolygon(point, boundary));
+}
+
+const ARC_CHECK_SAMPLES = 24;
+
+/** Points along an arc, ends included. */
+function sampledArcPoints(centre: Pt, radius: number, a0: number, sweep: number): Pt[] {
+  return Array.from({ length: ARC_CHECK_SAMPLES + 1 }, (_, index) => arcPoint(centre, radius, a0 + (sweep * index) / ARC_CHECK_SAMPLES));
+}
+
 /** Whether a round dead-end cap — the half-disc of `halfWidth` around `centre`, facing `forward` —
- *  fits the convex `boundary`. Toward a face ahead of it (outward normal pointing forward) the
+ *  fits the `boundary`. Toward a convex face ahead of it (outward normal pointing forward) the
  *  half-disc reaches the full `halfWidth`; toward any other face only `halfWidth · |sin|` of the
  *  angle between that normal and `forward`. */
 function roundCapFits(centre: Pt, forward: Pt, halfWidth: number, boundary: readonly Pt[]): boolean {
   const along = norm(forward);
-  return facesSeenFrom(centre, boundary).every(({ outward, room }) => {
+  const supported = facesSeenFrom(centre, boundary).every(({ outward, room }) => {
     const reach = dot(outward, along) > 0 ? halfWidth : halfWidth * Math.abs(cross(outward, along));
     return room >= reach - 1e-7;
   });
+  return supported && pointsInside(sampledArcPoints(centre, halfWidth, angleOf(along) - Math.PI / 2, Math.PI), boundary);
 }
 
 /** Centre curve of a dead end whose round cap (a half-disc of `halfWidth` around the curve's end)
@@ -423,7 +501,7 @@ function deadEndCentreCurve(port: Port, target: Pt, halfWidth: number, boundary:
 }
 
 /** The deepest circular arc from `start` to `end`, bulging toward `bulge` (perpendicular to the
- *  chord), by at most `maxSagitta`, that stays inside the convex `boundary`; a straight line when no
+ *  chord), by at most `maxSagitta`, that stays inside the `boundary`; a straight line when no
  *  bulge fits. It meets the chord's ends at an angle (a kink) unless it is a full semicircle.
  *
  *  With half-chord `c` and sagitta `s`, the arc has radius `R = (c² + s²) / 2s`, its centre `R − s`
@@ -446,14 +524,23 @@ function deepestChordArc(start: Pt, end: Pt, bulge: Pt, maxSagitta: number, boun
     const faceLimit = discriminant >= 0 ? (room + Math.sqrt(discriminant)) / (1 + beta) : halfChord * Math.sqrt((1 - beta) / (1 + beta));
     sagitta = Math.min(sagitta, faceLimit);
   }
+  const arcWithSagitta = (depth: number): Extract<PathCmd, { kind: "arc" }> => {
+    const radius = (halfChord * halfChord + depth * depth) / (2 * depth);
+    const centre = add(middle, mul(direction, depth - radius));
+    const apex = add(middle, mul(direction, depth));
+    const fromCentre = sub(start, centre);
+    // `ccw: true` decreases the angle, starting along `(y, -x)` of `fromCentre`; take the way through the apex.
+    const ccw = dot({ x: fromCentre.y, y: -fromCentre.x }, sub(apex, start)) > 0;
+    return { kind: "arc", c: centre, r: radius, a0: angleOf(fromCentre), a1: angleOf(sub(end, centre)), ccw };
+  };
+  // A concave side bulging into the cell limits the arc beyond the half-plane limits above.
+  const fits = (depth: number): boolean => {
+    const arc = arcWithSagitta(depth);
+    return pointsInside(sampledArcPoints(arc.c, arc.r, arc.a0, arcSweep(arc)), boundary);
+  };
+  for (let attempt = 0; attempt < 40 && sagitta > 1e-9 && !fits(sagitta); attempt++) sagitta *= 0.8;
   if (sagitta <= 1e-9) return { kind: "line", to: end };
-  const radius = (halfChord * halfChord + sagitta * sagitta) / (2 * sagitta);
-  const centre = add(middle, mul(direction, sagitta - radius));
-  const apex = add(middle, mul(direction, sagitta));
-  const fromCentre = sub(start, centre);
-  // `ccw: true` decreases the angle, starting along `(y, -x)` of `fromCentre`; take the way through the apex.
-  const ccw = dot({ x: fromCentre.y, y: -fromCentre.x }, sub(apex, start)) > 0;
-  return { kind: "arc", c: centre, r: radius, a0: angleOf(fromCentre), a1: angleOf(sub(end, centre)), ccw };
+  return arcWithSagitta(sagitta);
 }
 
 /** Dead end whose round cap does not fit even at the port: the deepest arc through both mouth ends
@@ -469,18 +556,19 @@ function kinkedDeadEndCap(port: Port, halfWidth: number, boundary: readonly Pt[]
   ];
 }
 
-/** Whether an arc stays inside the convex `boundary`. Per face, the arc's farthest point toward it
+/** Whether an arc stays inside the `boundary`. Per convex face, the arc's farthest point toward it
  *  is the full radius when the face's outward normal lies within the arc's swept angles, and one of
- *  the arc's two ends otherwise. */
-function arcInsideConvexCell(arc: Extract<PathCmd, { kind: "arc" }>, boundary: readonly Pt[]): boolean {
+ *  the arc's two ends otherwise; sampled points cover a concave side. */
+function arcInsideCell(arc: Extract<PathCmd, { kind: "arc" }>, boundary: readonly Pt[]): boolean {
   const sweep = arcSweep(arc);
   const ends = [arcPoint(arc.c, arc.r, arc.a0), arcPoint(arc.c, arc.r, arc.a1)];
-  return facesSeenFrom(arc.c, boundary).every(({ outward, room }) => {
+  const supported = facesSeenFrom(arc.c, boundary).every(({ outward, room }) => {
     let fromStart = (sweep >= 0 ? angleOf(outward) - arc.a0 : arc.a0 - angleOf(outward)) % (Math.PI * 2);
     if (fromStart < 0) fromStart += Math.PI * 2;
     const reach = fromStart <= Math.abs(sweep) ? arc.r : Math.max(...ends.map((point) => dot(sub(point, arc.c), outward)));
     return room >= reach - 1e-7;
   });
+  return supported && pointsInside(sampledArcPoints(arc.c, arc.r, arc.a0, sweep), boundary);
 }
 
 type PolylineHit = { point: Pt; aDistance: number; bDistance: number };
@@ -543,6 +631,21 @@ function pointAtPolylineDistance(points: readonly Pt[], distance: number): { poi
     remaining -= segmentLength;
   }
   return { point: points[points.length - 1], tangent: norm(sub(points[points.length - 1], points[points.length - 2])) };
+}
+/** Distance along `points` to the polyline point nearest `target`. */
+function distanceAlongPolyline(points: readonly Pt[], target: Pt): number {
+  let best = { distance: 0, gap: Number.POSITIVE_INFINITY };
+  let travelled = 0;
+  for (let index = 1; index < points.length; index++) {
+    const segment = sub(points[index], points[index - 1]);
+    const segmentLength = len(segment);
+    if (segmentLength <= 1e-9) continue;
+    const amount = Math.max(0, Math.min(1, dot(sub(target, points[index - 1]), segment) / (segmentLength * segmentLength)));
+    const gap = len(sub(target, add(points[index - 1], mul(segment, amount))));
+    if (gap < best.gap) best = { distance: travelled + amount * segmentLength, gap };
+    travelled += segmentLength;
+  }
+  return best.distance;
 }
 function polylineTangentAt(points: readonly Pt[], index: number): Pt {
   if (points.length < 2) return { x: 1, y: 0 };
@@ -644,16 +747,6 @@ function shortSweepCcw(a: number, b: number): boolean {
   while (delta > Math.PI) delta -= Math.PI * 2;
   return delta < 0;
 }
-function pointInConvexPolygon(point: Pt, vertices: readonly Pt[]): boolean {
-  let positive = false;
-  let negative = false;
-  for (let index = 0; index < vertices.length; index++) {
-    const side = cross(sub(vertices[(index + 1) % vertices.length], vertices[index]), sub(point, vertices[index]));
-    if (side > 1e-7) positive = true;
-    if (side < -1e-7) negative = true;
-  }
-  return !(positive && negative);
-}
 /** `fromTangent`/`toTangent` point from each endpoint toward the control point. */
 function quadraticBridgeSegment(from: Pt, to: Pt, fromTangent: Pt, toTangent: Pt): PathCmd {
   const start = norm(fromTangent);
@@ -746,7 +839,7 @@ function appendContourBetweenRibbons(cmds: PathCmd[], current: readonly Pt[], ne
     const nextEnd = next[next.length - 1];
     if (!pointsEqual(currentEnd, nextEnd)) {
       const closure = targetCenteredClosureArc(currentEnd, nextEnd, target, deadEndForward);
-      if (closure && !deadEndForward && !arcInsideConvexCell(closure, boundary)) {
+      if (closure && !deadEndForward && !arcInsideCell(closure, boundary)) {
         // A junction side closure that would leave the cell (target close to a face): the deepest
         // arc straight from one side end to the other that fits, bulging the way the closure did.
         // A dead end's cap already fits by construction (`deadEndCentreCurve`).
@@ -785,14 +878,14 @@ function appendContourBetweenRibbons(cmds: PathCmd[], current: readonly Pt[], ne
   cmds.push(...junctionCornerBridge(a.point, b.point, a.tangent, b.tangent, hit.point, radius));
   appendPolylineReverse(cmds, next, bDistance);
 }
-/** Pulls `point` toward `anchor` (assumed inside) until it lies within the convex `boundary`. */
+/** Pulls `point` toward `anchor` (assumed inside) until it lies within the `boundary`. */
 function constrainPointInside(point: Pt, anchor: Pt, boundary: readonly Pt[]): Pt {
-  if (pointInConvexPolygon(point, boundary)) return point;
+  if (pointInPolygon(point, boundary)) return point;
   let low = 0;
   let high = 1;
   for (let iteration = 0; iteration < 24; iteration++) {
     const amount = (low + high) / 2;
-    if (pointInConvexPolygon(add(anchor, mul(sub(point, anchor), amount)), boundary)) low = amount;
+    if (pointInPolygon(add(anchor, mul(sub(point, anchor), amount)), boundary)) low = amount;
     else high = amount;
   }
   return add(anchor, mul(sub(point, anchor), low));
@@ -929,9 +1022,9 @@ export function buildCorridorGeometryInstances(
   const halfWidth = halfWidthForPorts(ports, thickness / 2);
   const keyPrefix = "contour/" + halfWidth + "/" + (junctionRadius ?? "default") + "@";
   const instances: CorridorContourInstance[] = [];
-  for (const tile of buildTilesFromCells(cells, ports)) {
+  for (const tile of buildTilesFromCells(cells, ports, halfWidth)) {
     const toLocal = (point: Pt): Pt => sub(point, tile.centre);
-    const portKeys = tile.ports.map((port) => keyPoint(toLocal(port.mid)) + ";" + keyPoint(port.out)).sort();
+    const portKeys = tile.ports.map((port) => keyPoint(toLocal(port.mid)) + ";" + keyPoint(port.out) + (port.ends ? ";" + keyPoint(toLocal(port.ends.left)) + ";" + keyPoint(toLocal(port.ends.right)) : "")).sort();
     const key = keyPrefix + tile.boundary.map((point) => keyPoint(toLocal(point))).join("|") + "#" + portKeys.join("|");
     let shape = shapeCache.get(key);
     if (shape === undefined) {
@@ -939,7 +1032,12 @@ export function buildCorridorGeometryInstances(
       const localTile: Tile = {
         id: tile.id,
         centre: origin,
-        ports: tile.ports.map((port) => ({ centre: origin, mid: toLocal(port.mid), out: port.out })),
+        ports: tile.ports.map((port) => ({
+          centre: origin,
+          mid: toLocal(port.mid),
+          out: port.out,
+          ends: port.ends && { left: toLocal(port.ends.left), right: toLocal(port.ends.right) },
+        })),
         boundary: tile.boundary.map(toLocal),
       };
       const path = buildTileGeometry(localTile, halfWidth, junctionRadius, false).contour[0];
@@ -960,7 +1058,7 @@ export function buildCorridorGeometryDebug(
 ): CorridorGeometryDebug[] {
   if (thickness <= 0 || cells.length === 0 || ports.length === 0) return [];
   const halfWidth = halfWidthForPorts(ports, thickness / 2);
-  return buildTilesFromCells(cells, ports).map((tile) => buildTileGeometry(tile, halfWidth, junctionRadius, true));
+  return buildTilesFromCells(cells, ports, halfWidth).map((tile) => buildTileGeometry(tile, halfWidth, junctionRadius, true));
 }
 
 /** Key quantum for tile-type keys, in world units: far below any visible difference, far above the
@@ -988,6 +1086,20 @@ function translateContourPath(path: ContourPath, offset: Pt): ContourPath {
   };
 }
 
+/** Unit normal of a curved face at `midpoint`, on the same side as `sideHint`; `sideHint` itself for a
+ *  straight face. The tangent is the chord over a small span of the curve around `midpoint`, so a
+ *  midpoint sitting on a flattening vertex gets the curve's direction, not one segment's. */
+function curvedFaceNormal(curve: readonly Pt[] | undefined, midpoint: Pt, sideHint: Pt): Pt {
+  if (!curve || curve.length < 3) return sideHint;
+  const total = polylineLength(curve);
+  const at = distanceAlongPolyline(curve, midpoint);
+  const span = total / 20;
+  const before = pointAtPolylineDistance(curve, Math.max(0, at - span)).point;
+  const after = pointAtPolylineDistance(curve, Math.min(total, at + span)).point;
+  const normal = leftN(norm(sub(after, before)));
+  return dot(normal, sideHint) >= 0 ? normal : mul(normal, -1);
+}
+
 /** Adapts the selector's centre-to-centre corridor segments to the engine's cells and face ports.
  *  A segment with `v1TouchesSplit` contributes only its `v0` port. A cell without a known polygon
  *  gets a square of half-side `thickness` around its centre. Cell ids are the rounded centres. */
@@ -1005,14 +1117,15 @@ export function corridorSegmentsToGeometryInput(segments: readonly CorridorSegme
   for (const segment of segments) {
     if (len(sub(segment.v1, segment.v0)) < 1e-6) continue;
     const midpoint = segment.faceMidpoint ?? (segment.v1TouchesSplit ? segment.v1 : mid(segment.v0, segment.v1));
-    const normal = segment.faceNormal ?? norm(sub(segment.v1, segment.v0));
+    const chordNormal = segment.faceNormal ?? norm(sub(segment.v1, segment.v0));
+    const normal = curvedFaceNormal(segment.facePolyline, midpoint, chordNormal);
     const halfFaceOffset = segment.faceLength === undefined ? undefined : mul(leftN(normal), segment.faceLength / 2);
     const face = halfFaceOffset === undefined ? undefined : [sub(midpoint, halfFaceOffset), add(midpoint, halfFaceOffset)] as const;
     const fromId = addCell(segment.v0, segment.cellVertices0);
-    ports.push({ cellId: fromId, midpoint, normal, face });
+    ports.push({ cellId: fromId, midpoint, normal, face, facePolyline: segment.facePolyline });
     if (!segment.v1TouchesSplit) {
       const toId = addCell(segment.v1, segment.cellVertices1);
-      ports.push({ cellId: toId, midpoint, normal: mul(normal, -1), face });
+      ports.push({ cellId: toId, midpoint, normal: mul(normal, -1), face, facePolyline: segment.facePolyline });
     }
   }
 

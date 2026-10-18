@@ -6,6 +6,7 @@ import {
   buildCorridorGeometryDebug,
   buildCorridorGeometryInstances,
   contourToPolyline,
+  corridorSegmentsToGeometryInput,
   contourToSvgPath,
   traceCorridorContour,
   type ContourPath,
@@ -14,6 +15,44 @@ import {
   type CorridorShapeCache,
 } from "../pixi/imageExport/vectorByCorridorsContour";
 import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
+
+describe("curved face ports", () => {
+  // Square cell whose east face bulges outward as an arc through (10,-5), (12,0), (10,5).
+  const east = [{ x: 10, y: -5 }, { x: 11.4, y: -2.5 }, { x: 12, y: 0 }, { x: 11.4, y: 2.5 }, { x: 10, y: 5 }];
+  const polygon = [{ x: -10, y: -5 }, ...east, { x: -10, y: 5 }];
+  const segment = { v0: { x: 0, y: 0 }, v1: { x: 24, y: 0 }, faceMidpoint: { x: 12, y: 0 }, faceNormal: { x: 1, y: 0 }, faceLength: 10, facePolyline: east, cellVertices0: polygon };
+
+  it("takes the mouth ends from the face curve and its normal from the curve's tangent", () => {
+    const { ports } = corridorSegmentsToGeometryInput([segment], 4);
+    expect(ports[0].facePolyline).toBe(east);
+    expect(ports[0].normal.x).toBeCloseTo(1);
+    expect(ports[0].normal.y).toBeCloseTo(0);
+    const input = corridorSegmentsToGeometryInput([segment], 4);
+    const ribbon = buildCorridorGeometryDebug(input.cells, input.ports, 4, 1)[0].ribbons[0];
+    // Half-width 2 along the curve from the apex: both ends sit on the bulge, not on the x = 12 tangent line.
+    for (const end of [ribbon.left[0], ribbon.right[0]]) {
+      expect(end.x).toBeLessThan(12 - 1e-6);
+      expect(Math.abs(end.y)).toBeGreaterThan(1.5);
+    }
+  });
+
+  it("matches the mirrored mouth of the neighbouring cell", () => {
+    const neighbour = {
+      ...segment,
+      v0: segment.v1,
+      v1: segment.v0,
+      faceNormal: { x: -1, y: 0 },
+      // The neighbour's west side is the same curve, concave from its side.
+      cellVertices0: [...east, { x: 34, y: 5 }, { x: 34, y: -5 }],
+    };
+    const mouth = (input: typeof segment) => {
+      const { cells, ports } = corridorSegmentsToGeometryInput([input], 4);
+      const ribbon = buildCorridorGeometryDebug(cells, ports, 4, 1)[0].ribbons[0];
+      return [ribbon.left[0], ribbon.right[0]].map((p) => p.x.toFixed(6) + "," + p.y.toFixed(6)).sort();
+    };
+    expect(mouth(neighbour)).toEqual(mouth(segment));
+  });
+});
 
 describe("universal corridor contour", () => {
   const cell: CorridorCell = {
