@@ -14,7 +14,7 @@ import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorFie
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
 import {
-  notifyEditRefusal, notifyVerticalDragFailure, SPLIT_ROTATION_OUTSIDE_FIELD,
+  notifyEditRefusal, notifyVerticalDragFailure, notifyVerticalPassageUnavailable, SPLIT_ROTATION_OUTSIDE_FIELD,
 } from "../../notifications/editRefusalNotifications";
 import * as m from "~/paraglide/messages";
 
@@ -409,7 +409,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const availableDirections: ("up" | "down")[] = [];
     if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
-    if (availableDirections.length === 0) return;
+    if (availableDirections.length === 0) {
+      notifyVerticalPassageUnavailable("preset_connections");
+      return;
+    }
     // Every click adds a new passage, even where one already exists (GitHub issue #748): a cell may
     // hold any number of elements. Editing an existing passage is the settings tool's job.
     if (availableDirections.length === 1) {

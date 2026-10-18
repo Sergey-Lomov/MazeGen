@@ -206,6 +206,7 @@
   "edit_refusal.split_connection_reset": "Соединение сплита нельзя сбросить отдельно. Сбросьте весь сплит-тайл.",
   "edit_refusal.unconfirmed_split_node": "Подтвердите узел сплита перед назначением элемента.",
   "edit_refusal.teleport_outside_field": "Конец телепорта должен находиться внутри поля.",
+  "vertical_passage.no_adjacent_cell": "Вертикальный проход нельзя добавить: на соседних этажах нет клетки для соединения.",
   "field_edit.auto_fill_preview_active": "Подтвердите или отмените предпросмотр автозаполнения, прежде чем редактировать поле.",
   "preset.start": "Старт",
   "preset.finish": "Финиш",

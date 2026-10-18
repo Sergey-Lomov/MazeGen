@@ -201,6 +201,7 @@
   "edit_refusal.split_connection_reset": "A split connection cannot be reset separately. Reset the whole split tile instead.",
   "edit_refusal.unconfirmed_split_node": "Confirm the split node before assigning an element to it.",
   "edit_refusal.teleport_outside_field": "A teleport endpoint must be inside the field.",
+  "vertical_passage.no_adjacent_cell": "Vertical passage cannot be added because no neighboring floor has a cell to connect.",
   "field_edit.auto_fill_preview_active": "Confirm or cancel the auto-fill preview before editing the field.",
   "preset.start": "Start",
   "preset.finish": "Finish",

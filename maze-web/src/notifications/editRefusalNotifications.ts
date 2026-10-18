@@ -9,6 +9,7 @@ export const SPLIT_FACE_OWNER_AMBIGUOUS = "edit_refusal.split_face_owner_ambiguo
 export const SPLIT_CONNECTION_RESET = "edit_refusal.split_connection_reset";
 export const UNCONFIRMED_SPLIT_NODE = "edit_refusal.unconfirmed_split_node";
 export const TELEPORT_OUTSIDE_FIELD = "edit_refusal.teleport_outside_field";
+export const VERTICAL_PASSAGE_NO_ADJACENT_CELL = "vertical_passage.no_adjacent_cell";
 export const VERTICAL_PASSAGE_DRAG_FAILED = "vertical_drag.failed_passage";
 export const ELEVATOR_DRAG_FAILED = "vertical_drag.failed_elevator";
 
@@ -18,6 +19,7 @@ registerNotificationCode(SPLIT_FACE_OWNER_AMBIGUOUS, { category: "notice", messa
 registerNotificationCode(SPLIT_CONNECTION_RESET, { category: "notice", message: () => m[SPLIT_CONNECTION_RESET]() });
 registerNotificationCode(UNCONFIRMED_SPLIT_NODE, { category: "notice", message: () => m[UNCONFIRMED_SPLIT_NODE]() });
 registerNotificationCode(TELEPORT_OUTSIDE_FIELD, { category: "notice", message: () => m[TELEPORT_OUTSIDE_FIELD]() });
+registerNotificationCode(VERTICAL_PASSAGE_NO_ADJACENT_CELL, { category: "notice", message: () => m[VERTICAL_PASSAGE_NO_ADJACENT_CELL]() });
 registerNotificationCode(VERTICAL_PASSAGE_DRAG_FAILED, {
   category: "notice",
   message: (params) => m[VERTICAL_PASSAGE_DRAG_FAILED]({ coords: params.coords as string }),
@@ -33,6 +35,10 @@ export type EditRefusalSource = "post_edit" | "preset_connections";
 
 export function notifyEditRefusal(source: EditRefusalSource, code: string): void {
   notify({ source, code });
+}
+
+export function notifyVerticalPassageUnavailable(source: EditRefusalSource): void {
+  notify({ source, code: VERTICAL_PASSAGE_NO_ADJACENT_CELL });
 }
 
 export function notifyVerticalDragFailure(

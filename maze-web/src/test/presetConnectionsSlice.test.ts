@@ -9,7 +9,7 @@ import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications } from "../notifications/notificationStore";
 import { noticeCodes, noticeParams } from "./notificationTestHelpers";
 import {
-  ELEVATOR_DRAG_FAILED, SPLIT_ROTATION_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED,
+  ELEVATOR_DRAG_FAILED, SPLIT_ROTATION_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED, VERTICAL_PASSAGE_NO_ADJACENT_CELL,
 } from "../notifications/editRefusalNotifications";
 import { formatTargetLabel } from "../pixi/targetLabel";
 
@@ -798,11 +798,12 @@ describe("mazeStore preset connections", () => {
       expect(s.presetVerticalPassages).toHaveLength(0);
     });
 
-    it("startPresetVerticalPassagePlacement is a no-op when neither direction has a cell", () => {
+    it("startPresetVerticalPassagePlacement explains when neither direction has a cell", () => {
       // Single floor -> no floor above, and origin is already floor 0 -> no floor below either.
       useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_two_way");
       const s = useMazeStore.getState();
       expect(s.presetVerticalPassagePending).toBeNull();
+      expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_NO_ADJACENT_CELL}`]);
       expect(s.presetVerticalPassages).toHaveLength(0);
     });
 

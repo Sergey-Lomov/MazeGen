@@ -47,7 +47,7 @@ import { formatPostEditId } from "../../pixi/postEditIdFormat";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
 import {
-  notifyEditRefusal, notifyVerticalDragFailure,
+  notifyEditRefusal, notifyVerticalDragFailure, notifyVerticalPassageUnavailable,
   SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD,
 } from "../../notifications/editRefusalNotifications";
 import * as m from "~/paraglide/messages";
@@ -1310,7 +1310,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const availableDirections: ("up" | "down")[] = [];
     if (cellExistsAt(resolveFieldAt, point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, point, originLevel - 1)) availableDirections.push("down");
-    if (availableDirections.length === 0) return;
+    if (availableDirections.length === 0) {
+      notifyVerticalPassageUnavailable("post_edit");
+      return;
+    }
     if (availableDirections.length === 1) {
       tryCommitPostEditVerticalPassage(get, set, origin, tool, availableDirections[0]);
       return;

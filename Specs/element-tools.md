@@ -27,7 +27,9 @@ lock tools) only create elements. They never edit an existing one.
   changes an edge that is not one-way.
 - **Vertical passages** offer every direction that has a cell on the adjacent floor, regardless of
   passages already there. Two passages between the same nodes are two elements; opposite one-way
-  passages together behave as a two-way connection.
+  passages together behave as a two-way connection. If neither adjacent floor has a cell at the
+  selected point, placement does not change the maze and shows a notice explaining that no
+  neighboring floor has a cell to connect.
 - **Press-drag still moves.** A press on an existing element arms a drag of the first element by
   the hit-test priority (start, finish, teleport, vertical passage, elevator). Releasing in the same
   cell is a click (adds the tool's element at the pressed cell); leaving the cell, even off the

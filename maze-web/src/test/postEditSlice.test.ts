@@ -15,7 +15,7 @@ import { resetNotifications } from "../notifications/notificationStore";
 import { errorCards, errorDetails, noticeCodes, noticeParams } from "./notificationTestHelpers";
 import {
   ELEVATOR_DRAG_FAILED, SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD,
-  VERTICAL_PASSAGE_DRAG_FAILED,
+  VERTICAL_PASSAGE_DRAG_FAILED, VERTICAL_PASSAGE_NO_ADJACENT_CELL,
 } from "../notifications/editRefusalNotifications";
 import { formatTargetLabel } from "../pixi/targetLabel";
 
@@ -1228,6 +1228,13 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     activeFloorId: `f${activeIndex}`,
     floors: Array.from({ length: count }, (_, i) => ({ id: `f${i}`, title: `Floor ${i + 1}` })),
     floorFields: Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}`, baseFloorFieldConfig()])),
+  });
+
+  it("startPostEditVerticalPassagePlacement explains when neither adjacent floor has a cell", () => {
+    seedPostEdit({ nodes: [{ id: 0, x: 0, y: 0, i: 0 }], edges: [], start: null, finish: null });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    expect(useMazeStore.getState().postEditVerticalPassagePending).toBeNull();
+    expect(noticeCodes()).toEqual([`post_edit/${VERTICAL_PASSAGE_NO_ADJACENT_CELL}`]);
   });
 
   it("a generation-time vertical passage is already a baseline draft entry with its own id, immediately after generate (GitHub issue #564)", () => {
