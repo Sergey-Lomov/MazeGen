@@ -178,8 +178,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
       </Stack>
 
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" layoutStyle={styles.footerButton} disabled={!canConfirm} onClick={handleApply}>
+        <Button variant="secondary" dialogAction layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" dialogAction layoutStyle={styles.footerButton} disabled={!canConfirm} onClick={handleApply}>
           {m["common.confirm"]()}
         </Button>
       </div>

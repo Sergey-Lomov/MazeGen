@@ -80,8 +80,8 @@ export function BackgroundImagePrintDialog({ onApply, onClose }: Props) {
         {!valid && <span style={styles.error}>{m["background.print.invalid"]()}</span>}
       </Stack>
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" layoutStyle={styles.footerButton} disabled={!valid} onClick={confirm}>{m["common.confirm"]()}</Button>
+        <Button variant="secondary" dialogAction layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" dialogAction layoutStyle={styles.footerButton} disabled={!valid} onClick={confirm}>{m["common.confirm"]()}</Button>
       </div>
     </Modal>
   );

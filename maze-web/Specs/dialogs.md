@@ -48,6 +48,10 @@ overlay (fixed fullscreen, semi-transparent)
 
 Wraps `Modal size="approve"` with a fixed footer containing **Cancel** and **Ok** buttons. Use as a drop-in replacement for `window.confirm`.
 
+Every dialog footer that pairs a cancel action with a confirmation action marks both buttons as
+`dialogAction`; `Button` then applies the shared 80 px minimum width. This keeps short labels such
+as "Save" aligned with their cancel action without forcing longer localized labels to truncate.
+
 **Props:**
 
 | Prop | Type | Description |
