@@ -287,4 +287,21 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  curved_quadrilateral: {
+    orientationSlot: null,
+    editor: AXIS_ALIGNED,
+    orientations: [],
+    defaultParams: {},
+    // The underlying unit square is drawn 60 px wide (`TILE_SIZE * 1.5`: the concave pair leaves
+    // only ~0.59 of the square between the sides); the convex sides bulge beyond it.
+    pixelsPerUnit: TILE_SIZE * 1.5,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    splitCircleRotationDeg: 45,
+    equilateralSnap: { step: Math.PI / 2, offset: -Math.PI / 2 },
+    cellSidePx: TILE_SIZE * 1.5,
+    cellMeasurePx: TILE_SIZE * 1.5,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 1.5 * 0.08,
+  },
 };

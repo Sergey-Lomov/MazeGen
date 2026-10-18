@@ -1,10 +1,10 @@
 use crate::config::{TessellationConfig, TessellationKind};
 use maze_core::space::{
-    BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
-    RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalPoint,
-    SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation, SquarePoint,
-    SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
-    TrihexagonalTessellation,
+    BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
+    CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalPoint,
+    RhombitrihexagonalTessellation, SnubHexagonalPoint, SnubHexagonalTessellation,
+    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
+    TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -115,6 +115,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 CellCodec {
                     from_xy: RhombitrihexagonalPoint::from_xy,
                     to_xy: RhombitrihexagonalPoint::to_xy,
+                },
+            ))
+        }
+        TessellationKind::CurvedQuadrilateral => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(CurvedQuadrilateralTessellation),
+                CellCodec {
+                    from_xy: |x, y| CurvedQuadrilateralPoint { x, y },
+                    to_xy: |p| (p.x, p.y),
                 },
             ))
         }
@@ -229,6 +239,17 @@ mod tests {
                     "regular:4".to_string(),
                     "regular:3".to_string()
                 ],
+                (3, -2)
+            ))
+        );
+    }
+
+    #[test]
+    fn builds_curved_quadrilateral_with_one_four_sided_shape() {
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::CurvedQuadrilateral), Probe),
+            Ok((
+                vec!["curved_quadrilateral:curved_quadrilateral".to_string()],
                 (3, -2)
             ))
         );

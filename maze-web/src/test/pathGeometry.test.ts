@@ -13,7 +13,6 @@ function recorder(): PathTarget & { calls: unknown[][] } {
     calls,
     moveTo: (...a) => calls.push(["moveTo", ...a]),
     lineTo: (...a) => calls.push(["lineTo", ...a]),
-    arc: (...a) => calls.push(["arc", ...a]),
   };
 }
 
@@ -24,21 +23,39 @@ describe("path renderer", () => {
     { op: "line_to", to: [0, 0] },
   ];
 
-  it("traces every command kind onto a target", () => {
+  it("traces an arc as chords on the circle that end exactly at the arc's end", () => {
     const target = recorder();
     tracePath(target, quarter);
-    expect(target.calls).toEqual([["moveTo", 1, 0], ["arc", 0, 0, 1, 0, Math.PI / 2, false], ["lineTo", 0, 0]]);
+    const points = target.calls.slice(1, -1).map(([, x, y]) => [x, y] as [number, number]);
+    expect(target.calls[0]).toEqual(["moveTo", 1, 0]);
+    expect(target.calls[target.calls.length - 1]).toEqual(["lineTo", 0, 0]);
+    expect(points.length).toBe(16);
+    for (const [x, y] of points) expect(Math.hypot(x, y)).toBeCloseTo(1, 12);
+    expect(points[points.length - 1][0]).toBeCloseTo(0, 12);
+    expect(points[points.length - 1][1]).toBeCloseTo(1, 12);
   });
 
-  it("keeps an arc on the same curve under a Y flip by reversing its direction", () => {
+  it("traces an arc and its reverse through the same points", () => {
+    const forward = recorder();
+    const backward = recorder();
+    tracePath(forward, quarter.slice(0, 2));
+    tracePath(backward, [
+      { op: "move_to", to: [0, 1] },
+      { op: "arc_to", center: [0, 0], radius: 1, start_angle: Math.PI / 2, end_angle: 0, ccw: false },
+    ]);
+    const key = (calls: unknown[][]) => calls.map(([, x, y]) => `${(x as number).toFixed(9)},${(y as number).toFixed(9)}`);
+    expect(key(backward.calls).reverse()).toEqual(key(forward.calls));
+  });
+
+  it("keeps an arc on the same curve under a Y flip", () => {
     const target = recorder();
     tracePath(target, quarter, YFLIP);
-    const arc = target.calls[1];
-    expect(arc[1]).toBeCloseTo(0);
-    expect(arc[4]).toBeCloseTo(0);
-    expect(arc[5]).toBeCloseTo(-Math.PI / 2);
-    // Mathematically counter-clockwise in Y-up becomes a decreasing angle in Y-down.
-    expect(arc[6]).toBe(true);
+    expect(target.calls[0][1] as number).toBeCloseTo(1, 12);
+    expect(target.calls[0][2] as number).toBeCloseTo(0, 12);
+    const last = target.calls[target.calls.length - 2];
+    expect(last[1] as number).toBeCloseTo(0, 12);
+    expect(last[2] as number).toBeCloseTo(-1, 12);
+    for (const [, x, y] of target.calls.slice(1, -1)) expect(Math.hypot(x as number, y as number)).toBeCloseTo(1, 12);
   });
 
   it("scales radii by a uniform scale and rejects non-similarity transforms for arcs", () => {

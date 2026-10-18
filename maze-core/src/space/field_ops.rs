@@ -229,12 +229,13 @@ fn require_operation<T: Tessellation + ?Sized>(
 
 impl<T: Tessellation + ?Sized> FieldOps for T {}
 
-/// The sorted vertices (segment starts) of `cell`'s boundary.
+/// The characteristic points of `cell`'s boundary: every segment's start and midpoint (the
+/// midpoints tell a convex arc from a concave one over the same chord).
 fn cell_vertices<T: Tessellation + ?Sized>(tessellation: &T, cell: T::CellId) -> Vec<Point> {
     tessellation
         .boundary_path(cell)
         .segments()
-        .map(|segment| segment.start())
+        .flat_map(|segment| [segment.start(), segment.point(0.5)])
         .collect()
 }
 

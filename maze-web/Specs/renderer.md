@@ -117,7 +117,7 @@ visible. This also prevents extreme zoom-out from turning every pointermove into
 rebuild (GitHub issue #650).
 
 ### CellFillRenderer
-Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Draws each cell's display-space path (`getCellPath`, `tracePath`); an inset highlight works on the flattened `getCellVertices` polygon.
+Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Draws each cell's display-space path (`getCellPath`, `tracePath`); an inset highlight works on the flattened `getCellVertices` polygon. `insetPolygon` ignores consecutive coincident vertices so every corner gets inset.
 
 ### WallRenderer
 Draws wall segments between cell pairs. Each `WallEdge` specifies two cell coordinates, passage kind (`both/forward/backward/none`), and style (`solid/faint/invalid`). One-way passages get a directional triangle marker at the face's core contact point. Strokes follow the shared edge's path (`SharedEdge.path`), so arcs stay arcs. Split points (more than one `NodeDto` per point) are excluded entirely — see `SplitJunctionRenderer` below.

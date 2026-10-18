@@ -145,6 +145,19 @@ describe("field operations over wasm", () => {
     expect(reflectFieldCells(rhombi, [[1, 0]], [[0, 0], [0, 1]])).toEqual([[3, 0]]);
   });
 
+  it("builds curved quadrilateral presets and translates only on parity-preserving vectors", () => {
+    const curved = tessellationConfigOf("curved_quadrilateral");
+    expect(getFieldPreset(curved, "rect", { cols: 3, rows: 3 })).toHaveLength(9);
+    expect(getFieldPreset(curved, "triangle", { side: 4 }).length).toBeGreaterThan(0);
+    expect(translateFieldCells(curved, [[0, 0]], [1, 1])).toEqual([[1, 1]]);
+    try {
+      translateFieldCells(curved, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+  });
+
   it("translates and reflects cells on symmetric vectors and axes", () => {
     expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
     expect(reflectFieldCells(square, [[0, 0], [1, 0]], [[2, 0], [2, 1]])).toEqual([[2, 0], [3, 0]]);

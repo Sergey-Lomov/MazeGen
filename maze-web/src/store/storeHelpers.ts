@@ -196,6 +196,7 @@ const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   trihexagonal: "rect",
   snub_hexagonal: "rect",
   rhombitrihexagonal: "rect",
+  curved_quadrilateral: "rect",
 };
 
 /** The kind's default preset shape. */
@@ -259,6 +260,11 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     triangle: { shape: "triangle", side: 16 },
   },
   rhombitrihexagonal: {
+    rect: { shape: "rect", cols: 8, rows: 8 },
+    circle: { shape: "circle", radius: 8 },
+    triangle: { shape: "triangle", side: 16 },
+  },
+  curved_quadrilateral: {
     rect: { shape: "rect", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
@@ -331,6 +337,7 @@ const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   trihexagonal: { shape: "rect", cols: 5, rows: 5 },
   snub_hexagonal: { shape: "rect", cols: 5, rows: 5 },
   rhombitrihexagonal: { shape: "rect", cols: 5, rows: 5 },
+  curved_quadrilateral: { shape: "rect", cols: 5, rows: 5 },
 };
 
 export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
@@ -356,6 +363,7 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   trihexagonal: new Set<number>(),
   snub_hexagonal: new Set<number>(),
   rhombitrihexagonal: new Set<number>(),
+  curved_quadrilateral: new Set<number>(),
 });
 
 /** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's

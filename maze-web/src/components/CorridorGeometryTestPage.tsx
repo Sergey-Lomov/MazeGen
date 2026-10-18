@@ -98,6 +98,13 @@ export const FAMILIES: Family[] = [
     config: { tessellation: tessellationConfigOf("brick"), shape: { shape: "rect", cols: 3, rows: 3 } },
     coordinate: [0, 0],
   },
+  {
+    id: "curved_quadrilateral",
+    label: "Curved quadrilateral",
+    note: "4 faces · 16 combinations",
+    config: { tessellation: tessellationConfigOf("curved_quadrilateral"), shape: { shape: "rect", cols: 3, rows: 3 } },
+    coordinate: [0, 0],
+  },
 ];
 
 const COLORS = ["#6fb5ff", "#ffb86b", "#9fe18a", "#e59aff"];

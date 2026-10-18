@@ -92,4 +92,6 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   // Every edge is a unit step of the triangular lattice, so the face normals are the trihexagonal ones.
   snub_hexagonal: () => TRIHEXAGONAL_AXES,
   rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
+  // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
+  curved_quadrilateral: () => SQUARE_AXES,
 };

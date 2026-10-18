@@ -2,30 +2,50 @@ import type { PathCommand } from "../../wasm/mazeService";
 import { IDENTITY_TRANSFORM, transformCommand, type WorldTransform } from "./worldTransform";
 
 /// The drawing surface a path is traced onto: Pixi `Graphics` and `CanvasRenderingContext2D`
-/// both satisfy it (their `arc` takes an `anticlockwise` flag, true = decreasing angle).
+/// both satisfy it.
 export interface PathTarget {
   moveTo(x: number, y: number): unknown;
   lineTo(x: number, y: number): unknown;
-  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): unknown;
 }
+
+/// Largest angle one chord of a traced arc spans: at 64 chords per circle the chord error is under
+/// 0.05% of the radius.
+const MAX_CHORD_ANGLE = Math.PI / 32;
 
 /// Generic renderer for core's path commands (`Specs/space.md`, "Path commands"): every command
 /// kind is supported on every target. A new segment kind adds its command here, in `pathToSvg`,
 /// and in `transformCommand`. In the target space `ccw` means "angle increases" (the command's
-/// own convention), which the target's `anticlockwise` flag negates.
+/// own convention). An arc is traced as chords whose end points lie exactly on the circle and whose
+/// last point is the arc's end, so arcs meeting at a shared vertex join exactly and trace the same
+/// polyline as the geometry used for chaining and export; the targets' own `arc` places its
+/// joints differently.
 export function tracePath(target: PathTarget, commands: readonly PathCommand[], transform: WorldTransform = IDENTITY_TRANSFORM): void {
+  let current: [number, number] | undefined;
+  const lineTo = (x: number, y: number) => {
+    target.lineTo(x, y);
+    current = [x, y];
+  };
   for (const source of commands) {
     const command = transformCommand(transform, source);
     switch (command.op) {
       case "move_to":
         target.moveTo(command.to[0], command.to[1]);
+        current = [command.to[0], command.to[1]];
         break;
       case "line_to":
-        target.lineTo(command.to[0], command.to[1]);
+        lineTo(command.to[0], command.to[1]);
         break;
-      case "arc_to":
-        target.arc(command.center[0], command.center[1], command.radius, command.start_angle, command.end_angle, !command.ccw);
+      case "arc_to": {
+        const [cx, cy] = command.center;
+        const sweep = arcSweep(command.start_angle, command.end_angle, command.ccw);
+        const pointAt = (angle: number): [number, number] => [cx + command.radius * Math.cos(angle), cy + command.radius * Math.sin(angle)];
+        const [startX, startY] = pointAt(command.start_angle);
+        if (!current) target.moveTo(startX, startY);
+        else if (Math.hypot(current[0] - startX, current[1] - startY) > 1e-9) target.lineTo(startX, startY);
+        const chords = Math.max(1, Math.ceil(Math.abs(sweep) / MAX_CHORD_ANGLE));
+        for (let i = 1; i <= chords; i++) lineTo(...pointAt(command.start_angle + (sweep * i) / chords));
         break;
+      }
     }
   }
 }

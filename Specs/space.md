@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Nine implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation`, `SnubHexagonalTessellation`, `RhombitrihexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`/`snub_hexagonal`/`rhombitrihexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint`, `TrihexagonalPoint`, `SnubHexagonalPoint`, `RhombitrihexagonalPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Ten implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation`, `SnubHexagonalTessellation`, `RhombitrihexagonalTessellation`, `CurvedQuadrilateralTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`/`snub_hexagonal`/`rhombitrihexagonal`/`curved_quadrilateral`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint`, `TrihexagonalPoint`, `SnubHexagonalPoint`, `RhombitrihexagonalPoint`, `CurvedQuadrilateralPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -46,7 +46,7 @@ are zero-sized instances (`#[derive(Default)]`). Free functions built on the tra
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "curved_quadrilateral", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -406,11 +406,11 @@ Status (GitHub issue #759): implemented in `space::geometry`.
   of them (exact joints by construction, not by tolerance). Centers are area centroids.
 - **Segments.** `Segment::Line` and `Segment::CircularArc` (explicit `from`/`to` endpoints plus
   center, radius, start angle and signed sweep, so joints stay exact). `flatten` cuts an arc into
-  the fewest equal pieces whose sagitta stays within the tolerance. Containment, bounds and region
+  the fewest equal pieces whose sagitta stays within the tolerance; interior points interpolate between the endpoint vectors with weights built from the piece indices alone, so an arc and its `reversed()` flatten to bit-identical point lists. Containment, bounds and region
   tests are exact for arcs (never flattened): the ray test cuts an arc at its y-extrema into
   y-monotone pieces with the same half-open rule as lines, and region tests intersect region
-  edges with the circle (`touches_line`, `crosses_line`; tangency touches but never crosses). No
-  built-in tessellation uses arcs yet.
+  edges with the circle (`touches_line`, `crosses_line`; tangency touches but never crosses). Only
+  the curved quadrilateral tessellation uses arcs.
 - **Region size limit.** With `CellScope::Space`, `cells_in_region` returns
   `Err(RegionTooLarge)` when the region's bounding box holds more than `MAX_REGION_CANDIDATES`
   (250 000) candidate cells, before building any — an oversized request fails fast instead of
@@ -443,7 +443,7 @@ the error carries a reason:
 
 - `Unavailable`: the operation or preset is not offered;
 - `NotASymmetry`: the vector or axis is not a symmetry (decided geometrically: every cell around
-  the origin, or around the axis, must map onto a cell with the same boundary vertices);
+  the origin, or around the axis, must map onto a cell with the same boundary vertices and segment midpoints, which tells a convex arc from a concave one over the same chord);
 - `OutsideTessellation`: an input cell is invalid, or a mapped cell does not exist;
 - `InvalidPreset(reason)`: unknown or missing params, a value below its minimum, a parameter
   product above 1,000,000 or a shape too large to build, or one that contains no cells.
@@ -505,7 +505,7 @@ test suite requires the wasm build (`tools/require-wasm.mjs`; `test.sh`/`test.ps
 
 Status (GitHub issue #761, second step): `maze-web/src/pixi/geometry/` holds the generic consumers
 of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache requests the path commands too, see #763) (`tracePath` onto Pixi `Graphics` or a
-canvas 2D context, `pathToSvg` for SVG; PNG export goes through Pixi) after a `WorldTransform` — a
+canvas 2D context, `pathToSvg` for SVG; PNG export goes through Pixi; `tracePath` traces an arc as chords of at most π/32 whose end points lie exactly on the circle, so arcs sharing a vertex join exactly and an arc and its reverse trace the same points) after a `WorldTransform` — a
 similarity (rotation, reflection, uniform scale, translation) so arcs stay arcs; a reflection
 reverses an arc's direction. `polylineOps.ts` works on flattened polylines: `closestPointOnPolyline`,
 `polylineIntersections` (touching ends count, parallel and collinear segments give none) and
@@ -628,3 +628,15 @@ Status (GitHub issue #795): `space::rhombitrihexagonal` (`RhombitrihexagonalTess
 - **Geometry.** Every vertex is `((xr + xs·√3) / 2, (yr + ys·√3) / 2)` for integers, kept as an integer quadruple, so vertices compare exactly and a vertex shared by several cells is bit-identical from each. `candidate_cells` is exact (`x` fixes `q`, then `y` bounds `r`; six cells per hexagon `(q, r)`, vertices within `2` of the anchor center) and counts before building any.
 - **Presets.** `rect` (cells fully inside a `cols·(1 + √3) × rows·(1 + √3)` rectangle centered on the origin hexagon), `circle` by cell center and `triangle` by whole cell; translate and reflect are derived geometrically.
 - **Wire and web.** `{ "kind": "rhombitrihexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.rhombitrihexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 0°, 30°, 60°, 90°, 120°, 150° (hexagon and square face normals).
+
+### Curved quadrilateral tessellation
+
+Status (GitHub issue #799): `space::curved_quadrilateral` (`CurvedQuadrilateralTessellation`, kind `curved_quadrilateral`, no params) is the square grid with every edge replaced by a quarter circle, so each tile has two opposite convex and two opposite concave sides (convexity relative to the tile's interior). The first built-in tessellation with `Segment::CircularArc` faces. Every cell has 4 neighbors and area `1`. Split patterns are not part of this ticket.
+
+- **Cell ids.** `CurvedQuadrilateralPoint { x, y }`, any `i32` pair is a valid cell; cell `(x, y)` is the tile over the unit square `[x, x + 1] × [y, y + 1]`. Wire encoding: `[x, y]`.
+- **Curvature.** In a cell of even `x + y` (`rem_euclid`, so negative coordinates work) the east and west sides are convex and the north and south sides concave; an odd cell is the other way round. A neighbor of a convex side has a concave side there, so the plane is covered without gaps or overlaps. A convex side is the quarter of the circumcircle (radius `√2 / 2`, around the cell's own center) through the square's corners; the same arc is the neighbor's concave side (center = that neighbor's center), so bulges and dents cancel and every tile has area exactly `1`. A convex side reaches `√2 / 2 - 1 / 2 ≈ 0.207` beyond its square. The curvature is fixed, not a parameter.
+- **Faces.** `CurvedQuadrilateralFace` is `E, N, W, S` (the canonical counter-clockwise order, identical to the square's). The opposite face is `neighbor`'s returned face. A pass is straight iff it leaves by the opposite face (the contact points of opposite sides and the center are collinear). The center is the center of the underlying square.
+- **Shape.** One template `curved_quadrilateral:curved_quadrilateral`, four faces, group generated by the two axis mirrors (identity, both mirrors and the half turn). A quarter turn is not a symmetry (it swaps the convex and the concave pair).
+- **Geometry.** Each face is one `CircularArc` with explicit integer corner endpoints (so joints and the shared edge are bit-identical), start angle from the center, sweep `+π/2` for a convex side and `-π/2` for a concave one. `candidate_cells` is the box widened by the bulge, counted before building any.
+- **Presets.** `rect` (`cols × rows` cells, origin cell at `size / 2` rounded down), `circle` and `triangle` by cell center. Translate and reflect are derived geometrically: since the neighbor parity matters, a vector must keep `x + y` parity (`(1, 1)` and `(2, 0)` are symmetries, `(1, 0)` is not); an axis is accepted only if it passes the same check (axes along lattice lines or through cell centers swap the convex and the concave pair, so they are refused).
+- **Wire and web.** `{ "kind": "curved_quadrilateral", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.curved_quadrilateral` (no orientations, axis-aligned editor like the square, `pixelsPerUnit = TILE_SIZE * 1.5` = 60 px so markers fit between the concave sides, `FLIP_Y`), connector axes at 0° and 90°. Rendering, hit-testing and corridor geometry use the universal arc-aware renderers.
