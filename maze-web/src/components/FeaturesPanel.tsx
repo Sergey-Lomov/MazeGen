@@ -101,6 +101,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     brick: m["tessellation.brick"],
     trihexagonal: m["tessellation.trihexagonal"],
     snub_hexagonal: m["tessellation.snub_hexagonal"],
+    rhombitrihexagonal: m["tessellation.rhombitrihexagonal"],
   };
   return labels[kind]();
 }

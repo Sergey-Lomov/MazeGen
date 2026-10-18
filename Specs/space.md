@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Eight implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation`, `SnubHexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`/`snub_hexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint`, `TrihexagonalPoint`, `SnubHexagonalPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Nine implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation`, `SnubHexagonalTessellation`, `RhombitrihexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`/`snub_hexagonal`/`rhombitrihexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint`, `TrihexagonalPoint`, `SnubHexagonalPoint`, `RhombitrihexagonalPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -46,7 +46,7 @@ are zero-sized instances (`#[derive(Default)]`). Free functions built on the tra
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -615,3 +615,16 @@ Status (GitHub issue #793): `space::snub_hexagonal` (`SnubHexagonalTessellation`
 - **Geometry.** Vertices come from the integer lattice coordinates, so a vertex shared by several cells is bit-identical from each. All edges are unit lattice steps (directions 0°, 60°, 120°). `candidate_cells` is exact per row `r` (nine cells per hexagon `(q, r)`, vertices within `2` of the anchor center) and counts before building any.
 - **Presets.** `rect` (cells fully inside a `cols·√7 × rows·√7` rectangle centered on the origin hexagon), `circle` by cell center and `triangle` by whole cell; translate is derived geometrically.
 - **Wire and web.** `{ "kind": "snub_hexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.snub_hexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 30°, 90°, 150°.
+
+### Rhombitrihexagonal tessellation (3.4.6.4)
+
+Status (GitHub issue #795): `space::rhombitrihexagonal` (`RhombitrihexagonalTessellation`, kind `rhombitrihexagonal`, no params) is the rhombitrihexagonal tiling: regular hexagons, squares and equilateral triangles of edge length 1; around every vertex a triangle, a square, a hexagon and a square meet in that order. Per hexagon there are three squares and two triangles. Hexagon area `3√3 / 2`, square area `1`, triangle area `√3 / 4`, so `cell_scale` differs per shape. Split patterns are not part of this ticket.
+
+- **Construction.** Hexagon centers form a triangular lattice of spacing `1 + √3`, spanned by `A = (1 + √3)·(cos 30°, sin 30°)` and `B = (1 + √3)·(0, 1)`. A hexagon's vertices lie at `60°·k` at distance 1 from its center; its face `k` points at `30° + 60°·k`. Neighboring hexagons are joined by a square across each face; a triangle sits at every vertex of a hexagon. The tiling has full `p6m` symmetry, so `field_operations` lists `Translate` and `Reflect`.
+- **Cell ids.** `RhombitrihexagonalPoint { q, r, kind }`, `kind` one of `Hexagon`, `Square0`, `Square1`, `Square2`, `TriangleA`, `TriangleB` (`RhombitrihexagonalKind::ALL`, wire order). `(q, r)` names the hexagon with center `q·A + r·B`. `Square k` is the square across face `k` (`k = 0, 1, 2`, normals `30°`, `90°`, `150°`) of that hexagon; the squares across faces `3, 4, 5` are the squares `0, 1, 2` of the neighboring hexagons `(q-1, r)`, `(q, r-1)`, `(q+1, r-1)`. The three squares are the three orientations (60° apart). `TriangleA`/`TriangleB` are the triangles at hexagon vertices `0` and `1`; the triangles at vertices `2, 4` and `3, 5` are translates of these. Every id is a valid cell. Wire encoding: `[x, y] = [6q + kind index, r]` (`to_xy`/`from_xy`; `q` beyond `±i32::MAX / 6` wraps).
+- **Faces.** `RhombitrihexagonalFace` is the position in `faces_of`: counter-clockwise from the cell's first vertex, a hexagon `0..6` (face `k` runs from the vertex at `60°·k` to the next; `regular:6`), a square `0..4` (`regular:4`; face `0` is the one shared with its anchor hexagon), a triangle `0..3` (`regular:3`; at anchor vertex `j`, face `0` is shared with the square across anchor face `j - 1`). The opposite face is not a function of the face: `neighbor` returns it. It comes from a table, built once per kind by matching reversed edges among the cells anchored within two lattice steps of the origin hexagon.
+- **Neighbors.** `neighbor(cell, face)` is `None` only when the neighbor's `q` or `r` leave `i32`. A hexagon has six square neighbors, a square two hexagons and two triangles, a triangle three squares.
+- **Straightness.** Per orientation, a hexagon is passed straight iff the pass leaves by the opposite face (`(face + 3) mod 6`), a square iff it leaves by `(face + 2) mod 4`; no pass through a triangle is straight. Checked against the geometric definition.
+- **Geometry.** Every vertex is `((xr + xs·√3) / 2, (yr + ys·√3) / 2)` for integers, kept as an integer quadruple, so vertices compare exactly and a vertex shared by several cells is bit-identical from each. `candidate_cells` is exact (`x` fixes `q`, then `y` bounds `r`; six cells per hexagon `(q, r)`, vertices within `2` of the anchor center) and counts before building any.
+- **Presets.** `rect` (cells fully inside a `cols·(1 + √3) × rows·(1 + √3)` rectangle centered on the origin hexagon), `circle` by cell center and `triangle` by whole cell; translate and reflect are derived geometrically.
+- **Wire and web.** `{ "kind": "rhombitrihexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.rhombitrihexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 0°, 30°, 60°, 90°, 120°, 150° (hexagon and square face normals).

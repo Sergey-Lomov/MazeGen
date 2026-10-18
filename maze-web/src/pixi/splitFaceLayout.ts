@@ -58,6 +58,13 @@ export function hasCompleteOppositePair(decidedFaces: ReadonlySet<number>, degre
   return circularDist(a, b, degree) === degree / 2;
 }
 
+/** True if a node holding `decidedFaces` is a finished bridge/diagonal that must not gain a face:
+ * a complete opposite pair on a point with more than one node. A plain point's only node has no
+ * recognized shape to protect, so a straight corridor through it can always be extended. */
+export function isFinishedSplitPair(decidedFaces: ReadonlySet<number>, degree: number, nodeCount: number): boolean {
+  return nodeCount > 1 && hasCompleteOppositePair(decidedFaces, degree);
+}
+
 /** The two outer faces of three consecutive faces on a circular tile, excluding the middle. */
 export function adjacentTripleOuterFaces(faces: number[], degree: number): [number, number] | null {
   if (faces.length !== 3) return null;

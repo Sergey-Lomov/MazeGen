@@ -269,4 +269,22 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  rhombitrihexagonal: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    orientations: [],
+    defaultParams: {},
+    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // Half the 60 degree spacing of a hexagon's faces.
+    splitCircleRotationDeg: 30,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    // The hexagon's circumcircle diameter, two sides.
+    cellMeasurePx: TILE_SIZE * 2,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
+  },
 };
