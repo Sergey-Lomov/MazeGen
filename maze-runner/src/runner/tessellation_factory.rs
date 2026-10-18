@@ -1,8 +1,9 @@
 use crate::config::{TessellationConfig, TessellationKind};
 use maze_core::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
-    TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation,
+    SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
+    TrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -96,6 +97,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 },
             ))
         }
+        TessellationKind::SnubHexagonal => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(SnubHexagonalTessellation),
+                CellCodec {
+                    from_xy: SnubHexagonalPoint::from_xy,
+                    to_xy: SnubHexagonalPoint::to_xy,
+                },
+            ))
+        }
         TessellationKind::Trihexagonal => {
             reject_params(config)?;
             Ok(visitor.visit(
@@ -179,6 +190,17 @@ mod tests {
     fn builds_trihexagonal_with_hexagon_and_triangle_shapes() {
         assert_eq!(
             build_tessellation(&config(TessellationKind::Trihexagonal), Probe),
+            Ok((
+                vec!["regular:6".to_string(), "regular:3".to_string()],
+                (3, -2)
+            ))
+        );
+    }
+
+    #[test]
+    fn builds_snub_hexagonal_with_hexagon_and_triangle_shapes() {
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::SnubHexagonal), Probe),
             Ok((
                 vec!["regular:6".to_string(), "regular:3".to_string()],
                 (3, -2)

@@ -12,6 +12,7 @@ pub mod geometry;
 pub mod hex;
 pub mod multi_level;
 pub mod shape;
+pub mod snub_hexagonal;
 pub mod square;
 pub mod square_octagon;
 #[cfg(test)]
@@ -33,6 +34,9 @@ pub use geometry::{
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
 pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
+pub use snub_hexagonal::{
+    SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation,
+};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTessellation};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};

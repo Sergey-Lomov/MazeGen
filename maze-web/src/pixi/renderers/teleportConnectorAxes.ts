@@ -84,4 +84,6 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   square_octagon: () => SQUARE_OCTAGON_AXES,
   brick: () => BRICK_AXES,
   trihexagonal: () => TRIHEXAGONAL_AXES,
+  // Every edge is a unit step of the triangular lattice, so the face normals are the trihexagonal ones.
+  snub_hexagonal: () => TRIHEXAGONAL_AXES,
 };

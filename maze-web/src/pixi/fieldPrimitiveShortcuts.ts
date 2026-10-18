@@ -31,7 +31,8 @@ export function canActivateFieldPrimitive(
   primitive: FieldPrimitive,
   operation: FieldOperation,
   fieldEditLocked: boolean,
+  reflectAvailable: boolean,
 ): boolean {
   return !fieldEditLocked
-    && !(primitive === "symmetry" && operation === "select");
+    && !(primitive === "symmetry" && (operation === "select" || !reflectAvailable));
 }

@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Seven implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Eight implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation`, `BrickTessellation`, `TrihexagonalTessellation`, `SnubHexagonalTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`/`brick`/`trihexagonal`/`snub_hexagonal`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint`, `BrickPoint`, `TrihexagonalPoint`, `SnubHexagonalPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -46,7 +46,7 @@ are zero-sized instances (`#[derive(Default)]`). Free functions built on the tra
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -601,3 +601,17 @@ Status (GitHub issue #792): `space::trihexagonal` (`TrihexagonalTessellation`, k
 - **Geometry.** Vertices sit on the integer lattice `x = i / 2`, `y = j·√3 / 2`, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts exactly (three cells per lattice anchor) before building any.
 - **Presets.** `rect` (`cols × rows` hexagons in screen-aligned rows, every row shifted by half a pitch, plus every triangle whose three hexagons are all in the set; origin hexagon at `size / 2`, rounded down), `circle` by cell center and `triangle` by whole cell; translate and reflect are derived geometrically.
 - **Wire and web.** `{ "kind": "trihexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.trihexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 30°, 90°, 150°.
+
+### Snub hexagonal tessellation (3.3.3.3.6)
+
+Status (GitHub issue #793): `space::snub_hexagonal` (`SnubHexagonalTessellation`, kind `snub_hexagonal`, no params) is the snub trihexagonal tiling: regular hexagons and equilateral triangles of edge length 1, four triangles and one hexagon around every vertex. Per hexagon there are eight triangles: six share an edge with it (one per hexagon face) and two border only triangles. Hexagon area `3√3 / 2`, triangle area `√3 / 4`, so `cell_scale` differs between the two. Split patterns are not part of this ticket.
+
+- **Construction.** Vertices are the points `a + b·ω` (`ω = e^{iπ/3}`, written `(a, b)`, world position `x = a + b/2`, `y = b·√3/2`) of the unit triangular lattice minus the index-7 sublattice `L = { a ≡ 2b (mod 7) }`. Each removed point is a hexagon center (its six lattice neighbors are the hexagon's vertices); every lattice triangle touching no removed point is a triangle cell. `L` is spanned by `(2, 1)` and `(-1, 3)` (hexagon center distance `√7`) and is closed under 60° rotation, so the tiling has the full `p6` symmetry about a hexagon center and the two lattice translations.
+- **Handedness.** The tiling is chiral. The fixed form is counter-clockwise (y up): the lattice vector `(2, 1)` points `atan(√3 / 5) ≈ 19.1°` counter-clockwise from the hexagon's vertex axis. The mirror image (`a ≡ 4b (mod 7)`) is not offered. The tiling has no mirror symmetry, so the kind lists only `Translate` in `field_operations` and `reflect_cells` is `Unavailable` (the web Symmetry tool stays visible but disabled, tooltip "Unavailable in this tessellation"); translation works for lattice vectors only (`q·(5/2, √3/2) + r·(1/2, 3√3/2)`).
+- **Cell ids.** `SnubHexagonalPoint { q, r, kind }`, `kind` one of `Hexagon`, `Edge0 … Edge5`, `Inner0`, `Inner1` (`SnubHexagonalKind::ALL`, wire order). `(q, r)` names the hexagon with center `q·(2, 1) + r·(-1, 3)` (lattice units). `Edge k` is the triangle across face `k` of that hexagon; `Inner0`/`Inner1` are the nearest translates of the two triangle classes that border no hexagon (a triangle is the kind's template translated to its anchor). Every id is a valid cell. Wire encoding: `[x, y] = [9q + kind index, r]` (`to_xy`/`from_xy`; `q` beyond `±i32::MAX / 9` wraps).
+- **Faces.** `SnubHexagonalFace` is the position in `faces_of`: counter-clockwise from the cell's first vertex, a hexagon `0..6` (face `k` runs from the vertex at `60°·k` to the next; `regular:6`), a triangle `0..3` (`regular:3`; an edge triangle's face `0` is the one shared with its anchor hexagon). The opposite face is not a function of the face: `neighbor` returns it, found as the cell on the other side of the same unit lattice edge.
+- **Neighbors.** `neighbor(cell, face)` is `None` only when the neighbor's `q` or `r` leave `i32`. Hexagon faces lead to its edge triangles; an edge triangle has one hexagon neighbor and two triangle neighbors; an inner triangle has three triangle neighbors.
+- **Straightness.** A hexagon is passed straight iff the pass leaves by the opposite face (`(face + 3) mod 6`); no pass through a triangle is straight (every pass turns by 60°). Checked against the geometric definition.
+- **Geometry.** Vertices come from the integer lattice coordinates, so a vertex shared by several cells is bit-identical from each. All edges are unit lattice steps (directions 0°, 60°, 120°). `candidate_cells` is exact per row `r` (nine cells per hexagon `(q, r)`, vertices within `2` of the anchor center) and counts before building any.
+- **Presets.** `rect` (cells fully inside a `cols·√7 × rows·√7` rectangle centered on the origin hexagon), `circle` by cell center and `triangle` by whole cell; translate is derived geometrically.
+- **Wire and web.** `{ "kind": "snub_hexagonal", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.snub_hexagonal` (no orientations, `pixelsPerUnit = TILE_SIZE`, `FLIP_Y`), connector axes at 30°, 90°, 150°.

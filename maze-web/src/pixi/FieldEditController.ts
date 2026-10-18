@@ -114,7 +114,12 @@ export class FieldEditController {
         return;
       }
       const primitive = fieldPrimitiveForShortcut(e.code);
-      if (primitive && canActivateFieldPrimitive(primitive, field.fieldOperation, state.backgroundAutoFillPreview !== null)) {
+      if (primitive && canActivateFieldPrimitive(
+        primitive,
+        field.fieldOperation,
+        state.backgroundAutoFillPreview !== null,
+        fieldOperationAvailable(field.fieldConfig.tessellation, "reflect"),
+      )) {
         e.preventDefault();
         blurActiveElement();
         state.setFieldPrimitive(primitive);

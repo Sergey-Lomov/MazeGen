@@ -414,7 +414,7 @@ pub(super) fn hexagon_cells<T: Tessellation + ?Sized>(
 }
 
 /// Cells inside the convex counter-clockwise polygon `vertices`, all within `reach` of `origin`.
-fn convex_cells<T: Tessellation + ?Sized>(
+pub(super) fn convex_cells<T: Tessellation + ?Sized>(
     tessellation: &T,
     origin: Point,
     vertices: &[Point],

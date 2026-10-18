@@ -3,8 +3,9 @@ use super::*;
 use crate::space::test_support::ScaledSquareTessellation;
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint,
-    TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint, TriTessellation,
+    TrihexagonalPoint, TrihexagonalTessellation,
 };
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -50,6 +51,16 @@ fn trihexagonal_cells() -> Vec<TrihexagonalPoint> {
         .collect()
 }
 
+fn snub_hexagonal_cells() -> Vec<SnubHexagonalPoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            SnubHexagonalKind::ALL
+                .into_iter()
+                .map(move |kind| SnubHexagonalPoint::new(q, r, kind))
+        })
+        .collect()
+}
+
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
     (-radius..=radius).flat_map(move |x| (-radius..=radius).map(move |y| (x, y)))
 }
@@ -64,6 +75,7 @@ macro_rules! for_each_tessellation {
         $check(&SquareOctagonTessellation, &square_octagon_cells());
         $check(&BrickTessellation, &brick_cells());
         $check(&TrihexagonalTessellation, &trihexagonal_cells());
+        $check(&SnubHexagonalTessellation, &snub_hexagonal_cells());
         $check(&ScaledSquareTessellation { scale: 2.5 }, &square_cells());
     };
 }

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { canActivateFieldPrimitive } from "../pixi/fieldPrimitiveShortcuts";
 import { blurActiveElement, postEditToolForShortcut, postEditToolShortcut, presetToolForShortcut, presetToolShortcut } from "../pixi/toolShortcuts";
+
+describe("canActivateFieldPrimitive", () => {
+  it("blocks the symmetry tool in Select mode and where reflect is unavailable, and every tool while locked", () => {
+    expect(canActivateFieldPrimitive("symmetry", "add", false, true)).toBe(true);
+    expect(canActivateFieldPrimitive("symmetry", "select", false, true)).toBe(false);
+    expect(canActivateFieldPrimitive("symmetry", "add", false, false)).toBe(false);
+    expect(canActivateFieldPrimitive("point", "add", false, false)).toBe(true);
+    expect(canActivateFieldPrimitive("point", "add", true, true)).toBe(false);
+  });
+});
 
 describe("tool shortcuts", () => {
   it("uses each tool's first letter and Alt for one-way variants", () => {

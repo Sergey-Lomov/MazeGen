@@ -551,8 +551,8 @@ point tool is restored; the symmetry settings remain unchanged.
 The reflected cells come from core's `field_reflect_cells` (GitHub issue #762); the axis is passed
 in core world space. Core accepts only axes that are true reflection symmetries of the tessellation.
 A free axis that is not one is not applied: the preview shows no mirrored cells and the core error
-(`not_a_symmetry`) is shown to the user; confirmation does not change the field. The tool is hidden
-when `reflect` is not offered.
+(`not_a_symmetry`) is shown to the user; confirmation does not change the field. The tool stays visible but disabled
+(tooltip "Unavailable in this tessellation", and its shortcut does nothing) when `reflect` is not offered.
 
 ### Field operation errors
 

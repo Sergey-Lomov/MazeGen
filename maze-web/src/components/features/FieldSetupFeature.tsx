@@ -105,6 +105,7 @@ export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const selectedShape = useMazeStore((s) => s.floorFields[s.activeFloorId].selectedShape);
   const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
+  const reflectAvailable = fieldOperationAvailable(fieldConfig.tessellation, "reflect");
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
@@ -253,15 +254,17 @@ export function FieldSetupFeature() {
           </Inline>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <Inline gap="itemGap" style={{ ...styles.nestedContent, flexWrap: "wrap" }}>
-          {primitivesForField(fieldConfig).map((tool) => {
+          {primitivesForField().map((tool) => {
             const shortcut = fieldPrimitiveShortcut(tool.primitive);
             return <ToolIconButton
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
-              disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked)}
+              disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked, reflectAvailable)}
               title={tool.label}
               shortcut={shortcut ? [shortcut] : undefined}
-              description={tool.primitive === "symmetry" && fieldOperation === "select"
+              description={tool.primitive === "symmetry" && !reflectAvailable
+                ? m["field.symmetry.tessellation_disabled"]()
+                : tool.primitive === "symmetry" && fieldOperation === "select"
                 ? m["field.symmetry.select_disabled"]()
                 : tool.primitive === "polygon"
                 ? m["field.polygon.shift_tooltip"]()
@@ -380,7 +383,7 @@ interface PrimitiveToolOption {
   label: string;
 }
 
-function primitivesForField(cfg: FieldConfig): PrimitiveToolOption[] {
+function primitivesForField(): PrimitiveToolOption[] {
   const primitives: PrimitiveToolOption[] = [
     { key: "point", primitive: "point", label: m["field.shape.point"]() },
     { key: "rectangle", primitive: "rectangle", label: m["field.shape.rectangle"]() },
@@ -393,7 +396,7 @@ function primitivesForField(cfg: FieldConfig): PrimitiveToolOption[] {
     { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
-  return primitives.filter((tool) => tool.primitive !== "symmetry" || fieldOperationAvailable(cfg.tessellation, "reflect"));
+  return primitives;
 }
 
 function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
@@ -621,6 +624,7 @@ const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: nu
   square_octagon: { circle: 50, hexagon: 50, triangle: 50 },
   brick: { circle: 50, hexagon: 50, triangle: 50 },
   trihexagonal: { circle: 50, hexagon: 50, triangle: 50 },
+  snub_hexagonal: { circle: 50, hexagon: 50, triangle: 50 },
 };
 
 const styles: Record<string, React.CSSProperties> = {

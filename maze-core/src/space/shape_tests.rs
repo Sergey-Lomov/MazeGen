@@ -1,8 +1,9 @@
 use super::*;
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, HexPoint, HexTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
-    TriFace, TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,
+    TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
 };
 
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
@@ -47,6 +48,16 @@ fn trihexagonal_cells() -> Vec<TrihexagonalPoint> {
                 TrihexagonalPoint::up(q, r),
                 TrihexagonalPoint::down(q, r),
             ]
+        })
+        .collect()
+}
+
+fn snub_hexagonal_cells() -> Vec<SnubHexagonalPoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            SnubHexagonalKind::ALL
+                .into_iter()
+                .map(move |kind| SnubHexagonalPoint::new(q, r, kind))
         })
         .collect()
 }
@@ -227,6 +238,7 @@ fn shape_contract_holds_for_every_tessellation() {
     assert_shape_contract(&SquareOctagonTessellation, &square_octagon_cells());
     assert_shape_contract(&BrickTessellation, &brick_cells());
     assert_shape_contract(&TrihexagonalTessellation, &trihexagonal_cells());
+    assert_shape_contract(&SnubHexagonalTessellation, &snub_hexagonal_cells());
 }
 
 #[test]
@@ -238,6 +250,7 @@ fn face_chain_is_invertible_for_every_tessellation() {
     assert_chain_invertible(&SquareOctagonTessellation, &square_octagon_cells());
     assert_chain_invertible(&BrickTessellation, &brick_cells());
     assert_chain_invertible(&TrihexagonalTessellation, &trihexagonal_cells());
+    assert_chain_invertible(&SnubHexagonalTessellation, &snub_hexagonal_cells());
 }
 
 #[test]
@@ -252,6 +265,10 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
     );
     assert_canonical_order_is_counter_clockwise(&BrickTessellation, &brick_cells());
     assert_canonical_order_is_counter_clockwise(&TrihexagonalTessellation, &trihexagonal_cells());
+    assert_canonical_order_is_counter_clockwise(
+        &SnubHexagonalTessellation,
+        &snub_hexagonal_cells(),
+    );
 }
 
 /// Built-in `faces_of` is the canonical circular order itself (GitHub issue #758), so local and
@@ -276,6 +293,7 @@ fn built_in_faces_of_is_the_canonical_order() {
     identity(&SquareOctagonTessellation, &square_octagon_cells());
     identity(&BrickTessellation, &brick_cells());
     identity(&TrihexagonalTessellation, &trihexagonal_cells());
+    identity(&SnubHexagonalTessellation, &snub_hexagonal_cells());
 }
 
 #[test]
@@ -296,6 +314,7 @@ fn every_built_in_cell_gets_its_full_group() {
     full(&SquareOctagonTessellation, &square_octagon_cells());
     full(&BrickTessellation, &brick_cells());
     full(&TrihexagonalTessellation, &trihexagonal_cells());
+    full(&SnubHexagonalTessellation, &snub_hexagonal_cells());
     assert_eq!(
         TriTessellation
             .shape_of(TriPoint { col: 0, row: 0 })

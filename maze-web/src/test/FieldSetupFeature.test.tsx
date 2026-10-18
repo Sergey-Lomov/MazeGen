@@ -225,6 +225,24 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
   });
 
+  it("keeps the symmetry tool visible but disabled where core offers no reflection", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldConfig: fieldOf("snub_hexagonal", { shape: "rect", cols: 3, rows: 3 }),
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
+    expect(symmetryTool).toBeDisabled();
+    const description = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Unavailable in this tessellation.");
+  });
+
   it("offers the parallelogram tool for a square field", () => {
     useMazeStore.setState({
       floorFields: {

@@ -27,6 +27,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       square_octagon: Array.from(f.freeFieldPoints.square_octagon ?? []).map((k) => decodePoint(k) as [number, number]),
       brick: Array.from(f.freeFieldPoints.brick ?? []).map((k) => decodePoint(k) as [number, number]),
       trihexagonal: Array.from(f.freeFieldPoints.trihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      snub_hexagonal: Array.from(f.freeFieldPoints.snub_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
     };
     floorFields[floorId] = {
       shape: f.fieldConfig.shape,

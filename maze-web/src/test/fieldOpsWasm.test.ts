@@ -6,6 +6,7 @@ import {
   translateFieldCells,
 } from "../wasm/mazeService";
 import { tessellationConfigOf } from "../fieldConfig";
+import { fieldOperationAvailable } from "../pixi/fieldOps";
 import { configAllCells } from "../pixi/tessellationCells";
 import { fieldOf } from "./fieldConfigFixtures";
 
@@ -96,6 +97,30 @@ describe("field operations over wasm", () => {
       expect.unreachable();
     } catch (error) {
       expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+  });
+
+  it("builds snub hexagonal presets, translates by lattice vectors and has no reflection", () => {
+    const snub = tessellationConfigOf("snub_hexagonal");
+    // Wire cells are `[9q + kind, r]` with kind 0 hexagon, 1..6 edge triangles, 7 and 8 inner triangles.
+    const hexagons = getFieldPreset(snub, "rect", { cols: 3, rows: 3 }).filter(([x]) => x % 9 === 0);
+    expect(hexagons.length).toBeGreaterThan(0);
+    expect(getFieldPreset(snub, "triangle", { side: 4 }).length).toBeGreaterThan(0);
+    // The lattice vector (5/2, sqrt(3)/2) moves the hexagon at q = 0 to q = 1.
+    expect(translateFieldCells(snub, [[0, 0]], [2.5, Math.sqrt(3) / 2])).toEqual([[9, 0]]);
+    try {
+      translateFieldCells(snub, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+    // The tiling is chiral: reflection is not offered at all.
+    expect(fieldOperationAvailable(snub, "reflect")).toBe(false);
+    try {
+      reflectFieldCells(snub, [[0, 0]], [[0, 0], [1, 0]]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "unavailable" });
     }
   });
 
