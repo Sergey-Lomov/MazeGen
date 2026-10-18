@@ -582,7 +582,7 @@ Preset markers and edges use the same node-position geometry as generated and po
 
 **All-nodes-wall.** A face where every one of a point's nodes explicitly has `"wall"` renders as one plain solid wall spanning the whole face (`SplitPassagesResult.wallFaces`, same color as an ordinary non-split wall) instead of per-node segments — it isn't attributable to any single node's color.
 
-The shared geometric algorithm (face division among connected nodes, hub-point fan-out, the 2-passage straightening exception, active-node z-order, one-way arrow placement on the connector rather than the along-face segment) lives in `pixi/splitFaceLayout.ts`, used by both `buildSplitPassagesCore` (canvas) and `TileFaceEditor` (the "Manage split nodes" panel's tile diagram) so the two never drift apart.
+The shared geometric algorithm (face division among connected nodes, hub-point fan-out, the 2-passage straightening exception (dropped when the line is nearly parallel to a face, issue #791), active-node z-order, one-way arrow placement on the connector rather than the along-face segment) lives in `pixi/splitFaceLayout.ts`, used by both `buildSplitPassagesCore` (canvas) and `TileFaceEditor` (the "Manage split nodes" panel's tile diagram) so the two never drift apart.
 
 **Panel link sections.** Each node's card in "Manage split nodes" groups its links into three sections: **Required** (a decided passage/one-way — the connection *will* exist), **Undefined** (preset's optional/undecided faces — *may* exist, not forced either way; always empty for post-edit, which has no such concept), **Forbidden** (`wall` — this node's face is explicitly closed here). An empty section shows a dash placeholder.
 

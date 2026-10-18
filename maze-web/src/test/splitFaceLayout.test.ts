@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectIdentity } from "./splitBindingFixture";
-import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, circularDist, MIN_STRAIGHT_CONNECTOR_ANGLE_DEG, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
@@ -121,6 +121,46 @@ describe("computeSplitConnectors", () => {
     expect(connectors[0].lines[0].from).toEqual({ x: 5, y: 0 });
     expect(connectors[0].lines[0].to).toEqual({ x: 5, y: 10 });
     expect(connectors[0].lines[0].oneWayOut).toBeUndefined();
+  });
+
+  // Two faces whose midpoints are 10 apart along x, the second face tilted so the straight line
+  // makes `angleDeg` with it (the first face is perpendicular to the line).
+  function connectorsForLineAngle(angleDeg: number) {
+    const a = (angleDeg * Math.PI) / 180;
+    const faceA: SplitFaceInput = { v0: { x: 0, y: -5 }, v1: { x: 0, y: 5 } };
+    const cx = 10, half = 5;
+    const faceB: SplitFaceInput = {
+      v0: { x: cx - Math.cos(a) * half, y: -Math.sin(a) * half },
+      v1: { x: cx + Math.cos(a) * half, y: Math.sin(a) * half },
+    };
+    const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 0, kind: "passage" }], [{ nodeIndex: 0, kind: "passage" }]];
+    const layouts = computeSplitFaceLayouts([faceA, faceB], kinds, null);
+    return computeSplitConnectors(layouts, 1, null, hubCenter, hubRadius, 0);
+  }
+
+  it("straight line stays just above the angle threshold, falls back just below it", () => {
+    expect(connectorsForLineAngle(MIN_STRAIGHT_CONNECTOR_ANGLE_DEG + 1)[0].lines).toHaveLength(1);
+    expect(connectorsForLineAngle(MIN_STRAIGHT_CONNECTOR_ANGLE_DEG - 1)[0].lines).toHaveLength(2);
+  });
+
+  it.each([
+    ["square", 4],
+    ["triangle", 3],
+    ["hexagon", 6],
+    ["octagon", 8],
+  ])("adjacent faces of a regular %s keep the straight connector", (_name, sides) => {
+    const vertex = (i: number) => ({ x: Math.cos((2 * Math.PI * i) / sides) * 10, y: Math.sin((2 * Math.PI * i) / sides) * 10 });
+    const faces: SplitFaceInput[] = [0, 1].map((i) => ({ v0: vertex(i), v1: vertex(i + 1) }));
+    const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 0, kind: "passage" }], [{ nodeIndex: 0, kind: "passage" }]];
+    const layouts = computeSplitFaceLayouts(faces, kinds, null);
+    expect(computeSplitConnectors(layouts, 1, null, hubCenter, hubRadius, 0)[0].lines).toHaveLength(1);
+  });
+
+  it("coincident share centers do not trigger the hub fallback", () => {
+    const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
+    const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 0, kind: "passage" }], [{ nodeIndex: 0, kind: "passage" }]];
+    const layouts = computeSplitFaceLayouts([face, face], kinds, null);
+    expect(computeSplitConnectors(layouts, 1, null, hubCenter, hubRadius, 0)[0].lines).toHaveLength(1);
   });
 
   it("2 connections but one is one-way — hub point used, not a straight line", () => {

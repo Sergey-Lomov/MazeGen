@@ -293,7 +293,7 @@ export function SplitNodesDialogView<E>({
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
-          notificationSource={notificationSource}
+          showFaceIndices notificationSource={notificationSource}
         />
       </div>
 

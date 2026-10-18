@@ -286,10 +286,32 @@ export function computeSplitFaceLayouts(
   });
 }
 
+/** Minimum angle (degrees) between a face and the straight line leading to the other face's share.
+ *  A smaller angle means the straight connector hugs the face (e.g. a half face of a brick
+ *  tessellation), so the node falls back to its hub point instead. Must stay below the smallest
+ *  angle of an existing tessellation (22.5° between adjacent octagon faces in 4.8.8). */
+export const MIN_STRAIGHT_CONNECTOR_ANGLE_DEG = 20;
+
+type ConnectorShare = { point: { x: number; y: number }; face: { dx: number; dy: number } };
+
+/** True if the straight line between two shares runs closer than `MIN_STRAIGHT_CONNECTOR_ANGLE_DEG`
+ *  to either share's own face. */
+function straightLineDegenerates(a: ConnectorShare, b: ConnectorShare): boolean {
+  const lx = b.point.x - a.point.x, ly = b.point.y - a.point.y;
+  const lineLen = Math.hypot(lx, ly);
+  const sinMin = Math.sin((MIN_STRAIGHT_CONNECTOR_ANGLE_DEG * Math.PI) / 180);
+  return [a, b].some((s) => {
+    const faceLen = Math.hypot(s.face.dx, s.face.dy);
+    if (lineLen === 0 || faceLen === 0) return false;
+    return Math.abs(s.face.dx * ly - s.face.dy * lx) / (faceLen * lineLen) < sinMin;
+  });
+}
+
 /** Computes every node's connector lines from its own face segments (built by
  *  `computeSplitFaceLayouts`, filtered to one node via `nodeIndex`) — a node with exactly 2
  *  connected faces, both ordinary two-way passages, draws one straight line directly between the
- *  two share centers (no hub point, reads as one continuous corridor); any other case (0, 1, or
+ *  two share centers (no hub point, reads as one continuous corridor) unless that line makes an
+ *  angle below `MIN_STRAIGHT_CONNECTOR_ANGLE_DEG` with either face; any other case (0, 1, or
  *  3+ shares, or exactly 2 but not both plain passages) fans out from a hub point on a small
  *  circle around `hubCenter`, one node per slot, evenly spaced starting at `rotationRad`. Returns
  *  nodes in `nodeCount` order with the active one moved last (drawn on top).
@@ -317,9 +339,11 @@ export function computeSplitConnectors(
       .map((s) => ({
         point: { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 },
         kind: s.kind,
+        face: { dx: s.v1.x - s.v0.x, dy: s.v1.y - s.v0.y },
       }));
 
-    const bothPassages = shares.length === 2 && shares.every((s) => s.kind === "passage") && !forceHub?.(nodeIndex);
+    const bothPassages = shares.length === 2 && shares.every((s) => s.kind === "passage") && !forceHub?.(nodeIndex)
+      && !straightLineDegenerates(shares[0], shares[1]);
     if (bothPassages) {
       return { nodeIndex, lines: [{ from: shares[0].point, to: shares[1].point, isUndefined: false }] };
     }
