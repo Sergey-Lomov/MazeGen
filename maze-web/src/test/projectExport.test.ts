@@ -140,6 +140,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         hex: new Set(),
         tri: new Set(),
         cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
+        square_octagon: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
@@ -148,6 +149,30 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("cairo");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the square-octagon kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "square_octagon";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("square_octagon", { shape: "custom", points: [[-2, 0], [-1, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-2 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("square_octagon");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 

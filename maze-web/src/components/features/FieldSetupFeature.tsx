@@ -618,6 +618,7 @@ const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: nu
   hex: { circle: 50, hexagon: 50, triangle: 100 },
   tri: { circle: 15, hexagon: 15, triangle: 30 },
   cairo: { circle: 50, hexagon: 50, triangle: 50 },
+  square_octagon: { circle: 50, hexagon: 50, triangle: 50 },
 };
 
 const styles: Record<string, React.CSSProperties> = {

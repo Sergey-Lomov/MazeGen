@@ -37,9 +37,10 @@ pub use ids::{IdGenerator, NodeId};
 pub use meta::MazeMeta;
 pub use space::{
     CairoFace, CairoPoint, CairoTessellation, CairoTileKind, Field, HexFace, HexPoint,
-    HexTessellation, LevelId, MultiLevelField, SquareFace, SquarePoint, SquareTessellation,
-    Tessellation, TriFace, TriPoint, TriTessellation, cairo_rect, geometric_distance, hex_hexagon,
-    hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
+    HexTessellation, LevelId, MultiLevelField, SquareFace, SquareOctagonFace, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,
+    TriTessellation, cairo_rect, geometric_distance, hex_hexagon, hex_parallelogram, square_rect,
+    tri_hexagon, tri_rect, tri_triangle,
 };
 
 pub struct Maze<T: Tessellation> {

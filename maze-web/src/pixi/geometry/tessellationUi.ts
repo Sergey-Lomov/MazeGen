@@ -196,4 +196,22 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [2, 1],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  square_octagon: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
+    orientations: [],
+    defaultParams: {},
+    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // Half the 45 degree spacing of an octagon's faces.
+    splitCircleRotationDeg: 22.5,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    // The octagon's circumcircle diameter, `1 / sin(22.5 degrees)` sides.
+    cellMeasurePx: TILE_SIZE / Math.sin(Math.PI / 8),
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
+  },
 };

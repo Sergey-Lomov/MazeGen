@@ -12,6 +12,7 @@ pub mod hex;
 pub mod multi_level;
 pub mod shape;
 pub mod square;
+pub mod square_octagon;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod triangle;
@@ -30,6 +31,7 @@ pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram
 pub use multi_level::{LevelId, MultiLevelField};
 pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
+pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTessellation};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by

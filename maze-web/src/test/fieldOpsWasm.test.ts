@@ -50,6 +50,21 @@ describe("field operations over wasm", () => {
     }
   });
 
+  it("builds square-octagon presets and accepts only octagon-pitch translations", () => {
+    const octagons = tessellationConfigOf("square_octagon");
+    // 2x2 octagons around the origin octagon plus the one square between them.
+    expect(getFieldPreset(octagons, "rect", { cols: 2, rows: 2 })).toEqual([[-2, -2], [-2, 0], [-1, -1], [0, -2], [0, 0]]);
+    const pitch = 1 + Math.SQRT2;
+    expect(translateFieldCells(octagons, [[0, 0], [1, 1]], [pitch, 0])).toEqual([[2, 0], [3, 1]]);
+    try {
+      // Half a pitch along both axes maps octagons onto squares.
+      translateFieldCells(octagons, [[0, 0]], [pitch / 2, pitch / 2]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+  });
+
   it("translates and reflects cells on symmetric vectors and axes", () => {
     expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
     expect(reflectFieldCells(square, [[0, 0], [1, 0]], [[2, 0], [2, 1]])).toEqual([[2, 0], [3, 0]]);

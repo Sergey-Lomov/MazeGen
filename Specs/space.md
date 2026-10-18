@@ -28,7 +28,7 @@ pub trait Tessellation: Send + Sync + 'static {
 }
 ```
 
-Four implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation` (`space::square`/`hex`/`triangle`/`cairo`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
+Five implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation`, `SquareOctagonTessellation` (`space::square`/`hex`/`triangle`/`cairo`/`square_octagon`), each with its own cell-id (`SquarePoint`, `HexPoint`, `TriPoint`, `CairoPoint`, `SquareOctagonPoint` — tessellation-internal coordinates; consumers only see `T::CellId`) and `Face` type.
 
 **Cell vocabulary (GitHub issue #756).** The trait and the `Field`/`MultiLevelField` API use
 "cell" for a tessellation tile: `T::CellId`, `is_valid_cell`, `cell_of`, `all_cells`,
@@ -39,14 +39,14 @@ fixture keys (`split_points`, `[x, y]` coordinates) are unchanged here — they 
 
 **Instance (GitHub issue #755).** A tessellation is an instance: methods take `&self`, and one
 instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (accessors
-`tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The four built-in tessellations
+`tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The five built-in tessellations
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
 (`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
 `floor_aware_distance`) take the instance as their first argument; consumers resolve it from
 the field (`maze.field.tessellation()`).
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
-"tri" | "cairo", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+"tri" | "cairo" | "square_octagon", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
 `maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
 place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
@@ -567,3 +567,14 @@ closed-form cell counts, lattice primitives, circle inclusion and the cell-size 
 dialogs and PNG result. Per-kind connector axes live in a `Record` lookup next to the connector
 router. `architectureKindBranching.test.ts` fails on any `kind === "<kind>"` comparison elsewhere in
 `maze-web/src`.
+
+### Square-octagon tessellation (4.8.8)
+
+Status (GitHub issue #784): `space::square_octagon` (`SquareOctagonTessellation`, kind `square_octagon`, no params) is the truncated square tiling. Regular octagons and squares turned by 45° share edges of world length 1 (octagon area `2 (1 + √2)`, square area 1, so `cell_scale` differs between the two).
+
+- **Cell ids.** `SquareOctagonPoint { x, y }` on a lattice of half the octagon pitch: both coordinates even is an octagon, both odd is a square, mixed parity is not a tile (`is_valid_cell` is false). Negative coordinates follow `rem_euclid`. `SquareOctagonPoint::step(face)` is the direct neighbor calculation and returns `None` for a non-tile, a cardinal face of a square, or `i32` overflow.
+- **Faces.** One `SquareOctagonFace` enum of the eight compass directions. An octagon has all eight, counter-clockwise from `E` (`regular:8`); a square has `NE, NW, SW, SE` (`regular:4`). `neighbor(c, f)` is `step(f)` with the opposite face; an octagon reaches octagons through `E, N, W, S` and squares through the diagonals, a square reaches four octagons.
+- **Straightness.** A pass is straight iff it leaves through the opposite face (table, checked against the geometric definition).
+- **Geometry.** Every vertex coordinate is `(m + n·√2) / 2` for integers `m`, `n` derived from the lattice point, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts the valid lattice cells in the box exactly before building any.
+- **Presets.** `rect` (`cols × rows` octagons plus the squares between them, origin octagon at `size / 2`), `circle` and `triangle`; translate and reflect are derived geometrically.
+- **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. Tessellation-specific split templates are not part of this ticket.

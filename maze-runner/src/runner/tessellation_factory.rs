@@ -1,7 +1,8 @@
 use crate::config::{TessellationConfig, TessellationKind};
 use maze_core::space::{
-    CairoPoint, CairoTessellation, HexPoint, HexTessellation, SquarePoint, SquareTessellation,
-    Tessellation, TriPoint, TriTessellation,
+    CairoPoint, CairoTessellation, HexPoint, HexTessellation, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriPoint,
+    TriTessellation,
 };
 use std::sync::Arc;
 
@@ -75,6 +76,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 },
             ))
         }
+        TessellationKind::SquareOctagon => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(SquareOctagonTessellation),
+                CellCodec {
+                    from_xy: |x, y| SquareOctagonPoint { x, y },
+                    to_xy: |p| (p.x, p.y),
+                },
+            ))
+        }
     }
 }
 
@@ -134,6 +145,13 @@ mod tests {
                 Ok((vec![shape.to_string()], (3, -2)))
             );
         }
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::SquareOctagon), Probe),
+            Ok((
+                vec!["regular:8".to_string(), "regular:4".to_string()],
+                (3, -2)
+            ))
+        );
     }
 
     #[test]

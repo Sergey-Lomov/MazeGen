@@ -409,10 +409,17 @@ mod tests {
         struct BruteForce<'a>(&'a PresetExtentsRequest);
         impl TessellationVisitor for BruteForce<'_> {
             type Output = [[f64; 2]; 2];
-            fn visit<T: Tessellation>(self, tessellation: Arc<T>, _codec: CellCodec<T>) -> Self::Output {
+            fn visit<T: Tessellation>(
+                self,
+                tessellation: Arc<T>,
+                _codec: CellCodec<T>,
+            ) -> Self::Output {
                 let preset = &self.0.preset;
-                let params: Vec<(&str, u32)> =
-                    preset.params.iter().map(|(n, &v)| (n.as_str(), v)).collect();
+                let params: Vec<(&str, u32)> = preset
+                    .params
+                    .iter()
+                    .map(|(n, &v)| (n.as_str(), v))
+                    .collect();
                 let mut extents = [[f64::INFINITY, f64::NEG_INFINITY]; 2];
                 for cell in tessellation.build_preset(&preset.preset, &params).unwrap() {
                     for point in tessellation.boundary_path(cell).flatten(1e-6) {
@@ -429,17 +436,36 @@ mod tests {
         let cases = [
             (TessellationKind::Square, "circle", vec![("radius", 5)]),
             (TessellationKind::Hex, "hexagon", vec![("radius", 4)]),
-            (TessellationKind::Hex, "rect", vec![("cols", 7), ("rows", 5)]),
+            (
+                TessellationKind::Hex,
+                "rect",
+                vec![("cols", 7), ("rows", 5)],
+            ),
             (TessellationKind::Tri, "hexagon", vec![("radius", 3)]),
             (TessellationKind::Tri, "triangle", vec![("side", 6)]),
-            (TessellationKind::Cairo, "rect", vec![("cols", 5), ("rows", 4)]),
+            (
+                TessellationKind::Cairo,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::SquareOctagon,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::SquareOctagon,
+                "circle",
+                vec![("radius", 4)],
+            ),
         ];
         for (kind, key, params) in cases {
             let request = PresetExtentsRequest {
                 preset: preset(kind, key, &params),
                 directions: [[0.8, 0.6], [-0.6, 0.8]],
             };
-            let expected = build_tessellation(&request.preset.tessellation, BruteForce(&request)).unwrap();
+            let expected =
+                build_tessellation(&request.preset.tessellation, BruteForce(&request)).unwrap();
             let actual = preset_extents(&request).unwrap();
             for (a, e) in actual.iter().flatten().zip(expected.iter().flatten()) {
                 assert!((a - e).abs() < 1e-9, "{key}: {actual:?} != {expected:?}");

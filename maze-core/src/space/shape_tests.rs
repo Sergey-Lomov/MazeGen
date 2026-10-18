@@ -1,7 +1,8 @@
 use super::*;
 use crate::space::{
-    CairoPoint, CairoTessellation, HexPoint, HexTessellation, SquarePoint, SquareTessellation,
-    Tessellation, TriFace, TriPoint, TriTessellation,
+    CairoPoint, CairoTessellation, HexPoint, HexTessellation, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,
+    TriTessellation,
 };
 
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
@@ -24,6 +25,13 @@ fn cairo_cells() -> Vec<CairoPoint> {
     grid(12)
         .map(|(x, y)| CairoPoint::new(x, y))
         .filter(|&p| CairoTessellation::is_valid_cell(p))
+        .collect()
+}
+
+fn square_octagon_cells() -> Vec<SquareOctagonPoint> {
+    grid(6)
+        .map(|(x, y)| SquareOctagonPoint { x, y })
+        .filter(|&p| SquareOctagonTessellation.is_valid_cell(p))
         .collect()
 }
 
@@ -200,6 +208,7 @@ fn shape_contract_holds_for_every_tessellation() {
     assert_shape_contract(&HexTessellation, &hex_cells());
     assert_shape_contract(&TriTessellation, &tri_cells());
     assert_shape_contract(&CairoTessellation, &cairo_cells());
+    assert_shape_contract(&SquareOctagonTessellation, &square_octagon_cells());
 }
 
 #[test]
@@ -208,6 +217,7 @@ fn face_chain_is_invertible_for_every_tessellation() {
     assert_chain_invertible(&HexTessellation, &hex_cells());
     assert_chain_invertible(&TriTessellation, &tri_cells());
     assert_chain_invertible(&CairoTessellation, &cairo_cells());
+    assert_chain_invertible(&SquareOctagonTessellation, &square_octagon_cells());
 }
 
 #[test]
@@ -216,6 +226,10 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
     assert_canonical_order_is_counter_clockwise(&HexTessellation, &hex_cells());
     assert_canonical_order_is_counter_clockwise(&TriTessellation, &tri_cells());
     assert_canonical_order_is_counter_clockwise(&CairoTessellation, &cairo_cells());
+    assert_canonical_order_is_counter_clockwise(
+        &SquareOctagonTessellation,
+        &square_octagon_cells(),
+    );
 }
 
 /// Built-in `faces_of` is the canonical circular order itself (GitHub issue #758), so local and
@@ -237,6 +251,7 @@ fn built_in_faces_of_is_the_canonical_order() {
     identity(&HexTessellation, &hex_cells());
     identity(&TriTessellation, &tri_cells());
     identity(&CairoTessellation, &cairo_cells());
+    identity(&SquareOctagonTessellation, &square_octagon_cells());
 }
 
 #[test]
@@ -254,6 +269,7 @@ fn every_built_in_cell_gets_its_full_group() {
     full(&HexTessellation, &hex_cells());
     full(&TriTessellation, &tri_cells());
     full(&CairoTessellation, &cairo_cells());
+    full(&SquareOctagonTessellation, &square_octagon_cells());
     assert_eq!(
         TriTessellation
             .shape_of(TriPoint { col: 0, row: 0 })

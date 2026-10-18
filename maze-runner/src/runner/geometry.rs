@@ -408,7 +408,10 @@ mod tests {
         assert_eq!(cell.center, [0.5, 0.5]);
         assert_eq!(cell.cell_scale, 1.0);
         assert_eq!(cell.shape.as_deref(), Some("regular:4"));
-        let group = cell.allowed_group.as_ref().expect("square cell has a group");
+        let group = cell
+            .allowed_group
+            .as_ref()
+            .expect("square cell has a group");
         assert_eq!(group.len(), 8);
         assert_eq!(group[0], vec![0, 1, 2, 3]);
         let BoundaryDto::Polyline { points } = &cell.boundary else {
@@ -501,6 +504,7 @@ mod tests {
             TessellationKind::Hex,
             TessellationKind::Tri,
             TessellationKind::Cairo,
+            TessellationKind::SquareOctagon,
         ] {
             let expected = build_tessellation(&config(kind), CoreGeometry).unwrap();
             let cells = expected.iter().map(|cell| cell.cell).collect();
