@@ -188,6 +188,19 @@ describe("core-backed field operations", () => {
     expect(useMazeStore.getState().fieldOpError).toBeNull();
   });
 
+  it("queues centering until the user confirms replacing generated results", () => {
+    const field = customSquare([[10, 0], [11, 0], [12, 0]]);
+    useMazeStore.setState({
+      mazeDirty: true,
+      floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: field },
+    });
+
+    useMazeStore.getState().centerFieldPoints();
+
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({ kind: "centerFieldPoints" });
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toBe(field.fieldPoints);
+  });
+
   it("applySymmetry reports a free axis instead of changing the field", () => {
     useMazeStore.setState({
       floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[1, 0]]) },

@@ -421,13 +421,14 @@ describe("resolveEffectiveEndpoints", () => {
 
 describe("VectorByWallsRenderer", () => {
   it("uses the active floor's tessellation config for rendered geometry", () => {
-    const secondFloorCfg = { type: "square" as const, width: 9, height: 2 };
+    const secondFloorCfg = fieldOf("square", { shape: "rect", cols: 9, rows: 2 });
     currentState = baseState({
       floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       activeFloorId: "floor_2",
+      activeFieldConfig: secondFloorCfg,
       floorFields: {
-        floor_1: { tessellationConfig: stableCfg },
-        floor_2: { tessellationConfig: secondFloorCfg },
+        floor_1: { fieldConfig: stableCfg },
+        floor_2: { fieldConfig: secondFloorCfg },
       },
     });
 

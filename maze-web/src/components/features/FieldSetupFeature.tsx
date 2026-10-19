@@ -43,6 +43,7 @@ export function FieldSetupFeature() {
   const selectedShape = useMazeStore((s) => s.floorFields[s.activeFloorId].selectedShape);
   const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const reflectAvailable = fieldOperationAvailable(fieldConfig.tessellation, "reflect");
+  const translateAvailable = fieldOperationAvailable(fieldConfig.tessellation, "translate");
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
@@ -55,6 +56,7 @@ export function FieldSetupFeature() {
   const setFieldOperation = useMazeStore((s) => s.setFieldOperation);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
+  const centerFieldPoints = useMazeStore((s) => s.centerFieldPoints);
   const copyCurrentFloorFieldToAll = useMazeStore((s) => s.copyCurrentFloorFieldToAll);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
   const confirmFieldEdit = useMazeStore((s) => s.confirmFieldEdit);
@@ -253,6 +255,14 @@ export function FieldSetupFeature() {
             <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
             <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
           </div>
+          <Button
+            variant="secondary"
+            disabled={fieldEditLocked || fieldPoints.size === 0 || !translateAvailable}
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={centerFieldPoints}
+          >
+            {m["field.center"]()}
+          </Button>
           <Button
             variant="destructive"
             disabled={fieldEditLocked}

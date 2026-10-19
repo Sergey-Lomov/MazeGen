@@ -2,6 +2,8 @@ import type { StateCreator } from "zustand";
 import type { FieldConfig } from "../../fieldConfig";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
+import { getCartesian } from "../../pixi/cartesianCache";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
@@ -199,6 +201,45 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     };
   })),
 
+  centerFieldPoints: () => set((state) => guardFieldEdit(state, { kind: "centerFieldPoints" }, () => {
+    const field = activeFloorField(state);
+    const cells = [...field.fieldPoints].map(decodePoint);
+    if (cells.length === 0) return {};
+
+    const centers = cells.map((cell) => getCartesian(cell[0], cell[1], field.fieldConfig));
+    const visualCenter: [number, number] = [
+      (Math.min(...centers.map(([x]) => x)) + Math.max(...centers.map(([x]) => x))) / 2,
+      (Math.min(...centers.map(([, y]) => y)) + Math.max(...centers.map(([, y]) => y))) / 2,
+    ];
+
+    // The editor registry provides a valid cell at the visual grid origin. This avoids the
+    // arbitrary boundary tie-break that a spatial point query would make at `(0, 0)`.
+    const originCell = TESSELLATION_UI[field.fieldConfig.tessellation.kind].originCell;
+    const origin = getCartesian(originCell[0], originCell[1], field.fieldConfig);
+    const candidates = cells.map((_, index) => ({
+      center: centers[index],
+      distance: (centers[index][0] - visualCenter[0]) ** 2 + (centers[index][1] - visualCenter[1]) ** 2,
+    })).sort((a, b) => a.distance - b.distance);
+
+    for (const candidate of candidates) {
+      const vector: [number, number] = [origin[0] - candidate.center[0], origin[1] - candidate.center[1]];
+      try {
+        const moved = translateFieldCells(field.fieldConfig.tessellation, cells, vector);
+        const movedPoints = new Set(moved.map(([x, y]) => encodePoint(x, y)));
+        if (movedPoints.size === field.fieldPoints.size
+          && [...movedPoints].every((point) => field.fieldPoints.has(point))) return {};
+        return invalidateIfChanged(withFieldPointsEdit(state, (points) => {
+          points.clear();
+          for (const point of movedPoints) points.add(point);
+          return true;
+        }));
+      } catch (error) {
+        if (!isFieldOpError(error)) throw error;
+      }
+    }
+    return {};
+  })),
+
   clearFieldPoints: () => set((state) => guardFieldEdit(state, { kind: "clearFieldPoints" }, () => invalidateIfChanged(withFieldPointsEdit(state, (pts) => {
     if (pts.size === 0) return false;
     pts.clear();
@@ -347,6 +388,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "addFieldPoints": get().addFieldPoints(pending.cells); break;
       case "removeFieldPoints": get().removeFieldPoints(pending.cells); break;
       case "moveFieldPoints": get().moveFieldPoints(pending.cells, pending.vector); break;
+      case "centerFieldPoints": get().centerFieldPoints(); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applySymmetry": get().applySymmetry(); break;

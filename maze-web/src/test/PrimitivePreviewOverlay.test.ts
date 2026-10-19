@@ -82,7 +82,6 @@ describe("PrimitivePreviewOverlay selection frames", () => {
     overlay.update(
       [],
       1,
-      "square",
       cfg,
       { kind: "ellipse", center: { x: 20, y: 20 }, width: 80, height: 40 },
     );

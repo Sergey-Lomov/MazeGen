@@ -37,6 +37,7 @@ export class ExportFrameOverlay implements ViewportListener {
     return this.syncingDepth > 0;
   }
   private wasFrameActive = false;
+  private lastActiveFloorId: string | null = null;
 
   constructor(
     container: Container,
@@ -224,13 +225,15 @@ export class ExportFrameOverlay implements ViewportListener {
     const state = useMazeStore.getState();
     const printLayout = this.currentPrintFrameLayout(state);
     const becameActive = printLayout !== null && !this.wasFrameActive;
+    const activeFloorChanged = state.activeFloorId !== this.lastActiveFloorId;
     this.wasFrameActive = printLayout !== null;
+    this.lastActiveFloorId = state.activeFloorId;
 
     if (printLayout && !this.syncing) {
       const settings = state.pngExportSettings.print;
       const sheetSizeChanged = this.sheetSizeChanged(printLayout);
       const placementChanged = this.placementChanged(settings);
-      if (becameActive || sheetSizeChanged || placementChanged) {
+      if (becameActive || activeFloorChanged || sheetSizeChanged || placementChanged) {
         this.syncViewportToPlacement(state, printLayout);
       }
       this.lastPlacement = { scale: settings.scale, offsetXMm: settings.offsetXMm, offsetYMm: settings.offsetYMm, anchor: settings.anchor };

@@ -20,6 +20,10 @@ Two sub-modes toggled inside the card:
 cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move
 while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
 
+The **Center field** action translates all custom cells so the origin cell is as close as possible
+to the midpoint between the field's extreme cell centers. It is unavailable when the active
+tessellation does not support translation, so triangle parity and mixed-cell tessellations remain valid.
+
 The mode and tool buttons use accessible tooltips. A mode tooltip renders its selection hotkey
 right-aligned as a muted keycap badge (for example, `Add` with `+`). A separate tertiary-colored line explains any
 keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Symmetry alone adds
