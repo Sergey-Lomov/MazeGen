@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { boundsInCellSides, calculatePrintFieldConfig, largestFitting, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import type { TessellationKind } from "../fieldConfig";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const printInput = {
@@ -96,5 +98,93 @@ describe("field print sizing", () => {
       ...printInput,
       cellSizeMm: 300,
     })).toBeNull();
+  });
+
+  it.each([
+    ["non-positive cell size", { cellSizeMm: 0 }],
+    ["non-finite cell size", { cellSizeMm: NaN }],
+    ["negative margin", { marginHMm: -1 }],
+    ["non-finite margin", { marginVMm: NaN }],
+    ["margins that leave no usable width", { marginHMm: 105 }],
+    ["margins that leave no usable height", { marginVMm: 149 }],
+    ["non-positive custom paper", { paperSize: "custom" as const, customWidthMm: 0 }],
+    ["non-finite custom paper", { paperSize: "custom" as const, customHeightMm: NaN }],
+  ])("rejects %s", (_name, override) => {
+    expect(calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }), { ...printInput, ...override })).toBeNull();
+  });
+
+  it("answers floors of one shape kind from the same calculation", () => {
+    const first = calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), printInput);
+    const second = calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 9, rows: 4 }), printInput);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+    expect(second!.config).not.toBe(first!.config);
+    expect(calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), { ...printInput, cellSizeMm: 11 })).not.toBe(first);
+  });
+
+  it.each([
+    { limit: 37, hint: 1 },
+    { limit: 37, hint: 37 },
+    { limit: 37, hint: 500 },
+    { limit: 1, hint: 900 },
+    { limit: 0, hint: 5 },
+    { limit: 1000, hint: 1 },
+    { limit: 5000, hint: 10 },
+    { limit: 4, hint: 1, min: 3 },
+    { limit: 2, hint: 9, min: 3 },
+  ])("finds the largest fitting value from any hint: %o", ({ limit, hint, min = 1 }) => {
+    // 0 when even the smallest allowed value does not fit.
+    const expected = limit < min ? 0 : Math.min(limit, 1000);
+    expect(largestFitting((value) => value <= limit, hint, min, 1000)).toBe(expected);
+  });
+
+  describe("rect search matches a full scan", () => {
+    const smallSheet = { ...printInput, paperSize: "custom" as const, customWidthMm: 45, customHeightMm: 55 };
+    // Core has no parallelogram preset, and the radial kind has no rect.
+    const kinds = (Object.keys(TESSELLATION_UI) as TessellationKind[])
+      .filter((kind) => kind !== "radial" && !TESSELLATION_UI[kind].editor.axisAlignedGrid);
+    const shape = "rect" as const;
+
+    it.each(kinds)(
+      "%s", (kind) => {
+        const orientation = TESSELLATION_UI[kind].orientations[0];
+        for (const cellSizeMm of [4, 6]) {
+          const input = { ...smallSheet, cellSizeMm };
+          const start = fieldOf(kind, { shape, cols: 2, rows: 2 }, orientation);
+          const result = calculatePrintFieldConfig(start, input);
+
+          // Reference: every cols x rows pair, the most cells then the fullest sheet.
+          expect(result).not.toBeNull();
+          const cellSideMm = result!.fieldWidthMm / boundsInCellSides(result!.config).width;
+          const usableW = result!.usableWidthMm;
+          const usableH = result!.usableHeightMm;
+          // "refused": core rejects a block below the lattice's minimum (3.12.12 needs two rows).
+          const fitsSize = (cols: number, rows: number): { fill: number } | "refused" | null => {
+            const b = boundsInCellSides(fieldOf(kind, { shape, cols, rows }, orientation));
+            if (!Number.isFinite(b.width)) return "refused";
+            const w = b.width * cellSideMm;
+            const h = b.height * cellSideMm;
+            return w <= usableW + 1e-9 && h <= usableH + 1e-9 ? { fill: w / usableW + h / usableH } : null;
+          };
+          let expected = { count: 0, fill: -Infinity };
+          for (let cols = 1; cols <= 60; cols++) {
+            let anyFits = false;
+            for (let rows = 1; rows <= 60; rows++) {
+              const fit = fitsSize(cols, rows);
+              if (fit === "refused") continue;
+              if (!fit) break;
+              anyFits = true;
+              const count = cols * rows;
+              if (count > expected.count || (count === expected.count && fit.fill > expected.fill)) expected = { count, fill: fit.fill };
+            }
+            if (!anyFits && cols > 4) break;
+          }
+
+          const chosen = result!.config.shape as { cols: number; rows: number };
+          expect(chosen.cols * chosen.rows).toBe(expected.count);
+          expect((fitsSize(chosen.cols, chosen.rows) as { fill: number }).fill).toBeCloseTo(expected.fill, 9);
+        }
+      },
+    );
   });
 });
