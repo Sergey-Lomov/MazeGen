@@ -109,7 +109,19 @@ forms (`circle`, `hexagon`, `triangle` shapes)
 calculate the largest fitting radius; because a
 single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
-forms by field radius, and triangular forms by field side. Invalid input or a cell too large for the printable area
+forms by field radius, and triangular forms by field side.
+
+The rectangular search (`calculateBestRectConfig`, `fieldPrintSizing.ts`) measures candidate blocks
+through core (`field_preset_extents`), so it keeps the number of measurements small: the widest
+column count and tallest row count are found by galloping from a linear estimate (sizes at 1 and
+3), then the columns are walked from the widest down, each column's row count starting from the
+previous one. The walk stops once `cols * maxRows` cannot beat the best cell count; the most cells
+win, then the fullest sheet. The result is exact (checked against a full scan for every
+non-axis-aligned kind). It relies on bounds never shrinking as columns or rows grow. The search starts
+from the smallest block core accepts (3.12.12 refuses a single row), found by probing up to four
+columns/rows. Answers are cached by
+tessellation, orientation, shape kind and print input (not by the current size), so floors of one
+shape kind are calculated once; each caller receives its own copy. Invalid input or a cell too large for the printable area
 disables confirmation.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
