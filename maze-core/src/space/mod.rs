@@ -18,6 +18,7 @@ pub mod radial;
 pub mod rhombitrihexagonal;
 pub mod shape;
 pub mod snub_hexagonal;
+pub mod snub_square;
 pub mod square;
 pub mod square_octagon;
 #[cfg(test)]
@@ -56,6 +57,7 @@ pub use shape::{CellShape, ShapeDescriptor, ShapeFamily};
 pub use snub_hexagonal::{
     SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation,
 };
+pub use snub_square::{SnubSquareFace, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTessellation};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};

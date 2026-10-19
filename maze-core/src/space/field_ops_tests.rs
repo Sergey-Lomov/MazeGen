@@ -55,6 +55,7 @@ fn every_builtin_preset_builds_valid_connected_sorted_cells() {
     check_presets_build_valid_connected_sorted_cells(&RhombitrihexagonalTessellation);
     check_presets_build_valid_connected_sorted_cells(&TruncatedHexagonalTessellation);
     check_presets_build_valid_connected_sorted_cells(&TruncatedTrihexagonalTessellation);
+    check_presets_build_valid_connected_sorted_cells(&SnubSquareTessellation);
     check_presets_build_valid_connected_sorted_cells(&CurvedQuadrilateralTessellation);
     check_presets_build_valid_connected_sorted_cells(&BrickTessellation);
     for (tessellation, _) in crate::space::test_support::radial_cases() {
@@ -106,6 +107,10 @@ fn presets_per_kind_match_the_spec_table() {
     );
     assert_eq!(
         preset_keys(&TruncatedTrihexagonalTessellation),
+        ["rect", "circle", "triangle"]
+    );
+    assert_eq!(
+        preset_keys(&SnubSquareTessellation),
         ["rect", "circle", "triangle"]
     );
     assert_eq!(

@@ -90,7 +90,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "curved_quadrilateral", "radial"] as const;
+  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "snub_square", "curved_quadrilateral", "radial"] as const;
   const rawKind = assertString(tessObj.kind, "tessellation.kind");
   if (!(tessellationKinds as readonly string[]).includes(rawKind))
     throw new Error(`Invalid tessellation kind at tessellation.kind: ${rawKind}`);
@@ -250,7 +250,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
-      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], curved_quadrilateral: [], radial: [] }, fieldEditMode: "default" };
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], snub_square: [], curved_quadrilateral: [], radial: [] }, fieldEditMode: "default" };
   }
 
   return {

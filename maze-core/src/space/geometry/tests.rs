@@ -5,10 +5,11 @@ use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
     RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalKind, SnubHexagonalPoint,
-    SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation, SquarePoint,
-    SquareTessellation, TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
-    TruncatedHexagonalKind, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
-    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    SnubHexagonalTessellation, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation,
+    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint,
+    TriTessellation, TrihexagonalPoint, TrihexagonalTessellation, TruncatedHexagonalKind,
+    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, TruncatedTrihexagonalKind,
+    TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
 };
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -94,6 +95,16 @@ fn truncated_trihexagonal_cells() -> Vec<TruncatedTrihexagonalPoint> {
         .collect()
 }
 
+fn snub_square_cells() -> Vec<SnubSquarePoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            SnubSquareKind::ALL
+                .into_iter()
+                .map(move |kind| SnubSquarePoint::new(q, r, kind))
+        })
+        .collect()
+}
+
 fn curved_quadrilateral_cells() -> Vec<CurvedQuadrilateralPoint> {
     grid(3)
         .map(|(x, y)| CurvedQuadrilateralPoint { x, y })
@@ -124,6 +135,7 @@ macro_rules! for_each_tessellation {
             &TruncatedTrihexagonalTessellation,
             &truncated_trihexagonal_cells(),
         );
+        $check(&SnubSquareTessellation, &snub_square_cells());
         $check(
             &CurvedQuadrilateralTessellation,
             &curved_quadrilateral_cells(),

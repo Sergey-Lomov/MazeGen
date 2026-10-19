@@ -281,8 +281,8 @@ pub(super) fn retain_attached<T: Tessellation>(
 mod tests {
     use super::*;
     use crate::space::{
-        RhombitrihexagonalKind, SnubHexagonalKind, TrihexagonalKind, TruncatedHexagonalKind,
-        TruncatedTrihexagonalKind,
+        RhombitrihexagonalKind, SnubHexagonalKind, SnubSquareKind, TrihexagonalKind,
+        TruncatedHexagonalKind, TruncatedTrihexagonalKind,
     };
 
     /// Wire round trip over a window of anchors, negative ones included, for every kind of `K`.
@@ -328,16 +328,19 @@ mod tests {
     fn wire_encoding_holds_for_every_kind_set() {
         assert_wire_round_trip::<TrihexagonalKind>();
         assert_wire_round_trip::<SnubHexagonalKind>();
+        assert_wire_round_trip::<SnubSquareKind>();
         assert_wire_round_trip::<RhombitrihexagonalKind>();
         assert_wire_round_trip::<TruncatedHexagonalKind>();
         assert_wire_round_trip::<TruncatedTrihexagonalKind>();
         assert_wire_wraps::<TrihexagonalKind>();
         assert_wire_wraps::<SnubHexagonalKind>();
+        assert_wire_wraps::<SnubSquareKind>();
         assert_wire_wraps::<RhombitrihexagonalKind>();
         assert_wire_wraps::<TruncatedHexagonalKind>();
         assert_wire_wraps::<TruncatedTrihexagonalKind>();
         assert_index_follows_all::<TrihexagonalKind>();
         assert_index_follows_all::<SnubHexagonalKind>();
+        assert_index_follows_all::<SnubSquareKind>();
         assert_index_follows_all::<RhombitrihexagonalKind>();
         assert_index_follows_all::<TruncatedHexagonalKind>();
         assert_index_follows_all::<TruncatedTrihexagonalKind>();

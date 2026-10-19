@@ -4,11 +4,11 @@ use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
     RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalKind, SnubHexagonalPoint,
-    SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation, SquarePoint,
-    SquareTessellation, Tessellation, TriFace, TriPoint, TriTessellation, TrihexagonalPoint,
-    TrihexagonalTessellation, TruncatedHexagonalKind, TruncatedHexagonalPoint,
-    TruncatedHexagonalTessellation, TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint,
-    TruncatedTrihexagonalTessellation,
+    SnubHexagonalTessellation, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation,
+    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
+    TriFace, TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    TruncatedHexagonalKind, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
+    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
 };
 
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
@@ -93,6 +93,16 @@ fn truncated_trihexagonal_cells() -> Vec<TruncatedTrihexagonalPoint> {
             TruncatedTrihexagonalKind::ALL
                 .into_iter()
                 .map(move |kind| TruncatedTrihexagonalPoint::new(q, r, kind))
+        })
+        .collect()
+}
+
+fn snub_square_cells() -> Vec<SnubSquarePoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            SnubSquareKind::ALL
+                .into_iter()
+                .map(move |kind| SnubSquarePoint::new(q, r, kind))
         })
         .collect()
 }
@@ -289,6 +299,7 @@ fn shape_contract_holds_for_every_tessellation() {
         &TruncatedTrihexagonalTessellation,
         &truncated_trihexagonal_cells(),
     );
+    assert_shape_contract(&SnubSquareTessellation, &snub_square_cells());
     assert_shape_contract(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
@@ -317,6 +328,7 @@ fn face_chain_is_invertible_for_every_tessellation() {
         &TruncatedTrihexagonalTessellation,
         &truncated_trihexagonal_cells(),
     );
+    assert_chain_invertible(&SnubSquareTessellation, &snub_square_cells());
     assert_chain_invertible(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
@@ -346,6 +358,7 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
         &TruncatedTrihexagonalTessellation,
         &truncated_trihexagonal_cells(),
     );
+    assert_canonical_order_is_counter_clockwise(&SnubSquareTessellation, &snub_square_cells());
     assert_canonical_order_is_counter_clockwise(
         &SnubHexagonalTessellation,
         &snub_hexagonal_cells(),
@@ -395,6 +408,7 @@ fn built_in_faces_of_is_the_canonical_order() {
         &TruncatedTrihexagonalTessellation,
         &truncated_trihexagonal_cells(),
     );
+    identity(&SnubSquareTessellation, &snub_square_cells());
     identity(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
@@ -432,6 +446,7 @@ fn every_built_in_cell_gets_its_full_group() {
         &TruncatedTrihexagonalTessellation,
         &truncated_trihexagonal_cells(),
     );
+    full(&SnubSquareTessellation, &snub_square_cells());
     full(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),

@@ -102,6 +102,7 @@ export function validateFloorFieldConfig(v: unknown, path: string, kind: Tessell
     rhombitrihexagonal: validatePoints(freeObj.rhombitrihexagonal, `${path}.freeFieldPoints.rhombitrihexagonal`),
     truncated_hexagonal: validatePoints(freeObj.truncated_hexagonal, `${path}.freeFieldPoints.truncated_hexagonal`),
     truncated_trihexagonal: validatePoints(freeObj.truncated_trihexagonal, `${path}.freeFieldPoints.truncated_trihexagonal`),
+    snub_square: validatePoints(freeObj.snub_square, `${path}.freeFieldPoints.snub_square`),
     curved_quadrilateral: validatePoints(freeObj.curved_quadrilateral, `${path}.freeFieldPoints.curved_quadrilateral`),
     radial: validatePoints(freeObj.radial, `${path}.freeFieldPoints.radial`),
   };

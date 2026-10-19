@@ -3,10 +3,11 @@ use maze_core::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RadialLayout, RadialParams,
     RadialPoint, RadialTessellation, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
-    SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation,
-    SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
-    TrihexagonalTessellation, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
-    TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    SnubHexagonalPoint, SnubHexagonalTessellation, SnubSquarePoint, SnubSquareTessellation,
+    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
+    TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, TruncatedTrihexagonalPoint,
+    TruncatedTrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -107,6 +108,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 CellCodec {
                     from_xy: SnubHexagonalPoint::from_xy,
                     to_xy: SnubHexagonalPoint::to_xy,
+                },
+            ))
+        }
+        TessellationKind::SnubSquare => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(SnubSquareTessellation),
+                CellCodec {
+                    from_xy: SnubSquarePoint::from_xy,
+                    to_xy: SnubSquarePoint::to_xy,
                 },
             ))
         }
@@ -287,6 +298,7 @@ mod tests {
             (TessellationKind::SquareOctagon, &[8, 4][..]),
             (TessellationKind::Trihexagonal, &[6, 3]),
             (TessellationKind::SnubHexagonal, &[6, 3]),
+            (TessellationKind::SnubSquare, &[4, 3]),
             (TessellationKind::Rhombitrihexagonal, &[6, 4, 3]),
             (TessellationKind::TruncatedHexagonal, &[12, 3]),
             (TessellationKind::TruncatedTrihexagonal, &[12, 4, 6]),

@@ -66,6 +66,7 @@ pub enum TessellationKind {
     Brick,
     Trihexagonal,
     SnubHexagonal,
+    SnubSquare,
     Rhombitrihexagonal,
     TruncatedHexagonal,
     TruncatedTrihexagonal,
