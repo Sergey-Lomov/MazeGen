@@ -111,7 +111,11 @@ describe("mazeStore.generate", () => {
 
     useMazeStore.getState().generate();
 
-    expect(useMazeStore.getState().activeFieldConfig).toEqual(fieldOf("hex", { shape: "custom", points: configAllCells(config) }, "pointy_top"));
+    expect(generateMaze).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ level_fields: [configAllCells(config, true)] }),
+    );
+    expect(useMazeStore.getState().activeFieldConfig).toEqual(fieldOf("hex", { shape: "custom", points: configAllCells(config, true) }, "pointy_top"));
   });
 
   it("derives postEditDraftSplitPoints from a snapshot with an auto-split point (GitHub issue #222)", () => {

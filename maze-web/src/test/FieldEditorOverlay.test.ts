@@ -106,7 +106,7 @@ vi.mock("../pixi/tessellationProjection", () => ({
 }));
 
 vi.mock("../pixi/tessellationCells", () => ({
-  configAllCells: (cfg: { shape: { cols?: number } }) => cfg.shape.cols === 0 ? [] : [[0, 0], [2, 4]],
+  configAllCells: (cfg: { shape: { cols?: number } }, smooth = false) => cfg.shape.cols === 0 ? [] : smooth ? [[0, 0]] : [[0, 0], [2, 4]],
   resolveFieldConfig: (cfg: unknown) => cfg,
 }));
 
@@ -214,6 +214,30 @@ describe("FieldEditorOverlay", () => {
       expect.objectContaining({ tessellation: { kind: "square", params: {} } }),
     );
     expect(boundary.render.mock.calls[0][0].edges).toHaveLength(6);
+  });
+
+  it("redraws a standard field when smoothing changes", () => {
+    const state = useMazeStore.getState();
+    const config = fieldOf("square", { shape: "circle", radius: 5 });
+    useMazeStore.setState({
+      floorFields: {
+        ...state.floorFields,
+        [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], fieldEditMode: "default", fieldConfig: config },
+      },
+      smoothPrimitives: true,
+    });
+    openOverlay();
+    const fieldRender = (stubs.floors[0] as Stub).render;
+    const boundaryRender = (stubs.walls[0] as Stub).render;
+    const fieldRenderCount = fieldRender.mock.calls.length;
+    const boundaryRenderCount = boundaryRender.mock.calls.length;
+    const smoothedCells = fieldRender.mock.calls[fieldRenderCount - 1][0].cells;
+
+    useMazeStore.getState().setSmoothPrimitives(false);
+
+    expect(fieldRender).toHaveBeenCalledTimes(fieldRenderCount + 1);
+    expect(boundaryRender).toHaveBeenCalledTimes(boundaryRenderCount + 1);
+    expect(fieldRender.mock.calls[fieldRenderCount][0].cells).not.toEqual(smoothedCells);
   });
 
   it("draws symmetry cells and polygon geometry only while symmetry is active", () => {

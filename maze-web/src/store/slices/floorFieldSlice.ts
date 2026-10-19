@@ -136,7 +136,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       if (isAlreadyCustom) {
         fieldPoints = field.freeFieldPoints[state.tessellationKind];
       } else {
-        const cells = configAllCells(cfg);
+        const cells = configAllCells(cfg, state.smoothPrimitives);
         fieldPoints = new Set(cells.map(([x, y]) => encodePoint(x, y)));
       }
       const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };

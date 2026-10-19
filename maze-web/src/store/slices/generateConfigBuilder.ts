@@ -216,7 +216,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       const level = levelPart === undefined ? 0 : Number(levelPart);
       return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
     });
-  const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
+  const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id), state.smoothPrimitives));
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     level_fields,
@@ -353,7 +353,7 @@ function applyGenerationResult(
       selectedNode: null,
       issues: snapshot.issues,
       error: null,
-      activeFieldConfig: resolveFieldConfig(activeTessellation),
+      activeFieldConfig: resolveFieldConfig(activeTessellation, get().smoothPrimitives),
       routeInfo: snapshot.route_info,
       timing: snapshot.timing,
       generationStatus: "done",

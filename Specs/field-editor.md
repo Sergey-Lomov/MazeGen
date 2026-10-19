@@ -417,7 +417,9 @@ minimum 1.25px screen-space thickness at every zoom level.
 
 Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
 one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
-Smoothing affects primitive tools only; point-by-point editing is unchanged.
+The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
+cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
+updates the displayed field and resets generation and post-edit results.
 
 Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
 RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.

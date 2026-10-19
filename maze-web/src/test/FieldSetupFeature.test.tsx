@@ -234,7 +234,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByText(m["floors.from_current"]())).toBeInTheDocument();
   });
 
-  it("describes primitive smoothing and its always-on isolated-cell cleanup", () => {
+  it("describes smoothing", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
@@ -244,8 +244,17 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     expect(screen.getByText("Smoothing")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    expect(screen.getByText(/works only with primitives/)).toBeInTheDocument();
-    expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
+    expect(screen.getByText(/removes cells that touch the rest of the selected shape by only one side/)).toBeInTheDocument();
+  });
+
+  it("shows and updates primitive smoothing for a standard field", () => {
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    const smoothing = screen.getByRole("checkbox");
+    expect(smoothing).toBeChecked();
+    fireEvent.click(smoothing);
+    expect(useMazeStore.getState().smoothPrimitives).toBe(false);
   });
 
   it("offers one polygon tool whose operation follows the active mode", () => {

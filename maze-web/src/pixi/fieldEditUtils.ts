@@ -343,10 +343,10 @@ export function edgeKey(a: [number, number], b: [number, number]): string {
   return `${fa[0]},${fa[1]}-${fb[0]},${fb[1]}`;
 }
 
-export function resolveCells(cfg: FieldConfig, customPoints?: Set<number>): [number, number][] {
+export function resolveCells(cfg: FieldConfig, customPoints?: Set<number>, smooth = false): [number, number][] {
   if (customPoints && customPoints.size > 0)
     return Array.from(customPoints).map(k => decodePoint(k) as [number, number]);
-  return configAllCells(cfg);
+  return configAllCells(cfg, smooth);
 }
 
 /** Per-floor field cells (GitHub issue #340) — `level === undefined` (floor 0) or any other level
@@ -354,7 +354,7 @@ export function resolveCells(cfg: FieldConfig, customPoints?: Set<number>): [num
  * multi-floor validity/auto-lock function below takes a `resolveFieldAt` callback instead of a
  * single `cfg`, since a flat, maze-wide preset collection can hold entries for several floors at
  * once, each with its own field shape (`FloorFieldConfig`, GitHub issue #338). */
-export type ResolveFieldAt = (level: number | undefined) => { cfg: FieldConfig; customPoints?: Set<number> } | undefined;
+export type ResolveFieldAt = (level: number | undefined) => { cfg: FieldConfig; customPoints?: Set<number>; smooth?: boolean } | undefined;
 
 /** One floor's own field, for `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340) —
  * `level` is that floor's 0-based index (matches `PresetEndpoint.level`; the first entry is
@@ -363,6 +363,7 @@ export interface LevelField {
   level: number | undefined;
   cfg: FieldConfig;
   customPoints?: Set<number>;
+  smooth?: boolean;
 }
 
 /**
@@ -381,8 +382,8 @@ export function computeAutoLockedNodes(
   presetSplitPoints: Record<string, number[]> = {},
 ): Set<string> {
   const result = new Set<string>();
-  for (const { level, cfg, customPoints } of fields) {
-    const cells = resolveCells(cfg, customPoints);
+  for (const { level, cfg, customPoints, smooth } of fields) {
+    const cells = resolveCells(cfg, customPoints, smooth);
     const cellSet = new Set<number>();
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
 

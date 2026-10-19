@@ -494,7 +494,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
     // Each floor's own field points, in `floors` order (GitHub issue #359) — mirrors
     // `buildGenerateConfig`'s own `level_fields` derivation.
-    const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
+    const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id), state.smoothPrimitives));
 
     const config = {
       tessellation: fieldConfigToWasm(activeFieldConfig),

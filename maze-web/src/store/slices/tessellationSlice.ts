@@ -202,7 +202,17 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     backgroundImage: { ...state.backgroundImage, ...transform },
   }),
   setBackgroundAutoFillPreview: (points) => set({ backgroundAutoFillPreview: points }),
-  setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
+  setSmoothPrimitives: (smooth) => set((state) => {
+    if (smooth === state.smoothPrimitives) return {};
+    const field = state.floorFields[state.activeFloorId];
+    if (field.fieldEditMode === "custom") return { smoothPrimitives: smooth };
+    return {
+      smoothPrimitives: smooth,
+      activeFieldConfig: resolveFieldConfig(field.fieldConfig, smooth),
+      ...buildResetDownstreamState(),
+      debugStale: debugStaleOf(state),
+    };
+  }),
   setFieldOpError: (error) => set({ fieldOpError: error }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),

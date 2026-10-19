@@ -114,6 +114,11 @@ export class FieldEditorOverlay {
         this.redrawFieldBoundary(state);
       }
 
+      if (isOpen && state.smoothPrimitives !== prev.smoothPrimitives) {
+        this.redrawFloor(state);
+        this.redrawFieldBoundary(state);
+      }
+
       if (isOpen && field.fieldConfig !== prevField.fieldConfig) {
         this.redrawAll(state);
       }
@@ -228,7 +233,7 @@ export class FieldEditorOverlay {
     const preview = state.backgroundAutoFillPreview;
     const fieldPoints = preview ?? field.fieldPoints;
     const fieldEditMode = preview !== null ? "custom" : field.fieldEditMode;
-    const cells = buildActiveCells(fieldPoints, fieldEditMode, field.fieldConfig)
+    const cells = buildActiveCells(fieldPoints, fieldEditMode, field.fieldConfig, state.smoothPrimitives)
       .filter(([x, y]) => !this.selectionMoveHidden.has(encodePoint(x, y)));
     const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
     for (const key of this.selectionMoveTemporary) {
