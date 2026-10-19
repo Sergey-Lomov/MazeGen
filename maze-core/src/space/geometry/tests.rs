@@ -3,7 +3,8 @@ use super::*;
 use crate::space::test_support::{ScaledSquareTessellation, radial_cases};
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
-    CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
+    CurvedQuadrilateralTessellation, ElongatedTriangularKind, ElongatedTriangularPoint,
+    ElongatedTriangularTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
     RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalKind, SnubHexagonalPoint,
     SnubHexagonalTessellation, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation,
     SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, TriPoint,
@@ -95,6 +96,16 @@ fn truncated_trihexagonal_cells() -> Vec<TruncatedTrihexagonalPoint> {
         .collect()
 }
 
+fn elongated_triangular_cells() -> Vec<ElongatedTriangularPoint> {
+    grid(2)
+        .flat_map(|(x, y)| {
+            ElongatedTriangularKind::ALL
+                .into_iter()
+                .map(move |kind| ElongatedTriangularPoint::new(x, y, kind))
+        })
+        .collect()
+}
+
 fn snub_square_cells() -> Vec<SnubSquarePoint> {
     grid(2)
         .flat_map(|(q, r)| {
@@ -136,6 +147,10 @@ macro_rules! for_each_tessellation {
             &truncated_trihexagonal_cells(),
         );
         $check(&SnubSquareTessellation, &snub_square_cells());
+        $check(
+            &ElongatedTriangularTessellation,
+            &elongated_triangular_cells(),
+        );
         $check(
             &CurvedQuadrilateralTessellation,
             &curved_quadrilateral_cells(),

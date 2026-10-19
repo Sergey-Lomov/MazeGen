@@ -1,13 +1,13 @@
 use crate::config::{TessellationConfig, TessellationKind};
 use maze_core::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
-    CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RadialLayout, RadialParams,
-    RadialPoint, RadialTessellation, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
-    SnubHexagonalPoint, SnubHexagonalTessellation, SnubSquarePoint, SnubSquareTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
-    TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
-    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, TruncatedTrihexagonalPoint,
-    TruncatedTrihexagonalTessellation,
+    CurvedQuadrilateralTessellation, ElongatedTriangularPoint, ElongatedTriangularTessellation,
+    HexPoint, HexTessellation, RadialLayout, RadialParams, RadialPoint, RadialTessellation,
+    RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalPoint,
+    SnubHexagonalTessellation, SnubSquarePoint, SnubSquareTessellation, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriPoint,
+    TriTessellation, TrihexagonalPoint, TrihexagonalTessellation, TruncatedHexagonalPoint,
+    TruncatedHexagonalTessellation, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -148,6 +148,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 CellCodec {
                     from_xy: TruncatedTrihexagonalPoint::from_xy,
                     to_xy: TruncatedTrihexagonalPoint::to_xy,
+                },
+            ))
+        }
+        TessellationKind::ElongatedTriangular => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(ElongatedTriangularTessellation),
+                CellCodec {
+                    from_xy: ElongatedTriangularPoint::from_xy,
+                    to_xy: ElongatedTriangularPoint::to_xy,
                 },
             ))
         }
@@ -309,6 +319,17 @@ mod tests {
                 "{kind:?}"
             );
         }
+    }
+
+    #[test]
+    fn builds_elongated_triangular_with_square_and_triangle_shapes() {
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::ElongatedTriangular), Probe),
+            Ok((
+                vec!["regular:4".to_string(), "regular:3".to_string()],
+                (3, -2)
+            ))
+        );
     }
 
     #[test]

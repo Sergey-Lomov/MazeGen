@@ -512,6 +512,7 @@ mod tests {
             TessellationKind::Rhombitrihexagonal,
             TessellationKind::TruncatedHexagonal,
             TessellationKind::TruncatedTrihexagonal,
+            TessellationKind::ElongatedTriangular,
             TessellationKind::CurvedQuadrilateral,
         ] {
             let expected = build_tessellation(&config(kind), CoreGeometry).unwrap();

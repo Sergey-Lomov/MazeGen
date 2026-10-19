@@ -38,9 +38,10 @@ pub use meta::MazeMeta;
 pub use space::{
     BrickFace, BrickPoint, BrickTessellation, CairoFace, CairoPoint, CairoTessellation,
     CairoTileKind, CurvedQuadrilateralFace, CurvedQuadrilateralPoint,
-    CurvedQuadrilateralTessellation, Field, HexFace, HexPoint, HexTessellation, LevelId,
-    MultiLevelField, RadialFace, RadialLayout, RadialParams, RadialPoint, RadialTessellation,
-    RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
+    CurvedQuadrilateralTessellation, ElongatedTriangularFace, ElongatedTriangularKind,
+    ElongatedTriangularPoint, ElongatedTriangularTessellation, Field, HexFace, HexPoint,
+    HexTessellation, LevelId, MultiLevelField, RadialFace, RadialLayout, RadialParams, RadialPoint,
+    RadialTessellation, RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
     RhombitrihexagonalTessellation, SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint,
     SnubHexagonalTessellation, SnubSquareFace, SnubSquareKind, SnubSquarePoint,
     SnubSquareTessellation, SquareFace, SquareOctagonFace, SquareOctagonPoint,

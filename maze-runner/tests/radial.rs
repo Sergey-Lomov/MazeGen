@@ -33,8 +33,7 @@ fn full_pipeline_spans_the_rings() {
 #[test]
 fn config_wire_form_round_trips() {
     use maze_runner::config::{TessellationConfig, TessellationKind};
-    let json =
-        r#"{ "kind": "radial", "params": { "first_ring_cells": 9, "ring_layout": "smooth", "max_cells": 3000 } }"#;
+    let json = r#"{ "kind": "radial", "params": { "first_ring_cells": 9, "ring_layout": "smooth", "max_cells": 3000 } }"#;
     let cfg: TessellationConfig = serde_json::from_str(json).unwrap();
     assert_eq!(cfg.kind, TessellationKind::Radial);
     assert_eq!(cfg.params["first_ring_cells"], 9);

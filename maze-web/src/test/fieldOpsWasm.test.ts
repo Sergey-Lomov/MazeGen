@@ -193,6 +193,26 @@ describe("field operations over wasm", () => {
     expect(fieldOperationAvailable(truncated, "reflect")).toBe(true);
   });
 
+  it("builds elongated triangular presets and translates and reflects on its symmetries", () => {
+    const elongated = tessellationConfigOf("elongated_triangular");
+    // Wire cells are `[3x + kind, y]` with kind 0 square, 1 and 2 triangles.
+    const preset = getFieldPreset(elongated, "rect", { cols: 5, rows: 4 });
+    for (const kind of [0, 1, 2]) {
+      expect(preset.some(([x]) => ((x % 3) + 3) % 3 === kind)).toBe(true);
+    }
+    expect(getFieldPreset(elongated, "triangle", { side: 6 }).length).toBeGreaterThan(0);
+    // One square right keeps the band, one band up (half a square right) keeps the column.
+    expect(translateFieldCells(elongated, [[0, 0]], [1, 0])).toEqual([[3, 0]]);
+    expect(translateFieldCells(elongated, [[0, 0]], [0.5, 1 + Math.sqrt(3) / 2])).toEqual([[0, 1]]);
+    try {
+      translateFieldCells(elongated, [[0, 0]], [0.5, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+    expect(fieldOperationAvailable(elongated, "reflect")).toBe(true);
+  });
+
   it("builds snub square presets and translates only on lattice vectors", () => {
     const snub = tessellationConfigOf("snub_square");
     // Wire cells are `[6q + kind, r]` with kind 0 and 1 squares, 2-5 triangles.
