@@ -64,6 +64,9 @@ const FACE_INDEX_OFFSET_FACTOR = 0.04;
 const FACE_INDEX_FONT_FACTOR = 0.09;
 const FACE_INDEX_PAD_FACTOR = 0.14;
 const FACE_INDEX_OPACITY = 0.55;
+/** Extends each face's node-anchor-to-boundary hit wedge slightly past the tile boundary, making
+ * the active node's connector and face equally forgiving click targets. */
+const FACE_HIT_ZONE_OUTSET_FACTOR = 0.08;
 /** Digit glyph box in em: advance width per character, and cap height (the baseline sits half of it
  *  below the label's visual center). */
 const FACE_INDEX_GLYPH_WIDTH = 0.6;
@@ -113,6 +116,7 @@ export function TileFaceEditor({
   const faceIndexOffset = Math.max(w, h) * FACE_INDEX_OFFSET_FACTOR;
   const faceIndexFontSize = Math.max(w, h) * FACE_INDEX_FONT_FACTOR;
   const centroid = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const center = { x: 0, y: 0 };
 
   const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) =>
     ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -150,13 +154,29 @@ export function TileFaceEditor({
     nodes.map((n, nodeIndex) => ({ nodeIndex, kind: n.faces[side.index]?.kind ?? "wall" })));
   const faceLayouts = computeSplitFaceLayouts(faceInputs, kindsByFace, activeIndex);
 
-  const centerX = 0, centerY = 0;
+  const centerX = center.x, centerY = center.y;
   const hubRadius = Math.max(w, h) * 0.12;
   // Match the canvas split-node anchor layout, including Cairo's five-face 36° offset.
   const rotationRad = getSplitCircleRotationDeg(cfg) * Math.PI / 180;
   const connectors = computeSplitConnectors(
     faceLayouts, nodes.length, activeIndex, { x: centerX, y: centerY }, hubRadius, rotationRad,
   );
+  // The editor routes each node from this point on the split circle. A plain two-passage corridor
+  // draws as a straight line instead of a visible hub, but keeps this same logical anchor so its
+  // face hit zones still follow the selected node rather than reverting to the tile center.
+  const activeNodeIndex = activeIndex ?? 0;
+  const activeNodeAngle = rotationRad + (activeNodeIndex / nodes.length) * Math.PI * 2;
+  const activeNodeAnchor = {
+    x: center.x + Math.cos(activeNodeAngle) * hubRadius,
+    y: center.y + Math.sin(activeNodeAngle) * hubRadius,
+  };
+  const faceHitZonePoints = (side: typeof sides[number]) => {
+    const extendedBoundary = side.polyline.map((p) => ({
+      x: activeNodeAnchor.x + (p.x - activeNodeAnchor.x) * (1 + FACE_HIT_ZONE_OUTSET_FACTOR),
+      y: activeNodeAnchor.y + (p.y - activeNodeAnchor.y) * (1 + FACE_HIT_ZONE_OUTSET_FACTOR),
+    }));
+    return sidePoints([activeNodeAnchor, ...extendedBoundary]);
+  };
 
   const colorFor = (nodeIndex: number, kind: TileFaceKind) => {
     const color = nodes[nodeIndex]?.color ?? ui.border.default;
@@ -188,6 +208,7 @@ export function TileFaceEditor({
           return (
             <g
               key={side.index}
+              data-testid={`tile-face-hit-${side.index}`}
               onClick={() => {
                 if (!boundary) onFaceClick(side.index);
                 else if (notificationSource) notifyEditRefusal(notificationSource, SPLIT_BOUNDARY_FACE);
@@ -199,8 +220,7 @@ export function TileFaceEditor({
               }}
               style={{ cursor: "default" }}
             >
-              <polyline points={sidePoints(side.polyline)} fill="none"
-                stroke="transparent" strokeWidth={strokeWidth * 4} />
+              <polygon points={faceHitZonePoints(side)} fill="transparent" stroke="none" />
             </g>
           );
         })}

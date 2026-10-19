@@ -38,6 +38,42 @@ beforeEach(() => {
 });
 
 describe("ManageSplitNodesDialog", () => {
+  it("moves face hit zones with the active node anchor", () => {
+    const onFaceClick = vi.fn();
+    const onFaceRightClick = vi.fn();
+    const props = {
+      point: [1, 1] as [number, number],
+      cfg: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }),
+      nodes: [
+        { color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: false })) },
+        { color: "#000", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: false })) },
+      ],
+      onFaceClick,
+      onFaceRightClick,
+      onRotate: vi.fn(),
+    };
+    const { rerender } = render(
+      <TileFaceEditor
+        {...props}
+        activeIndex={0}
+      />,
+    );
+
+    for (let index = 0; index < 4; index += 1) {
+      const hitZone = screen.getByTestId(`tile-face-hit-${index}`);
+      fireEvent.click(hitZone);
+      fireEvent.contextMenu(hitZone);
+    }
+
+    expect(onFaceClick.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 3]);
+    expect(onFaceRightClick.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 3]);
+    const firstAnchor = screen.getByTestId("tile-face-hit-0").querySelector("polygon")?.getAttribute("points")?.split(" ")[0];
+    rerender(<TileFaceEditor {...props} activeIndex={1} />);
+    const secondAnchor = screen.getByTestId("tile-face-hit-0").querySelector("polygon")?.getAttribute("points")?.split(" ")[0];
+    expect(firstAnchor).not.toBe("0,0");
+    expect(secondAnchor).not.toBe(firstAnchor);
+  });
+
   it("reports boundary-face left/right clicks as one deduplicated notice", () => {
     render(
       <TileFaceEditor
