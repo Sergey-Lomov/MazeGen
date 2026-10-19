@@ -555,6 +555,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
   color: descriptor("color", () => m["image_export.vector_by_corridors.color"](), G.cells),
   thickness: descriptor("number", () => m["image_export.vector_by_corridors.thickness"](), G.cells),
+  junctionRadius: descriptor("number", () => m["image_export.vector_by_corridors.junction_radius"](), G.cells),
   markerWidenPadding: descriptor("number", () => m["image_export.vector_by_corridors.marker_widen_padding"](), G.cells),
   oneWayCount: descriptor("number", () => m["image_export.vector_by_corridors.one_way_count"](), G.oneWays),
   oneWayThickness: descriptor("number", () => m["image_export.vector_by_corridors.one_way_thickness"](), G.oneWays),

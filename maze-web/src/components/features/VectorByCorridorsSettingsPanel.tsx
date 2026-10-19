@@ -389,7 +389,7 @@ export function VectorByCorridorsSettingsPanel() {
               max={TILE_SIZE / 2}
               step={0.5}
               format={(v) => String(v)}
-              linkTarget={null}
+              linkTarget="junctionRadius"
             />
           )}
           <LinkedSliderRow

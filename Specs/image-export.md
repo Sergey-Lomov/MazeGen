@@ -241,7 +241,8 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
   `join === "round"`-gated "Round junctions" toggle; shown only for the round join; see the "Rendering
   mode" section below), **Corner radius** (`junctionRadius`, 0 to `TILE_SIZE / 2` in 0.5 steps,
-  default 4 — shown only for the round join in Contour mode, the only path that reads it) and
+  derived by the default parameter link as half `thickness` — shown only for the round join in Contour mode,
+  the only path that reads it) and
   thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
   wall-thickness range). At thick junctions, the contour builder applies one shared clamp to every
@@ -643,8 +644,8 @@ root-shaped patch), and `propagateLinkedSources(next, changed)` for source-style
 detach (the vertical "Shared style" patch). Both return `Linked<S>`, a branded settings type: the
 image-export slice's `set` accepts only `Linked` values for `vectorByWallsSettings`/
 `vectorByCorridorsSettings`, so a hand-rolled `{ ...settings, field: v }` write does not compile.
-Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`, `junctionRadius`,
-`markerWidenShape`, `*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
+Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`, `markerWidenShape`,
+`*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
 `wallsPlain`/`corridorsPlain`, whose `path` is restricted to `WALLS_PLAIN_PATHS`/
 `CORRIDORS_PLAIN_PATHS` (a test asserts these never overlap the registry); link-management actions and
 reset-to-defaults use the explicit `markLinked` escape hatch.

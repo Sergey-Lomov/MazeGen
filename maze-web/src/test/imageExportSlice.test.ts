@@ -510,6 +510,22 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
     expect(settings.links.find((l) => l.target === "elevatorMarker.size")).toMatchObject({ source: "markerSize", enabled: true });
   });
 
+  it("derives the corridor junction radius from half its thickness by default and allows an override", () => {
+    useMazeStore.getState().setVectorByCorridorsThickness(14);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.junctionRadius).toBe(7);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.links.find((l) => l.target === "junctionRadius")).toMatchObject({
+      source: "thickness",
+      enabled: true,
+      modifiers: [{ op: "div", value: 2 }],
+    });
+
+    useMazeStore.getState().setVectorByCorridorsJunctionRadius(3);
+    useMazeStore.getState().setVectorByCorridorsThickness(20);
+    const settings = useMazeStore.getState().vectorByCorridorsSettings;
+    expect(settings.junctionRadius).toBe(3);
+    expect(settings.links.find((l) => l.target === "junctionRadius")?.enabled).toBe(false);
+  });
+
   it("removeVectorByCorridorsLink drops the link targeting the given path without touching its value", () => {
     const before = useMazeStore.getState().vectorByCorridorsSettings.startMarker.cornerStyle;
     useMazeStore.getState().removeVectorByCorridorsLink("startMarker.cornerStyle");

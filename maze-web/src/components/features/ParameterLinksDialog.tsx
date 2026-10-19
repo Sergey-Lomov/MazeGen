@@ -404,7 +404,7 @@ function ParamPicker<P extends string>({
         const inactive = !activePaths.has(node.path);
         const disabled = disabledPaths?.has(node.path) ?? false;
         return (
-          <Tooltip key={node.path} content={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}><div
+          <Tooltip key={node.path} block content={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}><div
             className={disabled ? undefined : "hoverable"}
             aria-disabled={disabled || undefined}
             style={{
