@@ -1,4 +1,5 @@
 use super::*;
+use crate::space::test_support::radial_cases;
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
@@ -262,6 +263,9 @@ fn shape_contract_holds_for_every_tessellation() {
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
+    for (tessellation, cells) in radial_cases() {
+        assert_shape_contract(&tessellation, &cells);
+    }
 }
 
 #[test]
@@ -279,6 +283,9 @@ fn face_chain_is_invertible_for_every_tessellation() {
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
+    for (tessellation, cells) in radial_cases() {
+        assert_chain_invertible(&tessellation, &cells);
+    }
 }
 
 #[test]
@@ -305,6 +312,9 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
+    for (tessellation, cells) in radial_cases() {
+        assert_canonical_order_is_counter_clockwise(&tessellation, &cells);
+    }
 }
 
 /// Built-in `faces_of` is the canonical circular order itself (GitHub issue #758), so local and
@@ -335,6 +345,9 @@ fn built_in_faces_of_is_the_canonical_order() {
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
+    for (tessellation, cells) in radial_cases() {
+        identity(&tessellation, &cells);
+    }
 }
 
 #[test]
@@ -361,6 +374,9 @@ fn every_built_in_cell_gets_its_full_group() {
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
+    for (tessellation, cells) in radial_cases() {
+        full(&tessellation, &cells);
+    }
     assert_eq!(
         TriTessellation
             .shape_of(TriPoint { col: 0, row: 0 })

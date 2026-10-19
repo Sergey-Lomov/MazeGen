@@ -105,6 +105,13 @@ export const FAMILIES: Family[] = [
     config: { tessellation: tessellationConfigOf("curved_quadrilateral"), shape: { shape: "rect", cols: 3, rows: 3 } },
     coordinate: [0, 0],
   },
+  {
+    id: "radial",
+    label: "Radial",
+    note: "5 faces · 32 combinations",
+    config: { tessellation: tessellationConfigOf("radial"), shape: { shape: "circle", radius: 3 } },
+    coordinate: [1, 0],
+  },
 ];
 
 const COLORS = ["#6fb5ff", "#ffb86b", "#9fe18a", "#e59aff"];

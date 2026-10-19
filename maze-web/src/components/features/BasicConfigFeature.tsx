@@ -4,6 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
+import { SizeParam } from "./SizeParam";
 import { spacing, inset } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { hasOpenModal } from "../Modal";
@@ -11,6 +12,10 @@ import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
 import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
+
+/** Message keys of the labels of every kind's `paramSpecs` entry. */
+type TessellationParamMessage = "tessellation.param.first_ring_cells" | "tessellation.param.ring_layout" | "tessellation.param.max_cells";
+type TessellationChoiceMessage = "tessellation.param.ring_layout.classic" | "tessellation.param.ring_layout.smooth";
 
 export function getHexOrientationLabel(o: HexOrientation): string {
   return o === "flat_top" ? m["tessellation.flat_top"]() : m["tessellation.pointy_top"]();
@@ -28,6 +33,8 @@ export function getTriOrientationLabel(o: TriOrientation): string {
 
 export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
+  const previewParams = useMazeStore((s) => s.previewParams);
+  const setPreviewParams = useMazeStore((s) => s.setPreviewParams);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
   const previewTriOrientation = useMazeStore((s) => s.previewTriOrientation);
   const setPreviewKind = useMazeStore((s) => s.setPreviewKind);
@@ -81,8 +88,40 @@ export function BasicConfigFeature() {
           <option value="snub_hexagonal">{m["tessellation.snub_hexagonal"]()}</option>
           <option value="rhombitrihexagonal">{m["tessellation.rhombitrihexagonal"]()}</option>
           <option value="curved_quadrilateral">{m["tessellation.curved_quadrilateral"]()}</option>
+          <option value="radial">{m["tessellation.radial"]()}</option>
         </select>
       </label>
+      {TESSELLATION_UI[previewKind].paramSpecs.map((spec) => {
+        const label = m[`tessellation.param.${spec.name}` as TessellationParamMessage]();
+        if (spec.type === "integer")
+          return (
+            <SizeParam
+              key={`${previewKind}:${spec.name}`}
+              label={label}
+              value={Number(previewParams[spec.name])}
+              min={spec.min}
+              max={spec.max}
+              onCommit={(value) => setPreviewParams({ ...previewParams, [spec.name]: value })}
+            />
+          );
+        return (
+          <label key={`${previewKind}:${spec.name}`} style={styles.label}>
+            {label}
+            <select
+              name={`preview-${spec.name}`}
+              style={styles.select}
+              value={String(previewParams[spec.name])}
+              onChange={(e) => setPreviewParams({ ...previewParams, [spec.name]: e.target.value })}
+            >
+              {spec.options.map((option) => (
+                <option key={option} value={option}>
+                  {m[`tessellation.param.${spec.name}.${option}` as TessellationChoiceMessage]()}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
       {isHex && (
         <label style={styles.label}>
           {m["tessellation.orientation"]()}

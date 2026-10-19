@@ -111,3 +111,29 @@ impl Tessellation for ScaledSquareTessellation {
         )
     }
 }
+
+/// Radial tessellations of several sizes in both layouts, each with every cell of its first
+/// rings: the center and rings whose neighbors overlap one to three cells of the adjacent rings.
+pub(crate) fn radial_cases() -> Vec<(super::RadialTessellation, Vec<super::RadialPoint>)> {
+    [6, 9, 13, 24]
+        .into_iter()
+        .flat_map(|first_ring_cells| {
+            super::RadialLayout::ALL.map(|layout| (first_ring_cells, layout))
+        })
+        .map(|(first_ring_cells, layout)| {
+            let tessellation = super::RadialTessellation::new(super::RadialParams {
+                first_ring_cells,
+                layout,
+                max_cells: super::DEFAULT_CELL_LIMIT,
+            })
+            .unwrap();
+            let cells = std::iter::once(super::RadialPoint::CENTER)
+                .chain((1..=5).flat_map(|ring| {
+                    (0..tessellation.ring_count(ring).unwrap() as i32)
+                        .map(move |index| super::RadialPoint { ring, index })
+                }))
+                .collect();
+            (tessellation, cells)
+        })
+        .collect()
+}

@@ -21,6 +21,16 @@ describe("field operations over wasm", () => {
     expect(capabilities.presets.map((preset) => preset.key)).toEqual(["rect", "circle", "triangle"]);
   });
 
+  it("publishes the radial circle radius limit from the tessellation params", () => {
+    const radius = (params: Record<string, number | string>) =>
+      getFieldCapabilities({ ...tessellationConfigOf("radial"), params }).presets[0].params[0].max;
+    const classic = radius({ first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 });
+    expect(classic).toBeGreaterThan(19);
+    expect(radius({ first_ring_cells: 24, ring_layout: "smooth", max_cells: 3000 })).toBeLessThan(classic!);
+    expect(radius({ first_ring_cells: 9, ring_layout: "classic", max_cells: 500 })).toBeLessThan(classic!);
+    expect(getFieldCapabilities(square).presets[0].params[0].max).toBeUndefined();
+  });
+
   it("builds preset cells around the origin, sorted by cell id", () => {
     expect(getFieldPreset(square, "rect", { cols: 2, rows: 2 })).toEqual([[-1, -1], [-1, 0], [0, -1], [0, 0]]);
   });

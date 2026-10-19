@@ -30,6 +30,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       snub_hexagonal: Array.from(f.freeFieldPoints.snub_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
       rhombitrihexagonal: Array.from(f.freeFieldPoints.rhombitrihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
       curved_quadrilateral: Array.from(f.freeFieldPoints.curved_quadrilateral ?? []).map((k) => decodePoint(k) as [number, number]),
+      radial: Array.from(f.freeFieldPoints.radial ?? []).map((k) => decodePoint(k) as [number, number]),
     };
     floorFields[floorId] = {
       shape: f.fieldConfig.shape,
@@ -43,7 +44,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: {
       kind: state.tessellationKind,
-      params: {},
+      params: state.tessellationParams,
       hexOrientation: state.hexOrientation,
       triOrientation: state.triOrientation,
     },

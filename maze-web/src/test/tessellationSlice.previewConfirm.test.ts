@@ -4,6 +4,8 @@ import { encodePoint } from "../pixi/tessellationProjection";
 import { baseStoreState, emptyFreePoints, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
+import { selectTessellationWouldLoseData } from "../pixi/selectors/mazeSelectors";
+import { presetParams } from "../pixi/fieldOps";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -375,5 +377,56 @@ describe("mazeStore tessellation misc actions", () => {
     expect(field.fieldEditMode).toBe("default");
     expect(field.isEditingField).toBe(false);
     expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["square", "rect"]);
+  });
+});
+
+describe("parameterized tessellation (radial)", () => {
+  it("setPreviewKind starts a kind with its default params", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    const s = useMazeStore.getState();
+    expect(s.previewParams).toEqual({ first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 });
+    expect(s.previewFieldConfig.tessellation).toEqual({ kind: "radial", params: s.previewParams });
+  });
+
+  it("setPreviewParams rebuilds the preview config with the new params", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    const params = { first_ring_cells: 12, ring_layout: "smooth", max_cells: 3000 };
+    useMazeStore.getState().setPreviewParams(params);
+    expect(useMazeStore.getState().previewFieldConfig.tessellation).toEqual({ kind: "radial", params });
+  });
+
+  it("confirmTessellation commits the params and every floor's field uses them", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    const params = { first_ring_cells: 12, ring_layout: "smooth", max_cells: 3000 };
+    useMazeStore.getState().setPreviewParams(params);
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.tessellationParams).toEqual(params);
+    for (const field of Object.values(s.floorFields)) expect(field.fieldConfig.tessellation).toEqual({ kind: "radial", params });
+  });
+
+  it("caps the default circle radius at the radius core allows for a small cell limit", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    const params = { first_ring_cells: 24, ring_layout: "smooth", max_cells: 100 };
+    useMazeStore.getState().setPreviewParams(params);
+    const { shape, tessellation } = useMazeStore.getState().previewFieldConfig;
+    const max = presetParams(tessellation, "circle").find((param) => param.name === "radius")!.max!;
+    expect(max).toBeLessThan(4);
+    expect(shape).toEqual({ shape: "circle", radius: max });
+    useMazeStore.getState().confirmTessellation();
+    for (const field of Object.values(useMazeStore.getState().floorFields)) {
+      expect(field.fieldConfig.shape).toEqual({ shape: "circle", radius: max });
+    }
+  });
+
+  it("a params change alone reports data loss for a dirty field", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    useMazeStore.getState().confirmTessellation();
+    const [floorId] = Object.keys(useMazeStore.getState().floorFields);
+    const fields = useMazeStore.getState().floorFields;
+    useMazeStore.setState({ floorFields: { ...fields, [floorId]: { ...fields[floorId], fieldDirty: true } } });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(false);
+    useMazeStore.getState().setPreviewParams({ first_ring_cells: 15, ring_layout: "classic", max_cells: 3000 });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(true);
   });
 });

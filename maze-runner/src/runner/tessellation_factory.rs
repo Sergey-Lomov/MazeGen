@@ -1,10 +1,11 @@
 use crate::config::{TessellationConfig, TessellationKind};
 use maze_core::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
-    CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalPoint,
-    RhombitrihexagonalTessellation, SnubHexagonalPoint, SnubHexagonalTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
-    TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
+    CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RadialLayout, RadialParams,
+    RadialPoint, RadialTessellation, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
+    SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation,
+    SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
+    TrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -128,6 +129,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 },
             ))
         }
+        TessellationKind::Radial => {
+            let tessellation = RadialTessellation::new(radial_params(config)?)?;
+            Ok(visitor.visit(
+                Arc::new(tessellation),
+                CellCodec {
+                    from_xy: |ring, index| RadialPoint { ring, index },
+                    to_xy: |p| (p.ring, p.index),
+                },
+            ))
+        }
         TessellationKind::Trihexagonal => {
             reject_params(config)?;
             Ok(visitor.visit(
@@ -139,6 +150,50 @@ pub fn build_tessellation<V: TessellationVisitor>(
             ))
         }
     }
+}
+
+/// The size, layout and cell limit of a radial tessellation: the required integer
+/// `first_ring_cells`, string `ring_layout` and integer `max_cells`; any other param is rejected.
+fn radial_params(config: &TessellationConfig) -> Result<RadialParams, String> {
+    const SIZE: &str = "first_ring_cells";
+    const LAYOUT: &str = "ring_layout";
+    const LIMIT: &str = "max_cells";
+    if let Some(key) = config
+        .params
+        .keys()
+        .find(|key| ![SIZE, LAYOUT, LIMIT].contains(&key.as_str()))
+    {
+        return Err(format!(
+            "tessellation {:?} does not accept param \"{key}\"",
+            config.kind
+        ));
+    }
+    let integer = |name: &str| -> Result<u32, String> {
+        config
+            .params
+            .get(name)
+            .ok_or_else(|| format!("tessellation {:?} requires param \"{name}\"", config.kind))?
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| format!("param \"{name}\" must be a non-negative integer"))
+    };
+    let first_ring_cells = integer(SIZE)?;
+    let max_cells = integer(LIMIT)?;
+    let layout = config
+        .params
+        .get(LAYOUT)
+        .ok_or_else(|| format!("tessellation {:?} requires param \"{LAYOUT}\"", config.kind))?
+        .as_str()
+        .and_then(RadialLayout::from_name)
+        .ok_or_else(|| {
+            let names: Vec<_> = RadialLayout::ALL.iter().map(|l| l.name()).collect();
+            format!("param \"{LAYOUT}\" must be one of {names:?}")
+        })?;
+    Ok(RadialParams {
+        first_ring_cells,
+        layout,
+        max_cells,
+    })
 }
 
 /// The built-in tessellations take no params.
@@ -253,6 +308,93 @@ mod tests {
                 (3, -2)
             ))
         );
+    }
+
+    fn radial_config(params: serde_json::Value) -> TessellationConfig {
+        TessellationConfig {
+            kind: TessellationKind::Radial,
+            params: params.as_object().unwrap().clone(),
+        }
+    }
+
+    #[test]
+    fn builds_radial_from_its_size_param() {
+        let cfg =
+            radial_config(serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "classic" }));
+        let (shapes, round_trip) = build_tessellation(&cfg, Probe).unwrap();
+        assert_eq!(shapes[0], "regular:9");
+        assert!(
+            shapes[1..]
+                .iter()
+                .all(|key| key.starts_with("radial:ring_"))
+        );
+        assert_eq!(round_trip, (3, -2));
+    }
+
+    #[test]
+    fn rejects_invalid_radial_params_with_a_reason() {
+        for (cfg, needle) in [
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 5, "max_cells": 3000, "ring_layout": "classic" }),
+                ),
+                "first_ring_cells",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 25, "max_cells": 3000, "ring_layout": "classic" }),
+                ),
+                "first_ring_cells",
+            ),
+            (radial_config(serde_json::json!({})), "requires param"),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic", "max_cells": 50 }),
+                ),
+                "max_cells",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic", "max_cells": 20000 }),
+                ),
+                "max_cells",
+            ),
+            (
+                radial_config(serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic" })),
+                "max_cells",
+            ),
+            (
+                radial_config(serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000 })),
+                "ring_layout",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "spiral" }),
+                ),
+                "ring_layout",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 7.5, "max_cells": 3000, "ring_layout": "classic" }),
+                ),
+                "first_ring_cells",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "smooth", "extra": 1 }),
+                ),
+                "extra",
+            ),
+            (
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "smooth", "growth_factor": 2 }),
+                ),
+                "growth_factor",
+            ),
+        ] {
+            let err = build_tessellation(&cfg, Probe).unwrap_err();
+            assert!(err.contains(needle), "{needle}: {err}");
+        }
     }
 
     #[test]

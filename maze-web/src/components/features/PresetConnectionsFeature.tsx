@@ -121,6 +121,7 @@ export function PresetConnectionsFeature() {
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const presetSectionsExpanded = useMazeStore((s) => s.presetSectionsExpanded);
@@ -157,8 +158,8 @@ export function PresetConnectionsFeature() {
   const orphanSplitCount = orphanPoints.length;
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation],
   );
   const invalidKeys = useMemo(
     () => computeInvalidKeys(presetConnections, resolveFieldAt),

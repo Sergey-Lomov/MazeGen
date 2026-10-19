@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import type { TessellationConfig } from "../../fieldConfig";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { resolveFieldConfig } from "../../pixi/tessellationCells";
 import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
@@ -7,19 +8,21 @@ import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfi
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { splitPatternsFor } from "../../pixi/shapeTemplates";
 import { qcForTessellation } from "./qcTessellationFilter";
-import { buildPreviewConfig, buildPreviewState, debugStaleOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellation, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
   tessellationKind: "square",
+  tessellationParams: {},
   hexOrientation: DEFAULT_HEX_ORI,
   triOrientation: DEFAULT_TRI_ORI,
   tessellationConfirmed: false,
   previewKind: "square",
+  previewParams: {},
   previewHexOrientation: DEFAULT_HEX_ORI,
   previewTriOrientation: DEFAULT_TRI_ORI,
-  previewFieldConfig: buildPreviewConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI),
-  activeFieldConfig: resolveFieldConfig(buildPreviewConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI)),
+  previewFieldConfig: buildPreviewConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI),
+  activeFieldConfig: resolveFieldConfig(buildPreviewConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI)),
   showFieldOverlay: true,
   showFieldOrigin: true,
   showPrimitiveFrame: true,
@@ -40,42 +43,49 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
-  setPreviewKind: (kind) => set((state) => ({
-    previewKind: kind,
-    previewFieldConfig: buildPreviewState(kind, state.previewHexOrientation, state.previewTriOrientation).previewFieldConfig,
+  setPreviewKind: (kind) => set((state) => {
+    const preview = buildPreviewState(defaultTessellationOf(kind), state.previewHexOrientation, state.previewTriOrientation);
+    return { previewKind: kind, previewParams: preview.previewParams, previewFieldConfig: preview.previewFieldConfig };
+  }),
+
+  setPreviewParams: (params) => set((state) => ({
+    previewParams: params,
+    previewFieldConfig: buildPreviewConfig({ kind: state.previewKind, params }, state.previewHexOrientation, state.previewTriOrientation),
   })),
 
   setPreviewHexOrientation: (orientation) => set((state) => ({
     previewHexOrientation: orientation,
-    previewFieldConfig: buildPreviewState(state.previewKind, orientation, state.previewTriOrientation).previewFieldConfig,
+    previewFieldConfig: buildPreviewState({ kind: state.previewKind, params: state.previewParams }, orientation, state.previewTriOrientation).previewFieldConfig,
   })),
 
   setPreviewTriOrientation: (orientation) => set((state) => ({
     previewTriOrientation: orientation,
-    previewFieldConfig: buildPreviewState(state.previewKind, state.previewHexOrientation, orientation).previewFieldConfig,
+    previewFieldConfig: buildPreviewState({ kind: state.previewKind, params: state.previewParams }, state.previewHexOrientation, orientation).previewFieldConfig,
   })),
 
   syncPreviewToConfirmed: () => set((state) =>
-    buildPreviewState(state.tessellationKind, state.hexOrientation, state.triOrientation)
+    buildPreviewState(tessellationOf(state), state.hexOrientation, state.triOrientation)
   ),
 
   confirmTessellation: () => set((state) => {
-    const kind = state.previewKind;
+    const tessellation: TessellationConfig = { kind: state.previewKind, params: state.previewParams };
     const hexOrientation = state.previewHexOrientation;
     const triOrientation = state.previewTriOrientation;
-    const clearMaze = kind !== state.tessellationKind;
-    const freshField = defaultFloorFieldConfig(kind, hexOrientation, triOrientation);
+    // Params define the cell set, so a params change discards the maze like a kind change does.
+    const clearMaze = !sameTessellation(tessellation, tessellationOf(state));
+    const freshField = defaultFloorFieldConfig(tessellation, hexOrientation, triOrientation);
     warmCartesianCache(freshField.fieldConfig);
     // Kind/orientation are maze-wide (Specs/field-editor.md) — every floor's own field config is
     // rebuilt against the newly confirmed kind, same as a single-floor maze always did.
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const floorId of Object.keys(state.floorFields)) floorFields[floorId] = freshField;
     return {
-      tessellationKind: kind,
+      tessellationKind: tessellation.kind,
+      tessellationParams: tessellation.params,
       hexOrientation,
       triOrientation,
       tessellationConfirmed: true,
-      ...buildPreviewState(kind, hexOrientation, triOrientation),
+      ...buildPreviewState(tessellation, hexOrientation, triOrientation),
       floorFields,
       backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],
@@ -139,13 +149,15 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
 
   setTessellationKind: (kind) => set((state) => {
     if (kind === state.tessellationKind) return {};
-    const freshField = defaultFloorFieldConfig(kind, state.hexOrientation, state.triOrientation);
+    const tessellation = defaultTessellationOf(kind);
+    const freshField = defaultFloorFieldConfig(tessellation, state.hexOrientation, state.triOrientation);
     // Kind is maze-wide — every floor's per-kind field config is meaningless once it changes
     // (same rationale confirmTessellation's kind-change branch already applies).
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const floorId of Object.keys(state.floorFields)) floorFields[floorId] = freshField;
     return {
       tessellationKind: kind,
+      tessellationParams: tessellation.params,
       floorFields,
       backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],

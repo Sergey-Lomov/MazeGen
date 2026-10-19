@@ -120,7 +120,7 @@ describe("qcForTessellation", () => {
 
 describe("selectTessellationWouldLoseData split patterns", () => {
   const clean = {
-    previewKind: "hex" as const, tessellationKind: "square" as const, floorFields: {},
+    previewKind: "hex" as const, previewParams: {}, tessellationKind: "square" as const, tessellationParams: {}, floorFields: {},
     previewFieldConfig: { tessellation: HEX, shape: { shape: "custom", points: [] } } as FieldConfig,
     presetsDirty: false, mazeDirty: false, postEditDirty: false,
   };

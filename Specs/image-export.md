@@ -514,7 +514,7 @@ ribbons, the radius-0 and final contours) for the geometry lab (`/corridor-geome
 `buildCorridorContour` is `corridorSegmentsToGeometryInput` (segment records → cells and ports)
 followed by `buildCorridorGeometry`.
 
-**Geometry lab.** Shows every port combination of one cell per tessellation. `FAMILIES` lists square, hex, triangle, Cairo, brick and curved quadrilateral (a cell with arc faces; GitHub issue #789; its four half-edge faces are ports like any other, so the 6-face cell has 64 combinations). A "Cell size" slider
+**Geometry lab.** Shows every port combination of one cell per tessellation. `FAMILIES` lists square, hex, triangle, Cairo, brick, curved quadrilateral (a cell with arc faces; GitHub issue #789; its four half-edge faces are ports like any other, so the 6-face cell has 64 combinations) and radial (a ring cell of the default size with five faces, arcs and lines, so 32 combinations; GitHub issue #804). A "Cell size" slider
 sets the cell's longest face in pixels, per tessellation (`cellSize`/`scaleCell`), while thickness
 stays in pixels too — e.g. the triangle at 40px (half its native 80px) shows a dead-end cap moving
 toward the port above thickness 23.1 and bending into a kinked arc on the port's face above 34.6.

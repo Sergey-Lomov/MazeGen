@@ -35,6 +35,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const rawSplitPoints = useMazeStore((s) => s.presetSplitPoints);
@@ -54,7 +55,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
 
   const preview = useMemo(() => {
     if (!point || !prompt) return null;
-    const levelFields = levelFieldsOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation });
+    const levelFields = levelFieldsOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation });
     const field = levelFields[level ?? 0];
     if (!field) return null;
     const cfg = field.cfg;
@@ -82,7 +83,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     );
 
     return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };
-  }, [point, floors, floorFields, tessellationKind, hexOrientation, triOrientation, rawSplitPoints, rawConnections, level, prompt]);
+  }, [point, floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, rawSplitPoints, rawConnections, level, prompt]);
 
   if (!prompt || !point) return null;
   const [x, y] = point;

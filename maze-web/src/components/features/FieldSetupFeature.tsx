@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
@@ -26,72 +26,9 @@ import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { availablePresetKeys, fieldOperationAvailable, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
-import { useFieldHint } from "../FieldHint";
-import { inputHintReason, type NormalizerResult } from "../inputNormalization";
+import { SizeParam } from "./SizeParam";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
-
-interface SizeParamProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onCommit: (v: number) => void;
-  disabled?: boolean;
-}
-
-function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeParamProps) {
-  const hint = useFieldHint();
-  const [local, setLocal] = useState(String(value));
-
-  useEffect(() => { setLocal(String(value)); }, [value]);
-
-  function commit() {
-    const n = Number(local);
-    const valid = local.trim() !== "" && Number.isFinite(n);
-    const result: NormalizerResult<number> = valid && n >= min && n <= max
-      ? { raw: local, value: n, reason: null }
-      : {
-          raw: local,
-          value,
-          reason: valid
-            ? { kind: "range_reverted", min: String(min), max: String(max), value: String(value) }
-            : { kind: "restored", value: String(value) },
-        };
-    if (result.reason) {
-      setLocal(String(result.value));
-      hint.show(inputHintReason(result.reason));
-    } else {
-      onCommit(result.value);
-    }
-  }
-
-  return (
-    <label ref={hint.labelRef as React.Ref<HTMLLabelElement>} style={styles.label}>
-      {label}
-      <input
-        ref={hint.anchorRef as React.Ref<HTMLInputElement>}
-        style={{ ...styles.input, ...hint.fieldStyle }}
-        type="number"
-        name={label}
-        min={min}
-        max={max}
-        value={local}
-        disabled={disabled}
-        aria-describedby={hint.describedBy}
-        onChange={(e) => {
-          const raw = e.target.value;
-          setLocal(raw);
-          const n = Number(raw);
-          if (raw.trim() !== "" && Number.isFinite(n) && n >= min && n <= max) hint.dismiss();
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); } }}
-      />
-      {hint.hint}
-    </label>
-  );
-}
 
 type ConfirmPending = "switchToDefault" | "clearField" | "copyAll" | null;
 
@@ -187,13 +124,13 @@ export function FieldSetupFeature() {
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
     const values = shape as unknown as Record<string, number>;
-    return presetParams(fieldConfig.tessellation, shape.shape).map(({ name, min }) => (
+    return presetParams(fieldConfig.tessellation, shape.shape).map(({ name, min, max }) => (
       <SizeParam
         key={name}
         label={paramLabel(tessellationKind, shape.shape, name)}
         value={values[name]}
         min={min}
-        max={paramMax(tessellationKind, shape.shape, name)}
+        max={max ?? paramMax(tessellationKind, shape.shape, name)}
         disabled={fieldEditLocked}
         onCommit={(v) => setField(name, v)}
       />
@@ -562,7 +499,7 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
   }
 }
 
-/** Upper bound of a size param in the editor — UI metadata; core only publishes minimums. */
+/** Fallback upper bound of a size param in the editor — UI metadata, used when core publishes no `max`. */
 function paramMax(kind: TessellationKind, shape: PresetFieldShapeName, name: string): number {
   if (name === "cols" || name === "rows") return 200;
   if (shape === "circle" || shape === "hexagon" || shape === "triangle") return SHAPE_PARAM_LIMITS[kind][shape];
@@ -640,6 +577,8 @@ const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: nu
   snub_hexagonal: { circle: 50, hexagon: 50, triangle: 50 },
   rhombitrihexagonal: { circle: 50, hexagon: 50, triangle: 50 },
   curved_quadrilateral: { circle: 50, hexagon: 50, triangle: 50 },
+  // Radial publishes its circle radius limit through core (it depends on the tessellation params).
+  radial: { circle: 50, hexagon: 50, triangle: 50 },
 };
 
 const styles: Record<string, React.CSSProperties> = {

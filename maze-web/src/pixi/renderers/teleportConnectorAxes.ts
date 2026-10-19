@@ -94,4 +94,6 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
   // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
   curved_quadrilateral: () => SQUARE_AXES,
+  // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.
+  radial: () => SQUARE_AXES,
 };

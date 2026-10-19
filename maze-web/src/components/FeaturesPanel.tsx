@@ -103,6 +103,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     snub_hexagonal: m["tessellation.snub_hexagonal"],
     rhombitrihexagonal: m["tessellation.rhombitrihexagonal"],
     curved_quadrilateral: m["tessellation.curved_quadrilateral"],
+    radial: m["tessellation.radial"],
   };
   return labels[kind]();
 }
@@ -179,6 +180,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -280,8 +282,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     : m["status.field_configured"]();
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation],
   );
   const presetInvalidKeys = useMemo(
     () => computeInvalidKeys(presetConnections, resolveFieldAt),
