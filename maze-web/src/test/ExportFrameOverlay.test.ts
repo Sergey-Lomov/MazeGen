@@ -61,6 +61,29 @@ describe("ExportFrameOverlay — print anchor guard", () => {
     overlay.destroy();
   });
 
+  it("places the active floor by its own nodes only, ignoring other floors (GitHub issue #790)", () => {
+    const secondFloorId = "floor_2";
+    const floor0Nodes = [
+      { id: 0, x: 0, y: 0, i: 0, level: 0 },
+      { id: 1, x: 1, y: 0, i: 0, level: 0 },
+    ];
+    const state = (nodes: typeof floor0Nodes) => ({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: secondFloorId, title: "Floor 2" }],
+      nodes,
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" as const, print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" as const } },
+    });
+
+    setBaseState(state(floor0Nodes));
+    const alone = makeOverlay();
+    const expected = alone.setViewportTransform.mock.calls.at(-1)!;
+    alone.overlay.destroy();
+
+    setBaseState(state([...floor0Nodes, { id: 2, x: 40, y: 30, i: 0, level: 1 }]));
+    const withOther = makeOverlay();
+    expect(withOther.setViewportTransform.mock.calls.at(-1)).toEqual(expected);
+    withOther.overlay.destroy();
+  });
+
   it("does not overwrite a fixed anchor when onViewportChanged reports the same x/y/scale as before (resize echo, not a real pan/zoom)", () => {
     setBaseState({
       pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
