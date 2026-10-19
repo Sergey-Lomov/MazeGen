@@ -267,7 +267,19 @@ impl TessellationVisitor for PresetExtents<'_> {
                 .map(|point| (point.x - center.x).hypot(point.y - center.y))
                 .fold(0.0, f64::max)
         };
-        // Cells are near-uniform, so the reach of the cells at the limits stands for every cell.
+        // Cells of one shape are near-uniform, so the reach of the cells at the limits stands for
+        // their shape. A tessellation of mixed sizes (a dodecagon beside a triangle) needs the
+        // reach of every shape, not only of the one that happens to sit at the limit.
+        let mut seen_shapes = std::collections::HashSet::new();
+        for (&cell, &center) in cells.iter().zip(&centers) {
+            let first_of_shape = tessellation.shape_of(cell).is_some_and(|shape| {
+                let key = shape.descriptor().key();
+                !seen_shapes.contains(key) && seen_shapes.insert(key.to_owned())
+            });
+            if first_of_shape {
+                reach = reach.max(cell_reach(cell, center));
+            }
+        }
         for (&cell, &center) in cells.iter().zip(&centers) {
             let at_limit = limits.iter().zip(directions).any(|(limit, direction)| {
                 let value = along(center, direction);
@@ -491,6 +503,16 @@ mod tests {
             ),
             (
                 TessellationKind::Rhombitrihexagonal,
+                "triangle",
+                vec![("side", 6)],
+            ),
+            (
+                TessellationKind::TruncatedHexagonal,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::TruncatedHexagonal,
                 "triangle",
                 vec![("side", 6)],
             ),

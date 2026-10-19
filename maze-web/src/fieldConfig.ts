@@ -1,7 +1,7 @@
 import { TESSELLATION_UI } from "./pixi/geometry/tessellationUi";
 
 /** Registered tessellation kinds — mirrors `maze-runner`'s `TessellationKind` wire values. */
-export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "curved_quadrilateral" | "radial";
+export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "truncated_hexagonal" | "curved_quadrilateral" | "radial";
 
 /**
  * A tessellation instance config, `{ kind, params }` — the same shape the wasm wire and project

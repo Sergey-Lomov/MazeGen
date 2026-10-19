@@ -122,6 +122,7 @@
   "tessellation.trihexagonal": "Трёхгексагональная (3.6.3.6)",
   "tessellation.snub_hexagonal": "Курносая шестиугольная (3.3.3.3.6)",
   "tessellation.rhombitrihexagonal": "Ромбитригексагональная (3.4.6.4)",
+  "tessellation.truncated_hexagonal": "Усечённая гексагональная (3.12.12)",
   "tessellation.curved_quadrilateral": "Криволинейные четырёхугольники",
   "tessellation.param.first_ring_cells": "Клеток в первом кольце",
   "tessellation.param.ring_layout": "Раскладка колец",

@@ -29,6 +29,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       trihexagonal: Array.from(f.freeFieldPoints.trihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
       snub_hexagonal: Array.from(f.freeFieldPoints.snub_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
       rhombitrihexagonal: Array.from(f.freeFieldPoints.rhombitrihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      truncated_hexagonal: Array.from(f.freeFieldPoints.truncated_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
       curved_quadrilateral: Array.from(f.freeFieldPoints.curved_quadrilateral ?? []).map((k) => decodePoint(k) as [number, number]),
       radial: Array.from(f.freeFieldPoints.radial ?? []).map((k) => decodePoint(k) as [number, number]),
     };

@@ -22,6 +22,7 @@ pub mod square_octagon;
 pub(crate) mod test_support;
 pub mod triangle;
 pub mod trihexagonal;
+pub mod truncated_hexagonal;
 
 pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
@@ -40,7 +41,8 @@ pub use geometry::{
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
 pub use radial::{
-    DEFAULT_CELL_LIMIT, MAX_CELL_LIMIT, MIN_CELL_LIMIT, RadialFace, RadialLayout, RadialParams, RadialPoint, RadialTessellation,
+    DEFAULT_CELL_LIMIT, MAX_CELL_LIMIT, MIN_CELL_LIMIT, RadialFace, RadialLayout, RadialParams,
+    RadialPoint, RadialTessellation,
 };
 pub use rhombitrihexagonal::{
     RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
@@ -55,6 +57,10 @@ pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTes
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 pub use trihexagonal::{
     TrihexagonalFace, TrihexagonalKind, TrihexagonalPoint, TrihexagonalTessellation,
+};
+pub use truncated_hexagonal::{
+    TruncatedHexagonalFace, TruncatedHexagonalKind, TruncatedHexagonalPoint,
+    TruncatedHexagonalTessellation,
 };
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by

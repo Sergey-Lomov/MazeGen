@@ -14,6 +14,7 @@ const KEYS: Record<TessellationConfig["kind"], string> = {
   trihexagonal: "regular:6",
   snub_hexagonal: "regular:6",
   rhombitrihexagonal: "regular:6",
+  truncated_hexagonal: "regular:12",
   curved_quadrilateral: "curved_quadrilateral:curved_quadrilateral",
   radial: "radial:ring",
 };

@@ -11,6 +11,7 @@ import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
+import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
 import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
@@ -95,6 +96,10 @@ export function PngExportSettingsPanel() {
 
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  // Fit/placement describe only the active floor's image (GitHub issue #790).
+  const floorNodes = useMemo(() => selectFloorScopedMaze(nodes, [], floors, activeFloorId).nodes, [nodes, floors, activeFloorId]);
   const edges = useMazeStore((s) => s.edges);
   const cfg = useMazeStore((s) => s.activeFieldConfig);
   const rawStart = useMazeStore((s) => s.start);
@@ -133,13 +138,13 @@ export function PngExportSettingsPanel() {
   const basis = activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell";
 
   const digitalFit = useMemo(
-    () => (nodes.length > 0 ? computeDigitalExportFit(cfg, nodes, margin, digital, basis) : null),
-    [cfg, nodes, margin, digital, basis],
+    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, margin, digital, basis) : null),
+    [cfg, floorNodes, margin, digital, basis],
   );
 
   const printFit = useMemo(
-    () => (nodes.length > 0 ? computePrintExportFit(cfg, nodes, margin, print, basis) : null),
-    [cfg, nodes, margin, print, basis],
+    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, margin, print, basis) : null),
+    [cfg, floorNodes, margin, print, basis],
   );
 
   function handleCanvasModeChange(mode: PngCanvasMode) {
@@ -156,10 +161,10 @@ export function PngExportSettingsPanel() {
   // recomputed on every change that could affect the fit (sheet size/orientation/DPI, margins, or
   // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
   useEffect(() => {
-    if (!print.scaleAutoFit || nodes.length === 0) return;
-    const autoScale = floor2(computeAutoFitPrintScale(cfg, nodes, margin, print, basis));
+    if (!print.scaleAutoFit || floorNodes.length === 0) return;
+    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, margin, print, basis));
     if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, nodes, margin, print, basis, setPrintScale]);
+  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, margin, print, basis, setPrintScale]);
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];

@@ -107,6 +107,7 @@
   "tessellation.trihexagonal": "Trihexagonal (3.6.3.6)",
   "tessellation.snub_hexagonal": "Snub hexagonal (3.3.3.3.6)",
   "tessellation.rhombitrihexagonal": "Rhombitrihexagonal (3.4.6.4)",
+  "tessellation.truncated_hexagonal": "Truncated hexagonal (3.12.12)",
   "tessellation.curved_quadrilateral": "Curved quadrilateral",
   "tessellation.param.first_ring_cells": "Cells in the first ring",
   "tessellation.param.ring_layout": "Ring layout",

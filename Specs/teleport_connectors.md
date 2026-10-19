@@ -21,6 +21,7 @@ An orthogonal connector's single bend must run along an axis *perpendicular* to 
 - **Square** — 2 axes, 0°/90° (horizontal/vertical).
 - **Hex** — 3 axes, 60° apart. Axis set depends on `orientation`: `flat_top` faces run along {0°,60°,120°} so their normals are {30°,90°,150°}; `pointy_top` is `flat_top` rotated 30°, so its faces run along {30°,90°,150°} and its normals land back on {0°,60°,120°}. The two orientations do **not** share one axis set.
 - **Triangle** — 3 axes, {0°,60°,120°}, the same set for every orientation (`r0`/`r90`/`r180`/`r270`).
+- **Other kinds** — see `CONNECTOR_AXES` in `teleportConnectorAxes.ts`. Every set must satisfy one rule: no axis line through a cell center may run along a cell edge (a connector would then lie on a wall). Truncated hexagonal (3.12.12) therefore uses only {0°,60°,120°}, the lattice directions; 30°/90°/150° would lie on the shared walls of lattice-neighbor dodecagons. A web test checks this rule for that kind.
 
 0°/90° use exact `{1,0}`/`{0,1}` vectors rather than `Math.cos`/`Math.sin` (which land on e.g. `6.123e-17` instead of `0`) — square's offset math relies on an exactly-zero component to keep coordinates exact integers for axis-aligned input.
 

@@ -87,6 +87,7 @@ export function BasicConfigFeature() {
           <option value="trihexagonal">{m["tessellation.trihexagonal"]()}</option>
           <option value="snub_hexagonal">{m["tessellation.snub_hexagonal"]()}</option>
           <option value="rhombitrihexagonal">{m["tessellation.rhombitrihexagonal"]()}</option>
+          <option value="truncated_hexagonal">{m["tessellation.truncated_hexagonal"]()}</option>
           <option value="curved_quadrilateral">{m["tessellation.curved_quadrilateral"]()}</option>
           <option value="radial">{m["tessellation.radial"]()}</option>
         </select>

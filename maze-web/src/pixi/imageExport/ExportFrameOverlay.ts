@@ -1,5 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
+import { createFloorNodesSelector } from "../selectors/mazeSelectors";
 import { computePrintExportFit, computeSheetScreenLayout, computePrintPlacementFromViewport, computeViewportFromPrintPlacement, DPI_BY_DENSITY, mmToPx } from "./printFit";
 import { computeDigitalExportFit } from "./exportFit";
 import { resolveBackgroundColor, resolveContentBoundsBasis } from "./exportMargins";
@@ -12,6 +13,12 @@ import { drawPaperLayoutDim, drawPaperLayoutFrame, drawPaperLayoutMargins } from
 
 type ScreenRect = { x: number; y: number; w: number; h: number };
 type PrintFrameLayout = ScreenRect & { sheetWidthPx: number; sheetHeightPx: number };
+
+/** Active floor's nodes only — the export image draws one floor, so fit/placement must ignore the rest (GitHub issue #790). */
+const selectActiveFloorNodes = createFloorNodesSelector();
+function activeFloorNodes(state: ReturnType<typeof useMazeStore.getState>) {
+  return selectActiveFloorNodes(state.nodes, state.floors, state.activeFloorId);
+}
 
 /** Draws the export canvas boundary as an overlay on the editor canvas — a solid frame, a dimmed
  * region outside it, and (print mode only) dashed lines marking the page margins. Print mode's
@@ -37,7 +44,6 @@ export class ExportFrameOverlay implements ViewportListener {
     return this.syncingDepth > 0;
   }
   private wasFrameActive = false;
-  private lastActiveFloorId: string | null = null;
 
   constructor(
     container: Container,
@@ -148,7 +154,7 @@ export class ExportFrameOverlay implements ViewportListener {
   private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
     const margin = this.resolveMargin(state);
-    const printFit = computePrintExportFit(state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
+    const printFit = computePrintExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
     if (printFit.sheetWidthPx <= 0 || printFit.sheetHeightPx <= 0) return null;
     const screenSize = this.getScreenSize();
     const layout = computeSheetScreenLayout(printFit.sheetWidthPx, printFit.sheetHeightPx, screenSize.width, screenSize.height);
@@ -162,7 +168,7 @@ export class ExportFrameOverlay implements ViewportListener {
   private currentDigitalFrameLayout(state: ReturnType<typeof useMazeStore.getState>): ScreenRect | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "digital" || state.activeRenderMode === null) return null;
     const margin = this.resolveMargin(state);
-    const fit = computeDigitalExportFit(state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
+    const fit = computeDigitalExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
     if (fit.width <= 0 || fit.height <= 0) return null;
     const { scale } = this.lastViewport;
     return {
@@ -185,7 +191,7 @@ export class ExportFrameOverlay implements ViewportListener {
     if (state.activeRenderMode === null) return;
     const margin = this.resolveMargin(state);
     const { scale, offsetXMm, offsetYMm } = computePrintPlacementFromViewport(
-      state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.syncingDepth++;
     try {
@@ -205,7 +211,7 @@ export class ExportFrameOverlay implements ViewportListener {
     if (state.activeRenderMode === null) return;
     const margin = this.resolveMargin(state);
     const { x, y, scale } = computeViewportFromPrintPlacement(
-      state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.lastViewport = { x, y, scale };
     // setViewportTransform synchronously fans out into onViewportChanged -> syncPlacementToViewport
@@ -225,20 +231,21 @@ export class ExportFrameOverlay implements ViewportListener {
     const state = useMazeStore.getState();
     const printLayout = this.currentPrintFrameLayout(state);
     const becameActive = printLayout !== null && !this.wasFrameActive;
-    const activeFloorChanged = state.activeFloorId !== this.lastActiveFloorId;
     this.wasFrameActive = printLayout !== null;
-    this.lastActiveFloorId = state.activeFloorId;
 
     if (printLayout && !this.syncing) {
       const settings = state.pngExportSettings.print;
       const sheetSizeChanged = this.sheetSizeChanged(printLayout);
       const placementChanged = this.placementChanged(settings);
+      const activeFloorChanged = this.lastActiveFloorId !== null && this.lastActiveFloorId !== state.activeFloorId;
       if (becameActive || activeFloorChanged || sheetSizeChanged || placementChanged) {
         this.syncViewportToPlacement(state, printLayout);
       }
       this.lastPlacement = { scale: settings.scale, offsetXMm: settings.offsetXMm, offsetYMm: settings.offsetYMm, anchor: settings.anchor };
       this.lastSheetSize = { x: printLayout.x, y: printLayout.y, w: printLayout.w, h: printLayout.h };
     }
+
+    this.lastActiveFloorId = state.activeFloorId;
 
     this.graphics.clear();
     const layout = printLayout ?? this.currentDigitalFrameLayout(state);
@@ -262,6 +269,8 @@ export class ExportFrameOverlay implements ViewportListener {
       );
     }
   }
+
+  private lastActiveFloorId: string | null = null;
 
   private lastPlacement: Pick<PrintExportSettings, "scale" | "offsetXMm" | "offsetYMm" | "anchor"> | null = null;
 
