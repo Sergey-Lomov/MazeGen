@@ -4,13 +4,26 @@ import type { WorldPoint } from "./primitiveGeometry";
 
 export type BoundarySegment = [WorldPoint, WorldPoint];
 
-/** Returns only the exposed edges of the selected cell union. Shared cell edges cancel out. */
-export function selectionBoundarySegments(
+/** Exposed edges of the selected cell union (shared cell edges cancel out) plus, per edge, the id of its edge-connected
+ * component. Cells touching only at a corner land in different components, so contour tracing
+ * never joins them into a self-intersecting contour (GitHub issue #618). */
+export function selectionBoundary(
   cells: [number, number][],
   cfg: FieldConfig,
-): BoundarySegment[] {
-  const edges = new Map<string, BoundarySegment>();
-  for (const [x, y] of cells) {
+): { segments: BoundarySegment[]; components: number[] } {
+  const parent = cells.map((_, i) => i);
+  const find = (i: number): number => {
+    let root = i;
+    while (parent[root] !== root) root = parent[root];
+    for (let node = i; parent[node] !== root; ) {
+      const next = parent[node];
+      parent[node] = root;
+      node = next;
+    }
+    return root;
+  };
+  const edges = new Map<string, { segment: BoundarySegment; cell: number }>();
+  cells.forEach(([x, y], cell) => {
     const vertices = cellVertices(x, y, cfg);
     for (let i = 0; i < vertices.length; i++) {
       const from = vertices[i];
@@ -18,11 +31,20 @@ export function selectionBoundarySegments(
       const fromKey = pointKey(from);
       const toKey = pointKey(to);
       const key = fromKey < toKey ? `${fromKey}|${toKey}` : `${toKey}|${fromKey}`;
-      if (edges.has(key)) edges.delete(key);
-      else edges.set(key, [from, to]);
+      const existing = edges.get(key);
+      if (existing) {
+        parent[find(cell)] = find(existing.cell);
+        edges.delete(key);
+      } else {
+        edges.set(key, { segment: [from, to], cell });
+      }
     }
-  }
-  return [...edges.values()];
+  });
+  const exposed = [...edges.values()];
+  return {
+    segments: exposed.map(({ segment }) => segment),
+    components: exposed.map(({ cell }) => find(cell)),
+  };
 }
 
 function cellVertices(x: number, y: number, cfg: FieldConfig): WorldPoint[] {

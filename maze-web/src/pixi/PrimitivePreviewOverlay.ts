@@ -5,6 +5,8 @@ import type { FieldConfig } from "../fieldConfig";
 import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
 import { controlLineWidth } from "./controlLineWidth";
+import { buildRegionContours, renderRegionContours } from "./renderers/regionContours";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 
 const ADD_COLOR = canvas.fieldEditor.previewAdd;
 const REMOVE_COLOR = canvas.fieldEditor.previewRemove;
@@ -13,6 +15,7 @@ const PREVIEW_ALPHA = 0.5;
 const FRAME_ALPHA = 0.9;
 const FRAME_WIDTH = 1.25;
 const NODE_RADIUS = TILE_SIZE * 0.16;
+const SELECTION_FILL_ALPHA = 0.25;
 const DASH_LENGTH = TILE_SIZE * 0.35;
 const GAP_LENGTH = TILE_SIZE * 0.22;
 
@@ -82,8 +85,16 @@ export class PrimitivePreviewOverlay {
           g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
         }
       } else if (geometry.kind === "boundary") {
-        for (const [start, end] of geometry.segments) {
-          drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor, this.strokeWidth(FRAME_WIDTH));
+        // Contour is inset from the cell edges (like region highlights) so it stays visible
+        // when a selected edge coincides with the solid maze boundary.
+        const sides = geometry.segments.map(([start, end], i) => {
+          const v0 = { x: start.x, y: -start.y };
+          const v1 = { x: end.x, y: -end.y };
+          return { v0, v1, polyline: [v0, v1], component: geometry.components?.[i] ?? 0 };
+        });
+        const contours = buildRegionContours(sides);
+        if (contours.length > 0) {
+          renderRegionContours(g, contours, frameColor, SELECTION_FILL_ALPHA, getCellHighlightInset(), "round", this.strokeWidth(FRAME_WIDTH), { dash: DASH_LENGTH, gap: GAP_LENGTH });
         }
       } else {
         const points = geometry.points;

@@ -20,6 +20,9 @@ vi.mock("pixi.js", () => ({
     moveTo(...args: unknown[]) { this.calls.push({ name: "moveTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ name: "lineTo", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ name: "stroke", args }); return this; }
+    arcTo(...args: unknown[]) { this.calls.push({ name: "arcTo", args }); return this; }
+    closePath(...args: unknown[]) { this.calls.push({ name: "closePath", args }); return this; }
+    cut(...args: unknown[]) { this.calls.push({ name: "cut", args }); return this; }
     destroy() {}
   },
 }));
@@ -56,6 +59,51 @@ describe("PrimitivePreviewOverlay selection frames", () => {
     expect(calls.find(({ name }) => name === "fill")?.args[0]).toMatchObject({ color: 0xffffff });
     expect(calls.filter(({ name }) => name === "moveTo").length).toBeGreaterThan(3);
     expect(calls.filter(({ name }) => name === "stroke").length).toBeGreaterThan(3);
+    overlay.destroy();
+  });
+
+  it("draws a filled inset contour for a boundary selection", () => {
+    const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
+    const a = { x: 0, y: 0 }, b = { x: 40, y: 0 }, c = { x: 40, y: -40 }, d = { x: 0, y: -40 };
+
+    overlay.update([], 1, cfg, { kind: "boundary", segments: [[a, b], [b, c], [c, d], [d, a]] });
+
+    const calls = stubs.graphics[0].calls;
+    expect(calls.some(({ name }) => name === "fill")).toBe(true);
+    // Dashed border: one stroke per dash, several along each of the four sides.
+    expect(calls.filter(({ name }) => name === "stroke").length).toBeGreaterThan(4);
+    overlay.destroy();
+  });
+
+  it("keeps corner-touching components as separate contours", () => {
+    const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
+    const square = (x: number, y: number) => {
+      const a = { x, y }, b = { x: x + 40, y }, c = { x: x + 40, y: y - 40 }, d = { x, y: y - 40 };
+      return [[a, b], [b, c], [c, d], [d, a]] as [typeof a, typeof a][];
+    };
+    // Second square shares only the corner (40, -40) with the first.
+    const segments = [...square(0, 0), ...square(40, -40)];
+
+    overlay.update([], 1, cfg, { kind: "boundary", segments, components: [0, 0, 0, 0, 1, 1, 1, 1] });
+
+    const calls = stubs.graphics[0].calls;
+    const fills = calls.filter(({ name }) => name === "fill");
+    expect(fills).toHaveLength(2);
+    expect(calls.filter(({ name }) => name === "stroke").length).toBeGreaterThan(8);
+    overlay.destroy();
+  });
+
+  it("cuts a hole out of the fill for a nested contour", () => {
+    const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
+    const loop = (x: number, y: number, size: number) => {
+      const a = { x, y }, b = { x: x + size, y }, c = { x: x + size, y: y - size }, d = { x, y: y - size };
+      return [[a, b], [b, c], [c, d], [d, a]] as [typeof a, typeof a][];
+    };
+
+    overlay.update([], 1, cfg, { kind: "boundary", segments: [...loop(0, 0, 120), ...loop(40, -40, 40)] });
+
+    const calls = stubs.graphics[0].calls;
+    expect(calls.some(({ name }) => name === "cut")).toBe(true);
     overlay.destroy();
   });
 

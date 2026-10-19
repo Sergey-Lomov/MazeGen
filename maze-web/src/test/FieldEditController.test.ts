@@ -265,7 +265,7 @@ describe("FieldEditController polygon interaction", () => {
 });
 
 describe("FieldEditController select interaction", () => {
-  it("keeps the existing cells selected and draws their dashed boundary on polygon release", () => {
+  it("keeps the existing cells selected and draws their boundary contour on polygon release", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
@@ -291,6 +291,9 @@ describe("FieldEditController select interaction", () => {
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
     expect(updates.at(-1)).toMatchObject({ kind: "boundary" });
+    const released = updates.at(-1);
+    if (released?.kind !== "boundary") throw new Error("expected boundary geometry");
+    expect(released.components).toHaveLength(released.segments.length);
     expect(previewCells.at(-1)).toEqual([]);
     expect(commits).toHaveLength(0);
 
