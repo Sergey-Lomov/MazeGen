@@ -99,28 +99,6 @@ fn neighbor_is_reciprocal() {
 }
 
 #[test]
-fn wire_encoding_round_trips_including_negative_coordinates() {
-    for c in tiles(5) {
-        let (x, y) = c.to_xy();
-        assert_eq!(TruncatedTrihexagonalPoint::from_xy(x, y), c);
-    }
-    assert_eq!(
-        TruncatedTrihexagonalPoint::from_xy(-1, 4),
-        TruncatedTrihexagonalPoint::new(-1, 4, TruncatedTrihexagonalKind::Hexagon90)
-    );
-}
-
-#[test]
-fn wire_encoding_wraps_beyond_the_documented_range() {
-    let inside = TruncatedTrihexagonalPoint::dodecagon(i32::MAX / 6, 0);
-    let (x, y) = inside.to_xy();
-    assert_eq!(TruncatedTrihexagonalPoint::from_xy(x, y), inside);
-    let outside = TruncatedTrihexagonalPoint::dodecagon(i32::MAX / 6 + 1, 0);
-    let (x, y) = outside.to_xy();
-    assert_ne!(TruncatedTrihexagonalPoint::from_xy(x, y), outside);
-}
-
-#[test]
 fn neighbor_is_none_at_coordinate_overflow() {
     let t = TruncatedTrihexagonalTessellation;
     let missing = TruncatedTrihexagonalKind::ALL

@@ -72,28 +72,6 @@ fn neighbor_is_reciprocal() {
 }
 
 #[test]
-fn wire_encoding_round_trips_including_negative_coordinates() {
-    for c in tiles(5) {
-        let (x, y) = c.to_xy();
-        assert_eq!(SnubHexagonalPoint::from_xy(x, y), c);
-    }
-    assert_eq!(
-        SnubHexagonalPoint::from_xy(-1, 4),
-        SnubHexagonalPoint::new(-1, 4, SnubHexagonalKind::Inner1)
-    );
-}
-
-#[test]
-fn wire_encoding_wraps_beyond_the_documented_range() {
-    let inside = SnubHexagonalPoint::hexagon(i32::MAX / 9, 0);
-    let (x, y) = inside.to_xy();
-    assert_eq!(SnubHexagonalPoint::from_xy(x, y), inside);
-    let outside = SnubHexagonalPoint::hexagon(i32::MAX / 9 + 1, 0);
-    let (x, y) = outside.to_xy();
-    assert_ne!(SnubHexagonalPoint::from_xy(x, y), outside);
-}
-
-#[test]
 fn neighbor_is_none_at_coordinate_overflow() {
     let t = SnubHexagonalTessellation;
     let missing = SnubHexagonalKind::ALL

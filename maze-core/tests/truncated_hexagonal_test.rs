@@ -1,8 +1,8 @@
 use maze_core::IdGenerator;
 use maze_core::space::{
-    CellScope, Field, FieldOpError, FieldOperation, FieldOps, Point, Tessellation, is_connected,
+    CellScope, Field, FieldOpError, FieldOperation, FieldOps, Point, Tessellation,
     TessellationGeometry, TruncatedHexagonalKind, TruncatedHexagonalPoint,
-    TruncatedHexagonalTessellation,
+    TruncatedHexagonalTessellation, is_connected,
 };
 use std::sync::Arc;
 
@@ -83,28 +83,6 @@ fn neighbor_is_reciprocal() {
             assert_eq!(t.neighbor(c2, f2), Some((c, f)), "{c:?} {f:?}");
         }
     }
-}
-
-#[test]
-fn wire_encoding_round_trips_including_negative_coordinates() {
-    for c in tiles(5) {
-        let (x, y) = c.to_xy();
-        assert_eq!(TruncatedHexagonalPoint::from_xy(x, y), c);
-    }
-    assert_eq!(
-        TruncatedHexagonalPoint::from_xy(-1, 4),
-        TruncatedHexagonalPoint::new(-1, 4, TruncatedHexagonalKind::TriangleDown)
-    );
-}
-
-#[test]
-fn wire_encoding_wraps_beyond_the_documented_range() {
-    let inside = TruncatedHexagonalPoint::dodecagon(i32::MAX / 3, 0);
-    let (x, y) = inside.to_xy();
-    assert_eq!(TruncatedHexagonalPoint::from_xy(x, y), inside);
-    let outside = TruncatedHexagonalPoint::dodecagon(i32::MAX / 3 + 1, 0);
-    let (x, y) = outside.to_xy();
-    assert_ne!(TruncatedHexagonalPoint::from_xy(x, y), outside);
 }
 
 #[test]

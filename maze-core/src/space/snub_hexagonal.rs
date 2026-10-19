@@ -18,14 +18,16 @@
 //! one of two triangles that border only triangles. A triangle's anchor is the hexagon whose
 //! translation of the kind's template yields it.
 
-use super::field_ops::{
-    CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, convex_cells, param,
-    triangle_cells,
+use super::field_ops::Inclusion;
+use super::multi_shape::{
+    AnchoredPoint, CellFace, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind,
+    is_opposite_face, lattice_rect_cells, polygon_faces, preset_cells, regular_cell_shape,
+    regular_polygon_area, regular_shapes,
 };
 use super::square::cell_range;
 use super::{
     CellShape, FieldOpError, FieldOperation, Point, PresetDescriptor, PresetParams, Segment,
-    ShapeDescriptor, Tessellation, validate_preset,
+    ShapeDescriptor, Tessellation,
 };
 use std::sync::LazyLock;
 
@@ -67,44 +69,14 @@ impl SnubHexagonalKind {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct SnubHexagonalPoint {
-    pub q: i32,
-    pub r: i32,
-    pub kind: SnubHexagonalKind,
-}
+impl_cell_kind!(SnubHexagonalKind);
+
+/// A hexagon `(q, r)` and the kind of cell anchored at it.
+pub type SnubHexagonalPoint = AnchoredPoint<SnubHexagonalKind>;
 
 impl SnubHexagonalPoint {
     pub const fn hexagon(q: i32, r: i32) -> Self {
-        Self {
-            q,
-            r,
-            kind: SnubHexagonalKind::Hexagon,
-        }
-    }
-
-    pub const fn new(q: i32, r: i32, kind: SnubHexagonalKind) -> Self {
-        Self { q, r, kind }
-    }
-
-    /// Wire encoding as an integer pair: `x = 9q + kind index`, `y = r`. Every pair decodes to a
-    /// cell. Coordinates beyond `±i32::MAX / 9` in `q` do not fit the wire and wrap.
-    pub fn to_xy(self) -> (i32, i32) {
-        (
-            self.q
-                .wrapping_mul(9)
-                .wrapping_add(self.kind.index() as i32),
-            self.r,
-        )
-    }
-
-    /// Inverse of [`to_xy`](Self::to_xy).
-    pub fn from_xy(x: i32, y: i32) -> Self {
-        Self {
-            q: x.div_euclid(9),
-            r: y,
-            kind: SnubHexagonalKind::ALL[x.rem_euclid(9) as usize],
-        }
+        Self::new(q, r, SnubHexagonalKind::Hexagon)
     }
 
     pub fn is_hexagon(self) -> bool {
@@ -116,40 +88,9 @@ impl SnubHexagonalPoint {
 /// A hexagon has faces `0..6` (face `k` runs from hexagon vertex `k`, at angle `60°·k` around the
 /// center, to vertex `k + 1`), a triangle `0..3`; an edge triangle's face `0` is the one shared
 /// with its anchor hexagon.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct SnubHexagonalFace(u8);
+pub type SnubHexagonalFace = CellFace;
 
-impl SnubHexagonalFace {
-    pub const fn new(index: u8) -> Self {
-        Self(index)
-    }
-
-    pub fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
-const fn face(index: u8) -> SnubHexagonalFace {
-    SnubHexagonalFace(index)
-}
-
-const HEXAGON_FACES: [SnubHexagonalFace; 6] =
-    [face(0), face(1), face(2), face(3), face(4), face(5)];
-const TRIANGLE_FACES: [SnubHexagonalFace; 3] = [face(0), face(1), face(2)];
-
-/// `faces_of` is already the canonical counter-clockwise order for both templates.
-const HEXAGON_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
-const TRIANGLE_LOCAL_TO_CANONICAL: [usize; 3] = [0, 1, 2];
-
-const HEXAGON_SHAPE: usize = 0;
-const TRIANGLE_SHAPE: usize = 1;
-
-static SHAPES: LazyLock<[ShapeDescriptor; 2]> = LazyLock::new(|| {
-    [
-        ShapeDescriptor::regular_polygon(6),
-        ShapeDescriptor::regular_polygon(3),
-    ]
-});
+static SHAPES: LazyLock<[ShapeDescriptor; 2]> = LazyLock::new(|| regular_shapes([6, 3]));
 
 /// A point `a + b·ω` of the unit triangular lattice.
 type Lattice = (i64, i64);
@@ -267,11 +208,7 @@ impl Tessellation for SnubHexagonalTessellation {
     }
 
     fn faces_of(&self, cell: SnubHexagonalPoint) -> &[SnubHexagonalFace] {
-        if cell.is_hexagon() {
-            &HEXAGON_FACES
-        } else {
-            &TRIANGLE_FACES
-        }
+        polygon_faces(if cell.is_hexagon() { 6 } else { 3 })
     }
 
     fn neighbor(
@@ -288,7 +225,7 @@ impl Tessellation for SnubHexagonalTessellation {
         let j = (0..m)
             .find(|&j| theirs[j] == end && theirs[(j + 1) % m] == start)
             .expect("the neighbor owns the same edge in reverse");
-        Some((other, SnubHexagonalFace(j as u8)))
+        Some((other, SnubHexagonalFace::new(j as u8)))
     }
 
     /// A hexagon is passed straight through its opposite face; a triangle has no opposite face and
@@ -299,7 +236,7 @@ impl Tessellation for SnubHexagonalTessellation {
         in_face: SnubHexagonalFace,
         out_face: SnubHexagonalFace,
     ) -> bool {
-        cell.is_hexagon() && out_face.index() == (in_face.index() + 3) % 6
+        cell.is_hexagon() && is_opposite_face(6, in_face.index(), out_face.index())
     }
 
     /// The tiling is chiral and has no mirror symmetry, so only translation is offered.
@@ -312,11 +249,7 @@ impl Tessellation for SnubHexagonalTessellation {
     }
 
     fn shape_of(&self, cell: SnubHexagonalPoint) -> Option<CellShape<'_>> {
-        Some(if cell.is_hexagon() {
-            CellShape::full(&SHAPES[HEXAGON_SHAPE], &HEXAGON_LOCAL_TO_CANONICAL)
-        } else {
-            CellShape::full(&SHAPES[TRIANGLE_SHAPE], &TRIANGLE_LOCAL_TO_CANONICAL)
-        })
+        Some(regular_cell_shape(&*SHAPES, self.faces_of(cell).len()))
     }
 
     /// Centroid of the cell's polygon.
@@ -327,7 +260,7 @@ impl Tessellation for SnubHexagonalTessellation {
             .fold((0, 0), |(x2, y), &(a, b)| (x2 + 2 * a + b, y + b));
         Point::new(
             x2 as f64 / (2 * n) as f64,
-            y as f64 * (3f64.sqrt() / 2.0) / n as f64,
+            y as f64 * (SQRT_3 / 2.0) / n as f64,
         )
     }
 
@@ -343,19 +276,10 @@ impl Tessellation for SnubHexagonalTessellation {
         max: Point,
         limit: usize,
     ) -> Option<Vec<SnubHexagonalPoint>> {
-        let (lo, hi) = (
-            Point::new(
-                min.x.min(max.x) - ANCHOR_REACH,
-                min.y.min(max.y) - ANCHOR_REACH,
-            ),
-            Point::new(
-                min.x.max(max.x) + ANCHOR_REACH,
-                min.y.max(max.y) + ANCHOR_REACH,
-            ),
-        );
+        let (lo, hi) = expanded_box(min, max, ANCHOR_REACH);
         // A hexagon center `(q, r)` sits at `x = 5q/2 + r/2`, `y = (q + 3r)·√3/2`. For a fixed `r`
         // the box bounds `q` twice, through `x` and through `y`.
-        let half_height = 3f64.sqrt() / 2.0;
+        let half_height = SQRT_3 / 2.0;
         let lattice_b = |y: f64| y / half_height;
         let r_of = |x: f64, y: f64| (2.5 * lattice_b(y) - x) / 7.0;
         let corners = [(lo.x, lo.y), (lo.x, hi.y), (hi.x, lo.y), (hi.x, hi.y)];
@@ -372,24 +296,9 @@ impl Tessellation for SnubHexagonalTessellation {
             let by_y = (lattice_b(lo.y) - 3.0 * r, lattice_b(hi.y) - 3.0 * r);
             cell_range(by_x.0.max(by_y.0), by_x.1.min(by_y.1))
         };
-        let count: i64 = rs
-            .clone()
-            .map(|r| {
-                let qs = qs(r);
-                9 * (*qs.end() as i64 - *qs.start() as i64 + 1).max(0)
-            })
-            .sum();
-        if count > i64::try_from(limit).unwrap_or(i64::MAX) {
-            return None;
-        }
-        Some(
-            rs.flat_map(|r| {
-                qs(r).flat_map(move |q| {
-                    SnubHexagonalKind::ALL.map(|kind| SnubHexagonalPoint::new(q, r, kind))
-                })
-            })
-            .collect(),
-        )
+        anchor_cells(rs, qs, SnubHexagonalKind::ALL.len(), limit, |r, q, kind| {
+            SnubHexagonalPoint::new(q, r, SnubHexagonalKind::ALL[kind])
+        })
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
@@ -401,46 +310,17 @@ impl Tessellation for SnubHexagonalTessellation {
         key: &str,
         params: PresetParams<'_>,
     ) -> Result<Vec<SnubHexagonalPoint>, FieldOpError> {
-        validate_preset(&PRESETS, key, params)?;
         let origin = self.center(SnubHexagonalPoint::hexagon(0, 0));
-        let mut cells = match key {
-            "rect" => {
-                // `cols × rows` hexagon pitches, centered on the origin hexagon.
-                let half = Point::new(
-                    param(params, "cols") as f64 * PITCH / 2.0,
-                    param(params, "rows") as f64 * PITCH / 2.0,
-                );
-                let corners = [
-                    origin + Point::new(-half.x, -half.y),
-                    origin + Point::new(half.x, -half.y),
-                    origin + half,
-                    origin + Point::new(-half.x, half.y),
-                ];
-                convex_cells(
-                    self,
-                    origin,
-                    &corners,
-                    half.x.hypot(half.y),
-                    Inclusion::WholeCell,
-                )?
-            }
-            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
-            "triangle" => {
-                triangle_cells(self, origin, param(params, "side"), Inclusion::WholeCell)?
-            }
-            _ => return Err(FieldOpError::Unavailable),
-        };
+        // `cols × rows` hexagon pitches, centered on the origin hexagon.
+        let mut cells = preset_cells(self, key, params, origin, Inclusion::WholeCell, || {
+            lattice_rect_cells(self, params, origin, Point::new(PITCH, PITCH))
+        })?;
         cells.sort();
         Ok(cells)
     }
 
     fn area(&self, cell: SnubHexagonalPoint) -> f64 {
-        // Side length 1: a hexagon is `3·√3 / 2`, a triangle `√3 / 4`.
-        if cell.is_hexagon() {
-            3.0 * 3f64.sqrt() / 2.0
-        } else {
-            3f64.sqrt() / 4.0
-        }
+        regular_polygon_area(self.faces_of(cell).len())
     }
 }
 
@@ -450,8 +330,5 @@ const PITCH: f64 = 2.645_751_311_064_590_7;
 /// World position of a lattice point: `x = a + b/2`, `y = b·√3/2`, computed from the integers only,
 /// so a vertex shared by several cells gets identical coordinates from each of them.
 fn point((a, b): Lattice) -> Point {
-    Point::new((2 * a + b) as f64 * 0.5, b as f64 * (3f64.sqrt() / 2.0))
+    Point::new((2 * a + b) as f64 * 0.5, b as f64 * (SQRT_3 / 2.0))
 }
-
-/// Preset field shapes of the snub hexagonal tiling, in UI order.
-const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];

@@ -7,13 +7,15 @@
 //! is the lower-left hexagon of the lattice triangle it sits in. Every hexagon has six triangle
 //! neighbors, every triangle three hexagon neighbors.
 
-use super::field_ops::{
-    CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
+use super::field_ops::{Inclusion, param};
+use super::multi_shape::{
+    AnchoredPoint, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind, preset_cells,
+    regular_cell_shape, regular_polygon_area, regular_shapes,
 };
 use super::square::cell_range;
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    Tessellation,
 };
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -28,62 +30,33 @@ pub enum TrihexagonalKind {
     Down,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TrihexagonalPoint {
-    pub q: i32,
-    pub r: i32,
-    pub kind: TrihexagonalKind,
+impl TrihexagonalKind {
+    /// Every kind, in wire order.
+    pub const ALL: [TrihexagonalKind; 3] = [Self::Hexagon, Self::Up, Self::Down];
+
+    /// Position in the wire encoding (hexagon 0, up 1, down 2).
+    pub fn index(self) -> usize {
+        // The discriminants follow `ALL`.
+        self as usize
+    }
 }
+
+impl_cell_kind!(TrihexagonalKind);
+
+/// A hexagon `(q, r)` and the kind of cell anchored at it.
+pub type TrihexagonalPoint = AnchoredPoint<TrihexagonalKind>;
 
 impl TrihexagonalPoint {
     pub const fn hexagon(q: i32, r: i32) -> Self {
-        Self {
-            q,
-            r,
-            kind: TrihexagonalKind::Hexagon,
-        }
+        Self::new(q, r, TrihexagonalKind::Hexagon)
     }
 
     pub const fn up(q: i32, r: i32) -> Self {
-        Self {
-            q,
-            r,
-            kind: TrihexagonalKind::Up,
-        }
+        Self::new(q, r, TrihexagonalKind::Up)
     }
 
     pub const fn down(q: i32, r: i32) -> Self {
-        Self {
-            q,
-            r,
-            kind: TrihexagonalKind::Down,
-        }
-    }
-
-    /// Wire encoding as an integer pair: `x = 3q + kind` (hexagon 0, up 1, down 2), `y = r`. Every
-    /// pair decodes to a cell. Coordinates beyond `±i32::MAX / 3` in `q` do not fit the wire and
-    /// wrap.
-    pub fn to_xy(self) -> (i32, i32) {
-        let kind = match self.kind {
-            TrihexagonalKind::Hexagon => 0,
-            TrihexagonalKind::Up => 1,
-            TrihexagonalKind::Down => 2,
-        };
-        (self.q.wrapping_mul(3).wrapping_add(kind), self.r)
-    }
-
-    /// Inverse of [`to_xy`](Self::to_xy).
-    pub fn from_xy(x: i32, y: i32) -> Self {
-        let kind = match x.rem_euclid(3) {
-            0 => TrihexagonalKind::Hexagon,
-            1 => TrihexagonalKind::Up,
-            _ => TrihexagonalKind::Down,
-        };
-        Self {
-            q: x.div_euclid(3),
-            r: y,
-            kind,
-        }
+        Self::new(q, r, TrihexagonalKind::Down)
     }
 
     pub fn is_hexagon(self) -> bool {
@@ -109,11 +82,11 @@ impl TrihexagonalPoint {
             (TrihexagonalKind::Up, S) => (1, 0, TrihexagonalKind::Hexagon),
             _ => return None,
         };
-        Some(Self {
-            q: self.q.checked_add(dq)?,
-            r: self.r.checked_add(dr)?,
+        Some(Self::new(
+            self.q.checked_add(dq)?,
+            self.r.checked_add(dr)?,
             kind,
-        })
+        ))
     }
 }
 
@@ -151,19 +124,7 @@ const HEXAGON_FACES: [TrihexagonalFace; 6] = [NE, N, NW, SW, S, SE];
 const UP_FACES: [TrihexagonalFace; 3] = [NE, NW, S];
 const DOWN_FACES: [TrihexagonalFace; 3] = [N, SW, SE];
 
-/// `faces_of` is already the canonical counter-clockwise order for all three templates.
-const HEXAGON_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
-const TRIANGLE_LOCAL_TO_CANONICAL: [usize; 3] = [0, 1, 2];
-
-const HEXAGON_SHAPE: usize = 0;
-const TRIANGLE_SHAPE: usize = 1;
-
-static SHAPES: LazyLock<[ShapeDescriptor; 2]> = LazyLock::new(|| {
-    [
-        ShapeDescriptor::regular_polygon(6),
-        ShapeDescriptor::regular_polygon(3),
-    ]
-});
+static SHAPES: LazyLock<[ShapeDescriptor; 2]> = LazyLock::new(|| regular_shapes([6, 3]));
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TrihexagonalTessellation;
@@ -209,11 +170,7 @@ impl Tessellation for TrihexagonalTessellation {
     }
 
     fn shape_of(&self, cell: TrihexagonalPoint) -> Option<CellShape<'_>> {
-        Some(if cell.is_hexagon() {
-            CellShape::full(&SHAPES[HEXAGON_SHAPE], &HEXAGON_LOCAL_TO_CANONICAL)
-        } else {
-            CellShape::full(&SHAPES[TRIANGLE_SHAPE], &TRIANGLE_LOCAL_TO_CANONICAL)
-        })
+        Some(regular_cell_shape(&*SHAPES, self.faces_of(cell).len()))
     }
 
     /// Centroid of the cell's polygon.
@@ -250,36 +207,17 @@ impl Tessellation for TrihexagonalTessellation {
         max: Point,
         limit: usize,
     ) -> Option<Vec<TrihexagonalPoint>> {
-        let (lo, hi) = (
-            Point::new(min.x.min(max.x), min.y.min(max.y)),
-            Point::new(min.x.max(max.x), min.y.max(max.y)),
-        );
-        let row_height = 3f64.sqrt();
+        let (lo, hi) = expanded_box(min, max, 0.0);
+        let row_height = SQRT_3;
         // A cell's lattice anchor is the hexagon `(q, r)` at `x = 2q + r`, `y = r·√3`; the cell
         // spans at most `[-1, 3]` in x and `[-√3/2, √3]` in y around it.
         let rs = cell_range(lo.y / row_height - 1.0, hi.y / row_height + 0.5);
-        let qs = |r: i32| cell_range((lo.x - 3.0 - r as f64) / 2.0, (hi.x + 1.0 - r as f64) / 2.0);
-        let count: i64 = rs
-            .clone()
-            .map(|r| {
-                let qs = qs(r);
-                3 * (*qs.end() as i64 - *qs.start() as i64 + 1).max(0)
-            })
-            .sum();
-        if count > i64::try_from(limit).unwrap_or(i64::MAX) {
-            return None;
-        }
-        Some(
-            rs.flat_map(|r| {
-                qs(r).flat_map(move |q| {
-                    [
-                        TrihexagonalPoint::hexagon(q, r),
-                        TrihexagonalPoint::up(q, r),
-                        TrihexagonalPoint::down(q, r),
-                    ]
-                })
-            })
-            .collect(),
+        anchor_cells(
+            rs,
+            |r| cell_range((lo.x - 3.0 - r as f64) / 2.0, (hi.x + 1.0 - r as f64) / 2.0),
+            TrihexagonalKind::ALL.len(),
+            limit,
+            |r, q, kind| TrihexagonalPoint::new(q, r, TrihexagonalKind::ALL[kind]),
         )
     }
 
@@ -292,27 +230,19 @@ impl Tessellation for TrihexagonalTessellation {
         key: &str,
         params: PresetParams<'_>,
     ) -> Result<Vec<TrihexagonalPoint>, FieldOpError> {
-        validate_preset(&PRESETS, key, params)?;
         let origin = self.center(TrihexagonalPoint::hexagon(0, 0));
-        let mut cells = match key {
-            "rect" => centered_rect(param(params, "cols") as i32, param(params, "rows") as i32),
-            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
-            "triangle" => {
-                triangle_cells(self, origin, param(params, "side"), Inclusion::WholeCell)?
-            }
-            _ => return Err(FieldOpError::Unavailable),
-        };
+        let mut cells = preset_cells(self, key, params, origin, Inclusion::WholeCell, || {
+            Ok(centered_rect(
+                param(params, "cols") as i32,
+                param(params, "rows") as i32,
+            ))
+        })?;
         cells.sort();
         Ok(cells)
     }
 
     fn area(&self, cell: TrihexagonalPoint) -> f64 {
-        // Side length 1: a hexagon is `3·√3 / 2`, a triangle `√3 / 4`.
-        if cell.is_hexagon() {
-            3.0 * 3f64.sqrt() / 2.0
-        } else {
-            3f64.sqrt() / 4.0
-        }
+        regular_polygon_area(self.faces_of(cell).len())
     }
 }
 
@@ -320,7 +250,7 @@ impl Tessellation for TrihexagonalTessellation {
 /// sits on integer `(i, j)`, so a vertex shared by several cells gets identical coordinates from
 /// each of them.
 fn units() -> (f64, f64) {
-    (0.5, 3f64.sqrt() / 2.0)
+    (0.5, SQRT_3 / 2.0)
 }
 
 /// Lattice coordinates of the hexagon center `(q, r)`, which anchors every cell at that `(q, r)`.
@@ -348,9 +278,6 @@ fn vertex(cell: TrihexagonalPoint, k: usize) -> Point {
     let (x_unit, y_unit) = units();
     Point::new(x_unit * (ci + di) as f64, y_unit * (cj + dj) as f64)
 }
-
-/// Preset field shapes of the trihexagonal tiling, in UI order.
-const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
 
 /// `cols × rows` hexagons in screen-aligned rows (every row shifted by half a hexagon pitch
 /// relative to its neighbor) plus every triangle whose three hexagons are all in the set. The

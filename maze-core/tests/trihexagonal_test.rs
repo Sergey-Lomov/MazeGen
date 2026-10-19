@@ -51,18 +51,6 @@ fn neighbor_is_reciprocal_and_faces_are_opposite() {
 }
 
 #[test]
-fn wire_encoding_round_trips_including_negative_coordinates() {
-    for c in tiles(5) {
-        let (x, y) = c.to_xy();
-        assert_eq!(TrihexagonalPoint::from_xy(x, y), c);
-    }
-    assert_eq!(
-        TrihexagonalPoint::from_xy(-1, 4),
-        TrihexagonalPoint::down(-1, 4)
-    );
-}
-
-#[test]
 fn step_is_none_for_faces_the_cell_lacks_and_at_overflow() {
     assert_eq!(
         TrihexagonalPoint::hexagon(0, 0).step(TrihexagonalFace::NE),
@@ -211,16 +199,6 @@ fn single_hexagon_rect_has_no_triangles() {
     let t = TrihexagonalTessellation;
     let cells = t.build_preset("rect", &[("cols", 1), ("rows", 1)]).unwrap();
     assert_eq!(cells, [TrihexagonalPoint::hexagon(0, 0)]);
-}
-
-#[test]
-fn wire_encoding_wraps_beyond_the_documented_range() {
-    let inside = TrihexagonalPoint::hexagon(i32::MAX / 3, 0);
-    let (x, y) = inside.to_xy();
-    assert_eq!(TrihexagonalPoint::from_xy(x, y), inside);
-    let outside = TrihexagonalPoint::hexagon(i32::MAX / 3 + 1, 0);
-    let (x, y) = outside.to_xy();
-    assert_ne!(TrihexagonalPoint::from_xy(x, y), outside);
 }
 
 #[test]

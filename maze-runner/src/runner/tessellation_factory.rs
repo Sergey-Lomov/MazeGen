@@ -274,76 +274,29 @@ mod tests {
                 Ok((vec![shape.to_string()], (3, -2)))
             );
         }
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::SquareOctagon), Probe),
-            Ok((
-                vec!["regular:8".to_string(), "regular:4".to_string()],
-                (3, -2)
-            ))
-        );
+    }
+
+    /// Shape keys of a tessellation made only of regular polygons with the given side counts.
+    fn regular_keys(sides: &[u32]) -> Vec<String> {
+        sides.iter().map(|n| format!("regular:{n}")).collect()
     }
 
     #[test]
-    fn builds_trihexagonal_with_hexagon_and_triangle_shapes() {
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::Trihexagonal), Probe),
-            Ok((
-                vec!["regular:6".to_string(), "regular:3".to_string()],
-                (3, -2)
-            ))
-        );
-    }
-
-    #[test]
-    fn builds_snub_hexagonal_with_hexagon_and_triangle_shapes() {
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::SnubHexagonal), Probe),
-            Ok((
-                vec!["regular:6".to_string(), "regular:3".to_string()],
-                (3, -2)
-            ))
-        );
-    }
-
-    #[test]
-    fn builds_rhombitrihexagonal_with_hexagon_square_and_triangle_shapes() {
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::Rhombitrihexagonal), Probe),
-            Ok((
-                vec![
-                    "regular:6".to_string(),
-                    "regular:4".to_string(),
-                    "regular:3".to_string()
-                ],
-                (3, -2)
-            ))
-        );
-    }
-
-    #[test]
-    fn builds_truncated_hexagonal_with_dodecagon_and_triangle_shapes() {
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::TruncatedHexagonal), Probe),
-            Ok((
-                vec!["regular:12".to_string(), "regular:3".to_string()],
-                (3, -2)
-            ))
-        );
-    }
-
-    #[test]
-    fn builds_truncated_trihexagonal_with_dodecagon_square_and_hexagon_shapes() {
-        assert_eq!(
-            build_tessellation(&config(TessellationKind::TruncatedTrihexagonal), Probe),
-            Ok((
-                vec![
-                    "regular:12".to_string(),
-                    "regular:4".to_string(),
-                    "regular:6".to_string()
-                ],
-                (3, -2)
-            ))
-        );
+    fn builds_multi_shape_tessellations_with_their_regular_polygon_shapes() {
+        for (kind, sides) in [
+            (TessellationKind::SquareOctagon, &[8, 4][..]),
+            (TessellationKind::Trihexagonal, &[6, 3]),
+            (TessellationKind::SnubHexagonal, &[6, 3]),
+            (TessellationKind::Rhombitrihexagonal, &[6, 4, 3]),
+            (TessellationKind::TruncatedHexagonal, &[12, 3]),
+            (TessellationKind::TruncatedTrihexagonal, &[12, 4, 6]),
+        ] {
+            assert_eq!(
+                build_tessellation(&config(kind), Probe),
+                Ok((regular_keys(sides), (3, -2))),
+                "{kind:?}"
+            );
+        }
     }
 
     #[test]

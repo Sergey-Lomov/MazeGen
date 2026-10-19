@@ -8,10 +8,12 @@ use std::sync::Arc;
 pub mod brick;
 pub mod cairo;
 pub mod curved_quadrilateral;
+mod exact_tiling;
 pub mod field_ops;
 pub mod geometry;
 pub mod hex;
 pub mod multi_level;
+mod multi_shape;
 pub mod radial;
 pub mod rhombitrihexagonal;
 pub mod shape;
@@ -41,6 +43,7 @@ pub use geometry::{
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
+pub use multi_shape::{AnchoredPoint, CellFace, CellKind};
 pub use radial::{
     DEFAULT_CELL_LIMIT, MAX_CELL_LIMIT, MIN_CELL_LIMIT, RadialFace, RadialLayout, RadialParams,
     RadialPoint, RadialTessellation,
