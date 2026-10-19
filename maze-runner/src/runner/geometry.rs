@@ -508,6 +508,7 @@ mod tests {
             TessellationKind::Brick,
             TessellationKind::Trihexagonal,
             TessellationKind::SnubHexagonal,
+            TessellationKind::SnubSquare,
             TessellationKind::Rhombitrihexagonal,
             TessellationKind::TruncatedHexagonal,
             TessellationKind::TruncatedTrihexagonal,

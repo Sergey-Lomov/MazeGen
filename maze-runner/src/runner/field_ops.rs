@@ -497,6 +497,12 @@ mod tests {
                 vec![("side", 6)],
             ),
             (
+                TessellationKind::SnubSquare,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (TessellationKind::SnubSquare, "triangle", vec![("side", 6)]),
+            (
                 TessellationKind::Rhombitrihexagonal,
                 "rect",
                 vec![("cols", 5), ("rows", 4)],

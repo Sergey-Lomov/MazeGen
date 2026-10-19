@@ -120,6 +120,9 @@ function quarterTurn(o: DisplayOrientation | undefined): Linear {
   }
 }
 
+/** Drawn length of a snub square side, in pixels. */
+const SNUB_SQUARE_SIDE_PX = 60;
+
 export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   square: {
     orientationSlot: null,
@@ -361,6 +364,25 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     cellMeasurePx: TILE_SIZE * 1.5 * Math.SQRT2,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 1.5 * 0.08,
+  },
+  snub_square: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    orientations: [],
+    defaultParams: {},
+    paramSpecs: [],
+    // Every edge has world length 1, so a side is drawn `SNUB_SQUARE_SIDE_PX` long.
+    pixelsPerUnit: SNUB_SQUARE_SIDE_PX,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // Half the 60 degree spacing of a triangle's faces.
+    splitCircleRotationDeg: 30,
+    equilateralSnap: null,
+    cellSidePx: SNUB_SQUARE_SIDE_PX,
+    // The square's circumcircle diameter, its diagonal.
+    cellMeasurePx: SNUB_SQUARE_SIDE_PX * Math.SQRT2,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
   },
   curved_quadrilateral: {
     orientationSlot: null,

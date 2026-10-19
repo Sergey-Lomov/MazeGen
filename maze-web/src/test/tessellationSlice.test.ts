@@ -312,7 +312,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
   it("setTessellationKind resets freeFieldPoints for target kind", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), tri: new Set(), cairo: new Set(), square_octagon: new Set(), brick: new Set(), trihexagonal: new Set(), snub_hexagonal: new Set(), rhombitrihexagonal: new Set(), truncated_hexagonal: new Set(), truncated_trihexagonal: new Set(), elongated_triangular: new Set(), curved_quadrilateral: new Set(), radial: new Set() } });
+    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), tri: new Set(), cairo: new Set(), square_octagon: new Set(), brick: new Set(), trihexagonal: new Set(), snub_hexagonal: new Set(), rhombitrihexagonal: new Set(), truncated_hexagonal: new Set(), truncated_trihexagonal: new Set(), elongated_triangular: new Set(), snub_square: new Set(), curved_quadrilateral: new Set(), radial: new Set() } });
     useMazeStore.getState().setTessellationKind("square");
     const field = activeField();
     // setTessellationKind resets every floor's FloorFieldConfig to a fresh default (GitHub issue

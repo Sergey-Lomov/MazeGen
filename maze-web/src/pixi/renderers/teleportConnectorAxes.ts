@@ -88,6 +88,11 @@ const TRUNCATED_TRIHEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
 // set unchanged.
 const ELONGATED_TRIANGULAR_AXES: Axis[] = [0, 30, 150].map(axisFromDeg);
 
+// Cell edges of the snub square tiling run along every multiple of 30 degrees, so each of those
+// directions lies on a wall through some cell center. The odd multiples of 15 degrees never do (a
+// web test checks it); the display transform is a reflection, which keeps this set unchanged.
+const SNUB_SQUARE_AXES: Axis[] = [15, 45, 75, 105, 135, 165].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -115,6 +120,7 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   truncated_hexagonal: () => TRUNCATED_HEXAGONAL_AXES,
   truncated_trihexagonal: () => TRUNCATED_TRIHEXAGONAL_AXES,
   elongated_triangular: () => ELONGATED_TRIANGULAR_AXES,
+  snub_square: () => SNUB_SQUARE_AXES,
   // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
   curved_quadrilateral: () => SQUARE_AXES,
   // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.

@@ -213,6 +213,26 @@ describe("field operations over wasm", () => {
     expect(fieldOperationAvailable(elongated, "reflect")).toBe(true);
   });
 
+  it("builds snub square presets and translates only on lattice vectors", () => {
+    const snub = tessellationConfigOf("snub_square");
+    // Wire cells are `[6q + kind, r]` with kind 0 and 1 squares, 2-5 triangles.
+    const preset = getFieldPreset(snub, "rect", { cols: 5, rows: 4 });
+    for (const kind of [0, 1, 2, 3, 4, 5]) {
+      expect(preset.some(([x]) => ((x % 6) + 6) % 6 === kind)).toBe(true);
+    }
+    expect(getFieldPreset(snub, "triangle", { side: 6 }).length).toBeGreaterThan(0);
+    // The lattice vector ((2 + sqrt(3)) / 2, -1/2) moves the anchor at q = 0 to q = 1.
+    expect(translateFieldCells(snub, [[0, 0]], [(2 + Math.sqrt(3)) / 2, -0.5])).toEqual([[6, 0]]);
+    try {
+      translateFieldCells(snub, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+    // The tiling is chiral: no mirror symmetry.
+    expect(fieldOperationAvailable(snub, "reflect")).toBe(false);
+  });
+
   it("builds curved quadrilateral presets and translates only on parity-preserving vectors", () => {
     const curved = tessellationConfigOf("curved_quadrilateral");
     expect(getFieldPreset(curved, "rect", { cols: 3, rows: 3 })).toHaveLength(9);

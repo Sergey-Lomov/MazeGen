@@ -1,7 +1,8 @@
 //! Machinery shared by the multi-shape tessellations whose cells are convex polygons with vertices
 //! in `ℤ[√3]`: [`rhombitrihexagonal`](super::rhombitrihexagonal),
-//! [`truncated_hexagonal`](super::truncated_hexagonal) and
-//! [`truncated_trihexagonal`](super::truncated_trihexagonal).
+//! [`truncated_hexagonal`](super::truncated_hexagonal),
+//! [`truncated_trihexagonal`](super::truncated_trihexagonal) and
+//! [`snub_square`](super::snub_square).
 //!
 //! A cell id is an anchor `(q, r)` on a lattice plus a kind. Each tessellation supplies the vertex
 //! denominator, the two lattice steps and one vertex [`Template`] per kind; the [`Tiling`] built

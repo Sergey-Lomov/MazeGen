@@ -69,6 +69,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         truncated_hexagonal: new Set(ff.freeFieldPoints.truncated_hexagonal.map(([x, y]) => encodePoint(x, y))),
         truncated_trihexagonal: new Set(ff.freeFieldPoints.truncated_trihexagonal.map(([x, y]) => encodePoint(x, y))),
         elongated_triangular: new Set(ff.freeFieldPoints.elongated_triangular.map(([x, y]) => encodePoint(x, y))),
+        snub_square: new Set(ff.freeFieldPoints.snub_square.map(([x, y]) => encodePoint(x, y))),
         curved_quadrilateral: new Set(ff.freeFieldPoints.curved_quadrilateral.map(([x, y]) => encodePoint(x, y))),
         radial: new Set(ff.freeFieldPoints.radial.map(([x, y]) => encodePoint(x, y))),
       };

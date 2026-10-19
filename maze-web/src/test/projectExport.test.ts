@@ -170,6 +170,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -203,6 +204,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -235,6 +237,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
         brick: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
@@ -269,6 +272,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -302,6 +306,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -335,6 +340,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -370,6 +376,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set([(-12 << 16) | 0, (-7 << 16) | (-1 & 0xffff), (-2 << 16) | 1, 0]),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -383,6 +390,45 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(json.floorFields.floor_1.freeFieldPoints.truncated_trihexagonal).toHaveLength(4);
     const reparsed = parseAndValidate(json);
     expect(reparsed.tessellation.kind).toBe("truncated_trihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the snub_square kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "snub_square";
+    // Wire cells are `[6q + kind, r]`: a square, a tilted square and a triangle at negative `q`.
+    const points: [number, number][] = [[-12, 0], [-11, -1], [-2, 1], [0, 0]];
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("snub_square", { shape: "custom", points }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set([(-12 << 16) | 0, (-11 << 16) | (-1 & 0xffff), (-2 << 16) | 1, 0]),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-12 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const json = JSON.parse(JSON.stringify(serialized));
+    expect(json.tessellation.kind).toBe("snub_square");
+    expect(json.floorFields.floor_1.freeFieldPoints.snub_square).toHaveLength(4);
+    const reparsed = parseAndValidate(json);
+    expect(reparsed.tessellation.kind).toBe("snub_square");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 
@@ -406,6 +452,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         truncated_hexagonal: new Set(),
         truncated_trihexagonal: new Set(),
         elongated_triangular: new Set(),
+        snub_square: new Set(),
         curved_quadrilateral: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         radial: new Set(),
       },
