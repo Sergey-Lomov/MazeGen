@@ -81,6 +81,12 @@ const TRUNCATED_HEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
 // through the middle of those squares and never along a wall; the display transform is a
 // reflection, which keeps this set unchanged.
 const TRUNCATED_TRIHEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
+// Squares add horizontal and vertical faces, triangles faces at 60 and 120 degrees. A vertical line
+// through a square center runs along the vertical walls of the band above or below, because bands
+// are shifted by half a square, so the vertical direction is unsafe. The normals of the remaining
+// faces (0, 30 and 150 degrees) are safe; the display transform is a reflection, which keeps this
+// set unchanged.
+const ELONGATED_TRIANGULAR_AXES: Axis[] = [0, 30, 150].map(axisFromDeg);
 
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
@@ -108,6 +114,7 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
   truncated_hexagonal: () => TRUNCATED_HEXAGONAL_AXES,
   truncated_trihexagonal: () => TRUNCATED_TRIHEXAGONAL_AXES,
+  elongated_triangular: () => ELONGATED_TRIANGULAR_AXES,
   // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
   curved_quadrilateral: () => SQUARE_AXES,
   // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.

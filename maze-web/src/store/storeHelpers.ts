@@ -198,6 +198,7 @@ const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   rhombitrihexagonal: "rect",
   truncated_hexagonal: "rect",
   truncated_trihexagonal: "rect",
+  elongated_triangular: "rect",
   curved_quadrilateral: "rect",
   radial: "circle",
 };
@@ -273,6 +274,11 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     triangle: { shape: "triangle", side: 16 },
   },
   truncated_trihexagonal: {
+    rect: { shape: "rect", cols: 8, rows: 8 },
+    circle: { shape: "circle", radius: 8 },
+    triangle: { shape: "triangle", side: 16 },
+  },
+  elongated_triangular: {
     rect: { shape: "rect", cols: 8, rows: 8 },
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
@@ -381,6 +387,7 @@ const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   rhombitrihexagonal: { shape: "rect", cols: 5, rows: 5 },
   truncated_hexagonal: { shape: "rect", cols: 5, rows: 5 },
   truncated_trihexagonal: { shape: "rect", cols: 5, rows: 5 },
+  elongated_triangular: { shape: "rect", cols: 5, rows: 5 },
   curved_quadrilateral: { shape: "rect", cols: 5, rows: 5 },
   radial: { shape: "circle", radius: 4 },
 };
@@ -411,6 +418,7 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   rhombitrihexagonal: new Set<number>(),
   truncated_hexagonal: new Set<number>(),
   truncated_trihexagonal: new Set<number>(),
+  elongated_triangular: new Set<number>(),
   curved_quadrilateral: new Set<number>(),
   radial: new Set<number>(),
 });

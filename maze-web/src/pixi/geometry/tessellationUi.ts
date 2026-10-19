@@ -343,6 +343,25 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  elongated_triangular: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    orientations: [],
+    defaultParams: {},
+    paramSpecs: [],
+    // Every edge has world length 1, so a side is drawn `1.5 * TILE_SIZE` long.
+    pixelsPerUnit: TILE_SIZE * 1.5,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // Half the 90 degree spacing of a square's faces.
+    splitCircleRotationDeg: 45,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE * 1.5,
+    // The square's circumcircle diameter, its diagonal.
+    cellMeasurePx: TILE_SIZE * 1.5 * Math.SQRT2,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 1.5 * 0.08,
+  },
   curved_quadrilateral: {
     orientationSlot: null,
     editor: AXIS_ALIGNED,

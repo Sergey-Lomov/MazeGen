@@ -522,7 +522,17 @@ mod tests {
                 vec![("cols", 5), ("rows", 4)],
             ),
             (
+                TessellationKind::ElongatedTriangular,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
                 TessellationKind::TruncatedTrihexagonal,
+                "triangle",
+                vec![("side", 6)],
+            ),
+            (
+                TessellationKind::ElongatedTriangular,
                 "triangle",
                 vec![("side", 6)],
             ),

@@ -124,6 +124,7 @@
   "tessellation.rhombitrihexagonal": "Ромбитригексагональная (3.4.6.4)",
   "tessellation.truncated_hexagonal": "Усечённая гексагональная (3.12.12)",
   "tessellation.truncated_trihexagonal": "Усечённая тригексагональная (4.6.12)",
+  "tessellation.elongated_triangular": "Удлинённая треугольная (3.3.3.4.4)",
   "tessellation.curved_quadrilateral": "Криволинейные четырёхугольники",
   "tessellation.param.first_ring_cells": "Клеток в первом кольце",
   "tessellation.param.ring_layout": "Раскладка колец",

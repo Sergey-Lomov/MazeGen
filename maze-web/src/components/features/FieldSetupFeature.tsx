@@ -594,6 +594,7 @@ const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: nu
   rhombitrihexagonal: { circle: 50, hexagon: 50, triangle: 50 },
   truncated_hexagonal: { circle: 50, hexagon: 50, triangle: 50 },
   truncated_trihexagonal: { circle: 50, hexagon: 50, triangle: 50 },
+  elongated_triangular: { circle: 50, hexagon: 50, triangle: 50 },
   curved_quadrilateral: { circle: 50, hexagon: 50, triangle: 50 },
   // Radial publishes its circle radius limit through core (it depends on the tessellation params).
   radial: { circle: 50, hexagon: 50, triangle: 50 },

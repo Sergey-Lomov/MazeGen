@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub mod brick;
 pub mod cairo;
 pub mod curved_quadrilateral;
+pub mod elongated_triangular;
 mod exact_tiling;
 pub mod field_ops;
 pub mod geometry;
@@ -31,6 +32,10 @@ pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
 pub use curved_quadrilateral::{
     CurvedQuadrilateralFace, CurvedQuadrilateralPoint, CurvedQuadrilateralTessellation,
+};
+pub use elongated_triangular::{
+    ElongatedTriangularFace, ElongatedTriangularKind, ElongatedTriangularPoint,
+    ElongatedTriangularTessellation,
 };
 pub use field_ops::{
     FieldOpError, FieldOperation, FieldOps, PresetDescriptor, PresetParam, PresetParams,

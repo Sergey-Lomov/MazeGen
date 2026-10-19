@@ -1,6 +1,7 @@
 use maze_core::space::{
-    CellScope, FieldOpError, DEFAULT_CELL_LIMIT, FieldOps, MAX_CELL_LIMIT, MIN_CELL_LIMIT, Point, RadialFace, RadialLayout, RadialParams,
-    RadialPoint, RadialTessellation, Segment, Tessellation, TessellationGeometry,
+    CellScope, DEFAULT_CELL_LIMIT, FieldOpError, FieldOps, MAX_CELL_LIMIT, MIN_CELL_LIMIT, Point,
+    RadialFace, RadialLayout, RadialParams, RadialPoint, RadialTessellation, Segment, Tessellation,
+    TessellationGeometry,
 };
 
 fn build_with(first_ring_cells: u32, layout: RadialLayout) -> RadialTessellation {
@@ -486,9 +487,10 @@ fn the_circle_preset_takes_the_whole_rings_within_the_radius() {
     // The published bound is the last radius core accepts, and it takes the whole space.
     let max = t.preset_param_max("circle", "radius").unwrap();
     assert_eq!(max, t.ring_total() + 1);
-    let all = 1 + (1..=t.ring_total() as i32)
-        .map(|r| t.ring_count(r).unwrap() as usize)
-        .sum::<usize>();
+    let all = 1
+        + (1..=t.ring_total() as i32)
+            .map(|r| t.ring_count(r).unwrap() as usize)
+            .sum::<usize>();
     assert_eq!(preset(max).len(), all);
     assert_eq!(t.preset_param_max("circle", "cols"), None);
     assert_eq!(t.preset_param_max("rect", "radius"), None);
