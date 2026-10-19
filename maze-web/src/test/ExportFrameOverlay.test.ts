@@ -6,6 +6,7 @@ const { ExportFrameOverlay } = await import("../pixi/imageExport/ExportFrameOver
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } = await import("../store/slices/imageExportSlice");
 const { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } = await import("./storeTestHelpers");
+const { fieldOf } = await import("./fieldConfigFixtures");
 
 const SCREEN = { width: 1000, height: 1000 };
 

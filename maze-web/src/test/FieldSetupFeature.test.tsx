@@ -6,7 +6,9 @@ import type { FieldConfig } from "../fieldConfig";
 import { useMazeStore } from "../store/mazeStore";
 import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
-import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { getCartesian } from "../pixi/cartesianCache";
+import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { getTooltipControlWithin } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
@@ -84,6 +86,66 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
+  });
+
+  it("centers a custom field's bounding box around the origin", () => {
+    const points = new Set([encodePoint(10, 5), encodePoint(11, 5), encodePoint(12, 5)]);
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[10, 5], [11, 5], [12, 5]] }),
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: points,
+          freeFieldPoints: { ...emptyFreePoints(), square: points },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Center field" }));
+
+    const moved = [...useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints].map(decodePoint);
+    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig;
+    const centers = moved.map(([x, y]) => getCartesian(x, y, cfg));
+    const centerX = (Math.min(...centers.map(([x]) => x)) + Math.max(...centers.map(([x]) => x))) / 2;
+    const centerY = (Math.min(...centers.map(([, y]) => y)) + Math.max(...centers.map(([, y]) => y))) / 2;
+    expect([centerX, centerY]).toEqual(getCartesian(0, 0, cfg));
+  });
+
+  it("does not move an already centered 11 by 11 square field", () => {
+    const cells = Array.from({ length: 11 }, (_, row) => Array.from(
+      { length: 11 },
+      (_, col) => [col - 5, row - 5] as [number, number],
+    )).flat();
+    const points = new Set(cells.map(([x, y]) => encodePoint(x, y)));
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: cells }),
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: points,
+          freeFieldPoints: { ...emptyFreePoints(), square: points },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Center field" }));
+
+    expect([...useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints]).toEqual([...points]);
+  });
+
+  it("disables centering for an empty custom field", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: "Center field" })).toBeDisabled();
   });
 
   const descriptionCases: [FieldConfig, string][] = [

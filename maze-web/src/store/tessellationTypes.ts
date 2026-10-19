@@ -38,6 +38,7 @@ export type PendingFieldEdit =
   | { kind: "addFieldPoints"; cells: [number, number][] }
   | { kind: "removeFieldPoints"; cells: [number, number][] }
   | { kind: "moveFieldPoints"; cells: [number, number][]; vector: [number, number] }
+  | { kind: "centerFieldPoints" }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
@@ -179,6 +180,8 @@ export interface FloorFieldsActions {
   removeFieldPoints: (cells: [number, number][]) => void;
   /** Moves selected custom-field cells atomically, preserving destination collisions. */
   moveFieldPoints: (cells: [number, number][], vector: [number, number]) => void;
+  /** Moves the custom field so the origin cell is closest to its visual center. */
+  centerFieldPoints: () => void;
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldOperation: (operation: FieldOperation) => void;

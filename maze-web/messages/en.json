@@ -666,6 +666,7 @@
   "field.smooth_primitives": "Smoothing",
   "field.smoothing_info_title": "Smoothing",
   "field.smoothing_info_description": "Smoothing removes cells that touch the rest of the selected shape by only one side.",
+  "field.center": "Center field",
   "field.clear": "Clear",
   "field.confirm_switch_to_default": "Switch to standard shapes? The user's custom field will be replaced.",
   "field.reset_generation_warning": "Changing the field resets the current generation and post-edit results. Continue?",

@@ -703,6 +703,7 @@ describe("VectorByCorridorsRenderer", () => {
     currentState = baseState({
       floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       activeFloorId: "floor_2",
+      activeFieldConfig: secondFloorCfg,
       floorFields: {
         floor_1: { fieldConfig: stableCfg },
         floor_2: { fieldConfig: secondFloorCfg },
