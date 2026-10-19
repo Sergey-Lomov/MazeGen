@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeStatisticsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
-import type { DisplayOrientation, FieldConfig, FieldShape, PresetFieldShape, PresetFieldShapeName } from "../fieldConfig";
+import type { DisplayOrientation, FieldConfig, FieldShape, PresetFieldShape, PresetFieldShapeName, TessellationConfig } from "../fieldConfig";
 import { hexOrientationOf, tessellationConfigOf, triOrientationOf } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import { availablePresetKeys, presetParams } from "../pixi/fieldOps";
@@ -197,6 +197,7 @@ const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   snub_hexagonal: "rect",
   rhombitrihexagonal: "rect",
   curved_quadrilateral: "rect",
+  radial: "circle",
 };
 
 /** The kind's default preset shape. */
@@ -269,6 +270,9 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     circle: { shape: "circle", radius: 8 },
     triangle: { shape: "triangle", side: 16 },
   },
+  radial: {
+    circle: { shape: "circle", radius: 6 },
+  },
 };
 
 /** The maze-wide display orientation a kind's field carries (hex/tri only). */
@@ -278,33 +282,59 @@ export function orientationFor(kind: TessellationKind, hexOrientation: HexOrient
 }
 
 /** Composes a runtime `FieldConfig` from the maze-wide kind/orientation and a floor's shape. */
-export function composeFieldConfig(kind: TessellationKind, shape: FieldShape, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
-  const orientation = orientationFor(kind, hexOrientation, triOrientation);
-  return orientation === undefined
-    ? { tessellation: tessellationConfigOf(kind), shape }
-    : { tessellation: tessellationConfigOf(kind), orientation, shape };
+export function composeFieldConfig(tessellation: TessellationConfig, shape: FieldShape, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
+  const orientation = orientationFor(tessellation.kind, hexOrientation, triOrientation);
+  return orientation === undefined ? { tessellation, shape } : { tessellation, orientation, shape };
+}
+
+/** The default `{ kind, params }` config of `kind` (its registry params). */
+export function defaultTessellationOf(kind: TessellationKind): TessellationConfig {
+  return tessellationConfigOf(kind);
+}
+
+/** Whether two tessellation configs build the same cell set. */
+export function sameTessellation(a: TessellationConfig, b: TessellationConfig): boolean {
+  return a.kind === b.kind && JSON.stringify(a.params) === JSON.stringify(b.params);
+}
+
+/** The maze-wide `{ kind, params }` config held by `state` (a fresh object per call). */
+export function tessellationOf(state: { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown> }): TessellationConfig {
+  return { kind: state.tessellationKind, params: state.tessellationParams };
 }
 
 /** `selected` when the kind's tessellation offers it, otherwise the kind's default shape. */
 export function buildPredefinedConfig(
-  kind: TessellationKind,
+  tessellation: TessellationConfig,
   selected: PresetFieldShapeName,
   hexOrientation: HexOrientation,
   triOrientation: TriOrientation,
   saved?: Partial<Record<PresetFieldShapeName, PresetFieldShape>>,
 ): FieldConfig {
-  const offered = availablePresetKeys(tessellationConfigOf(kind));
-  const name = offered.includes(selected) ? selected : DEFAULT_SHAPE_BY_KIND[kind];
-  const shape = saved?.[name] ?? defaultPresetShape(kind, name);
-  return composeFieldConfig(kind, shape, hexOrientation, triOrientation);
+  const offered = availablePresetKeys(tessellation);
+  const name = offered.includes(selected) ? selected : DEFAULT_SHAPE_BY_KIND[tessellation.kind];
+  const shape = saved?.[name] ?? defaultPresetShape(tessellation, name);
+  return composeFieldConfig(tessellation, shape, hexOrientation, triOrientation);
 }
 
-/** The registry default of a preset shape; a shape without one starts at its schema minimums. */
-function defaultPresetShape(kind: TessellationKind, name: PresetFieldShapeName): PresetFieldShape {
-  const registered = DEFAULT_PRESET_SHAPES[kind][name];
-  if (registered) return registered;
-  const params = Object.fromEntries(presetParams(tessellationConfigOf(kind), name).map(({ name: param, min }) => [param, min]));
-  return { shape: name, ...params } as PresetFieldShape;
+/** `shape` with every size param capped at the bound core publishes for this tessellation. */
+function capToCoreBounds(tessellation: TessellationConfig, shape: PresetFieldShape): PresetFieldShape {
+  const values: Record<string, unknown> = { ...shape };
+  for (const { name, max } of presetParams(tessellation, shape.shape)) {
+    if (max !== undefined && typeof values[name] === "number") values[name] = Math.min(values[name] as number, max);
+  }
+  return values as unknown as PresetFieldShape;
+}
+
+/**
+ * The registry default of a preset shape, capped at the bounds core publishes for this
+ * tessellation (a small radial cell limit leaves fewer rings than the default radius); a shape
+ * without a default starts at its schema minimums.
+ */
+function defaultPresetShape(tessellation: TessellationConfig, name: PresetFieldShapeName): PresetFieldShape {
+  const registered = DEFAULT_PRESET_SHAPES[tessellation.kind][name];
+  if (registered) return capToCoreBounds(tessellation, registered);
+  const params = presetParams(tessellation, name).map(({ name: param, min }) => [param, min]);
+  return { shape: name, ...Object.fromEntries(params) } as PresetFieldShape;
 }
 
 // Memoized on its own inputs (last-call cache) — `activeTessellationOf` calls this on every
@@ -314,12 +344,12 @@ function defaultPresetShape(kind: TessellationKind, name: PresetFieldShapeName):
 let freeConfigCacheKey: string | null = null;
 let freeConfigCacheValue: FieldConfig | null = null;
 
-export function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
-  const key = `${kind}|${hexOrientation}|${triOrientation}|${Array.from(pts).sort((a, b) => a - b).join(",")}`;
+export function buildFreeConfig(tessellation: TessellationConfig, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
+  const key = `${tessellation.kind}|${JSON.stringify(tessellation.params)}|${hexOrientation}|${triOrientation}|${Array.from(pts).sort((a, b) => a - b).join(",")}`;
   if (freeConfigCacheKey === key && freeConfigCacheValue) return freeConfigCacheValue;
 
   const points = Array.from(pts).map(k => decodePoint(k) as [number, number]);
-  const config = composeFieldConfig(kind, { shape: "custom", points }, hexOrientation, triOrientation);
+  const config = composeFieldConfig(tessellation, { shape: "custom", points }, hexOrientation, triOrientation);
 
   freeConfigCacheKey = key;
   freeConfigCacheValue = config;
@@ -338,18 +368,20 @@ const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   snub_hexagonal: { shape: "rect", cols: 5, rows: 5 },
   rhombitrihexagonal: { shape: "rect", cols: 5, rows: 5 },
   curved_quadrilateral: { shape: "rect", cols: 5, rows: 5 },
+  radial: { shape: "circle", radius: 4 },
 };
 
-export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
-  return composeFieldConfig(kind, PREVIEW_SHAPES[kind], hexOri, triOri);
+export function buildPreviewConfig(tessellation: TessellationConfig, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
+  return composeFieldConfig(tessellation, capToCoreBounds(tessellation, PREVIEW_SHAPES[tessellation.kind]), hexOri, triOri);
 }
 
-export function buildPreviewState(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation) {
+export function buildPreviewState(tessellation: TessellationConfig, hexOri: HexOrientation, triOri: TriOrientation) {
   return {
-    previewKind: kind,
+    previewKind: tessellation.kind,
+    previewParams: tessellation.params,
     previewHexOrientation: hexOri,
     previewTriOrientation: triOri,
-    previewFieldConfig: buildPreviewConfig(kind, hexOri, triOri),
+    previewFieldConfig: buildPreviewConfig(tessellation, hexOri, triOri),
   };
 }
 
@@ -364,14 +396,15 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   snub_hexagonal: new Set<number>(),
   rhombitrihexagonal: new Set<number>(),
   curved_quadrilateral: new Set<number>(),
+  radial: new Set<number>(),
 });
 
 /** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's
  * "full" predefined shape (see Specs/field-editor.md's "Default shape per kind" table), no custom
  * points, default mode. Used by floorsSlice's addFloor for a floor with no field config yet. */
-export function defaultFloorFieldConfig(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): FloorFieldConfig {
-  const selectedShape = DEFAULT_SHAPE_BY_KIND[kind];
-  const cfg = buildPredefinedConfig(kind, selectedShape, hexOrientation, triOrientation);
+export function defaultFloorFieldConfig(tessellation: TessellationConfig, hexOrientation: HexOrientation, triOrientation: TriOrientation): FloorFieldConfig {
+  const selectedShape = DEFAULT_SHAPE_BY_KIND[tessellation.kind];
+  const cfg = buildPredefinedConfig(tessellation, selectedShape, hexOrientation, triOrientation);
   return {
     selectedShape,
     savedShapes: cfg.shape.shape === "custom" ? {} : { [cfg.shape.shape]: cfg.shape },
@@ -412,7 +445,7 @@ export function withFieldPointsEdit(
   const changed = editFn(fieldPoints);
   if (!changed) return {};
   const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
-  const fieldConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+  const fieldConfig = buildFreeConfig(tessellationOf(state), fieldPoints, state.hexOrientation, state.triOrientation);
   return {
     ...withActiveFloorField(state, { fieldPoints, freeFieldPoints, fieldConfig, fieldDirty: true }),
     debugStale: debugStaleOf(state),
@@ -420,15 +453,15 @@ export function withFieldPointsEdit(
 }
 
 /** Derive any floor's active FieldConfig, accounting for free-field editing. */
-export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation; floorFields: MazeState["floorFields"] }, floorId: string): FieldConfig {
+export function floorTessellationOf(state: { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation; floorFields: MazeState["floorFields"] }, floorId: string): FieldConfig {
   const field = state.floorFields[floorId];
   return field.isEditingField
-    ? buildFreeConfig(state.tessellationKind, field.fieldPoints, state.hexOrientation, state.triOrientation)
+    ? buildFreeConfig(tessellationOf(state), field.fieldPoints, state.hexOrientation, state.triOrientation)
     : field.fieldConfig;
 }
 
 /** Derive the active floor's active FieldConfig, accounting for free-field editing. */
-export function activeFloorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState): FieldConfig {
+export function activeFloorTessellationOf(state: { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState): FieldConfig {
   return floorTessellationOf(state, state.activeFloorId);
 }
 
@@ -436,7 +469,7 @@ export function activeFloorTessellationOf(state: { tessellationKind: Tessellatio
  * callers (e.g. React components subscribing to individual store slices via `useMazeStore`) can
  * build this from a handful of selected fields without pulling in the whole state shape. */
 type FloorFieldsSource = { floors: MazeState["floors"]; floorFields: MazeState["floorFields"] }
-  & { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation; smoothPrimitives: boolean };
+  & { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation; smoothPrimitives: boolean };
 
 /** One `LevelField` per floor, in `floors` array order (index = `PresetEndpoint.level`, `undefined`
  * for index 0) — feeds `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340). */
@@ -539,6 +572,7 @@ export function deriveTessellationFromConfig(
   currentSelectedShape?: PresetFieldShapeName,
 ) {
   const kind = cfg.tessellation.kind;
+  const params = cfg.tessellation.params;
   const selectedShape = selectedShapeFor(cfg, currentSelectedShape);
   const slot = TESSELLATION_UI[kind].orientationSlot;
   const hexOrientation = slot === "hex" ? hexOrientationOf(cfg) : currentHexOrientation;
@@ -550,7 +584,7 @@ export function deriveTessellationFromConfig(
     : currentFreeFieldPoints;
   const { isEditingField, fieldPoints } = deriveEditState(kind, cfg, freeFieldPoints);
   const savedShapes = shape.shape === "custom" ? currentSavedShapes : { ...currentSavedShapes, [shape.shape]: shape };
-  return { kind, selectedShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedShapes, isCustom };
+  return { kind, params, selectedShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedShapes, isCustom };
 }
 
 /** Selects the preset shape of the active floor. A floor editing a custom field keeps drawing it
@@ -560,7 +594,7 @@ export function setSelectedShapeState(shape: PresetFieldShapeName) {
     const field = activeFloorField(state);
     if (shape === field.selectedShape) return {};
     if (field.isEditingField) return withActiveFloorField(state, { selectedShape: shape });
-    const cfg = buildPredefinedConfig(state.tessellationKind, shape, state.hexOrientation, state.triOrientation, field.savedShapes);
+    const cfg = buildPredefinedConfig(tessellationOf(state), shape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { selectedShape: shape, fieldConfig: cfg, fieldDirty: true }),
       ...buildResetDownstreamState(),

@@ -12,6 +12,8 @@ import {
   type ProjectFileFloorField,
 } from "./types";
 import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
+import type { TessellationKind } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { FeatureId } from "../mazeStore";
 import {
@@ -57,6 +59,23 @@ function migrateToLatest(data: unknown, fromVersion: number): unknown {
 
 // ─── Top-level parse ─────────────────────────────────────────────────────────
 
+/** Rejects params the kind does not accept: every spec'd param must be an in-range integer or one of its options and no
+ * other key may appear. Core's tessellation factory enforces the same on build. */
+function validateTessellationParams(kind: TessellationKind, params: Record<string, unknown>): void {
+  const specs = TESSELLATION_UI[kind].paramSpecs;
+  const unsupported = Object.keys(params).find((key) => !specs.some((spec) => spec.name === key));
+  if (unsupported !== undefined) throw new Error(`tessellation.params: kind "${kind}" does not accept param "${unsupported}"`);
+  for (const spec of specs) {
+    const value = params[spec.name];
+    if (spec.type === "integer") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < spec.min || value > spec.max)
+        throw new Error(`tessellation.params.${spec.name}: expected an integer from ${spec.min} to ${spec.max}, got ${JSON.stringify(value)}`);
+    } else if (typeof value !== "string" || !spec.options.includes(value)) {
+      throw new Error(`tessellation.params.${spec.name}: expected one of ${spec.options.join(", ")}, got ${JSON.stringify(value)}`);
+    }
+  }
+}
+
 export function parseAndValidate(raw: unknown): ProjectFile {
   const obj = assertObject(raw, "root");
   if (obj.kind === VISUAL_PRESET_KIND) throw new FileKindMismatchError("project", "visual_preset");
@@ -71,15 +90,13 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "curved_quadrilateral"] as const;
+  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "curved_quadrilateral", "radial"] as const;
   const rawKind = assertString(tessObj.kind, "tessellation.kind");
   if (!(tessellationKinds as readonly string[]).includes(rawKind))
     throw new Error(`Invalid tessellation kind at tessellation.kind: ${rawKind}`);
   const kind = rawKind as typeof tessellationKinds[number];
   const params = assertObject(tessObj.params, "tessellation.params");
-  // The registered kinds take no params; core's tessellation factory rejects any others too.
-  const unsupportedParam = Object.keys(params)[0];
-  if (unsupportedParam !== undefined) throw new Error(`tessellation.params: kind "${kind}" does not accept param "${unsupportedParam}"`);
+  validateTessellationParams(kind, params);
   const hexOrientation = optEnum(tessObj, "hexOrientation", ["flat_top", "pointy_top"] as const, "flat_top");
   const triOrientation = optEnum(tessObj, "triOrientation", ["r0", "r90", "r180", "r270"] as const, "r0");
 
@@ -227,13 +244,13 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // entry (file saved before this issue, or hand-edited) falls back to the kind's bare default
   // shape, same convention `defaultFloorFieldConfig` (storeHelpers.ts) uses for a brand-new floor.
   const floorFieldsObj = migrated.floorFields != null ? assertObject(migrated.floorFields, "floorFields") : {};
-  const defaultConfig = buildPredefinedConfig(kind, defaultShapeOf(kind), hexOrientation, triOrientation);
+  const defaultConfig = buildPredefinedConfig({ kind, params }, defaultShapeOf(kind), hexOrientation, triOrientation);
   const floorFields: Record<string, ProjectFileFloorField> = {};
   for (const floor of floors.floors) {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
-      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], curved_quadrilateral: [] }, fieldEditMode: "default" };
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], curved_quadrilateral: [], radial: [] }, fieldEditMode: "default" };
   }
 
   return {

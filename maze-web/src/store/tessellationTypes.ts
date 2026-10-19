@@ -51,11 +51,14 @@ export interface TessellationState {
   // Confirmed tessellation — set only on confirmTessellation(). Maze-wide: kind/orientation are
   // confirmed once in Basic configuration, not per floor (see Specs/field-editor.md).
   tessellationKind: TessellationKind;
+  /** Params of the confirmed kind (`{}` for the parameterless kinds); they define the cell set. */
+  tessellationParams: Record<string, unknown>;
   hexOrientation: HexOrientation;
   triOrientation: TriOrientation;
   tessellationConfirmed: boolean;
   // Preview tessellation — changes with every dropdown selection, drives canvas grid
   previewKind: TessellationKind;
+  previewParams: Record<string, unknown>;
   previewHexOrientation: HexOrientation;
   previewTriOrientation: TriOrientation;
   previewFieldConfig: FieldConfig;
@@ -92,6 +95,8 @@ export interface TessellationActions {
   setSeed: (seed: number) => void;
   // Preview actions — only change preview, not confirmed
   setPreviewKind: (kind: TessellationKind) => void;
+  /** Replaces the previewed kind's params (e.g. the radial first-ring size). */
+  setPreviewParams: (params: Record<string, unknown>) => void;
   setPreviewHexOrientation: (orientation: HexOrientation) => void;
   setPreviewTriOrientation: (orientation: TriOrientation) => void;
   // Confirm — copies preview -> confirmed, triggers confirmed-dependent state

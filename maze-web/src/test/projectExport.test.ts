@@ -15,6 +15,7 @@ const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeStat
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
     tessellationKind: "square",
+    tessellationParams: {},
     hexOrientation: "flat_top",
     triOrientation: "r0",
     floorFields: {
@@ -167,6 +168,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
@@ -196,6 +198,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-2 << 16) | 0, 0]),
@@ -224,6 +227,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
         brick: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
       },
       isEditingField: true,
@@ -254,6 +258,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 0, 0]),
@@ -283,6 +288,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set([(-9 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-9 << 16) | 0, 0]),
@@ -312,6 +318,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         curved_quadrilateral: new Set(),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-6 << 16) | 0, 0]),
@@ -341,6 +348,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         curved_quadrilateral: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        radial: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 0, 0]),
@@ -350,6 +358,52 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("curved_quadrilateral");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the radial kind with its size param", () => {
+    const state = makeState();
+    state.tessellationKind = "radial";
+    state.tessellationParams = { first_ring_cells: 12, ring_layout: "smooth", max_cells: 3000 };
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "circle",
+      fieldConfig: { tessellation: { kind: "radial", params: state.tessellationParams }, shape: { shape: "circle", radius: 4 } },
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.params).toEqual(state.tessellationParams);
+    expect(reparsed).toEqual(serialized);
+  });
+
+  it("rejects radial params that are missing, fractional or out of range", () => {
+    const raw = () => {
+      const state = makeState();
+      state.tessellationKind = "radial";
+      state.tessellationParams = { first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 };
+      state.floorFields.floor_1 = {
+        ...state.floorFields.floor_1,
+        selectedShape: "circle",
+        fieldConfig: { tessellation: { kind: "radial", params: state.tessellationParams }, shape: { shape: "circle", radius: 4 } },
+      };
+      return JSON.parse(JSON.stringify(serializeProject(state)));
+    };
+    for (const [patch, message] of [
+      [{ first_ring_cells: 5 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: 25 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: 7.5 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: undefined }, /params\.first_ring_cells/],
+      [{ ring_layout: "spiral" }, /params\.ring_layout/],
+      [{ ring_layout: undefined }, /params\.ring_layout/],
+      [{ max_cells: 99 }, /params\.max_cells/],
+      [{ max_cells: 10001 }, /params\.max_cells/],
+      [{ max_cells: undefined }, /params\.max_cells/],
+      [{ growth_factor: 2 }, /does not accept param "growth_factor"/],
+      [{ extra: 1 }, /does not accept param "extra"/],
+    ] as const) {
+      const data = raw();
+      data.tessellation.params = { ...data.tessellation.params, ...patch };
+      expect(() => parseAndValidate(data)).toThrow(message);
+    }
   });
 
   it("loads legacy floor fields that do not have Cairo free points", () => {

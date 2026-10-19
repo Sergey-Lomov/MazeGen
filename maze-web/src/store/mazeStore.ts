@@ -45,15 +45,16 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
 
   loadProject: (file) => {
     const [set, get] = a;
-    const { kind, hexOrientation, triOrientation } = file.tessellation;
-    const previewState = buildPreviewState(kind, hexOrientation, triOrientation);
+    const { kind, params, hexOrientation, triOrientation } = file.tessellation;
+    const tessellation = { kind, params };
+    const previewState = buildPreviewState(tessellation, hexOrientation, triOrientation);
 
     // Build each floor's own FloorFieldConfig (GitHub issue #338) — mirrors deriveTessellationFromConfig's
     // per-config derivation, applied per floor instead of once maze-wide.
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const floor of file.floors.floors) {
       const ff = file.floorFields[floor.id];
-      const fieldConfig = composeFieldConfig(kind, ff.shape, hexOrientation, triOrientation);
+      const fieldConfig = composeFieldConfig(tessellation, ff.shape, hexOrientation, triOrientation);
       const selectedShape = selectedShapeFor(fieldConfig);
       const freeFieldPoints = {
         square: new Set(ff.freeFieldPoints.square.map(([x, y]) => encodePoint(x, y))),
@@ -66,6 +67,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         snub_hexagonal: new Set(ff.freeFieldPoints.snub_hexagonal.map(([x, y]) => encodePoint(x, y))),
         rhombitrihexagonal: new Set(ff.freeFieldPoints.rhombitrihexagonal.map(([x, y]) => encodePoint(x, y))),
         curved_quadrilateral: new Set(ff.freeFieldPoints.curved_quadrilateral.map(([x, y]) => encodePoint(x, y))),
+        radial: new Set(ff.freeFieldPoints.radial.map(([x, y]) => encodePoint(x, y))),
       };
       const { isEditingField, fieldPoints } = deriveEditState(kind, fieldConfig, freeFieldPoints);
       floorFields[floor.id] = {
@@ -100,6 +102,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       floors: file.floors.floors,
       floorFields,
       tessellationKind: kind,
+      tessellationParams: params,
       hexOrientation,
       triOrientation,
       presetConnections: restoredPresetConnections,
@@ -114,6 +117,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     set({
       // tessellation
       tessellationKind: kind,
+      tessellationParams: params,
       hexOrientation,
       triOrientation,
       floorFields,

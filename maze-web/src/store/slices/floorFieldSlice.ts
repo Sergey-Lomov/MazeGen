@@ -7,7 +7,7 @@ import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
-  buildPredefinedConfig, buildFreeConfig, debugStaleOf,
+  buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
   buildResetDownstreamState,
 } from "../storeHelpers";
@@ -67,6 +67,7 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
   if (!derivedForActive) return {};
   return {
     tessellationKind: derivedForActive.kind,
+    tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
     triOrientation: derivedForActive.triOrientation,
     floorFields,
@@ -140,7 +141,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         fieldPoints = new Set(cells.map(([x, y]) => encodePoint(x, y)));
       }
       const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
-      const fieldConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+      const fieldConfig = isAlreadyCustom ? cfg : buildFreeConfig(tessellationOf(state), fieldPoints, state.hexOrientation, state.triOrientation);
       return {
         ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, fieldConfig, fieldPrimitive: "point", fieldDirty: true }),
         ...buildResetDownstreamState(),
@@ -148,7 +149,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         debugStale: debugStaleOf(state),
       };
     }
-    const cfg = buildPredefinedConfig(state.tessellationKind, field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
+    const cfg = buildPredefinedConfig(tessellationOf(state), field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       ...buildResetDownstreamState(),
@@ -311,7 +312,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const field = activeFloorField(state);
     const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const fieldConfig = buildFreeConfig(
-      state.tessellationKind,
+      tessellationOf(state),
       fieldPoints,
       state.hexOrientation,
       state.triOrientation,

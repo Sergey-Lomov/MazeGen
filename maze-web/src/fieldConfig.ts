@@ -1,5 +1,7 @@
+import { TESSELLATION_UI } from "./pixi/geometry/tessellationUi";
+
 /** Registered tessellation kinds — mirrors `maze-runner`'s `TessellationKind` wire values. */
-export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "curved_quadrilateral";
+export type TessellationKind = "square" | "hex" | "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "rhombitrihexagonal" | "curved_quadrilateral" | "radial";
 
 /**
  * A tessellation instance config, `{ kind, params }` — the same shape the wasm wire and project
@@ -51,9 +53,9 @@ export function tessellationFamily(config: FieldConfig): TessellationKind {
   return config.tessellation.kind;
 }
 
-/** A `{ kind, params }` config for one of the built-in, parameterless kinds. */
+/** The `{ kind, params }` config of `kind` with its registry default params. */
 export function tessellationConfigOf(kind: TessellationKind): TessellationConfig {
-  return { kind, params: {} };
+  return { kind, params: TESSELLATION_UI[kind].defaultParams };
 }
 
 export function hexOrientationOf(config: FieldConfig): HexOrientation {

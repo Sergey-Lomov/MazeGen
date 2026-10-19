@@ -2,6 +2,7 @@ import type { NodeDto, EdgeDto, IssueDto } from "../../../wasm/types";
 import type { MazeState } from "../../../store/mazeStore";
 import { splitPatternsFor } from "../../shapeTemplates";
 import { qcForTessellation } from "../../../store/slices/qcTessellationFilter";
+import { sameTessellation } from "../../../store/storeHelpers";
 
 /** Narrows a maze-wide `{ nodes, edges, start, finish }` view down to one floor, by `activeFloorId`
  *  (GitHub issue #337/#347) — the single shared floor-scoping step every render-facing consumer of
@@ -94,10 +95,11 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
 /** True when confirming tessellation would destroy data the user has entered. Kind change resets
  * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
-  "previewKind" | "tessellationKind" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  "previewKind" | "previewParams" | "tessellationKind" | "tessellationParams" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
   | "previewFieldConfig" | "splitPatterns" | "rules" | "strategyParams" | "availableChecks" | "availableStrategies" | "availableRuleParams"
 >): boolean {
-  if (s.previewKind !== s.tessellationKind) {
+  // Params define the cell set, so changing them resets the fields like a kind change does.
+  if (!sameTessellation({ kind: s.previewKind, params: s.previewParams }, { kind: s.tessellationKind, params: s.tessellationParams })) {
     const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
     if (anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty) return true;
   }

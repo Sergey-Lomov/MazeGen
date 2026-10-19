@@ -519,6 +519,20 @@ mod tests {
     }
 
     #[test]
+    fn radial_snapshot_equals_the_core_per_cell_geometry() {
+        let mut cfg = config(TessellationKind::Radial);
+        cfg.params.insert("first_ring_cells".to_string(), 9.into());
+        cfg.params.insert("max_cells".to_string(), 3000.into());
+        cfg.params
+            .insert("ring_layout".to_string(), "smooth".into());
+        let expected = build_tessellation(&cfg, CoreGeometry).unwrap();
+        let cells = expected.iter().map(|cell| cell.cell).collect();
+        let mut request = request(TessellationKind::Radial, cells);
+        request.tessellation = cfg;
+        assert_eq!(geometry_snapshot(&request).unwrap().cells, expected);
+    }
+
+    #[test]
     fn snapshot_rejects_invalid_cells_and_tolerance() {
         assert!(geometry_snapshot(&request(TessellationKind::Cairo, vec![[0, 0]])).is_err());
         for tolerance in [0.0, -1.0, f64::NAN] {

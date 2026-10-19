@@ -54,6 +54,9 @@ pub struct PresetSchema {
 pub struct PresetParamSchema {
     pub name: &'static str,
     pub min: u32,
+    /// Upper bound this tessellation instance sets, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -185,6 +188,7 @@ impl TessellationVisitor for Capabilities {
                     .map(|param| PresetParamSchema {
                         name: param.name,
                         min: param.min,
+                        max: tessellation.preset_param_max(preset.key, param.name),
                     })
                     .collect(),
             })
@@ -365,11 +369,13 @@ mod tests {
             [
                 PresetParamSchema {
                     name: "cols",
-                    min: 1
+                    min: 1,
+                    max: None
                 },
                 PresetParamSchema {
                     name: "rows",
-                    min: 1
+                    min: 1,
+                    max: None
                 },
             ]
         );
@@ -588,6 +594,92 @@ mod tests {
         })
         .unwrap();
         assert_eq!(mirrored, [[2, 0], [3, 0]]);
+    }
+
+    fn radial_config() -> TessellationConfig {
+        let mut config = config(TessellationKind::Radial);
+        config
+            .params
+            .insert("first_ring_cells".to_string(), 9.into());
+        config
+            .params
+            .insert("ring_layout".to_string(), "classic".into());
+        config.params.insert("max_cells".to_string(), 3000.into());
+        config
+    }
+
+    #[test]
+    fn radial_offers_the_circle_preset_and_reflect_only() {
+        let capabilities = field_capabilities(&CapabilitiesRequest {
+            tessellation: radial_config(),
+        })
+        .unwrap();
+        assert_eq!(capabilities.operations, ["reflect"]);
+        let keys: Vec<_> = capabilities.presets.iter().map(|p| p.key).collect();
+        assert_eq!(keys, ["circle"]);
+    }
+
+    #[test]
+    fn radial_circle_radius_max_follows_the_params() {
+        let max_for = |first_ring_cells: u64, layout: &str| {
+            let mut tessellation = radial_config();
+            tessellation
+                .params
+                .insert("first_ring_cells".to_string(), first_ring_cells.into());
+            tessellation
+                .params
+                .insert("ring_layout".to_string(), layout.into());
+            let capabilities = field_capabilities(&CapabilitiesRequest { tessellation }).unwrap();
+            capabilities.presets[0].params[0].max.unwrap()
+        };
+        assert_eq!(max_for(9, "classic"), 32);
+        assert!(max_for(24, "smooth") < max_for(9, "classic"));
+        let mut small = radial_config();
+        small.params.insert("max_cells".to_string(), 500.into());
+        let capabilities = field_capabilities(&CapabilitiesRequest {
+            tessellation: small,
+        })
+        .unwrap();
+        assert!(capabilities.presets[0].params[0].max.unwrap() < 20);
+    }
+
+    #[test]
+    fn radial_circle_preset_is_the_center_and_whole_rings() {
+        let request = |radius| PresetRequest {
+            tessellation: radial_config(),
+            preset: "circle".to_string(),
+            params: [("radius".to_string(), radius)].into(),
+        };
+        let mut cells = build_preset(&request(3)).unwrap();
+        cells.sort();
+        // The center, then rings 1 and 2 of nine and eighteen cells.
+        assert_eq!(cells.len(), 1 + 9 + 18);
+        assert_eq!(cells[0], [0, 0]);
+        assert!(cells.iter().all(|&[ring, _]| ring <= 2));
+    }
+
+    #[test]
+    fn radial_reflects_across_an_axis_through_the_center() {
+        let mirrored = reflect_cells(&ReflectRequest {
+            tessellation: radial_config(),
+            cells: vec![[0, 0], [1, 0], [3, 1]],
+            axis: [[0.0, 0.0], [1.0, 0.0]],
+        })
+        .unwrap();
+        // The x axis maps sector `i` of an `n`-cell ring to `n - 1 - i`.
+        assert_eq!(mirrored, [[0, 0], [1, 8], [3, 16]]);
+    }
+
+    #[test]
+    fn radial_refuses_translation() {
+        assert!(
+            translate_cells(&TranslateRequest {
+                tessellation: radial_config(),
+                cells: vec![[1, 0]],
+                vector: [1.0, 0.0],
+            })
+            .is_err()
+        );
     }
 
     #[test]

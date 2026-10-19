@@ -101,6 +101,7 @@ export function validateFloorFieldConfig(v: unknown, path: string, kind: Tessell
     snub_hexagonal: validatePoints(freeObj.snub_hexagonal, `${path}.freeFieldPoints.snub_hexagonal`),
     rhombitrihexagonal: validatePoints(freeObj.rhombitrihexagonal, `${path}.freeFieldPoints.rhombitrihexagonal`),
     curved_quadrilateral: validatePoints(freeObj.curved_quadrilateral, `${path}.freeFieldPoints.curved_quadrilateral`),
+    radial: validatePoints(freeObj.radial, `${path}.freeFieldPoints.radial`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
   return { shape, savedShapes, freeFieldPoints, fieldEditMode };

@@ -168,6 +168,8 @@ export function baseStoreState() {
     seedHistoryIndex: 0,
     seedAttachedToHistory: false,
     tessellationKind: "square" as const,
+    tessellationParams: {},
+    previewParams: {},
     hexOrientation: "flat_top" as const,
     triOrientation: "r0" as const,
     floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }],

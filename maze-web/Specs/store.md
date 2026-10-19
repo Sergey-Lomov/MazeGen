@@ -10,11 +10,13 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal" \| "curved_quadrilateral"` | Confirmed tessellation kind (params are always `{}` for the registered kinds) |
+| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal" \| "curved_quadrilateral" \| "radial"` | Confirmed tessellation kind |
+| `tessellationParams` | `Record<string, unknown>` | Params of the confirmed kind: `{}` for the parameterless kinds, `first_ring_cells`, `ring_layout` and `max_cells` for `radial`; they define the cell set, so changing them resets the maze like a kind change |
 | `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
 | `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
 | `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |
 | `previewKind` | `TessellationKind` | Preview (changes on every dropdown change) |
+| `previewParams` | `Record<string, unknown>` | Preview params; `setPreviewKind` resets them to the kind's registry defaults, `setPreviewParams` edits them |
 | `previewHexOrientation` | `HexOrientation` | Preview hex orientation |
 | `previewTriOrientation` | `TriOrientation` | Preview tri orientation |
 | `previewFieldConfig` | `FieldConfig` | Drives canvas grid during field setup |

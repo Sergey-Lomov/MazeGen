@@ -32,8 +32,8 @@ export function availablePresetKeys(tessellation: TessellationConfig): string[] 
   return fieldCapabilities(tessellation).presets.map((preset) => preset.key);
 }
 
-/// Param names with their minimum values for one preset shape; empty when the preset is not offered.
-export function presetParams(tessellation: TessellationConfig, key: string): { name: string; min: number }[] {
+/// Param names with their bounds for one preset shape (`max` only when core limits it); empty when the preset is not offered.
+export function presetParams(tessellation: TessellationConfig, key: string): { name: string; min: number; max?: number }[] {
   return fieldCapabilities(tessellation).presets.find((preset) => preset.key === key)?.params ?? [];
 }
 

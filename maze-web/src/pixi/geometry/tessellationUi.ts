@@ -1,6 +1,13 @@
 import { TILE_SIZE } from "../constants";
 import type { DisplayOrientation, TessellationKind } from "../../fieldConfig";
 
+/// An integer param of a parameterized tessellation kind, as the editor and project validation see
+/// it. The bounds mirror `maze-core`'s constructor checks, which stay authoritative.
+/// One param of a parameterized kind: an integer in `min..=max` or one of a fixed set of strings.
+export type TessellationParamSpec =
+  | { name: string; type: "integer"; min: number; max: number }
+  | { name: string; type: "choice"; options: readonly string[] };
+
 /// 2x2 linear part of a display transform: `[x', y'] = [a·x + c·y, b·x + d·y]`.
 export interface Linear {
   a: number;
@@ -53,6 +60,8 @@ export interface TessellationUi {
   orientations: readonly DisplayOrientation[];
   /// Params of the kind's default `{ kind, params }` config.
   defaultParams: Record<string, unknown>;
+  /// The integer params the kind accepts, in editor order; empty for a parameterless kind.
+  paramSpecs: readonly TessellationParamSpec[];
   /// Which maze-wide orientation setting (`hexOrientation`/`triOrientation`) this kind carries.
   orientationSlot: "hex" | "tri" | null;
   /// Editor and sizing behavior that follows the lattice, so no consumer branches on the kind.
@@ -117,6 +126,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: AXIS_ALIGNED,
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
     orientation: () => IDENTITY,
@@ -143,6 +153,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     },
     orientations: ["flat_top", "pointy_top"],
     defaultParams: {},
+    paramSpecs: [],
     // A hexagon is drawn with side `TILE_SIZE`.
     pixelsPerUnit: TILE_SIZE / HEX_WORLD_SIDE,
     base: IDENTITY,
@@ -170,6 +181,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     },
     orientations: ["r0", "r90", "r180", "r270"],
     defaultParams: {},
+    paramSpecs: [],
     // A triangle is drawn with side `2 * TILE_SIZE`, so it is comparable to squares and hexagons.
     pixelsPerUnit: (2 * TILE_SIZE) / TRI_WORLD_SIDE,
     base: IDENTITY,
@@ -186,6 +198,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
     orientation: () => IDENTITY,
@@ -201,6 +214,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -221,6 +235,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // Bricks are unit squares, drawn `TILE_SIZE` wide.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -238,6 +253,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -256,6 +272,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -274,6 +291,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
@@ -292,6 +310,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     editor: AXIS_ALIGNED,
     orientations: [],
     defaultParams: {},
+    paramSpecs: [],
     // The underlying unit square is drawn 60 px wide (`TILE_SIZE * 1.5`: the concave pair leaves
     // only ~0.59 of the square between the sides); the convex sides bulge beyond it.
     pixelsPerUnit: TILE_SIZE * 1.5,
@@ -303,5 +322,27 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     cellMeasurePx: TILE_SIZE * 1.5,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 1.5 * 0.08,
+  },
+  radial: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, circleInclusion: "contained", printCellSize: "diameter" },
+    orientations: [],
+    // Nine first-ring cells; classic rings keep or double their count (see Specs/space.md).
+    defaultParams: { first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 },
+    paramSpecs: [
+      { name: "first_ring_cells", type: "integer", min: 6, max: 24 },
+      { name: "ring_layout", type: "choice", options: ["classic", "smooth"] },
+      { name: "max_cells", type: "integer", min: 100, max: 10000 },
+    ],
+    // A ring is one world unit wide, drawn `TILE_SIZE` thick.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    splitCircleRotationDeg: 45,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    cellMeasurePx: TILE_SIZE,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
   },
 };

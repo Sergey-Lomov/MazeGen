@@ -403,7 +403,7 @@ export type FieldOpError =
 /** Mirrors `maze-runner`'s `FieldCapabilities` — see `field_capabilities`'s doc comment. */
 export interface FieldCapabilities {
   operations: ("translate" | "reflect")[];
-  presets: { key: string; params: { name: string; min: number }[] }[];
+  presets: { key: string; params: { name: string; min: number; max?: number }[] }[];
 }
 
 export function getFieldCapabilities(tessellation: WasmTessellationConfig): FieldCapabilities {

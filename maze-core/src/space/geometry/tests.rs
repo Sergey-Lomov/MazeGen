@@ -1,6 +1,6 @@
 use super::segment::segments_cross;
 use super::*;
-use crate::space::test_support::ScaledSquareTessellation;
+use crate::space::test_support::{ScaledSquareTessellation, radial_cases};
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
@@ -99,6 +99,9 @@ macro_rules! for_each_tessellation {
             &curved_quadrilateral_cells(),
         );
         $check(&ScaledSquareTessellation { scale: 2.5 }, &square_cells());
+        for (tessellation, cells) in radial_cases() {
+            $check(&tessellation, &cells);
+        }
     };
 }
 
@@ -562,12 +565,20 @@ fn oversized_region_is_rejected_unscoped_but_answered_within_a_cell_scope() {
             Point::new(side, side),
             Point::new(-side, side),
         ];
-        assert_eq!(
-            tessellation.cells_in_region(&region, RegionMode::Intersects, CellScope::Space),
-            Err(RegionTooLarge {
-                limit: MAX_REGION_CANDIDATES
-            })
-        );
+        // An unbounded space has more candidates than the limit; a finite one (radial, capped at
+        // `max_cells`) answers with every cell of its space.
+        match tessellation.cells_in_region(&region, RegionMode::Intersects, CellScope::Space) {
+            Err(error) => assert_eq!(
+                error,
+                RegionTooLarge {
+                    limit: MAX_REGION_CANDIDATES
+                }
+            ),
+            Ok(found) => {
+                assert!(found.len() <= MAX_REGION_CANDIDATES);
+                assert!(cells.iter().all(|cell| found.contains(cell)));
+            }
+        }
         let mut scope = cells.to_vec();
         scope.sort();
         scope.dedup();
