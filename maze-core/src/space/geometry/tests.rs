@@ -8,6 +8,7 @@ use crate::space::{
     SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation, SquarePoint,
     SquareTessellation, TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
     TruncatedHexagonalKind, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
+    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
 };
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -83,6 +84,16 @@ fn truncated_hexagonal_cells() -> Vec<TruncatedHexagonalPoint> {
         .collect()
 }
 
+fn truncated_trihexagonal_cells() -> Vec<TruncatedTrihexagonalPoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            TruncatedTrihexagonalKind::ALL
+                .into_iter()
+                .map(move |kind| TruncatedTrihexagonalPoint::new(q, r, kind))
+        })
+        .collect()
+}
+
 fn curved_quadrilateral_cells() -> Vec<CurvedQuadrilateralPoint> {
     grid(3)
         .map(|(x, y)| CurvedQuadrilateralPoint { x, y })
@@ -108,6 +119,10 @@ macro_rules! for_each_tessellation {
         $check(
             &TruncatedHexagonalTessellation,
             &truncated_hexagonal_cells(),
+        );
+        $check(
+            &TruncatedTrihexagonalTessellation,
+            &truncated_trihexagonal_cells(),
         );
         $check(
             &CurvedQuadrilateralTessellation,

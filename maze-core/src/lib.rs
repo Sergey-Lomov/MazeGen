@@ -46,8 +46,10 @@ pub use space::{
     SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,
     TriTessellation, TrihexagonalFace, TrihexagonalKind, TrihexagonalPoint,
     TrihexagonalTessellation, TruncatedHexagonalFace, TruncatedHexagonalKind,
-    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, cairo_rect, geometric_distance,
-    hex_hexagon, hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
+    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, TruncatedTrihexagonalFace,
+    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    cairo_rect, geometric_distance, hex_hexagon, hex_parallelogram, square_rect, tri_hexagon,
+    tri_rect, tri_triangle,
 };
 
 pub struct Maze<T: Tessellation> {

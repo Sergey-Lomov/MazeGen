@@ -103,6 +103,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     snub_hexagonal: m["tessellation.snub_hexagonal"],
     rhombitrihexagonal: m["tessellation.rhombitrihexagonal"],
     truncated_hexagonal: m["tessellation.truncated_hexagonal"],
+    truncated_trihexagonal: m["tessellation.truncated_trihexagonal"],
     curved_quadrilateral: m["tessellation.curved_quadrilateral"],
     radial: m["tessellation.radial"],
   };

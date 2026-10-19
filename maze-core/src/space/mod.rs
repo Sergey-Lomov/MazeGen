@@ -23,6 +23,7 @@ pub(crate) mod test_support;
 pub mod triangle;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
+pub mod truncated_trihexagonal;
 
 pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
@@ -61,6 +62,10 @@ pub use trihexagonal::{
 pub use truncated_hexagonal::{
     TruncatedHexagonalFace, TruncatedHexagonalKind, TruncatedHexagonalPoint,
     TruncatedHexagonalTessellation,
+};
+pub use truncated_trihexagonal::{
+    TruncatedTrihexagonalFace, TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint,
+    TruncatedTrihexagonalTessellation,
 };
 
 /// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by

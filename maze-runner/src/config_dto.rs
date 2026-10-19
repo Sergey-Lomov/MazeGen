@@ -68,6 +68,7 @@ pub enum TessellationKind {
     SnubHexagonal,
     Rhombitrihexagonal,
     TruncatedHexagonal,
+    TruncatedTrihexagonal,
     CurvedQuadrilateral,
     Radial,
 }

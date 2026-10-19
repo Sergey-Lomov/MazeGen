@@ -517,6 +517,16 @@ mod tests {
                 vec![("side", 6)],
             ),
             (
+                TessellationKind::TruncatedTrihexagonal,
+                "rect",
+                vec![("cols", 5), ("rows", 4)],
+            ),
+            (
+                TessellationKind::TruncatedTrihexagonal,
+                "triangle",
+                vec![("side", 6)],
+            ),
+            (
                 TessellationKind::CurvedQuadrilateral,
                 "rect",
                 vec![("cols", 5), ("rows", 4)],

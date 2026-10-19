@@ -168,6 +168,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -199,6 +200,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -229,6 +231,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
         brick: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
@@ -261,6 +264,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -292,6 +296,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set([(-9 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -323,6 +328,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         truncated_hexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set(),
         radial: new Set(),
       },
@@ -333,6 +339,43 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("rhombitrihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the truncated_trihexagonal kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "truncated_trihexagonal";
+    // Wire cells are `[6q + kind, r]`: a dodecagon, a square and a hexagon at negative `q`.
+    const points: [number, number][] = [[-12, 0], [-7, -1], [-2, 1], [0, 0]];
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("truncated_trihexagonal", { shape: "custom", points }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set([(-12 << 16) | 0, (-7 << 16) | (-1 & 0xffff), (-2 << 16) | 1, 0]),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-12 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const json = JSON.parse(JSON.stringify(serialized));
+    expect(json.tessellation.kind).toBe("truncated_trihexagonal");
+    expect(json.floorFields.floor_1.freeFieldPoints.truncated_trihexagonal).toHaveLength(4);
+    const reparsed = parseAndValidate(json);
+    expect(reparsed.tessellation.kind).toBe("truncated_trihexagonal");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
   });
 
@@ -354,6 +397,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         snub_hexagonal: new Set(),
         rhombitrihexagonal: new Set(),
         truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
         curved_quadrilateral: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
         radial: new Set(),
       },

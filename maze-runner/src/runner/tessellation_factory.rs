@@ -6,6 +6,7 @@ use maze_core::space::{
     SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation,
     SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
     TrihexagonalTessellation, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
+    TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -126,6 +127,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 CellCodec {
                     from_xy: TruncatedHexagonalPoint::from_xy,
                     to_xy: TruncatedHexagonalPoint::to_xy,
+                },
+            ))
+        }
+        TessellationKind::TruncatedTrihexagonal => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(TruncatedTrihexagonalTessellation),
+                CellCodec {
+                    from_xy: TruncatedTrihexagonalPoint::from_xy,
+                    to_xy: TruncatedTrihexagonalPoint::to_xy,
                 },
             ))
         }
@@ -315,6 +326,21 @@ mod tests {
             build_tessellation(&config(TessellationKind::TruncatedHexagonal), Probe),
             Ok((
                 vec!["regular:12".to_string(), "regular:3".to_string()],
+                (3, -2)
+            ))
+        );
+    }
+
+    #[test]
+    fn builds_truncated_trihexagonal_with_dodecagon_square_and_hexagon_shapes() {
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::TruncatedTrihexagonal), Probe),
+            Ok((
+                vec![
+                    "regular:12".to_string(),
+                    "regular:4".to_string(),
+                    "regular:6".to_string()
+                ],
                 (3, -2)
             ))
         );
