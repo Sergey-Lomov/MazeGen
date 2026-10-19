@@ -5,7 +5,7 @@ use maze_core::space::{
     RadialPoint, RadialTessellation, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
     SnubHexagonalPoint, SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation,
     SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation, TrihexagonalPoint,
-    TrihexagonalTessellation,
+    TrihexagonalTessellation, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
 };
 use std::sync::Arc;
 
@@ -116,6 +116,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 CellCodec {
                     from_xy: RhombitrihexagonalPoint::from_xy,
                     to_xy: RhombitrihexagonalPoint::to_xy,
+                },
+            ))
+        }
+        TessellationKind::TruncatedHexagonal => {
+            reject_params(config)?;
+            Ok(visitor.visit(
+                Arc::new(TruncatedHexagonalTessellation),
+                CellCodec {
+                    from_xy: TruncatedHexagonalPoint::from_xy,
+                    to_xy: TruncatedHexagonalPoint::to_xy,
                 },
             ))
         }
@@ -300,6 +310,17 @@ mod tests {
     }
 
     #[test]
+    fn builds_truncated_hexagonal_with_dodecagon_and_triangle_shapes() {
+        assert_eq!(
+            build_tessellation(&config(TessellationKind::TruncatedHexagonal), Probe),
+            Ok((
+                vec!["regular:12".to_string(), "regular:3".to_string()],
+                (3, -2)
+            ))
+        );
+    }
+
+    #[test]
     fn builds_curved_quadrilateral_with_one_four_sided_shape() {
         assert_eq!(
             build_tessellation(&config(TessellationKind::CurvedQuadrilateral), Probe),
@@ -319,8 +340,9 @@ mod tests {
 
     #[test]
     fn builds_radial_from_its_size_param() {
-        let cfg =
-            radial_config(serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "classic" }));
+        let cfg = radial_config(
+            serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "classic" }),
+        );
         let (shapes, round_trip) = build_tessellation(&cfg, Probe).unwrap();
         assert_eq!(shapes[0], "regular:9");
         assert!(
@@ -360,7 +382,9 @@ mod tests {
                 "max_cells",
             ),
             (
-                radial_config(serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic" })),
+                radial_config(
+                    serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic" }),
+                ),
                 "max_cells",
             ),
             (

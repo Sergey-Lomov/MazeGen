@@ -6,7 +6,8 @@ use crate::space::{
     RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalKind, SnubHexagonalPoint,
     SnubHexagonalTessellation, SquareOctagonPoint, SquareOctagonTessellation, SquarePoint,
     SquareTessellation, Tessellation, TriFace, TriPoint, TriTessellation, TrihexagonalPoint,
-    TrihexagonalTessellation,
+    TrihexagonalTessellation, TruncatedHexagonalKind, TruncatedHexagonalPoint,
+    TruncatedHexagonalTessellation,
 };
 
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
@@ -71,6 +72,16 @@ fn rhombitrihexagonal_cells() -> Vec<RhombitrihexagonalPoint> {
             RhombitrihexagonalKind::ALL
                 .into_iter()
                 .map(move |kind| RhombitrihexagonalPoint::new(q, r, kind))
+        })
+        .collect()
+}
+
+fn truncated_hexagonal_cells() -> Vec<TruncatedHexagonalPoint> {
+    grid(2)
+        .flat_map(|(q, r)| {
+            TruncatedHexagonalKind::ALL
+                .into_iter()
+                .map(move |kind| TruncatedHexagonalPoint::new(q, r, kind))
         })
         .collect()
 }
@@ -260,6 +271,10 @@ fn shape_contract_holds_for_every_tessellation() {
     assert_shape_contract(&SnubHexagonalTessellation, &snub_hexagonal_cells());
     assert_shape_contract(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
     assert_shape_contract(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
+    assert_shape_contract(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
@@ -279,6 +294,10 @@ fn face_chain_is_invertible_for_every_tessellation() {
     assert_chain_invertible(&TrihexagonalTessellation, &trihexagonal_cells());
     assert_chain_invertible(&SnubHexagonalTessellation, &snub_hexagonal_cells());
     assert_chain_invertible(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
+    assert_chain_invertible(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
     assert_chain_invertible(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
@@ -300,6 +319,10 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
     );
     assert_canonical_order_is_counter_clockwise(&BrickTessellation, &brick_cells());
     assert_canonical_order_is_counter_clockwise(&TrihexagonalTessellation, &trihexagonal_cells());
+    assert_canonical_order_is_counter_clockwise(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
     assert_canonical_order_is_counter_clockwise(
         &SnubHexagonalTessellation,
         &snub_hexagonal_cells(),
@@ -342,6 +365,10 @@ fn built_in_faces_of_is_the_canonical_order() {
     identity(&SnubHexagonalTessellation, &snub_hexagonal_cells());
     identity(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
     identity(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
+    identity(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),
     );
@@ -370,6 +397,10 @@ fn every_built_in_cell_gets_its_full_group() {
     full(&TrihexagonalTessellation, &trihexagonal_cells());
     full(&SnubHexagonalTessellation, &snub_hexagonal_cells());
     full(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
+    full(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
     full(
         &CurvedQuadrilateralTessellation,
         &curved_quadrilateral_cells(),

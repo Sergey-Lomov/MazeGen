@@ -68,6 +68,13 @@ const TRIHEXAGONAL_AXES: Axis[] = [30, 90, 150].map(axisFromDeg);
 // transform is a reflection, which keeps this set unchanged.
 const RHOMBITRIHEXAGONAL_AXES: Axis[] = [0, 30, 60, 90, 120, 150].map(axisFromDeg);
 
+// Dodecagon edges run along every multiple of 30 degrees, but the dodecagon centers form a
+// triangular lattice with lattice directions 0, 60 and 120 degrees. A connector line through a cell
+// center at 30, 90 or 150 degrees coincides with the shared wall of lattice-neighbor dodecagons, so
+// only the lattice directions (the normals of the dodecagon-dodecagon faces) are safe; the display
+// transform is a reflection, which keeps this set unchanged.
+const TRUNCATED_HEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -92,6 +99,7 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   // Every edge is a unit step of the triangular lattice, so the face normals are the trihexagonal ones.
   snub_hexagonal: () => TRIHEXAGONAL_AXES,
   rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
+  truncated_hexagonal: () => TRUNCATED_HEXAGONAL_AXES,
   // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
   curved_quadrilateral: () => SQUARE_AXES,
   // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.

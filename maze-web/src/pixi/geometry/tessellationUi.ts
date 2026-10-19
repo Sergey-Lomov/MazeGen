@@ -305,6 +305,25 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
+  truncated_hexagonal: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    orientations: [],
+    defaultParams: {},
+    paramSpecs: [],
+    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    // Half the 30 degree spacing of a dodecagon's faces.
+    splitCircleRotationDeg: 15,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    // The dodecagon's circumcircle diameter, `1 / sin 15` sides.
+    cellMeasurePx: TILE_SIZE / Math.sin(Math.PI / 12),
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
+  },
   curved_quadrilateral: {
     orientationSlot: null,
     editor: AXIS_ALIGNED,

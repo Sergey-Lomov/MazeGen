@@ -155,6 +155,25 @@ describe("field operations over wasm", () => {
     expect(reflectFieldCells(rhombi, [[1, 0]], [[0, 0], [0, 1]])).toEqual([[3, 0]]);
   });
 
+  it("builds truncated hexagonal presets and translates and reflects on its symmetries", () => {
+    const truncated = tessellationConfigOf("truncated_hexagonal");
+    // Wire cells are `[3q + kind, r]` with kind 0 dodecagon, 1 and 2 triangles.
+    const preset = getFieldPreset(truncated, "rect", { cols: 5, rows: 4 });
+    for (const kind of [0, 1, 2]) {
+      expect(preset.some(([x]) => ((x % 3) + 3) % 3 === kind)).toBe(true);
+    }
+    expect(getFieldPreset(truncated, "triangle", { side: 6 }).length).toBeGreaterThan(0);
+    // The lattice vector (2 + sqrt(3)) * (1, 0) moves the dodecagon at q = 0 to q = 1.
+    expect(translateFieldCells(truncated, [[0, 0]], [2 + Math.sqrt(3), 0])).toEqual([[3, 0]]);
+    try {
+      translateFieldCells(truncated, [[0, 0]], [1, 0]);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toEqual({ kind: "not_a_symmetry" });
+    }
+    expect(fieldOperationAvailable(truncated, "reflect")).toBe(true);
+  });
+
   it("builds curved quadrilateral presets and translates only on parity-preserving vectors", () => {
     const curved = tessellationConfigOf("curved_quadrilateral");
     expect(getFieldPreset(curved, "rect", { cols: 3, rows: 3 })).toHaveLength(9);
