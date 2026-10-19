@@ -144,7 +144,7 @@ export class PrimitivePreviewOverlay {
   onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
     this.viewportScale = scale;
     if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
-      this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
     }
   }
 

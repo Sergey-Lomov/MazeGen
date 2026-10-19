@@ -27,18 +27,18 @@ describe("FieldSetupFeature — Copy floor button", () => {
         { id: "floor_2", title: "Floor 2" },
       ],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
       },
     });
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
     expect(screen.getByText(m["floors.confirm_from_current"]())).toBeInTheDocument();
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
 
     fireEvent.click(screen.getByRole("button", { name: m["common.ok"]() }));
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 3, height: 4 });
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
   });
 
   it("keeps other floors unchanged when the confirmation is cancelled", () => {
@@ -48,8 +48,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
         { id: "floor_2", title: "Floor 2" },
       ],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
       },
     });
     render(<FieldSetupFeature />);
@@ -57,7 +57,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
     fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
 
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
   });
 
   it("explains an out-of-range field size on blur, even when it restores the stored value", () => {

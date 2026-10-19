@@ -699,19 +699,19 @@ describe("VectorByCorridorsRenderer", () => {
   };
 
   it("uses the active floor's tessellation config for rendered geometry", () => {
-    const secondFloorCfg = { type: "square" as const, width: 9, height: 2 };
+    const secondFloorCfg = fieldOf("square", { shape: "rect", cols: 9, rows: 2 });
     currentState = baseState({
       floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       activeFloorId: "floor_2",
       floorFields: {
-        floor_1: { tessellationConfig: stableCfg },
-        floor_2: { tessellationConfig: secondFloorCfg },
+        floor_1: { fieldConfig: stableCfg },
+        floor_2: { fieldConfig: secondFloorCfg },
       },
     });
 
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const internals = renderer as unknown as {
-      backgroundGrid: { render: (settings: VectorByCorridorsSettings, cfg: TessellationConfig) => void };
+      backgroundGrid: { render: (settings: VectorByCorridorsSettings, cfg: FieldConfig) => void };
       renderAll: (state: typeof currentState) => void;
     };
     const renderGrid = vi.spyOn(internals.backgroundGrid, "render");

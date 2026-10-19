@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Container } from "pixi.js";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const { ExportFrameOverlay } = await import("../pixi/imageExport/ExportFrameOverlay");
 const { useMazeStore } = await import("../store/mazeStore");
@@ -40,8 +41,8 @@ describe("ExportFrameOverlay — print anchor guard", () => {
     setBaseState({
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: secondFloorId, title: "Floor 2" }],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 2 } }),
-        [secondFloorId]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 8, height: 3 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }) }),
+        [secondFloorId]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 8, rows: 3 }) }),
       },
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
