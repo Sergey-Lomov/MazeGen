@@ -1,10 +1,10 @@
-import type { ParamLink } from "../parameterLinks";
+import type { ParamLink, ParamModifier } from "../parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
 let nextLinkId = 0;
-function link<P extends string>(source: P, target: P, enabled = true): ParamLink<P> {
+function link<P extends string>(source: P, target: P, enabled = true, modifiers?: ParamModifier[]): ParamLink<P> {
   nextLinkId += 1;
-  return { id: `default-${nextLinkId}`, source, target, enabled };
+  return { id: `default-${nextLinkId}`, source, target, enabled, ...(modifiers ? { modifiers } : {}) };
 }
 
 /** Default "Shared style" link graph for "Vector by walls" (GitHub issue #322, generalized by
@@ -139,6 +139,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
  *  `wallJoin`, plus `splitGapWidth` in the `gapWidth` group. Same disabled-by-default vertical-
  *  marker links as the walls mode. */
 export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParamPath>[] = [
+  link("thickness", "junctionRadius", true, [{ op: "div", value: 2 }]),
   link("cornerStyle", "join"),
   link("cornerStyle", "oneWayJoin"),
   link("cornerStyle", "startMarker.cornerStyle"),

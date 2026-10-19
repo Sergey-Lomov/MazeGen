@@ -66,6 +66,12 @@ describe("field shape primitives", () => {
     expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual([[1, 0]]);
   });
 
+  it("smooths terminal cells in predefined fields", () => {
+    const config = fieldOf("square", { shape: "circle", radius: 5 });
+    expect(configAllCells(config)).toContainEqual([5, 0]);
+    expect(configAllCells(config, true)).not.toContainEqual([5, 0]);
+  });
+
   it("preserves primitives smaller than the normalization threshold", () => {
     const cells: [number, number][] = [[0, 0]];
     expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual(cells);

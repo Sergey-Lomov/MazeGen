@@ -27,6 +27,7 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const pending = useMazeStore((s) => s.presetElevatorPending);
@@ -37,12 +38,12 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
   const presetActiveSplitNode = useMazeStore((s) => s.presetActiveSplitNode);
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
   const levelFields = useMemo(
-    () => levelFieldsOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation],
+    () => levelFieldsOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
 
   // Per-floor split-shape name, for the row label (GitHub issue #594, parity with post-edit's own

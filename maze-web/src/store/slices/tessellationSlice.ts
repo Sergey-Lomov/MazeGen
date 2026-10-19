@@ -9,6 +9,8 @@ import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { splitPatternsFor } from "../../pixi/shapeTemplates";
 import { qcForTessellation } from "./qcTessellationFilter";
 import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellation, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
@@ -212,14 +214,37 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     backgroundImage: { ...state.backgroundImage, ...transform },
   }),
   setBackgroundAutoFillPreview: (points) => set({ backgroundAutoFillPreview: points }),
-  setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
+  setSmoothPrimitives: (smooth) => set((state) => {
+    if (smooth === state.smoothPrimitives) return {};
+    const field = state.floorFields[state.activeFloorId];
+    if (field.fieldEditMode === "custom") return { smoothPrimitives: smooth };
+    return {
+      smoothPrimitives: smooth,
+      activeFieldConfig: resolveFieldConfig(field.fieldConfig, smooth),
+      ...buildResetDownstreamState(),
+      debugStale: debugStaleOf(state),
+    };
+  }),
   setFieldOpError: (error) => set({ fieldOpError: error }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),
-  setSymmetryAxisPoints: (points) => set({ symmetryAxisPoints: points }),
+  setSymmetryAxisPoints: (points) => set((state) => {
+    if (points.length !== 2 || (points[0].x === points[1].x && points[0].y === points[1].y)) {
+      return { symmetryAxisPoints: points, fieldOpError: null };
+    }
+    const field = state.floorFields[state.activeFloorId];
+    const preview = computeSymmetryPreview(
+      field.fieldPoints,
+      field.fieldConfig,
+      { scope: "everything", sourceSide: state.symmetrySourceSide, axis: [points[0], points[1]], polygon: [] },
+      encodePoint,
+      decodePoint,
+    );
+    return { symmetryAxisPoints: points, fieldOpError: preview.error };
+  }),
   setSymmetrySourceSide: (side) => set({ symmetrySourceSide: side }),
   setSymmetryPolygon: (points) => set({ symmetryPolygon: points }),
   finishSymmetryPolygon: () => set((state) => state.symmetryPolygon.length >= 3 ? { symmetryPolygonFinished: true } : {}),
   resetSymmetryPolygon: () => set({ symmetryPolygon: [], symmetryPolygonFinished: false }),
-  resetSymmetryAxis: () => set({ symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
+  resetSymmetryAxis: () => set({ symmetryAxisPoints: [], fieldOpError: null }),
 });

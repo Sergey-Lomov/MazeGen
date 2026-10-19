@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
+import { resolveFieldConfig } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, freeFieldEditState, hexPredefinedState, trianglePredefinedState, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
@@ -46,6 +47,65 @@ function setActiveField(patch: Partial<ReturnType<typeof baseFloorFieldConfig>>)
 }
 
 describe("mazeStore setters", () => {
+  it("updates the resolved standard field when smoothing changes", () => {
+    const config = fieldOf("hex", { shape: "triangle", side: 4 }, "pointy_top");
+    setActiveField({ fieldConfig: config, fieldEditMode: "default" });
+    useMazeStore.setState({ activeFieldConfig: resolveFieldConfig(config, true), mazeDirty: true });
+
+    useMazeStore.getState().setSmoothPrimitives(false);
+
+    const state = useMazeStore.getState();
+    expect(state.activeFieldConfig).toEqual(resolveFieldConfig(config, false));
+    expect(state.generationStatus).toBe("idle");
+    expect(state.mazeDirty).toBe(false);
+  });
+
+  it("keeps a completed symmetry polygon when resetting the axis", () => {
+    const polygon = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }];
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryPolygon: polygon,
+      symmetryPolygonFinished: true,
+      fieldOpError: { kind: "not_a_symmetry" },
+    });
+
+    useMazeStore.getState().resetSymmetryAxis();
+
+    const state = useMazeStore.getState();
+    expect(state.symmetryAxisPoints).toEqual([]);
+    expect(state.symmetryPolygon).toEqual(polygon);
+    expect(state.symmetryPolygonFinished).toBe(true);
+    expect(state.fieldOpError).toBeNull();
+  });
+
+  it("validates a completed replacement axis before requesting polygon processing", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+      fieldPoints: new Set([encodePoint(1, 0)]),
+    });
+    useMazeStore.setState({ symmetryScope: "polygon" });
+
+    useMazeStore.getState().setSymmetryAxisPoints([{ x: -100, y: -100 }, { x: 100, y: -60 }]);
+
+    expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
+  });
+
+  it("clears a previous symmetry error for a valid replacement axis", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+      fieldPoints: new Set([encodePoint(1, 0)]),
+    });
+    useMazeStore.setState({ fieldOpError: { kind: "not_a_symmetry" } });
+
+    useMazeStore.getState().setSymmetryAxisPoints([{ x: 20, y: -100 }, { x: 20, y: 100 }]);
+
+    expect(useMazeStore.getState().fieldOpError).toBeNull();
+  });
+
   it("clears unfinished symmetry geometry when switching to another field primitive", () => {
     setActiveField({ fieldPrimitive: "symmetry" });
     useMazeStore.setState({

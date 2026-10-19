@@ -106,7 +106,7 @@ vi.mock("../pixi/tessellationProjection", () => ({
 }));
 
 vi.mock("../pixi/tessellationCells", () => ({
-  configAllCells: (cfg: { shape: { cols?: number } }) => cfg.shape.cols === 0 ? [] : [[0, 0], [2, 4]],
+  configAllCells: (cfg: { shape: { cols?: number } }, smooth = false) => cfg.shape.cols === 0 ? [] : smooth ? [[0, 0]] : [[0, 0], [2, 4]],
   resolveFieldConfig: (cfg: unknown) => cfg,
 }));
 
@@ -216,13 +216,37 @@ describe("FieldEditorOverlay", () => {
     expect(boundary.render.mock.calls[0][0].edges).toHaveLength(6);
   });
 
+  it("redraws a standard field when smoothing changes", () => {
+    const state = useMazeStore.getState();
+    const config = fieldOf("square", { shape: "circle", radius: 5 });
+    useMazeStore.setState({
+      floorFields: {
+        ...state.floorFields,
+        [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], fieldEditMode: "default", fieldConfig: config },
+      },
+      smoothPrimitives: true,
+    });
+    openOverlay();
+    const fieldRender = (stubs.floors[0] as Stub).render;
+    const boundaryRender = (stubs.walls[0] as Stub).render;
+    const fieldRenderCount = fieldRender.mock.calls.length;
+    const boundaryRenderCount = boundaryRender.mock.calls.length;
+    const smoothedCells = fieldRender.mock.calls[fieldRenderCount - 1][0].cells;
+
+    useMazeStore.getState().setSmoothPrimitives(false);
+
+    expect(fieldRender).toHaveBeenCalledTimes(fieldRenderCount + 1);
+    expect(boundaryRender).toHaveBeenCalledTimes(boundaryRenderCount + 1);
+    expect(fieldRender.mock.calls[fieldRenderCount][0].cells).not.toEqual(smoothedCells);
+  });
+
   it("draws symmetry cells and polygon geometry only while symmetry is active", () => {
     const { overlay } = openOverlay();
     const state = useMazeStore.getState();
     useMazeStore.setState({
       symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
       symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+      symmetryPolygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }],
       symmetryPolygonFinished: true,
       floorFields: {
         ...state.floorFields,
@@ -237,6 +261,11 @@ describe("FieldEditorOverlay", () => {
     );
     expect((stubs.graphics[0] as { calls: { name: string }[] }).calls.some(call => call.name === "stroke")).toBe(true);
     expect((stubs.graphics[0] as { calls: { name: string }[] }).calls.some(call => call.name === "circle")).toBe(true);
+    const calls = (stubs.graphics[0] as { calls: { name: string; args: unknown[] }[] }).calls;
+    const closingStart = calls.findIndex((call) => call.name === "moveTo"
+      && call.args[0] === 100 && call.args[1] === -100);
+    expect(calls[closingStart + 1]).toMatchObject({ name: "lineTo" });
+    expect(calls[closingStart + 1]?.args).not.toEqual([0, 0]);
 
     useMazeStore.setState({
       floorFields: {

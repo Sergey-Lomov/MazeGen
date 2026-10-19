@@ -53,6 +53,30 @@ describe("LinkEditor cycle filtering", () => {
   });
 });
 
+describe("LinkEditor grouped picker layout", () => {
+  it("uses block wrappers for leaves inside a group", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Group"] },
+      b: { ...registry.b, group: ["Group"] },
+      c: registry.c,
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "b", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget="a"
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Alpha").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
+    expect(screen.getByText("Beta").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
+  });
+});
+
 // GitHub issue #720 — saving onto a target that already has a control link asks for confirmation
 // (naming the source it currently depends on) before the engine's `addLink` silently replaces it.
 describe("LinkEditor replace confirmation", () => {

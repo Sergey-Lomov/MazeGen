@@ -417,7 +417,9 @@ minimum 1.25px screen-space thickness at every zoom level.
 
 Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
 one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
-Smoothing affects primitive tools only; point-by-point editing is unchanged.
+The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
+cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
+updates the displayed field and resets generation and post-edit results.
 
 Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
 RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
@@ -539,9 +541,13 @@ Only active cells are used as the source.
 One-side mode chooses the initial source side from the field when the axis is completed and
 exposes a direction toggle. Polygon mode reuses the field editor's editable polygon gesture and
 has reset and explicit finish actions.
+Resetting the axis keeps a completed processing polygon so it can be reused with a replacement axis.
+When a replacement axis is completed, it is validated before the panel asks for a processing polygon;
+an invalid axis shows its warning instead.
 
 The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
-toward the reflected side. Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
+toward the reflected side. Every processing-polygon edge, including its closing edge, is dashed.
+Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
 screen-space thickness at every zoom level. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes

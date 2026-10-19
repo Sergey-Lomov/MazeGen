@@ -22,6 +22,7 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const nodes = useMazeStore((s) => s.nodes);
@@ -33,8 +34,8 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
 
   const origin = pending?.origin;

@@ -96,7 +96,7 @@ export abstract class BaseFieldRenderer {
     const field = state.floorFields[state.activeFloorId];
     const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0
       ? field.fieldPoints : undefined;
-    this.cachedCells = resolveCells(this.cfg, customPts);
+    this.cachedCells = resolveCells(this.cfg, customPts, state.smoothPrimitives);
     this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
   }
 

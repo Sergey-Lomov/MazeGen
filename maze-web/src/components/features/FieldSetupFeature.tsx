@@ -120,6 +120,18 @@ export function FieldSetupFeature() {
     );
   }
 
+  function renderSmoothingToggle() {
+    return (
+      <div style={styles.originRow}>
+        <span style={styles.smoothingLabelGroup}>
+          <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
+          <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
+        </span>
+        <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
+      </div>
+    );
+  }
+
   function renderParams() {
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
@@ -173,6 +185,7 @@ export function FieldSetupFeature() {
           >
             {m["field.print_sizing.open"]()}
           </Button>
+          {renderSmoothingToggle()}
         </>
       )}
       {isCustom && (
@@ -222,13 +235,7 @@ export function FieldSetupFeature() {
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
             <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} disabled={fieldEditLocked} />
           </div>
-          <div style={styles.originRow}>
-            <span style={styles.smoothingLabelGroup}>
-              <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
-              <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
-            </span>
-            <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
-          </div>
+          {renderSmoothingToggle()}
           <div style={styles.originRow}>
             <ToggleRow
               label={m["field.paper_layout.title"]()}
@@ -320,7 +327,6 @@ export function FieldSetupFeature() {
           onClose={() => setSmoothingInfoOpen(false)}
         >
           <div style={styles.infoText}>{m["field.smoothing_info_description"]()}</div>
-          <div style={styles.infoText}>{m["field.smoothing_info_always"]()}</div>
         </Modal>
       )}
     </Stack>

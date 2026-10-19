@@ -469,7 +469,7 @@ export function activeFloorTessellationOf(state: { tessellationKind: Tessellatio
  * callers (e.g. React components subscribing to individual store slices via `useMazeStore`) can
  * build this from a handful of selected fields without pulling in the whole state shape. */
 type FloorFieldsSource = { floors: MazeState["floors"]; floorFields: MazeState["floorFields"] }
-  & { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation };
+  & { tessellationKind: TessellationKind; tessellationParams: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation; smoothPrimitives: boolean };
 
 /** One `LevelField` per floor, in `floors` array order (index = `PresetEndpoint.level`, `undefined`
  * for index 0) — feeds `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340). */
@@ -480,6 +480,7 @@ export function levelFieldsOf(state: FloorFieldsSource): LevelField[] {
       level: index === 0 ? undefined : index,
       cfg: floorTessellationOf(state, floor.id),
       customPoints: field.isEditingField ? field.fieldPoints : undefined,
+      smooth: field.fieldEditMode === "default" ? state.smoothPrimitives : false,
     };
   });
 }
@@ -493,7 +494,7 @@ export function resolveFieldAtOf(state: FloorFieldsSource): ResolveFieldAt {
   return (level) => {
     const index = level ?? 0;
     const field = fields[index];
-    return field ? { cfg: field.cfg, customPoints: field.customPoints } : undefined;
+    return field ? { cfg: field.cfg, customPoints: field.customPoints, smooth: field.smooth } : undefined;
   };
 }
 
