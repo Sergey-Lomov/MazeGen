@@ -175,9 +175,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWaySize: 0.3,
     oneWayThickness: 4,
     oneWayJoin: "round",
-    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-    teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
+    startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+    finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "straight",
@@ -186,13 +186,13 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportArrowPeriod: 5,
     teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+    teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     verticalStyle: "abstract",
-    twoWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
-    oneWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
-    elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    twoWayPassageMarker: { sizeAdaptation: 0, shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    oneWayPassageMarker: { sizeAdaptation: 0, shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    elevatorMarker: { sizeAdaptation: 0, shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
     twoWayArrowColor: 0x111111,
     twoWayArrowSize: 0.6,
     twoWayArrowStyle: "triangle",
@@ -205,9 +205,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",
     elevatorArrowCornerStyle: "round",
-    decorativeStairsTwoWay: { lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
-    decorativeStairsOneWay: { lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
-    decorativeElevator: { lineColor: 0x9955ff, lineWidth: 3, size: 0.22 },
+    decorativeStairsTwoWay: { sizeAdaptation: 0, lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
+    decorativeStairsOneWay: { sizeAdaptation: 0, lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
+    decorativeElevator: { sizeAdaptation: 0, lineColor: 0x9955ff, lineWidth: 3, size: 0.22 },
     decorativeStairsArrowColor: 0x111111,
     decorativeStairsArrowSize: 0.6,
     decorativeStairsOneWayArrowColor: 0x2a2a2a,
@@ -232,7 +232,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     verticalArrowCornerStyle: "round",
     verticalDecorativeLineColor: 0x33bbff,
     verticalDecorativeLineWidth: 3,
-    verticalDecorativeSize: 0.22,
+    verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0, markerSizeAdaptation: 0,
     verticalDecorativeArrowSize: 0.75,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
@@ -312,7 +312,7 @@ describe("buildOneWayStyle", () => {
 describe("buildTeleportLineStyle", () => {
   it("maps line-pattern settings straight through", () => {
     const style = buildTeleportLineStyle(baseSettings({
-      teleportMarker: { cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
+      teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
       teleportConnectorColor: 0x222,
       teleportConnectorWidth: 7,
       teleportConnectorStyle: "orthogonal",
@@ -322,23 +322,23 @@ describe("buildTeleportLineStyle", () => {
       teleportConnectorGapWidth: 9,
     }), 0x999);
     expect(style).toEqual({
-      shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
+      shape: "star", cornerStyle: "round", size: 0.4, sizeAdaptation: 0, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
       connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
-      floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, sizeAdaptation: 0, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     });
   });
 });
 
 describe("buildMarkerStyle", () => {
   it("spreads MarkerSettings straight through and sets gapColor to the given floorColor", () => {
-    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5, text: "S" };
+    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5, text: "S", sizeAdaptation: 0 };
     const style = buildMarkerStyle(settings, 0xdead00);
     expect(style).toEqual({ ...settings, gapColor: 0xdead00 });
   });
 
   it("gapColor tracks floorColor independently of the marker's own fillColor/borderColor", () => {
-    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225, text: "" };
+    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225, text: "", sizeAdaptation: 0 };
     expect(buildMarkerStyle(settings, 0x111).gapColor).toBe(0x111);
     expect(buildMarkerStyle(settings, 0x222).gapColor).toBe(0x222);
   });

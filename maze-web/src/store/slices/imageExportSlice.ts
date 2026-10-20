@@ -8,6 +8,8 @@ import { canvas } from "../../pixi/colorTokens";
 import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageExport/printFit";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
+import type { ParamLink } from "../parameterLinks";
+import type { MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
 import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
@@ -35,6 +37,20 @@ export {
 
 /** State updaters for a registry field written by hand — every linkable field's setter goes
  *  through these (GitHub issue #704), see `writeLinkedParam`. */
+/** Writes each defined field of `patch` into the marker record `kind`. Every field except the
+ *  caption `text` goes through the parameter-links engine, so it detaches its own incoming link and
+ *  re-propagates to dependents; `text` is a plain write, as it is not linkable. */
+function writeMarkerPatch<S extends object>(settings: S, kind: VectorMarkerKind, patch: Partial<MarkerSettings>): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    const path = `${kind}.${field}`;
+    next = (field === "text" ? setParamValue(next, path, value) : writeLinkedParam(next, path, value)) as Writable;
+  }
+  return markLinked(next);
+}
+
 const wallsParam = (path: VectorByWallsParamPath, value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: writeLinkedParam(s.vectorByWallsSettings, path, value),
 });
@@ -110,6 +126,7 @@ const TELEPORT_OVERRIDABLE = [
   "teleportMarker.shape",
   "teleportMarker.cornerStyle",
   "teleportMarker.size",
+  "teleportMarker.sizeAdaptation",
   "teleportMarker.fillColor",
   "teleportMarker.borderColor",
   "teleportMarker.borderWidth",
@@ -121,6 +138,7 @@ const TELEPORT_OVERRIDABLE = [
   "teleportFloorBadge.borderColor",
   "teleportFloorBadge.cornerStyle",
   "teleportFloorBadge.size",
+  "teleportFloorBadge.sizeAdaptation",
   "teleportFloorBadge.borderWidth",
   "teleportFloorBadge.gapWidth",
   "teleportFloorBadge.textColor",
@@ -306,34 +324,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsJoin: (join) => set(corridorsParam("join", join)),
   setVectorByCorridorsRenderStyle: (v) =>
     set(corridorsPlain("renderStyle", v)),
-  setVectorByCorridorsStartMarkerShape: (shape) => set(corridorsParam("startMarker.shape", shape)),
-  setVectorByCorridorsStartMarkerText: (text) =>
-    set(corridorsPlain("startMarker.text", text)),
-  setVectorByCorridorsStartMarkerTextEnabled: (textEnabled) => set(corridorsParam("startMarker.textEnabled", textEnabled)),
-  setVectorByCorridorsStartMarkerTextFontWeight: (textFontWeight) => set(corridorsParam("startMarker.textFontWeight", textFontWeight)),
-  setVectorByCorridorsStartMarkerTextSize: (textSize) => set(corridorsParam("startMarker.textSize", textSize)),
-  setVectorByCorridorsStartMarkerTextMargin: (textMargin) => set(corridorsParam("startMarker.textMargin", textMargin)),
-  setVectorByCorridorsStartMarkerTextColor: (textColor) => set(corridorsParam("startMarker.textColor", textColor)),
-  setVectorByCorridorsStartMarkerCornerStyle: (style) => set(corridorsParam("startMarker.cornerStyle", style)),
-  setVectorByCorridorsStartMarkerFillColor: (color) => set(corridorsParam("startMarker.fillColor", color)),
-  setVectorByCorridorsStartMarkerBorderColor: (color) => set(corridorsParam("startMarker.borderColor", color)),
-  setVectorByCorridorsStartMarkerBorderWidth: (v) => set(corridorsParam("startMarker.borderWidth", v)),
-  setVectorByCorridorsStartMarkerGapWidth: (v) => set(corridorsParam("startMarker.gapWidth", v)),
-  setVectorByCorridorsStartMarkerSize: (v) => set(corridorsParam("startMarker.size", v)),
-  setVectorByCorridorsFinishMarkerShape: (shape) => set(corridorsParam("finishMarker.shape", shape)),
-  setVectorByCorridorsFinishMarkerText: (text) =>
-    set(corridorsPlain("finishMarker.text", text)),
-  setVectorByCorridorsFinishMarkerTextEnabled: (textEnabled) => set(corridorsParam("finishMarker.textEnabled", textEnabled)),
-  setVectorByCorridorsFinishMarkerTextFontWeight: (textFontWeight) => set(corridorsParam("finishMarker.textFontWeight", textFontWeight)),
-  setVectorByCorridorsFinishMarkerTextSize: (textSize) => set(corridorsParam("finishMarker.textSize", textSize)),
-  setVectorByCorridorsFinishMarkerTextMargin: (textMargin) => set(corridorsParam("finishMarker.textMargin", textMargin)),
-  setVectorByCorridorsFinishMarkerTextColor: (textColor) => set(corridorsParam("finishMarker.textColor", textColor)),
-  setVectorByCorridorsFinishMarkerCornerStyle: (style) => set(corridorsParam("finishMarker.cornerStyle", style)),
-  setVectorByCorridorsFinishMarkerFillColor: (color) => set(corridorsParam("finishMarker.fillColor", color)),
-  setVectorByCorridorsFinishMarkerBorderColor: (color) => set(corridorsParam("finishMarker.borderColor", color)),
-  setVectorByCorridorsFinishMarkerBorderWidth: (v) => set(corridorsParam("finishMarker.borderWidth", v)),
-  setVectorByCorridorsFinishMarkerGapWidth: (v) => set(corridorsParam("finishMarker.gapWidth", v)),
-  setVectorByCorridorsFinishMarkerSize: (v) => set(corridorsParam("finishMarker.size", v)),
+  patchVectorByCorridorsMarker: (kind, patch) =>
+    set((s) => ({ vectorByCorridorsSettings: writeMarkerPatch(s.vectorByCorridorsSettings, kind, patch) })),
   setVectorByCorridorsMarkerWidenPadding: (v) => set(corridorsParam("markerWidenPadding", v)),
   setVectorByCorridorsMarkerWidenShape: (shape) =>
     set(corridorsPlain("markerWidenShape", shape)),
@@ -378,27 +370,6 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   patchVectorByCorridorsFloorLabelSettings: (patch) =>
     set(corridorsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) => set(corridorsParam("elevatorBadges.cornerStyle", style)),
-  setVectorByCorridorsTwoWayPassageMarkerShape: (shape) => set(corridorsParam("twoWayPassageMarker.shape", shape)),
-  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style) => set(corridorsParam("twoWayPassageMarker.cornerStyle", style)),
-  setVectorByCorridorsTwoWayPassageMarkerFillColor: (color) => set(corridorsParam("twoWayPassageMarker.fillColor", color)),
-  setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color) => set(corridorsParam("twoWayPassageMarker.borderColor", color)),
-  setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v) => set(corridorsParam("twoWayPassageMarker.borderWidth", v)),
-  setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v) => set(corridorsParam("twoWayPassageMarker.gapWidth", v)),
-  setVectorByCorridorsTwoWayPassageMarkerSize: (v) => set(corridorsParam("twoWayPassageMarker.size", v)),
-  setVectorByCorridorsOneWayPassageMarkerShape: (shape) => set(corridorsParam("oneWayPassageMarker.shape", shape)),
-  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style) => set(corridorsParam("oneWayPassageMarker.cornerStyle", style)),
-  setVectorByCorridorsOneWayPassageMarkerFillColor: (color) => set(corridorsParam("oneWayPassageMarker.fillColor", color)),
-  setVectorByCorridorsOneWayPassageMarkerBorderColor: (color) => set(corridorsParam("oneWayPassageMarker.borderColor", color)),
-  setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v) => set(corridorsParam("oneWayPassageMarker.borderWidth", v)),
-  setVectorByCorridorsOneWayPassageMarkerGapWidth: (v) => set(corridorsParam("oneWayPassageMarker.gapWidth", v)),
-  setVectorByCorridorsOneWayPassageMarkerSize: (v) => set(corridorsParam("oneWayPassageMarker.size", v)),
-  setVectorByCorridorsElevatorMarkerShape: (shape) => set(corridorsParam("elevatorMarker.shape", shape)),
-  setVectorByCorridorsElevatorMarkerCornerStyle: (style) => set(corridorsParam("elevatorMarker.cornerStyle", style)),
-  setVectorByCorridorsElevatorMarkerFillColor: (color) => set(corridorsParam("elevatorMarker.fillColor", color)),
-  setVectorByCorridorsElevatorMarkerBorderColor: (color) => set(corridorsParam("elevatorMarker.borderColor", color)),
-  setVectorByCorridorsElevatorMarkerBorderWidth: (v) => set(corridorsParam("elevatorMarker.borderWidth", v)),
-  setVectorByCorridorsElevatorMarkerGapWidth: (v) => set(corridorsParam("elevatorMarker.gapWidth", v)),
-  setVectorByCorridorsElevatorMarkerSize: (v) => set(corridorsParam("elevatorMarker.size", v)),
   patchVectorByCorridorsSharedStyle: (patch) =>
     set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources({ ...s.vectorByCorridorsSettings, ...patch }, Object.keys(patch) as VectorByCorridorsParamPath[]) })),
   patchVectorByCorridorsVerticalSharedStyle: (patch) =>
@@ -452,34 +423,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsOneWaySize: (v) => set(wallsParam("oneWaySize", v)),
   setVectorByWallsOneWayThickness: (v) => set(wallsParam("oneWayThickness", v)),
   setVectorByWallsOneWayJoin: (join) => set(wallsParam("oneWayJoin", join)),
-  setVectorByWallsStartMarkerShape: (shape) => set(wallsParam("startMarker.shape", shape)),
-  setVectorByWallsStartMarkerText: (text) =>
-    set(wallsPlain("startMarker.text", text)),
-  setVectorByWallsStartMarkerTextEnabled: (textEnabled) => set(wallsParam("startMarker.textEnabled", textEnabled)),
-  setVectorByWallsStartMarkerTextFontWeight: (textFontWeight) => set(wallsParam("startMarker.textFontWeight", textFontWeight)),
-  setVectorByWallsStartMarkerTextSize: (textSize) => set(wallsParam("startMarker.textSize", textSize)),
-  setVectorByWallsStartMarkerTextMargin: (textMargin) => set(wallsParam("startMarker.textMargin", textMargin)),
-  setVectorByWallsStartMarkerTextColor: (textColor) => set(wallsParam("startMarker.textColor", textColor)),
-  setVectorByWallsStartMarkerCornerStyle: (style) => set(wallsParam("startMarker.cornerStyle", style)),
-  setVectorByWallsStartMarkerFillColor: (color) => set(wallsParam("startMarker.fillColor", color)),
-  setVectorByWallsStartMarkerBorderColor: (color) => set(wallsParam("startMarker.borderColor", color)),
-  setVectorByWallsStartMarkerBorderWidth: (v) => set(wallsParam("startMarker.borderWidth", v)),
-  setVectorByWallsStartMarkerGapWidth: (v) => set(wallsParam("startMarker.gapWidth", v)),
-  setVectorByWallsStartMarkerSize: (v) => set(wallsParam("startMarker.size", v)),
-  setVectorByWallsFinishMarkerShape: (shape) => set(wallsParam("finishMarker.shape", shape)),
-  setVectorByWallsFinishMarkerText: (text) =>
-    set(wallsPlain("finishMarker.text", text)),
-  setVectorByWallsFinishMarkerTextEnabled: (textEnabled) => set(wallsParam("finishMarker.textEnabled", textEnabled)),
-  setVectorByWallsFinishMarkerTextFontWeight: (textFontWeight) => set(wallsParam("finishMarker.textFontWeight", textFontWeight)),
-  setVectorByWallsFinishMarkerTextSize: (textSize) => set(wallsParam("finishMarker.textSize", textSize)),
-  setVectorByWallsFinishMarkerTextMargin: (textMargin) => set(wallsParam("finishMarker.textMargin", textMargin)),
-  setVectorByWallsFinishMarkerTextColor: (textColor) => set(wallsParam("finishMarker.textColor", textColor)),
-  setVectorByWallsFinishMarkerCornerStyle: (style) => set(wallsParam("finishMarker.cornerStyle", style)),
-  setVectorByWallsFinishMarkerFillColor: (color) => set(wallsParam("finishMarker.fillColor", color)),
-  setVectorByWallsFinishMarkerBorderColor: (color) => set(wallsParam("finishMarker.borderColor", color)),
-  setVectorByWallsFinishMarkerBorderWidth: (v) => set(wallsParam("finishMarker.borderWidth", v)),
-  setVectorByWallsFinishMarkerGapWidth: (v) => set(wallsParam("finishMarker.gapWidth", v)),
-  setVectorByWallsFinishMarkerSize: (v) => set(wallsParam("finishMarker.size", v)),
+  patchVectorByWallsMarker: (kind, patch) =>
+    set((s) => ({ vectorByWallsSettings: writeMarkerPatch(s.vectorByWallsSettings, kind, patch) })),
   patchVectorByWallsVerticalSettings: (patch) =>
     set(wallsPatch(patch, ["twoWayArrowColor", "oneWayArrowColor", "elevatorArrowColor", "decorativeStairsArrowColor", "decorativeStairsOneWayArrowColor"], (c) => ({ ...c, ...patch }))),
   patchVectorByWallsDecorativeLineStyle: (section, patch) =>
@@ -491,27 +436,6 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   patchVectorByWallsFloorLabelSettings: (patch) =>
     set(wallsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByWallsElevatorBadgesCornerStyle: (style) => set(wallsParam("elevatorBadges.cornerStyle", style)),
-  setVectorByWallsTwoWayPassageMarkerShape: (shape) => set(wallsParam("twoWayPassageMarker.shape", shape)),
-  setVectorByWallsTwoWayPassageMarkerCornerStyle: (style) => set(wallsParam("twoWayPassageMarker.cornerStyle", style)),
-  setVectorByWallsTwoWayPassageMarkerFillColor: (color) => set(wallsParam("twoWayPassageMarker.fillColor", color)),
-  setVectorByWallsTwoWayPassageMarkerBorderColor: (color) => set(wallsParam("twoWayPassageMarker.borderColor", color)),
-  setVectorByWallsTwoWayPassageMarkerBorderWidth: (v) => set(wallsParam("twoWayPassageMarker.borderWidth", v)),
-  setVectorByWallsTwoWayPassageMarkerGapWidth: (v) => set(wallsParam("twoWayPassageMarker.gapWidth", v)),
-  setVectorByWallsTwoWayPassageMarkerSize: (v) => set(wallsParam("twoWayPassageMarker.size", v)),
-  setVectorByWallsOneWayPassageMarkerShape: (shape) => set(wallsParam("oneWayPassageMarker.shape", shape)),
-  setVectorByWallsOneWayPassageMarkerCornerStyle: (style) => set(wallsParam("oneWayPassageMarker.cornerStyle", style)),
-  setVectorByWallsOneWayPassageMarkerFillColor: (color) => set(wallsParam("oneWayPassageMarker.fillColor", color)),
-  setVectorByWallsOneWayPassageMarkerBorderColor: (color) => set(wallsParam("oneWayPassageMarker.borderColor", color)),
-  setVectorByWallsOneWayPassageMarkerBorderWidth: (v) => set(wallsParam("oneWayPassageMarker.borderWidth", v)),
-  setVectorByWallsOneWayPassageMarkerGapWidth: (v) => set(wallsParam("oneWayPassageMarker.gapWidth", v)),
-  setVectorByWallsOneWayPassageMarkerSize: (v) => set(wallsParam("oneWayPassageMarker.size", v)),
-  setVectorByWallsElevatorMarkerShape: (shape) => set(wallsParam("elevatorMarker.shape", shape)),
-  setVectorByWallsElevatorMarkerCornerStyle: (style) => set(wallsParam("elevatorMarker.cornerStyle", style)),
-  setVectorByWallsElevatorMarkerFillColor: (color) => set(wallsParam("elevatorMarker.fillColor", color)),
-  setVectorByWallsElevatorMarkerBorderColor: (color) => set(wallsParam("elevatorMarker.borderColor", color)),
-  setVectorByWallsElevatorMarkerBorderWidth: (v) => set(wallsParam("elevatorMarker.borderWidth", v)),
-  setVectorByWallsElevatorMarkerGapWidth: (v) => set(wallsParam("elevatorMarker.gapWidth", v)),
-  setVectorByWallsElevatorMarkerSize: (v) => set(wallsParam("elevatorMarker.size", v)),
   patchVectorByWallsTeleportSettings: (patch) =>
     set((s) => wallsPatch(pruneUnchanged(s.vectorByWallsSettings, patch), TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))(s)),
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>

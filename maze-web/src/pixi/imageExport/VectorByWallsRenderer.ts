@@ -3,6 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { buildMarkerScaler } from "../markerScale";
+import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
@@ -627,9 +629,18 @@ export class VectorByWallsRenderer {
     });
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, this.geometryCache.teleportEdges);
+    const teleportStyle = buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor);
+    const verticalStyle = buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings);
+    // Marker size adaptation (GitHub issue #819): one scaler for every marker kind on this floor.
+    const scaler = buildMarkerScaler(cfg, [
+      ...footprintsOfMarkers(markerData),
+      ...footprintsOfVertical(this.geometryCache.verticalConnectionMarkers, verticalStyle),
+      ...footprintsOfTeleports(this.geometryCache.teleportEdges, teleportStyle),
+    ]);
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
-      lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
+      scaler,
+      lineStyle: teleportStyle,
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
       groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
@@ -642,12 +653,12 @@ export class VectorByWallsRenderer {
       fieldCells: cells,
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: markerData, scaler });
 
-    const verticalStyle = buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings);
     this.verticalConnections.render({
       markers: this.geometryCache.verticalConnectionMarkers,
       style: verticalStyle,
+      scaler,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
       interactive: true,
@@ -656,12 +667,12 @@ export class VectorByWallsRenderer {
     if (state.vectorByWallsSettings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: this.geometryCache.teleportEdges,
-        teleportStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
+        teleportStyle,
         groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual);
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler);
       this.markerIndex.render({ ...indexLabels, style: state.vectorByWallsSettings.markerIndex, floorColor });
     } else {
       this.markerIndex.clear();

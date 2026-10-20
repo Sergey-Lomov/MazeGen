@@ -122,7 +122,7 @@ export interface TextStyleFields {
  *  stroke-only icon (stairs zigzag or elevator shaft box), no fill/border/gap concept the way
  *  `MarkerSettings` has. `size` is in px (GitHub issue #681), same convention as
  *  `MarkerSettings.size`. */
-export interface DecorativeLineStyle {
+export interface DecorativeLineStyle extends SizeAdaptationField {
   lineColor: number;
   lineWidth: number;
   size: number;
@@ -305,7 +305,7 @@ export interface VerticalDecorativeFields {
  *  `textColor`, `textFontWeight` and `textSize` (px) are all configurable (GitHub issue #503
  *  follow-up made the fill/border independent — they previously always followed the connector
  *  color; GitHub issue #701 unified the text style with the other badges). */
-export type TeleportFloorBadgeSettings = BadgeSettings;
+export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
 
 export interface TeleportSettingsFields {
   /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
@@ -368,10 +368,20 @@ export interface MarkerAppearance {
   size: number;
 }
 
+/** Marker size adaptation (GitHub issue #819) — a marker's fill radius is scaled by
+ *  `(cellArea / meanCellArea) ^ (sizeAdaptation / 2)` of the cell it sits in; border, gap and stroke
+ *  widths stay as configured. Every marker kind carries its own value, so two markers in one cell
+ *  may be drawn at different sizes. Fraction in [0, 1]: `0` (the default) keeps the configured size,
+ *  `1` makes the marker's area proportional to its cell's. The panel shows it as a percentage and
+ *  only offers it when the field's cell areas differ noticeably. */
+export interface SizeAdaptationField {
+  sizeAdaptation: number;
+}
+
 /** One start/finish marker's appearance (GitHub issue #296) — the shared `MarkerAppearance` plus an
  *  optional free-text caption. `borderWidth: 0` (the default) draws no border, so there is no
  *  separate show-border toggle. */
-export interface MarkerSettings extends MarkerAppearance, Partial<TextStyleFields> {
+export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, Partial<TextStyleFields> {
   /** Custom badge label (GitHub issue #697), e.g. a start/finish marker's "S"/"F". Empty/omitted
    *  draws no label. Currently restricted to a single glyph — UI input truncates to the first
    *  one and restricts to the baked MSDF charset (`tools/msdf/generate.mjs`), uppercased — but the
@@ -451,6 +461,7 @@ export interface SharedStyleSourceFields {
   markerShape: MarkerShape;
   cornerStyle: CornerStyle;
   markerSize: number;
+  markerSizeAdaptation: number;
   markerFillColor: number;
   markerBorderColor: number;
   markerBorderWidth: number;
@@ -478,6 +489,7 @@ export interface VerticalSharedStyleFields {
   verticalCornerStyle: CornerStyle;
   verticalShape: MarkerShape;
   verticalSize: number;
+  verticalSizeAdaptation: number;
   verticalBorderWidth: number;
   verticalGapWidth: number;
   verticalFillColor: number;
@@ -575,6 +587,7 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   verticalDecorativeLineColor: number;
   verticalDecorativeLineWidth: number;
   verticalDecorativeSize: number;
+  verticalDecorativeSizeAdaptation: number;
   verticalDecorativeArrowSize: number;
   background: number;
   /** Original viewport grid, drawn behind the maze. */
@@ -829,6 +842,9 @@ export interface ImageExportState {
   pngExportSettings: PngExportSettings;
 }
 
+/** Marker settings records the generic `patchVectorBy*Marker` actions address. */
+export type VectorMarkerKind = "startMarker" | "finishMarker" | "twoWayPassageMarker" | "oneWayPassageMarker" | "elevatorMarker";
+
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
   /** Replaces the visual configuration and its parameter links with a loaded visual preset
@@ -873,32 +889,8 @@ export interface ImageExportActions {
   setVectorByCorridorsJunctionRadius: (v: number) => void;
   setVectorByCorridorsJoin: (join: CornerStyle) => void;
   setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
-  setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsStartMarkerText: (text: string) => void;
-  setVectorByCorridorsStartMarkerTextEnabled: (enabled: boolean) => void;
-  setVectorByCorridorsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
-  setVectorByCorridorsStartMarkerTextSize: (v: number) => void;
-  setVectorByCorridorsStartMarkerTextMargin: (v: number) => void;
-  setVectorByCorridorsStartMarkerTextColor: (color: number) => void;
-  setVectorByCorridorsStartMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsStartMarkerFillColor: (color: number) => void;
-  setVectorByCorridorsStartMarkerBorderColor: (color: number) => void;
-  setVectorByCorridorsStartMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsStartMarkerGapWidth: (v: number) => void;
-  setVectorByCorridorsStartMarkerSize: (v: number) => void;
-  setVectorByCorridorsFinishMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsFinishMarkerText: (text: string) => void;
-  setVectorByCorridorsFinishMarkerTextEnabled: (enabled: boolean) => void;
-  setVectorByCorridorsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
-  setVectorByCorridorsFinishMarkerTextSize: (v: number) => void;
-  setVectorByCorridorsFinishMarkerTextMargin: (v: number) => void;
-  setVectorByCorridorsFinishMarkerTextColor: (color: number) => void;
-  setVectorByCorridorsFinishMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsFinishMarkerFillColor: (color: number) => void;
-  setVectorByCorridorsFinishMarkerBorderColor: (color: number) => void;
-  setVectorByCorridorsFinishMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsFinishMarkerGapWidth: (v: number) => void;
-  setVectorByCorridorsFinishMarkerSize: (v: number) => void;
+  /** Writes marker fields through the parameter-links engine (detaching each written field's incoming link); `text` is a plain, unlinked write. */
+  patchVectorByCorridorsMarker: (kind: VectorMarkerKind, patch: Partial<MarkerSettings>) => void;
   setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
   setVectorByCorridorsMarkerWidenShape: (shape: MarkerWidenShape) => void;
   patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
@@ -941,27 +933,6 @@ export interface ImageExportActions {
    *  "Shared style" override to track. */
   patchVectorByCorridorsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   patchVectorByCorridorsFloorLabelSettings: (patch: Partial<FloorLabelSettings>) => void;
-  setVectorByCorridorsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsTwoWayPassageMarkerFillColor: (color: number) => void;
-  setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color: number) => void;
-  setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v: number) => void;
-  setVectorByCorridorsTwoWayPassageMarkerSize: (v: number) => void;
-  setVectorByCorridorsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsOneWayPassageMarkerFillColor: (color: number) => void;
-  setVectorByCorridorsOneWayPassageMarkerBorderColor: (color: number) => void;
-  setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsOneWayPassageMarkerGapWidth: (v: number) => void;
-  setVectorByCorridorsOneWayPassageMarkerSize: (v: number) => void;
-  setVectorByCorridorsElevatorMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsElevatorMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsElevatorMarkerFillColor: (color: number) => void;
-  setVectorByCorridorsElevatorMarkerBorderColor: (color: number) => void;
-  setVectorByCorridorsElevatorMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsElevatorMarkerGapWidth: (v: number) => void;
-  setVectorByCorridorsElevatorMarkerSize: (v: number) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
    *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportMarker.cornerStyle`). */
   /** Patches the "Shared style" > "Markers" source fields (`SharedStyleSourceFields`) and
@@ -1010,32 +981,8 @@ export interface ImageExportActions {
   setVectorByWallsOneWaySize: (v: number) => void;
   setVectorByWallsOneWayThickness: (v: number) => void;
   setVectorByWallsOneWayJoin: (join: CornerStyle) => void;
-  setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsStartMarkerText: (text: string) => void;
-  setVectorByWallsStartMarkerTextEnabled: (enabled: boolean) => void;
-  setVectorByWallsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
-  setVectorByWallsStartMarkerTextSize: (v: number) => void;
-  setVectorByWallsStartMarkerTextMargin: (v: number) => void;
-  setVectorByWallsStartMarkerTextColor: (color: number) => void;
-  setVectorByWallsStartMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsStartMarkerFillColor: (color: number) => void;
-  setVectorByWallsStartMarkerBorderColor: (color: number) => void;
-  setVectorByWallsStartMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsStartMarkerGapWidth: (v: number) => void;
-  setVectorByWallsStartMarkerSize: (v: number) => void;
-  setVectorByWallsFinishMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsFinishMarkerText: (text: string) => void;
-  setVectorByWallsFinishMarkerTextEnabled: (enabled: boolean) => void;
-  setVectorByWallsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
-  setVectorByWallsFinishMarkerTextSize: (v: number) => void;
-  setVectorByWallsFinishMarkerTextMargin: (v: number) => void;
-  setVectorByWallsFinishMarkerTextColor: (color: number) => void;
-  setVectorByWallsFinishMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsFinishMarkerFillColor: (color: number) => void;
-  setVectorByWallsFinishMarkerBorderColor: (color: number) => void;
-  setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsFinishMarkerGapWidth: (v: number) => void;
-  setVectorByWallsFinishMarkerSize: (v: number) => void;
+  /** Writes marker fields through the parameter-links engine (detaching each written field's incoming link); `text` is a plain, unlinked write. */
+  patchVectorByWallsMarker: (kind: VectorMarkerKind, patch: Partial<MarkerSettings>) => void;
   /** `verticalStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc comment (GitHub
    *  issue #347). */
   patchVectorByWallsVerticalSettings: (
@@ -1072,34 +1019,13 @@ export interface ImageExportActions {
    *  "Shared style" override to track. `cornerStyle` has its own setter below since it IS tracked
    *  (GitHub issue #430 follow-up — linked to "Shared style" like every other corner-style field). */
   patchVectorByWallsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
-  /** Same "Shared style"-tracked convention as `setVectorByWallsElevatorMarkerCornerStyle` — marks
+  /** Same "Shared style"-tracked convention as `setVectorByWallsElevatorBadgesCornerStyle` — marks
    *  the `cornerStyle` group's `elevatorBadges` field overridden before writing the value. */
   setVectorByWallsElevatorBadgesCornerStyle: (style: CornerStyle) => void;
   /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
    *  "Shared style" override to track. */
   patchVectorByWallsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   patchVectorByWallsFloorLabelSettings: (patch: Partial<FloorLabelSettings>) => void;
-  setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;
-  setVectorByWallsTwoWayPassageMarkerBorderColor: (color: number) => void;
-  setVectorByWallsTwoWayPassageMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsTwoWayPassageMarkerGapWidth: (v: number) => void;
-  setVectorByWallsTwoWayPassageMarkerSize: (v: number) => void;
-  setVectorByWallsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsOneWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsOneWayPassageMarkerFillColor: (color: number) => void;
-  setVectorByWallsOneWayPassageMarkerBorderColor: (color: number) => void;
-  setVectorByWallsOneWayPassageMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsOneWayPassageMarkerGapWidth: (v: number) => void;
-  setVectorByWallsOneWayPassageMarkerSize: (v: number) => void;
-  setVectorByWallsElevatorMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsElevatorMarkerCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsElevatorMarkerFillColor: (color: number) => void;
-  setVectorByWallsElevatorMarkerBorderColor: (color: number) => void;
-  setVectorByWallsElevatorMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsElevatorMarkerGapWidth: (v: number) => void;
-  setVectorByWallsElevatorMarkerSize: (v: number) => void;
   patchVectorByWallsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   /** Bulk form of `setVectorByWallsTeleportGroupOverride` — merges every group's patch in one store update (GitHub issue #728). */
@@ -1116,7 +1042,7 @@ export interface ImageExportActions {
   patchVectorByWallsSharedStyle: (patch: Partial<SharedStyleSourceFields>) => void;
   /** Same role as `patchVectorByCorridorsVerticalSharedStyle`, over `VectorByWallsSettings` — also
    *  covers `verticalDecorativeLineColor` (Walls-only, GitHub issue #668). */
-  patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth" | "verticalDecorativeSize" | "verticalDecorativeArrowSize">>) => void;
+  patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth" | "verticalDecorativeSize" | "verticalDecorativeSizeAdaptation" | "verticalDecorativeArrowSize">>) => void;
   /** Same role as `resetVectorByCorridorsSharedStyleField`, over `VectorByWallsParamPath`. */
   resetVectorByWallsSharedStyleField: (target: VectorByWallsParamPath) => void;
   /** "Synchronize" — clears every override across every group, re-applying all four shared values

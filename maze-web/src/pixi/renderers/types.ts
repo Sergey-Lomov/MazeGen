@@ -273,6 +273,8 @@ export type MarkerData = {
   /** Label font size in px (unified with elevator/teleport floor badges). Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`; unset means `0`. */
+  sizeAdaptation?: number;
 };
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
@@ -371,6 +373,8 @@ export type TeleportLineStyle = {
   shape: MarkerShape;
   cornerStyle: CornerStyle;
   size: number;
+  /** Marker size adaptation (GitHub issue #819) of the ordinary teleport markers — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
   edgeColor: number;
   /** Independent from `edgeColor` — a marker's border doesn't have to mirror its fill color. */
   edgeBorderColor: number;
@@ -470,6 +474,8 @@ export type VerticalMarkerStyle = {
   gapWidth: number;
   gapColor: number;
   size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
 };
 
 /** Same field shape as `DecorativeLineStyle` (`imageExportTypes.ts`), kept as its own type for the
@@ -479,6 +485,8 @@ export type VerticalDecorativeLineStyle = {
   lineColor: number;
   lineWidth: number;
   size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
 };
 
 /** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc

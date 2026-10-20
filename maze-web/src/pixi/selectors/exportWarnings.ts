@@ -929,7 +929,7 @@ function computeMarkerIndexStopLineWarning(
 }
 
 /** Endpoint visual stand-in: the text-fit passes need the index strings and cells, not plate colors. */
-const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, borderWidth: 0, borderMatchColor: 0 });
+const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, fillRadius: 0, sizeAdaptation: 0, borderWidth: 0, borderMatchColor: 0 });
 
 const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   start: "marker_text_overflow",

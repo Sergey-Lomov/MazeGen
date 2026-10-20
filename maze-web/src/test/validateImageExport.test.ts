@@ -8,6 +8,13 @@ import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry"
 describe("validateMarkerSettings", () => {
   const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker;
 
+  it("clamps sizeAdaptation to [0, 1] and falls back on junk (GitHub issue #819)", () => {
+    expect(validateMarkerSettings({ sizeAdaptation: 0.4 }, "path", fallback).sizeAdaptation).toBe(0.4);
+    expect(validateMarkerSettings({ sizeAdaptation: 7 }, "path", fallback).sizeAdaptation).toBe(1);
+    expect(validateMarkerSettings({ sizeAdaptation: -2 }, "path", fallback).sizeAdaptation).toBe(0);
+    expect(validateMarkerSettings({ sizeAdaptation: "x" }, "path", { ...fallback, sizeAdaptation: 0.3 }).sizeAdaptation).toBe(0.3);
+  });
+
   it("round-trips text, textEnabled, textFontWeight, textSize and textColor", () => {
     const result = validateMarkerSettings(
       { ...fallback, text: "x", textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },
@@ -84,14 +91,14 @@ describe("validateVerticalSettingsFields", () => {
   // saved before the split had one shared `verticalPassageMarker` for both two-way and one-way
   // passages — both new fields must seed from it on first load, matching how it actually rendered.
   it("seeds both twoWayPassageMarker and oneWayPassageMarker from the legacy verticalPassageMarker field", () => {
-    const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, cornerStyle: "round" };
+    const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, sizeAdaptation: 0.2, cornerStyle: "round" };
     const result = validateVerticalSettingsFields({ verticalPassageMarker: legacyMarker }, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.twoWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
     expect(result.oneWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
   });
 
   it("prefers the current twoWayPassageMarker/oneWayPassageMarker fields over the legacy shared one", () => {
-    const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, cornerStyle: "round" };
+    const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, sizeAdaptation: 0.2, cornerStyle: "round" };
     const twoWay = { ...legacyMarker, shape: "square", fillColor: 0x111111 };
     const oneWay = { ...legacyMarker, shape: "diamond", fillColor: 0x222222 };
     const result = validateVerticalSettingsFields(
@@ -143,7 +150,7 @@ describe("validateVerticalDecorativeFields", () => {
 
   // Decorative line style fields (GitHub issue #428)
   it("reads decorativeStairsTwoWay/decorativeStairsOneWay/decorativeElevator as-is when valid", () => {
-    const decorative = { lineColor: 0xabcdef, lineWidth: 4, size: 0.3 };
+    const decorative = { lineColor: 0xabcdef, lineWidth: 4, size: 0.3, sizeAdaptation: 0.2 };
     const result = validateVerticalDecorativeFields(
       { decorativeStairsTwoWay: decorative, decorativeStairsOneWay: decorative, decorativeElevator: decorative },
       "path",
@@ -183,11 +190,11 @@ describe("validateVerticalDecorativeFields", () => {
 });
 
 describe("validateDecorativeLineStyle", () => {
-  const fallback = { lineColor: 0x111111, lineWidth: 2, size: 0.22 };
+  const fallback = { lineColor: 0x111111, lineWidth: 2, size: 0.22, sizeAdaptation: 0 };
 
   it("reads a valid object's fields as-is", () => {
-    const result = validateDecorativeLineStyle({ lineColor: 0xff0000, lineWidth: 5, size: 0.4 }, "path", fallback);
-    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: 5, size: 0.4 });
+    const result = validateDecorativeLineStyle({ lineColor: 0xff0000, lineWidth: 5, size: 0.4, sizeAdaptation: 0.5 }, "path", fallback);
+    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: 5, size: 0.4, sizeAdaptation: 0.5 });
   });
 
   it("falls back to the given default when the value is null/undefined", () => {
@@ -202,7 +209,7 @@ describe("validateDecorativeLineStyle", () => {
 
   it("fills in individually-missing fields from the fallback instead of discarding the whole object", () => {
     const result = validateDecorativeLineStyle({ lineColor: 0xff0000 }, "path", fallback);
-    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: fallback.lineWidth, size: fallback.size });
+    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: fallback.lineWidth, size: fallback.size, sizeAdaptation: fallback.sizeAdaptation });
   });
 });
 
@@ -211,14 +218,14 @@ describe("validateTeleportFloorBadgeSettings", () => {
   const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
 
   it("reads a valid object's fields as-is", () => {
-    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3 }, "path", fallback))
-      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3 });
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 }, "path", fallback))
+      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin });
+      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin, sizeAdaptation: fallback.sizeAdaptation });
   });
 
   it("clamps the text margin into its range", () => {
