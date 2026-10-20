@@ -12,7 +12,7 @@ import type { FieldConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
 import { decodePoint, encodePoint } from "./tessellationProjection";
 import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type SymmetryPoint } from "./symmetry";
-import { selectionBoundarySegments } from "./fieldSelectionGeometry";
+import { selectionBoundary } from "./fieldSelectionGeometry";
 import { canvas } from "./colorTokens";
 import { connectedMagicWandCells } from "./magicWand";
 import { getCartesian } from "./cartesianCache";
@@ -998,7 +998,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(cells, cfg),
+        ...selectionBoundary(cells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 1,
       },
@@ -1018,7 +1018,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(this.lastPreviewCells, cfg),
+        ...selectionBoundary(this.lastPreviewCells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },
@@ -1066,7 +1066,7 @@ export class FieldEditController {
       cfg,
       {
         kind: "boundary",
-        segments: selectionBoundarySegments(this.selectionCells, cfg),
+        ...selectionBoundary(this.selectionCells, cfg),
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },

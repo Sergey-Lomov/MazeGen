@@ -356,7 +356,7 @@ Self-intersecting polygons use the even-odd rule.
 In Add or Remove mode, polygon commits call `addFieldPoints` or `removeFieldPoints` once with the
 stored preview cell set. In Select mode, shape and polygon candidates contain only existing field
 cells. Point selection may preview every traversed cell while the button is held; on release its
-candidate set is collapsed to existing field cells and replaced by a dashed exposed boundary;
+candidate set is collapsed to existing field cells and replaced by a filled contour inset from the cell edges;
 the field is not changed and the selection remains visible until another gesture, tool, mode, or
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
@@ -366,10 +366,13 @@ primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion consider
 four orientation classes in its periodic 4×4 coordinate model.
 
 In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
-edited. Once the gesture is released, that outline is replaced by dashed exposed edges of the
-selected cell union (internal shared edges and polygon vertex handles are not rendered). Point
+edited. Once the gesture is released, that outline is replaced by a filled contour with a dashed outline of the
+selected cell union, inset from the cell edges the same way region highlights are (internal shared
+edges and polygon vertex handles are not rendered). The inset keeps the selection visible where a
+selected edge coincides with the solid field boundary. Cells touching only at a corner form
+separate contours. Point
 selection collects the existing cells reached by the pointer drag and previews those cells in
-white until pointerup. Pointerup replaces the white fill with the same dashed boundary preview.
+white until pointerup. Pointerup replaces the white fill with the same inset contour preview.
 Once a selection exists, clicking a selected cell enters selection manipulation: dragging previews
 the translated cells, Enter confirms the atomic move, Escape cancels the pending drag, and
 Backspace/Delete removes the selected source cells. The selection is not changed by a drag until

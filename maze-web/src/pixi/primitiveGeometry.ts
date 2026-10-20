@@ -32,6 +32,8 @@ export type PrimitiveWorldGeometry =
   | {
       kind: "boundary";
       segments: Array<[WorldPoint, WorldPoint]>;
+      /** Edge-connected component id per segment; keeps corner-touching cells in separate contours. */
+      components?: number[];
       /** Optional fill style for temporary cells rendered with the boundary. */
       cellColor?: number;
       cellAlpha?: number;
