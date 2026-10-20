@@ -9,6 +9,7 @@ import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig } from "../fieldConfig";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import { fieldOf } from "./fieldConfigFixtures";
+import { selectSplitCellRenderer } from "../pixi/splitCellRenderer";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -422,6 +423,32 @@ describe("buildOneWayCorridorIndicatorPositions", () => {
 // --- buildSplitPassages ---
 
 describe("buildSplitPassages", () => {
+  it("uses a sharper special bridge renderer for a 4.8.8 square", () => {
+    // `regular:4` also occurs in the ordinary square tessellation. Only a 4.8.8 square needs
+    // this treatment: its bridge silhouette meets seams of the adjacent octagons.
+    expect(selectSplitCellRenderer("square", "regular:4").bridgeTaperFrac).toBe(0.2);
+    expect(selectSplitCellRenderer("square_octagon", "regular:4").bridgeTaperFrac).toBe(0.08);
+    expect(selectSplitCellRenderer("square_octagon", "regular:8").bridgeTaperFrac).toBe(0.2);
+
+    // `(1,1)` is a square in 4.8.8. Its four diagonal neighbours form two opposite pairs.
+    const squareOctagonCfg = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const nodes = [
+      n(0, 1, 1), n(1, 2, 2), n(2, 0, 0),
+      n(3, 0, 2), n(4, 1, 1), n(5, 2, 0),
+    ];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
+    const result = buildSplitPassages(nodes, edges, squareOctagonCfg);
+    expect(result.specialShapes).toHaveLength(1);
+    const shape = result.specialShapes[0];
+    expect(shape.kind).toBe("bridge");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const taperLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[1], shape.edge1[1]));
+    const bridgeLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[3], shape.edge1[3]));
+    expect(taperLength / bridgeLength).toBeCloseTo(0.08, 5);
+  });
+
   it("unsplit point produces no passages", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     expect(buildSplitPassages(nodes, [e(0, 1), e(1, 0)], squareCfg).passages).toEqual([]);

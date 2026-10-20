@@ -258,6 +258,8 @@ Web UI: `CustomVertexBased`'s generation params (Growth, One-way, Teleport, Spli
 
 Whether the panel is open is a persistent part of generation config, following the same pattern as `qcExperiment` above: `vertexSettingsPanelOpen` (`maze-web/src/store/generationTypes.ts`) is serialized into the project file (`ProjectFile.generation.vertexSettingsPanelOpen`, `maze-web/src/store/projectExport/types.ts`), so loading a project restores the panel to the state it was saved in. Old project files predating this field default to closed (`optBool` fallback in `parseAndValidate`). The panel auto-closes (`vertexSettingsPanelOpen` reset to `false`) whenever `setGenerationMethod` switches the algorithm away from `custom_vertex_based`, since the panel has nothing to show for any other method.
 
+Every `SliderRow` in this panel also has a bounded numeric density editor. It accepts any finite value from `0` through `1`, preserving precision beyond the slider's `0.01` increment. This applies consistently to growth, one-way, teleport, split, and vertical controls; the existing Rust/WASM range clamp remains the final validation boundary. Each editor has an accessible name; where a short row label is reused, that name includes its category.
+
 ## Seed-history navigation
 
 The seed field's previous/next history buttons use the shared tool-tooltip layout: the primary line identifies the action (for example, "Previous seed") and a tertiary second line identifies the destination seed (for example, "Seed: 42"). At a history boundary, each disabled button instead gives a tertiary explanation that there is no earlier or later seed. This makes the current position clear without opening the Seed History dialog (GitHub issue #780).
