@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
@@ -322,6 +322,10 @@ export interface TeleportSettingsFields {
   /** `"none"` (no connector), `"straight"` (direct center-to-center) or `"orthogonal"`
    *  (single-bend, axis-aligned, with a local collision offset — see `teleportConnectorRouting.ts`). */
   teleportConnectorStyle: TeleportConnectorStyle;
+  /** Direction a `"curved"` connector bows, relative to the field origin. */
+  teleportCurveDirection?: TeleportCurveDirection;
+  /** Curved connector control-point offset, from 0 (straight) through 1. */
+  teleportCurveStrength?: number;
   /** "Avoid field exit" toggle (GitHub issue #300, `"orthogonal"` connectors only) — off by default.
    *  When on, a candidate leaving the maze field's own cell footprint gets a top-priority penalty
    *  outranking every other routing weight (see `FIELD_EXIT_WEIGHT` in `teleportConnectorRouter.ts`),

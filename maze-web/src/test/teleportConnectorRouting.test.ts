@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeRadialConnectors, routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
+import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
@@ -39,6 +39,35 @@ describe("routeRadialConnectors", () => {
 
   it("keeps a connector touching the center as a direct radial line", () => {
     expect(routeRadialConnectors([edge([0, 0], [0, 10])])).toEqual([{ points: [0, 0, 0, 10] }]);
+  });
+});
+
+describe("routeCurvedConnectors", () => {
+  it("uses inward and outward control points on opposite sides of a regular field", () => {
+    const inward = routeCurvedConnectors([edge([40, 0], [0, 40])], "inward", 0.5)[0].points;
+    const outward = routeCurvedConnectors([edge([40, 0], [0, 40])], "outward", 0.5)[0].points;
+    const mid = Math.floor(inward.length / 4) * 2;
+    expect(Math.hypot(inward[mid], inward[mid + 1])).toBeLessThan(Math.hypot(outward[mid], outward[mid + 1]));
+  });
+
+  it("uses the requested radial side unless marker avoidance needs the other one", () => {
+    const from: [number, number] = [80, 0];
+    const to: [number, number] = [0, 80];
+    const inward = routeCurvedConnectors([edge(from, to)], "inward", 0.5, true)[0].points;
+    const avoided = routeCurvedConnectors([edge(from, to)], "inward", 0.5, true, 8, [[28, 28]])[0].points;
+    const mid = Math.floor(inward.length / 4) * 2;
+    expect(Math.hypot(avoided[mid], avoided[mid + 1])).toBeGreaterThan(Math.hypot(inward[mid], inward[mid + 1]));
+  });
+
+  it("keeps a radial curve touching the center as a direct line", () => {
+    expect(routeCurvedConnectors([edge([0, 0], [50, 0])], "outward", 1, true)).toEqual([{ points: [0, 0, 50, 0] }]);
+  });
+
+  it("uses the shortest-arc midpoint ray for diametrically opposite radial endpoints", () => {
+    const points = routeCurvedConnectors([edge([0, 80], [0, -80])], "outward", 0.5, true)[0].points;
+    const mid = Math.floor(points.length / 4) * 2;
+    expect(points[mid]).toBeLessThan(0);
+    expect(points[mid + 1]).toBeCloseTo(0, 10);
   });
 });
 

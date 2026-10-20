@@ -5,7 +5,7 @@ import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
@@ -187,6 +187,9 @@ export class TeleportRenderer {
     const markerAvoidanceRadius =
       (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
     const routed =
+      style.connectorStyle === "curved"
+        ? routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints)
+        :
       cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal"
         ? routeRadialConnectors(edges, markerAvoidanceRadius, waypoints)
         : style.connectorStyle === "orthogonal"

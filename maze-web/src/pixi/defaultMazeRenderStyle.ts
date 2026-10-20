@@ -44,7 +44,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     shape: "diamond", cornerStyle: "round", size: MARKER_SIZE, sizeAdaptation: 0,
     edgeColor: canvas.teleport.default, edgeBorderColor: canvas.teleport.default,
     borderWidth: MARKER_BORDER_WIDTH, edgeGapWidth: 3,
-    connectorColor: canvas.teleport.default, connectorWidth: 3, connectorStyle: "orthogonal",
+    connectorColor: canvas.teleport.default, connectorWidth: 3, connectorStyle: "orthogonal", curveDirection: "inward", curveStrength: 0.25,
     arrowMode: "periodic", arrowPeriod: 5, arrowSize: 10, connectorGapWidth: 3,
     floorColor: canvas.floor.default,
     // GitHub issue #485 — defaults reproduce the pre-#485 hardcoded look exactly: a circle at the

@@ -2,7 +2,7 @@ import { useColorVisibility } from "../ColorVisibilityContext";
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
+import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
@@ -411,6 +411,7 @@ export function TeleportSettingsSection<P extends string>({
             { value: "none" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_none"]() },
             { value: "straight" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_straight"]() },
             { value: "orthogonal" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_orthogonal"]() },
+            { value: "curved" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_curved"]() },
           ]}
           onChange={(v) => onChange({ teleportConnectorStyle: v })}
           linkTarget={linkTargets.connectorStyle}
@@ -423,6 +424,28 @@ export function TeleportSettingsSection<P extends string>({
             linkTarget={linkTargets.avoidFieldExit}
           />
         )}
+        {settings.teleportConnectorStyle === "curved" && (<>
+          <LinkedSelectRow
+            label={m["image_export.vector_by_walls.teleport_curve_direction"]()}
+            value={settings.teleportCurveDirection ?? "inward"}
+            options={[
+              { value: "inward" as TeleportCurveDirection, label: m["image_export.vector_by_walls.teleport_curve_direction_inward"]() },
+              { value: "outward" as TeleportCurveDirection, label: m["image_export.vector_by_walls.teleport_curve_direction_outward"]() },
+            ]}
+            onChange={(v) => onChange({ teleportCurveDirection: v })}
+            linkTarget={null}
+          />
+          <LinkedSliderRow
+            label={m["image_export.vector_by_walls.teleport_curve_strength"]()}
+            value={settings.teleportCurveStrength ?? 0.25}
+            onChange={(v) => onChange({ teleportCurveStrength: v })}
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            linkTarget={null}
+          />
+        </>)}
 
         {connectorShown && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
