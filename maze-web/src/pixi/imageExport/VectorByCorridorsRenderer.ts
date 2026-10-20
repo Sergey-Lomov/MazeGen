@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -126,6 +126,23 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     replaceTwoFloorElevatorsWithStairs: boolean;
     verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
+
+  /** Shortest passage face over all floors, memoized on the maze data alone: the thickness slider
+   *  must not rebuild every floor's segments. Contour widths never exceed it. */
+  private faceLimitCache: { nodes: NodeDto[]; edges: EdgeDto[]; floors: unknown; cfg: FieldConfig; limit: number } | null = null;
+
+  private corridorFaceLimit(state: { nodes: NodeDto[]; edges: EdgeDto[]; floors: { id: string }[] }, cfg: FieldConfig): number {
+    const cache = this.faceLimitCache;
+    if (cache && cache.nodes === state.nodes && cache.edges === state.edges && cache.floors === state.floors && cache.cfg === cfg) return cache.limit;
+    const limit = shortestCorridorFaceAcrossFloors(state.nodes, state.edges, state.floors, cfg);
+    this.faceLimitCache = { nodes: state.nodes, edges: state.edges, floors: state.floors, cfg, limit };
+    return limit;
+  }
+
+  /** Corridor width for contour shapes: one width on every floor, however short a face is elsewhere. */
+  private contourWidth(settings: VectorByCorridorsSettings): number {
+    return Math.min(settings.thickness, this.faceLimitCache?.limit ?? Infinity);
+  }
 
   /** Inputs `corridorTiles` was last built from — see `updateCorridorTiles`. */
   private corridorTileInputs: { segments: CorridorSegment[]; kind: "contour" | "miter" | "round_line"; width: number; junctionRadius: number } | null = null;
@@ -345,6 +362,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Corridor network (GitHub issue #736): one tile per cell, shared per tile shape — see
     // `updateCorridorTiles`. Everything drawn into `corridors` below sits on top of the tiles.
     this.corridors.clear();
+    this.corridorFaceLimit(state, cfg);
     this.updateCorridorTiles(settings, this.geometryCache.segments);
 
     // One-way passage indicator (GitHub issue #312) — a row of chevrons drawn at each one-way
@@ -551,7 +569,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  is a tint. */
   private updateCorridorTiles(settings: VectorByCorridorsSettings, segments: CorridorSegment[]): void {
     const kind = settings.join === "miter" ? "miter" : settings.renderStyle === "contour" ? "contour" : "round_line";
-    const width = settings.thickness;
+    const width = kind === "contour" ? this.contourWidth(settings) : settings.thickness;
     const junctionRadius = settings.junctionRadius;
     const inputs = this.corridorTileInputs;
     if (!inputs || inputs.segments !== segments || inputs.kind !== kind || inputs.width !== width || (kind === "contour" && inputs.junctionRadius !== junctionRadius)) {
@@ -735,7 +753,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const passage of passages) {
       const segments = this.bridgeUnderlaySegments(passage, cfg);
       if (segments.length === 0) continue;
-      const contour = buildCorridorContour(segments, settings.thickness, settings.junctionRadius);
+      const contour = buildCorridorContour(segments, this.contourWidth(settings), settings.junctionRadius);
       if (contour.length === 0) continue;
       traceCorridorContour(this.corridors, contour);
       this.corridors.fill(settings.color);
@@ -918,10 +936,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
                 traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, settings.junctionRadius));
                 this.corridors.fill(settings.background);
               }
-              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, settings.junctionRadius));
+              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, this.contourWidth(settings), settings.junctionRadius));
               this.corridors.fill(settings.color);
               if (outerTurn.length === 2) {
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, settings.junctionRadius));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, this.contourWidth(settings), settings.junctionRadius));
                 this.corridors.fill(settings.color);
               }
               break;

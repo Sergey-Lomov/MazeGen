@@ -14,7 +14,7 @@ import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelect
 import * as m from "~/paraglide/messages";
 
 /** Message keys of the labels of every kind's `paramSpecs` entry. */
-type TessellationParamMessage = "tessellation.param.first_ring_cells" | "tessellation.param.ring_layout" | "tessellation.param.max_cells";
+type TessellationParamMessage = "tessellation.param.first_ring_cells" | "tessellation.param.ring_layout" | "tessellation.param.max_cells" | "tessellation.param.jitter" | "tessellation.param.seed";
 type TessellationChoiceMessage = "tessellation.param.ring_layout.classic" | "tessellation.param.ring_layout.smooth";
 
 export function getHexOrientationLabel(o: HexOrientation): string {
@@ -93,11 +93,12 @@ export function BasicConfigFeature() {
           <option value="snub_square">{m["tessellation.snub_square"]()}</option>
           <option value="curved_quadrilateral">{m["tessellation.curved_quadrilateral"]()}</option>
           <option value="radial">{m["tessellation.radial"]()}</option>
+          <option value="voronoi">{m["tessellation.voronoi"]()}</option>
         </select>
       </label>
       {TESSELLATION_UI[previewKind].paramSpecs.map((spec) => {
         const label = m[`tessellation.param.${spec.name}` as TessellationParamMessage]();
-        if (spec.type === "integer")
+        if (spec.type === "integer" || spec.type === "number")
           return (
             <SizeParam
               key={`${previewKind}:${spec.name}`}
@@ -105,6 +106,8 @@ export function BasicConfigFeature() {
               value={Number(previewParams[spec.name])}
               min={spec.min}
               max={spec.max}
+              step={spec.type === "number" ? spec.step : undefined}
+              integer={spec.type === "integer"}
               onCommit={(value) => setPreviewParams({ ...previewParams, [spec.name]: value })}
             />
           );

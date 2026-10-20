@@ -59,7 +59,7 @@ function migrateToLatest(data: unknown, fromVersion: number): unknown {
 
 // ─── Top-level parse ─────────────────────────────────────────────────────────
 
-/** Rejects params the kind does not accept: every spec'd param must be an in-range integer or one of its options and no
+/** Rejects params the kind does not accept: every spec'd param must be an in-range integer or number or one of its options and no
  * other key may appear. Core's tessellation factory enforces the same on build. */
 function validateTessellationParams(kind: TessellationKind, params: Record<string, unknown>): void {
   const specs = TESSELLATION_UI[kind].paramSpecs;
@@ -70,6 +70,9 @@ function validateTessellationParams(kind: TessellationKind, params: Record<strin
     if (spec.type === "integer") {
       if (typeof value !== "number" || !Number.isInteger(value) || value < spec.min || value > spec.max)
         throw new Error(`tessellation.params.${spec.name}: expected an integer from ${spec.min} to ${spec.max}, got ${JSON.stringify(value)}`);
+    } else if (spec.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < spec.min || value > spec.max)
+        throw new Error(`tessellation.params.${spec.name}: expected a number from ${spec.min} to ${spec.max}, got ${JSON.stringify(value)}`);
     } else if (typeof value !== "string" || !spec.options.includes(value)) {
       throw new Error(`tessellation.params.${spec.name}: expected one of ${spec.options.join(", ")}, got ${JSON.stringify(value)}`);
     }
@@ -90,7 +93,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // tessellation ({ kind, params } plus display orientation — per-floor field shape is
   // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "elongated_triangular", "snub_square", "curved_quadrilateral", "radial"] as const;
+  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "elongated_triangular", "snub_square", "curved_quadrilateral", "radial", "voronoi"] as const;
   const rawKind = assertString(tessObj.kind, "tessellation.kind");
   if (!(tessellationKinds as readonly string[]).includes(rawKind))
     throw new Error(`Invalid tessellation kind at tessellation.kind: ${rawKind}`);
@@ -250,7 +253,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
-      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], elongated_triangular: [], snub_square: [], curved_quadrilateral: [], radial: [] }, fieldEditMode: "default" };
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], elongated_triangular: [], snub_square: [], curved_quadrilateral: [], radial: [], voronoi: [] }, fieldEditMode: "default" };
   }
 
   return {

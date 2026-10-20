@@ -108,6 +108,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     snub_square: m["tessellation.snub_square"],
     curved_quadrilateral: m["tessellation.curved_quadrilateral"],
     radial: m["tessellation.radial"],
+    voronoi: m["tessellation.voronoi"],
   };
   return labels[kind]();
 }

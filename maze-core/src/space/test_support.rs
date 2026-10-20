@@ -137,3 +137,24 @@ pub(crate) fn radial_cases() -> Vec<(super::RadialTessellation, Vec<super::Radia
         })
         .collect()
 }
+
+/// Voronoi tessellations at several jitters and seeds, each with the cells within lattice
+/// distance 3 of the origin.
+pub(crate) fn voronoi_cases() -> Vec<(super::VoronoiTessellation, Vec<super::VoronoiPoint>)> {
+    [(0.0, 0), (0.15, 1), (0.4, 7)]
+        .into_iter()
+        .map(|(jitter, seed)| {
+            let tessellation = super::VoronoiTessellation::new(super::VoronoiParams {
+                jitter,
+                seed,
+                max_cells: super::voronoi::DEFAULT_CELL_LIMIT,
+            })
+            .unwrap();
+            let cells = (-3..=3)
+                .flat_map(|q| (-3..=3).map(move |r| super::VoronoiPoint { q, r }))
+                .filter(|cell| (cell.q + cell.r).abs() <= 3)
+                .collect();
+            (tessellation, cells)
+        })
+        .collect()
+}

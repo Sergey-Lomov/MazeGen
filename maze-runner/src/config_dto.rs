@@ -73,6 +73,7 @@ pub enum TessellationKind {
     ElongatedTriangular,
     CurvedQuadrilateral,
     Radial,
+    Voronoi,
 }
 
 /// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory

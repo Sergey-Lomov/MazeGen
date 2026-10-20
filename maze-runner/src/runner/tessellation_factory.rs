@@ -8,6 +8,7 @@ use maze_core::space::{
     SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriPoint,
     TriTessellation, TrihexagonalPoint, TrihexagonalTessellation, TruncatedHexagonalPoint,
     TruncatedHexagonalTessellation, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    VoronoiParams, VoronoiPoint, VoronoiTessellation,
 };
 use std::sync::Arc;
 
@@ -181,6 +182,16 @@ pub fn build_tessellation<V: TessellationVisitor>(
                 },
             ))
         }
+        TessellationKind::Voronoi => {
+            let tessellation = cached_voronoi(voronoi_params(config)?)?;
+            Ok(visitor.visit(
+                tessellation,
+                CellCodec {
+                    from_xy: |q, r| VoronoiPoint { q, r },
+                    to_xy: |p| (p.q, p.r),
+                },
+            ))
+        }
         TessellationKind::Trihexagonal => {
             reject_params(config)?;
             Ok(visitor.visit(
@@ -235,6 +246,66 @@ fn radial_params(config: &TessellationConfig) -> Result<RadialParams, String> {
         first_ring_cells,
         layout,
         max_cells,
+    })
+}
+
+thread_local! {
+    /// The last built Voronoi tessellation. Callers rebuild the instance from the config on every
+    /// call, and building one is far costlier than the other kinds (thousands of clipped regions),
+    /// so the instance of the most recent params is kept. The result is identical either way.
+    static LAST_VORONOI: std::cell::RefCell<Option<(VoronoiParams, Arc<VoronoiTessellation>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn cached_voronoi(params: VoronoiParams) -> Result<Arc<VoronoiTessellation>, String> {
+    if let Some(hit) = LAST_VORONOI.with(|last| {
+        last.borrow()
+            .as_ref()
+            .filter(|(cached, _)| *cached == params)
+            .map(|(_, tessellation)| Arc::clone(tessellation))
+    }) {
+        return Ok(hit);
+    }
+    let tessellation = Arc::new(VoronoiTessellation::new(params)?);
+    LAST_VORONOI.with(|last| *last.borrow_mut() = Some((params, Arc::clone(&tessellation))));
+    Ok(tessellation)
+}
+
+/// The jitter, seed and cell limit of a Voronoi tessellation: the required number `jitter`,
+/// integer `seed` and integer `max_cells`; any other param is rejected.
+fn voronoi_params(config: &TessellationConfig) -> Result<VoronoiParams, String> {
+    const JITTER: &str = "jitter";
+    const SEED: &str = "seed";
+    const LIMIT: &str = "max_cells";
+    if let Some(key) = config
+        .params
+        .keys()
+        .find(|key| ![JITTER, SEED, LIMIT].contains(&key.as_str()))
+    {
+        return Err(format!(
+            "tessellation {:?} does not accept param \"{key}\"",
+            config.kind
+        ));
+    }
+    let required = |name: &str| {
+        config
+            .params
+            .get(name)
+            .ok_or_else(|| format!("tessellation {:?} requires param \"{name}\"", config.kind))
+    };
+    let integer = |name: &str| -> Result<u32, String> {
+        required(name)?
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| format!("param \"{name}\" must be a non-negative integer"))
+    };
+    let jitter = required(JITTER)?
+        .as_f64()
+        .ok_or_else(|| format!("param \"{JITTER}\" must be a number"))?;
+    Ok(VoronoiParams {
+        jitter,
+        seed: integer(SEED)?,
+        max_cells: integer(LIMIT)?,
     })
 }
 
@@ -429,6 +500,63 @@ mod tests {
             ),
         ] {
             let err = build_tessellation(&cfg, Probe).unwrap_err();
+            assert!(err.contains(needle), "{needle}: {err}");
+        }
+    }
+
+    fn voronoi_config(params: serde_json::Value) -> TessellationConfig {
+        TessellationConfig {
+            kind: TessellationKind::Voronoi,
+            params: params.as_object().unwrap().clone(),
+        }
+    }
+
+    #[test]
+    fn builds_voronoi_without_shape_templates() {
+        let cfg =
+            voronoi_config(serde_json::json!({ "jitter": 0.15, "seed": 3, "max_cells": 3000 }));
+        assert_eq!(build_tessellation(&cfg, Probe), Ok((vec![], (3, -2))));
+    }
+
+    #[test]
+    fn rejects_invalid_voronoi_params_with_a_reason() {
+        for (params, needle) in [
+            (serde_json::json!({}), "requires param"),
+            (
+                serde_json::json!({ "jitter": 0.5, "seed": 1, "max_cells": 3000 }),
+                "jitter",
+            ),
+            (
+                serde_json::json!({ "jitter": -0.1, "seed": 1, "max_cells": 3000 }),
+                "jitter",
+            ),
+            (
+                serde_json::json!({ "jitter": "x", "seed": 1, "max_cells": 3000 }),
+                "jitter",
+            ),
+            (
+                serde_json::json!({ "jitter": 0.1, "max_cells": 3000 }),
+                "seed",
+            ),
+            (
+                serde_json::json!({ "jitter": 0.1, "seed": -1, "max_cells": 3000 }),
+                "seed",
+            ),
+            (
+                serde_json::json!({ "jitter": 0.1, "seed": 1.5, "max_cells": 3000 }),
+                "seed",
+            ),
+            (serde_json::json!({ "jitter": 0.1, "seed": 1 }), "max_cells"),
+            (
+                serde_json::json!({ "jitter": 0.1, "seed": 1, "max_cells": 50 }),
+                "max_cells",
+            ),
+            (
+                serde_json::json!({ "jitter": 0.1, "seed": 1, "max_cells": 3000, "extra": 1 }),
+                "extra",
+            ),
+        ] {
+            let err = build_tessellation(&voronoi_config(params), Probe).unwrap_err();
             assert!(err.contains(needle), "{needle}: {err}");
         }
     }

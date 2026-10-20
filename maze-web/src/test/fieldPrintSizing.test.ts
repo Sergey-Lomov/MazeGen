@@ -140,9 +140,9 @@ describe("field print sizing", () => {
 
   describe("rect search matches a full scan", () => {
     const smallSheet = { ...printInput, paperSize: "custom" as const, customWidthMm: 45, customHeightMm: 55 };
-    // Core has no parallelogram preset, and the radial kind has no rect.
+    // Core has no parallelogram preset, and the radial and voronoi kinds have no rect.
     const kinds = (Object.keys(TESSELLATION_UI) as TessellationKind[])
-      .filter((kind) => kind !== "radial" && !TESSELLATION_UI[kind].editor.axisAlignedGrid);
+      .filter((kind) => kind !== "radial" && kind !== "voronoi" && !TESSELLATION_UI[kind].editor.axisAlignedGrid);
     const shape = "rect" as const;
 
     it.each(kinds)(

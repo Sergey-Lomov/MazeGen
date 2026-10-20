@@ -1,11 +1,12 @@
 import { TILE_SIZE } from "../constants";
 import type { DisplayOrientation, TessellationKind } from "../../fieldConfig";
 
-/// An integer param of a parameterized tessellation kind, as the editor and project validation see
-/// it. The bounds mirror `maze-core`'s constructor checks, which stay authoritative.
-/// One param of a parameterized kind: an integer in `min..=max` or one of a fixed set of strings.
+/// One param of a parameterized tessellation kind, as the editor and project validation see it: an
+/// integer or a real number in `min..=max`, or one of a fixed set of strings. The bounds mirror
+/// `maze-core`'s constructor checks, which stay authoritative.
 export type TessellationParamSpec =
   | { name: string; type: "integer"; min: number; max: number }
+  | { name: string; type: "number"; min: number; max: number; step: number }
   | { name: string; type: "choice"; options: readonly string[] };
 
 /// 2x2 linear part of a display transform: `[x', y'] = [a·x + c·y, b·x + d·y]`.
@@ -60,7 +61,7 @@ export interface TessellationUi {
   orientations: readonly DisplayOrientation[];
   /// Params of the kind's default `{ kind, params }` config.
   defaultParams: Record<string, unknown>;
-  /// The integer params the kind accepts, in editor order; empty for a parameterless kind.
+  /// The params the kind accepts, in editor order; empty for a parameterless kind.
   paramSpecs: readonly TessellationParamSpec[];
   /// Which maze-wide orientation setting (`hexOrientation`/`triOrientation`) this kind carries.
   orientationSlot: "hex" | "tri" | null;
@@ -414,6 +415,28 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       { name: "max_cells", type: "integer", min: 100, max: 10000 },
     ],
     // A ring is one world unit wide, drawn `TILE_SIZE` thick.
+    pixelsPerUnit: TILE_SIZE,
+    base: FLIP_Y,
+    orientation: () => IDENTITY,
+    splitCircleRotationDeg: 45,
+    equilateralSnap: null,
+    cellSidePx: TILE_SIZE,
+    cellMeasurePx: TILE_SIZE,
+    originCell: [0, 0],
+    edgeHitThreshold: TILE_SIZE * 0.08,
+  },
+  voronoi: {
+    orientationSlot: null,
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    orientations: [],
+    // Slightly irregular cells: a displacement of 0.15 of the lattice distance (see Specs/space.md).
+    defaultParams: { jitter: 0.15, seed: 1, max_cells: 3000 },
+    paramSpecs: [
+      { name: "jitter", type: "number", min: 0, max: 0.4, step: 0.05 },
+      { name: "seed", type: "integer", min: 0, max: 4294967295 },
+      { name: "max_cells", type: "integer", min: 100, max: 10000 },
+    ],
+    // A regular cell has area 1, drawn about `TILE_SIZE` wide.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
     orientation: () => IDENTITY,

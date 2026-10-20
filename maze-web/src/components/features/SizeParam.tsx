@@ -9,10 +9,14 @@ interface SizeParamProps {
   min: number;
   max: number;
   onCommit: (v: number) => void;
+  /** Step of the number input (default: the browser's, 1). */
+  step?: number;
+  /** Only whole numbers are accepted. */
+  integer?: boolean;
   disabled?: boolean;
 }
 
-export function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeParamProps) {
+export function SizeParam({ label, value, min, max, onCommit, step, integer = false, disabled = false }: SizeParamProps) {
   const hint = useFieldHint();
   const [local, setLocal] = useState(String(value));
 
@@ -20,7 +24,7 @@ export function SizeParam({ label, value, min, max, onCommit, disabled = false }
 
   function commit() {
     const n = Number(local);
-    const valid = local.trim() !== "" && Number.isFinite(n);
+    const valid = local.trim() !== "" && Number.isFinite(n) && (!integer || Number.isInteger(n));
     const result: NormalizerResult<number> = valid && n >= min && n <= max
       ? { raw: local, value: n, reason: null }
       : {
@@ -48,6 +52,7 @@ export function SizeParam({ label, value, min, max, onCommit, disabled = false }
         name={label}
         min={min}
         max={max}
+        step={step}
         value={local}
         disabled={disabled}
         aria-describedby={hint.describedBy}
