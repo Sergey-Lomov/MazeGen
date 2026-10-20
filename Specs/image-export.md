@@ -638,7 +638,7 @@ Propagation (`propagate(settings, links, changedPaths)`) is a BFS over enabled e
 are all one level deep, but supported by the engine) would carry a change at `A` through to `C`
 transitively. Editing the shared value itself (`setVectorByWallsSharedMarkerSize`, etc.) calls
 `propagate(settings, links, [sourcePath])`; editing a dependent field through its own per-mode
-setter (e.g. `setVectorByWallsStartMarkerSize`) writes the value, disables that field's incoming link
+setter (`patchVectorByWallsMarker("startMarker", { size })`, one generic action per mode for every marker field) writes the value, disables that field's incoming link
 and propagates from it, so sibling fields in the same group keep following the shared value and
 anything linked *from* the edited field follows it too (GitHub issue #704). Every store setter for a
 registry field goes through one helper in `parameterLinksEngine.ts` rather than hand-writing that
@@ -1037,6 +1037,30 @@ This mode has no special-split-shape rendering of its own to check against
 hover-highlight via `hoveredExportWarningKey`) — including its own `RegionHighlightRenderer`
 instance (`VectorByCorridorsRenderer`'s own, per the feature-renderer ownership rule, mirroring
 `VectorByWallsRenderer`'s own highlight overlay described below).
+
+### Marker size adaptation (`sizeAdaptation`, `pixi/markerScale.ts`, GitHub issue #819)
+
+Markers can grow or shrink with the area of the cell they sit in, so tessellations with cells of very different sizes (Voronoi, square-octagon, ...) keep markers in proportion. A cell of area `A` scales a marker by `S = (A / A_mean)^(k / 2)`, where `k` is the marker's own "Size adaptation" fraction in [0, 1] (default `0`, shown as 0-100%; validated by clamping on import). `0%` keeps the configured size, `100%` makes marker area proportional to cell area. Both vector render modes carry the fields.
+
+Placement (all next to the matching `size` slider, rendered through `SizeAdaptationRow`):
+
+- Per marker type: `sizeAdaptation` on `MarkerSettings` (start, finish, teleport marker, abstract two-way/one-way passage and elevator markers), `TeleportFloorBadgeSettings` and `DecorativeLineStyle` (the three decorative vertical lines, walls mode only). The field is the shared `SizeAdaptationField`; it is deliberately not part of `MarkerAppearance`, so elevator floor-number badges have no field of their own and follow the elevator marker.
+- Shared vertical-connections style: `verticalSizeAdaptation` (abstract) and `verticalDecorativeSizeAdaptation` (decorative, walls only), next to `verticalSize` / `verticalDecorativeSize`.
+- "Markers" part of the Shared style section: `markerSizeAdaptation`.
+
+All of them take part in parameter links like the sizes: `markerSizeAdaptation` feeds start/finish/teleport marker (enabled) and the vertical shared field and floor badge (disabled); `verticalSizeAdaptation` feeds the three abstract vertical markers and `verticalDecorativeSizeAdaptation` the three decorative lines (disabled).
+
+Behaviour:
+
+- Each marker type scales by its own value. Markers of different kinds in one cell may end up with different sizes.
+- The row is rendered only when `hasCellAreaSpread(cfg)` (`A_max / A_min > 1.2`); `isPathActive` mirrors it via `ParamActivityContext.hasAreaSpread` for every `*SizeAdaptation` / `*.sizeAdaptation` path.
+- Cell areas and their mean/min/max are computed once per field geometry (`getFieldAreaStats` in `cartesianCache.ts`, memoized by `fieldVersion`). Changing the setting only re-renders; the maze is not regenerated.
+- One `MarkerScaler` is built per render pass (`buildMarkerScaler`) from the footprints of every marker kind on the floor (`markerFootprints.ts`), each carrying its adaptation. Sub-renderers multiply their fill radius by `scaler.factorAt(pos, adaptation)`; border, gap and stroke sizes of start/finish and teleport markers do not scale. Vertical-connection markers scale as a whole — fill, border, gap ring, arrow and decorative strokes, elevator badges. The caption text of start/finish waypoints scales with the same factor; other text sizes do not.
+- A marker never leaves its cell: a factor above `1` is capped by bisection so the actual shape outline at the actual position, plus its border/gap ring, stays inside the cell polygon. Footprints sharing a position and an adaptation share the smallest capped factor. A marker that already overflows at `1` is never shrunk by the setting.
+- Vertical-connection markers (abstract and decorative) scale as a whole: their footprint sets `outsetScales`, so the fit check grows border/gap/line width with the factor too. Their `MarkerEndpointVisual` sets `scalesAsWhole`, so a marker-index plate offset scales the full outer radius and, with `borderWidthFromMarker`, the plate border follows the scaled marker border.
+- Text: start/finish captions, elevator badge text and teleport floor-badge labels scale with their marker. Marker-index plate text and plate size do not.
+- Corridor widen patches (`drawMarkerWidenPatches`), teleport router clearance (`maxFactor`) and marker-index plate offsets follow the scaled radius. A position without a footprint gets the plain area factor, capped at `maxFactor`.
+- Export warnings still measure markers at their unscaled sizes.
 
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
 

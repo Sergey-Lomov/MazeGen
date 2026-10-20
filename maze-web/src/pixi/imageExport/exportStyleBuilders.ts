@@ -68,6 +68,7 @@ export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorCo
     shape: settings.teleportMarker.shape,
     cornerStyle: settings.teleportMarker.cornerStyle,
     size: settings.teleportMarker.size,
+    sizeAdaptation: settings.teleportMarker.sizeAdaptation,
     edgeColor: settings.teleportMarker.fillColor,
     edgeBorderColor: settings.teleportMarker.borderColor,
     borderWidth: settings.teleportMarker.borderWidth,
@@ -99,9 +100,9 @@ function buildVerticalMarkerStyle(settings: MarkerSettings, floorColor: number):
  *  caller — it has no `verticalStyle`/decorative fields of its own at all. */
 const INERT_DECORATIVE_FILLER: VerticalDecorativeFields = {
   verticalStyle: "abstract",
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
   decorativeStairsArrowColor: canvas.floor.default,
   decorativeStairsArrowSize: 0.75,
   decorativeStairsOneWayArrowColor: canvas.floor.default,
@@ -192,6 +193,10 @@ export function resolveEffectiveEndpoints(
 function markerEndpointVisual(m: MarkerSettings | VerticalMarkerStyle, fill: number, border: number, borderWidth: number): MarkerEndpointVisual {
   return {
     outerRadius: m.size / 2 + Math.max(0, borderWidth),
+    fillRadius: m.size / 2,
+    // A vertical-connection marker scales as a whole — border and gap ring included (GitHub issue #819).
+    scalesAsWhole: true,
+    sizeAdaptation: m.sizeAdaptation,
     borderWidth: Math.max(0, borderWidth),
     borderMatchColor: borderWidth > 0 ? border : fill,
   };
@@ -239,6 +244,8 @@ export function buildMarkerIndexEndpointResolver(args: {
       const border = override?.borderColor ?? teleportStyle.edgeBorderColor;
       return {
         outerRadius: teleportStyle.size / 2 + Math.max(0, teleportStyle.borderWidth),
+        fillRadius: teleportStyle.size / 2,
+        sizeAdaptation: teleportStyle.sizeAdaptation,
         borderWidth: Math.max(0, teleportStyle.borderWidth),
         borderMatchColor: teleportStyle.borderWidth > 0 ? border : fill,
       };
@@ -250,6 +257,9 @@ export function buildMarkerIndexEndpointResolver(args: {
         : oneWay ? verticalStyle.decorativeStairsOneWay : verticalStyle.decorativeStairsTwoWay;
       return {
         outerRadius: lineStyle.size / 2,
+        fillRadius: lineStyle.size / 2,
+        scalesAsWhole: true,
+        sizeAdaptation: lineStyle.sizeAdaptation,
         // Decorative vertical elements have no marker border; their visible stroke is the line.
         borderWidth: Math.max(0, lineStyle.lineWidth),
         borderMatchColor: lineStyle.lineColor,

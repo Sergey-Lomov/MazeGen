@@ -47,13 +47,13 @@ describe("buildPresetMarkers", () => {
         pos: [startCenter.x, startCenter.y], radius: 8.5,
         shape: "circle", color: canvas.node.start, borderColor: canvas.node.start,
         borderWidth: 3, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default,
-        text: "", textColor: canvas.floor.default,
+        text: "", textColor: canvas.floor.default, sizeAdaptation: 0,
       },
       {
         pos: [finishCenter.x, finishCenter.y], radius: 8.5,
         shape: "circle", color: canvas.node.finish, borderColor: canvas.node.finish,
         borderWidth: 3, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default,
-        text: "", textColor: canvas.floor.default,
+        text: "", textColor: canvas.floor.default, sizeAdaptation: 0,
       },
     ]);
   });

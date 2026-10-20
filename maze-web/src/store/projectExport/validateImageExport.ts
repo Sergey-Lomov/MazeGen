@@ -77,6 +77,11 @@ function readMarkerAppearance(obj: Record<string, unknown> | null, fallback: Mar
   };
 }
 
+/** A marker size adaptation fraction (GitHub issue #819) — clamped into [0, 1]. */
+function optSizeAdaptation(obj: Record<string, unknown> | null, key: string, fallback: number): number {
+  return Math.min(1, Math.max(0, optNumber(obj, key, fallback)));
+}
+
 function clampTextMargin(value: number): number {
   return Math.min(TEXT_MARGIN_RANGE.max, Math.max(TEXT_MARGIN_RANGE.min, value));
 }
@@ -112,6 +117,7 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
   }
   return {
     ...readMarkerAppearance(obj, fallback),
+    sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
     textFontWeight: obj?.textFontWeight === undefined
@@ -173,7 +179,7 @@ export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fal
   } catch {
     return fallback;
   }
-  return readBadgeSettings(obj, fallback);
+  return { ...readBadgeSettings(obj, fallback), sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation) };
 }
 
 /** `DecorativeLineStyle` validation (GitHub issue #428) — same lenient-recovery convention as
@@ -190,6 +196,7 @@ export function validateDecorativeLineStyle(v: unknown, path: string, fallback: 
     lineColor: optNumber(obj, "lineColor", fallback.lineColor),
     lineWidth: optNumber(obj, "lineWidth", fallback.lineWidth),
     size: optNumber(obj, "size", fallback.size),
+    sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation),
   };
 }
 
@@ -507,6 +514,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerSizeAdaptation: optSizeAdaptation(obj, "markerSizeAdaptation", d.markerSizeAdaptation),
     markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
@@ -519,6 +527,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),
+    verticalSizeAdaptation: optSizeAdaptation(obj, "verticalSizeAdaptation", d.verticalSizeAdaptation),
     verticalBorderWidth: optNumber(obj, "verticalBorderWidth", d.verticalBorderWidth),
     verticalGapWidth: optNumber(obj, "verticalGapWidth", d.verticalGapWidth),
     verticalFillColor: optNumber(obj, "verticalFillColor", d.verticalFillColor),
@@ -529,6 +538,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     verticalDecorativeLineColor: optNumber(obj, "verticalDecorativeLineColor", d.verticalDecorativeLineColor),
     verticalDecorativeLineWidth: optNumber(obj, "verticalDecorativeLineWidth", d.verticalDecorativeLineWidth),
     verticalDecorativeSize: optNumber(obj, "verticalDecorativeSize", d.verticalDecorativeSize),
+    verticalDecorativeSizeAdaptation: optSizeAdaptation(obj, "verticalDecorativeSizeAdaptation", d.verticalDecorativeSizeAdaptation),
     verticalDecorativeArrowSize: optNumber(obj, "verticalDecorativeArrowSize", d.verticalDecorativeArrowSize),
     links,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
@@ -667,6 +677,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerSizeAdaptation: optSizeAdaptation(obj, "markerSizeAdaptation", d.markerSizeAdaptation),
     markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
@@ -679,6 +690,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),
+    verticalSizeAdaptation: optSizeAdaptation(obj, "verticalSizeAdaptation", d.verticalSizeAdaptation),
     verticalBorderWidth: optNumber(obj, "verticalBorderWidth", d.verticalBorderWidth),
     verticalGapWidth: optNumber(obj, "verticalGapWidth", d.verticalGapWidth),
     verticalFillColor: optNumber(obj, "verticalFillColor", d.verticalFillColor),

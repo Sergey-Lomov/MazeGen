@@ -19,6 +19,8 @@ export interface ParamActivityContext {
    *  only then, regardless of its coverage settings. */
   hasMarkerIndexSource: boolean;
   hasMultipleFloors?: boolean;
+  /** Cell areas of the active field differ enough for marker size adaptation to matter (GitHub issue #819). */
+  hasAreaSpread?: boolean;
 }
 
 /** Settings fields this activity check needs to read across both render modes' settings objects —
@@ -42,9 +44,9 @@ const ONE_WAY_PATHS = new Set([
   "oneWayCount", "oneWayGap", "oneWayWidth", "oneWayLength",
 ]);
 const VERTICAL_ROOT_PATHS = new Set([
-  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
   "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
+  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
 ]);
 // Vertical "Shared style" fields that only make sense for one of the two "Vector by walls"
 // `verticalStyle` modes (GitHub issue #668 follow-up, #677 follow-up) — mirrors the panel's own
@@ -55,11 +57,11 @@ const VERTICAL_ROOT_PATHS = new Set([
 // `ctx.hasVerticalSection` is true and `verticalStyle` is still checked against `"decorative"`,
 // which corridors' `undefined` never equals.
 const VERTICAL_SHARED_STYLE_ABSTRACT_ONLY = new Set([
-  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
   "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
 ]);
 const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set([
-  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
+  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
 ]);
 
 const TWO_WAY_ABSTRACT_PATHS = new Set(["twoWayArrowColor", "twoWayArrowSize", "twoWayArrowStyle", "twoWayArrowCornerStyle"]);
@@ -81,6 +83,9 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
   void registry;
   const p = path as string;
   const verticalStyle = settings.verticalStyle;
+
+  // Size adaptation (GitHub issue #819) is offered only on fields whose cells differ in area.
+  if ((p.endsWith("SizeAdaptation") || p.endsWith(".sizeAdaptation")) && ctx.hasAreaSpread === false) return false;
 
   if (startsWithAny(p, TELEPORT_PREFIXES)) {
     if (!ctx.hasTeleports) return false;

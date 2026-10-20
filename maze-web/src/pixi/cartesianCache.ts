@@ -134,6 +134,62 @@ export function getCellGeometry(x: number, y: number, cfg: FieldConfig): CellGeo
   return geometry;
 }
 
+/// Signed-area magnitude of a polygon, in world units (a unit cell has area 1 in the square tessellation).
+function polygonArea(points: readonly WorldPoint[]): number {
+  let twice = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    twice += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(twice) / 2;
+}
+
+const areaCache = new WeakMap<CellGeometryEntry, number>();
+
+/// Area of one cell in world units, computed once per cached geometry entry.
+export function getCellArea(x: number, y: number, cfg: FieldConfig): number {
+  const geometry = getCellGeometry(x, y, cfg);
+  let area = areaCache.get(geometry);
+  if (area === undefined) {
+    area = polygonArea(geometry.polyline);
+    areaCache.set(geometry, area);
+  }
+  return area;
+}
+
+/// Area statistics of the current field's cells.
+export interface CellAreaStats {
+  mean: number;
+  min: number;
+  max: number;
+}
+
+let areaStats: { version: number; stats: CellAreaStats | null } | null = null;
+
+/// Mean/min/max cell area of the field, computed once per field version (the cache rebuilds on
+/// every tessellation or cell-set change, which bumps the version); `null` for an empty field.
+export function getFieldAreaStats(cfg: FieldConfig): CellAreaStats | null {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  if (areaStats?.version === fieldVersion) return areaStats.stats;
+  let sum = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const geometry of fieldCache.values()) {
+    let area = areaCache.get(geometry);
+    if (area === undefined) {
+      area = polygonArea(geometry.polyline);
+      areaCache.set(geometry, area);
+    }
+    sum += area;
+    if (area < min) min = area;
+    if (area > max) max = area;
+  }
+  const stats = fieldCache.size === 0 ? null : { mean: sum / fieldCache.size, min, max };
+  areaStats = { version: fieldVersion, stats };
+  return stats;
+}
+
 /// World-unit center of one cell.
 export function getCartesian(x: number, y: number, cfg: FieldConfig): WorldPoint {
   return getCellGeometry(x, y, cfg).center;

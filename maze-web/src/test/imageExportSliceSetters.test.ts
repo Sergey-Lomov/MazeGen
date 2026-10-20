@@ -41,47 +41,48 @@ function readPath(obj: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], obj);
 }
 
-// Per-kind marker setters: [setter suffix, settings path, value to apply].
-const MARKER_FIELDS: [string, string, unknown][] = [
-  ["Shape", "shape", "square"],
-  ["CornerStyle", "cornerStyle", "miter"],
-  ["FillColor", "fillColor", 0x123456],
-  ["BorderColor", "borderColor", 0x654321],
-  ["BorderWidth", "borderWidth", 7],
-  ["GapWidth", "gapWidth", 5],
-  ["Size", "size", 21],
+// Per-kind marker fields: [settings field, value to apply].
+const MARKER_FIELDS: [string, unknown][] = [
+  ["shape", "square"],
+  ["cornerStyle", "miter"],
+  ["fillColor", 0x123456],
+  ["borderColor", 0x654321],
+  ["borderWidth", 7],
+  ["gapWidth", 5],
+  ["size", 21],
+  ["sizeAdaptation", 0.5],
 ];
-const TEXT_FIELDS: [string, string, unknown][] = [
-  ["TextEnabled", "textEnabled", true],
-  ["TextFontWeight", "textFontWeight", "regular"],
-  ["TextSize", "textSize", 14],
-  ["TextColor", "textColor", 0xabcdef],
+const TEXT_FIELDS: [string, unknown][] = [
+  ["textEnabled", true],
+  ["textFontWeight", "regular"],
+  ["textSize", 14],
+  ["textColor", 0xabcdef],
+  ["text", "S"],
 ];
 
-describe("per-kind marker setters write their settings path", () => {
+describe("patchVectorBy*Marker writes the patched settings path", () => {
   for (const mode of MODES) {
     const cases: [string, string, unknown][] = [];
-    for (const kind of ["Start", "Finish"]) {
-      const path = kind.toLowerCase() + "Marker";
-      for (const [suffix, field, value] of [...MARKER_FIELDS, ...TEXT_FIELDS]) {
-        cases.push([`setVectorBy${mode}${kind}Marker${suffix}`, `${path}.${field}`, value]);
-      }
-      cases.push([`setVectorBy${mode}${kind}MarkerText`, `${path}.text`, "S"]);
+    for (const kind of ["startMarker", "finishMarker"]) {
+      for (const [field, value] of [...MARKER_FIELDS, ...TEXT_FIELDS]) cases.push([kind, field, value]);
     }
-    for (const kind of ["TwoWayPassage", "OneWayPassage", "Elevator"]) {
-      const path = kind[0].toLowerCase() + kind.slice(1) + "Marker";
-      for (const [suffix, field, value] of MARKER_FIELDS) {
-        cases.push([`setVectorBy${mode}${kind}Marker${suffix}`, `${path}.${field}`, value]);
-      }
+    for (const kind of ["twoWayPassageMarker", "oneWayPassageMarker", "elevatorMarker"]) {
+      for (const [field, value] of MARKER_FIELDS) cases.push([kind, field, value]);
     }
-    cases.push([`setVectorBy${mode}ElevatorBadgesCornerStyle`, "elevatorBadges.cornerStyle", "miter"]);
-    it.each(cases)(`${mode}: %s -> %s`, (setter, path, value) => {
-      const fn = actions()[setter];
-      expect(fn, setter).toBeTypeOf("function");
-      fn(value);
-      expect(readPath(useMazeStore.getState()[settingsKey(mode)], path)).toBe(value);
+    it.each(cases)(`${mode}: %s.%s`, (kind, field, value) => {
+      const fn = actions()[`patchVectorBy${mode}Marker`];
+      expect(fn).toBeTypeOf("function");
+      fn(kind, { [field]: value });
+      expect(readPath(useMazeStore.getState()[settingsKey(mode)], `${kind}.${field}`)).toBe(value);
     });
   }
+});
+
+describe("elevator badge setters write their settings path", () => {
+  it.each(MODES)("%s: cornerStyle", (mode) => {
+    actions()[`setVectorBy${mode}ElevatorBadgesCornerStyle`]("miter");
+    expect(readPath(useMazeStore.getState()[settingsKey(mode)], "elevatorBadges.cornerStyle")).toBe("miter");
+  });
 });
 
 describe("flat vector setters write their settings path", () => {

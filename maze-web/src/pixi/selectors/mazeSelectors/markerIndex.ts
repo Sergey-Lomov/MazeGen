@@ -4,6 +4,7 @@ import type { MarkerIndexSettings } from "../../../store/imageExportTypes";
 import { getCellCenter } from "../../tessellationGeometry";
 import { formatIndexLabel } from "../../renderers/indexLabel";
 import { elevatorComponent } from "../../postEditVerticalUtils";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../../markerScale";
 
 /** Link kind of a cross-floor connection an index label hangs off. */
 export type MarkerIndexLinkKind = "teleport" | "vertical" | "elevator";
@@ -15,6 +16,14 @@ export interface MarkerEndpointVisual {
   /** Marker's visual outer radius in world px (`size / 2 + borderWidth`, `size` being a diameter —
    *  GitHub issue #681). */
   outerRadius: number;
+  /** The part of `outerRadius` that marker size adaptation scales (GitHub issue #819) — the fill
+   *  radius, i.e. `outerRadius` without the border ring. */
+  fillRadius: number;
+  /** The whole marker scales, border and gap ring included (vertical connections) — then
+   *  `fillRadius` is ignored and `outerRadius`/`borderWidth` both scale. */
+  scalesAsWhole?: boolean;
+  /** The marker kind's own size-adaptation fraction (GitHub issue #819). */
+  sizeAdaptation: number;
   /** Marker border thickness in whole pixels; the index plate mirrors it. */
   borderWidth: number;
   /** Color to use for the plate border when `borderColorFromMarker` is on: the marker's own
@@ -107,6 +116,7 @@ export function buildMarkerIndexLabels(
   activeFloorIndex: number,
   style: MarkerIndexSettings,
   resolveEndpointVisual: ResolveMarkerEndpointVisual,
+  scaler: MarkerScaler = NO_MARKER_SCALING,
 ): MarkerIndexLabelSet {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const levelOf = (id: number) => nodeById.get(id)?.level ?? 0;
@@ -183,11 +193,13 @@ export function buildMarkerIndexLabels(
       }
       const center = getCellCenter(node.x, node.y, cfg);
       const visual = resolveEndpointVisual(id, link.kind, link.oneWay);
+      const pos: [number, number] = [center.x, center.y];
+      const factor = scaler.factorAt(pos, visual.sizeAdaptation);
       labels.push({
-        pos: [center.x, center.y],
+        pos,
         label,
-        markerOuterRadius: visual.outerRadius,
-        markerBorderWidth: visual.borderWidth,
+        markerOuterRadius: visual.scalesAsWhole ? visual.outerRadius * factor : visual.outerRadius + visual.fillRadius * (factor - 1),
+        markerBorderWidth: visual.scalesAsWhole ? visual.borderWidth * factor : visual.borderWidth,
         borderMatchColor: visual.borderMatchColor,
       });
     }

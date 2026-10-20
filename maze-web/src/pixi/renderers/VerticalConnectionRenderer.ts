@@ -10,6 +10,7 @@ import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
 
 
 /** Fixed live-canvas `VerticalConnectionStyle` shared by every read-only/tool-driven view with no
@@ -335,6 +336,21 @@ function drawElevatorBadges(
   }
 }
 
+/** `settings` with every pixel dimension multiplied by `factor` — elevator badges follow the size
+ *  adaptation of the elevator marker they belong to (GitHub issue #819). */
+function scaleElevatorBadges(settings: ElevatorBadgeSettings, factor: number): ElevatorBadgeSettings {
+  if (factor === 1) return settings;
+  return {
+    ...settings,
+    size: settings.size * factor,
+    borderWidth: settings.borderWidth * factor,
+    gapWidth: settings.gapWidth * factor,
+    textSize: settings.textSize * factor,
+    distance: settings.distance * factor,
+    gap: settings.gap * factor,
+  };
+}
+
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
  *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
  *  `GenerationRenderer` can own its own instance the same way it already does for those (per
@@ -391,7 +407,10 @@ export class VerticalConnectionRenderer {
      *  vertical-passage tool's own direction-cycle click on a one-way marker, `marker.filled ===
      *  false`) — see GitHub issue #341's follow-up. */
     interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean);
+    /** Marker size adaptation (GitHub issue #819) — scales each marker's radius by its cell's factor. */
+    scaler?: MarkerScaler;
   }): void {
+    const scaler = data.scaler ?? NO_MARKER_SCALING;
     this.g.clear();
     this.g.removeChildren().forEach((c) => c.destroy());
     this.badgeLayer.removeChildren().forEach((c) => c.destroy());
@@ -401,7 +420,7 @@ export class VerticalConnectionRenderer {
 
     for (const marker of data.markers) {
       if (decorative) {
-        this.renderDecorativeMarker(marker, data.style, data.interactive);
+        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler);
         continue;
       }
 
@@ -413,12 +432,15 @@ export class VerticalConnectionRenderer {
           : marker.filled
             ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
             : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
-      const radius = settings.size / 2;
+      // The whole marker scales (GitHub issue #819): fill radius, border, gap ring, arrow strokes
+      // and elevator badges alike.
+      const factor = scaler.factorAt(marker.pos, settings.sizeAdaptation);
+      const radius = (settings.size / 2) * factor;
       const cx = marker.pos[0];
       const cy = marker.pos[1];
       const rounded = settings.cornerStyle === "round";
-      const borderWidth = settings.borderWidth ?? 0;
-      const gapWidth = settings.gapWidth ?? 0;
+      const borderWidth = (settings.borderWidth ?? 0) * factor;
+      const gapWidth = (settings.gapWidth ?? 0) * factor;
 
       // A one-way `VerticalPassage`'s two ends (`filled: false`) now draw the ordinary marker look —
       // same fill/border on both ends, no accent tint (GitHub issue #693 replaced the old
@@ -475,7 +497,7 @@ export class VerticalConnectionRenderer {
         // A single chevron gets a stronger pull toward its tip than a pair (`arrowMidpointFraction`).
         const midpointFraction = arrowMidpointFraction(arrowStyle, dys.length > 1);
         const midpointOffset = midpointFraction * pairArrowSize;
-        const thickness = arrowThickness(arrowSizeFraction);
+        const thickness = arrowThickness(arrowSizeFraction) * factor;
         // One-way marker only: centers the arrow+wall-tick *pair* on the marker, instead of
         // leaving the arrow alone centered and the tick sitting off to one side of that (GitHub
         // issue #693, centering follow-up) — mirrors `toolGlyphs.ts`'s own glyph copy of this same
@@ -520,7 +542,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
     }
   }
 
@@ -560,21 +582,24 @@ export class VerticalConnectionRenderer {
     marker: VerticalConnectionMarker,
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+    scaler: MarkerScaler,
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
-    const radius = lineStyle.size / 2;
+    const factor = scaler.factorAt(marker.pos, lineStyle.sizeAdaptation);
+    const radius = (lineStyle.size / 2) * factor;
+    const lineWidth = lineStyle.lineWidth * factor;
     const cx = marker.pos[0];
     const cy = marker.pos[1];
 
     if (marker.kind === "elevator") {
-      drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+      drawElevatorIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
       return;
     }
 
-    drawStairsIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+    drawStairsIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
 
     if (marker.direction) {
       const oneWay = !marker.filled;
@@ -588,7 +613,7 @@ export class VerticalConnectionRenderer {
       // "down" end. `"both"` never reaches a `VerticalPassage` marker (only `Elevator`, which draws
       // no decorative arrow at all — see this method's own doc comment), so it's not handled here.
       const pointsUp = marker.direction === "up";
-      drawStairsArrow(this.g, cx, cy, radius, arrowSize, arrowColor, lineStyle.lineWidth, crossedOut, tailTick, pointsUp);
+      drawStairsArrow(this.g, cx, cy, radius, arrowSize, arrowColor, lineWidth, crossedOut, tailTick, pointsUp);
     }
 
     this.wireInteractivity(marker, interactive, cx, cy, radius);

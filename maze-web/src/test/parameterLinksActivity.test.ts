@@ -175,6 +175,21 @@ describe("computeActivePaths", () => {
   });
 });
 
+describe("isPathActive: size adaptation (GitHub issue #819)", () => {
+  const check = (path: string, hasAreaSpread?: boolean) => isPathActive(path, {} as never, { ...baseCtx, hasAreaSpread }, {});
+
+  it("deactivates every adaptation path when the cell areas have no spread", () => {
+    for (const path of ["startMarker.sizeAdaptation", "teleportFloorBadge.sizeAdaptation", "markerSizeAdaptation", "verticalSizeAdaptation"]) {
+      expect(check(path, false)).toBe(false);
+    }
+  });
+
+  it("keeps an adaptation path active when the spread exists or is unknown", () => {
+    expect(check("startMarker.sizeAdaptation", true)).toBe(true);
+    expect(check("startMarker.sizeAdaptation", undefined)).toBe(true);
+  });
+});
+
 describe("isPathActive: start/finish caption", () => {
   const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, {} as never, baseCtx, settings);
 

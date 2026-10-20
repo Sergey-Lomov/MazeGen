@@ -255,7 +255,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("changing the start marker fill color updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).not.toBe(0x654321);
-    act(() => useMazeStore.getState().setVectorByCorridorsStartMarkerFillColor(0x654321));
+    act(() => useMazeStore.getState().patchVectorByCorridorsMarker("startMarker", { fillColor: 0x654321 }));
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
   });
 

@@ -4,6 +4,8 @@ import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarke
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { buildMarkerScaler } from "../markerScale";
+import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
@@ -401,13 +403,22 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       edges,
     );
 
+    // Marker size adaptation (GitHub issue #819): one scaler for every marker kind on this floor.
+    const teleportStyle = buildTeleportLineStyle(settings, settings.color);
+    const verticalStyle = buildVerticalConnectionStyle(settings, settings.color);
+    const scaler = buildMarkerScaler(cfg, [
+      ...footprintsOfMarkers(markerData),
+      ...footprintsOfVertical(this.geometryCache.verticalConnectionMarkers, verticalStyle),
+      ...footprintsOfTeleports(this.geometryCache.teleportEdges, teleportStyle),
+    ]);
+
     this.markerWiden.clear();
     // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide
     // with the passage line (GitHub issue #311). This has its own layer, above split-gap geometry:
     // a split gap is background-colored and must not be able to cut a hairline through the marker's
     // corridor-colored expansion (GitHub issue #561). The layer remains below the marker containers.
     const squareCornerStyle = settings.join;
-    drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
+    drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle, scaler);
 
     // Teleport markers get the same widen patch, reusing the one `markerWidenPadding`/
     // `markerWidenShape` settings (GitHub issue #313 follow-up) — no separate teleport-only setting.
@@ -430,6 +441,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       settings.markerWidenPadding,
       settings.markerWidenShape,
       squareCornerStyle,
+      scaler,
     );
 
     // Vertical-connection markers get the same widen patch (GitHub issue #348, parity follow-up to
@@ -443,6 +455,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       settings.markerWidenPadding,
       settings.markerWidenShape,
       squareCornerStyle,
+      scaler,
     );
 
     // Split points (GitHub issue #314) — drawn after the plain corridor stroke and marker widen
@@ -461,11 +474,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
+      scaler,
       // `floorColor` occludes an outline (exit-only) teleport point's own line pass-through and
       // fills its gap rings — on this canvas that's the corridor's own color, not the canvas
       // background, since a teleport point sits directly on the passage line, not on an empty
       // floor tile the way "Vector by walls"' floor does.
-      lineStyle: buildTeleportLineStyle(settings, settings.color),
+      lineStyle: teleportStyle,
       groupCustomization: settings.teleportGroupCustomization,
       groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
@@ -478,12 +492,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: markerData, scaler });
 
-    const verticalStyle = buildVerticalConnectionStyle(settings, settings.color);
     this.verticalConnections.render({
       markers: this.geometryCache.verticalConnectionMarkers,
       style: verticalStyle,
+      scaler,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
       interactive: true,
@@ -492,12 +506,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     if (settings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: this.geometryCache.teleportEdges,
-        teleportStyle: buildTeleportLineStyle(settings, settings.color),
+        teleportStyle,
         groupCustomization: settings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual);
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler);
       this.markerIndex.render({ ...indexLabels, style: settings.markerIndex, floorColor: settings.color });
     } else {
       this.markerIndex.clear();

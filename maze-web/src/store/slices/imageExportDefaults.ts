@@ -30,6 +30,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
     borderWidth: style.borderWidth,
     gapWidth: style.gapWidth,
     size: style.size,
+    sizeAdaptation: style.sizeAdaptation,
     ...(text !== undefined
       ? {
           text,
@@ -58,6 +59,7 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerShape: DEFAULT_MAZE_RENDER_STYLE.startMarker.shape,
   cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
+  markerSizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.startMarker.sizeAdaptation,
   markerFillColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.fillColor,
   markerBorderColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderColor,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
@@ -110,6 +112,7 @@ export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
   verticalCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.cornerStyle,
   verticalShape: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.shape,
   verticalSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.size,
+  verticalSizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.sizeAdaptation,
   verticalBorderWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.borderWidth,
   verticalGapWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.gapWidth,
   verticalFillColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.fillColor,
@@ -134,6 +137,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
     borderWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth,
     gapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeGapWidth,
     size: DEFAULT_MAZE_RENDER_STYLE.teleport.size,
+    sizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.teleport.sizeAdaptation,
   },
   teleportConnectorColor: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorColor,
   teleportConnectorWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorWidth,
@@ -257,9 +261,9 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   // until changed" rationale as every other section's own defaults.
   // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
   // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
   // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
   // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
   // one-way arrow still uses its own dedicated color (`decorativeStairsOneWayArrowColor`) below,
@@ -307,16 +311,17 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     verticalDecorativeLineColor: canvas.vertical.default,
     verticalDecorativeLineWidth: 2,
     verticalDecorativeSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay.size,
+    verticalDecorativeSizeAdaptation: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay.sizeAdaptation,
     verticalDecorativeArrowSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-    "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
+    "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
   ],
 ) as unknown as VectorByWallsSettings;
 
@@ -372,8 +377,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "thickness", "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],
 ) as unknown as VectorByCorridorsSettings;

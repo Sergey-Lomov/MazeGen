@@ -4,6 +4,7 @@ import type { DecorativeLineStyle } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing } from "../../styles/theme";
 import { LinkedColorRow, LinkedSliderRow } from "./LinkedRows";
+import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
@@ -16,7 +17,7 @@ export function DecorativeLineStyleGroup<P extends string>({ settings, onChange,
   settings: DecorativeLineStyle;
   onChange: (patch: Partial<DecorativeLineStyle>) => void;
   /** Per-field link paths (GitHub issue #652 follow-up) for this group's `Linked*Row`s. */
-  linkTargets: { lineColor: P | null; lineWidth: P | null; size: P | null };
+  linkTargets: { lineColor: P | null; lineWidth: P | null; size: P | null; sizeAdaptation: P | null };
   /** "Priority" project colors (GitHub issue #503) for the line-color row. */
   lineColorPriority?: ProjectColorEntry[];
   /** Factory default (GitHub issue #503) — pinned as the line-color row's first "Default" color. */
@@ -48,6 +49,7 @@ export function DecorativeLineStyleGroup<P extends string>({ settings, onChange,
         format={(v) => String(Math.round(v))}
         linkTarget={linkTargets.size}
       />
+      <SizeAdaptationRow value={settings.sizeAdaptation} onChange={(sizeAdaptation) => onChange({ sizeAdaptation })} linkTarget={linkTargets.sizeAdaptation} />
     </div>
   );
 }

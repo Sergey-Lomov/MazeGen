@@ -16,6 +16,8 @@ export interface MarkerStyle {
   /** Marker diameter in px (GitHub issue #681 follow-up) — same convention as
    *  `VectorByWallsSettings.teleportLineSize`. */
   size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
   /** Sharp (`"miter"`) vs. round (`"round"`) corners (GitHub issue #302 follow-up) — only affects
    *  the four regular-polygon `MarkerShape`s. */
   cornerStyle: CornerStyle;
@@ -49,7 +51,7 @@ export interface MarkerStyle {
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
 export function buildMarkerData(pos: [number, number], style: MarkerStyle): MarkerData {
   return {
-    pos, radius: style.size / 2,
+    pos, radius: style.size / 2, sizeAdaptation: style.sizeAdaptation,
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
     text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,

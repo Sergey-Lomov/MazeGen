@@ -11,6 +11,7 @@ import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGr
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's
@@ -42,6 +43,8 @@ export class TeleportRenderer {
   // GitHub issue #337 follow-up: whether a badge point's hit-circle (added in `drawGroupPoints`)
   // wires click-to-switch-floor, see `render`'s own `floorNavigable` doc comment.
   private selectionFloorNavigable = false;
+  // Marker size adaptation (GitHub issue #819): per-cell radius factors for markers and badges.
+  private selectionScaler: MarkerScaler = NO_MARKER_SCALING;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
   // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
@@ -88,7 +91,11 @@ export class TeleportRenderer {
      *  (`selectionFloorBadges`) — a badge is clickable whenever this is on, regardless of group
      *  customization state. Defaults to `false`. */
     floorNavigable?: boolean;
+    /** Marker size adaptation (GitHub issue #819) — scales each endpoint marker's and floor badge's
+     *  radius by its cell's factor; border/gap/connector widths stay as configured. */
+    scaler?: MarkerScaler;
   }): void {
+    this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
     // `.clear()` only resets the drawn path, not added children, so those must be destroyed
@@ -170,7 +177,7 @@ export class TeleportRenderer {
     // `size + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
     // just `size + borderWidth` — omitting the gap ring here would let another connector's
     // routed path visually cut through it even though it correctly avoids the marker/border proper.
-    const endpointRadius = style.size / 2;
+    const endpointRadius = (style.size / 2) * this.selectionScaler.maxFactor;
     const endpointStyle: EndpointMarkerStyle = {
       markerRadius: endpointRadius,
       markerBorderWidth: style.borderWidth + style.edgeGapWidth,
@@ -219,9 +226,9 @@ export class TeleportRenderer {
     // rationale; the marker's own border (drawn on top, also `alignment: 0` from the same `r`, see
     // `drawMarker`) covers the ring's inner `borderWidth`-wide band, leaving only the outer
     // `edgeGapWidth`-wide band visible.
-    const markerR = style.size / 2;
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
+      const markerR = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation);
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
         // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
         // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
@@ -230,7 +237,7 @@ export class TeleportRenderer {
         // `gapWidth`/`cornerStyle` are independent of the edge marker's. The gap ring matches the
         // badge's own `floorBadge.shape` and corner style, like the badge body in `drawGroupPoints`
         // below, not a forced circle.
-        const badgeR = style.floorBadge.size / 2;
+        const badgeR = (style.floorBadge.size / 2) * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation);
         if (style.floorBadge.gapWidth > 0) {
           drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, style.floorBadge.cornerStyle === "round", style.floorBadge.borderWidth + style.floorBadge.gapWidth, style.floorColor, style.floorBadge.borderWidth);
         }
@@ -255,14 +262,14 @@ export class TeleportRenderer {
     edges: TeleportEdge[],
     style: TeleportLineStyle,
   ): void {
-    const r = style.size / 2;
     const shape = override?.shape ?? style.shape;
     const color = override?.fillColor ?? style.edgeColor;
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
     // GitHub issue #485: the cross-floor badge has its own configurable shape/label/size/text
     // style, distinct from the edge marker's own `shape`/`style.size` above.
-    const badgeR = style.floorBadge.size / 2;
     for (const [px, py] of group.points) {
+      const r = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation);
+      const badgeR = (style.floorBadge.size / 2) * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation);
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
         // A floor badge stands in for the connector's off-floor endpoint — it must follow the
@@ -281,7 +288,7 @@ export class TeleportRenderer {
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
           fontWeight: style.floorBadge.textFontWeight,
-          fontSize: style.floorBadge.textSize,
+          fontSize: style.floorBadge.textSize * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation),
           borderWidth: style.floorBadge.borderWidth,
           rounded: style.floorBadge.cornerStyle === "round",
         });

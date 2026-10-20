@@ -299,6 +299,7 @@ export function TeleportSettingsSection<P extends string>({
     lineCornerStyle: P | null;
     lineShape: P | null;
     lineSize: P | null;
+    lineSizeAdaptation: P | null;
     edgeColor: P | null;
     edgeBorderColor: P | null;
     edgeBorderWidth: P | null;
@@ -314,6 +315,7 @@ export function TeleportSettingsSection<P extends string>({
     floorBadgeShape: P | null;
     floorBadgeLabelType: P | null;
     floorBadgeSize: P | null;
+    floorBadgeSizeAdaptation: P | null;
     floorBadgeFillColor: P | null;
     floorBadgeBorderColor: P | null;
     floorBadgeTextColor: P | null;
@@ -388,6 +390,7 @@ export function TeleportSettingsSection<P extends string>({
             shape: linkTargets.lineShape,
             cornerStyle: linkTargets.lineCornerStyle,
             size: linkTargets.lineSize,
+            sizeAdaptation: linkTargets.lineSizeAdaptation,
             fillColor: linkTargets.edgeColor,
             borderColor: linkTargets.edgeBorderColor,
             borderWidth: linkTargets.edgeBorderWidth,
@@ -509,6 +512,7 @@ export function TeleportSettingsSection<P extends string>({
                 shape: linkTargets.floorBadgeShape,
                 cornerStyle: linkTargets.floorBadgeCornerStyle,
                 size: linkTargets.floorBadgeSize,
+                sizeAdaptation: linkTargets.floorBadgeSizeAdaptation,
                 fillColor: linkTargets.floorBadgeFillColor,
                 borderColor: linkTargets.floorBadgeBorderColor,
                 borderWidth: linkTargets.floorBadgeBorderWidth,
