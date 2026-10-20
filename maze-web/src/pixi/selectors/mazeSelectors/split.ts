@@ -3,6 +3,7 @@ import type { FieldConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
 import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
 import { splitShapeBinding, canonicalFaceKinds } from "../../splitShape";
+import { DEFAULT_BRIDGE_TAPER_FRAC, selectSplitCellRenderer } from "../../splitCellRenderer";
 import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, facePolyline, pointAlongPolyline, type SplitFaceInput, type SplitFaceKind } from "../../splitFaceLayout";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
@@ -15,9 +16,6 @@ const BRIDGE_DECK_WIDTH_FRAC = 0.6;
  *  corridor's width, since three corridors meeting at one point need extra visual separation. */
 const TRIPLE_BRIDGE_TAPER_FRAC = 0.08;
 const TRIPLE_BRIDGE_DECK_WIDTH_FRAC = 0.4;
-
-/** Square bridges retain their original gradual narrowing/widening section. */
-const SQUARE_BRIDGE_TAPER_FRAC = 0.2;
 
 /** A hex bridge keeps its wider 60% deck, but uses the same taper angle as the narrower triple
  *  bridge. Each edge moves inward by `(1 - deckWidth) / 2`; preserving the ratio of that transverse
@@ -389,6 +387,7 @@ export function buildSplitPassagesCore<Id>(
       kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
     );
     const shapeBinding = splitShapeBinding(cfg, px, py);
+    const cellRenderer = selectSplitCellRenderer(cfg.tessellation.kind, shapeBinding?.shape);
     const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode, shapeBinding);
     // Template-specific faces below are canonical; `lc` maps one to the cell's own face.
     const lc = (canonical: number): number => shapeBinding?.localOfCanonical[canonical] ?? canonical;
@@ -445,7 +444,7 @@ export function buildSplitPassagesCore<Id>(
           pointKey,
           null,
           bridgeFaces,
-          SQUARE_BRIDGE_TAPER_FRAC,
+          DEFAULT_BRIDGE_TAPER_FRAC,
           BRIDGE_DECK_WIDTH_FRAC,
         ));
       }
@@ -480,7 +479,7 @@ export function buildSplitPassagesCore<Id>(
         pointKey,
         [faceInputs[throughIdx[0]], faceInputs[throughIdx[1]]],
         [faceInputs[crossIdx[0]], faceInputs[crossIdx[1]]],
-        specialShapeKind === "hex_bridge" ? HEX_BRIDGE_TAPER_FRAC : SQUARE_BRIDGE_TAPER_FRAC,
+        specialShapeKind === "hex_bridge" ? HEX_BRIDGE_TAPER_FRAC : cellRenderer.bridgeTaperFrac,
       ));
     } else if (specialShapeKind === "hex_diagonal") {
       // GitHub issue #319 — two nodes, neither an opposite-face pair. `buildHexDiagonalEndpoints`
