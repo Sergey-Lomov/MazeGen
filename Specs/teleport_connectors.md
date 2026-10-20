@@ -14,6 +14,12 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
 - `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below).
 
+For the `radial` tessellation, the `"orthogonal"` style follows its own rings and spokes with one
+corner. It considers two candidates: source spoke then target-ring arc, or source-ring arc then
+target spoke. The route picks the candidate that avoids other teleport/start/finish markers, then
+the shorter one. A connector touching the center remains a direct radial line. The `"straight"`
+style and every other tessellation keep their existing behavior.
+
 ## Bend axes
 
 An orthogonal connector's single bend must run along an axis *perpendicular* to the tessellation's own cell faces (a connector crossing a wall head-on, not running alongside it):

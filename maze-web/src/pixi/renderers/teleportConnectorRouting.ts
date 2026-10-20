@@ -1,7 +1,7 @@
 import type { TeleportArrowMode, TeleportEdge } from "./types";
 
-/** A drawable polyline for one connector: `points` is `[x0,y0,x1,y1,...]` (3 points for an
- *  orthogonal path — start, offset bend, end — 2 for a straight one). */
+/** A drawable polyline for one connector: `points` is `[x0,y0,x1,y1,...]`. A straight path has
+ * two points, a regular orthogonal path has three, and a radial path can include sampled arc points. */
 export type RoutedConnector = { points: number[] };
 
 /** Routes every `edges` entry as a `"straight"` center-to-center line — no bend, no collision
@@ -9,6 +9,79 @@ export type RoutedConnector = { points: number[] };
  *  existing pre-#293 look, unaffected by this module). */
 export function routeStraightConnectors(edges: TeleportEdge[]): RoutedConnector[] {
   return edges.map((e) => ({ points: [e.from[0], e.from[1], e.to[0], e.to[1]] }));
+}
+
+const RADIAL_ARC_STEP = Math.PI / 24;
+
+function radialPoint(radius: number, angle: number): [number, number] {
+  const x = radius * Math.cos(angle);
+  const y = radius * Math.sin(angle);
+  return [Math.abs(x) < 1e-12 ? 0 : x, Math.abs(y) < 1e-12 ? 0 : y];
+}
+
+function pointToPolylineDistance(point: [number, number], points: number[]): number {
+  let nearest = Infinity;
+  for (let i = 0; i + 3 < points.length; i += 2) {
+    const [ax, ay, bx, by] = [points[i], points[i + 1], points[i + 2], points[i + 3]];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((point[0] - ax) * dx + (point[1] - ay) * dy) / lengthSquared));
+    nearest = Math.min(nearest, Math.hypot(point[0] - (ax + dx * t), point[1] - (ay + dy * t)));
+  }
+  return nearest;
+}
+
+function appendPoint(points: number[], x: number, y: number): void {
+  if (points.length === 0 || points[points.length - 2] !== x || points[points.length - 1] !== y) points.push(x, y);
+}
+
+function appendArc(points: number[], radius: number, fromAngle: number, angleDelta: number): void {
+  const steps = Math.max(1, Math.ceil(Math.abs(angleDelta) / RADIAL_ARC_STEP));
+  for (let step = 0; step <= steps; step++) appendPoint(points, ...radialPoint(radius, fromAngle + (angleDelta * step) / steps));
+}
+
+/** Routes radial-tessellation connectors with one corner: either along the source spoke then the
+ * target ring, or along the source ring then the target spoke. Marker collisions choose between
+ * those two candidates before path length breaks a tie. */
+export function routeRadialConnectors(edges: TeleportEdge[], markerRadius = 0, waypoints: [number, number][] = []): RoutedConnector[] {
+  const markers = [...waypoints, ...edges.flatMap((edge) => [edge.from, edge.to])];
+  return edges.map(({ from, to }) => {
+    const [fromX, fromY] = from;
+    const [toX, toY] = to;
+    const fromRadius = Math.hypot(fromX, fromY);
+    const toRadius = Math.hypot(toX, toY);
+    if (fromRadius === 0 || toRadius === 0) return { points: [fromX, fromY, toX, toY] };
+
+    const fromAngle = Math.atan2(fromY, fromX);
+    const toAngle = Math.atan2(toY, toX);
+    let angleDelta = toAngle - fromAngle;
+    if (angleDelta <= -Math.PI) angleDelta += Math.PI * 2;
+    if (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
+
+    const radialThenArc: number[] = [fromX, fromY];
+    appendPoint(radialThenArc, ...radialPoint(toRadius, fromAngle));
+    appendArc(radialThenArc, toRadius, fromAngle, angleDelta);
+    appendPoint(radialThenArc, toX, toY);
+
+    const arcThenRadial: number[] = [fromX, fromY];
+    appendArc(arcThenRadial, fromRadius, fromAngle, angleDelta);
+    appendPoint(arcThenRadial, toX, toY);
+    const candidates = [{ points: radialThenArc }, { points: arcThenRadial }];
+    const ownPoint = (point: [number, number]) =>
+      (point[0] === fromX && point[1] === fromY) || (point[0] === toX && point[1] === toY);
+    const penalty = (routed: RoutedConnector) => {
+      const collisions = markerRadius === 0 ? 0 : markers.filter((marker) => !ownPoint(marker) && pointToPolylineDistance(marker, routed.points) < markerRadius).length;
+      let length = 0;
+      for (let i = 0; i + 3 < routed.points.length; i += 2) length += Math.hypot(routed.points[i + 2] - routed.points[i], routed.points[i + 3] - routed.points[i + 1]);
+      return [collisions, length] as const;
+    };
+    return candidates.reduce((best, candidate) => {
+      const [bestCollisions, bestLength] = penalty(best);
+      const [candidateCollisions, candidateLength] = penalty(candidate);
+      return candidateCollisions < bestCollisions || (candidateCollisions === bestCollisions && candidateLength < bestLength) ? candidate : best;
+    });
+  });
 }
 
 /** One arrow to draw along a routed polyline: its position and the (unit-length) direction it

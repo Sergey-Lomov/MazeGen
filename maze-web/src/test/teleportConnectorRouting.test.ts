@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
+import { routeRadialConnectors, routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
@@ -13,6 +13,32 @@ describe("routeStraightConnectors", () => {
       { points: [0, 0, 10, 10] },
       { points: [5, 5, 1, 9] },
     ]);
+  });
+});
+
+describe("routeRadialConnectors", () => {
+  it("uses one corner between a spoke and a ring arc", () => {
+    const [{ points }] = routeRadialConnectors([edge([80, 0], [0, 120])]);
+
+    expect(points.slice(0, 2)).toEqual([80, 0]);
+    expect(points.slice(-2)).toEqual([0, 120]);
+    expect(points.length).toBeGreaterThan(4);
+    expect(points.slice(-4)).toEqual([0, 80, 0, 120]);
+    for (let i = 0; i < points.length - 2; i += 2) expect(Math.hypot(points[i], points[i + 1])).toBeCloseTo(80);
+  });
+
+  it("chooses the one-corner route that avoids another teleport marker", () => {
+    const from: [number, number] = [80, 0];
+    const to: [number, number] = [0, 120];
+    const withoutMarker = routeRadialConnectors([edge(from, to)])[0];
+    const withMarker = routeRadialConnectors([edge(from, to)], 10, [[0, 80]])[0];
+
+    expect(withMarker.points).not.toEqual(withoutMarker.points);
+    expect(withMarker.points.slice(2, 4)).toEqual([120, 0]);
+  });
+
+  it("keeps a connector touching the center as a direct radial line", () => {
+    expect(routeRadialConnectors([edge([0, 0], [0, 10])])).toEqual([{ points: [0, 0, 0, 10] }]);
   });
 });
 
