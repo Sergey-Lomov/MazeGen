@@ -57,6 +57,27 @@ describe("VertexBasedSettingsPanel", () => {
     expect(setElementsParam).toHaveBeenCalledWith("one_way_chance", 0.5);
   });
 
+  it("adds precise density editors to every generation slider", () => {
+    const setElementsParam = vi.fn();
+    useMazeStore.setState({ setElementsParam });
+    render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
+
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(9);
+
+    const densityInput = screen.getByRole("spinbutton", { name: `${m["generation.category.teleport"]()} ${m["generation.teleport_chance_short"]()}` });
+    fireEvent.change(densityInput, { target: { value: "0.0025" } });
+
+    expect(setElementsParam).toHaveBeenCalledWith("teleport_chance", 0.0025);
+  });
+
+  it("adds precise density editors for multi-floor controls", () => {
+    useMazeStore.setState({ floors: [{ id: 1, title: "Floor 1" }, { id: 2, title: "Floor 2" }] as never });
+    render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
+
+    expect(document.querySelectorAll('input[role="spinbutton"][aria-label]')).toHaveLength(15);
+    expect(screen.getByRole("spinbutton", { name: `${m["generation.category.vertical"]()} ${m["generation.vertical_chance_short"]()}` })).toBeInTheDocument();
+  });
+
   it("opens a CategoryInfoModal listing the category's params when the info icon is clicked", () => {
     render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
 
