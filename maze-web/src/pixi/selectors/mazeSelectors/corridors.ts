@@ -3,6 +3,7 @@ import type { FieldConfig } from "../../../fieldConfig";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { buildSplitPointKeys } from "./split";
+import { selectFloorScopedMaze } from "./state";
 
 /** One `buildCorridorSegments` result entry — `oneWayDir` mirrors `WallEdge.oneWayDir`'s own
  *  convention (GitHub issue #312): unset for a bidirectional passage, else a unit vector along the
@@ -172,4 +173,29 @@ export function buildOneWayCorridorIndicatorPositions(segments: CorridorSegment[
     result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
   }
   return result;
+}
+
+/** Length of the shortest face carrying a passage, or `Infinity` when there is none. The contour
+ *  engine never draws a corridor wider than this face. */
+export function shortestCorridorFace(segments: readonly CorridorSegment[]): number {
+  let shortest = Infinity;
+  for (const segment of segments) {
+    if (segment.faceLength !== undefined && segment.faceLength > 0) shortest = Math.min(shortest, segment.faceLength);
+  }
+  return shortest;
+}
+
+/** `shortestCorridorFace` over every floor, so all floors draw one corridor width. */
+export function shortestCorridorFaceAcrossFloors(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  floors: { id: string }[],
+  cfg: FieldConfig,
+): number {
+  let shortest = Infinity;
+  for (const floor of floors) {
+    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id);
+    shortest = Math.min(shortest, shortestCorridorFace(buildCorridorSegments(scoped.nodes, scoped.edges, cfg)));
+  }
+  return shortest;
 }

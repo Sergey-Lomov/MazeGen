@@ -72,6 +72,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         snub_square: new Set(ff.freeFieldPoints.snub_square.map(([x, y]) => encodePoint(x, y))),
         curved_quadrilateral: new Set(ff.freeFieldPoints.curved_quadrilateral.map(([x, y]) => encodePoint(x, y))),
         radial: new Set(ff.freeFieldPoints.radial.map(([x, y]) => encodePoint(x, y))),
+        voronoi: new Set(ff.freeFieldPoints.voronoi.map(([x, y]) => encodePoint(x, y))),
       };
       const { isEditingField, fieldPoints } = deriveEditState(kind, fieldConfig, freeFieldPoints);
       floorFields[floor.id] = {

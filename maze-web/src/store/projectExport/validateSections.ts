@@ -106,6 +106,7 @@ export function validateFloorFieldConfig(v: unknown, path: string, kind: Tessell
     snub_square: validatePoints(freeObj.snub_square, `${path}.freeFieldPoints.snub_square`),
     curved_quadrilateral: validatePoints(freeObj.curved_quadrilateral, `${path}.freeFieldPoints.curved_quadrilateral`),
     radial: validatePoints(freeObj.radial, `${path}.freeFieldPoints.radial`),
+    voronoi: validatePoints(freeObj.voronoi, `${path}.freeFieldPoints.voronoi`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
   return { shape, savedShapes, freeFieldPoints, fieldEditMode };

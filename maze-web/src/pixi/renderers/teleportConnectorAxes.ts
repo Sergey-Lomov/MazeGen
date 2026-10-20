@@ -125,4 +125,6 @@ const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
   curved_quadrilateral: () => SQUARE_AXES,
   // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.
   radial: () => SQUARE_AXES,
+  // Irregular cells have no preferred direction; the square's face normals stand in for the cell axes.
+  voronoi: () => SQUARE_AXES,
 };

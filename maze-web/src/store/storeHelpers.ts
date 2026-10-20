@@ -202,6 +202,7 @@ const DEFAULT_SHAPE_BY_KIND: Record<TessellationKind, PresetFieldShapeName> = {
   snub_square: "rect",
   curved_quadrilateral: "rect",
   radial: "circle",
+  voronoi: "circle",
 };
 
 /** The kind's default preset shape. */
@@ -295,6 +296,9 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     triangle: { shape: "triangle", side: 16 },
   },
   radial: {
+    circle: { shape: "circle", radius: 6 },
+  },
+  voronoi: {
     circle: { shape: "circle", radius: 6 },
   },
 };
@@ -397,6 +401,7 @@ const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
   snub_square: { shape: "rect", cols: 5, rows: 5 },
   curved_quadrilateral: { shape: "rect", cols: 5, rows: 5 },
   radial: { shape: "circle", radius: 4 },
+  voronoi: { shape: "circle", radius: 4 },
 };
 
 export function buildPreviewConfig(tessellation: TessellationConfig, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
@@ -429,6 +434,7 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   snub_square: new Set<number>(),
   curved_quadrilateral: new Set<number>(),
   radial: new Set<number>(),
+  voronoi: new Set<number>(),
 });
 
 /** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's

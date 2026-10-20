@@ -4,7 +4,7 @@ import type { TessellationConfig } from "../fieldConfig";
 /** Stand-in for `getTessellationShapes` in suites that mock `mazeService` — the built-in
  *  tessellations' templates as core binds them (one template per kind, every cell bound to it).
  *  The real wasm answer is covered by `maze-wasm`'s own `tessellation_shapes` test. */
-const KEYS: Record<TessellationConfig["kind"], string> = {
+const KEYS: Record<TessellationConfig["kind"], string | undefined> = {
   square: "regular:4",
   hex: "regular:6",
   tri: "regular:3",
@@ -20,9 +20,11 @@ const KEYS: Record<TessellationConfig["kind"], string> = {
   snub_square: "regular:4",
   curved_quadrilateral: "curved_quadrilateral:curved_quadrilateral",
   radial: "radial:ring",
+  // Irregular cells have no templates.
+  voronoi: undefined,
 };
 
 export function fakeTessellationShapes(config: { tessellation: TessellationConfig; points: [number, number][] }): TessellationShapes {
   const key = KEYS[config.tessellation.kind];
-  return { keys: [key], point_shapes: config.points.map(() => key) };
+  return { keys: key === undefined ? [] : [key], point_shapes: config.points.map(() => key) };
 }

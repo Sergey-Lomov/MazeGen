@@ -62,6 +62,9 @@ fn every_builtin_preset_builds_valid_connected_sorted_cells() {
     for (tessellation, _) in crate::space::test_support::radial_cases() {
         check_presets_build_valid_connected_sorted_cells(&tessellation);
     }
+    for (tessellation, _) in crate::space::test_support::voronoi_cases() {
+        check_presets_build_valid_connected_sorted_cells(&tessellation);
+    }
 }
 
 #[test]

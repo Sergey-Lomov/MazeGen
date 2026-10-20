@@ -462,7 +462,11 @@ as half-plane limits and sampled points for the rest (`pointsInside`), so a conc
 caps and closure arcs too. Split-passage segments (`bridgeUnderlaySegments`, diagonal ribbons) still use straight chords.
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
 two filled shapes meet edge-to-edge with no seam and no overlap. The half-width is clamped once for
-the whole call to half the shortest finite face, so mirrored mouths always match.
+the whole call to half the shortest finite face, so mirrored mouths always match. "Vector by corridors"
+still draws one width on every floor: `VectorByCorridorsRenderer` passes `min(thickness, shortest passage
+face over all floors)` (`shortestCorridorFaceAcrossFloors`, memoized on the maze data, not on the
+thickness) to every contour call, the split-passage contours included, and the export warnings use the
+same limit. The per-call clamp then never lowers it, since a call sees a subset of the faces.
 
 **Tile types.** A tile's shape depends only on its geometry relative to its centre (cell polygon +
 port set, half-width, junction radius), so `buildCorridorGeometryInstances` builds each distinct local

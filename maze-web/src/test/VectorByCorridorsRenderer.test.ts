@@ -4,7 +4,7 @@ import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, buildVerticalWide
 import { clipStrokeToConvexPolygon, computeMiterJunctionPatch, selectInwardJunctionWedge, corridorCellStep } from "../pixi/imageExport/vectorByCorridorsGeometry";
 import { buildCorridorContour, contourToPolyline, type ContourPath, type PathCmd } from "../pixi/imageExport/vectorByCorridorsContour";
 import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBuilders";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -37,6 +37,7 @@ function makeEmptyBounds(): FakeBounds {
 
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
+  shortestCorridorFaceAcrossFloors: vi.fn(() => Infinity),
   buildMazeMarkers: vi.fn(() => []),
   buildTeleportEdges: vi.fn(() => []),
   buildTeleportFloorInputs: vi.fn((opts: { unscopedEdges: unknown; allowOutOfField: boolean; fieldCells?: unknown }) => ({
@@ -169,6 +170,8 @@ const stableNodes: NodeDto[] = [];
 const stableEdges: EdgeDto[] = [];
 const stableCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 
+const stableFloors = [{ id: "floor_1", title: "Floor 1" }];
+
 function baseState(overrides: Record<string, unknown> = {}) {
   return {
     openCard: "image_export",
@@ -177,7 +180,7 @@ function baseState(overrides: Record<string, unknown> = {}) {
     activeFieldConfig: stableCfg,
     vectorByCorridorsSettings: settingsA,
     vectorByCorridorsSectionsExpanded: {},
-    floors: [{ id: "floor_1", title: "Floor 1" }],
+    floors: stableFloors,
     activeFloorId: "floor_1",
     start: null,
     finish: null,
@@ -735,6 +738,22 @@ describe("VectorByCorridorsRenderer", () => {
       expect(tile.graphics.context.stroke).not.toHaveBeenCalled();
     }
     expect(corridorsOf(renderer).stroke).not.toHaveBeenCalled();
+  });
+
+  it("clamps the contour width to the shortest passage face of the whole maze, across floors", () => {
+    turn({ x: 0, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 80 });
+    vi.mocked(shortestCorridorFaceAcrossFloors).mockReturnValue(6);
+    currentState = baseState({ vectorByCorridorsSettings: settingsA }); // thickness 10
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    for (const tile of tilesOf(renderer)) expect(tile.key.startsWith("contour/3/")).toBe(true);
+    vi.mocked(shortestCorridorFaceAcrossFloors).mockReturnValue(Infinity);
+  });
+
+  it("does not recompute the maze-wide face limit when only the thickness changes", () => {
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    vi.mocked(shortestCorridorFaceAcrossFloors).mockClear();
+    subscribeCallback?.(baseState({ vectorByCorridorsSettings: settingsB }));
+    expect(shortestCorridorFaceAcrossFloors).not.toHaveBeenCalled();
   });
 
   it("shares one context per tile shape, recolors by tint and updates only changed cells", () => {

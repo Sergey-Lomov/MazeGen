@@ -599,6 +599,8 @@ const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: nu
   curved_quadrilateral: { circle: 50, hexagon: 50, triangle: 50 },
   // Radial publishes its circle radius limit through core (it depends on the tessellation params).
   radial: { circle: 50, hexagon: 50, triangle: 50 },
+  // Voronoi too: the circle radius limit comes from core.
+  voronoi: { circle: 50, hexagon: 50, triangle: 50 },
 };
 
 const styles: Record<string, React.CSSProperties> = {

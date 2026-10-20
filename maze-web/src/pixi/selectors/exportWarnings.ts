@@ -5,6 +5,8 @@ import {
   buildTeleportEdges,
   buildSplitPassages,
   buildCorridorSegments,
+  shortestCorridorFace,
+  shortestCorridorFaceAcrossFloors,
   getSplitAwareNodePosition,
   maxSplitNodeCount,
   selectNodeLevelResolver,
@@ -218,23 +220,13 @@ function pointToContourDistance(point: { x: number; y: number }, contour: { x: n
   return closest;
 }
 
-/** `buildCorridorContourInstances` clamps its half-width to the shortest shared face in the whole
- * corridor network. Preserve that global clamp when the warning builds only a local candidate
- * subset, so its contour stays identical to the renderer's full-network contour. */
-function effectiveContourThickness(corridorSegments: ReturnType<typeof buildCorridorSegments>, thickness: number): number {
-  let shortestFace = Infinity;
-  for (const segment of corridorSegments) {
-    if (segment.faceLength !== undefined && segment.faceLength > 0) shortestFace = Math.min(shortestFace, segment.faceLength);
-  }
-  return Number.isFinite(shortestFace) ? Math.min(thickness, shortestFace) : thickness;
-}
-
 /** A start/finish marker's corridor-colored widen patch reaches a different corridor. The check
  * deliberately excludes tiles incident to the marker node: those are the corridor(s) the patch
  * exists to widen. Contour mode measures against the same filled tile paths the renderer draws;
  * line modes measure the same centreline-plus-half-stroke geometry their renderer uses. */
 function computeMarkerExtensionHitsCorridorWarning(
   corridorSegments: ReturnType<typeof buildCorridorSegments>,
+  corridorFaceLimit: number,
   nodeById: Map<number, NodeDto>,
   cfg: FieldConfig,
   edges: EdgeDto[],
@@ -251,7 +243,8 @@ function computeMarkerExtensionHitsCorridorWarning(
   const flaggedNodes = new Set<number>();
 
   const usesContourTiles = settings.join === "round" && settings.renderStyle === "contour";
-  const contourThickness = usesContourTiles ? effectiveContourThickness(corridorSegments, settings.thickness) : 0;
+  // The renderer clamps to the shortest face of the whole maze; a local candidate subset must match.
+  const contourThickness = usesContourTiles ? Math.min(settings.thickness, corridorFaceLimit) : 0;
 
   for (const marker of markers) {
     if (marker.nodeId === null) continue;
@@ -605,6 +598,7 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
+  const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext: TeleportFloorContext = {
@@ -614,7 +608,7 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
       floorCount: floors.length,
     };
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title);
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -1431,6 +1425,7 @@ export function computeVectorByCorridorsWarnings(
   unscopedNodesOrContext?: NodeDto[] | TeleportFloorContext,
   allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
   displayFloorTitle?: string,
+  maxCorridorFace?: number,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -1456,7 +1451,7 @@ export function computeVectorByCorridorsWarnings(
 
   const corridorSegments = buildCorridorSegments(nodes, edges, cfg);
   const markerExtensionHitsCorridor = computeMarkerExtensionHitsCorridorWarning(
-    corridorSegments, nodeById, cfg, edges, settings, start, finish,
+    corridorSegments, maxCorridorFace ?? shortestCorridorFace(corridorSegments), nodeById, cfg, edges, settings, start, finish,
   );
   if (markerExtensionHitsCorridor) warnings.push(markerExtensionHitsCorridor);
   if (corridorSegments.length > 0) {

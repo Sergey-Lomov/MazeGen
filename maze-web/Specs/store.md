@@ -10,8 +10,8 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal" \| "truncated_hexagonal" \| "truncated_trihexagonal" \| "elongated_triangular" \| "snub_square" \| "curved_quadrilateral" \| "radial"` | Confirmed tessellation kind |
-| `tessellationParams` | `Record<string, unknown>` | Params of the confirmed kind: `{}` for the parameterless kinds, `first_ring_cells`, `ring_layout` and `max_cells` for `radial`; they define the cell set, so changing them resets the maze like a kind change |
+| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal" \| "truncated_hexagonal" \| "truncated_trihexagonal" \| "elongated_triangular" \| "snub_square" \| "curved_quadrilateral" \| "radial" \| "voronoi"` | Confirmed tessellation kind |
+| `tessellationParams` | `Record<string, unknown>` | Params of the confirmed kind: `{}` for the parameterless kinds, `first_ring_cells`, `ring_layout` and `max_cells` for `radial`, `jitter`, `seed` and `max_cells` for `voronoi`; they define the cell set, so changing them resets the maze like a kind change |
 | `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
 | `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
 | `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |

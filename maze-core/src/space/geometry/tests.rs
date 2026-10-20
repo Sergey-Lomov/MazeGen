@@ -1,6 +1,6 @@
 use super::segment::segments_cross;
 use super::*;
-use crate::space::test_support::{ScaledSquareTessellation, radial_cases};
+use crate::space::test_support::{ScaledSquareTessellation, radial_cases, voronoi_cases};
 use crate::space::{
     BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
     CurvedQuadrilateralTessellation, ElongatedTriangularKind, ElongatedTriangularPoint,
@@ -157,6 +157,9 @@ macro_rules! for_each_tessellation {
         );
         $check(&ScaledSquareTessellation { scale: 2.5 }, &square_cells());
         for (tessellation, cells) in radial_cases() {
+            $check(&tessellation, &cells);
+        }
+        for (tessellation, cells) in voronoi_cases() {
             $check(&tessellation, &cells);
         }
     };

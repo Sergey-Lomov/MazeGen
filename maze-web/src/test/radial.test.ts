@@ -19,9 +19,9 @@ describe("radial registry", () => {
     for (const spec of ui.paramSpecs) {
       const value = ui.defaultParams[spec.name];
       const valid =
-        spec.type === "integer"
-          ? Number.isInteger(value) && (value as number) >= spec.min && (value as number) <= spec.max
-          : spec.options.includes(value as string);
+        spec.type === "choice"
+          ? spec.options.includes(value as string)
+          : Number.isInteger(value) && (value as number) >= spec.min && (value as number) <= spec.max;
       expect(valid, spec.name).toBe(true);
     }
   });
