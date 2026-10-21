@@ -40,10 +40,10 @@ pub fn geometry_cells_in_region(request: JsValue) -> Result<JsValue, JsValue> {
     Ok(serde_wasm_bindgen::to_value(&cells).unwrap())
 }
 
-/// Wire shape for `tessellation_shapes`: a tessellation config plus the cells whose own template
+/// Wire shape for the per-point tessellation queries (`tessellation_shapes`,
 /// the caller needs.
 #[derive(Deserialize)]
-struct TessellationShapesConfig {
+struct TessellationPointsConfig {
     tessellation: TessellationConfig,
     points: Vec<[i32; 2]>,
 }
@@ -62,13 +62,13 @@ struct TessellationShapes {
 
 #[wasm_bindgen]
 pub fn tessellation_shapes(config: JsValue) -> Result<JsValue, JsValue> {
-    let cfg: TessellationShapesConfig = serde_wasm_bindgen::from_value(config)
+    let cfg: TessellationPointsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
     let shapes = tessellation_shapes_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
     Ok(serde_wasm_bindgen::to_value(&shapes).unwrap())
 }
 
-fn tessellation_shapes_for(cfg: &TessellationShapesConfig) -> Result<TessellationShapes, String> {
+fn tessellation_shapes_for(cfg: &TessellationPointsConfig) -> Result<TessellationShapes, String> {
     build_tessellation(
         &cfg.tessellation,
         Shapes {
@@ -104,15 +104,74 @@ impl TessellationVisitor for Shapes<'_> {
     }
 }
 
+/// Cell types of one tessellation instance (GitHub issue #822): `keys` lists every
+/// `CellType::key` the instance provides (`Tessellation::cell_types`), and `point_types[i]` is the
+/// type key of `points[i]` (`Tessellation::cell_type_key_of`). Configs that parametrize generation or
+/// quality control by cell type name types by these keys.
+#[derive(Serialize, Debug, PartialEq)]
+struct TessellationCellTypes {
+    keys: Vec<String>,
+    point_types: Vec<String>,
+}
+
+#[wasm_bindgen]
+pub fn tessellation_cell_types(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: TessellationPointsConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+    let types = tessellation_cell_types_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&types).unwrap())
+}
+
+fn tessellation_cell_types_for(
+    cfg: &TessellationPointsConfig,
+) -> Result<TessellationCellTypes, String> {
+    build_tessellation(
+        &cfg.tessellation,
+        CellTypes {
+            points: &cfg.points,
+        },
+    )
+}
+
+struct CellTypes<'a> {
+    points: &'a [[i32; 2]],
+}
+
+impl TessellationVisitor for CellTypes<'_> {
+    type Output = TessellationCellTypes;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        TessellationCellTypes {
+            keys: tessellation
+                .cell_types()
+                .iter()
+                .map(|t| t.key().to_string())
+                .collect(),
+            point_types: self
+                .points
+                .iter()
+                .map(|&[x, y]| {
+                    tessellation
+                        .cell_type_key_of((codec.from_xy)(x, y))
+                        .to_string()
+                })
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{TessellationShapes, TessellationShapesConfig, tessellation_shapes_for};
+    use super::{
+        TessellationCellTypes, TessellationPointsConfig, TessellationShapes,
+        tessellation_cell_types_for, tessellation_shapes_for,
+    };
     use crate::generation_config::TessellationConfig;
     use maze_runner::config::TessellationKind;
 
     #[test]
     fn tessellation_shapes_lists_templates_and_cell_bindings() {
-        let cfg = TessellationShapesConfig {
+        let cfg = TessellationPointsConfig {
             tessellation: TessellationConfig {
                 kind: TessellationKind::Square,
                 params: serde_json::Map::new(),
@@ -124,6 +183,46 @@ mod tests {
             Ok(TessellationShapes {
                 keys: vec!["regular:4".to_string()],
                 point_shapes: vec![Some("regular:4".to_string()), Some("regular:4".to_string())],
+            })
+        );
+    }
+
+    #[test]
+    fn tessellation_cell_types_lists_types_and_cell_bindings() {
+        let cfg = TessellationPointsConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::SquareOctagon,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[0, 0], [1, 1], [2, 2]],
+        };
+        assert_eq!(
+            tessellation_cell_types_for(&cfg),
+            Ok(TessellationCellTypes {
+                keys: vec!["octagon".to_string(), "square".to_string()],
+                point_types: vec![
+                    "octagon".to_string(),
+                    "square".to_string(),
+                    "octagon".to_string()
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn tessellation_cell_types_of_a_uniform_tessellation_is_the_single_default_type() {
+        let cfg = TessellationPointsConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::Square,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[0, 0], [3, -2]],
+        };
+        assert_eq!(
+            tessellation_cell_types_for(&cfg),
+            Ok(TessellationCellTypes {
+                keys: vec!["cell".to_string()],
+                point_types: vec!["cell".to_string(), "cell".to_string()],
             })
         );
     }

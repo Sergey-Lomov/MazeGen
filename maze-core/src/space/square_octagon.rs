@@ -9,8 +9,8 @@ use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
 use super::{
-    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    CellShape, CellType, CellTypeId, FieldOpError, Point, PresetDescriptor, PresetParams, Segment,
+    ShapeDescriptor, Tessellation, validate_preset,
 };
 use std::sync::LazyLock;
 
@@ -111,6 +111,10 @@ const SQUARE_FACES: [SquareOctagonFace; 4] = [NE, NW, SW, SE];
 const OCTAGON_LOCAL_TO_CANONICAL: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [0, 1, 2, 3];
 
+const OCTAGON_TYPE: usize = 0;
+const SQUARE_TYPE: usize = 1;
+const CELL_TYPES: [CellType; 2] = [CellType::new("octagon"), CellType::new("square")];
+
 const OCTAGON_SHAPE: usize = 0;
 const SQUARE_SHAPE: usize = 1;
 
@@ -171,6 +175,19 @@ impl Tessellation for SquareOctagonTessellation {
             CellShape::full(&SHAPES[OCTAGON_SHAPE], &OCTAGON_LOCAL_TO_CANONICAL)
         } else {
             CellShape::full(&SHAPES[SQUARE_SHAPE], &SQUARE_LOCAL_TO_CANONICAL)
+        })
+    }
+
+    fn cell_types(&self) -> &[CellType] {
+        &CELL_TYPES
+    }
+
+    fn cell_type_of(&self, cell: SquareOctagonPoint) -> CellTypeId {
+        debug_assert!(self.is_valid_cell(cell));
+        CellTypeId::new(if cell.is_octagon() {
+            OCTAGON_TYPE
+        } else {
+            SQUARE_TYPE
         })
     }
 

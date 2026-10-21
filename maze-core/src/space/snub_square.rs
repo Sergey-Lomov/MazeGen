@@ -132,6 +132,13 @@ const ANCHOR_REACH: f64 = 2.0 + 1e-6;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SnubSquareTessellation;
 
+const CELL_TYPES: [super::CellType; 2] = [
+    super::CellType::new("triangle"),
+    super::CellType::new("square"),
+];
+/// Side count of each of `CELL_TYPES`, in the same order.
+const FACE_COUNTS: [usize; 2] = [3, 4];
+
 impl Tessellation for SnubSquareTessellation {
     type CellId = SnubSquarePoint;
     type Face = SnubSquareFace;
@@ -183,6 +190,15 @@ impl Tessellation for SnubSquareTessellation {
 
     fn shape_of(&self, cell: SnubSquarePoint) -> Option<CellShape<'_>> {
         Some(regular_cell_shape(&*SHAPES, cell.kind.face_count()))
+    }
+
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
+
+    /// By polygon: the type follows the cell's side count.
+    fn cell_type_of(&self, cell: Self::CellId) -> super::CellTypeId {
+        super::multi_shape::cell_type_by_face_count(&FACE_COUNTS, self.faces_of(cell).len())
     }
 
     /// Centroid of the cell's polygon.

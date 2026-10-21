@@ -137,6 +137,17 @@ pub(super) fn regular_cell_shape(shapes: &[ShapeDescriptor], n: usize) -> CellSh
     CellShape::full(descriptor, &IDENTITY[..n])
 }
 
+/// The cell type whose side count is `n`, among `face_counts` (one per cell type, in
+/// `cell_types` order).
+pub(super) fn cell_type_by_face_count(face_counts: &[usize], n: usize) -> super::CellTypeId {
+    super::CellTypeId::new(
+        face_counts
+            .iter()
+            .position(|&count| count == n)
+            .expect("every cell kind has a cell type"),
+    )
+}
+
 /// Area of a regular `n`-gon of side 1.
 pub(super) fn regular_polygon_area(n: usize) -> f64 {
     let n = n as f64;

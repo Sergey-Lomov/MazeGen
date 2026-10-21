@@ -116,6 +116,13 @@ const ANCHOR_REACH: f64 = 1.0 + SQRT_3 + 1e-6;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TruncatedHexagonalTessellation;
 
+const CELL_TYPES: [super::CellType; 2] = [
+    super::CellType::new("triangle"),
+    super::CellType::new("dodecagon"),
+];
+/// Side count of each of `CELL_TYPES`, in the same order.
+const FACE_COUNTS: [usize; 2] = [3, 12];
+
 impl Tessellation for TruncatedHexagonalTessellation {
     type CellId = TruncatedHexagonalPoint;
     type Face = TruncatedHexagonalFace;
@@ -163,6 +170,15 @@ impl Tessellation for TruncatedHexagonalTessellation {
 
     fn shape_of(&self, cell: TruncatedHexagonalPoint) -> Option<CellShape<'_>> {
         Some(regular_cell_shape(&*SHAPES, cell.kind.face_count()))
+    }
+
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
+
+    /// By polygon: the type follows the cell's side count.
+    fn cell_type_of(&self, cell: Self::CellId) -> super::CellTypeId {
+        super::multi_shape::cell_type_by_face_count(&FACE_COUNTS, self.faces_of(cell).len())
     }
 
     /// Centroid of the cell's polygon.

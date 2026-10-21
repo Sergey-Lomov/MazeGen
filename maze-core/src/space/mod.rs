@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 pub mod brick;
 pub mod cairo;
+pub mod cell_type;
 pub mod curved_quadrilateral;
 pub mod elongated_triangular;
 mod exact_tiling;
@@ -32,6 +33,7 @@ pub mod voronoi;
 
 pub use brick::{BrickFace, BrickPoint, BrickTessellation};
 pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
+pub use cell_type::{CellType, CellTypeId, CellTypeTable, cell_type_by_key};
 pub use curved_quadrilateral::{
     CurvedQuadrilateralFace, CurvedQuadrilateralPoint, CurvedQuadrilateralTessellation,
 };
@@ -166,6 +168,26 @@ pub trait Tessellation: Send + Sync + 'static {
     ) -> Result<Vec<Self::CellId>, FieldOpError> {
         validate_preset(self.presets(), key, params)?;
         Err(FieldOpError::Unavailable)
+    }
+
+    /// Every cell type of this instance, each listed once with a unique key. Never empty. Defaults
+    /// to the single type `cell`. Types classify cells for consumers (QC, generator) and are
+    /// independent of `shape_descriptors`: a type may depend on the cell's position in the pattern,
+    /// and cells of different types may share a shape.
+    fn cell_types(&self) -> &[CellType] {
+        &cell_type::UNIFORM_TYPES
+    }
+
+    /// The type of `cell`: an index into `cell_types`. Defaults to the only type. An invalid
+    /// `cell` is a precondition violation.
+    fn cell_type_of(&self, cell: Self::CellId) -> CellTypeId {
+        debug_assert!(self.is_valid_cell(cell));
+        CellTypeId::new(0)
+    }
+
+    /// The type of `cell` as its key (see `CellType::key`), the form configs and the wire use.
+    fn cell_type_key_of(&self, cell: Self::CellId) -> &'static str {
+        self.cell_types()[self.cell_type_of(cell).index()].key()
     }
 
     /// Area of `cell`. Defaults to the signed area of its boundary path; a tessellation with a

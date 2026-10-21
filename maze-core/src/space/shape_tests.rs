@@ -1,16 +1,19 @@
 use super::*;
+use crate::space::cell_type_by_key;
 use crate::space::test_support::radial_cases;
 use crate::space::{
-    BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CurvedQuadrilateralPoint,
-    CurvedQuadrilateralTessellation, ElongatedTriangularKind, ElongatedTriangularPoint,
-    ElongatedTriangularTessellation, HexPoint, HexTessellation, RhombitrihexagonalKind,
-    RhombitrihexagonalPoint, RhombitrihexagonalTessellation, SnubHexagonalKind, SnubHexagonalPoint,
-    SnubHexagonalTessellation, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation,
-    SquareOctagonPoint, SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation,
-    TriFace, TriPoint, TriTessellation, TrihexagonalPoint, TrihexagonalTessellation,
-    TruncatedHexagonalKind, TruncatedHexagonalPoint, TruncatedHexagonalTessellation,
-    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    BrickPoint, BrickTessellation, CairoPoint, CairoTessellation, CellType, CellTypeTable,
+    CurvedQuadrilateralPoint, CurvedQuadrilateralTessellation, ElongatedTriangularKind,
+    ElongatedTriangularPoint, ElongatedTriangularTessellation, HexPoint, HexTessellation,
+    RhombitrihexagonalKind, RhombitrihexagonalPoint, RhombitrihexagonalTessellation,
+    SnubHexagonalKind, SnubHexagonalPoint, SnubHexagonalTessellation, SnubSquareKind,
+    SnubSquarePoint, SnubSquareTessellation, SquareOctagonPoint, SquareOctagonTessellation,
+    SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint, TriTessellation,
+    TrihexagonalPoint, TrihexagonalTessellation, TruncatedHexagonalKind, TruncatedHexagonalPoint,
+    TruncatedHexagonalTessellation, TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint,
+    TruncatedTrihexagonalTessellation,
 };
+use std::collections::HashSet;
 
 fn grid(radius: i32) -> impl Iterator<Item = (i32, i32)> {
     (-radius..=radius).flat_map(move |a| (-radius..=radius).map(move |b| (a, b)))
@@ -618,4 +621,145 @@ fn cell_shape_rejects_a_non_bijective_local_to_canonical() {
 fn restricted_cell_shape_requires_the_identity() {
     let descriptor = ShapeDescriptor::regular_polygon(4);
     CellShape::restricted(&descriptor, &[0, 1, 2, 3], &[1, 2, 3]);
+}
+
+fn assert_cell_type_contract<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
+    let types = tessellation.cell_types();
+    assert!(!types.is_empty());
+    let keys: HashSet<_> = types.iter().map(CellType::key).collect();
+    assert_eq!(keys.len(), types.len(), "type keys must be unique");
+    let mut used = HashSet::new();
+    for &cell in cells {
+        let id = tessellation.cell_type_of(cell);
+        assert!(id.index() < types.len(), "{cell:?}: type out of range");
+        used.insert(id);
+    }
+    assert_eq!(used.len(), types.len(), "every listed type has a cell");
+}
+
+#[test]
+fn cell_type_contract_holds_for_every_tessellation() {
+    assert_cell_type_contract(&SquareTessellation, &square_cells());
+    assert_cell_type_contract(&HexTessellation, &hex_cells());
+    assert_cell_type_contract(&TriTessellation, &tri_cells());
+    assert_cell_type_contract(&CairoTessellation, &cairo_cells());
+    assert_cell_type_contract(&SquareOctagonTessellation, &square_octagon_cells());
+    assert_cell_type_contract(&BrickTessellation, &brick_cells());
+    assert_cell_type_contract(&TrihexagonalTessellation, &trihexagonal_cells());
+    assert_cell_type_contract(&SnubHexagonalTessellation, &snub_hexagonal_cells());
+    assert_cell_type_contract(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
+    assert_cell_type_contract(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
+    assert_cell_type_contract(
+        &TruncatedTrihexagonalTessellation,
+        &truncated_trihexagonal_cells(),
+    );
+    assert_cell_type_contract(&SnubSquareTessellation, &snub_square_cells());
+    assert_cell_type_contract(
+        &ElongatedTriangularTessellation,
+        &elongated_triangular_cells(),
+    );
+    assert_cell_type_contract(
+        &CurvedQuadrilateralTessellation,
+        &curved_quadrilateral_cells(),
+    );
+    for (tessellation, cells) in radial_cases() {
+        assert_cell_type_contract(&tessellation, &cells);
+    }
+}
+
+#[test]
+fn single_type_tessellations_use_the_default_type() {
+    assert_eq!(SquareTessellation.cell_types().len(), 1);
+    assert_eq!(
+        SquareTessellation
+            .cell_type_of(SquarePoint { x: 3, y: -2 })
+            .index(),
+        0
+    );
+}
+
+#[test]
+fn square_octagon_types_are_octagon_and_square() {
+    let keys: Vec<_> = SquareOctagonTessellation
+        .cell_types()
+        .iter()
+        .map(CellType::key)
+        .collect();
+    assert_eq!(keys, ["octagon", "square"]);
+    let type_key = |x, y| {
+        let id = SquareOctagonTessellation.cell_type_of(SquareOctagonPoint { x, y });
+        SquareOctagonTessellation.cell_types()[id.index()].key()
+    };
+    assert_eq!(type_key(0, 0), "octagon");
+    assert_eq!(type_key(2, -4), "octagon");
+    assert_eq!(type_key(1, 1), "square");
+    assert_eq!(type_key(-1, 3), "square");
+}
+
+#[test]
+fn polygon_typed_tessellations_follow_the_side_count() {
+    fn by_side_count<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
+        for &cell in cells {
+            let id = tessellation.cell_type_of(cell);
+            let sides = tessellation.faces_of(cell).len();
+            for &other in cells {
+                let same_type = tessellation.cell_type_of(other) == id;
+                assert_eq!(same_type, tessellation.faces_of(other).len() == sides);
+            }
+        }
+    }
+    by_side_count(&TrihexagonalTessellation, &trihexagonal_cells());
+    by_side_count(&SnubHexagonalTessellation, &snub_hexagonal_cells());
+    by_side_count(&RhombitrihexagonalTessellation, &rhombitrihexagonal_cells());
+    by_side_count(
+        &TruncatedHexagonalTessellation,
+        &truncated_hexagonal_cells(),
+    );
+    by_side_count(
+        &TruncatedTrihexagonalTessellation,
+        &truncated_trihexagonal_cells(),
+    );
+    by_side_count(&SnubSquareTessellation, &snub_square_cells());
+    by_side_count(
+        &ElongatedTriangularTessellation,
+        &elongated_triangular_cells(),
+    );
+}
+
+#[test]
+fn cell_type_table_resolves_keys_against_the_instance() {
+    let types = SquareOctagonTessellation.cell_types();
+    let overrides = std::collections::BTreeMap::from([("square".to_string(), 7)]);
+    let table = CellTypeTable::from_overrides(types, &overrides, 1).unwrap();
+    let value = |x, y| {
+        let id = SquareOctagonTessellation.cell_type_of(SquareOctagonPoint { x, y });
+        *table.get(id)
+    };
+    assert_eq!(value(0, 0), 1);
+    assert_eq!(value(1, 1), 7);
+}
+
+#[test]
+fn cell_type_table_rejects_a_key_the_instance_does_not_have() {
+    let overrides = std::collections::BTreeMap::from([("hexagon".to_string(), 7)]);
+    let error =
+        CellTypeTable::from_overrides(SquareOctagonTessellation.cell_types(), &overrides, 1)
+            .unwrap_err();
+    assert!(
+        error.contains("hexagon") && error.contains("octagon"),
+        "{error}"
+    );
+}
+
+#[test]
+fn cell_type_key_of_names_the_type_of_cell_type_of() {
+    let cell = SquareOctagonPoint { x: 1, y: 1 };
+    assert_eq!(SquareOctagonTessellation.cell_type_key_of(cell), "square");
+    assert_eq!(
+        cell_type_by_key(SquareOctagonTessellation.cell_types(), "square"),
+        Some(SquareOctagonTessellation.cell_type_of(cell))
+    );
 }

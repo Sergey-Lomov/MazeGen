@@ -52,7 +52,7 @@ place where the runtime kind becomes a compile-time `T`: it builds the instance,
 the kind does not accept or requires (`Err` with a reason; every built-in kind but `radial` accepts none) and hands
 `Arc<T>` plus the kind's wire point codec (`CellCodec`) to a `TessellationVisitor`. `maze-runner`
 (full run, canonical baselines, benchmarks, geometry snapshots) and `maze-wasm` (generate, compute
-analytics, `tessellation_shapes`, the geometry snapshot and point queries) all
+analytics, `tessellation_shapes`, `tessellation_cell_types`, the geometry snapshot and point queries) all
 dispatch through it.
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
@@ -213,6 +213,8 @@ pub trait Tessellation: Send + Sync + 'static {
     fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
     fn shape_descriptors(&self) -> &[ShapeDescriptor];
     fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
+    fn cell_types(&self) -> &[CellType];
+    fn cell_type_of(&self, cell: Self::CellId) -> CellTypeId;
 }
 ```
 
@@ -256,6 +258,44 @@ The sketch fixes semantics, not exact signatures.
   `baselines.md`). Consumers
   (`graph::classify`, `generation::vertex_based`) call
   `Field::is_straight(from, via, to)`, which resolves the faces of `via` toward `from` and `to`.
+
+### Cell types
+
+Status (GitHub issue #822): core API, config resolution and UI query are implemented; no QC rule
+or generator consumes them yet.
+
+- **`CellType`** is a tessellation-defined class of cells with a stable key (e.g. `octagon`,
+  `square`), unique within the instance. `cell_types()` lists every type of the instance once and
+  is never empty. `CellTypeId` is the position of a type in that list and is valid only for the
+  instance that produced it.
+- **`cell_type_of(cell) -> CellTypeId`** assigns a type to every valid cell (an invalid cell is a
+  precondition violation). Allocation-free.
+- **Independent of shapes.** A type may depend on the cell's position in the pattern, not only on
+  its `ShapeDescriptor`, and cells of different types may share a shape. Types never affect
+  topology or geometry.
+- **Default.** A tessellation that does not override the methods has the single type `cell`, so
+  consumers need no special case for uniform tilings. Built-in tessellations that mix polygons
+  (4.8.8, 3.6.3.6, 3.12.12, 3.4.6.4, 3.3.4.3.4, 3.3.3.3.6, 4.6.12, 3.3.3.4.4) type cells by
+  polygon: keys `triangle`, `square`, `hexagon`, `octagon`, `dodecagon`.
+
+**Consuming types (QC rules, generator settings).** A new consumer adds only its own parameter and
+reads it per cell; it never touches the type plumbing.
+
+- **Config.** A per-type parameter is a map from type key to value (`BTreeMap<String, V>` in Rust,
+  `Record<string, V>` on the wire), plus a default for types it does not name. Configs name types
+  by key, never by `CellTypeId`, so they stay valid across serialization. Keys are unique only
+  within one tessellation instance, so a stored config is meaningful for its tessellation kind.
+- **Resolution.** `CellTypeTable::from_overrides(tessellation.cell_types(), &map, default)` resolves
+  the keys against the built instance into one value per type, and fails with a message naming the
+  unknown key and the known ones — a key the instance does not have is a config error, not ignored.
+  `table.get(tessellation.cell_type_of(cell))` is the per-cell lookup. Build the table once per run,
+  not per cell.
+- **Helpers.** `cell_type_by_key(types, key)` and `Tessellation::cell_type_key_of(cell)` convert
+  between ids and keys.
+- **UI.** The `tessellation_cell_types` wasm export (`maze-wasm/src/geometry.rs`) takes
+  `{ tessellation, points }` like `tessellation_shapes` and returns `{ keys, point_types }`: every
+  type key of the instance and the type key of each point. `mazeService.getTessellationCellTypes`
+  wraps it. The UI offers exactly `keys` and stores the chosen keys in the consumer's config.
 
 ### Shape templates
 
