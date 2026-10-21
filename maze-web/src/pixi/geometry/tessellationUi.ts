@@ -448,3 +448,28 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
 };
+
+/** Print-field sizing algorithm for a kind. Keeping this in the UI registry prevents consumers
+ * from branching on tessellation names while preserving Cairo's bounds-only rectangle search. */
+const PRINT_RECT_SIZING: Record<TessellationKind, "standard" | "cairo"> = {
+  square: "standard",
+  hex: "standard",
+  tri: "standard",
+  cairo: "cairo",
+  square_octagon: "standard",
+  brick: "standard",
+  trihexagonal: "standard",
+  snub_hexagonal: "standard",
+  rhombitrihexagonal: "standard",
+  truncated_hexagonal: "standard",
+  truncated_trihexagonal: "standard",
+  elongated_triangular: "standard",
+  snub_square: "standard",
+  curved_quadrilateral: "standard",
+  radial: "standard",
+  voronoi: "standard",
+};
+
+export function printRectSizingOf(kind: TessellationKind): "standard" | "cairo" {
+  return PRINT_RECT_SIZING[kind];
+}

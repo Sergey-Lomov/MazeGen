@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { boundsInCellSides, calculatePrintFieldConfig, largestFitting, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { TessellationKind } from "../fieldConfig";
+import * as mazeService from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const printInput = {
@@ -72,6 +73,42 @@ describe("field print sizing", () => {
     expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["cairo", "rect"]);
     expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  });
+
+  describe("strategy contracts", () => {
+    const representatives = [
+      ["axis-aligned", fieldOf("square", { shape: "rect", cols: 1, rows: 1 })],
+      ["Cairo", fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 })],
+      ["rectangular", fieldOf("hex", { shape: "rect", cols: 1, rows: 1 }, "flat_top")],
+      ["radial", fieldOf("hex", { shape: "circle", radius: 1 }, "flat_top")],
+    ] as const;
+
+    it.each(representatives)("%s returns a field inside the printable area", (_name, config) => {
+      const result = calculatePrintFieldConfig(config, printInput);
+      expect(result).not.toBeNull();
+      expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+      expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+    });
+
+    it.each(representatives)("%s dimensions are monotonic as printable area grows", (_name, config) => {
+      const small = calculatePrintFieldConfig(config, { ...printInput, paperSize: "custom", customWidthMm: 80, customHeightMm: 100 });
+      const large = calculatePrintFieldConfig(config, { ...printInput, paperSize: "custom", customWidthMm: 120, customHeightMm: 150 });
+      expect(small).not.toBeNull();
+      expect(large).not.toBeNull();
+      expect(shapeCapacity(large!.config)).toBeGreaterThanOrEqual(shapeCapacity(small!.config));
+      expect(large!.fieldWidthMm).toBeGreaterThanOrEqual(small!.fieldWidthMm);
+      expect(large!.fieldHeightMm).toBeGreaterThanOrEqual(small!.fieldHeightMm);
+    });
+
+    it("Cairo sizing never materializes a field while searching", () => {
+      const materialize = vi.spyOn(mazeService, "getFieldPreset");
+      try {
+        calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }), { ...printInput, cellSizeMm: 1.25 });
+        expect(materialize).not.toHaveBeenCalled();
+      } finally {
+        materialize.mockRestore();
+      }
+    });
   });
 
   it.each([
@@ -188,3 +225,10 @@ describe("field print sizing", () => {
     );
   });
 });
+
+function shapeCapacity(config: { shape: { shape: string } & Record<string, number | string> }): number {
+  const { shape } = config;
+  if ("cols" in shape && "rows" in shape) return Number(shape.cols) * Number(shape.rows);
+  if ("radius" in shape) return Number(shape.radius);
+  return Number(shape.side);
+}
