@@ -111,8 +111,14 @@ single radius cannot match every paper aspect ratio exactly, the dialog displays
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side.
 
-The rectangular search (`calculateBestRectConfig`, `fieldPrintSizing.ts`) measures candidate blocks
-through core (`field_preset_extents`), so it keeps the number of measurements small: the widest
+`fieldPrintSizing.ts` selects a sizing strategy by shape family: axis-aligned rectangles,
+general rectangles/parallelograms, radial shapes, and Cairo rectangles. Shared code owns paper
+validation, margins, physical-unit conversion, final polygon-bound measurement, and result
+formatting. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
+pentagon bounds without materializing a complete candidate field during the search.
+
+The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
+(`field_preset_extents`), so it keeps the number of measurements small: the widest
 column count and tallest row count are found by galloping from a linear estimate (sizes at 1 and
 3), then the columns are walked from the widest down, each column's row count starting from the
 previous one. The walk stops once `cols * maxRows` cannot beat the best cell count; the most cells

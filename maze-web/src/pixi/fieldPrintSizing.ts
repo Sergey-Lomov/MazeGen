@@ -4,7 +4,7 @@ import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
 import { presetShapeExtents } from "./tessellationCells";
 import { displayTransform } from "./tessellationGeometry";
-import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { printRectSizingOf, TESSELLATION_UI } from "./geometry/tessellationUi";
 
 const MAX_RECT_DIMENSION = 1000;
 /** Largest smallest-block dimension of any lattice; a block this large is always accepted. */
@@ -32,6 +32,20 @@ export interface PrintFieldSizingResult {
 interface Bounds {
   width: number;
   height: number;
+}
+
+interface SizingContext {
+  current: PredefinedFieldConfig;
+  usableWidthMm: number;
+  usableHeightMm: number;
+  cellSizeMm: number;
+}
+
+/** A shape-family-specific candidate search. Shared code owns validation, physical units,
+ * result formatting, and the final polygon-bound measurement. */
+interface PrintFieldSizingStrategy {
+  matches(current: PredefinedFieldConfig): boolean;
+  calculate(context: SizingContext): FieldConfig | null;
 }
 
 export function resolvePrintPaperSizeMm(input: Pick<PrintFieldSizingInput, "paperSize" | "customWidthMm" | "customHeightMm" | "orientation">): { widthMm: number; heightMm: number } {
@@ -83,7 +97,12 @@ function computePrintFieldConfig(
   if (usableWidthMm <= 0 || usableHeightMm <= 0) return null;
 
   const cellSideMm = printMeasureToCellSideMm(current, input.cellSizeMm);
-  const config = calculateConfig(current, usableWidthMm, usableHeightMm, cellSideMm);
+  const config = sizingStrategyFor(current).calculate({
+    current,
+    usableWidthMm,
+    usableHeightMm,
+    cellSizeMm: cellSideMm,
+  });
   if (!config) return null;
 
   const bounds = boundsInCellSides(config);
@@ -96,22 +115,50 @@ function computePrintFieldConfig(
   };
 }
 
-function calculateConfig(
-  current: PredefinedFieldConfig,
-  usableWidthMm: number,
-  usableHeightMm: number,
-  cellSizeMm: number,
-): FieldConfig | null {
-  const { shape } = current;
-  if (shape.shape === "rect" && TESSELLATION_UI[current.tessellation.kind].editor.axisAlignedGrid) {
+const AXIS_ALIGNED_STRATEGY: PrintFieldSizingStrategy = {
+  matches: (current) => current.shape.shape === "rect" && TESSELLATION_UI[current.tessellation.kind].editor.axisAlignedGrid,
+  calculate: ({ current, usableWidthMm, usableHeightMm, cellSizeMm }) => {
+    const shape = current.shape as RectShape;
     const cols = Math.floor(usableWidthMm / cellSizeMm);
     const rows = Math.floor(usableHeightMm / cellSizeMm);
     return cols >= 1 && rows >= 1 ? { ...current, shape: { ...shape, cols, rows } } : null;
-  }
-  if (shape.shape === "rect" || shape.shape === "parallelogram") {
+  },
+};
+
+const CAIRO_RECT_STRATEGY: PrintFieldSizingStrategy = {
+  matches: (current) => printRectSizingOf(current.tessellation.kind) === "cairo" && current.shape.shape === "rect",
+  calculate: ({ current, usableWidthMm, usableHeightMm, cellSizeMm }) => {
+    const shape = current.shape as RectShape;
+    // `field_preset_extents` measures Cairo's real pentagon bounds without materializing its
+    // complete block rectangle. Keeping this separate prevents a future generic strategy from
+    // accidentally turning Cairo's sizing search back into repeated full-field enumeration.
     return calculateBestRectConfig(current, shape, usableWidthMm, usableHeightMm, cellSizeMm);
-  }
-  return calculateBestRadialConfig(current, shape, usableWidthMm, usableHeightMm, cellSizeMm);
+  },
+};
+
+const RECTANGULAR_STRATEGY: PrintFieldSizingStrategy = {
+  matches: (current) => current.shape.shape === "rect" || current.shape.shape === "parallelogram",
+  calculate: ({ current, usableWidthMm, usableHeightMm, cellSizeMm }) => {
+    const shape = current.shape as RectShape;
+    return calculateBestRectConfig(current, shape, usableWidthMm, usableHeightMm, cellSizeMm);
+  },
+};
+
+const RADIAL_STRATEGY: PrintFieldSizingStrategy = {
+  matches: () => true,
+  calculate: ({ current, usableWidthMm, usableHeightMm, cellSizeMm }) =>
+    calculateBestRadialConfig(current, current.shape as RadialShape, usableWidthMm, usableHeightMm, cellSizeMm),
+};
+
+const PRINT_FIELD_SIZING_STRATEGIES: readonly PrintFieldSizingStrategy[] = [
+  AXIS_ALIGNED_STRATEGY,
+  CAIRO_RECT_STRATEGY,
+  RECTANGULAR_STRATEGY,
+  RADIAL_STRATEGY,
+];
+
+function sizingStrategyFor(current: PredefinedFieldConfig): PrintFieldSizingStrategy {
+  return PRINT_FIELD_SIZING_STRATEGIES.find((strategy) => strategy.matches(current))!;
 }
 
 function calculateBestRectConfig(
