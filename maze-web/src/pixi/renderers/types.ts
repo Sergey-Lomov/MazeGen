@@ -349,7 +349,10 @@ export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
  *  `teleportConnectorRouting.ts`), offset perpendicular to itself wherever it locally overlaps
  *  another connector's segment, so parallel runs read as distinct lines instead of one merged
  *  stroke. */
-export type TeleportConnectorStyle = "none" | "straight" | "orthogonal";
+export type TeleportConnectorStyle = "none" | "straight" | "orthogonal" | "curved";
+
+/** Which side of the field origin a curved connector bows toward. */
+export type TeleportCurveDirection = "inward" | "outward";
 
 /** How a one-way connector draws its direction arrow(s) (GitHub issue #293 follow-up):
  *  - `"none"`: no arrow.
@@ -395,6 +398,9 @@ export type TeleportLineStyle = {
   connectorColor: number;
   connectorWidth: number;
   connectorStyle: TeleportConnectorStyle;
+  curveDirection?: TeleportCurveDirection;
+  /** Quadratic-curve control-point offset as a fraction of the endpoint span (0..1). */
+  curveStrength?: number;
   arrowMode: TeleportArrowMode;
   /** Tile-width period between arrows in `"periodic"` mode — unused otherwise. */
   arrowPeriod: number;

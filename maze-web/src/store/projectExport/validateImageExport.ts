@@ -52,9 +52,14 @@ export function optVerticalArrowStyle(obj: Record<string, unknown> | null, key: 
   return v === "triangle" || v === "chevron" || v === "arrow" || v === "sign" ? v : fallback;
 }
 
-export function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal"): "none" | "straight" | "orthogonal" {
+export function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal" | "curved"): "none" | "straight" | "orthogonal" | "curved" {
   const v = obj?.[key];
-  return v === "none" || v === "straight" || v === "orthogonal" ? v : fallback;
+  return v === "none" || v === "straight" || v === "orthogonal" || v === "curved" ? v : fallback;
+}
+
+function optTeleportCurveDirection(obj: Record<string, unknown> | null, key: string, fallback: "inward" | "outward"): "inward" | "outward" {
+  const v = obj?.[key];
+  return v === "inward" || v === "outward" ? v : fallback;
 }
 
 export function optTeleportArrowMode(obj: Record<string, unknown> | null, key: string, fallback: "none" | "center" | "double" | "periodic"): "none" | "center" | "double" | "periodic" {
@@ -157,6 +162,8 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
     teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
     teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
+    teleportCurveDirection: optTeleportCurveDirection(obj, "teleportCurveDirection", d.teleportCurveDirection ?? "inward"),
+    teleportCurveStrength: Math.min(1, Math.max(0, optNumber(obj, "teleportCurveStrength", d.teleportCurveStrength ?? 0.25))),
     teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
     teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
     teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),

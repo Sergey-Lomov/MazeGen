@@ -463,6 +463,28 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]())).toBeInTheDocument();
     });
 
+    it("shows curved connector controls and writes their values to the store", () => {
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const connectorStyle = screen.getByText(m["image_export.vector_by_walls.teleport_connector_style"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorStyle, { target: { value: "curved" } });
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_curve_direction"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_curve_strength"]())).toBeInTheDocument();
+
+      const direction = screen.getByText(m["image_export.vector_by_walls.teleport_curve_direction"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(direction, { target: { value: "outward" } });
+      const strength = screen.getByText(m["image_export.vector_by_walls.teleport_curve_strength"]())
+        .parentElement!.querySelector('input[type="range"]')!;
+      fireEvent.change(strength, { target: { value: "0.6" } });
+
+      const settings = useMazeStore.getState().vectorByWallsSettings;
+      expect(settings.teleportConnectorStyle).toBe("curved");
+      expect(settings.teleportCurveDirection).toBe("outward");
+      expect(settings.teleportCurveStrength).toBe(0.6);
+    });
+
     it("changing the corner style updates the store", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();

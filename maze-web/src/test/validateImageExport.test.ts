@@ -241,6 +241,32 @@ describe("validateTeleportFloorBadgeSettings", () => {
   });
 });
 
+describe("validateTeleportSettingsFields curved connector recovery", () => {
+  it("keeps valid curved connector settings and recovers invalid values", () => {
+    const valid = validateTeleportSettingsFields({
+      ...DEFAULT_TELEPORT_SETTINGS,
+      teleportConnectorStyle: "curved",
+      teleportCurveDirection: "outward",
+      teleportCurveStrength: 0.6,
+    }, "path", DEFAULT_TELEPORT_SETTINGS);
+    expect(valid.teleportConnectorStyle).toBe("curved");
+    expect(valid.teleportCurveDirection).toBe("outward");
+    expect(valid.teleportCurveStrength).toBe(0.6);
+
+    const recovered = validateTeleportSettingsFields({
+      teleportConnectorStyle: "unknown",
+      teleportCurveDirection: "sideways",
+      teleportCurveStrength: "strong",
+    }, "path", DEFAULT_TELEPORT_SETTINGS);
+    expect(recovered.teleportConnectorStyle).toBe(DEFAULT_TELEPORT_SETTINGS.teleportConnectorStyle);
+    expect(recovered.teleportCurveDirection).toBe(DEFAULT_TELEPORT_SETTINGS.teleportCurveDirection);
+    expect(recovered.teleportCurveStrength).toBe(DEFAULT_TELEPORT_SETTINGS.teleportCurveStrength);
+
+    expect(validateTeleportSettingsFields({ teleportCurveStrength: 2 }, "path", DEFAULT_TELEPORT_SETTINGS).teleportCurveStrength).toBe(1);
+    expect(validateTeleportSettingsFields({ teleportCurveStrength: -1 }, "path", DEFAULT_TELEPORT_SETTINGS).teleportCurveStrength).toBe(0);
+  });
+});
+
 // GitHub issue #510 — the "Round junctions" boolean was replaced by a Contour/Line rendering-mode enum.
 describe("optRenderStyle (VectorByCorridorsSettings.renderStyle recovery)", () => {
   it("reads a valid value as-is", () => {

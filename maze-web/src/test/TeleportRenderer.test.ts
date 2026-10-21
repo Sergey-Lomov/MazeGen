@@ -3,6 +3,7 @@ import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOr
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
 import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting";
+import { tessellationConfigOf } from "../fieldConfig";
 
 // Cell geometry (wasm) is never reached by the group-customization-off `render()` path
 // exercised below (no `TeleportConnectorRouter.route` call needed since `connectorStyle: "none"`),
@@ -385,6 +386,34 @@ describe("TeleportRenderer.render orthogonal connector routing", () => {
     expect(endpointStyle).toMatchObject({ markerBorderWidth: 2 + 5 });
     expect(maxEndpointOffset).toBe(8 / 2 + 2 + 5);
     routeSpy.mockRestore();
+  });
+});
+
+describe("TeleportRenderer.render radial connector routing", () => {
+  it("uses a ring-following polyline for radial orthogonal connectors", () => {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({
+      edges: [{ from: [10, 0], to: [0, 10], oneWay: false }],
+      waypoints: [],
+      cfg: { tessellation: tessellationConfigOf("radial"), shape: { shape: "circle", radius: 4 } },
+      lineStyle: baseLineStyle({ connectorStyle: "orthogonal", connectorGapWidth: 0 }),
+    });
+
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string }[] } }).view;
+    expect(g.calls.filter((call) => call.fn === "lineTo")).toHaveLength(12);
+  });
+
+  it("keeps radial straight connectors direct", () => {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({
+      edges: [{ from: [10, 0], to: [0, 10], oneWay: false }],
+      waypoints: [],
+      cfg: { tessellation: tessellationConfigOf("radial"), shape: { shape: "circle", radius: 4 } },
+      lineStyle: baseLineStyle({ connectorStyle: "straight", connectorGapWidth: 0 }),
+    });
+
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string }[] } }).view;
+    expect(g.calls.filter((call) => call.fn === "lineTo")).toHaveLength(1);
   });
 });
 

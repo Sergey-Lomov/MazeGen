@@ -5,7 +5,7 @@ import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
@@ -184,8 +184,15 @@ export class TeleportRenderer {
       connectorGapWidth: style.connectorGapWidth,
       connectorWidth: style.connectorWidth,
     };
+    const markerAvoidanceRadius =
+      (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
     const routed =
-      style.connectorStyle === "orthogonal"
+      style.connectorStyle === "curved"
+        ? routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints)
+        :
+      cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal"
+        ? routeRadialConnectors(edges, markerAvoidanceRadius, waypoints)
+        : style.connectorStyle === "orthogonal"
         ? this.connectorRouter.route(
             edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
           )
@@ -335,7 +342,7 @@ export class TeleportRenderer {
   }
 
   /** Draws one connector's routed polyline (`RoutedConnector.points`, 2 points for `"straight"`, 3
-   *  for `"orthogonal"`'s single bend) as a stroked path, plus every direction arrow `oneWay`'s
+   *  for a regular `"orthogonal"` bend, sampled ring points for radial `"orthogonal"`) as a stroked path, plus every direction arrow `oneWay`'s
    *  `arrowMode` calls for (see `arrowPlacements`) — a `"orthogonal"` path can't just be one
    *  `lineTo` per point with round joins, since a bend's own two segments may carry different
    *  collision offsets (see `TeleportConnectorRouter.route`) and a rounded join would visually blend

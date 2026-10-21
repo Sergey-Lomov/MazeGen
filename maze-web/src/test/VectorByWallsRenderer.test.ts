@@ -323,10 +323,19 @@ describe("buildTeleportLineStyle", () => {
     }), 0x999);
     expect(style).toEqual({
       shape: "star", cornerStyle: "round", size: 0.4, sizeAdaptation: 0, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
-      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
+      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal", curveDirection: "inward", curveStrength: 0.25,
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
       floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, sizeAdaptation: 0, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     });
+  });
+
+  it("passes explicit curved connector settings through the shared renderer style", () => {
+    const style = buildTeleportLineStyle(baseSettings({
+      teleportConnectorStyle: "curved",
+      teleportCurveDirection: "outward",
+      teleportCurveStrength: 0.6,
+    }), 0x999);
+    expect(style).toMatchObject({ connectorStyle: "curved", curveDirection: "outward", curveStrength: 0.6 });
   });
 });
 

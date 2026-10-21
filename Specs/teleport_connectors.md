@@ -13,6 +13,22 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
 - `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below).
+- `"curved"` — a sampled quadratic Bézier center-to-center connector. `teleportCurveDirection`
+  selects `"inward"` or `"outward"` relative to the field origin and
+  `teleportCurveStrength` (0..1) sets the control-point offset as a fraction of the endpoint
+  span. These settings are shared by the live canvas and both vector export modes.
+
+For the `radial` tessellation, the `"orthogonal"` style follows its own rings and spokes with one
+corner. It considers two candidates: source spoke then target-ring arc, or source-ring arc then
+target spoke. The route picks the candidate that avoids other teleport/start/finish markers, then
+the shorter one. A connector touching the center remains a direct radial line. The `"straight"`
+style and every other tessellation keep their existing behavior.
+
+For a radial `"curved"` connector, the control point lies on the midpoint polar ray of the
+endpoints' shortest angular arc.
+The router considers inward and outward radii, rejects paths that pass through other rendered
+teleport or waypoint markers when possible, then uses `teleportCurveDirection` to break a tie.
+If either endpoint is the center, it falls back to a direct radial line.
 
 ## Bend axes
 
