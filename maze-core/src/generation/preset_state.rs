@@ -149,14 +149,14 @@ impl PresetState {
     /// Resolves a `PresetEndpoint` (e.g. `preset_start`/`preset_finish`/`preset_gen_source`) to a
     /// real `NodeId` on `field`, against the same split nodes `build_preset_state` already
     /// applied to it — must be called with the same `field`/`xy_to_cell` used to build this
-    /// `PresetState`. Returns `None` for an unresolvable endpoint (unknown point/level, or an
-    /// undeclared slot), same "silently unresolved" contract `build_preset_state` uses internally.
+    /// `PresetState`. Returns `Err` naming the endpoint when it is unresolvable (unknown
+    /// point/level, or an undeclared slot), the same error `build_preset_state` reports.
     pub fn resolve_endpoint<T: Tessellation>(
         &self,
         field: &MultiLevelField<T>,
         xy_to_cell: impl Fn(i32, i32) -> T::CellId,
         endpoint: PresetEndpoint,
-    ) -> Option<NodeId> {
+    ) -> Result<NodeId, String> {
         resolve_preset_endpoint(field, &self.slots_by_point, &xy_to_cell, endpoint)
     }
 }
@@ -230,25 +230,35 @@ fn apply_split_points<T: Tessellation>(
 
 /// Resolves one `PresetEndpoint` to a real `NodeId`. `slots_by_point` is the per-(level, point)
 /// sorted slot list `apply_split_points` just built (already sorted — insertion order there is
-/// the sort order). Returns `None` if the level index is out of range, the point isn't in the
-/// field, or `slot: Some(s)` names a slot not present in `slots_by_point` for that (level, point).
+/// the sort order). Returns `Err` naming the endpoint if the level index is out of range, the point
+/// isn't in the field, or `slot: Some(s)` names a slot not present in `slots_by_point` for that
+/// (level, point).
 fn resolve_preset_endpoint<T: Tessellation>(
     field: &MultiLevelField<T>,
     slots_by_point: &HashMap<(u32, i32, i32), Vec<u32>>,
     xy_to_cell: &impl Fn(i32, i32) -> T::CellId,
     endpoint: PresetEndpoint,
-) -> Option<NodeId> {
+) -> Result<NodeId, String> {
     let level_index = endpoint.level.unwrap_or(0);
-    let level = level_id_at(field, level_index)?;
-    let point = xy_to_cell(endpoint.point.0, endpoint.point.1);
+    let (x, y) = endpoint.point;
+    let level = level_id_at(field, level_index)
+        .ok_or_else(|| format!("preset endpoint references unknown level {level_index}"))?;
+    let point = xy_to_cell(x, y);
     let nodes = field.nodes_at(level, point);
+    let original = nodes.first().copied().ok_or_else(|| {
+        format!("preset endpoint references unknown point [{x}, {y}] on level {level_index}")
+    })?;
     match endpoint.slot {
-        None => nodes.first().copied(),
-        Some(slot) => {
-            let slots = slots_by_point.get(&(level_index, endpoint.point.0, endpoint.point.1))?;
-            let index = slots.iter().position(|&s| s == slot)?;
-            nodes.get(1 + index).copied()
-        }
+        None => Ok(original),
+        Some(slot) => slots_by_point
+            .get(&(level_index, x, y))
+            .and_then(|slots| slots.iter().position(|&s| s == slot))
+            .and_then(|index| nodes.get(1 + index).copied())
+            .ok_or_else(|| {
+                format!(
+                    "preset endpoint references undeclared slot {slot} at [{x}, {y}] on level {level_index}"
+                )
+            }),
     }
 }
 
@@ -265,7 +275,7 @@ fn resolve_preset_endpoint<T: Tessellation>(
 /// position `i` in `levels_ordered()`. This replaced the earlier #219/#220 broadcast behavior
 /// (applying a preset to every node at a point, since presets couldn't address a specific one
 /// yet) — an unresolvable endpoint (unknown point/level, or a `slot` not declared in
-/// `split_points` for that level) is silently skipped, same as the old "point out of bounds" skip.
+/// `split_points` for that level) makes the whole call return `Err` naming the endpoint.
 ///
 /// `split_points` (declared extra nodes) is applied to `field` before any preset/lock is resolved
 /// — see `apply_split_points` above.
@@ -297,9 +307,7 @@ pub fn build_preset_state<T: Tessellation>(
         |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_cell, ep);
 
     for preset in preset_connections {
-        let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else {
-            continue;
-        };
+        let (from_id, to_id) = (resolve(preset.from)?, resolve(preset.to)?);
         match preset.state {
             PresetConnectionState::Wall => {
                 blocked.insert((from_id, to_id));
@@ -436,9 +444,7 @@ pub fn build_preset_state<T: Tessellation>(
     // shortcut; every generation algorithm already discovers a planted edge through the graph
     // itself, the same way it discovers any other pre-existing edge at start.
     for passage in preset_vertical_passages {
-        let (Some(from_id), Some(to_id)) = (resolve(passage.from), resolve(passage.to)) else {
-            continue;
-        };
+        let (from_id, to_id) = (resolve(passage.from)?, resolve(passage.to)?);
         match passage.one_way {
             None => {
                 preset_edge_ids.insert(graph.build_initial_edge(
@@ -513,11 +519,9 @@ pub fn build_preset_state<T: Tessellation>(
         let node_ids: Vec<NodeId> = elevator
             .floors
             .iter()
-            .filter_map(|&ep| resolve(ep))
-            .collect();
-        // Fewer than 2 resolved endpoints (invalid/unresolvable entries filtered by the client,
-        // but not assumed — same defensive-skip contract every other preset endpoint uses) means
-        // no fan to connect.
+            .map(|&ep| resolve(ep))
+            .collect::<Result<_, _>>()?;
+        // Fewer than 2 floors means no fan to connect.
         if node_ids.len() < 2 {
             continue;
         }
@@ -542,9 +546,7 @@ pub fn build_preset_state<T: Tessellation>(
     }
 
     for lock in locked_nodes {
-        let Some(id) = resolve(lock.point) else {
-            continue;
-        };
+        let id = resolve(lock.point)?;
         match lock.kind {
             NodeLockKind::In => {
                 locked_in.insert(id);

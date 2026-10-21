@@ -19,6 +19,30 @@ pub struct CellCodec<T: Tessellation> {
     pub to_xy: fn(T::CellId) -> (i32, i32),
 }
 
+impl<T: Tessellation> CellCodec<T> {
+    /// Decodes caller-supplied wire points into cells, naming the first one that is not a cell of
+    /// `tessellation`. Per-cell `Tessellation` queries treat an invalid cell as a precondition
+    /// violation (panic in debug builds, a wrong answer in release), so every wire entry point
+    /// that accepts raw points decodes them through this.
+    pub fn decode_valid(
+        &self,
+        tessellation: &T,
+        points: &[[i32; 2]],
+    ) -> Result<Vec<T::CellId>, String> {
+        points
+            .iter()
+            .map(|&[x, y]| {
+                let cell = (self.from_xy)(x, y);
+                if tessellation.is_valid_cell(cell) {
+                    Ok(cell)
+                } else {
+                    Err(format!("invalid cell [{x}, {y}]"))
+                }
+            })
+            .collect()
+    }
+}
+
 impl<T: Tessellation> Clone for CellCodec<T> {
     fn clone(&self) -> Self {
         *self

@@ -55,6 +55,14 @@ the kind does not accept or requires (`Err` with a reason; every built-in kind b
 analytics, `tessellation_shapes`, `tessellation_cell_types`, the geometry snapshot and point queries) all
 dispatch through it.
 
+**Wire points are validated at the boundary.** Per-cell `Tessellation` queries treat an invalid
+cell as a precondition violation, so every wire entry point that accepts raw `[x, y]` points
+decodes them with `CellCodec::decode_valid(&tessellation, points)`, which returns
+`Err("invalid cell [x, y]")` for the first point that is not a cell. This covers the per-point
+queries (`tessellation_shapes`, `tessellation_cell_types`), the `scope` of the geometry point and
+region queries, and the geometry snapshot's cells. Field construction (`Field::new`) and the field
+operations reject invalid cells on their own.
+
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
 (`debug_assert`), not a `None` result.
@@ -294,7 +302,8 @@ reads it per cell; it never touches the type plumbing.
   between ids and keys.
 - **UI.** The `tessellation_cell_types` wasm export (`maze-wasm/src/geometry.rs`) takes
   `{ tessellation, points }` like `tessellation_shapes` and returns `{ keys, point_types }`: every
-  type key of the instance and the type key of each point. `mazeService.getTessellationCellTypes`
+  type key of the instance and the type key of each point; a point that is not a cell is an error (`invalid cell [x, y]`), not a
+  default answer. `mazeService.getTessellationCellTypes`
   wraps it. The UI offers exactly `keys` and stores the chosen keys in the consumer's config.
 
 ### Shape templates

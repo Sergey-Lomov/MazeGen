@@ -76,14 +76,16 @@ pub fn seed_graph<T: Tessellation>(
     // the split node `build_preset_state` just created above, which `resolve_start` (geometry
     // only, no `Field`/`NodeId` access) can't have resolved on its own.
     let level = field.single_level_id();
-    let start_id = config
-        .preset_gen_source
-        .as_ref()
-        .and_then(|dto| {
-            preset_state.resolve_endpoint(&field, cell_from_xy, preset_endpoint_dto_to_core(dto))
-        })
-        .or_else(|| field.nodes_at(level, start).first().copied())
-        .ok_or_else(|| "start node not found".to_string())?;
+    let start_id = match config.preset_gen_source.as_ref() {
+        Some(dto) => {
+            preset_state.resolve_endpoint(&field, cell_from_xy, preset_endpoint_dto_to_core(dto))?
+        }
+        None => field
+            .nodes_at(level, start)
+            .first()
+            .copied()
+            .ok_or_else(|| "start node not found".to_string())?,
+    };
 
     Ok(Seeded {
         seed,
@@ -121,22 +123,26 @@ pub fn run_generation<T: Tessellation>(
 }
 
 /// The node each explicit `preset_start`/`preset_finish` marker resolves to, if any — the user's
-/// pinned choice, distinct from a generator-chosen endpoint.
+/// pinned choice, distinct from a generator-chosen endpoint. `Err` when a marker is unresolvable.
 fn pinned_endpoints<T: Tessellation>(
     seeded: &Seeded<T>,
     config: &GenerateConfig,
-) -> (Option<NodeId>, Option<NodeId>) {
-    let resolve = |dto: &crate::config::PresetEndpointDto| {
-        seeded.preset_state.resolve_endpoint(
-            &seeded.field,
-            seeded.cell_from_xy,
-            preset_endpoint_dto_to_core(dto),
-        )
+) -> Result<(Option<NodeId>, Option<NodeId>), String> {
+    let resolve = |dto: &Option<crate::config::PresetEndpointDto>| {
+        dto.as_ref()
+            .map(|dto| {
+                seeded.preset_state.resolve_endpoint(
+                    &seeded.field,
+                    seeded.cell_from_xy,
+                    preset_endpoint_dto_to_core(dto),
+                )
+            })
+            .transpose()
     };
-    (
-        config.preset_start.as_ref().and_then(resolve),
-        config.preset_finish.as_ref().and_then(resolve),
-    )
+    Ok((
+        resolve(&config.preset_start)?,
+        resolve(&config.preset_finish)?,
+    ))
 }
 
 /// Output of `run_repair`: the repaired maze, the issues still open after repair, the QC timing
@@ -159,7 +165,7 @@ pub fn run_repair<T: Tessellation + 'static>(
     let limits = build_repair_limits(config)?;
     // Recorded on `PresetState` so the issue-payload resolver can flag a pinned `start`/`finish`
     // element `preset_locked` (GitHub issue #376 follow-up).
-    let (pinned_start, pinned_finish) = pinned_endpoints(&seeded, config);
+    let (pinned_start, pinned_finish) = pinned_endpoints(&seeded, config)?;
     seeded.preset_state.preset_start = pinned_start;
     seeded.preset_state.preset_finish = pinned_finish;
 
@@ -200,7 +206,7 @@ pub fn run_check_only<T: Tessellation + 'static>(
     config: &GenerateConfig,
 ) -> Result<Checked<T>, String> {
     let qc_engine = build_qc_and_repair::<T>(config)?;
-    let (pinned_start, pinned_finish) = pinned_endpoints(seeded, config);
+    let (pinned_start, pinned_finish) = pinned_endpoints(seeded, config)?;
     let mut maze = Maze::new(seeded.field.clone(), seeded.graph.clone());
     maze.meta.start = pinned_start;
     maze.meta.finish = pinned_finish;

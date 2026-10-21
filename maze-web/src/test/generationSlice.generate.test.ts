@@ -163,11 +163,11 @@ describe("mazeStore.generate", () => {
       seed: 7,
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       rules: [],
-      lockedNodes: new Map([["1,2", "both"]]),
+      lockedNodes: new Map([["0,0", "both"]]),
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
-      locked_nodes: [{ point: { point: [1, 2] }, kind: "both" }],
+      locked_nodes: [{ point: { point: [0, 0] }, kind: "both" }],
     }));
     useMazeStore.setState({ lockedNodes: new Map() });
   });
@@ -178,11 +178,26 @@ describe("mazeStore.generate", () => {
       seed: 7,
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       rules: [],
-      lockedNodes: new Map([["1,2:3", "out"]]),
+      lockedNodes: new Map([["0,0:3", "out"]]),
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
-      locked_nodes: [{ point: { point: [1, 2], slot: 3 }, kind: "out" }],
+      locked_nodes: [{ point: { point: [0, 0], slot: 3 }, kind: "out" }],
+    }));
+    useMazeStore.setState({ lockedNodes: new Map() });
+  });
+
+  it("omits a locked node outside its floor's field from the payload", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      seed: 7,
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
+      rules: [],
+      lockedNodes: new Map([["0,0", "both"], ["99,99", "both"]]),
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
+      locked_nodes: [{ point: { point: [0, 0] }, kind: "both" }],
     }));
     useMazeStore.setState({ lockedNodes: new Map() });
   });

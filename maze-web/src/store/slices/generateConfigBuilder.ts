@@ -2,7 +2,7 @@ import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
@@ -201,7 +201,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   }
   // Key is "x,y" (floor 0) or "x,y@level" (GitHub issue #340) — parsed back into (point, level)
   // for the wire DTO, same convention `presetEndpointKey`/`splitPointsCore.ts`'s `pointKey` use.
+  // A lock outside its floor's field is dropped here: the Rust side rejects an unresolvable endpoint.
+  const invalidLockKeys = computeInvalidLockedNodeKeys(lockedEntries, resolveFieldAt);
   const locked_nodes = Array.from(lockedEntries.entries()).flatMap(([key, kind]) => {
+    if (invalidLockKeys.has(key)) return [];
     const endpoint = presetEndpointFromKey(key);
     return endpoint === null ? [] : [{ point: presetEndpointToDto(endpoint), kind }];
   });

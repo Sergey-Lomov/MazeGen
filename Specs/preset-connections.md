@@ -147,6 +147,18 @@ A teleport is **invalid** if either endpoint is outside the current field (`comp
 
 `presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
 
+### Unresolvable endpoints
+
+Generation does not skip a preset endpoint it cannot resolve. `build_preset_state` (connections,
+vertical passages, elevator floors, locked nodes) and the `preset_start` / `preset_finish` /
+`preset_gen_source` markers return `Err` naming the endpoint — an unknown level, a point outside
+the level's field, or a slot not declared in `split_points`. `PresetState::resolve_endpoint` has the
+same contract. The client therefore sends only valid entries to `generate()`: connections,
+teleports, vertical passages, elevators, split points, markers and locked nodes outside their
+floor's field are omitted (see "Validity"). The post-edit `compute_analytics` path keeps its lenient
+contract: its `preset_*` fields only flag `preset_locked` elements, and an entry that no longer
+resolves against the rebuilt field is skipped.
+
 ### Rendering (`TeleportRenderer`)
 
 Each teleport draws as a connecting line plus one marker per endpoint, in the marker shape from `DEFAULT_MAZE_RENDER_STYLE.teleport` (`diamond` by default, not literally a square):
@@ -244,7 +256,7 @@ Editing an existing elevator: right-click any of its floor endpoints removes the
 
 ### Validity
 
-A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — mirrors the Rust side's own "fewer than two resolved endpoints connects nothing" fallback in `build_preset_state`, so a client-invalid elevator would have been a no-op edge-wise anyway. Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
+A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — the Rust side (`build_preset_state`) connects nothing for an elevator with fewer than two floors, and rejects an elevator endpoint that does not resolve (see "Unresolvable endpoints" below). Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
 
 ### Rendering
 

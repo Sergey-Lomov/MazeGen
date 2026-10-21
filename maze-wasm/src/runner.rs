@@ -211,14 +211,16 @@ pub fn run_generate<T: Tessellation + 'static>(
     // already chose (default centroid-nearest or seeded-random per `generation_source_mode`,
     // GitHub issue #640) — mirrors `maze-runner`'s `run_generate_typed`.
     let level = field.single_level_id();
-    let start_id = config
-        .preset_gen_source
-        .as_ref()
-        .and_then(|dto| {
-            preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
-        })
-        .or_else(|| field.nodes_at(level, start).first().copied())
-        .ok_or_else(|| JsValue::from_str("start node not found"))?;
+    let start_id = match config.preset_gen_source.as_ref() {
+        Some(dto) => preset_state
+            .resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
+            .map_err(|e| JsValue::from_str(&e))?,
+        None => field
+            .nodes_at(level, start)
+            .first()
+            .copied()
+            .ok_or_else(|| JsValue::from_str("start node not found"))?,
+    };
 
     let (
         generation_source,
@@ -251,12 +253,20 @@ pub fn run_generate<T: Tessellation + 'static>(
     // user's pinned choice, distinct from a generator-chosen endpoint. Recorded on `PresetState`
     // so the issue-payload resolver can flag a pinned `start`/`finish` element `preset_locked`
     // (GitHub issue #376 follow-up).
-    let pinned_start = config.preset_start.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
-    });
-    let pinned_finish = config.preset_finish.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &cell_from_xy, preset_endpoint_dto_to_core(dto))
-    });
+    let resolve_pinned = |dto: &Option<maze_runner::config::PresetEndpointDto>| {
+        dto.as_ref()
+            .map(|dto| {
+                preset_state.resolve_endpoint(
+                    &field,
+                    &cell_from_xy,
+                    preset_endpoint_dto_to_core(dto),
+                )
+            })
+            .transpose()
+            .map_err(|e| JsValue::from_str(&e))
+    };
+    let pinned_start = resolve_pinned(&config.preset_start)?;
+    let pinned_finish = resolve_pinned(&config.preset_finish)?;
     preset_state.preset_start = pinned_start;
     preset_state.preset_finish = pinned_finish;
 

@@ -68,3 +68,33 @@ fn pinned_source_wins_over_random_mode_regardless_of_seed() {
         "a resolved pin must win over random mode for every seed, got {starts:?}"
     );
 }
+
+fn off_field_endpoint() -> PresetEndpointDto {
+    PresetEndpointDto {
+        point: [999, 999],
+        slot: None,
+        level: None,
+    }
+}
+
+#[test]
+fn unresolvable_gen_source_is_an_error() {
+    let mut config = base_config();
+    config.preset_gen_source = Some(off_field_endpoint());
+    let err = run_from_config(1, &config).err().expect("must fail");
+    assert!(
+        err.contains("[999, 999]"),
+        "error must name the point: {err}"
+    );
+}
+
+#[test]
+fn unresolvable_pinned_start_and_finish_are_errors() {
+    let mut start = base_config();
+    start.preset_start = Some(off_field_endpoint());
+    assert!(run_from_config(1, &start).is_err());
+
+    let mut finish = base_config();
+    finish.preset_finish = Some(off_field_endpoint());
+    assert!(run_from_config(1, &finish).is_err());
+}

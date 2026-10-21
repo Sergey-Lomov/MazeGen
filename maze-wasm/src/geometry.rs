@@ -41,7 +41,8 @@ pub fn geometry_cells_in_region(request: JsValue) -> Result<JsValue, JsValue> {
 }
 
 /// Wire shape for the per-point tessellation queries (`tessellation_shapes`,
-/// the caller needs.
+/// `tessellation_cell_types`): the tessellation to build and the points to query. Every point must
+/// be a cell of it, otherwise the query returns an error naming the point.
 #[derive(Deserialize)]
 struct TessellationPointsConfig {
     tessellation: TessellationConfig,
@@ -74,7 +75,7 @@ fn tessellation_shapes_for(cfg: &TessellationPointsConfig) -> Result<Tessellatio
         Shapes {
             points: &cfg.points,
         },
-    )
+    )?
 }
 
 struct Shapes<'a> {
@@ -82,25 +83,25 @@ struct Shapes<'a> {
 }
 
 impl TessellationVisitor for Shapes<'_> {
-    type Output = TessellationShapes;
+    type Output = Result<TessellationShapes, String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
-        TessellationShapes {
+        let cells = codec.decode_valid(&tessellation, self.points)?;
+        Ok(TessellationShapes {
             keys: tessellation
                 .shape_descriptors()
                 .iter()
                 .map(|d| d.key().to_string())
                 .collect(),
-            point_shapes: self
-                .points
-                .iter()
-                .map(|&[x, y]| {
+            point_shapes: cells
+                .into_iter()
+                .map(|cell| {
                     tessellation
-                        .shape_of((codec.from_xy)(x, y))
+                        .shape_of(cell)
                         .map(|shape| shape.descriptor().key().to_string())
                 })
                 .collect(),
-        }
+        })
     }
 }
 
@@ -130,7 +131,7 @@ fn tessellation_cell_types_for(
         CellTypes {
             points: &cfg.points,
         },
-    )
+    )?
 }
 
 struct CellTypes<'a> {
@@ -138,25 +139,21 @@ struct CellTypes<'a> {
 }
 
 impl TessellationVisitor for CellTypes<'_> {
-    type Output = TessellationCellTypes;
+    type Output = Result<TessellationCellTypes, String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
-        TessellationCellTypes {
+        let cells = codec.decode_valid(&tessellation, self.points)?;
+        Ok(TessellationCellTypes {
             keys: tessellation
                 .cell_types()
                 .iter()
                 .map(|t| t.key().to_string())
                 .collect(),
-            point_types: self
-                .points
-                .iter()
-                .map(|&[x, y]| {
-                    tessellation
-                        .cell_type_key_of((codec.from_xy)(x, y))
-                        .to_string()
-                })
+            point_types: cells
+                .into_iter()
+                .map(|cell| tessellation.cell_type_key_of(cell).to_string())
                 .collect(),
-        }
+        })
     }
 }
 
@@ -224,6 +221,36 @@ mod tests {
                 keys: vec!["cell".to_string()],
                 point_types: vec!["cell".to_string(), "cell".to_string()],
             })
+        );
+    }
+
+    #[test]
+    fn tessellation_shapes_rejects_a_non_cell_point() {
+        let cfg = TessellationPointsConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::SquareOctagon,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[0, 0], [1, 2]],
+        };
+        assert_eq!(
+            tessellation_shapes_for(&cfg),
+            Err("invalid cell [1, 2]".to_string())
+        );
+    }
+
+    #[test]
+    fn tessellation_cell_types_rejects_a_non_cell_point() {
+        let cfg = TessellationPointsConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::SquareOctagon,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[0, 0], [1, 2]],
+        };
+        assert_eq!(
+            tessellation_cell_types_for(&cfg),
+            Err("invalid cell [1, 2]".to_string())
         );
     }
 }

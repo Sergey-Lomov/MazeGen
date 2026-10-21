@@ -40,7 +40,8 @@ a random node count with unconstrained face assignment.
 (`confirmTessellation`, `setTessellationKind`) the store keeps every pattern of `splitPatterns`
 whose `shape` the new tessellation provides and drops the rest. The web keeps no copy of the
 template registry: `shapeTemplates.ts` asks core through the `tessellation_shapes` wasm export
-(`shape_descriptors()` keys plus `shape_of` per requested cell), memoized per tessellation config.
+(`shape_descriptors()` keys plus `shape_of` per requested cell), memoized per tessellation config. A requested point that is not a cell makes the export throw
+(`invalid cell [x, y]`) instead of answering with a wrong template.
 `shapeKeysOf` gives a tessellation's keys; `patternShapeOf` gives the template of the pattern
 editor's anchor cell, which a new pattern gets as its `shape`.
 

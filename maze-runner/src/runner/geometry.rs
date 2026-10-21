@@ -165,11 +165,12 @@ pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySn
     })
 }
 
+/// `Err` when `scope` names a point that is not a cell.
 pub fn cell_at(request: &CellAtRequest) -> Result<Option<[i32; 2]>, String> {
-    build_tessellation(&request.tessellation, CellAt { request })
+    build_tessellation(&request.tessellation, CellAt { request })?
 }
 
-/// `Err` also when an unscoped region's bounding box holds more than `MAX_REGION_CANDIDATES` cells —
+/// `Err` when `scope` names a point that is not a cell, and also when an unscoped region's bounding box holds more than `MAX_REGION_CANDIDATES` cells —
 /// the caller is expected to keep such requests within it; a scoped query examines only its cells.
 pub fn cells_in_region(request: &CellsInRegionRequest) -> Result<Vec<[i32; 2]>, String> {
     build_tessellation(&request.tessellation, CellsInRegion { request })?
@@ -194,11 +195,7 @@ impl TessellationVisitor for Snapshot<'_> {
         // Edge geometry is computed once per canonical edge key, and only for the requested cells.
         let mut edges: HashMap<EdgeKey<T>, (Vec<Segment>, Point)> = HashMap::new();
         let mut out = Vec::with_capacity(self.request.cells.len());
-        for &[x, y] in &self.request.cells {
-            let cell = (codec.from_xy)(x, y);
-            if !tessellation.is_valid_cell(cell) {
-                return Err(format!("invalid cell [{x}, {y}]"));
-            }
+        for cell in codec.decode_valid(&*tessellation, &self.request.cells)? {
             let mut faces = Vec::new();
             let mut face_segments = Vec::new();
             let shape = tessellation.shape_of(cell);
@@ -227,7 +224,7 @@ impl TessellationVisitor for Snapshot<'_> {
             // Same chain as `boundary_path(cell)`, assembled from the cached edge geometry.
             let path = BoundaryPath::new(face_segments);
             out.push(CellGeometry {
-                cell: [x, y],
+                cell: wire(cell, codec),
                 center: xy(tessellation.center(cell)),
                 cell_scale: tessellation.cell_scale(cell),
                 shape: shape.map(|shape| shape.descriptor().key().to_string()),
@@ -256,14 +253,14 @@ struct CellAt<'a> {
 }
 
 impl TessellationVisitor for CellAt<'_> {
-    type Output = Option<[i32; 2]>;
+    type Output = Result<Option<[i32; 2]>, String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         let [px, py] = self.request.point;
-        let scope_cells = scope_cells(&self.request.scope, codec);
-        tessellation
+        let scope_cells = scope_cells(&self.request.scope, &*tessellation, codec)?;
+        Ok(tessellation
             .cell_at(Point::new(px, py), scope(&scope_cells))
-            .map(|cell| wire(cell, codec))
+            .map(|cell| wire(cell, codec)))
     }
 }
 
@@ -286,7 +283,7 @@ impl TessellationVisitor for CellsInRegion<'_> {
             RegionModeDto::Contained => RegionMode::Contained,
             RegionModeDto::CenterInside => RegionMode::CenterInside,
         };
-        let scope_cells = scope_cells(&self.request.scope, codec);
+        let scope_cells = scope_cells(&self.request.scope, &*tessellation, codec)?;
         let cells = tessellation
             .cells_in_region(&region, mode, scope(&scope_cells))
             .map_err(|e| format!("region too large: more than {} candidate cells", e.limit))?;
@@ -294,17 +291,21 @@ impl TessellationVisitor for CellsInRegion<'_> {
     }
 }
 
-/// The request's scope cells, sorted and deduplicated as `CellScope::Cells` requires.
+/// The request's scope cells, validated, sorted and deduplicated as `CellScope::Cells` requires.
 fn scope_cells<T: Tessellation>(
     scope: &Option<Vec<[i32; 2]>>,
+    tessellation: &T,
     codec: CellCodec<T>,
-) -> Option<Vec<T::CellId>> {
-    scope.as_ref().map(|cells| {
-        let mut cells: Vec<T::CellId> = cells.iter().map(|&[x, y]| (codec.from_xy)(x, y)).collect();
-        cells.sort();
-        cells.dedup();
-        cells
-    })
+) -> Result<Option<Vec<T::CellId>>, String> {
+    scope
+        .as_ref()
+        .map(|cells| {
+            let mut cells = codec.decode_valid(tessellation, cells)?;
+            cells.sort();
+            cells.dedup();
+            Ok(cells)
+        })
+        .transpose()
 }
 
 /// `Space` when the request names no scope, else the request's cell set.
@@ -554,6 +555,30 @@ mod tests {
             BoundaryRequest::Path,
         );
         assert!(geometry_snapshot(&path).is_ok());
+    }
+
+    #[test]
+    fn point_queries_reject_a_non_cell_scope_point() {
+        let square_octagon = || config(TessellationKind::SquareOctagon);
+        let scope = Some(vec![[0, 0], [1, 2]]);
+        let expected = Err("invalid cell [1, 2]".to_string());
+        assert_eq!(
+            cell_at(&CellAtRequest {
+                tessellation: square_octagon(),
+                point: [0.5, 0.5],
+                scope: scope.clone(),
+            }),
+            expected
+        );
+        assert_eq!(
+            cells_in_region(&CellsInRegionRequest {
+                tessellation: square_octagon(),
+                region: vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]],
+                mode: RegionModeDto::Intersects,
+                scope,
+            }),
+            Err("invalid cell [1, 2]".to_string())
+        );
     }
 
     #[test]
