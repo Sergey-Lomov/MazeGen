@@ -29,6 +29,8 @@ describe("elongated_triangular registry", () => {
     expect(axes.some((a) => Math.abs(a.ux) < 1e-9)).toBe(false);
   });
 
+  // This intentionally checks every edge around 119 cells for each axis. In the complete jsdom
+  // suite it can exceed Vitest's default five-second budget despite having no async work.
   it("never runs an axis line through a cell center along a cell edge", () => {
     const cells: [number, number][] = [];
     for (let x = -8; x <= 8; x++) for (let y = -3; y <= 3; y++) cells.push([x, y]);
@@ -47,7 +49,7 @@ describe("elongated_triangular registry", () => {
         }
       }
     }
-  });
+  }, 10_000);
 });
 
 describe("elongated_triangular cell geometry", () => {
