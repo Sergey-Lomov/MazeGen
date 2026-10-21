@@ -29,6 +29,18 @@ function StatefulParamFields({ params, initial, onCommit }: {
   );
 }
 
+function StatefulAddSplitWeights() {
+  const [values, setValues] = useState({ split_config: "[1]" });
+  return (
+    <ParamFields
+      params={[addSplitConfigParam]}
+      values={values}
+      addSplitPatternsOverride={[{ shape: "regular:4", node_count: 1, faces: [[]], weight: 1 }]}
+      onChange={(paramId, value) => setValues((previous) => ({ ...previous, [paramId]: value }))}
+    />
+  );
+}
+
 const intervalParam: ParamDescriptor = {
   id: "desired_length",
   label: "Desired graph length",
@@ -331,6 +343,19 @@ describe("ParamFields", () => {
     it("falls back to the kind's own default when the stored value is empty", () => {
       render(<ParamFields params={[addSplitConfigParam]} values={{ split_config: "" }} onChange={vi.fn()} />);
       expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("3");
+    });
+  });
+
+  describe("add_split_config pattern weights", () => {
+    it("keeps an empty weight draft until blur, then restores it with the shared input hint", () => {
+      render(<StatefulAddSplitWeights />);
+      fireEvent.click(screen.getByText("Weight settings"));
+      const input = document.querySelector('input[name="split-pattern-0-weight"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "" } });
+      expect(input).toHaveValue("");
+      fireEvent.blur(input);
+      expect(input).toHaveValue("1");
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.restored"]());
     });
   });
 

@@ -45,7 +45,7 @@ export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
 // Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
 // `ruleToConfig`'s param-filtering (only descriptor-known param ids are forwarded), plus its own
 // `slot_id` and recursively-built `nested` list. Unlike top-level strategies, nested params are
-// per-node (`n.params`), not looked up in the global `strategyParams` map — see
+// per-node (`n.params`), not looked up from another rule — see
 // `NestedStrategyState`'s doc comment for why (two rules must be able to configure the same
 // nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
 // from a project file) blowing the call stack on every `generate()` call — see
@@ -78,14 +78,14 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   };
 }
 
-// Builds a rule's `StrategyConfig` from its own `strategyId`/`state.strategyParams` (the project's
+// Builds a rule's `StrategyConfig` from its own `strategyId`/`strategyParams` (the rule's
 // real, user-configured weights) — shared by `ruleToConfig` (generation) and `confirmPostEdit`
 // (GitHub issue #532, so post-edit's route score is computed from the same real weights generation
 // uses, never defaults — see `AnalyticsRuleGroupConfig.strategy` on the wasm side).
 export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): StrategyConfig | null {
   if (!g.strategyId || g.disabled) return null;
   const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-  const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+  const paramOverrides = g.strategyParams;
   const params: Record<string, string> = {};
   if (descriptor) {
     for (const p of descriptor.params) {

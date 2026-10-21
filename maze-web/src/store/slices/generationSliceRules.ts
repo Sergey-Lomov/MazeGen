@@ -54,15 +54,9 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       params: initialCheckParams?.[descriptor.id] ?? defaultParamsFor(descriptor),
       disabled: false,
     }));
-    const strategyParams = { ...state.strategyParams };
-    if (strategyId && !strategyParams[strategyId]) {
-      const strategyDescriptor = state.availableStrategies.find((s) => s.id === strategyId);
-      strategyParams[strategyId] = initialStrategyParams ?? defaultParamsFor({ params: strategyDescriptor?.params ?? [] });
-    }
-    const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies);
+    const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies, initialStrategyParams);
     const stages = appendRuleToStage(state.stages, rule.id, targetStageId);
     return {
-      strategyParams,
       rules: [...state.rules, rule],
       stages,
       debugStale: debugStaleOf(state),
@@ -115,9 +109,9 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
   // config left over from the old strategy would be meaningless at best, misleading at worst.
   // Every mandatory slot of the new strategy is auto-filled with a default nested strategy (see
   // `buildDefaultNestedStrategies`) rather than left empty.
-  setStrategy: (ruleId, strategyId) => set((state) => ({
+  setStrategy: (ruleId, strategyId, initialStrategyParams) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
-      ? { ...g, strategyId, nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
+      ? { ...g, strategyId, strategyParams: initialStrategyParams ?? defaultParamsFor({ params: state.availableStrategies.find((s) => s.id === strategyId)?.params ?? [] }), nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
       : g),
     debugStale: debugStaleOf(state),
   })),

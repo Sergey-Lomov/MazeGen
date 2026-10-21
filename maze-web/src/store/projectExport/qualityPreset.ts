@@ -58,7 +58,7 @@ export interface SkippedQualityIds {
  *  - an unknown top-level strategy becomes "no fix";
  *  - a nested strategy entry with an unknown strategy, or in a slot its parent strategy doesn't
  *    declare, is removed with its own nested chain;
- *  - params of unknown strategies are dropped from `strategyParams` (not reported). */
+ *  - params of unknown top-level strategies are dropped from their owning rule (not reported). */
 export function dropUnknownQualityIds(
   quality: ProjectFileQuality,
   checks: readonly CheckDescriptor[],
@@ -98,19 +98,16 @@ export function dropUnknownQualityIds(
       return [];
     }
     const strategyId = rule.strategyId !== null && knownStrategy(rule.strategyId) ? rule.strategyId : null;
-    return [{ ...rule, checks: ruleChecks, strategyId, nestedStrategies: strategyId === null ? [] : filterNested(strategyId, rule.nestedStrategies) }];
+    return [{ ...rule, checks: ruleChecks, strategyId, strategyParams: strategyId === null ? {} : rule.strategyParams, nestedStrategies: strategyId === null ? [] : filterNested(strategyId, rule.nestedStrategies) }];
   });
   const ruleIds = new Set(rules.map((r) => r.id));
-  const strategyParams = Object.fromEntries(
-    Object.entries(quality.strategyParams).filter(([id]) => strategiesById.has(id)),
-  );
 
   return {
     quality: {
-      ...quality,
       rules,
       stages: quality.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => ruleIds.has(id)) })),
-      strategyParams,
+      repairMaxIterations: quality.repairMaxIterations,
+      repairTimeBudgetSecs: quality.repairTimeBudgetSecs,
     },
     skipped: {
       checks: [...skipped.checks],

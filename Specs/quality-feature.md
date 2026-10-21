@@ -40,6 +40,7 @@ interface QcRuleState {
   checks: CheckInstance[]; // member check instances — can be empty (see below)
   nextLocalCheckId: number; // monotonic per-rule counter minting new CheckInstance.localId — never reused
   strategyId: string | null;
+  strategyParams: Record<string, string>; // top-level strategy overrides for this rule only
   disabled: boolean;     // strategy-only toggle, see below
   ruleDisabled: boolean; // whole-rule toggle, see below
   collapsed: boolean;    // UI-only card collapse state, see below
@@ -56,6 +57,7 @@ own field.
 All check types may have multiple independent instances across rules and stages.
 
 - `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
+- `strategyParams` belongs to the rule, not the strategy id: two rules using the same strategy may configure independent values.
 - A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`.
 - The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, and is `null` for an un-renamed rule, in which case the view model resolves it to the current-locale `kind label`. Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
@@ -578,7 +580,6 @@ precisely because nothing is ever reset when hidden.)
 // State
 rules: QcRuleState[]
 stages: RepairStageState[]   // see "What a stage is" above — no minimum count
-strategyParams: Record<string, Record<string, string>>   // strategyId → paramId → value
 
 // Actions
 addCheck(typeId: string, ruleId?: string, initialParams?: Record<string, string>): void
@@ -586,7 +587,7 @@ createRule(typeIds: string[], strategyId: string | null, initialCheckParams?: Re
 removeCheck(ruleId: string, localId: number): void
 setCheckParam(ruleId: string, localId: number, paramId: string, value: string): void
 removeCheckFromRule(ruleId: string, localId: number): void
-setStrategy(ruleId: string, strategyId: string): void
+setStrategy(ruleId: string, strategyId: string, initialStrategyParams?: Record<string, string>): void
 clearStrategy(ruleId: string): void
 toggleStrategyDisabled(ruleId: string): void
 toggleRuleDisabled(ruleId: string): void
@@ -600,7 +601,7 @@ removeStage(stageId: string): void
 moveStage(stageId: string, direction: "up" | "down"): void
 toggleStageDisabled(stageId: string): void
 toggleStageCollapsed(stageId: string): void
-setStrategyParam(strategyId: string, paramId: string, value: string): void
+setStrategyParam(ruleId: string, paramId: string, value: string): void
 setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
 setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
 addNestedStrategy(ruleId: string, path: PathSegment[], slotKind: string): void
@@ -629,7 +630,7 @@ id searched across all rules.
 - Creates exactly **one** new rule with one fresh `CheckInstance` per surviving `typeIds` entry (`localId` 0..n by position) — the multiselect "Add new rule" flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`). Unlike calling `addCheck` once per id, this never creates intermediate singleton rules for ids after the first.
 - `kind` is taken from `typeIds[0]`'s descriptor — same one-kind-per-rule assumption as `addCheck`; callers pre-filter candidates by kind.
 - Each instance's params: `initialCheckParams[typeId]` if given, else descriptor defaults.
-- If `strategyId` is given and has no existing `strategyParams` entry: uses `initialStrategyParams` if given, else the strategy descriptor's defaults.
+- If `strategyId` is given: stores `initialStrategyParams` on the new rule, or the strategy descriptor's defaults when omitted.
 
 ### removeCheck(ruleId, localId)
 
@@ -649,7 +650,7 @@ id searched across all rules.
 ### toggleStrategyDisabled(ruleId)
 
 - Flips the rule's `disabled` (absent/`false` ↔ `true`).
-- Does **not** touch `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
+- Does **not** touch the rule's `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
 - A disabled rule's strategy is sent as `strategy: null` in its stage's `GenerateConfig.stages[].rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned. Distinct from `ruleDisabled` (below), which omits the rule entirely rather than sending it with `strategy: null`.
 
 ### toggleRuleDisabled(ruleId)
@@ -752,7 +753,7 @@ descriptor defaults. Values are clamped server-side.
 1. Filters out every stage with `disabled: true` entirely — a disabled stage is absent from `stages: StageConfig[]`, not sent as an entry with an empty `rules: []` (that shape means "stage exists but nothing to dispatch", a different thing from "stage doesn't exist for this run").
 2. Builds `stages: StageConfig[]` from the remaining (enabled) stages, one entry per stage, **in `state.stages` order** — order is significant now (see `moveRule`'s doc comment above and `repair.md`'s "Stages" section for why).
 3. Within each stage: excludes `ruleDisabled` rules entirely from that stage's `rules`, and also excludes any remaining rule left with zero *effective* checks (every member `CheckInstance.disabled`, or `checks` already empty) — same "as if never selected" treatment, since core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright ("rule `<id>` has no checks"). Neither exclusion sends the rule as `strategy: null` (that shape means something different — see below). **Every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`. Each rule's `checks` is filtered to its non-`disabled` members, then mapped to `CheckInstanceConfig[]` via `c => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })` — order preserved from `QcRuleState.checks`, never resorted, so serialization stays deterministic. `localId` is a `number` in the store but crosses the wasm boundary as a `string` (`CheckInstanceConfig.local_id: string`) — the numeric type never crosses; only this conversion point.
-4. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+4. For a rule with a strategy: resolves the strategy's param overrides from that rule's `strategyParams`, filtered to keys the strategy descriptor actually declares.
 5. A stage left with an empty `rules` array after step 3's filtering is sent as-is (`{ id, name, rules: [] }`) — core treats a stage with no dispatchable rules as a trivial degenerate case (see `repair.md`'s "Stages" section), no special-casing needed here.
 
 See `quality_control.md`'s "StageConfig"/"QcRuleConfig" sections for the wasm-side shapes this maps onto, and `repair.md`'s "Stages" / "QcRule and rule-based RepairEngine" sections for how core turns it into a `RepairEngine`.

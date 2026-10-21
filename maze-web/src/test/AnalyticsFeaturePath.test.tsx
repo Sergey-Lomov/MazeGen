@@ -178,7 +178,13 @@ describe("AnalyticsFeature Path section score row", () => {
       statistics: makeStatistics({}),
       routeInfo: { ...baseRouteInfo, score: 3.5 },
       availableStrategies: [scoredEndpointsDescriptor],
-      strategyParams: { scored_endpoints: { path_weight: "2" } },
+      // Rules array order is not dispatch order. Core uses the first active matching rule in
+      // stage order, so the modal must display score_rule's weight, not later_rule's value.
+      rules: [
+        { id: "later_rule", name: null, kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints", strategyParams: { path_weight: "9" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false },
+        { id: "score_rule", name: null, kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints", strategyParams: { path_weight: "2" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false },
+      ],
+      stages: [{ id: "score_stage", name: "Score", ruleIds: ["score_rule", "later_rule"], disabled: false, collapsed: false }],
     });
     render(<AnalyticsFeature />);
 

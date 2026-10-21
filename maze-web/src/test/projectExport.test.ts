@@ -44,9 +44,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     splitPatterns: [],
     qcExperiment: false,
     vertexSettingsPanelOpen: false,
-    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", strategyParams: { param_b: "2" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
-    strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 100,
     repairTimeBudgetSecs: 10,
     presetConnections: new Map(),
@@ -1009,7 +1008,24 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }]);
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", strategyParams: { param_b: "2" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }]);
+  });
+
+  it("copies legacy shared strategy params to every matching rule", () => {
+    const data = valid_without_optional_sections();
+    const quality = data.quality as { rules: Record<string, unknown>[]; stages?: unknown; strategyParams?: unknown };
+    const firstRule = quality.rules[0];
+    delete firstRule.strategyParams;
+    quality.rules.push({ ...firstRule, id: "rule_2" });
+    delete quality.stages;
+    quality.strategyParams = { strategy_a: { param_b: "2" } };
+
+    const result = parseAndValidate(data);
+
+    expect(result.quality.rules.map((rule) => rule.strategyParams)).toEqual([
+      { param_b: "2" },
+      { param_b: "2" },
+    ]);
   });
 
   it("defaults check disabled to false when absent (pre-toggle project files)", () => {

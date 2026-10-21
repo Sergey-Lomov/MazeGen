@@ -39,7 +39,6 @@ export function resolveNestedStrategyVM(topLevel: NestedStrategyVM[], path: Path
 export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props) {
   const rules = useMazeStore((s) => s.rules);
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
-  const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
@@ -94,8 +93,8 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         description={resolveStrategyDescription(strategy.id)}
         warning={strategy.experimental}
         params={strategy.params}
-        storeValues={strategyParams[strategy.id] ?? {}}
-        onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}
+        storeValues={rules.find((r) => r.id === slot.ruleId)?.strategyParams ?? {}}
+        onCommit={(paramId, value) => setStrategyParam(slot.ruleId, paramId, value)}
         flushRef={flushRef}
         contextId={strategy.id}
         valueOverrides={passageOverrides?.values}

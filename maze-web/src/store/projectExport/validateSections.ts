@@ -493,10 +493,11 @@ export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   // Absent entirely for project files saved before rule-level params existed (GitHub issue
   // #253) — same recovery pattern `nestedStrategies` above uses.
   const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
+  const strategyParams = assertStringRecord(obj.strategyParams ?? {}, `${path}.strategyParams`);
   // `collapsed` defaults to `false` for files saved before rule collapsing existed (GitHub issue
   // #320) — same recovery pattern `ruleDisabled` above uses.
   const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params, collapsed };
+  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id
@@ -597,7 +598,17 @@ export function validateQuality(v: unknown, path: string): ProjectFileQuality {
       if (!seenInStage.has(r.id)) throw new Error(`${path}.stages: rule id ${r.id} is not assigned to any stage`);
     }
   }
-  const strategyParams = assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`);
+  // Project files written before #774 kept top-level strategy params keyed by strategy id.
+  // Copy each legacy value to every rule using that strategy on load; subsequent saves use the
+  // rule-local field and no longer retain this ambiguous shared map.
+  const legacyStrategyParams = "strategyParams" in qualObj
+    ? assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`)
+    : {};
+  const normalizedRules = rules.map((rule) => (
+    Object.keys(rule.strategyParams).length > 0 || rule.strategyId === null
+      ? rule
+      : { ...rule, strategyParams: legacyStrategyParams[rule.strategyId] ?? {} }
+  ));
   // Optional — files saved before this setting existed (key absent entirely) default to the same
   // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
   // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
@@ -609,5 +620,5 @@ export function validateQuality(v: unknown, path: string): ProjectFileQuality {
   const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
     ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
     : 10;
-  return { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs };
+  return { rules: normalizedRules, stages, repairMaxIterations, repairTimeBudgetSecs };
 }

@@ -102,7 +102,7 @@ export function rulesFromFile(rules: ProjectFileQcRule[]): QcRuleState[] {
 // (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
 // collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
 // not already in use among the member checks passed in at creation).
-export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
+export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[], strategyParams?: Record<string, string>): QcRuleState {
   return {
     id: `rule_${crypto.randomUUID()}`,
     name: null,
@@ -110,6 +110,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
     checks,
     nextLocalCheckId: checks.length,
     strategyId,
+    strategyParams: strategyId ? (strategyParams ?? defaultParamsFor({ params: availableStrategies.find((s) => s.id === strategyId)?.params ?? [] })) : {},
     disabled,
     ruleDisabled: false,
     nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],

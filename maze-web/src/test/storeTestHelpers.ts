@@ -39,7 +39,7 @@ export function makeRule(overrides: Partial<QcRuleState> = {}): QcRuleState {
   return {
     id: "g1", name: "Rule 1", kind: "k1",
     checks: [], nextLocalCheckId: 0,
-    strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
+    strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
     collapsed: false,
     ...overrides,
   };

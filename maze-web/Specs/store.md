@@ -69,7 +69,6 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `elementsConfig` | `ElementsConfig` | One-way chance etc. |
 | `selectedChecks` | `string[]` | Active quality check ids |
 | `selectedStrategies` | `Record<string, string>` | issueKind → strategyId |
-| `strategyParams` | `Record<strategyId, Record<paramId, string>>` | Raw string param values |
 | `checkParams` | `Record<checkId, Record<paramId, string>>` | Raw string param values |
 | `registryLoaded` | `boolean` | WASM check/strategy registry loaded |
 | `availableChecks` | `CheckDescriptor[]` | All checks from WASM registry |

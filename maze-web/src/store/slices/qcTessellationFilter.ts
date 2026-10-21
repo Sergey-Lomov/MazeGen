@@ -3,8 +3,8 @@ import type { ParamDescriptor, ParamKind } from "../../wasm/types";
 import type { TessellationConfig } from "../../fieldConfig";
 import { shapeKeysOf } from "../../pixi/shapeTemplates";
 
-type QcState = Pick<MazeState, "rules" | "strategyParams" | "availableChecks" | "availableStrategies" | "availableRuleParams">;
-export type QcTessellationResult = Pick<MazeState, "rules" | "strategyParams">;
+type QcState = Pick<MazeState, "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams">;
+export type QcTessellationResult = Pick<MazeState, "rules">;
 
 /** A JSON pattern list filtered by shape. `kept` lists the surviving indices of the original list;
  *  `null` means the raw value is not a pattern list (left untouched, same "invalid reads as empty"
@@ -139,29 +139,18 @@ function reindexWeights(
  *  `tessellation` (the config being switched to) provides. A check whose non-empty pattern filter
  *  (its own, or the rule-level one it consumes) loses every pattern is removed instead of being
  *  left with an empty list, since an empty filter means "any split tile". Strategy weights indexed against a rule-level pattern list are re-indexed to match.
- *  Returns the input `rules`/`strategyParams` references unchanged when nothing is affected, so
+ *  Returns the input `rules` reference unchanged when nothing is affected, so
  *  callers can detect data loss by identity. */
 export function qcForTessellation(state: QcState, tessellation: TessellationConfig): QcTessellationResult {
   const shapes = shapeKeysOf(tessellation);
-  let strategyParams = state.strategyParams;
-  const setStrategyParams = (strategyId: string, params: Record<string, string>) => {
-    if (params === strategyParams[strategyId]) return;
-    if (strategyParams === state.strategyParams) strategyParams = { ...state.strategyParams };
-    strategyParams[strategyId] = params;
-  };
-
-  for (const [strategyId, params] of Object.entries(state.strategyParams)) {
-    const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-    setStrategyParams(strategyId, filterParams(params, descriptor?.params ?? [], shapes) ?? params);
-  }
-
-  // Strategy params are shared by every rule using the strategy, while the rule-level pattern list
-  // is per rule: re-indexing once per rule would apply several rules' index maps to one array.
-  // The first rule to re-index wins, the same "shared param, first owner" reading the UI shows.
-  const reindexed = new Set<string>();
   let rulesChanged = false;
   const rules = state.rules.map((rule): QcRuleState => {
     let ruleParams = rule.params;
+    let strategyParams = rule.strategyParams;
+    const strategyDescriptor = rule.strategyId
+      ? state.availableStrategies.find((s) => s.id === rule.strategyId)
+      : undefined;
+    strategyParams = filterParams(strategyParams, strategyDescriptor?.params ?? [], shapes) ?? strategyParams;
     const ruleFilteredCheckIds = new Set<string>();
     for (const p of state.availableRuleParams) {
       if (p.kind.type !== "pattern_list") continue;
@@ -170,11 +159,10 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
       if (ruleParams === rule.params) ruleParams = { ...rule.params };
       ruleParams[p.id] = filtered.raw;
       if (filterEmptied(filtered)) p.applies_to.forEach((id) => ruleFilteredCheckIds.add(id));
-      if (rule.strategyId && p.applies_to.includes(rule.strategyId) && !reindexed.has(rule.strategyId)) {
-        reindexed.add(rule.strategyId);
-        const descriptor = state.availableStrategies.find((s) => s.id === rule.strategyId);
-        const params = strategyParams[rule.strategyId];
-        if (descriptor && params) setStrategyParams(rule.strategyId, reindexWeights(params, descriptor.params, filtered.kept));
+      if (rule.strategyId && p.applies_to.includes(rule.strategyId)) {
+        if (strategyDescriptor) {
+          strategyParams = reindexWeights(strategyParams, strategyDescriptor.params, filtered.kept);
+        }
       }
     }
 
@@ -196,10 +184,10 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
     }
 
     const nestedStrategies = filterNested(rule.nestedStrategies, state, shapes);
-    if (ruleParams === rule.params && !checksChanged && nestedStrategies === rule.nestedStrategies) return rule;
+    if (ruleParams === rule.params && strategyParams === rule.strategyParams && !checksChanged && nestedStrategies === rule.nestedStrategies) return rule;
     rulesChanged = true;
-    return { ...rule, params: ruleParams, checks: checksChanged ? checks : rule.checks, nestedStrategies };
+    return { ...rule, params: ruleParams, strategyParams, checks: checksChanged ? checks : rule.checks, nestedStrategies };
   });
 
-  return { rules: rulesChanged ? rules : state.rules, strategyParams };
+  return { rules: rulesChanged ? rules : state.rules };
 }

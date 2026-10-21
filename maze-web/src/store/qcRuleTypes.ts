@@ -43,7 +43,7 @@ export interface PathSegment {
 /** One nested strategy assignment, filling one of the parent strategy's `nested_slots` (see
  * `StrategyDescriptor.nested_slots` and `Specs/repair.md`'s nested-strategy pattern). Recursive —
  * a nested strategy can itself have nested strategies. Lives per-rule (on `QcRuleState`), not in
- * the global `strategyParams` map — two rules using the same nesting-capable top-level strategy
+ * another rule's strategy params — two rules using the same nesting-capable top-level strategy
  * (e.g. two `reduce_scc_count` rules) must be able to pick independent nested strategies/params.
  *
  * Several entries may share the same `slotId` when that slot's `max` is `null` or `> 1` (see
@@ -93,6 +93,9 @@ export interface QcRuleState {
    * (see `projectExport`'s `serialize.ts`) — recomputed on load as `max(checks.map(localId)) + 1`. */
   nextLocalCheckId: number;
   strategyId: string | null;
+  /** Top-level strategy overrides for this rule only. Two rules may use the same strategy with
+   * different values, just like nested strategy nodes. */
+  strategyParams: Record<string, string>;
   /** Strategy-only toggle — fix is skipped, but the rule's checks still run (QC still reports
    * the issue, just unfixed). Independent from `ruleDisabled` below. */
   disabled: boolean;

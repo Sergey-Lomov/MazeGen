@@ -51,9 +51,9 @@ top-level/nested strategy params (`pattern_list`, `split_generation_config`) kee
 surviving patterns. A check whose non-empty pattern filter (its own, or the rule-level one it
 consumes) loses every pattern is removed, since an empty filter means "any split tile".
 `add_split_config` weights are re-indexed to the surviving rule-level patterns, or reset to the
-`max_split_nodes` default when none survive. Strategy params are shared across rules while the
-rule-level pattern list is per rule, so the weights are re-indexed once, against the first rule
-using the strategy. `selectTessellationWouldLoseData` reports any such loss (generation or QC
+`max_split_nodes` default when none survive. Top-level strategy params belong to their owning
+rule, so each rule's weights are re-indexed against that rule's own pattern list.
+`selectTessellationWouldLoseData` reports any such loss (generation or QC
 patterns); the confirm dialog evaluates it once, on click, and warns before it happens. Filtering
 runs on every confirmed tessellation config change (kind or `params`), not only on a kind change.
 

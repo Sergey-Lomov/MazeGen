@@ -147,7 +147,6 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // quality
       rules: rulesFromFile(file.quality.rules),
       stages: file.quality.stages,
-      strategyParams: file.quality.strategyParams,
       repairMaxIterations: file.quality.repairMaxIterations,
       repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,
       // presets

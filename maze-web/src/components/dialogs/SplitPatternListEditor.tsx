@@ -12,6 +12,7 @@ import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 import { Tooltip } from "../Tooltip";
+import { NumberInput } from "../NumberInput";
 
 interface Props {
   patterns: SplitPattern[];
@@ -135,16 +136,14 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                 {withWeights && (
                   <div style={styles.weightRow}>
                     <span style={styles.label}>{m["generation.split_pattern_weight"]()}</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       name={`split-pattern-${i}-weight`}
                       style={sharedStyles.inputSm}
-                      value={pattern.weight ?? 1.0}
+                      value={String(pattern.weight ?? 1.0)}
                       min={0}
-                      step={0.1}
-                      onChange={(e) => {
-                        const w = Math.max(0, Number(e.target.value));
-                        if (Number.isFinite(w)) updatePattern(i, { ...pattern, weight: w });
+                      onChange={(value) => {
+                        const weight = Number(value);
+                        if (Number.isFinite(weight)) updatePattern(i, { ...pattern, weight });
                       }}
                     />
                     <span style={styles.percent}>{percentOf(pattern.weight ?? 1.0).toFixed(1)}%</span>

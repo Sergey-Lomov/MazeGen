@@ -68,7 +68,6 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   availableRuleParams: [],
   rules: [],
   stages: [newStage(0)],
-  strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
   elementsConfig: { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
   routeInfo: null,
@@ -247,7 +246,6 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   loadQualityPreset: (quality) => set((state) => ({
     rules: rulesFromFile(quality.rules),
     stages: quality.stages,
-    strategyParams: quality.strategyParams,
     repairMaxIterations: quality.repairMaxIterations,
     repairTimeBudgetSecs: quality.repairTimeBudgetSecs,
     debugStale: debugStaleOf(state),

@@ -40,6 +40,7 @@ function rule(id: string, typeIds: string[], strategyId: string | null, extra: P
     checks: typeIds.map((typeId, localId) => ({ localId, typeId, params: {}, disabled: false })),
     nextLocalCheckId: typeIds.length,
     strategyId,
+    strategyParams: {},
     disabled: false,
     ruleDisabled: false,
     nestedStrategies: [],
@@ -54,7 +55,7 @@ function stage(id: string, ruleIds: string[]): RepairStageState {
 }
 
 const sourceRules = [
-  rule("rule_a", ["min_loop_length"], "invalid_loop_random", { name: "Loops", checks: [{ localId: 4, typeId: "min_loop_length", params: { min: "6" }, disabled: true }] }),
+  rule("rule_a", ["min_loop_length"], "invalid_loop_random", { name: "Loops", strategyParams: { attempts: "7" }, checks: [{ localId: 4, typeId: "min_loop_length", params: { min: "6" }, disabled: true }] }),
   rule("rule_b", ["max_loop_length"], null, { ruleDisabled: true }),
 ];
 
@@ -63,7 +64,6 @@ function resetStore() {
     ...baseStoreState(),
     rules: [],
     stages: [],
-    strategyParams: {},
     repairMaxIterations: 100,
     repairTimeBudgetSecs: 10,
   });
@@ -74,7 +74,6 @@ function saveSourcePreset() {
   useMazeStore.setState({
     rules: sourceRules,
     stages: [stage("stage_x", ["rule_a"]), stage("stage_y", ["rule_b"])],
-    strategyParams: { invalid_loop_random: { attempts: "7" } },
     repairMaxIterations: null,
     repairTimeBudgetSecs: 3.5,
   });
@@ -96,7 +95,7 @@ describe("quality preset (GitHub issue #751)", () => {
     expect(raw.kind).toBe(QUALITY_PRESET_KIND);
     expect(raw.version).toBe(QUALITY_PRESET_VERSION);
     expect(Object.keys(raw).sort()).toEqual(["kind", "quality", "version"]);
-    expect(Object.keys(raw.quality).sort()).toEqual(["repairMaxIterations", "repairTimeBudgetSecs", "rules", "stages", "strategyParams"]);
+    expect(Object.keys(raw.quality).sort()).toEqual(["repairMaxIterations", "repairTimeBudgetSecs", "rules", "stages"]);
     expect(raw.quality.rules[0].nextLocalCheckId).toBeUndefined();
   });
 
@@ -111,7 +110,6 @@ describe("quality preset (GitHub issue #751)", () => {
     const after = useMazeStore.getState();
     expect(after.rules).toEqual([{ ...sourceRules[0], nextLocalCheckId: 5 }, sourceRules[1]]);
     expect(after.stages).toEqual([stage("stage_x", ["rule_a"]), stage("stage_y", ["rule_b"])]);
-    expect(after.strategyParams).toEqual({ invalid_loop_random: { attempts: "7" } });
     expect(after.repairMaxIterations).toBeNull();
     expect(after.repairTimeBudgetSecs).toBe(3.5);
     expect(after.seed).toBe(777);
@@ -124,7 +122,7 @@ describe("quality preset (GitHub issue #751)", () => {
     const preset = parseQualityPreset({
       kind: QUALITY_PRESET_KIND,
       version: 1,
-      quality: { rules: [{ id: "r1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length" }], disabled: false }], strategyParams: {}, futureKey: 1 },
+      quality: { rules: [{ id: "r1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length" }], disabled: false }], futureKey: 1 },
     });
     expect(preset.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["r1"], disabled: false, collapsed: false }]);
     expect(preset.quality.repairMaxIterations).toBe(100);
@@ -208,7 +206,6 @@ describe("dropUnknownQualityIds", () => {
     expect(out.rules[1].strategyId).toBe("dispatcher");
     expect(out.rules[1].nestedStrategies).toEqual([{ slotId: "a", strategyId: "invalid_loop_random", params: {}, nested: [] }]);
     expect(out.stages).toEqual([stage("s1", ["r_mixed"]), stage("s2", ["r_empty"])]);
-    expect(out.strategyParams).toEqual({ invalid_loop_random: { a: "1" } });
     expect(out.repairMaxIterations).toBe(5);
     expect(out.repairTimeBudgetSecs).toBeNull();
   });

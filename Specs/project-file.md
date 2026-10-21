@@ -89,7 +89,7 @@ Quality card (`QualityFeature.tsx`).
 
 - Content: JSON `QualityPresetFile` (`types.ts`) — `kind: "maze-quality-preset"`,
   `version: QUALITY_PRESET_VERSION`, and `quality`: exactly the project file's `quality` section
-  (`ProjectFileQuality` — rules, stages, `strategyParams`, `repairMaxIterations`,
+  (`ProjectFileQuality` — rules, stages, `repairMaxIterations`,
   `repairTimeBudgetSecs`), built by the shared `serializeQuality(state)` and validated by the shared
   `validateQuality` (`validateSections.ts`).
 - Extension: `QUALITY_PRESET_FILE_EXTENSION = ".mazequality"`, with the same iOS/iPadOS `accept`
@@ -113,7 +113,7 @@ Quality card (`QualityFeature.tsx`).
   - an unknown top-level strategy becomes "no fix";
   - a nested strategy entry with an unknown strategy, or in a slot its parent strategy doesn't
     declare (listed as `<parent strategy id>.<slot id>`), is removed with its own nested chain;
-  - `strategyParams` of unknown strategies are dropped silently.
+  - strategy params of an unknown top-level strategy are dropped with that rule assignment.
 
   Before the registry is loaded no filtering is done.
 - File kind mix-up: `parseQualityPreset` rejects a visual preset (by `kind`) and a project file (no

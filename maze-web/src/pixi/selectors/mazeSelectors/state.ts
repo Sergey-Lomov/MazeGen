@@ -96,7 +96,7 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
  * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
   "previewKind" | "previewParams" | "tessellationKind" | "tessellationParams" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
-  | "previewFieldConfig" | "splitPatterns" | "rules" | "strategyParams" | "availableChecks" | "availableStrategies" | "availableRuleParams"
+  | "previewFieldConfig" | "splitPatterns" | "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams"
 >): boolean {
   // Params define the cell set, so changing them resets the fields like a kind change does.
   if (!sameTessellation({ kind: s.previewKind, params: s.previewParams }, { kind: s.tessellationKind, params: s.tessellationParams })) {
@@ -108,7 +108,7 @@ export function selectTessellationWouldLoseData(s: Pick<MazeState,
   const tessellation = s.previewFieldConfig.tessellation;
   if (splitPatternsFor(s.splitPatterns, tessellation).length !== s.splitPatterns.length) return true;
   const qc = qcForTessellation(s, tessellation);
-  return qc.rules !== s.rules || qc.strategyParams !== s.strategyParams;
+  return qc.rules !== s.rules;
 }
 
 /** True when removing `floorId` would discard field data configured on that floor (GitHub issue

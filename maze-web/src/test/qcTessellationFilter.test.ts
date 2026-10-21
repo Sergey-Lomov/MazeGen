@@ -30,23 +30,21 @@ const ruleParams: RuleParamDescriptor[] = [
 function rule(id: string, patch: Partial<QcRuleState>): QcRuleState {
   return {
     id, name: null, kind: "k", checks: [], nextLocalCheckId: 1, strategyId: null, disabled: false,
-    ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false, ...patch,
+    ruleDisabled: false, nestedStrategies: [], params: {}, strategyParams: {}, collapsed: false, ...patch,
   };
 }
 
-function qcState(rules: QcRuleState[], strategyParams: Record<string, Record<string, string>> = {}) {
-  return { rules, strategyParams, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams };
+function qcState(rules: QcRuleState[]) {
+  return { rules, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams };
 }
 
 describe("qcForTessellation", () => {
   it("returns the same references when every pattern survives", () => {
     const state = qcState(
-      [rule("r", { checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([hex]) }, disabled: false }] })],
-      { missing_loops_split: { split_config: JSON.stringify({ pattern_mode: true, max_split_nodes: 2, patterns: [hex] }) } },
+      [rule("r", { strategyId: "missing_loops_split", strategyParams: { split_config: JSON.stringify({ pattern_mode: true, max_split_nodes: 2, patterns: [hex] }) }, checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([hex]) }, disabled: false }] })],
     );
     const result = qcForTessellation(state, HEX);
     expect(result.rules).toBe(state.rules);
-    expect(result.strategyParams).toBe(state.strategyParams);
   });
 
   it("keeps only patterns of the new kind's shapes in check params", () => {
@@ -69,26 +67,24 @@ describe("qcForTessellation", () => {
       [rule("r", {
         strategyId: "add_split",
         params: { split_patterns: JSON.stringify([square, hex]) },
-        checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }],
+        strategyParams: { split_config: "[0.5,3]" }, checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }],
       })],
-      { add_split: { split_config: "[0.5,3]" } },
     );
     const result = qcForTessellation(state, HEX);
     expect(JSON.parse(result.rules[0].params.split_patterns)).toEqual([hex]);
     expect(result.rules[0].checks).toHaveLength(1);
-    expect(result.strategyParams.add_split.split_config).toBe("[3]");
+    expect(result.rules[0].strategyParams.split_config).toBe("[3]");
   });
 
-  it("re-indexes shared strategy weights once even when several rules lose patterns", () => {
+  it("re-indexes each rule's strategy weights independently", () => {
     const state = qcState(
       [
-        rule("a", { strategyId: "add_split", params: { split_patterns: JSON.stringify([square, hex, hex]) } }),
-        rule("b", { strategyId: "add_split", params: { split_patterns: JSON.stringify([square, hex, hex]) } }),
+        rule("a", { strategyId: "add_split", strategyParams: { split_config: "[1,2,3]" }, params: { split_patterns: JSON.stringify([square, hex, hex]) } }),
+        rule("b", { strategyId: "add_split", strategyParams: { split_config: "[4,5,6]" }, params: { split_patterns: JSON.stringify([square, hex, hex]) } }),
       ],
-      { add_split: { split_config: "[1,2,3]" } },
     );
     const result = qcForTessellation(state, HEX);
-    expect(result.strategyParams.add_split.split_config).toBe("[2,3]");
+    expect(result.rules.map((r) => r.strategyParams.split_config)).toEqual(["[2,3]", "[5,6]"]);
   });
 
   it("drops rule-filtered checks and resets weights when every rule-level pattern is lost", () => {
@@ -96,24 +92,22 @@ describe("qcForTessellation", () => {
       [rule("r", {
         strategyId: "add_split",
         params: { split_patterns: JSON.stringify([square]) },
-        checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }],
+        strategyParams: { split_config: "[0.5]" }, checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }],
       })],
-      { add_split: { split_config: "[0.5]" } },
     );
     const result = qcForTessellation(state, HEX);
     expect(result.rules[0].params.split_patterns).toBe("[]");
     expect(result.rules[0].checks).toEqual([]);
-    expect(result.strategyParams.add_split.split_config).toBe("2");
+    expect(result.rules[0].strategyParams.split_config).toBe("2");
   });
 
   it("filters split generation config patterns in top-level and nested strategy params", () => {
     const config = JSON.stringify({ pattern_mode: true, max_split_nodes: 2, patterns: [square, hex] });
     const state = qcState(
-      [rule("r", { nestedStrategies: [{ slotId: "s", strategyId: "missing_loops_split", params: { split_config: config }, nested: [] }] })],
-      { missing_loops_split: { split_config: config } },
+      [rule("r", { strategyId: "missing_loops_split", strategyParams: { split_config: config }, nestedStrategies: [{ slotId: "s", strategyId: "missing_loops_split", params: { split_config: config }, nested: [] }] })],
     );
     const result = qcForTessellation(state, HEX);
-    expect(JSON.parse(result.strategyParams.missing_loops_split.split_config).patterns).toEqual([hex]);
+    expect(JSON.parse(result.rules[0].strategyParams.split_config).patterns).toEqual([hex]);
     expect(JSON.parse(result.rules[0].nestedStrategies[0].params.split_config).patterns).toEqual([hex]);
   });
 });

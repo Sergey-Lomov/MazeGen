@@ -4,12 +4,21 @@ import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
 import { ParamFields, isEntityVisible } from "./ParamFields";
-import { useParamEditor } from "./useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
+
+function defaultValue(p: ParamDescriptor): string {
+  const k = p.kind;
+  if (k.type === "bool") return k.default ? "true" : "false";
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  if (k.type === "pattern_list") return "[]";
+  if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
+  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
+  return String(k.default);
+}
 
 // Mirrors `parseRuleSplitPatterns` in `RuleStrategyPanel.tsx` -- a malformed or missing
 // `split_patterns` rule param reads as "no patterns" (empty topology), same "invalid falls back
@@ -39,6 +48,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const rule = rules.find((r) => r.id === ruleId);
   const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
+  const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
   const floorCount = useMazeStore((s) => s.floors.length);
   const addSplitPatternsOverride = selectedId === "add_split"
     ? parseRuleSplitPatterns(rule?.params.split_patterns)
@@ -52,7 +62,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
     if (selectedId === NO_FIX_STRATEGY_ID) {
       clearStrategy(ruleId);
     } else {
-      setStrategy(ruleId, selectedId);
+      setStrategy(ruleId, selectedId, paramOverrides[selectedId] ?? (selectedId === currentId ? rule?.strategyParams : undefined));
     }
     onClose();
   }
@@ -81,7 +91,16 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
           {selectedStrategy.params.length > 0 && (
-            <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} addSplitPatternsOverride={addSplitPatternsOverride} />
+            <StrategyParamPanel
+              strategyId={selectedStrategy.id}
+              params={selectedStrategy.params}
+              values={paramOverrides[selectedId] ?? (selectedId === currentId ? (rule?.strategyParams ?? {}) : {})}
+              onChange={(paramId, value) => setParamOverrides((previous) => ({
+                ...previous,
+                [selectedId]: { ...(previous[selectedId] ?? (selectedId === currentId ? (rule?.strategyParams ?? {}) : {})), [paramId]: value },
+              }))}
+              addSplitPatternsOverride={addSplitPatternsOverride}
+            />
           )}
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
@@ -122,23 +141,13 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   );
 }
 
-function StrategyParamPanel({ strategyId, params, addSplitPatternsOverride }: { strategyId: string; params: ParamDescriptor[]; addSplitPatternsOverride?: SplitPattern[] }) {
-  const strategyParams = useMazeStore((s) => s.strategyParams);
-  const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
-
+function StrategyParamPanel({ strategyId, params, values, onChange, addSplitPatternsOverride }: { strategyId: string; params: ParamDescriptor[]; values: Record<string, string>; onChange: (paramId: string, value: string) => void; addSplitPatternsOverride?: SplitPattern[] }) {
   const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, strategyId) }));
-  const storeValues = strategyParams[strategyId] ?? {};
-  const { values, onChange } = useParamEditor({
-    entityId: strategyId,
-    params: localizedParams,
-    storeValues,
-    onCommit: (paramId, value) => setStrategyParam(strategyId, paramId, value),
-  });
 
   return (
     <ParamFields
       params={localizedParams}
-      values={values}
+      getValue={(p) => values[p.id] ?? defaultValue(p)}
       onChange={onChange}
       getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       addSplitPatternsOverride={addSplitPatternsOverride}

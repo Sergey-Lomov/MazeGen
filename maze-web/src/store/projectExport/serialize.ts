@@ -144,7 +144,6 @@ export function serializeQuality(state: MazeState): ProjectFileQuality {
     // comment in storeTypes.ts.
     rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
     stages: state.stages,
-    strategyParams: state.strategyParams,
     repairMaxIterations: state.repairMaxIterations,
     repairTimeBudgetSecs: state.repairTimeBudgetSecs,
   };

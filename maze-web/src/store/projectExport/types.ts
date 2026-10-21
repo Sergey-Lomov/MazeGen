@@ -154,6 +154,7 @@ export interface ProjectFileQcRule {
   kind: string;
   checks: ProjectFileCheckInstance[];
   strategyId: string | null;
+  strategyParams: Record<string, string>;
   disabled: boolean;
   ruleDisabled: boolean;
   nestedStrategies: ProjectFileNestedStrategy[];
@@ -180,7 +181,6 @@ export interface ProjectFileStage {
 export interface ProjectFileQuality {
   rules: ProjectFileQcRule[];
   stages: ProjectFileStage[];
-  strategyParams: Record<string, Record<string, string>>;
   repairMaxIterations: number | null;
   repairTimeBudgetSecs: number | null;
 }

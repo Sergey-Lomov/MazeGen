@@ -418,15 +418,14 @@ describe("RulesColumn", () => {
   it("flushes a pending strategy-param edit before opening the strategy edit dialog", () => {
     vi.useFakeTimers();
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
-      strategyParams: {},
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithParams, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "5" } });
     fireEvent.click(getTooltipControl("Edit strategy"));
-    expect(useMazeStore.getState().strategyParams.s2?.weight).toBe("5");
+    expect(useMazeStore.getState().rules[0].strategyParams.weight).toBe("5");
     vi.useRealTimers();
   });
 
@@ -478,13 +477,13 @@ describe("RulesColumn", () => {
 
   it("renders strategy params inline and commits changes to the store", () => {
     vi.useFakeTimers();
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }], strategyParams: {} });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithParams, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "5" } });
     act(() => { vi.runAllTimers(); });
-    expect(useMazeStore.getState().strategyParams.s2?.weight).toBe("5");
+    expect(useMazeStore.getState().rules[0].strategyParams.weight).toBe("5");
     vi.useRealTimers();
   });
 
