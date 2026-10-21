@@ -199,6 +199,13 @@ fn cell_left_of(from: Lattice, to: Lattice) -> Option<SnubHexagonalPoint> {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SnubHexagonalTessellation;
 
+const CELL_TYPES: [super::CellType; 2] = [
+    super::CellType::new("triangle"),
+    super::CellType::new("hexagon"),
+];
+/// Side count of each of `CELL_TYPES`, in the same order.
+const FACE_COUNTS: [usize; 2] = [3, 6];
+
 impl Tessellation for SnubHexagonalTessellation {
     type CellId = SnubHexagonalPoint;
     type Face = SnubHexagonalFace;
@@ -250,6 +257,15 @@ impl Tessellation for SnubHexagonalTessellation {
 
     fn shape_of(&self, cell: SnubHexagonalPoint) -> Option<CellShape<'_>> {
         Some(regular_cell_shape(&*SHAPES, self.faces_of(cell).len()))
+    }
+
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
+
+    /// By polygon: the type follows the cell's side count.
+    fn cell_type_of(&self, cell: Self::CellId) -> super::CellTypeId {
+        super::multi_shape::cell_type_by_face_count(&FACE_COUNTS, self.faces_of(cell).len())
     }
 
     /// Centroid of the cell's polygon.

@@ -395,6 +395,19 @@ export function getTessellationShapes(config: { tessellation: WasmTessellationCo
   return getWasm().tessellation_shapes(config) as TessellationShapes;
 }
 
+/** Mirrors `maze-wasm`'s `TessellationCellTypes` — see `tessellation_cell_types`'s doc comment.
+ *  Configs that parametrize generation or quality control by cell type name types by these keys. */
+export interface TessellationCellTypes {
+  keys: string[];
+  point_types: string[];
+}
+
+/// Cell types of the tessellation instance `config.tessellation` builds (GitHub issue #822): every
+/// type key it provides plus the type of each of `config.points`.
+export function getTessellationCellTypes(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): TessellationCellTypes {
+  return getWasm().tessellation_cell_types(config) as TessellationCellTypes;
+}
+
 /** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
 export type FieldOpError =
   | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" }
