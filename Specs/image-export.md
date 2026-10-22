@@ -557,10 +557,14 @@ follow-up sub-issue's concern.
 ### "Shared style" — centralized marker/corner-style settings (GitHub issue #322, generalized to a generic parameter-link engine by #643)
 
 Both render mode settings panels have a "Shared style" section, always the first section (before
-"Background"). It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
-`markerFillColor`, `markerBorderColor`, `markerBorderWidth`, `gapWidth`, `markerTextSize`, `markerTextFontWeight` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
-into both `VectorByWallsSettings` and `VectorByCorridorsSettings`) that would otherwise need editing
-separately on every marker-like field that conceptually shares them:
+"Background"). It centralizes the `SharedStyleSourceFields` in both `VectorByWallsSettings` and
+`VectorByCorridorsSettings`, which would otherwise need editing separately on every marker-like
+field that conceptually shares them. The direct rows are `cornerStyle`, then `floorLabelType`.
+`cornerStyle` is outside the marker group because its links also drive wall/corridor and one-way
+joins. Two collapsed-by-default subsections follow: "Markers" (`shared_style_markers`) contains
+shape, size, size adaptation, fill/border colors, border width and gap width; "Text"
+(`shared_style_text`) contains shared text weight, size and margin. Their expanded state is stored
+in each render mode's `vectorBy*SectionsExpanded` record.
 
 | Shared value | Default | Drives |
 |---|---|---|
@@ -575,7 +579,7 @@ GitHub issue #707: the section's "Text" sub-section holds the shared font weight
 
 **Floor labels** — On multi-floor exports, the collapsible "Floors" section contains independent "Position", "Caption", and "Backplate" subsections plus a "Show floor captions" toggle; in the parameter-links tree that toggle sits directly under "Floors", after the subsections. The position header includes the active floor title in parentheses. `FloorLabelSettings.labelMode` selects the label content: `"title"` uses that floor's title from the Floors feature, while `"index"` renders the full `prefix` plus the selected `labelType` value. Title mode falls back to the index label when no non-empty title is available. Floor labels are disabled by default (`enabled: false`). The mode for both renderers is chosen once, on the first open of the Image Export card (`chooseFloorLabelModeOnce` in `store/floorLabelModeChoice.ts`, also applied when a loaded project lands on that card), and again on "Reset all": `title` if any floor has `titleCustomized` (was renamed in the Floors feature), `index` otherwise (`defaultFloorLabelMode`). `ImageExportState.floorLabelModeChosen` records that the choice was made and is persisted in the project file; a file without it counts as chosen when it already carries floor-label settings. Later renames never switch an existing setting. Persisted floor-label settings without `labelMode` (saved before GitHub issue #747) load as index mode, preserving their output. Its `textAlignment` (`"left"`, `"center"`, or `"right"`) aligns that text inside the configured label frame; it defaults to `"center"` for backward compatibility. Alignment moves only the text, never the frame's world position or placement anchor. Left/right placement uses the baked glyph-ink bounds rather than the `BitmapText` line box, respects `textMargin`, and stays inside the parallelogram's narrowed inner span. `textAlignment` belongs to the reusable `TextStyleFields`, while other label types remain centered and expose no alignment control. Position is stored per stable floor id in `FloorLabelSettings.positionsByFloorId`; a missing entry remains backward-compatible and uses the centered anchor. The active floor can use one of three modes: `anchored` aligns the corresponding point of the label frame with one of the 3×3 anchor points on that floor's exact cell bounds (for example, top-left frame corner to top-left bounds corner), `cell` follows the world-space center of the requested mathematical-grid cell whether or not that cell belongs to the field, and `free` uses arbitrary world coordinates. Coordinate inputs display the integer part only; hidden free-position precision is preserved until that axis is edited. Changing modes minimizes visual movement: free keeps the current world position, cell snaps that point to the nearest mathematical-grid cell, and anchored selects the closest of the nine anchor placements. Cell/free modes expose an explicit canvas-drag mode: dragging starts only on the label, cell placement snaps to the nearest grid coordinate and free placement follows the pointer; Enter, Space, or a pointer press outside the canvas commits and exits, while Escape restores the position captured when drag mode was enabled. The position section can copy the current floor's placement to every floor without changing the shared label or backplate style. Floor-label bounds participate in export margin measurement, so edge and free positions are included by auto-fit instead of being clipped. Its `textSize` is independent from Shared style and ranges from 6–72 px; its auto-fit considers the widest label across all floors. The backplate supports `none`, a rounded rectangle, or a rounded parallelogram, with width 20–250 px, height, corner radius, gap (a surface-colour cutout), border width, fill and border colours. Text-fit and overflow checks use the same parallelogram skew as `FloorLabelRenderer`, with the configured text margin applied as an inner clearance. Width/height auto-fit uses the current text size and margin and considers every floor label; Roman labels are measured by glyph metrics rather than character count. The floor-label fill, border and text participate in the mode-specific contrast warnings. Floor-label text size is not driven by Shared style links.
 
-GitHub issue #701: `markerFillColor`/`markerBorderColor` are also project colors (section "Shared style", `PC.sharedMarkerFill`/`sharedMarkerBorder`). The section is a single "Markers" sub-section rendered with the shared `MarkerAppearanceRows` (`MarkerFieldRows.tsx`) — same rows, labels and order as every marker (shape, corner style, size, fill color, border color, border width, gap width). `teleportFloorBadge` and `elevatorBadges` also get disabled links for corner style, size, border width and gap width. Edits go through `patchVectorBy{Walls,Corridors}SharedStyle` (propagate-on-change).
+GitHub issue #701: `markerFillColor`/`markerBorderColor` are also project colors (section "Shared style", `PC.sharedMarkerFill`/`sharedMarkerBorder`). The "Markers" subsection is rendered with `MarkerAppearanceRows` (`MarkerFieldRows.tsx`), but omits its ordinary corner-style row because the common `cornerStyle` direct row owns it. `teleportFloorBadge` and `elevatorBadges` also get disabled links for corner style, size, border width and gap width. Edits go through `patchVectorBy{Walls,Corridors}SharedStyle` (propagate-on-change).
 
 `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges` start with their
 link's `enabled: false` in all groups that apply to them (see the "Vertical connections" section
@@ -724,8 +728,10 @@ per follow-up feedback, then trimmed to just a filter/add toolbar plus the link 
 explanatory hint text above the list — the toolbar and cards are self-explanatory. The toolbar holds
 a `BreadcrumbNav` filter (see below) and an `AddIconButton` (see below — the quality panel's own flat
 `Plus` convention, no border, not a labeled button) that opens `LinkEditor` to add a new link. The
-list itself is sorted by the dependent (target) field's own `hierarchicalLabel`, one two-line card per
-link — parameters with no link are not shown at all, so the list never mirrors the full settings
+list is partitioned into collapsed-by-default top-level settings sections, keyed by each dependent
+(target) field's first `group` segment; its section header uses the shared `SectionHeader` styling.
+Within an expanded section, cards are sorted by the target's `hierarchicalLabel`, one two-line card
+per link — parameters with no link are not shown at all, so the list never mirrors the full settings
 panel. Line 1: the dependent field's full hierarchical name on the left; an enable/disable switch, an
 edit action, and a delete action on the right (removes the link entirely — distinct from disabling it
 — via `removeVectorByWallsLink`/`removeVectorByCorridorsLink`, `removeLink`). Line 2: `"Value: "` then
@@ -866,10 +872,11 @@ looked identical to a fully active one in the picker tree, with no way to tell w
 the link list's own path-mention badges (previous paragraph) already covered the single-parameter
 case, this extends the same signal to whole collapsed sections.
 
-The four "Shared style" source fields (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`)
-carry `group: ["Shared style"]` (the section they actually live in), not an empty `group` — so they
-too show up nested under "Shared style" in the picker tree and in any `hierarchicalLabel`, instead of
-floating at the dialog's top level. Their own `label`s dropped the earlier `"Shared: "`/`"Общее: "`
+The Shared style direct fields (`cornerStyle` and `floorLabelType`) carry `group: ["Shared style"]`.
+The marker and text fields carry respectively `group: ["Shared style", "Markers"]` and
+`group: ["Shared style", "Text"]`. Thus the Target/Source picker mirrors the panel's direct rows
+and its two subsections instead of flattening them into one Shared style group. No Shared style field
+floats at the dialog's top level. Their own labels dropped the earlier `"Shared: "`/`"Общее: "`
 prefix once they got a real group segment — the section name already says that.
 
 **Registry coverage (`parameterLinksRegistry.ts`).** Covers effectively every linkable field in both

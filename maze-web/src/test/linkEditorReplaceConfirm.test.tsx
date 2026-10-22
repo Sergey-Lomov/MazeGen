@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { LinkEditor } from "../components/features/ParameterLinksDialog";
+import { LinkEditor, ParameterLinksDialog } from "../components/features/ParameterLinksDialog";
 import type { ColorModifier, ParamDescriptor, ParamLink, ParamModifier } from "../store/parameterLinks";
 
 type P = "a" | "b" | "c";
@@ -74,6 +74,32 @@ describe("LinkEditor grouped picker layout", () => {
 
     expect(screen.getByText("Alpha").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
     expect(screen.getByText("Beta").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
+  });
+});
+
+describe("ParameterLinksDialog sections", () => {
+  it("groups existing links by settings section and expands each group on demand", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Waypoints"] },
+      b: { ...registry.b, group: ["Waypoints"] },
+      c: registry.c,
+    };
+    render(
+      <ParameterLinksDialog<P>
+        registry={groupedRegistry}
+        settings={{ a: 1, b: 1, c: 1 }}
+        links={existing}
+        onSetLinkEnabled={vi.fn()}
+        onAddLink={vi.fn()}
+        onRemoveLink={vi.fn()}
+        onClose={vi.fn()}
+        activePaths={new Set<P>(["a", "b", "c"])}
+      />,
+    );
+
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Waypoints"));
+    expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 });
 

@@ -150,6 +150,8 @@ function formatBoolean(value: unknown): string {
 // dialog's own tree lines up with where a field actually lives in the panel.
 const G = {
   sharedStyle: () => [m["image_export.vector_by_walls.section_shared_style"]()],
+  sharedStyleMarkers: () => [m["image_export.vector_by_walls.section_shared_style"](), m["image_export.vector_by_walls.shared_style_subsection_markers"]()],
+  sharedStyleText: () => [m["image_export.vector_by_walls.section_shared_style"](), m["image_export.vector_by_walls.shared_style_subsection_text"]()],
   floors: () => [m["image_export.floors.section"]()],
   floorsLabel: () => [m["image_export.floors.section"](), m["image_export.floors.label_subsection"]()],
   floorsBackground: () => [m["image_export.floors.section"](), m["image_export.floors.background_subsection"]()],
@@ -204,17 +206,17 @@ const G = {
  *  only that `DEFAULT_VECTOR_BY_WALLS_LINKS` has no link whose `target` is one of them; their own
  *  `group` is `G.sharedStyle()` since they live in the "Shared style" section itself. */
 export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
-  markerShape: descriptor("markerShape", () => m["image_export.param_links.shared_marker_shape"](), G.sharedStyle),
-  markerFillColor: descriptor("color", () => m["image_export.param_links.shared_marker_fill_color"](), G.sharedStyle),
-  markerBorderColor: descriptor("color", () => m["image_export.param_links.shared_marker_border_color"](), G.sharedStyle),
+  markerShape: descriptor("markerShape", () => m["image_export.param_links.shared_marker_shape"](), G.sharedStyleMarkers),
+  markerFillColor: descriptor("color", () => m["image_export.param_links.shared_marker_fill_color"](), G.sharedStyleMarkers),
+  markerBorderColor: descriptor("color", () => m["image_export.param_links.shared_marker_border_color"](), G.sharedStyleMarkers),
   cornerStyle: descriptor("cornerStyle", () => m["image_export.param_links.shared_corner_style"](), G.sharedStyle),
-  markerSize: descriptor("number", () => m["image_export.param_links.shared_marker_size"](), G.sharedStyle),
-  markerSizeAdaptation: descriptor("number", () => m["image_export.param_links.shared_marker_size_adaptation"](), G.sharedStyle),
-  markerBorderWidth: descriptor("number", () => m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle),
-  gapWidth: descriptor("number", () => m["image_export.param_links.shared_gap_width"](), G.sharedStyle),
-  markerTextSize: descriptor("number", () => m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle),
-  markerTextMargin: descriptor("number", () => m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyle),
-  markerTextFontWeight: descriptor("labelFontWeight", () => m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle, formatElevatorBadgesFontWeight),
+  markerSize: descriptor("number", () => m["image_export.param_links.shared_marker_size"](), G.sharedStyleMarkers),
+  markerSizeAdaptation: descriptor("number", () => m["image_export.param_links.shared_marker_size_adaptation"](), G.sharedStyleMarkers),
+  markerBorderWidth: descriptor("number", () => m["image_export.param_links.shared_marker_border_width"](), G.sharedStyleMarkers),
+  gapWidth: descriptor("number", () => m["image_export.param_links.shared_gap_width"](), G.sharedStyleMarkers),
+  markerTextSize: descriptor("number", () => m["image_export.param_links.shared_marker_text_size"](), G.sharedStyleText),
+  markerTextMargin: descriptor("number", () => m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyleText),
+  markerTextFontWeight: descriptor("labelFontWeight", () => m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyleText, formatElevatorBadgesFontWeight),
   floorLabelType: descriptor("indexLabelStyle", () => m["image_export.floors.general_style_floor_label"](), G.sharedStyle, formatElevatorBadgesLabelType),
   // `verticalSize`/`verticalArrowSize` are abstract-only (GitHub issue #677 follow-up) — the
   // decorative style has its own dedicated `verticalDecorativeSize`/`verticalDecorativeArrowSize`
@@ -419,17 +421,17 @@ export type VectorByWallsParamPath = keyof typeof VECTOR_BY_WALLS_PARAM_REGISTRY
 /** Same role as `VECTOR_BY_WALLS_PARAM_REGISTRY`, for "Vector by corridors" — its dependent field
  *  set differs (no `wallJoin`, has `join` instead; `gapWidth` also reaches `splitGapWidth`). */
 export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
-  markerShape: descriptor("markerShape", () => m["image_export.param_links.shared_marker_shape"](), G.sharedStyle),
-  markerFillColor: descriptor("color", () => m["image_export.param_links.shared_marker_fill_color"](), G.sharedStyle),
-  markerBorderColor: descriptor("color", () => m["image_export.param_links.shared_marker_border_color"](), G.sharedStyle),
+  markerShape: descriptor("markerShape", () => m["image_export.param_links.shared_marker_shape"](), G.sharedStyleMarkers),
+  markerFillColor: descriptor("color", () => m["image_export.param_links.shared_marker_fill_color"](), G.sharedStyleMarkers),
+  markerBorderColor: descriptor("color", () => m["image_export.param_links.shared_marker_border_color"](), G.sharedStyleMarkers),
   cornerStyle: descriptor("cornerStyle", () => m["image_export.param_links.shared_corner_style"](), G.sharedStyle),
-  markerSize: descriptor("number", () => m["image_export.param_links.shared_marker_size"](), G.sharedStyle),
-  markerSizeAdaptation: descriptor("number", () => m["image_export.param_links.shared_marker_size_adaptation"](), G.sharedStyle),
-  markerBorderWidth: descriptor("number", () => m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle),
-  gapWidth: descriptor("number", () => m["image_export.param_links.shared_gap_width"](), G.sharedStyle),
-  markerTextSize: descriptor("number", () => m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle),
-  markerTextMargin: descriptor("number", () => m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyle),
-  markerTextFontWeight: descriptor("labelFontWeight", () => m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle, formatElevatorBadgesFontWeight),
+  markerSize: descriptor("number", () => m["image_export.param_links.shared_marker_size"](), G.sharedStyleMarkers),
+  markerSizeAdaptation: descriptor("number", () => m["image_export.param_links.shared_marker_size_adaptation"](), G.sharedStyleMarkers),
+  markerBorderWidth: descriptor("number", () => m["image_export.param_links.shared_marker_border_width"](), G.sharedStyleMarkers),
+  gapWidth: descriptor("number", () => m["image_export.param_links.shared_gap_width"](), G.sharedStyleMarkers),
+  markerTextSize: descriptor("number", () => m["image_export.param_links.shared_marker_text_size"](), G.sharedStyleText),
+  markerTextMargin: descriptor("number", () => m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyleText),
+  markerTextFontWeight: descriptor("labelFontWeight", () => m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyleText, formatElevatorBadgesFontWeight),
   floorLabelType: descriptor("indexLabelStyle", () => m["image_export.floors.general_style_floor_label"](), G.sharedStyle, formatElevatorBadgesLabelType),
   verticalCornerStyle: descriptor("cornerStyle", () => m["image_export.param_links.vertical_shared_corner_style"](), G.verticalSharedStyle),
   verticalShape: descriptor("markerShape", () => m["image_export.param_links.vertical_shared_shape"](), G.verticalSharedStyle),

@@ -37,7 +37,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  marker, and the elevator / teleport floor-number badges. Renders bare rows (no wrapper) so each
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
-export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
+export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint, showCornerStyle = true }: {
   settings: MarkerAppearance & Partial<SizeAdaptationField>;
   onChange: (patch: Partial<MarkerAppearance & SizeAdaptationField>) => void;
   /** `sizeAdaptation` (GitHub issue #819) is opt-in: the "Size adaptation" row is rendered only by
@@ -52,6 +52,8 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
   /** When set, the fill and border color rows are disabled and show this tooltip (their values are
    *  overridden elsewhere, e.g. by the teleport group customization). */
   colorsDisabledHint?: string;
+  /** Shared style owns the common corner style separately because it also controls corridor joins. */
+  showCornerStyle?: boolean;
 }): React.ReactElement {
   return (
     <>
@@ -62,16 +64,18 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
         onChange={(shape) => onChange({ shape })}
         linkTarget={linkTargets.shape}
       />
-      <LinkedSelectRow
-        label={m["image_export.vector_by_walls.marker_corner_style"]()}
-        value={settings.cornerStyle}
-        options={[
-          { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-          { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
-        ]}
-        onChange={(cornerStyle) => onChange({ cornerStyle })}
-        linkTarget={linkTargets.cornerStyle}
-      />
+      {showCornerStyle && (
+        <LinkedSelectRow
+          label={m["image_export.vector_by_walls.marker_corner_style"]()}
+          value={settings.cornerStyle}
+          options={[
+            { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+            { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
+          ]}
+          onChange={(cornerStyle) => onChange({ cornerStyle })}
+          linkTarget={linkTargets.cornerStyle}
+        />
+      )}
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_size"]()}
         value={settings.size}

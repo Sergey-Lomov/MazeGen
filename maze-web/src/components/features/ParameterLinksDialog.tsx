@@ -12,6 +12,7 @@ import { SelectRow } from "../SelectRow";
 import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
 import { Tooltip } from "../Tooltip";
+import { SectionHeader } from "../SectionHeader";
 import { ui, radius, typography, muted, disabled as disabledText, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel } from "../../store/parameterLinks";
@@ -929,9 +930,10 @@ export function LinkEditor<P extends string>({
  *  to be link-centric rather than parameter-centric, then trimmed further to just the link list plus
  *  a search/add toolbar — no bulk sync/enable/disable-all actions and no summary line, since those
  *  duplicated the section-level "Synchronize" button and added chrome around what's otherwise a
- *  short list). The main screen lists only *existing* links, sorted by the dependent (target)
- *  field's own `hierarchicalLabel` — unlinked parameters aren't shown at all, so the list never
- *  grows past however many relationships the user actually set up. A toolbar above the list holds a
+ *  short list). The main screen lists only *existing* links in collapsible top-level settings
+ *  sections, sorted by the dependent (target) field's own `hierarchicalLabel` — unlinked parameters
+ *  aren't shown at all, so the list never grows past however many relationships the user actually
+ *  set up. A toolbar above the list holds a
  *  search box (filters by substring match against either the target's or the source's
  *  `hierarchicalLabel` — a link stays visible if either side matches) and a "+" icon button (the
  *  quality panel's own `Plus` convention) that opens `LinkEditor` to add a new link. Each row carries
@@ -967,6 +969,7 @@ export function ParameterLinksDialog<P extends string>({
   const [editing, setEditing] = useState<{ source: P; target: P; modifiers?: ParamModifier[]; colorModifiers?: ColorModifier[] } | null>(null);
   const [adding, setAdding] = useState(false);
   const [filterPath, setFilterPath] = useState<string[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set());
 
   function handleSave(source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) {
     onAddLink(source, target, modifiers, colorModifiers);
@@ -988,6 +991,19 @@ export function ParameterLinksDialog<P extends string>({
     [...new Set(links.flatMap((link) => [link.target, link.source]))],
     registry,
   );
+  const linkSections = new Map<string, ParamLink<P>[]>();
+  for (const link of visibleLinks) {
+    const section = registry[link.target].group[0] ?? registry[link.target].label;
+    const sectionLinks = linkSections.get(section) ?? [];
+    sectionLinks.push(link);
+    linkSections.set(section, sectionLinks);
+  }
+  const toggleSection = (section: string) => setExpandedSections((previous) => {
+    const next = new Set(previous);
+    if (next.has(section)) next.delete(section);
+    else next.add(section);
+    return next;
+  });
 
   return (
     <>
@@ -1017,37 +1033,44 @@ export function ParameterLinksDialog<P extends string>({
             </div>
             <div style={styles.toolbarDivider} />
             <div style={styles.rowsScroll}>
-              <div style={styles.rows}>
-                {visibleLinks.map((link) => (
-                  <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
-                    <div style={styles.rowLine}>
-                      <span style={styles.linkLabel}>
-                        <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.target)} />
-                      </span>
-                      <Switch
-                        checked={link.enabled}
-                        onChange={(enabled) => onSetLinkEnabled(link.target, enabled)}
-                        ariaLabel={m["image_export.param_links.enabled_toggle"]()}
-                      />
-                      <EditIconButton
-                        title={m["image_export.param_links.edit_link_title"]()}
-                        onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
-                      />
-                      <RemoveIconButton
-                        title={m["image_export.param_links.remove_link"]()}
-                        size={16}
-                        onClick={() => onRemoveLink(link.target)}
-                      />
-                    </div>
-                    <div style={styles.rowLine}>
-                      <span style={styles.valueLabel}>
-                        {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))}
-                        {registry[link.target].type === "color" && (
-                          <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
-                        )}
-                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
-                      </span>
-                    </div>
+              <div style={styles.linkSections}>
+                {[...linkSections.entries()].map(([section, sectionLinks]) => (
+                  <div key={section} style={styles.linkSection}>
+                    <SectionHeader label={section} expanded={expandedSections.has(section)} onToggle={() => toggleSection(section)} />
+                    {expandedSections.has(section) && <div style={styles.rows}>
+                      {sectionLinks.map((link) => (
+                        <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
+                          <div style={styles.rowLine}>
+                            <span style={styles.linkLabel}>
+                              <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.target)} />
+                            </span>
+                            <Switch
+                              checked={link.enabled}
+                              onChange={(enabled) => onSetLinkEnabled(link.target, enabled)}
+                              ariaLabel={m["image_export.param_links.enabled_toggle"]()}
+                            />
+                            <EditIconButton
+                              title={m["image_export.param_links.edit_link_title"]()}
+                              onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
+                            />
+                            <RemoveIconButton
+                              title={m["image_export.param_links.remove_link"]()}
+                              size={16}
+                              onClick={() => onRemoveLink(link.target)}
+                            />
+                          </div>
+                          <div style={styles.rowLine}>
+                            <span style={styles.valueLabel}>
+                              {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))}
+                              {registry[link.target].type === "color" && (
+                                <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
+                              )}
+                              {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>}
                   </div>
                 ))}
               </div>
@@ -1143,7 +1166,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyStateText: { ...typography.body },
   emptyStateSubtext: { ...muted(typography.caption) },
-  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  linkSections: { display: "flex", flexDirection: "column", gap: spacing.sectionGap },
+  linkSection: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  rows: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   row: {
     display: "flex",
     flexDirection: "column",
