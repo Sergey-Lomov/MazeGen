@@ -44,10 +44,10 @@ impl IssueKind {
             IssueKind::MissingElevatorHeight => "missing_elevator_height",
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
             IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
+            IssueKind::InvalidCrossElement => "invalid_cross_element",
         }
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "missing_endpoints" => Some(IssueKind::MissingEndpoints),
@@ -90,6 +90,7 @@ impl IssueKind {
             "missing_elevator_height" => Some(IssueKind::MissingElevatorHeight),
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
+            "invalid_cross_element" => Some(IssueKind::InvalidCrossElement),
             _ => None,
         }
     }

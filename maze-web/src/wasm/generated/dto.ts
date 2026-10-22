@@ -278,6 +278,10 @@ export type IssuePayloadDto =
       kind: "invalid_cross_element_group";
       groups: Record<string, CrossElementPayloadEntry[][]>;
     }
+  | {
+      kind: "invalid_cross_element";
+      elements: Record<string, CrossElementPayloadEntry[]>;
+    }
 ;
 
 export interface IssueDto {

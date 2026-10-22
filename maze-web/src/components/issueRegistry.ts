@@ -1,5 +1,6 @@
 import * as m from "~/paraglide/messages";
 import { resolveParamOptionLabel, resolveCheckDescription } from "./features/qualityI18n";
+import { resolveCellTypeLabel } from "./features/qualityI18n/cellTypes";
 import type { IssueDto } from "../wasm/types";
 
 export type IssueSeverity = "warning" | "critical";
@@ -31,6 +32,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_elevator") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator_stop") return payload.nodes[sourceCheck] ?? null;
   if (payload.kind === "missing_elevator_stop_count") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_cross_element") return payload.elements[sourceCheck] ?? null;
   if (payload.kind === "invalid_cross_element_group") return payload.groups[sourceCheck]?.flat() ?? null;
   if (payload.kind === "invalid_split_tile") {
     const groups = payload.groups[sourceCheck] ?? null;
@@ -112,6 +114,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_elevator_stop_count: () => ({ label: m["issue.missing_elevator_stop_count.label"](), description: m["issue.missing_elevator_stop_count.description"](), severity: "warning" }),
   missing_elevator_height: () => ({ label: m["issue.missing_elevator_height.label"](), description: m["issue.missing_elevator_height.description"](), severity: "warning" }),
   excessive_elevator_stop_gap: () => ({ label: m["issue.excessive_elevator_stop_gap.label"](), description: m["issue.excessive_elevator_stop_gap.description"](), severity: "warning" }),
+  invalid_cross_element: () => ({ label: m["issue.invalid_cross_element.label"](), description: m["issue.invalid_cross_element.description"](), severity: "warning" }),
   invalid_cross_element_group: () => ({ label: m["issue.invalid_cross_element_group.label"](), description: m["issue.invalid_cross_element_group.description"](), severity: "warning" }),
 };
 
@@ -285,6 +288,7 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_elevator_stop_gap: (d) => d.max_elevator_stop_gap !== undefined ? m["issue.excessive_elevator_stop_gap.max_elevator_stop_gap_label"]({ max_elevator_stop_gap: d.max_elevator_stop_gap }) : undefined,
   elevator_stop_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stop_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   elevator_stop_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stop_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
+  cross_element_cell_type: (d) => d.cell_types !== undefined ? m["issue.invalid_cross_element.cross_element_cell_type_label"]({ cell_types: d.cell_types.split(", ").map(resolveCellTypeLabel).join(", ") }) : undefined,
   cross_element_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_cross_element_group.cross_element_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   cross_element_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_cross_element_group.cross_element_graph_proximity_label"]({ distance: d.distance }) : undefined,
 };
@@ -340,6 +344,7 @@ const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => s
   vertical_passage_group_graph_proximity: () => resolveCheckDescription("vertical_passage_group_graph_proximity", ""),
   elevator_stop_group_geometric_proximity: () => resolveCheckDescription("elevator_stop_group_geometric_proximity", ""),
   elevator_stop_group_graph_proximity: () => resolveCheckDescription("elevator_stop_group_graph_proximity", ""),
+  cross_element_cell_type: () => resolveCheckDescription("cross_element_cell_type", ""),
   cross_element_geometric_proximity: () => resolveCheckDescription("cross_element_geometric_proximity", ""),
   cross_element_graph_proximity: () => resolveCheckDescription("cross_element_graph_proximity", ""),
 };

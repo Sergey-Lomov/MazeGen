@@ -3,7 +3,7 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { ItemSelectDialog } from "../../dialogs/ItemSelectDialog";
 import { Button } from "../../Button";
 import { WarningBubble } from "../../WarningBubble";
-import { ParamFields, isEntityVisible } from "../ParamFields";
+import { ParamFields, isEntityVisible, useVisibilityContext } from "../ParamFields";
 import { useParamEditor } from "../useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription } from "../qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../../styles/theme";
@@ -42,11 +42,11 @@ export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStra
   const nestedParams = useMazeStore((s) => findRawNestedParams(s.rules.find((r) => r.id === ruleId), path));
   const setNestedStrategy = useMazeStore((s) => s.setNestedStrategy);
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
-  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibility = useVisibilityContext();
 
   const candidates = availableStrategies
     .filter((s) => s.handles === slotKind)
-    .filter((s) => isEntityVisible(s.visibility, floorCount));
+    .filter((s) => isEntityVisible(s.visibility, visibility));
   const [selectedId, setSelectedId] = useState<string>(currentStrategyId ?? candidates[0]?.id ?? "");
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
 

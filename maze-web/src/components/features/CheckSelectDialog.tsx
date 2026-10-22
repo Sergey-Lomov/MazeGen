@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
-import { ParamFields, isEntityVisible } from "./ParamFields";
+import { ParamFields, isEntityVisible, useVisibilityContext } from "./ParamFields";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -34,11 +34,11 @@ function defaultValue(p: ParamDescriptor): string {
 
 export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const allChecks = useMazeStore((s) => s.availableChecks);
-  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibility = useVisibilityContext();
 
   const availableChecks = allChecks
     .filter((c) => c.issue_kinds[0] === kind)
-    .filter((c) => isEntityVisible(c.visibility, floorCount));
+    .filter((c) => isEntityVisible(c.visibility, visibility));
   // A type without `multiple instances` (every check, currently — see GitHub issue #60,
   // retired) can't be picked here if it's already active in some existing rule — adding it
   // anyway would be silently rejected by `createRule`.

@@ -43,6 +43,7 @@ pub enum IssueKind {
     MissingElevatorHeight,
     ExcessiveElevatorStopGap,
     InvalidCrossElementGroup,
+    InvalidCrossElement,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -333,6 +334,15 @@ pub const EXCESSIVE_ELEVATOR_STOP_GAP: IssueKind = IssueKind::ExcessiveElevatorS
 /// `CrossElementGroupSelectStrategy`, which removes one element of the pair; a pair whose two
 /// elements are both unremovable (e.g. `[Start, Finish]`, or route-protected) is left in place.
 pub const INVALID_CROSS_ELEMENT_GROUP: IssueKind = IssueKind::InvalidCrossElementGroup;
+/// A single special maze element of a user-selected type set (teleport / one-way / vertical
+/// passage / elevator stop / split tile / start / finish) is invalid on its own, not as part of a
+/// pair — currently only because it sits on a cell of a forbidden cell type (see GitHub issue #824
+/// and `Specs/space.md`'s "Cell types"). Produced by `CrossElementCellTypeCheck`; carries
+/// `InvalidCrossElementIssue`, one violation per offending occurrence (element, node, cell type
+/// key). Mirrors `INVALID_CROSS_ELEMENT_GROUP`'s role for the element-set selection, but flags one
+/// element instead of a pair. No repair strategy is registered yet (automatic repair is out of
+/// scope for #824), so the issue surfaces in the QC report without being auto-fixed.
+pub const INVALID_CROSS_ELEMENT: IssueKind = IssueKind::InvalidCrossElement;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

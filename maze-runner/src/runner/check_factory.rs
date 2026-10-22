@@ -13,9 +13,10 @@ use maze_core::{
         CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START,
         CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT,
         CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE, Comparison,
-        CrossElementGeometricProximityCheck, CrossElementGraphProximityCheck, CrossElementSet,
-        CycleKind, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
-        ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON,
+        CrossElementCellTypeCheck, CrossElementGeometricProximityCheck,
+        CrossElementGraphProximityCheck, CrossElementSet, CycleKind, ELEVATOR_SPAN_DEFAULT,
+        ELEVATOR_SPAN_DEFAULT_COMPARISON, ELEVATOR_STOP_COUNT_DEFAULT,
+        ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON,
         ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOPS_SKIP_DEFAULT,
@@ -23,7 +24,8 @@ use maze_core::{
         ElevatorStopCountCheck, ElevatorStopGroupGeometricProximityCheck,
         ElevatorStopGroupGraphProximityCheck, ElevatorStopsSkipCheck, ElevatorStopsSpanCheck,
         ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue, ExternalEscapeDiversityCheck,
-        FloorScope, GeometricFloorMode, InvalidCrossElementGroupIssue, InvalidElevatorGroupIssue,
+        FORBID_CELL_TYPE_PARAM_PREFIX, FloorScope, GeometricFloorMode,
+        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidElevatorGroupIssue,
         InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
         InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
         InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
@@ -1848,5 +1850,69 @@ pub(crate) fn build_cross_element_group_check<T: Tessellation>(
             }))
         }
         _ => None,
+    }
+}
+
+/// The cell type keys a check forbids: every `forbid_cell_type_<key>` param set to `"true"`
+/// (`FORBID_CELL_TYPE_PARAM_PREFIX`), sorted for a deterministic issue detail.
+pub(crate) fn parse_cell_type_keys(instance: &CheckInstanceConfig) -> Vec<String> {
+    let mut keys: Vec<String> = instance
+        .params
+        .iter()
+        .filter(|(_, value)| value.as_str() == "true")
+        .filter_map(|(id, _)| id.strip_prefix(FORBID_CELL_TYPE_PARAM_PREFIX))
+        .map(str::to_string)
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// Builds a `cross_element_cell_type` check from a browser config instance — see GitHub issue
+/// #824. Reuses the proximity checks' element-set params (`include_*`); an unknown cell type key is
+/// rejected up front by `validate_cell_type_params`.
+pub(crate) fn build_cross_element_cell_type_check<T: Tessellation>(
+    instance: &CheckInstanceConfig,
+    instance_id: String,
+    _rule_params: &RuleParams,
+) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidCrossElementIssue>>> {
+    match instance.type_id.as_str() {
+        "cross_element_cell_type" => Some(Box::new(CrossElementCellTypeCheck {
+            instance_id,
+            set: cross_element_set_from_params(instance),
+            forbidden: parse_cell_type_keys(instance),
+        })),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod cell_type_param_tests {
+    use super::*;
+
+    fn instance(params: &[(&str, &str)]) -> CheckInstanceConfig {
+        CheckInstanceConfig {
+            local_id: "c".into(),
+            type_id: "cross_element_cell_type".into(),
+            params: params
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn collects_only_true_forbid_params_sorted() {
+        let keys = parse_cell_type_keys(&instance(&[
+            ("forbid_cell_type_square", "true"),
+            ("forbid_cell_type_hexagon", "false"),
+            ("forbid_cell_type_octagon", "true"),
+            ("include_teleport", "true"),
+        ]));
+        assert_eq!(keys, vec!["octagon", "square"]);
+    }
+
+    #[test]
+    fn no_params_yield_no_keys() {
+        assert!(parse_cell_type_keys(&instance(&[])).is_empty());
     }
 }

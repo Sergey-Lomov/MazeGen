@@ -233,6 +233,12 @@ pub enum IssuePayload {
     InvalidCrossElementGroup {
         groups: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>,
     },
+    /// Keyed by source check id — each entry is one flagged logical element (GitHub issue #824),
+    /// resolved like a cross-element group member and narrowed to its offending occurrence nodes.
+    /// Produced by `CrossElementCellTypeCheck`. Mirrors `IssuePayloadDto::InvalidCrossElement`.
+    InvalidCrossElement {
+        elements: HashMap<String, Vec<CrossElementPayloadEntry>>,
+    },
 }
 
 /// One element of a flagged cross-element proximity group resolved for the wire boundary (GitHub

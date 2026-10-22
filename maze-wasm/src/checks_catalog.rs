@@ -1,9 +1,9 @@
 use crate::check_descriptor::{
     CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, comparison_param,
-    cross_element_include_param, cycle_kind_param, floor_scope_param, geometric_floor_mode_param,
-    region_class_filter_param, teleport_direction_param, teleport_floor_kind_param,
-    vertical_passage_count_incoming_param, vertical_passage_same_type_only_param,
-    vertical_passage_type_param,
+    cross_element_include_param, cycle_kind_param, floor_scope_param, forbid_cell_type_param,
+    geometric_floor_mode_param, region_class_filter_param, teleport_direction_param,
+    teleport_floor_kind_param, vertical_passage_count_incoming_param,
+    vertical_passage_same_type_only_param, vertical_passage_type_param,
 };
 use maze_core::quality_control::{
     AREA_MISSING_ELEVATOR_STOPS, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT,
@@ -22,9 +22,9 @@ use maze_core::quality_control::{
     ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOPS_SKIP_DEFAULT,
     ELEVATOR_STOPS_SPAN_DEFAULT, EXCESSIVE_ELEVATOR_STOP_GAP, EXCESSIVE_SCC_COUNT,
-    EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, INVALID_CROSS_ELEMENT_GROUP, INVALID_ELEVATOR,
-    INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP, INVALID_LOOP_GROUP,
-    INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
+    EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, INVALID_CROSS_ELEMENT, INVALID_CROSS_ELEMENT_GROUP,
+    INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
+    INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
     INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
     INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
     INVALID_VERTICAL_PASSAGE_GROUP, IssueKind, LOOP_DISTANCE_FROM_FINISH_DEFAULT,
@@ -1741,6 +1741,84 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             visibility: None,
         },
+        CheckDescriptor {
+            id: "cross_element_cell_type",
+            label: "Elements on forbidden cell types",
+            description: "Fires if any special maze element from the selected set (teleports, one-ways, vertical passages, elevator stops, split tiles, start, finish) sits on a cell of a forbidden cell type. An element with several ends is flagged if any end sits on a forbidden type. Does nothing when no element kind or no cell type is selected.",
+            issue_kinds: vec![kind_str(INVALID_CROSS_ELEMENT)],
+            params: vec![
+                cross_element_include_param(
+                    "include_teleport",
+                    "Include teleports",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT,
+                    None,
+                ),
+                cross_element_include_param(
+                    "include_one_way",
+                    "Include one-ways",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY,
+                    None,
+                ),
+                cross_element_include_param(
+                    "include_vertical_passage",
+                    "Include vertical passages",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE,
+                    Some(EntityVisibility::MultiFloorOnly),
+                ),
+                cross_element_include_param(
+                    "include_elevator_stop",
+                    "Include elevator stops",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP,
+                    Some(EntityVisibility::MultiFloorOnly),
+                ),
+                cross_element_include_param(
+                    "include_split",
+                    "Include split tiles",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT,
+                    None,
+                ),
+                cross_element_include_param(
+                    "include_start",
+                    "Include start",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START,
+                    None,
+                ),
+                cross_element_include_param(
+                    "include_finish",
+                    "Include finish",
+                    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH,
+                    None,
+                ),
+                forbid_cell_type_param(
+                    "forbid_cell_type_triangle",
+                    "Forbid for triangle cells",
+                    "triangle",
+                ),
+                forbid_cell_type_param(
+                    "forbid_cell_type_square",
+                    "Forbid for square cells",
+                    "square",
+                ),
+                forbid_cell_type_param(
+                    "forbid_cell_type_hexagon",
+                    "Forbid for hexagon cells",
+                    "hexagon",
+                ),
+                forbid_cell_type_param(
+                    "forbid_cell_type_octagon",
+                    "Forbid for octagon cells",
+                    "octagon",
+                ),
+                forbid_cell_type_param(
+                    "forbid_cell_type_dodecagon",
+                    "Forbid for dodecagon cells",
+                    "dodecagon",
+                ),
+            ],
+            // Multiple instances with different element sets / forbidden types are a legitimate
+            // simultaneous configuration -- same rationale as the proximity checks.
+            visibility: Some(EntityVisibility::MultiCellTypeOnly),
+        },
     ]
 }
 
@@ -1753,6 +1831,60 @@ mod tests {
     // there. Pinned as an explicit id list rather than a structural predicate (e.g. "issue_kinds
     // contains a vertical-passage/elevator kind") so a newly added check must deliberately opt in
     // here, rather than silently inheriting visibility from an unrelated property.
+    #[test]
+    fn only_cross_element_cell_type_is_multi_cell_type_only() {
+        let ids: Vec<_> = available_checks_list()
+            .iter()
+            .filter(|c| c.visibility == Some(EntityVisibility::MultiCellTypeOnly))
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(ids, vec!["cross_element_cell_type"]);
+    }
+
+    // Every non-uniform cell type key a tessellation defines needs a `forbid_cell_type_<key>`
+    // param, and each param's id must agree with the key its visibility gates on.
+    #[test]
+    fn cross_element_cell_type_params_cover_every_tessellation_cell_type_key() {
+        use maze_core::space::{
+            ElongatedTriangularTessellation, RhombitrihexagonalTessellation,
+            SnubHexagonalTessellation, SnubSquareTessellation, SquareOctagonTessellation,
+            Tessellation, TrihexagonalTessellation, TruncatedHexagonalTessellation,
+            TruncatedTrihexagonalTessellation,
+        };
+        let mut universe: Vec<&str> = Vec::new();
+        macro_rules! collect {
+            ($($t:ty),*) => {$(
+                universe.extend(<$t>::default().cell_types().iter().map(|t| t.key()));
+            )*};
+        }
+        collect!(
+            ElongatedTriangularTessellation,
+            RhombitrihexagonalTessellation,
+            SnubHexagonalTessellation,
+            SnubSquareTessellation,
+            SquareOctagonTessellation,
+            TrihexagonalTessellation,
+            TruncatedHexagonalTessellation,
+            TruncatedTrihexagonalTessellation
+        );
+        universe.sort();
+        universe.dedup();
+
+        let check = available_checks_list()
+            .into_iter()
+            .find(|c| c.id == "cross_element_cell_type")
+            .expect("check registered");
+        let mut param_keys: Vec<&str> = Vec::new();
+        for p in &check.params {
+            if let Some(EntityVisibility::CellType { key }) = p.visibility {
+                assert_eq!(p.id, format!("forbid_cell_type_{key}"));
+                param_keys.push(key);
+            }
+        }
+        param_keys.sort();
+        assert_eq!(param_keys, universe);
+    }
+
     #[test]
     fn only_vertical_passage_and_elevator_checks_are_multi_floor_only() {
         let checks = available_checks_list();

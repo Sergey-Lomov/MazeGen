@@ -1,12 +1,13 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
-import { getTessellationShapes } from "../wasm/mazeService";
+import { getTessellationCellTypes, getTessellationShapes } from "../wasm/mazeService";
 import { originCellOf } from "./splitPatternTile";
 
 /// Shape template keys per tessellation config (`{ kind, params }` fully identifies the built
 /// instance, same key `cartesianCache.ts` uses). Asked from core once per config, since store
 /// actions and selectors query this on every tessellation change/preview render.
 const keysCache = new Map<string, string[]>();
+const cellTypeKeysCache = new Map<string, string[]>();
 const anchorShapeCache = new Map<string, string>();
 
 function configKey(tessellation: TessellationConfig): string {
@@ -23,6 +24,19 @@ export function shapeKeysOf(tessellation: TessellationConfig): string[] {
   if (keys === undefined) {
     keys = getTessellationShapes({ tessellation, points: [] }).keys;
     keysCache.set(key, keys);
+  }
+  return keys;
+}
+
+/** Cell type keys (core `CellType::key`) the tessellation `tessellation` provides — core's
+ *  `Tessellation::cell_types()` via wasm (GitHub issue #824). Quality control names forbidden cell
+ *  types by these keys, so a key the active tessellation lacks is a config error. */
+export function cellTypeKeysOf(tessellation: TessellationConfig): string[] {
+  const key = configKey(tessellation);
+  let keys = cellTypeKeysCache.get(key);
+  if (keys === undefined) {
+    keys = getTessellationCellTypes({ tessellation, points: [] }).keys;
+    cellTypeKeysCache.set(key, keys);
   }
   return keys;
 }

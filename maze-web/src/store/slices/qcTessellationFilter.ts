@@ -1,7 +1,7 @@
 import type { MazeState, QcRuleState, CheckInstance, NestedStrategyState } from "../storeTypes";
 import type { ParamDescriptor, ParamKind } from "../../wasm/types";
 import type { TessellationConfig } from "../../fieldConfig";
-import { shapeKeysOf } from "../../pixi/shapeTemplates";
+import { cellTypeKeysOf, shapeKeysOf } from "../../pixi/shapeTemplates";
 
 type QcState = Pick<MazeState, "rules" | "strategyParams" | "availableChecks" | "availableStrategies" | "availableRuleParams">;
 export type QcTessellationResult = Pick<MazeState, "rules" | "strategyParams">;
@@ -50,6 +50,13 @@ function filterSplitConfig(raw: string | undefined, shapes: readonly string[]): 
   }
 }
 
+/** A `cell_type`-scoped bool param (`forbid_cell_type_<key>`) set to `"true"` whose cell type the
+ *  new tessellation lacks is switched off: core rejects a forbidden key the tessellation does not
+ *  have, and the param's row is hidden so the user could not clear it. */
+function filterCellTypeParam(raw: string, key: string, cellTypes: readonly string[]): string {
+  return raw === "true" && !cellTypes.includes(key) ? "false" : raw;
+}
+
 /** True when a non-empty pattern filter lost every pattern — an empty list means "any split tile",
  *  so keeping the owner would silently flip its meaning instead of narrowing it. */
 function filterEmptied(filtered: FilteredPatterns | null): boolean {
@@ -62,6 +69,7 @@ function filterParams(
   params: Record<string, string>,
   descriptors: readonly ParamDescriptor[],
   shapes: readonly string[],
+  cellTypes: () => readonly string[],
 ): Record<string, string> | null {
   let next = params;
   for (const p of descriptors) {
@@ -74,6 +82,8 @@ function filterParams(
       value = filtered?.raw ?? raw;
     } else if (p.kind.type === "split_generation_config") {
       value = filterSplitConfig(raw, shapes);
+    } else if (p.visibility?.type === "cell_type") {
+      value = filterCellTypeParam(raw, p.visibility.key, cellTypes());
     }
     if (value !== raw && value !== undefined) {
       if (next === params) next = { ...params };
@@ -87,12 +97,13 @@ function filterNested(
   nested: NestedStrategyState[],
   state: QcState,
   shapes: readonly string[],
+  cellTypes: () => readonly string[],
 ): NestedStrategyState[] {
   let changed = false;
   const next = nested.map((n) => {
     const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
-    const params = filterParams(n.params, descriptor?.params ?? [], shapes) ?? n.params;
-    const children = filterNested(n.nested, state, shapes);
+    const params = filterParams(n.params, descriptor?.params ?? [], shapes, cellTypes) ?? n.params;
+    const children = filterNested(n.nested, state, shapes, cellTypes);
     if (params === n.params && children === n.nested) return n;
     changed = true;
     return { ...n, params, nested: children };
@@ -143,6 +154,9 @@ function reindexWeights(
  *  callers can detect data loss by identity. */
 export function qcForTessellation(state: QcState, tessellation: TessellationConfig): QcTessellationResult {
   const shapes = shapeKeysOf(tessellation);
+  // Lazy: only asked from core when some param is `cell_type`-scoped.
+  let cellTypeKeys: readonly string[] | undefined;
+  const cellTypes = () => (cellTypeKeys ??= cellTypeKeysOf(tessellation));
   let strategyParams = state.strategyParams;
   const setStrategyParams = (strategyId: string, params: Record<string, string>) => {
     if (params === strategyParams[strategyId]) return;
@@ -152,7 +166,7 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
 
   for (const [strategyId, params] of Object.entries(state.strategyParams)) {
     const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-    setStrategyParams(strategyId, filterParams(params, descriptor?.params ?? [], shapes) ?? params);
+    setStrategyParams(strategyId, filterParams(params, descriptor?.params ?? [], shapes, cellTypes) ?? params);
   }
 
   // Strategy params are shared by every rule using the strategy, while the rule-level pattern list
@@ -186,7 +200,7 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
         continue;
       }
       const descriptor = state.availableChecks.find((c) => c.id === check.typeId);
-      const params = filterParams(check.params, descriptor?.params ?? [], shapes);
+      const params = filterParams(check.params, descriptor?.params ?? [], shapes, cellTypes);
       if (params === null) {
         checksChanged = true;
         continue;
@@ -195,7 +209,7 @@ export function qcForTessellation(state: QcState, tessellation: TessellationConf
       checks.push(params === check.params ? check : { ...check, params });
     }
 
-    const nestedStrategies = filterNested(rule.nestedStrategies, state, shapes);
+    const nestedStrategies = filterNested(rule.nestedStrategies, state, shapes, cellTypes);
     if (ruleParams === rule.params && !checksChanged && nestedStrategies === rule.nestedStrategies) return rule;
     rulesChanged = true;
     return { ...rule, params: ruleParams, checks: checksChanged ? checks : rule.checks, nestedStrategies };

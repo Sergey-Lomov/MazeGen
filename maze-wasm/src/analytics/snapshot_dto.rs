@@ -145,6 +145,14 @@ pub(super) fn cross_element_group_map_dto(
         .collect()
 }
 
+pub(super) fn cross_element_map_dto(
+    map: HashMap<String, Vec<CrossElementPayloadEntry>>,
+) -> HashMap<String, Vec<CrossElementPayloadEntryDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(cross_element_entry_dto).collect()))
+        .collect()
+}
+
 pub(super) fn split_face_requirement_dto(req: SplitFaceRequirement) -> SplitFaceRequirementDto {
     match req {
         SplitFaceRequirement::Passage => SplitFaceRequirementDto::Passage,

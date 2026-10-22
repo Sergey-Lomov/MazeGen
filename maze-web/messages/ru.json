@@ -2643,5 +2643,20 @@
   "post_edit.refresh_error": "Не удалось обновить аналитику: {message}",
   "post_edit.refresh_failed": "Не удалось обновить аналитику после редактирования",
   "post_edit.remove_endpoint_node_rejected": "Нельзя удалить узел, назначенный стартом/финишем — сначала переназначьте старт/финиш.",
-  "preset_connections.remove_endpoint_node_rejected": "Нельзя удалить узел, назначенный стартом/финишем/источником генерации — сначала переназначьте его."
+  "preset_connections.remove_endpoint_node_rejected": "Нельзя удалить узел, назначенный стартом/финишем/источником генерации — сначала переназначьте его.",
+  "check.cross_element_cell_type.label": "Валидация типов ячеек элементов",
+  "check.cross_element_cell_type.short_label": "Валидация типов ячеек",
+  "check.cross_element_cell_type.description": "Срабатывает, если любой выбранный особый элемент (телепорт, односторонний проход, вертикальный проход, стоп лифта, тайл разделения, старт, финиш) расположен на запрещённом типе ячейки тесселяции. Элемент с несколькими концами помечается, если хотя бы один его конец на запрещённом типе. Пустой список запрещённых типов никогда не срабатывает.",
+  "issue.invalid_cross_element.label": "Элемент на запрещённом типе ячейки",
+  "issue.invalid_cross_element.description": "Выбранный особый элемент расположен на типе ячейки тесселяции, запрещённом для него.",
+  "issue.invalid_cross_element.cross_element_cell_type_label": "Элемент на запрещённом типе ячейки ({cell_types})",
+  "issue_select.short_label.validate_elements": "Валидация элементов",
+  "cell_type.triangle": "треугольник",
+  "cell_type.square": "квадрат",
+  "cell_type.hexagon": "шестиугольник",
+  "cell_type.octagon": "восьмиугольник",
+  "cell_type.dodecagon": "двенадцатиугольник",
+  "cell_type.cell": "ячейка",
+  "param.forbid_cell_type.label": "Запретить для ячеек «{cell_type}»",
+  "param.forbid_cell_type.description": "Помечает выбранные элементы, расположенные на ячейках «{cell_type}»."
 }

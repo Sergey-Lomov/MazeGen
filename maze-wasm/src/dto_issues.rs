@@ -215,6 +215,12 @@ pub enum IssuePayloadDto {
     InvalidCrossElementGroup {
         groups: HashMap<String, Vec<Vec<CrossElementPayloadEntryDto>>>,
     },
+    /// Keyed by source check id — each entry is one flagged element, narrowed to its offending
+    /// occurrence nodes. Wire variant of `cross_element_cell_type` — see GitHub issue #824 and
+    /// `maze_core`'s `IssuePayload::InvalidCrossElement`.
+    InvalidCrossElement {
+        elements: HashMap<String, Vec<CrossElementPayloadEntryDto>>,
+    },
 }
 
 #[derive(Serialize, Dto)]

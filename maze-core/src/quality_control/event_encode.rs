@@ -121,6 +121,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(14);
             write_str_keyed_cross_element_groups(out, groups);
         }
+        IssuePayload::InvalidCrossElement { elements } => {
+            out.push(15);
+            write_str_keyed_cross_elements(out, elements);
+        }
     }
 }
 
@@ -330,6 +334,15 @@ fn write_str_keyed_cross_element_groups(
             write_cross_element_entry(out, entry);
         }
     });
+}
+
+/// Encodes `IssuePayload::InvalidCrossElement`'s `elements` field (GitHub issue #824) — one
+/// `CrossElementPayloadEntry` (`write_cross_element_entry`'s shape) per flagged element.
+fn write_str_keyed_cross_elements(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<CrossElementPayloadEntry>>,
+) {
+    write_str_keyed_lists(out, map, write_cross_element_entry);
 }
 
 pub(crate) fn write_issue_kind(out: &mut Vec<u8>, kind: &IssueKind) {

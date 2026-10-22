@@ -507,7 +507,10 @@ themselves — it's a pure UI hint stamped once on the descriptor; resolving it 
 state is entirely the web client's job.
 
 ```ts
-type EntityVisibility = { type: "multi_floor_only" };
+type EntityVisibility =
+  | { type: "multi_floor_only" }
+  | { type: "multi_cell_type_only" }
+  | { type: "cell_type"; key: string };
 ```
 
 - `MultiFloorOnly` — hidden whenever the maze has fewer than 2 floors. First consumer:
@@ -549,7 +552,21 @@ The tag lives on three descriptor levels, with two different scopes of effect:
   deliberately opt in, rather than silently inheriting visibility from an unrelated property (e.g.
   "operates on a `VerticalPassage`").
 
-`isEntityVisible(visibility, floorCount)` (`ParamFields.tsx`) is the single interpreter for every
+- `MultiCellTypeOnly` — hidden whenever the active tessellation provides a single cell type (nothing
+  to tell apart by type). First consumer: the `cross_element_cell_type` check (issue #824), so its
+  issue kind (and any rule offering only this check) disappears from the selection dialogs on
+  single-type tessellations.
+
+- `CellType { key }` — shown only when the active tessellation's `cell_types()` contains `key`.
+  Consumer: the per-type bool params `forbid_cell_type_<key>` of `cross_element_cell_type` (one
+  switch per cell type, labelled «Forbid for «<type>» cells»; default off). The wasm side validates
+  the key set (`validate_cell_type_params`, also run on the browser path in `maze-wasm/src/runner.rs`):
+  a `"true"` param naming a key the tessellation lacks is a config error. On a tessellation switch,
+  `qcTessellationFilter` resets such params to `"false"` (core types are resolved lazily, only when
+  some param carries this tag), since the hidden row could not be cleared by the user.
+
+`isEntityVisible(visibility, ctx)` with `ctx = { floorCount, cellTypeKeys }` (`ParamFields.tsx`;
+`useVisibilityContext()` reads it from the store) is the single interpreter for every
 tag, shared by both scopes — `undefined` (no tag) is always visible; adding a new tag means adding a
 new match arm here, not a new bespoke check at each call site.
 

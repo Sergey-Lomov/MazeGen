@@ -108,6 +108,16 @@ function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePayload<bi
           tile: entry.tile != null ? { nodes: entry.tile.nodes } : null,
         })),
       };
+    case "InvalidCrossElement":
+      return {
+        kind: "invalidCrossElementGroup",
+        entries: [...payload.elements.values()].flat().map((entry) => ({
+          kind: entry.kind,
+          edges: entry.edges,
+          nodes: entry.nodes,
+          tile: entry.tile != null ? { nodes: entry.tile.nodes } : null,
+        })),
+      };
   }
 }
 

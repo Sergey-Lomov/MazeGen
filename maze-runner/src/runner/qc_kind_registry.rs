@@ -11,12 +11,13 @@
 //! built up programmatically) so that scan keeps working.
 
 use super::check_factory::{
-    build_area_missing_elevator_stops_check, build_cross_element_group_check,
-    build_excessive_elevator_stop_gap_check, build_excessive_scc_count_check,
-    build_invalid_elevator_check, build_invalid_elevator_group_check,
-    build_invalid_elevator_stop_group_check, build_invalid_loop_check,
-    build_invalid_loop_group_check, build_invalid_one_way_check, build_invalid_split_node_check,
-    build_invalid_split_route_check, build_invalid_split_tile_check, build_invalid_teleport_check,
+    build_area_missing_elevator_stops_check, build_cross_element_cell_type_check,
+    build_cross_element_group_check, build_excessive_elevator_stop_gap_check,
+    build_excessive_scc_count_check, build_invalid_elevator_check,
+    build_invalid_elevator_group_check, build_invalid_elevator_stop_group_check,
+    build_invalid_loop_check, build_invalid_loop_group_check, build_invalid_one_way_check,
+    build_invalid_split_node_check, build_invalid_split_route_check,
+    build_invalid_split_tile_check, build_invalid_teleport_check,
     build_invalid_vertical_passage_group_check, build_missing_elevator_height_check,
     build_missing_elevator_stop_count_check, build_missing_elevators_check,
     build_missing_endpoints_check, build_missing_loops_check, build_missing_one_ways_check,
@@ -31,16 +32,16 @@ use super::strategy_factory::{build_nested, build_strategy_erased, downcast_stra
 use maze_core::{
     quality_control::{
         AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-        InvalidCrossElementGroupIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
-        InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue, InvalidLoopIssue,
-        InvalidOneWayGroupIssue, InvalidOneWayIssue, InvalidSplitNodeConnectionGroupIssue,
-        InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue, InvalidSplitRouteIssue,
-        InvalidSplitTileGroupIssue, InvalidSplitTileIssue, InvalidTeleportGroupIssue,
-        InvalidTeleportIssue, InvalidVerticalPassageGroupIssue, MissingElevatorHeightIssue,
-        MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingEndpointsIssue,
-        MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue, MissingSplitTilesIssue,
-        MissingTeleportsIssue, MissingVerticalPassagesIssue, RegionNeedsExpansionIssue,
-        RegionNeedsShrinkIssue, Rule, RuleTrait, UnreachableFinishIssue,
+        InvalidCrossElementGroupIssue, InvalidCrossElementIssue, InvalidElevatorGroupIssue,
+        InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
+        InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+        InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
+        InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
+        InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
+        MissingElevatorHeightIssue, MissingElevatorStopCountIssue, MissingElevatorsIssue,
+        MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue,
+        MissingSplitTilesIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
+        RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, Rule, RuleTrait, UnreachableFinishIssue,
     },
     space::Tessellation,
 };
@@ -190,6 +191,7 @@ qc_kind_registry! {
     MissingElevatorHeight => MissingElevatorHeightIssue, build_missing_elevator_height_check, ["min_elevator_height"];
     ExcessiveElevatorStopGap => ExcessiveElevatorStopGapIssue, build_excessive_elevator_stop_gap_check, ["max_elevator_stop_gap"];
     InvalidCrossElementGroup => InvalidCrossElementGroupIssue, build_cross_element_group_check, ["cross_element_geometric_proximity", "cross_element_graph_proximity"];
+    InvalidCrossElement => InvalidCrossElementIssue, build_cross_element_cell_type_check, ["cross_element_cell_type"];
 }
 
 #[cfg(test)]

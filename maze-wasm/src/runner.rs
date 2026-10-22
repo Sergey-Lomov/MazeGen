@@ -246,6 +246,8 @@ pub fn run_generate<T: Tessellation + 'static>(
         }
     }
 
+    maze_runner::runner::validate_cell_type_params(config, field.tessellation())
+        .map_err(|e| JsValue::from_str(&e))?;
     let (qc_engine, check_types) =
         build_qc_and_repair_with_types::<T>(config).map_err(|e| JsValue::from_str(&e))?;
 

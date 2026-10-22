@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
-import { ParamFields, isEntityVisible } from "./ParamFields";
+import { ParamFields, isEntityVisible, useVisibilityContext } from "./ParamFields";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
@@ -34,10 +34,10 @@ function defaultValue(p: ParamDescriptor): string {
 
 export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Props) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibility = useVisibilityContext();
   const candidates = availableStrategies
     .filter((s) => s.handles === kind)
-    .filter((s) => isEntityVisible(s.visibility, floorCount));
+    .filter((s) => isEntityVisible(s.visibility, visibility));
   // `scored_endpoints` is the preferred default for the start/finish kind (better-scored
   // placements than the first-listed random/farthest strategies) — same preference as the
   // registry's default-rule seeding in generationSlice.

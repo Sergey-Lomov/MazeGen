@@ -78,19 +78,34 @@ const multiFloorOnlyParam: ParamDescriptor = {
   visibility: { type: "multi_floor_only" },
 };
 
+describe("isEntityVisible multi_cell_type_only", () => {
+  it("is hidden with a single cell type and shown with several", () => {
+    expect(isEntityVisible({ type: "multi_cell_type_only" }, { floorCount: 1, cellTypeKeys: ["a"] })).toBe(false);
+    expect(isEntityVisible({ type: "multi_cell_type_only" }, { floorCount: 1, cellTypeKeys: ["a", "b"] })).toBe(true);
+  });
+});
+
+describe("isEntityVisible cell_type", () => {
+  it("is shown only when the tessellation provides the key", () => {
+    const ctx = { floorCount: 1, cellTypeKeys: ["octagon", "square"] };
+    expect(isEntityVisible({ type: "cell_type", key: "octagon" }, ctx)).toBe(true);
+    expect(isEntityVisible({ type: "cell_type", key: "triangle" }, ctx)).toBe(false);
+  });
+});
+
 describe("isEntityVisible", () => {
   it("is always visible when there is no visibility tag", () => {
-    expect(isEntityVisible(undefined, 1)).toBe(true);
-    expect(isEntityVisible(undefined, 5)).toBe(true);
+    expect(isEntityVisible(undefined, { floorCount: 1, cellTypeKeys: ["a", "b"] })).toBe(true);
+    expect(isEntityVisible(undefined, { floorCount: 5, cellTypeKeys: ["a", "b"] })).toBe(true);
   });
 
   it("multi_floor_only is hidden below 2 floors", () => {
-    expect(isEntityVisible({ type: "multi_floor_only" }, 1)).toBe(false);
+    expect(isEntityVisible({ type: "multi_floor_only" }, { floorCount: 1, cellTypeKeys: ["a", "b"] })).toBe(false);
   });
 
   it("multi_floor_only is visible at 2 or more floors", () => {
-    expect(isEntityVisible({ type: "multi_floor_only" }, 2)).toBe(true);
-    expect(isEntityVisible({ type: "multi_floor_only" }, 3)).toBe(true);
+    expect(isEntityVisible({ type: "multi_floor_only" }, { floorCount: 2, cellTypeKeys: ["a", "b"] })).toBe(true);
+    expect(isEntityVisible({ type: "multi_floor_only" }, { floorCount: 3, cellTypeKeys: ["a", "b"] })).toBe(true);
   });
 });
 

@@ -1,3 +1,4 @@
+pub mod cross_element_cell_type;
 pub mod cross_element_geometric_proximity;
 pub mod cross_element_graph_proximity;
 mod cycle_check_core;
@@ -83,6 +84,7 @@ pub mod vertical_passage_group_geometric_proximity;
 pub mod vertical_passage_group_graph_proximity;
 mod waypoint_distance_core;
 
+pub use cross_element_cell_type::{CrossElementCellTypeCheck, FORBID_CELL_TYPE_PARAM_PREFIX};
 pub use cross_element_geometric_proximity::{
     CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
