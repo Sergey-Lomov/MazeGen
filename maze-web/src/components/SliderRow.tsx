@@ -1,4 +1,5 @@
 import type React from "react";
+import { NumberInput } from "./NumberInput";
 import { sharedStyles } from "../styles/shared";
 import { typography, spacing } from "../styles/theme";
 
@@ -12,6 +13,10 @@ interface Props {
   step?: number;
   /** Value display formatter. Defaults to `toFixed(2)`, matching the default 0..1/0.01 range. */
   format?: (v: number) => string;
+  /** Adds a bounded numeric editor for values that need more precision than the range input. */
+  precise?: boolean;
+  /** Accessible name for the precise editor when the visible row label is contextual or repeated. */
+  preciseAriaLabel?: string;
   disabled?: boolean;
   onPointerDown?: React.PointerEventHandler<HTMLInputElement>;
   onPointerUp?: React.PointerEventHandler<HTMLInputElement>;
@@ -25,7 +30,7 @@ interface Props {
   trailingAction?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, precise, preciseAriaLabel, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -46,7 +51,23 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           onPointerCancel={onPointerCancel}
           onBlur={onBlur}
         />
-        <span style={sharedStyles.sliderRowValue}>{format ? format(value) : value.toFixed(2)}</span>
+        {precise ? (
+          <NumberInput
+            name={`${label}-value`}
+            ariaLabel={preciseAriaLabel ?? `${label} value`}
+            min={min}
+            max={max}
+            value={String(value)}
+            disabled={disabled}
+            style={{ ...sharedStyles.input, width: 64, textAlign: "right" }}
+            onChange={(raw) => {
+              const next = Number(raw);
+              if (Number.isFinite(next)) onChange(next);
+            }}
+          />
+        ) : (
+          <span style={sharedStyles.sliderRowValue}>{format ? format(value) : value.toFixed(2)}</span>
+        )}
         {trailingAction}
         {resetButton}
       </div>

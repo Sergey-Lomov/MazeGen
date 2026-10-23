@@ -4,7 +4,11 @@ error[E0277]: the trait bound `MissingLoopsRandomStrategy: RepairStrategy<Square
 12 |         "r".to_string(), checks, Some(Box::new(MissingLoopsRandomStrategy)), HashMap::new(), vec![],
    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not implemented for `MissingLoopsRandomStrategy`
    |
-   = help: the trait `RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not implemented for `MissingLoopsRandomStrategy`
-           but trait `RepairStrategy<SquareTessellation, MissingLoopsIssue>` is implemented for it
+help: the trait `RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not implemented for `MissingLoopsRandomStrategy`
+      but trait `RepairStrategy<SquareTessellation, MissingLoopsIssue>` is implemented for it
+  --> src/repair/strategies/missing_loops_random.rs
+   |
+   | impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRandomStrategy {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: for that trait implementation, expected `MissingLoopsIssue`, found `InvalidLoopIssue`
    = note: required for the cast from `Box<MissingLoopsRandomStrategy>` to `Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>`

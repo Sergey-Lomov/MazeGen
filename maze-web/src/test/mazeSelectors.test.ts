@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, createFloorNodesSelector, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
-import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
+import { fieldOf } from "./fieldConfigFixtures";
+import { selectSplitCellRenderer } from "../pixi/splitCellRenderer";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -19,11 +20,17 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: vi.fn(() => ({})), subscribe: vi.fn(() => () => {}) },
 }));
 
-// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// getCellCenter (via cartesianCache's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock with the canonical square formula (see
 // `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 // --- postEditEdgesToDto ---
@@ -234,7 +241,7 @@ describe("buildMazeWalls", () => {
   });
 
   it("treats hex_triangle as a hex grid when finding shared walls", () => {
-    const cfg: TessellationConfig = { type: "hex_triangle", side: 20, orientation: "flat_top" };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "triangle", side: 20 }, "flat_top");
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     const walls = buildMazeWalls(nodes, [], cfg);
     expect(walls.some(w =>
@@ -283,8 +290,19 @@ describe("buildCorridorSegments", () => {
     expect(segments[0].v1).toEqual(getCellCenter(1, 0, squareCfg));
   });
 
+  it("curved-quadrilateral segments carry the shared face's curve; straight faces carry none", () => {
+    const curvedCfg: FieldConfig = fieldOf("curved_quadrilateral", { shape: "rect", cols: 4, rows: 4 });
+    const curved = buildCorridorSegments([n(0, 0, 0), n(1, 1, 0)], [e(0, 1), e(1, 0)], curvedCfg);
+    expect(curved).toHaveLength(1);
+    const face = getSharedEdgeSegment([0, 0], [1, 0], curvedCfg)!;
+    expect(face.polyline.length).toBeGreaterThanOrEqual(3);
+    expect(curved[0].facePolyline).toEqual(face.polyline.map(([x, y]) => ({ x, y })));
+    const straight = buildCorridorSegments([n(0, 0, 0), n(1, 1, 0)], [e(0, 1), e(1, 0)], squareCfg);
+    expect(straight[0].facePolyline).toBeUndefined();
+  });
+
   it("Cairo segments use the shared-face midpoint and its perpendicular outward normal", () => {
-    const cfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+    const cfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const a: [number, number] = [2, 1];
     const b: [number, number] = [-1, 2];
     const nodes = [n(0, ...a), n(1, ...b)];
@@ -363,10 +381,15 @@ describe("buildCorridorSegments", () => {
     const edges: EdgeDto[] = [e(1, 3), e(3, 1)];
     const segments = buildCorridorSegments(nodes, edges, squareCfg);
     expect(segments).toHaveLength(1);
-    expect(segments[0]).toEqual({
+    expect(segments[0]).toEqual(expect.objectContaining({
       v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg),
-      oneWayDir: undefined, fromNode: 1, toNode: 3, v1TouchesSplit: false,
-    });
+      fromNode: 1, toNode: 3, v1TouchesSplit: false,
+    }));
+    expect(segments[0].faceMidpoint).toBeDefined();
+    expect(segments[0].faceNormal).toBeDefined();
+    expect(segments[0].faceLength).toBeGreaterThan(0);
+    expect(segments[0].cellVertices0).toEqual(getCellVertices(1, 0, squareCfg));
+    expect(segments[0].cellVertices1).toEqual(getCellVertices(2, 0, squareCfg));
   });
 
   it("emits each connected pair's segment only once, not once per direction", () => {
@@ -400,6 +423,32 @@ describe("buildOneWayCorridorIndicatorPositions", () => {
 // --- buildSplitPassages ---
 
 describe("buildSplitPassages", () => {
+  it("uses a sharper special bridge renderer for a 4.8.8 square", () => {
+    // `regular:4` also occurs in the ordinary square tessellation. Only a 4.8.8 square needs
+    // this treatment: its bridge silhouette meets seams of the adjacent octagons.
+    expect(selectSplitCellRenderer("square", "regular:4").bridgeTaperFrac).toBe(0.2);
+    expect(selectSplitCellRenderer("square_octagon", "regular:4").bridgeTaperFrac).toBe(0.08);
+    expect(selectSplitCellRenderer("square_octagon", "regular:8").bridgeTaperFrac).toBe(0.2);
+
+    // `(1,1)` is a square in 4.8.8. Its four diagonal neighbours form two opposite pairs.
+    const squareOctagonCfg = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const nodes = [
+      n(0, 1, 1), n(1, 2, 2), n(2, 0, 0),
+      n(3, 0, 2), n(4, 1, 1), n(5, 2, 0),
+    ];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
+    const result = buildSplitPassages(nodes, edges, squareOctagonCfg);
+    expect(result.specialShapes).toHaveLength(1);
+    const shape = result.specialShapes[0];
+    expect(shape.kind).toBe("bridge");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const taperLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[1], shape.edge1[1]));
+    const bridgeLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[3], shape.edge1[3]));
+    expect(taperLength / bridgeLength).toBeCloseTo(0.08, 5);
+  });
+
   it("unsplit point produces no passages", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     expect(buildSplitPassages(nodes, [e(0, 1), e(1, 0)], squareCfg).passages).toEqual([]);
@@ -684,8 +733,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo 2x2 divider as corner12 -> centre -> corner34", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(200 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(100, ...point), n(101, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 200 + face), e(200 + face, node)]);
@@ -717,8 +766,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo adjacent divider as side 0 plus corner23 -> side-0 midpoint", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(300 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(110, ...point), n(111, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 300 + face), e(300 + face, node)]);
@@ -738,8 +787,8 @@ describe("buildSplitPassages", () => {
 
   it("renders the Cairo 2x3 bridge and preserves the fork's ordinary passages", () => {
     const point: [number, number] = [2, 1];
-    const order = cairoCanonicalFaceOrder(...point);
-    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const order = [0, 1, 2, 3, 4];
+    const offsets = getNeighborData(cairoCfg, ...point).offsets;
     const neighbors = offsets.map(([dx, dy], i) => n(400 + i, point[0] + dx, point[1] + dy));
     const nodes = [n(120, ...point), n(121, ...point), ...neighbors];
     const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 400 + face), e(400 + face, node)]);
@@ -796,7 +845,7 @@ describe("buildSplitJunctionPositions", () => {
 // Opposite pairs: (0,3) (1,4) (2,5). Adjacent pairs: (i,i+1). Skip pairs: (i,i+2).
 // Neighbor node ids are always 1..6 (one per face index); split-point node ids start at 100 to
 // avoid colliding with them.
-const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 4 };
+const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 4 });
 const hexNeighborNodes = (x: number, y: number) => [
   n(1, x + 1, y), n(2, x, y + 1), n(3, x - 1, y + 1),
   n(4, x - 1, y), n(5, x, y - 1), n(6, x + 1, y - 1),
@@ -889,12 +938,11 @@ describe("hex special shapes", () => {
     const doublePassage = buildSplitPassages(nodes, edgesFor([[0, 2], [3, 5]]), hexCfg).specialShapes;
     expect(divider).toHaveLength(1);
     expect(doublePassage).toHaveLength(1);
-    expect(divider[0]).toMatchObject({
-      kind: "diagonal",
-      corner0: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner0 : null,
-      corner1: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner1 : null,
-    });
-    if (divider[0].kind !== "diagonal") throw new Error("unreachable");
+    if (divider[0].kind !== "diagonal" || doublePassage[0].kind !== "diagonal") throw new Error("unreachable");
+    // Same wall line; endpoint order follows face order and is not part of the contract.
+    expect([divider[0].corner0, divider[0].corner1]).toEqual(
+      expect.arrayContaining([doublePassage[0].corner0, doublePassage[0].corner1]),
+    );
     expect(divider[0].dividerJunctions).toHaveLength(2);
     expect(divider[0].dividerJunctions?.[0]).not.toEqual(divider[0].dividerJunctions?.[1]);
   });
@@ -985,8 +1033,8 @@ describe("hasCrossFloorTeleport (GitHub issue #485)", () => {
 
 // --- buildTeleportEdges ---
 
-const squareCfg: TessellationConfig = { type: "square", width: 4, height: 4 };
-const cairoCfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
+const cairoCfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 
 describe("buildTeleportEdges", () => {
@@ -1148,7 +1196,7 @@ describe("buildTeleportEdges", () => {
     blockedCellsByFloor: buildTeleportBadgeBlockedCells(nodes, unscopedEdges, selectNodeLevelResolver(nodes), null, null),
     ...extra,
   });
-  const isCellCenter = (p: [number, number], cfg: TessellationConfig): boolean => {
+  const isCellCenter = (p: [number, number], cfg: FieldConfig): boolean => {
     const [gx, gy] = nearestCellCoord(p[0], p[1], cfg);
     const c = getCellCenter(gx, gy, cfg);
     return Math.abs(c.x - p[0]) < 1e-6 && Math.abs(c.y - p[1]) < 1e-6;
@@ -1472,7 +1520,7 @@ describe("buildMazeMarkers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 1, 1)]]);
     const startStyle: MarkerStyle = {
       shape: "star", fillColor: 0x111, borderColor: 0x222, borderWidth: 4,
-      size: 20, cornerStyle: "round", gapWidth: 3, gapColor: 0x333, text: "",
+      size: 20, sizeAdaptation: 0, cornerStyle: "round", gapWidth: 3, gapColor: 0x333, text: "",
     };
     const markers = buildMazeMarkers(nodeById, 0, 1, squareCfg, startStyle);
     expect(markers[0]).toMatchObject({
@@ -1490,7 +1538,7 @@ describe("buildMazeMarkers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
     const noColorStyle: MarkerStyle = {
       shape: "circle", fillColor: 0x111, borderColor: 0x222, borderWidth: 0,
-      size: 20, cornerStyle: "round", gapWidth: 0, gapColor: 0x333, text: "S",
+      size: 20, sizeAdaptation: 0, cornerStyle: "round", gapWidth: 0, gapColor: 0x333, text: "S",
     };
     const withColorStyle: MarkerStyle = { ...noColorStyle, textColor: 0x444 };
     expect(buildMazeMarkers(nodeById, 0, null, squareCfg, noColorStyle)[0].textColor).toBe(0x333);
@@ -1607,6 +1655,31 @@ describe("selectFloorChangeLosesGenerationData", () => {
 
   it("true when both are dirty", () => {
     expect(selectFloorChangeLosesGenerationData({ mazeDirty: true, postEditDirty: true })).toBe(true);
+  });
+});
+
+describe("createFloorNodesSelector (GitHub issue #739)", () => {
+  const floors = [{ id: "f1" }, { id: "f2" }];
+  const nodes: NodeDto[] = [
+    { id: 0, x: 0, y: 0, i: 0 },
+    { id: 1, x: 0, y: 0, i: 0, level: 1 },
+  ];
+
+  it("returns the same array while inputs are unchanged", () => {
+    const select = createFloorNodesSelector();
+    const first = select(nodes, floors, "f1");
+    expect(first.map((n) => n.id)).toEqual([0]);
+    expect(select(nodes, floors, "f1")).toBe(first);
+  });
+
+  it("recomputes when the floor, the floor list or the node list changes", () => {
+    const select = createFloorNodesSelector();
+    const first = select(nodes, floors, "f1");
+    expect(select(nodes, floors, "f2").map((n) => n.id)).toEqual([1]);
+    expect(select(nodes, [...floors].reverse(), "f2").map((n) => n.id)).toEqual([0]);
+    const next = select([...nodes], floors, "f1");
+    expect(next).not.toBe(first);
+    expect(next.map((n) => n.id)).toEqual([0]);
   });
 });
 

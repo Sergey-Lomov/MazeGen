@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
 import type { LabelFontWeight } from "../../renderers/indexLabel";
 import { buildNodePositions } from "../../tessellationGeometry";
@@ -16,6 +16,8 @@ export interface MarkerStyle {
   /** Marker diameter in px (GitHub issue #681 follow-up) — same convention as
    *  `VectorByWallsSettings.teleportLineSize`. */
   size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
   /** Sharp (`"miter"`) vs. round (`"round"`) corners (GitHub issue #302 follow-up) — only affects
    *  the four regular-polygon `MarkerShape`s. */
   cornerStyle: CornerStyle;
@@ -49,7 +51,7 @@ export interface MarkerStyle {
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
 export function buildMarkerData(pos: [number, number], style: MarkerStyle): MarkerData {
   return {
-    pos, radius: style.size / 2,
+    pos, radius: style.size / 2, sizeAdaptation: style.sizeAdaptation,
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
     text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,
@@ -68,7 +70,7 @@ export function buildMazeMarkers(
   nodeById: Map<number, NodeDto>,
   start: number | null,
   finish: number | null,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   startStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.startMarker,
   finishStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.finishMarker,
   edges: EdgeDto[] = [],

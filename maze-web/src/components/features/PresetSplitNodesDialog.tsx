@@ -7,7 +7,7 @@ import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
-import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { presetTargetLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
@@ -46,7 +46,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
-  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -68,11 +68,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     splitPoints,
     presetConnections,
     activeSplitNode,
-    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.fieldConfig ?? cfg,
     inFieldCellsAt: (targetLevel) => {
       const targetFloor = floorFields[floors[targetLevel]?.id ?? ""];
       return targetFloor
-        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.fieldConfig))
         : inFieldCells;
     },
   };
@@ -143,7 +143,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const semanticNames = useMemo(
     () => splitNodeSemanticNames(
       nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })),
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+      splitShapeBinding(cfg, point[0], point[1]),
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [slots, cfg, point, inFieldCells, presetConnections],
@@ -262,6 +262,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       wouldBreakNeighborShape={(direction) => rotatePresetSplitPointBreaksNeighborShape(
         presetConnections, point, slots, direction, cfg, inFieldCells, splitPoints, activeSplitNode, level,
       )}
+      notificationSource="preset_connections"
       onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
       onHoverElement={(_row, element) => {

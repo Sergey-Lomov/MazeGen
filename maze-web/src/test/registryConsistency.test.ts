@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n, resolveParamLabel, resolveParamDescription, resolveParamOptionExplanation } from "../components/features/qualityI18n";
@@ -26,22 +26,19 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "cross_element_geometric_proximity", "cross_element_graph_proximity",
 ];
 
-// `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.ps1` — absent on a
-// fresh checkout until that script has been run at least once. Skip rather than fail so this
-// suite doesn't block on a missing local build artifact; it still runs (and catches real
-// drift) in any dev environment that has rebuilt wasm, which is the normal workflow here.
+// `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.sh` / `wasm-rebuild.ps1`;
+// `npm test` requires it (`tools/require-wasm.mjs`).
 const wasmPath = resolve(dirname(__filename), "../wasm/pkg/maze_wasm_bg.wasm");
-const describeIfWasmBuilt = existsSync(wasmPath) ? describe : describe.skip;
 
-describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
+describe("wasm registry vs web i18n consistency", () => {
   let checks: CheckDescriptor[];
   let strategies: StrategyDescriptor[];
 
   beforeAll(async () => {
     // wasm-bindgen's default `init()` fetches its .wasm by URL, which doesn't work under
-    // vitest's node environment — load the bytes from disk instead and pass them directly.
+    // vitest's node environment — load the bytes from disk instead and pass them to the loader.
     const wasm = await import("../wasm/pkg/maze_wasm");
-    await wasm.default(readFileSync(wasmPath));
+    await wasm.default({ module_or_path: readFileSync(wasmPath) });
     checks = wasm.available_checks() as CheckDescriptor[];
     strategies = wasm.available_strategies() as StrategyDescriptor[];
   });

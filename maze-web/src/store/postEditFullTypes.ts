@@ -5,16 +5,18 @@ import type { PostEditCommand } from "./postEditCommandTypes";
 import type { PostEditResetLifelineDescriptor } from "../pixi/postEditResetLifelines";
 import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
 import type { PostEditPointEntityDescriptor } from "../pixi/postEditPointEntities";
+import type { EntityToolPurpose } from "../pixi/entityToolKinds";
 import type {
   PostEditTool,
+  PostEditEdgeToolMode,
   PostEditEdge,
   PostEditMeta,
   PostEditTeleportDirection,
+  PostEditVerticalPassageDirection,
   PostEditTeleportEntry,
   PostEditVerticalPassageEntry,
   PostEditElevatorEntry,
   PostEditAnalytics,
-  PostEditVerticalDragFailure,
 } from "./postEditTypes";
 
 /** One hovered issue's base-graph edge, plus how it should be drawn (GitHub issue #377). Loop/
@@ -175,6 +177,10 @@ export interface PostEditState {
   postEditMeta: PostEditMeta | null;
   /** Analytics over confirmed graph. null until first confirmPostEdit completes. */
   postEditAnalytics: PostEditAnalytics | null;
+  /** Message of the last failed `confirmPostEdit` analytics refresh (GitHub issue #769), shown as
+   *  a persistent status line in the post-edit card. Cleared by the next successful refresh and by
+   *  anything that rebuilds post-edit state (generation, project load, downstream reset). */
+  postEditRefreshError: string | null;
   /** Incremented on each confirmPostEdit call; stale async results are discarded. */
   _postEditRequestId: number;
   /** start/finish as generated — restored on resetPostEdit. */
@@ -220,8 +226,8 @@ export interface PostEditState {
    * one of the point's nodes via `applyPostEditSplitTargetPick`. `nodeIds` are the point's
    * confirmed nodes in snapshot order (index 0 = the point's original node — see
    * `PostEditController.buildNodeMap`); an unconfirmed split slot has no real id yet and is not
-   * offered, same as the pre-#474 no-op on an unconfirmed active split node. `null` when no
-   * prompt is open. Never persisted (ephemeral placement state).
+   * offered. A direct placement attempt on that active slot is refused with a notice. `null` when
+   * no prompt is open. Never persisted (ephemeral placement state).
    *
    * `queue`/`picks` extend the original single-point prompt for GitHub issue #567: dragging an
    * existing teleport/vertical-passage/elevator endpoint onto a split tile needs the same "which
@@ -289,6 +295,9 @@ export interface PostEditState {
           | { tool: "place_elevator"; origin: PostEditEndpoint; levels: number[]; editingId?: string };
         queue?: { targetIndex: number; point: [number, number]; level?: number; nodeIds: number[] }[];
         picks?: (PostEditEndpoint | undefined)[];
+        /** A node the picker leaves out: the other endpoint of a teleport whose endpoint is being
+         *  moved onto this tile (GitHub issue #748). */
+        excludedNodeId?: number;
       }
     | null;
   /** In-progress entity-delete prompt (GitHub issue #550, mirroring the preset-side dialog from
@@ -327,13 +336,15 @@ export interface PostEditState {
    *  only gets a single command on release (if the drag actually moved to a different node), not
    *  one per pointermove. Not persisted. */
   postEditDragOverride: PostEditDragOverride | null;
-  /** Set when a vertical-passage/elevator drag is released over a point with no resolvable node on
-   *  one of the entity's OTHER floors (GitHub issue #566) — the whole drag is reverted (see
-   *  `movePostEditVerticalPassageEndpoint`/`movePostEditElevatorEndpoint`'s own doc comments) and
-   *  this is populated so the `AlertModal` rendered in `PostEditFeature` can tell the user which
-   *  floor/point rejected the move. Cleared by `dismissPostEditDragFailureMessage` (the dialog's
-   *  own OK button). */
-  postEditDragFailureMessage: (PostEditVerticalDragFailure & { entityKind: "vertical_passage" | "elevator" }) | null;
+  /** Point whose elements the move or settings tool must disambiguate (GitHub issue #748) — set by
+   *  `requestPostEditEntityPick` when the cell carries more than one element relevant to `purpose`.
+   *  `PostEditEntityPickDialog` lists every node's elements of a split tile at once. */
+  postEditEntityPickPrompt: { point: [number, number]; level?: number; purpose: EntityToolPurpose } | null;
+  /** Element chosen for the move tool from `postEditEntityPickPrompt`. `PostEditController` takes it
+   *  on the next pointer event and starts carrying it (click-to-drop). */
+  postEditMoveRequest: PostEditPointEntityDescriptor | null;
+  /** Teleport or vertical passage whose type/direction the settings dialog edits (GitHub issue #748). */
+  postEditConnectionSettingsPrompt: { kind: "teleport" | "vertical_passage"; id: string } | null;
 }
 
 /** See `PostEditState.postEditDragOverride`. Each variant names the entity being dragged and its
@@ -353,12 +364,14 @@ export interface PostEditActions {
   /** Same as `applyPostEditTool`, but takes `tool` explicitly instead of reading
    * `state.postEditTool` — used by the "Manage split nodes" dialog's own kind switcher (GitHub
    * issue #234), which must not disturb the canvas's globally active edge tool. */
-  applyPostEditToolAt: (tool: PostEditTool, edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
+  applyPostEditToolAt: (tool: PostEditEdgeToolMode, edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
   setPostEditEndpoint: (kind: "start" | "finish", endpoint: PostEditEndpoint) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
   setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
   addPostEditTeleport: (from: PostEditEndpoint, to: PostEditEndpoint, direction: PostEditTeleportDirection) => void;
-  cyclePostEditTeleportDirection: (id: string) => void;
+  /** Sets a teleport's type/direction outright (settings dialog, GitHub issue #748) — appends an
+   *  `absolute` `setTeleportDirection` command; a no-op when nothing changes. */
+  setPostEditTeleportDirection: (id: string, direction: PostEditTeleportDirection) => void;
   removePostEditTeleport: (id: string) => void;
   movePostEditTeleportEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   confirmPostEdit: () => Promise<void>;
@@ -452,32 +465,46 @@ export interface PostEditActions {
   startPostEditVerticalPassagePlacement: (origin: PostEditEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
   choosePostEditVerticalPassageDirection: (direction: "up" | "down") => void;
   cancelPostEditVerticalPassagePlacement: () => void;
-  cyclePostEditVerticalPassageDirection: (id: string) => void;
+  /** Vertical-passage counterpart of `setPostEditTeleportDirection` (GitHub issue #748). */
+  setPostEditVerticalPassageDirection: (id: string, direction: PostEditVerticalPassageDirection) => void;
   removePostEditVerticalPassage: (id: string) => void;
   /** Moves BOTH ends of the passage so the dragged end lands on `endpoint` (GitHub issue #566) —
-   *  see `movePostEditVerticalPassageEndpoint` (postEditVerticalUtils.ts)'s own doc comment. Sets
-   *  `postEditDragFailureMessage` and leaves `postEditDraftVerticalPassages` unchanged when the
+   *  see `movePostEditVerticalPassageEndpoint` (postEditVerticalUtils.ts)'s own doc comment. Emits
+   *  a notice and leaves `postEditDraftVerticalPassages` unchanged when the
    *  other end's floor has no node at the dragged endpoint's new `(x, y)`. `otherEndpoint` (GitHub
    *  issue #567) is the user's own `PostEditSplitTargetDialog` pick for the OTHER end's own landing
    *  point when that point is ALSO split — omitted when it isn't, falling back to the plain
    *  `findNodeAt` resolution `resolveVerticalPassageMove` always used before this issue. */
   movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint, otherEndpoint?: PostEditEndpoint) => void;
   startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
+  /** Opens the floor dialog for the existing elevator `id`, seeded with its current floors. */
+  editPostEditElevator: (id: string, origin: PostEditEndpoint) => void;
+  /** Entry point of the move and settings tools (GitHub issue #748) for one cell: lists the cell's
+   *  elements relevant to `purpose` across every node of a split tile. 0 is a no-op, exactly 1 is
+   *  acted on directly, more than 1 opens `postEditEntityPickPrompt`. */
+  requestPostEditEntityPick: (point: [number, number], level: number | undefined, purpose: EntityToolPurpose) => void;
+  /** Acts on the element picked in `PostEditEntityPickDialog` and closes the prompt. */
+  choosePostEditEntityPick: (descriptor: PostEditPointEntityDescriptor) => void;
+  cancelPostEditEntityPick: () => void;
+  /** Returns and clears `postEditMoveRequest`. */
+  takePostEditMoveRequest: () => PostEditPointEntityDescriptor | null;
+  /** Opens the settings surface of one element: the connection dialog, the elevator floor dialog,
+   *  or the split-node panel. Other kinds have no settings and are ignored. */
+  openPostEditEntitySettings: (descriptor: PostEditPointEntityDescriptor) => void;
+  cancelPostEditConnectionSettings: () => void;
   togglePostEditElevatorFloor: (floorIndex: number) => void;
   confirmPostEditElevatorPlacement: () => void;
   cancelPostEditElevatorPlacement: () => void;
   removePostEditElevator: (id: string) => void;
   /** Moves EVERY floor endpoint of the elevator so the dragged floor's endpoint lands on `endpoint`
    *  (GitHub issue #566) — see `movePostEditElevatorEndpoint` (postEditVerticalUtils.ts)'s own doc
-   *  comment. `level` is the dragged marker's own floor. Sets `postEditDragFailureMessage` and
+   *  comment. `level` is the dragged marker's own floor. Emits a notice and
    *  leaves `postEditDraftElevators` unchanged when one of the OTHER floors has no node there.
    *  `otherEndpoints` (GitHub issue #567) are the user's own `PostEditSplitTargetDialog` picks for
    *  whichever OTHER floors ALSO turned out split, one `{ level, endpoint }` per such floor —
    *  omitted (or a floor left out of it) falls back to the plain `findNodeAt` resolution
    *  `resolveElevatorMove` always used before this issue. */
   movePostEditElevatorEndpoint: (id: string, level: number, endpoint: PostEditEndpoint, otherEndpoints?: { level: number; endpoint: PostEditEndpoint }[]) => void;
-  /** Closes the drag-failure `AlertModal` rendered in `PostEditFeature` (its own OK button). */
-  dismissPostEditDragFailureMessage: () => void;
   /** Opens the "which split node?" prompt (GitHub issue #474). Called by `PostEditController` when
    * a vertex tool is used on a split point instead of dispatching the tool directly. */
   requestPostEditSplitTarget: (prompt: NonNullable<PostEditState["postEditSplitTargetPrompt"]>) => void;

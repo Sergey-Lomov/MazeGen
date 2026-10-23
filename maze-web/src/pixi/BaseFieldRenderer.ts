@@ -1,7 +1,7 @@
 import { useMazeStore } from "../store/mazeStore";
 import { resolveCells } from "./fieldEditUtils";
 import { encodePoint } from "./tessellationProjection";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { Viewport } from "./renderers/types";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -24,7 +24,7 @@ type MazeState = ReturnType<typeof useMazeStore.getState>;
  */
 export abstract class BaseFieldRenderer {
   protected viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
-  protected cfg: TessellationConfig | null = null;
+  protected cfg: FieldConfig | null = null;
   protected cachedCells: [number, number][] = [];
   protected cachedCellSet: Set<number> = new Set();
 
@@ -32,7 +32,7 @@ export abstract class BaseFieldRenderer {
   private subscribed = false;
 
   protected abstract isCardOpen(state: MazeState): boolean;
-  protected abstract getActiveConfig(state: MazeState): TessellationConfig;
+  protected abstract getActiveConfig(state: MazeState): FieldConfig;
   protected abstract setRootVisible(visible: boolean): void;
   protected abstract redrawAll(state: MazeState): void;
   protected abstract clearAll(): void;
@@ -96,7 +96,7 @@ export abstract class BaseFieldRenderer {
     const field = state.floorFields[state.activeFloorId];
     const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0
       ? field.fieldPoints : undefined;
-    this.cachedCells = resolveCells(this.cfg, customPts);
+    this.cachedCells = resolveCells(this.cfg, customPts, state.smoothPrimitives);
     this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
   }
 

@@ -12,6 +12,8 @@ describe("ConfirmModal", () => {
     expect(screen.getByText(m["common.confirm"]())).toBeInTheDocument();
     expect(screen.getByText("Discard changes?")).toBeInTheDocument();
     expect(screen.getByText(m["common.ok"]()).parentElement?.style.borderTop).toContain("1px solid");
+    expect(screen.getByRole("button", { name: m["common.cancel"]() })).toHaveStyle({ minWidth: "80px" });
+    expect(screen.getByRole("button", { name: m["common.ok"]() })).toHaveStyle({ minWidth: "80px" });
   });
 
   it("renders a compact confirmation layout when only a title is provided", () => {

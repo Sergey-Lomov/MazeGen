@@ -3,11 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import * as m from "~/paraglide/messages";
 import { ElevatorFloorPicker, type ElevatorFloorRow } from "../components/dialogs/ElevatorFloorPicker";
 import { EntityChoiceDialog } from "../components/dialogs/EntityChoiceDialog";
-import { SplitTargetPicker, numberToCssColor } from "../components/dialogs/SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets } from "../components/dialogs/SplitTargetPicker";
 import { VerticalDirectionPicker } from "../components/dialogs/VerticalDirectionPicker";
 import { ToolIconRow } from "../components/ToolIconRow";
-import { VerticalDragFailureAlert } from "../components/VerticalDragFailureAlert";
-import { formatTargetLabel } from "../pixi/targetLabel";
 
 vi.mock("../components/features/ToolGlyph", () => ({
   ToolGlyph: ({ tool }: { tool: string }) => <span data-testid={`glyph-${tool}`} />,
@@ -67,6 +65,14 @@ describe("shared preset/post-edit dialog components", () => {
     expect(numberToCssColor(0x0a1b2c)).toBe("#0a1b2c");
   });
 
+  it("leaves out an excluded split node but keeps every other node's own index (GitHub issue #748)", () => {
+    expect(shownSplitTargets([undefined, 0, 1], (slotId) => slotId === 0)).toEqual([
+      { node: undefined, index: 0 },
+      { node: 1, index: 2 },
+    ]);
+    expect(shownSplitTargets([7, 9], () => false)).toEqual([{ node: 7, index: 0 }, { node: 9, index: 1 }]);
+  });
+
   it("routes split-target selection and cancellation while keeping the preview slot", () => {
     const onSelect = vi.fn();
     const onClose = vi.fn();
@@ -101,7 +107,7 @@ describe("shared preset/post-edit dialog components", () => {
   it("keeps generic tool glyph mapping and destructive selection in the shared row", () => {
     const onPick = vi.fn();
     render(
-      <ToolIconRow
+      <ToolIconRow<"wall" | "delete">
         tools={[["wall", "Wall"], ["delete", "Delete"]]}
         activeTool="delete"
         onPick={onPick}
@@ -117,15 +123,4 @@ describe("shared preset/post-edit dialog components", () => {
     expect(onPick).toHaveBeenCalledWith("wall");
   });
 
-  it("formats both vertical drag-failure variants in the shared alert", () => {
-    const point: [number, number] = [2, 3];
-    const coords = formatTargetLabel(point, 1, true, undefined);
-    const { rerender } = render(
-      <VerticalDragFailureAlert failure={{ entityKind: "vertical_passage", point, level: 1 }} onClose={vi.fn()} />,
-    );
-    expect(screen.getByText(m["vertical_drag.failed_passage"]({ coords }))).toBeInTheDocument();
-
-    rerender(<VerticalDragFailureAlert failure={{ entityKind: "elevator", point, level: 1 }} onClose={vi.fn()} />);
-    expect(screen.getByText(m["vertical_drag.failed_elevator"]({ coords }))).toBeInTheDocument();
-  });
 });

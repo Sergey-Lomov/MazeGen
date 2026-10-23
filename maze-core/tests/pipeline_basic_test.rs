@@ -459,7 +459,7 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
 #[test]
 fn pipeline_breaks_short_loop_via_min_loop_length() {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -467,7 +467,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)
@@ -536,7 +536,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     // triangles sharing no edge, so each check's cycle is independently verifiable as broken
     // afterward.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -544,7 +544,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)
@@ -669,7 +669,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     // apart and keep going.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -677,7 +677,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     let nodes: Vec<_> = field
         .field_of(field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| {
             field
                 .nodes_at(field.single_level_id(), p)

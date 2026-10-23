@@ -4,7 +4,9 @@ import { sharedStyles } from "../styles/shared";
 import { typography, spacing } from "../styles/theme";
 import { colorToHex, colorToHsl, hslToColor, type Hsl } from "./colorFormat";
 import { GradientSlider } from "./GradientSlider";
-import { useChannelInputs, parseChannelInput } from "./useChannelInputs";
+import { useChannelInputs } from "./useChannelInputs";
+import { ColorChannelInput } from "./ColorChannelInput";
+import type { NormalizerResult } from "./inputNormalization";
 import { usePickerDrag } from "./usePickerDrag";
 import { pickerAreaStyles } from "./pickerAreaStyles";
 import * as m from "~/paraglide/messages";
@@ -87,10 +89,9 @@ export function HslModelEditor({ color, onChange }: Props) {
     commit({ [ch]: value });
   }
 
-  function handleInput(ch: Channel, raw: string) {
-    setBuffer(ch, raw);
-    const value = parseChannelInput(raw, ch === "h" ? 360 : 100);
-    if (value !== null) commitChannel(ch, value);
+  function handleInput(ch: Channel, result: NormalizerResult<number | null>) {
+    setBuffer(ch, result.raw);
+    if (result.value !== null) commitChannel(ch, result.value);
   }
 
   // --- 2D area (saturation X, lightness Y — Y inverted so lighter is at the top) ---
@@ -205,16 +206,14 @@ export function HslModelEditor({ color, onChange }: Props) {
             thumbColor={hex}
             onChange={(v) => { clearBuffer(key); commitChannel(key, v); }}
           />
-          <input
-            type="number"
+          <ColorChannelInput
             name={`hsl-${key}`}
-            min={0}
             max={max}
             step={1}
             value={buffers[key] ?? String(Math.round(hsl[key]))}
-            aria-label={`${label()} value`}
+            ariaLabel={`${label()} value`}
             style={styles.number}
-            onChange={(e) => handleInput(key, e.target.value)}
+            onInput={(result) => handleInput(key, result)}
             onBlur={() => clearBuffer(key)}
           />
         </div>

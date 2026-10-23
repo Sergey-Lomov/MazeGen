@@ -5,6 +5,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { TAG_SCOPE, RECURSIVE_BACKTRACKER_EVENT_TAG } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
 import * as m from "~/paraglide/messages";
+import { getTooltipControl } from "./tooltipTestUtils";
 import {
   buildFixture, buildTwoStepTape, buildOneWalkWilsonTape, buildLoopErasedDeadEndWilsonTape, buildGenerationPlusQcTape,
   scopePayload, vertexPayload,
@@ -533,8 +534,8 @@ describe("DebugEventTree step-message search", () => {
     render(<DebugEventTree />);
     fireEvent.change(searchInput(), { target: { value: "passage added" } }); // exactly 1 match
 
-    expect(screen.getByTitle(m["debug.search.next"]())).toBeDisabled();
-    expect(screen.getByTitle(m["debug.search.prev"]())).toBeDisabled();
+    expect(getTooltipControl(m["debug.search.next"]())).toBeDisabled();
+    expect(getTooltipControl(m["debug.search.prev"]())).toBeDisabled();
     fireEvent.keyDown(searchInput(), { key: "Enter" });
     expect(focusDebugNode).not.toHaveBeenCalled();
   });

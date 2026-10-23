@@ -1,20 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
-    // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
-    // comment on squareCenter.
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
-  }),
-}));
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ManageSplitNodesDialog } from "../components/features/ManageSplitNodesDialog";
 import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, postEditStatePatch } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { fieldOf } from "./fieldConfigFixtures";
+import { TileFaceEditor } from "../components/features/TileFaceEditor";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes } from "./notificationTestHelpers";
+import { SPLIT_BOUNDARY_FACE } from "../notifications/editRefusalNotifications";
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     // Node 5 is the split point (2,2)'s original node — the dialog resolves the "Node 1" row to
@@ -39,6 +38,80 @@ beforeEach(() => {
 });
 
 describe("ManageSplitNodesDialog", () => {
+  it("moves face hit zones with the active node anchor", () => {
+    const onFaceClick = vi.fn();
+    const onFaceRightClick = vi.fn();
+    const props = {
+      point: [1, 1] as [number, number],
+      cfg: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }),
+      nodes: [
+        { color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: false })) },
+        { color: "#000", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: false })) },
+      ],
+      onFaceClick,
+      onFaceRightClick,
+      onRotate: vi.fn(),
+    };
+    const { rerender } = render(
+      <TileFaceEditor
+        {...props}
+        activeIndex={0}
+      />,
+    );
+
+    for (let index = 0; index < 4; index += 1) {
+      const hitZone = screen.getByTestId(`tile-face-hit-${index}`);
+      fireEvent.click(hitZone);
+      fireEvent.contextMenu(hitZone);
+    }
+
+    expect(onFaceClick.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 3]);
+    expect(onFaceRightClick.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 3]);
+    const firstAnchor = screen.getByTestId("tile-face-hit-0").querySelector("polygon")?.getAttribute("points")?.split(" ")[0];
+    rerender(<TileFaceEditor {...props} activeIndex={1} />);
+    const secondAnchor = screen.getByTestId("tile-face-hit-0").querySelector("polygon")?.getAttribute("points")?.split(" ")[0];
+    expect(firstAnchor).not.toBe("0,0");
+    expect(secondAnchor).not.toBe(firstAnchor);
+  });
+
+  it("reports boundary-face left/right clicks as one deduplicated notice", () => {
+    render(
+      <TileFaceEditor
+        point={[0, 0]}
+        cfg={fieldOf("square", { shape: "rect", cols: 1, rows: 1 })}
+        nodes={[{ color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: true })) }]}
+        activeIndex={0}
+        onFaceClick={vi.fn()}
+        onFaceRightClick={vi.fn()}
+        onRotate={vi.fn()}
+        notificationSource="post_edit"
+      />,
+    );
+    const face = document.body.querySelector("svg g")!;
+    fireEvent.click(face);
+    fireEvent.contextMenu(face);
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_BOUNDARY_FACE}`]);
+    expect(screen.queryByText("This side has no neighboring tile in the field.")).toBeNull();
+  });
+  it.each([
+    ["preset_connections" as const, "preset_connections"],
+    [undefined, null],
+  ])("boundary-face click with notificationSource %s notifies under %s", (notificationSource, expectedSource) => {
+    render(
+      <TileFaceEditor
+        point={[0, 0]}
+        cfg={fieldOf("square", { shape: "rect", cols: 1, rows: 1 })}
+        nodes={[{ color: "#fff", faces: Array.from({ length: 4 }, () => ({ kind: "wall" as const, boundary: true })) }]}
+        activeIndex={0}
+        onFaceClick={vi.fn()}
+        onFaceRightClick={vi.fn()}
+        onRotate={vi.fn()}
+        notificationSource={notificationSource}
+      />,
+    );
+    fireEvent.click(document.body.querySelector("svg g")!);
+    expect(noticeCodes()).toEqual(expectedSource ? [`${expectedSource}/${SPLIT_BOUNDARY_FACE}`] : []);
+  });
   it("renders one card for the original node plus one per slot, coordinates in the modal header", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     expect(screen.getByText("Manage split nodes: 2:2")).toBeInTheDocument();

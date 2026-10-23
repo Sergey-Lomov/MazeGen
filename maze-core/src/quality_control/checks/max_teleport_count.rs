@@ -133,6 +133,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_teleport_count";
 
@@ -142,8 +143,12 @@ mod tests {
 
     fn maze_with_teleports(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::single_level(square_rect(count.max(1) * 2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(count.max(1) * 2, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -221,7 +226,8 @@ mod tests {
     #[test]
     fn a_bidirectional_teleport_pair_counts_as_one() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -251,11 +257,14 @@ mod tests {
     /// Bottom floor: 2 teleports. Top floor: 1 teleport.
     fn maze_with_teleports_on_two_floors() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -306,7 +315,8 @@ mod tests {
     #[test]
     fn direction_filter_counts_only_matching_portals() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

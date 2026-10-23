@@ -1,6 +1,7 @@
 {
   "tessellation": {
-    "tessellation_type": "hex"
+    "kind": "hex",
+    "params": {}
   },
   "level_fields": [
     [

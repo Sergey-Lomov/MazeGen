@@ -47,8 +47,8 @@ export function ElevatorFloorPicker({
         })}
       </div>
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.button} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" layoutStyle={styles.button} disabled={!canConfirm} onClick={onConfirm}>{m["common.confirm"]()}</Button>
+        <Button variant="secondary" dialogAction layoutStyle={styles.button} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" dialogAction layoutStyle={styles.button} disabled={!canConfirm} onClick={onConfirm}>{m["common.confirm"]()}</Button>
       </div>
     </Modal>
   );

@@ -1,16 +1,23 @@
-import { describe, it, expect } from "vitest";
-import { blueprintsForDegree, rotateBlueprint, fittingRotation, blueprintToSplitPattern, tileNodesForBlueprint } from "../pixi/splitBlueprints";
+import { describe, it, expect, vi } from "vitest";
+import { blueprintsFor, fittingRotation, orientationsOf, blueprintToSplitPattern, tileNodesForBlueprint } from "../pixi/splitBlueprints";
+import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
-describe("blueprintsForDegree", () => {
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
+
+describe("blueprintsFor", () => {
   it("returns the built-in set for a known degree", () => {
-    expect(blueprintsForDegree(3)).toHaveLength(1);
-    expect(blueprintsForDegree(4)).toHaveLength(2);
-    expect(blueprintsForDegree(5)).toHaveLength(3);
-    expect(blueprintsForDegree(6)).toHaveLength(7);
+    expect(blueprintsFor(null, 3)).toHaveLength(1);
+    expect(blueprintsFor(null, 4)).toHaveLength(2);
+    expect(blueprintsFor(null, 5)).toHaveLength(3);
+    expect(blueprintsFor(null, 6)).toHaveLength(7);
   });
 
   it("includes the hex diagonal divider with two opposite adjacent-face triples", () => {
-    expect(blueprintsForDegree(6)).toContainEqual({
+    expect(blueprintsFor(null, 6)).toContainEqual({
       id: 6,
       degree: 6,
       nodeFaces: [[0, 1, 2], [3, 4, 5]],
@@ -19,54 +26,30 @@ describe("blueprintsForDegree", () => {
   });
 
   it("includes the Cairo 2x2 divider in canonical face order", () => {
-    expect(blueprintsForDegree(5)).toContainEqual({
+    expect(blueprintsFor(null, 5)).toContainEqual({
       id: 0,
       degree: 5,
       nodeFaces: [[2, 3], [1, 4]],
       titleKey: "split_pattern_title.parallel_divider",
-      faceIndexMode: "cairo_canonical",
     });
   });
 
   it("includes the Cairo adjacent divider in canonical face order", () => {
-    expect(blueprintsForDegree(5)).toContainEqual({
+    expect(blueprintsFor(null, 5)).toContainEqual({
       id: 1,
       degree: 5,
       nodeFaces: [[1, 2], [3, 4]],
       titleKey: "split_pattern_title.adjacent_divider",
-      faceIndexMode: "cairo_canonical",
     });
   });
 
   it("includes the Cairo 2x3 bridge in canonical face order", () => {
-    expect(blueprintsForDegree(5)).toContainEqual({
+    expect(blueprintsFor(null, 5)).toContainEqual({
       id: 2,
       degree: 5,
       nodeFaces: [[0, 2, 3], [1, 4]],
       titleKey: "split_pattern_title.bridge_2x3",
-      faceIndexMode: "cairo_canonical",
     });
-  });
-});
-
-describe("rotateBlueprint", () => {
-  const square = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
-
-  it("shifts every face index by offset, mod degree", () => {
-    expect(rotateBlueprint(square, 1)).toEqual({ ...square, nodeFaces: [[1, 3], [2, 0]] });
-  });
-
-  it("wraps around the degree", () => {
-    expect(rotateBlueprint(square, 4)).toEqual(square);
-    expect(rotateBlueprint(square, 5)).toEqual(rotateBlueprint(square, 1));
-  });
-
-  it("handles a negative offset", () => {
-    expect(rotateBlueprint(square, -1)).toEqual({ ...square, nodeFaces: [[3, 1], [0, 2]] });
-  });
-
-  it("returns the same object for a zero-mod offset (no rotation needed)", () => {
-    expect(rotateBlueprint(square, 0)).toBe(square);
   });
 });
 
@@ -101,7 +84,8 @@ describe("fittingRotation", () => {
 describe("blueprintToSplitPattern", () => {
   it("converts each node's required faces into a passage requirement, others absent", () => {
     const blueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
-    expect(blueprintToSplitPattern(blueprint)).toEqual({
+    expect(blueprintToSplitPattern(blueprint, fieldOf("square", { shape: "rect", cols: 3, rows: 3 }))).toEqual({
+      shape: "regular:4",
       node_count: 2,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" } }, { face_index: 2, requirement: { kind: "passage" } }],
@@ -113,16 +97,18 @@ describe("blueprintToSplitPattern", () => {
 
   it("handles a node with no required faces (empty face list)", () => {
     const blueprint = { id: 0, degree: 3, nodeFaces: [[0, 1], []] };
-    const pattern = blueprintToSplitPattern(blueprint);
+    const pattern = blueprintToSplitPattern(blueprint, fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }));
+    expect(pattern.shape).toBe("regular:3");
     expect(pattern.node_count).toBe(2);
     expect(pattern.faces[1]).toEqual([]);
   });
 
-  it("stores Cairo canonical blueprint faces in the anchor tile's native slots", () => {
-    const blueprint = blueprintsForDegree(5)[0];
-    const pattern = blueprintToSplitPattern(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
-    expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 4]);
-    expect(pattern.faces[1].map((face) => face.face_index)).toEqual([3, 1]);
+  it("stores Cairo blueprint faces unrotated", () => {
+    const blueprint = blueprintsFor(null, 5)[0];
+    const pattern = blueprintToSplitPattern(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }));
+    expect(pattern.shape).toBe("cairo_pentagon");
+    expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 3]);
+    expect(pattern.faces[1].map((face) => face.face_index)).toEqual([1, 4]);
   });
 });
 
@@ -135,10 +121,47 @@ describe("tileNodesForBlueprint", () => {
     expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage"]);
   });
 
-  it("resolves Cairo canonical faces for a concrete tile preview", () => {
-    const blueprint = blueprintsForDegree(5)[0];
-    const nodes = tileNodesForBlueprint(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
-    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "wall", "passage"]);
-    expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage", "wall"]);
+  it("builds a Cairo tile preview", () => {
+    const blueprint = blueprintsFor(null, 5)[0];
+    const nodes = tileNodesForBlueprint(blueprint);
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "passage", "wall"]);
+    expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "wall", "passage"]);
+  });
+});
+
+describe("curved quadrilateral blueprints (GitHub issue #800)", () => {
+  const shape = "curved_quadrilateral:curved_quadrilateral";
+  // Identity, both axis mirrors and the half turn on `[E, N, W, S]`; a quarter turn is not there.
+  const binding = {
+    shape,
+    canonicalOfLocal: [0, 1, 2, 3],
+    localOfCanonical: [0, 1, 2, 3],
+    group: [[0, 1, 2, 3], [2, 1, 0, 3], [0, 3, 2, 1], [2, 3, 0, 1]],
+  };
+
+  it("has its own set, distinct from the square's", () => {
+    expect(blueprintsFor(shape, 4)).toHaveLength(2);
+    expect(blueprintsFor("regular:4", 4)).toHaveLength(2);
+  });
+
+  it("fits a boundary by mirroring, never by a quarter turn", () => {
+    // Needs faces 0 and 1 with the boundary on face 0. The default rotations answer with a quarter
+    // turn ({1, 2}); the curved quadrilateral's group answers with the east-west mirror ({2, 1}).
+    const pair = { id: 0, degree: 4, nodeFaces: [[0, 1]] };
+    const isBoundary = (f: number) => f === 0;
+    expect(fittingRotation(pair, isBoundary)).toEqual({ ...pair, nodeFaces: [[1, 2]] });
+    expect(fittingRotation(pair, isBoundary, orientationsOf(binding))).toEqual({ ...pair, nodeFaces: [[2, 1]] });
+  });
+
+  it("keeps the blueprint when the identity fits and rejects what no group element fits", () => {
+    const [bridge] = blueprintsFor(shape, 4);
+    expect(fittingRotation(bridge, () => false, orientationsOf(binding))).toBe(bridge);
+    expect(fittingRotation(bridge, (f) => f === 0, orientationsOf(binding))).toBeNull();
+  });
+
+  it("orientationsOf maps faces through the cell's group, identity first", () => {
+    const maps = orientationsOf(binding);
+    expect([0, 1, 2, 3].map(maps[0])).toEqual([0, 1, 2, 3]);
+    expect([0, 1, 2, 3].map(maps[1])).toEqual([2, 1, 0, 3]);
   });
 });

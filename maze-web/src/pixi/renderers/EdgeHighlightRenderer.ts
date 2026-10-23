@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { EdgeHL } from "./types";
 import { drawDirectionArrow } from "./wallUtils";
+import { tracePath } from "../geometry/pathRenderer";
 
 export class EdgeHighlightRenderer {
   private readonly g: Graphics;
@@ -13,10 +14,9 @@ export class EdgeHighlightRenderer {
   render(data: { highlights: EdgeHL[] }): void {
     this.g.clear();
     for (const hl of data.highlights) {
-      this.g
-        .moveTo(hl.from[0], hl.from[1])
-        .lineTo(hl.to[0], hl.to[1])
-        .stroke({ width: hl.width, color: hl.color, alpha: hl.alpha, cap: "round" });
+      if (hl.path) tracePath(this.g, hl.path);
+      else this.g.moveTo(hl.from[0], hl.from[1]).lineTo(hl.to[0], hl.to[1]);
+      this.g.stroke({ width: hl.width, color: hl.color, alpha: hl.alpha, cap: "round" });
 
       if (hl.bidirectional === false) {
         const dx = hl.to[0] - hl.from[0];

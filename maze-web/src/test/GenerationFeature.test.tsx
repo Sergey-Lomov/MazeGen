@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
+import { getTooltipAnchor, getTooltipControl } from "./tooltipTestUtils";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -16,6 +17,7 @@ beforeEach(() => {
     generationStatus: "idle",
     debugMode: false,
     error: null,
+    registryError: null,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
     postEditDirty: false,
@@ -48,14 +50,34 @@ describe("GenerationFeature — QC Only toggle", () => {
     expect(setQcExperiment).toHaveBeenCalledWith(true);
   });
 
-  it("starts async generation directly when post-edit is not dirty", () => {
+  it("starts async generation directly when post-edit is not dirty", async () => {
     const generateAsync = vi.fn(() => Promise.resolve());
     useMazeStore.setState({ generateAsync });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByText(m["generation.generate"]()));
+    await act(async () => { fireEvent.click(screen.getByText(m["generation.generate"]())); });
 
     expect(generateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["Enter", "Enter"],
+    ["Space", " "],
+  ])("starts generation from the open card with %s and clears header focus", async (code, key) => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ generateAsync, openCard: "generation" });
+    render(<GenerationFeature canGenerate={true} />);
+    const header = document.createElement("button");
+    document.body.append(header);
+    header.focus();
+
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code, key });
+    await act(async () => { header.dispatchEvent(event); });
+
+    expect(generateAsync).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(header);
+    header.remove();
   });
 
   it("shows a confirm modal instead of starting generation when post-edit is dirty", () => {
@@ -67,6 +89,34 @@ describe("GenerationFeature — QC Only toggle", () => {
 
     expect(generateAsync).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — seed history navigation tooltips", () => {
+  it("names the destination seeds when navigating within history", () => {
+    useMazeStore.setState({ seed: 20, seedHistory: [10, 20, 30], seedHistoryIndex: 1 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.getByRole("button", { name: m["generation.seed_history_prev_tooltip"]() })).toBeEnabled();
+    expect(screen.getByRole("button", { name: m["generation.seed_history_next_tooltip"]() })).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 10 }))).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 30 }))).toBeEnabled();
+  });
+
+  it("explains unavailable navigation at history boundaries", () => {
+    useMazeStore.setState({ seed: 10, seedHistory: [10, 20], seedHistoryIndex: 0 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(getTooltipControl(m["generation.seed_history_prev_unavailable_tooltip"]())).toBeDisabled();
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 20 }))).toBeEnabled();
+  });
+
+  it("explains unavailable forward navigation at the end of history", () => {
+    useMazeStore.setState({ seed: 20, seedHistory: [10, 20], seedHistoryIndex: 1 });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 10 }))).toBeEnabled();
+    expect(getTooltipControl(m["generation.seed_history_next_unavailable_tooltip"]())).toBeDisabled();
   });
 });
 
@@ -159,6 +209,15 @@ describe("GenerationFeature — random generation source toggle", () => {
     expect(toggle().disabled).toBe(true);
   });
 
+  it("explains the source mode and separately explains why a pinned source disables it", () => {
+    useMazeStore.setState({ presetGenSource: { point: [1, 1] } });
+    render(<GenerationFeature canGenerate={true} />);
+    const anchor = getTooltipAnchor(m["generation.random_source_tooltip"]());
+    const description = document.getElementById(anchor.getAttribute("aria-describedby")!);
+    expect(description?.textContent).toContain(m["generation.random_source_tooltip"]());
+    expect(description?.textContent).toContain(m["generation.random_source_disabled_tooltip"]());
+  });
+
   it("keeps showing the real generationSourceMode (not forced checked) while disabled by a pin (GitHub issue #640 regression)", () => {
     useMazeStore.setState({
       presetGenSource: { point: [1, 1] },
@@ -177,23 +236,44 @@ describe("GenerationFeature — vertex-based settings panel", () => {
     render(<GenerationFeature canGenerate={true} />);
 
     expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    fireEvent.click(getTooltipControl(m["generation.vertex_settings"]()));
     expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
   });
 
   it("does not show the gear icon for a non-vertex-based algorithm", () => {
     render(<GenerationFeature canGenerate={true} />);
-    expect(screen.queryByTitle(m["generation.vertex_settings"]())).not.toBeInTheDocument();
+    expect(() => getTooltipControl(m["generation.vertex_settings"]())).toThrow();
   });
 
   it("closes the settings panel when the algorithm switches away from custom_vertex_based", () => {
     useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, cyclicity: 0.0 } });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    fireEvent.click(getTooltipControl(m["generation.vertex_settings"]()));
     expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
 
     act(() => { useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } }); });
     expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — registry load failure", () => {
+  it("does not duplicate a registry failure in the generation card", () => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ registryError: "wasm load failed", generateAsync });
+    render(<GenerationFeature canGenerate={true} />);
+
+    const button = screen.getByRole("button", { name: m["generation.generate"]() });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole("button", { name: m["generation.retry_registry_load"]() })).toBeNull();
+    fireEvent.click(button);
+    expect(generateAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps Generate enabled without a registry error", () => {
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.queryByRole("button", { name: m["generation.retry_registry_load"]() })).toBeNull();
+    expect(screen.getByRole("button", { name: m["generation.generate"]() })).toBeEnabled();
   });
 });

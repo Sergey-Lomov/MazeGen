@@ -7,14 +7,15 @@ import { verticalMarkerFootprint } from "../pixi/renderers/VerticalConnectionRen
 import { layoutExportMarkers } from "../pixi/imageExport/exportStyleBuilders";
 import { layoutEditorMarkers } from "../pixi/editorMarkerLayout";
 import { DEFAULT_MARKER_SCALE } from "../pixi/selectors/mazeSelectors/markerLayout";
-import type { MarkerData, TeleportEdge, VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle } from "../pixi/renderers/VerticalConnectionRenderer";
+import type { MarkerData, TeleportEdge, VerticalConnectionMarker, VerticalConnectionStyle } from "../pixi/renderers/types";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
+import { fieldOf } from "./fieldConfigFixtures";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/mazeService")>()),
   getCartesianCoords: (c: { points: [number, number][] }) => c.points.map(([x, y]) => [x, y]),
 }));
 
@@ -269,7 +270,7 @@ describe("same-kind vertical markers on one host", () => {
 
 describe("buildSplitHostKeys with a split cell", () => {
   it("marks the hub of a cell holding two nodes", () => {
-    const sq: TessellationConfig = { type: "square", width: 6, height: 6 };
+    const sq: TessellationConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
     const nodes = new Map(bridgeSplitNodes.map((nd) => [nd.id, nd]));
     expect(buildSplitHostKeys(nodes, bridgeSplitEdges, sq).size).toBeGreaterThan(0);
   });

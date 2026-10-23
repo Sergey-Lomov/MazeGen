@@ -321,10 +321,13 @@ mod tests {
     use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let nodes: Vec<_> = field.all_node_ids().collect();
         let mut graph = Graph::new();
         for &node in &nodes {

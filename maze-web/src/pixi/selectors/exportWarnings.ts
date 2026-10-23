@@ -1,10 +1,12 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, MarkerLayoutSettingsFields } from "../../store/storeTypes";
 import {
   buildTeleportEdges,
   buildSplitPassages,
   buildCorridorSegments,
+  shortestCorridorFace,
+  shortestCorridorFaceAcrossFloors,
   getSplitAwareNodePosition,
   maxSplitNodeCount,
   selectNodeLevelResolver,
@@ -16,19 +18,26 @@ import type { TeleportFloorContext } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
+import { pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
 import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../constants";
 import { hasLowContrast } from "../colorContrast";
-import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilders";
-import { nearestCellCoord } from "../tessellationGeometry";
+import {
+  buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle,
+} from "../imageExport/exportStyleBuilders";
+import { oneWayStopLineShape, stopLineOverlapsRoundedRect } from "../renderers/verticalConnectionGeometry";
+import type { VerticalConnectionStyle } from "../renderers/types";
+import { nearestCellCoord, pointInPolygon } from "../tessellationGeometry";
+import { buildCorridorContourInstances, contourToPolyline } from "../imageExport/vectorByCorridorsContour";
 import { textOverflows, type TextFitItem } from "../textFit";
 import { formatIndexLabel } from "../renderers/indexLabel";
-import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
+import { floorLabelText } from "../renderers/FloorLabelRenderer";
+import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
 import { applyMarkerLayout, MARKER_LAYOUT_SPACING, buildSplitHostKeys } from "./mazeSelectors/markerLayout";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
   buildColorVisibility, visibleColor, unownedColor,
-  type ColorVisibilityContext, type VisibleColor,
+  type ColorVisibilityContext, type ColorVisibilityMaze, type VisibleColor,
 } from "./colorFieldRegistry";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
@@ -51,7 +60,11 @@ export type ExportWarningId =
   | "marker_text_overflow"
   | "elevator_badge_text_overflow"
   | "marker_index_text_overflow"
+  /** Both vector modes (GitHub issue #744) — a marker-index plate (border included) overlaps the
+   *  stop line (wall tick) of a one-way vertical passage marker, so that end may read as two-way. */
+  | "marker_index_covers_stop_line"
   | "teleport_badge_text_overflow"
+  | "floor_label_text_overflow"
   /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
    *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
    *  `waypoint_on_split`/`teleport_on_special_split`. */
@@ -64,6 +77,9 @@ export type ExportWarningId =
   /** "Vector by corridors" only — a thick passage plus both sides of a split gap exceeds the
    *  40px safe width used by split cells, so the rendered gap may be reduced. */
   | "split_gap_may_shrink"
+  /** "Vector by corridors" only (GitHub issue #802) — a marker's corridor-colored widen patch
+   *  reaches a corridor segment that does not belong to the marker's own node. */
+  | "marker_extension_hits_corridor"
   /** PNG export canvas-fit warnings (not maze-content geometry) — built locally by
    *  `PngExportSettingsPanel` from `computeDigitalExportFit`/`computePrintExportFit`'s own result,
    *  not through `computeVectorByWallsWarnings`. Carry no `nodes`/`edges` (canvas-level, not
@@ -135,7 +151,12 @@ export type ExportWarningId =
   | "vertical_two_way_arrow_low_contrast_floor"
   | "vertical_one_way_line_low_contrast_floor"
   | "vertical_one_way_accent_low_contrast_floor"
-  | "elevator_line_low_contrast_floor";
+  | "elevator_line_low_contrast_floor"
+  | "floor_label_fill_low_contrast_corridor"
+  | "floor_label_fill_low_contrast_floor"
+  | "floor_label_border_low_contrast_corridor"
+  | "floor_label_border_low_contrast_floor"
+  | "floor_label_text_low_contrast";
 
 export type ExportWarning = {
   id: ExportWarningId;
@@ -180,6 +201,111 @@ export type ExportWarning = {
  *  overlap distance check below, not for actual drawing. */
 function markerWorldRadius(size: number, borderWidth: number): number {
   return size / 2 + borderWidth;
+}
+
+function corridorCellId(point: { x: number; y: number }): string {
+  return `${Math.round(point.x * 1e6)},${Math.round(point.y * 1e6)}`;
+}
+
+/** Distance from `point` to a closed rendered contour. A point inside the filled contour has no
+ * gap, otherwise the nearest sampled contour edge determines the gap. */
+function pointToContourDistance(point: { x: number; y: number }, contour: { x: number; y: number }[]): number {
+  if (contour.length < 2) return Infinity;
+  if (pointInPolygon(point, contour)) return 0;
+  let closest = Infinity;
+  for (let index = 0; index < contour.length; index++) {
+    const from = contour[index];
+    const to = contour[(index + 1) % contour.length];
+    closest = Math.min(closest, pointToSegmentDistance([point.x, point.y], [from.x, from.y], [to.x, to.y]));
+  }
+  return closest;
+}
+
+/** A start/finish marker's corridor-colored widen patch reaches a different corridor. The check
+ * deliberately excludes tiles incident to the marker node: those are the corridor(s) the patch
+ * exists to widen. Contour mode measures against the same filled tile paths the renderer draws;
+ * line modes measure the same centreline-plus-half-stroke geometry their renderer uses. */
+function computeMarkerExtensionHitsCorridorWarning(
+  corridorSegments: ReturnType<typeof buildCorridorSegments>,
+  corridorFaceLimit: number,
+  nodeById: Map<number, NodeDto>,
+  cfg: FieldConfig,
+  edges: EdgeDto[],
+  settings: VectorByCorridorsSettings,
+  start: number | null,
+  finish: number | null,
+): ExportWarning | null {
+  if (settings.markerWidenPadding <= 0) return null;
+
+  const markers = [
+    { nodeId: start, style: settings.startMarker },
+    { nodeId: finish, style: settings.finishMarker },
+  ];
+  const flaggedNodes = new Set<number>();
+
+  const usesContourTiles = settings.join === "round" && settings.renderStyle === "contour";
+  // The renderer clamps to the shortest face of the whole maze; a local candidate subset must match.
+  const contourThickness = usesContourTiles ? Math.min(settings.thickness, corridorFaceLimit) : 0;
+
+  for (const marker of markers) {
+    if (marker.nodeId === null) continue;
+    const pos = getSplitAwareNodePosition(Array.from(nodeById.values()), marker.nodeId, cfg, edges);
+    if (!pos) continue;
+    const patchRadius = Math.max(
+      marker.style.size / 2 + marker.style.borderWidth + marker.style.gapWidth + settings.markerWidenPadding,
+      settings.thickness / 2,
+    );
+    const ownTileIds = new Set<string>();
+    for (const segment of corridorSegments) {
+      if (segment.fromNode !== marker.nodeId && segment.toNode !== marker.nodeId) continue;
+      ownTileIds.add(corridorCellId(segment.v0));
+      ownTileIds.add(corridorCellId(segment.v1));
+    }
+
+    // Cheap broad phase: no contour can reach the patch when its source centreline is farther than
+    // the patch plus the widest possible half-stroke. It prevents rebuilding every tile while a
+    // settings slider changes for the normal case where no nearby foreign corridor exists.
+    const candidateTileIds = new Set<string>();
+    for (const segment of corridorSegments) {
+      if (segment.fromNode === marker.nodeId || segment.toNode === marker.nodeId) continue;
+      const distance = pointToSegmentDistance(
+        [pos.x, pos.y], [segment.v0.x, segment.v0.y], [segment.v1.x, segment.v1.y],
+      );
+      if (distance > patchRadius + settings.thickness / 2) continue;
+      candidateTileIds.add(corridorCellId(segment.v0));
+      candidateTileIds.add(corridorCellId(segment.v1));
+    }
+    if (candidateTileIds.size === 0) continue;
+
+    if (usesContourTiles) {
+      // A tile's contour depends only on its own ports. Include every segment touching a candidate
+      // tile so those ports remain identical to the renderer's complete corridor network.
+      const localSegments = corridorSegments.filter((segment) =>
+        candidateTileIds.has(corridorCellId(segment.v0)) || candidateTileIds.has(corridorCellId(segment.v1)),
+      );
+      const contourTiles = buildCorridorContourInstances(localSegments, contourThickness, settings.junctionRadius);
+      for (const tile of contourTiles) {
+        if (ownTileIds.has(String(tile.cellId)) || !candidateTileIds.has(String(tile.cellId))) continue;
+        const contour = contourToPolyline(tile.shape, 1).map((point) => ({
+          x: point.x + tile.offset.x,
+          y: point.y + tile.offset.y,
+        }));
+        if (pointToContourDistance(pos, contour) <= patchRadius) flaggedNodes.add(marker.nodeId);
+      }
+    } else {
+      for (const segment of corridorSegments) {
+        if (segment.fromNode === marker.nodeId || segment.toNode === marker.nodeId) continue;
+        const distance = pointToSegmentDistance(
+          [pos.x, pos.y], [segment.v0.x, segment.v0.y], [segment.v1.x, segment.v1.y],
+        );
+        if (distance <= patchRadius + settings.thickness / 2) flaggedNodes.add(marker.nodeId);
+      }
+    }
+  }
+
+  return flaggedNodes.size > 0
+    ? { id: "marker_extension_hits_corridor", key: "marker_extension_hits_corridor", nodes: Array.from(flaggedNodes), edges: [] }
+    : null;
 }
 
 /** One point-key -> fill-state pass over every teleport edge, mirroring
@@ -238,7 +364,7 @@ function computeTeleportWarnings(
   startMarker: { id: number | null; size: number; borderWidth: number },
   finishMarker: { id: number | null; size: number; borderWidth: number },
   allNodes: NodeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edges: EdgeDto[],
 ): ExportWarning[] {
   const warnings: ExportWarning[] = [];
@@ -420,7 +546,7 @@ type ContrastEntry = {
   cells?: readonly { x: number; y: number; floorIndex: number }[];
 };
 
-type WarningFloor = { id: string };
+type WarningFloor = { id: string; title?: string };
 
 function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: NodeDto[]): ExportWarning[] {
   const byKey = new Map<string, ExportWarning>();
@@ -472,7 +598,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
 }
 
 export function computeVectorByWallsWarningsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
   const warningLists = floors.map((floor) => {
@@ -482,16 +608,18 @@ export function computeVectorByWallsWarningsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+      floorCount: floors.length,
     };
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext);
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
 
 export function computeVectorByCorridorsWarningsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
+  const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext: TeleportFloorContext = {
@@ -499,8 +627,9 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+      floorCount: floors.length,
     };
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes);
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -618,7 +747,7 @@ function teleportBadgeColorEntries(
   ctx: ColorVisibilityContext,
   background: VisibleColor | null,
   displayFloorIndex: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: "border" | "fill",
 ): ContrastEntry[] {
   const settings = ctx.settings;
@@ -639,7 +768,7 @@ function teleportBadgeColorEntries(
   });
 }
 
-function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cfg: TessellationConfig): { x: number; y: number; floorIndex: number }[] {
+function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cfg: FieldConfig): { x: number; y: number; floorIndex: number }[] {
   const cells: { x: number; y: number; floorIndex: number }[] = [];
   for (const edge of edges) {
     if (edge.toFloor !== undefined) {
@@ -656,18 +785,19 @@ function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cf
 
 /** Which size control a text label belongs to — one per independent font-size field (GitHub issue
  *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
-export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex";
+export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex" | "floorLabel";
 
 /** Visibility context of a warning pass. Built from the *unscoped* graph (a floor-scoped edge list
  *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor); the
- *  per-floor data conditions (does this floor have such an edge) stay with the callers. `floors`
- *  is left empty: it only feeds the section-level `vertical` flag, and every per-kind vertical
- *  predicate already implies it. */
-function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings): ColorVisibilityContext {
-  return buildColorVisibility({ nodes, edges, floors: [] }, settings);
+ *  per-floor data conditions (does this floor have such an edge) stay with the callers. A minimal
+ *  floor array preserves project-wide visibility for the floor-label colors. */
+function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings, floorCount?: number): ColorVisibilityContext {
+  const count = floorCount ?? new Set(nodes.map((node) => node.level ?? 0)).size;
+  const floors = Array.from({ length: count }, (_, i) => ({ id: String(i) })) as unknown as ColorVisibilityMaze["floors"];
+  return buildColorVisibility({ nodes, edges, floors }, settings);
 }
 
-type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex">;
+type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex" | "floorLabel">;
 
 type TextFitEntry = TextFitItem & {
   kind: TextFitKind;
@@ -684,7 +814,7 @@ type TextFitEntry = TextFitItem & {
 function collectTextFitEntries(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   teleportEdges: TeleportEdge[],
   settings: TextFitSettings,
   start: number | null,
@@ -692,6 +822,7 @@ function collectTextFitEntries(
   resolveNodeLevel: ReturnType<typeof selectNodeLevelResolver>,
   displayFloorIndex: number,
   unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
+  displayFloorTitle?: string,
 ): TextFitEntry[] {
   const entries: TextFitEntry[] = [];
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
@@ -747,11 +878,79 @@ function collectTextFitEntries(
       });
     }
   }
+
+  // The floor label is a fixed rectangular/parallelogram plate centered on every floor. Its
+  // parallelogram geometry is passed through to text-fit checks so slanted edges are respected.
+  const floorLabel = settings.floorLabel;
+  if (floorLabel.enabled && floorLabel.backgroundShape !== "none") {
+    entries.push({
+      kind: "floorLabel",
+      text: floorLabelText(floorLabel, displayFloorIndex, displayFloorTitle),
+      fontWeight: floorLabel.textFontWeight,
+      shape: "square",
+      plateSize: 0,
+      plateWidth: floorLabel.width,
+      plateHeight: floorLabel.height,
+      plateShape: floorLabel.backgroundShape,
+      fontSize: floorLabel.textSize,
+      margin: floorLabel.textMargin,
+      nodes: [],
+    });
+  }
   return entries;
 }
 
+/** `marker_index_covers_stop_line` (GitHub issue #744): on the displayed floor, every one-way
+ *  vertical passage marker whose stop line (wall tick) is overlapped by any marker-index plate —
+ *  its body plus border, never its floor-colored gap ring, which is drawn under the markers. The
+ *  plate body is drawn above the markers, so an overlap hides part of the stop line. Mirrors both
+ *  mode renderers: markers from `buildVerticalConnectionMarkers`, plates from
+ *  `buildMarkerIndexLabels` + `markerIndexPlateBox`. Highlights the affected markers. */
+function computeMarkerIndexStopLineWarning(
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: FieldConfig,
+  settings: VectorByWallsSettings | VectorByCorridorsSettings,
+  verticalStyle: VerticalConnectionStyle,
+  teleportEdges: TeleportEdge[],
+  displayFloorIndex: number,
+  unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
+): ExportWarning | null {
+  const index = settings.markerIndex;
+  if (!index.enabled) return null;
+  const markers = buildVerticalConnectionMarkers(
+    nodeById, edges, cfg, selectNodeLevelResolver(unscoped.nodes), displayFloorIndex,
+    selectVerticalPassagePairSet(unscoped.edges), unscoped.edges, settings.replaceTwoFloorElevatorsWithStairs,
+  );
+  const stopLines = markers.flatMap((marker) => {
+    const shape = oneWayStopLineShape(marker, verticalStyle);
+    return shape ? [{ node: marker.fromNode, shape }] : [];
+  });
+  if (stopLines.length === 0) return null;
+
+  // Plate placement depends only on each endpoint marker's outer radius, never on its colors, so
+  // the teleport gap color and group customization are irrelevant here.
+  const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
+    teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, groupOverrides: {}, verticalStyle,
+  });
+  const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual);
+  const plates = labels.map((label) => {
+    const box = markerIndexPlateBox(label, index);
+    const border = box.borderWidth;
+    return {
+      x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border,
+      radius: box.cornerRadius + border,
+    };
+  });
+  const flagged = stopLines
+    .filter(({ shape }) => plates.some((plate) => stopLineOverlapsRoundedRect(shape, plate)))
+    .map(({ node }) => node);
+  if (flagged.length === 0) return null;
+  return { id: "marker_index_covers_stop_line", key: "marker_index_covers_stop_line", nodes: Array.from(new Set(flagged)), edges: [] };
+}
+
 /** Endpoint visual stand-in: the text-fit passes need the index strings and cells, not plate colors. */
-const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, borderWidth: 0, borderMatchColor: 0 });
+const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, fillRadius: 0, sizeAdaptation: 0, borderWidth: 0, borderMatchColor: 0 });
 
 const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   start: "marker_text_overflow",
@@ -759,6 +958,7 @@ const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   elevator: "elevator_badge_text_overflow",
   teleport: "teleport_badge_text_overflow",
   markerIndex: "marker_index_text_overflow",
+  floorLabel: "floor_label_text_overflow",
 };
 
 function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly TextFitEntry[]): void {
@@ -781,10 +981,10 @@ function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly T
 /** Every label across all floors, grouped by size control — the input of the "Auto-fit" buttons
  *  (GitHub issue #707). Empty array for a kind with nothing to fit. */
 export function computeTextFitItemsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
 ): Record<TextFitKind, TextFitItem[]> {
-  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [] };
+  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [], floorLabel: [] };
   const resolveNodeLevel = selectNodeLevelResolver(nodes);
   for (const [index, floor] of floors.entries()) {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
@@ -793,13 +993,14 @@ export function computeTextFitItemsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: index,
+      floorCount: floors.length,
     };
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
-    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges })) {
+    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title)) {
       result[entry.kind].push({
         text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
-        plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, margin: entry.margin,
+        plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,
       });
     }
   }
@@ -819,7 +1020,7 @@ function oneWayVerticalPassageEdges(edges: EdgeDto[], allEdges: EdgeDto[] = edge
 function splitContrastData(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   ctx: ColorVisibilityContext,
 ): { colors: (VisibleColor | null)[]; keys: string[]; nodes: number[] } {
   if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [] };
@@ -891,7 +1092,7 @@ function addCommonContrastWarnings(
   start: number | null,
   finish: number | null,
   displayFloorIndex: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): void {
   const settings = ctx.settings;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -907,6 +1108,8 @@ function addCommonContrastWarnings(
   const elevatorBadgeFillWarningId = surfaceKind === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor";
   const teleportBadgeBorderWarningId = surfaceKind === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
   const teleportBadgeFillWarningId = surfaceKind === "floor" ? "teleport_badge_fill_low_contrast_floor" : "teleport_badge_fill_low_contrast_corridor";
+  const floorLabelFillWarningId = surfaceKind === "floor" ? "floor_label_fill_low_contrast_floor" : "floor_label_fill_low_contrast_corridor";
+  const floorLabelBorderWarningId = surfaceKind === "floor" ? "floor_label_border_low_contrast_floor" : "floor_label_border_low_contrast_corridor";
   const vertical = verticalPassageEdges(edges);
   const oneWayVertical = oneWayVerticalPassageEdges(edges, allEdgesForWarnings);
   const elevator = edges.filter((edge) => edge.kind === "elevator");
@@ -914,6 +1117,9 @@ function addCommonContrastWarnings(
   pushContrastWarning(warnings, "grid_low_contrast_background", [[color("bgGrid"), color("bgFill")]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_floor", [[color("innerGrid"), base]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_wall", [[color("innerGrid"), color("tilesWall")]]);
+  pushContrastWarning(warnings, floorLabelFillWarningId, [[color("floorLabelFill"), base]]);
+  pushContrastWarning(warnings, floorLabelBorderWarningId, [[color("floorLabelBorder"), base]]);
+  pushContrastWarning(warnings, "floor_label_text_low_contrast", [[color("floorLabelText"), color("floorLabelFill") ?? base]]);
 
   const fillEntries: ContrastEntry[] = [];
   const borderEntries: ContrastEntry[] = [];
@@ -1033,12 +1239,13 @@ function addCommonContrastWarnings(
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   rawSettings: VectorByWallsSettings,
   start: number | null,
   finish: number | null,
   unscopedNodes: NodeDto[] = nodes,
   teleportFloorContext?: TeleportFloorContext,
+  displayFloorTitle?: string,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -1056,7 +1263,7 @@ export function computeVectorByWallsWarnings(
     edges,
   );
 
-  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings);
+  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
@@ -1201,7 +1408,15 @@ export function computeVectorByWallsWarnings(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, resolveNodeLevel,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    displayFloorTitle,
   ));
+
+  const stopLineCovered = computeMarkerIndexStopLineWarning(
+    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.floorColor, settings), teleportEdges,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
+  );
+  if (stopLineCovered) warnings.push(stopLineCovered);
 
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
@@ -1224,12 +1439,14 @@ export function computeVectorByWallsWarnings(
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   rawSettings: VectorByCorridorsSettings,
   start: number | null,
   finish: number | null,
   unscopedNodesOrContext?: NodeDto[] | TeleportFloorContext,
   allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
+  displayFloorTitle?: string,
+  maxCorridorFace?: number,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -1247,13 +1464,17 @@ export function computeVectorByCorridorsWarnings(
     edges,
   );
 
-  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings);
+  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
   );
 
   const corridorSegments = buildCorridorSegments(nodes, edges, cfg);
+  const markerExtensionHitsCorridor = computeMarkerExtensionHitsCorridorWarning(
+    corridorSegments, maxCorridorFace ?? shortestCorridorFace(corridorSegments), nodeById, cfg, edges, settings, start, finish,
+  );
+  if (markerExtensionHitsCorridor) warnings.push(markerExtensionHitsCorridor);
   if (corridorSegments.length > 0) {
     pushContrastWarning(warnings, "corridor_low_contrast_background", [[visibleColor(ctx, "corridorFill"), visibleColor(ctx, "bgFill")]]);
   }
@@ -1363,7 +1584,15 @@ export function computeVectorByCorridorsWarnings(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, selectNodeLevelResolver(allNodesForWarnings),
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    displayFloorTitle,
   ));
+
+  const stopLineCovered = computeMarkerIndexStopLineWarning(
+    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.color), teleportEdges,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
+  );
+  if (stopLineCovered) warnings.push(stopLineCovered);
 
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,

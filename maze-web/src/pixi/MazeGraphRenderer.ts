@@ -1,6 +1,6 @@
 import { BitmapText, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { base, hexToNumber } from "../styles/palette";
@@ -19,7 +19,7 @@ export interface MazeGraphData {
   selectedNode: number | null;
   start: number | null;
   finish: number | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   interactive?: boolean;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a base-graph edge whose other endpoint crosses to another floor

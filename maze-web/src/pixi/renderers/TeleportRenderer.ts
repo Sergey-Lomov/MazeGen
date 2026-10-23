@@ -1,16 +1,17 @@
 import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's
@@ -43,6 +44,8 @@ export class TeleportRenderer {
   // GitHub issue #337 follow-up: whether a badge point's hit-circle (added in `drawGroupPoints`)
   // wires click-to-switch-floor, see `render`'s own `floorNavigable` doc comment.
   private selectionFloorNavigable = false;
+  // Marker size adaptation (GitHub issue #819): per-cell radius factors for markers and badges.
+  private selectionScaler: MarkerScaler = NO_MARKER_SCALING;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
   // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
@@ -71,7 +74,7 @@ export class TeleportRenderer {
     /** The active tessellation, so `"orthogonal"` connectors bend along that tessellation's own
      *  face directions (GitHub issue #297) instead of always assuming a square grid. Omitted by
      *  callers without a config in hand, which falls back to the original square (h/v) behavior. */
-    cfg?: TessellationConfig;
+    cfg?: FieldConfig;
     /** World positions of the start/finish markers (GitHub issue #300) — an `"orthogonal"`
      *  connector always avoids cutting through these, same weight as another connector's own
      *  endpoint. Required (not optional) so a caller can't silently forget it the way
@@ -89,7 +92,11 @@ export class TeleportRenderer {
      *  (`selectionFloorBadges`) — a badge is clickable whenever this is on, regardless of group
      *  customization state. Defaults to `false`. */
     floorNavigable?: boolean;
+    /** Marker size adaptation (GitHub issue #819) — scales each endpoint marker's and floor badge's
+     *  radius by its cell's factor; border/gap/connector widths stay as configured. */
+    scaler?: MarkerScaler;
   }): void {
+    this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
     // `.clear()` only resets the drawn path, not added children, so those must be destroyed
@@ -114,7 +121,7 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
-    cfg: TessellationConfig | undefined,
+    cfg: FieldConfig | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
@@ -153,7 +160,7 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
-    cfg: TessellationConfig | undefined,
+    cfg: FieldConfig | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
@@ -176,15 +183,22 @@ export class TeleportRenderer {
     // `size + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
     // just `size + borderWidth` — omitting the gap ring here would let another connector's
     // routed path visually cut through it even though it correctly avoids the marker/border proper.
-    const endpointRadius = style.size / 2;
+    const endpointRadius = (style.size / 2) * this.selectionScaler.maxFactor;
     const endpointStyle: EndpointMarkerStyle = {
       markerRadius: endpointRadius,
       markerBorderWidth: style.borderWidth + style.edgeGapWidth,
       connectorGapWidth: style.connectorGapWidth,
       connectorWidth: style.connectorWidth,
     };
+    const markerAvoidanceRadius =
+      (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
     const routed =
-      style.connectorStyle === "orthogonal"
+      style.connectorStyle === "curved"
+        ? routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints)
+        :
+      cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal"
+        ? routeRadialConnectors(edges, markerAvoidanceRadius, waypoints)
+        : style.connectorStyle === "orthogonal"
         ? this.connectorRouter.route(
             edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
           )
@@ -234,7 +248,7 @@ export class TeleportRenderer {
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
       const sc = this.pointScale(px, py);
-      const markerR = style.size / 2 * sc;
+      const markerR = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation) * sc;
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
         // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
         // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
@@ -243,7 +257,7 @@ export class TeleportRenderer {
         // `gapWidth`/`cornerStyle` are independent of the edge marker's. The gap ring matches the
         // badge's own `floorBadge.shape` and corner style, like the badge body in `drawGroupPoints`
         // below, not a forced circle.
-        const badgeR = style.floorBadge.size / 2;
+        const badgeR = (style.floorBadge.size / 2) * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation);
         if (style.floorBadge.gapWidth > 0) {
           drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, style.floorBadge.cornerStyle === "round", style.floorBadge.borderWidth + style.floorBadge.gapWidth, style.floorColor, style.floorBadge.borderWidth);
         }
@@ -273,8 +287,9 @@ export class TeleportRenderer {
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
     // GitHub issue #485: the cross-floor badge has its own configurable shape/label/size/text
     // style, distinct from the edge marker's own `shape`/`style.size` above.
-    const badgeR = style.floorBadge.size / 2;
     for (const [px, py] of group.points) {
+      const r = (style.size / 2) * this.selectionScaler.factorAt([px, py], style.sizeAdaptation);
+      const badgeR = (style.floorBadge.size / 2) * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation);
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
         // A floor badge stands in for the connector's off-floor endpoint — it must follow the
@@ -293,7 +308,7 @@ export class TeleportRenderer {
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
           fontWeight: style.floorBadge.textFontWeight,
-          fontSize: style.floorBadge.textSize,
+          fontSize: style.floorBadge.textSize * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation),
           borderWidth: style.floorBadge.borderWidth,
           rounded: style.floorBadge.cornerStyle === "round",
         });
@@ -305,7 +320,7 @@ export class TeleportRenderer {
       const fillState = resolvePointFillState(edges, px, py);
       const sc = this.pointScale(px, py);
       this.drawMarker(
-        g, overlay, shape, style.cornerStyle, style.size / 2 * sc, px, py,
+        g, overlay, shape, style.cornerStyle, r * sc, px, py,
         color, borderColor, style.borderWidth * sc, style.floorColor,
         fillState === "filled", fillState === "mixed",
       );
@@ -341,7 +356,7 @@ export class TeleportRenderer {
   }
 
   /** Draws one connector's routed polyline (`RoutedConnector.points`, 2 points for `"straight"`, 3
-   *  for `"orthogonal"`'s single bend) as a stroked path, plus every direction arrow `oneWay`'s
+   *  for a regular `"orthogonal"` bend, sampled ring points for radial `"orthogonal"`) as a stroked path, plus every direction arrow `oneWay`'s
    *  `arrowMode` calls for (see `arrowPlacements`) — a `"orthogonal"` path can't just be one
    *  `lineTo` per point with round joins, since a bend's own two segments may carry different
    *  collision offsets (see `TeleportConnectorRouter.route`) and a rounded join would visually blend

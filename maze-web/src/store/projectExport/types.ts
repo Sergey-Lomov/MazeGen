@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldShape, PresetFieldShape, TessellationKind } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
@@ -88,6 +88,8 @@ export interface ProjectFileImageExport {
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;
   pngExportSettings: PngExportSettings;
+  /** See `ImageExportState.floorLabelModeChosen`. */
+  floorLabelModeChosen: boolean;
   /** `vectorByWallsSettings.links`, persisted only when it deviates from
    * `DEFAULT_VECTOR_BY_WALLS_LINKS` (GitHub issue #651) — `null` for a project untouched since
    * load (or saved before this issue existed), meaning "use the current defaults as-is" rather than
@@ -101,7 +103,7 @@ export interface ProjectFileImageExport {
 /** Floor list — GitHub issue #335, epic #333. See `FloorsState`'s doc comment for why
  * `nextFloorNumber` must be persisted rather than recomputed from `floors` on load. */
 export interface ProjectFileFloors {
-  floors: { id: string; title: string }[];
+  floors: { id: string; title: string; titleCustomized?: boolean }[];
   nextFloorNumber: number;
   /** Active floor selection (GitHub issue #354) — absent in project files saved before this
    * issue, defaulting to `floors[0].id` on load (see `validateFloors` in validatePrimitives.ts). */
@@ -112,10 +114,11 @@ export interface ProjectFileFloors {
  * (storeTypes.ts), minus `fieldPoints`/`isEditingField` (both re-derived on load from
  * `freeFieldPoints`/shape, same as the pre-#338 maze-wide `tessellation` section always did). */
 export interface ProjectFileFloorField {
-  config: TessellationConfig;
-  savedConfigs: TessellationConfig[];
+  /** The floor's own field shape; the tessellation kind/params are maze-wide (`tessellation`). */
+  shape: FieldShape;
+  savedShapes: PresetFieldShape[];
   /** Per-kind free-field points, as flat coordinate arrays keyed by kind. */
-  freeFieldPoints: Record<"square" | "hex" | "triangle" | "cairo", [number, number][]>;
+  freeFieldPoints: Record<TessellationKind, [number, number][]>;
   fieldEditMode: "default" | "custom";
 }
 
@@ -151,6 +154,7 @@ export interface ProjectFileQcRule {
   kind: string;
   checks: ProjectFileCheckInstance[];
   strategyId: string | null;
+  strategyParams: Record<string, string>;
   disabled: boolean;
   ruleDisabled: boolean;
   nestedStrategies: ProjectFileNestedStrategy[];
@@ -172,13 +176,22 @@ export interface ProjectFileStage {
   collapsed: boolean;
 }
 
+/** Quality control settings — the project file's `quality` section, also the whole payload of a
+ *  quality preset (`QualityPresetFile`). */
+export interface ProjectFileQuality {
+  rules: ProjectFileQcRule[];
+  stages: ProjectFileStage[];
+  repairMaxIterations: number | null;
+  repairTimeBudgetSecs: number | null;
+}
+
 export interface ProjectFile {
   version: number;
   /** Maze-wide kind/orientation confirmation only (Specs/field-editor.md) — per-floor field shape
    * moved to `floorFields` (GitHub issue #338). `hexOrientation`/`triOrientation` are always
    * present (unlike the pre-#338 shape) since they're no longer derivable from a single shared
    * `config`. */
-  tessellation: { kind: "square" | "hex" | "triangle" | "cairo"; hexOrientation: HexOrientation; triOrientation: TriOrientation };
+  tessellation: { kind: TessellationKind; params: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation };
   /** One entry per floor id in `floors.floors`, its own field-shape state (GitHub issue #338). */
   floorFields: Record<string, ProjectFileFloorField>;
   generation: {
@@ -200,13 +213,7 @@ export interface ProjectFile {
     seedHistory: number[];
     seedHistoryIndex: number;
   };
-  quality: {
-    rules: ProjectFileQcRule[];
-    stages: ProjectFileStage[];
-    strategyParams: Record<string, Record<string, string>>;
-    repairMaxIterations: number | null;
-    repairTimeBudgetSecs: number | null;
-  };
+  quality: ProjectFileQuality;
   presets: {
     connections: [string, PresetConnectionEntry][];
     lockedNodes: [string, NodeLockKind][];
@@ -251,4 +258,81 @@ export interface ProjectFile {
 // v4 -> v5 (GitHub issue #564): stable ids for one-way edges/split points; `suppressGenerationPair`
 // and the `suppressPair(s)` fields removed; generation-baked vertical passages/elevators are now
 // full baseline draft entries. Breaking, no migration — same policy as v3 -> v4.
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
+
+/** Project files are plain JSON saved under a dedicated extension, so the load dialog shows only
+ *  project files (not debug configs or other JSON). */
+export const PROJECT_FILE_EXTENSION = ".maze";
+
+type PlatformInfo = Pick<Navigator, "userAgent" | "platform" | "maxTouchPoints">;
+
+/** iOS/iPadOS file pickers map `accept` to system file types (UTIs); an unknown extension like
+ *  `.maze` has none, so the picker can grey out every file. iPadOS reports a desktop Mac user agent,
+ *  hence the touch-points check. */
+function isIOS(nav: PlatformInfo): boolean {
+  return /iPad|iPhone|iPod/.test(nav.userAgent) || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+}
+
+/** `accept` value for the project load dialog: the project extension, or no filter on iOS/iPadOS
+ *  (see `isIOS`). */
+export function projectFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : PROJECT_FILE_EXTENSION;
+}
+
+/** Standalone visual preset (GitHub issue #750): the Image Export renderer/export settings and their
+ *  parameter links, without generation settings or maze content. `kind` tells it apart from a
+ *  project file, which has no `kind` field. */
+export const VISUAL_PRESET_KIND = "maze-visual-preset";
+export const VISUAL_PRESET_VERSION = 1;
+export const VISUAL_PRESET_FILE_EXTENSION = ".mazestyle";
+
+/** `ProjectFileImageExport` minus the per-section expanded/collapsed UI state. The renderer
+ *  settings omit maze-bound data (`floorLabel.positionsByFloorId`, `teleportGroupOverrides`) when
+ *  saved; loading keeps the target project's values for those. */
+export type VisualPresetImageExport = Omit<ProjectFileImageExport, "openRenderModeSettings" | "vectorByWallsSectionsExpanded" | "vectorByCorridorsSectionsExpanded">;
+
+export interface VisualPresetFile {
+  kind: typeof VISUAL_PRESET_KIND;
+  version: number;
+  imageExport: VisualPresetImageExport;
+}
+
+/** Raised when a project file is loaded as a visual preset or the other way round, so the UI can
+ *  show a dedicated message instead of a generic validation error. */
+export type FileKind = "project" | "visual_preset" | "quality_preset";
+
+export class FileKindMismatchError extends Error {
+  constructor(readonly expected: FileKind, readonly found: FileKind) {
+    super(`Expected a ${expected} file, got a ${found} file`);
+    this.name = "FileKindMismatchError";
+  }
+}
+
+/** A project file has no `kind` marker; recognize it by its mandatory top-level sections. */
+export function looksLikeProjectFile(obj: Record<string, unknown>): boolean {
+  return obj.kind === undefined && obj.generation != null && obj.tessellation != null;
+}
+
+/** `accept` value for the visual preset load dialog — same iOS/iPadOS exception as
+ *  `projectFileAccept`. */
+export function visualPresetFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : VISUAL_PRESET_FILE_EXTENSION;
+}
+
+/** Standalone quality preset (GitHub issue #751): only the quality control settings (rules,
+ *  stages, strategy params, repair limits), without anything else from the project. */
+export const QUALITY_PRESET_KIND = "maze-quality-preset";
+export const QUALITY_PRESET_VERSION = 1;
+export const QUALITY_PRESET_FILE_EXTENSION = ".mazequality";
+
+export interface QualityPresetFile {
+  kind: typeof QUALITY_PRESET_KIND;
+  version: number;
+  quality: ProjectFileQuality;
+}
+
+/** `accept` value for the quality preset load dialog — same iOS/iPadOS exception as
+ *  `projectFileAccept`. */
+export function qualityPresetFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : QUALITY_PRESET_FILE_EXTENSION;
+}

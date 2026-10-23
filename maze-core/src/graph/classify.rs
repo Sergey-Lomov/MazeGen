@@ -66,10 +66,12 @@ mod tests {
     use crate::IdGenerator;
     use crate::graph::{EdgeKind, Graph};
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);

@@ -40,8 +40,8 @@ function currentFieldLayout() {
   const customPoints = field.fieldEditMode === "custom" && field.fieldPoints.size > 0
     ? field.fieldPoints
     : undefined;
-  const cells = resolveCells(field.tessellationConfig, customPoints);
-  return { bounds: backgroundFieldBounds(fieldBounds(cells, field.tessellationConfig)) };
+  const cells = resolveCells(field.fieldConfig, customPoints);
+  return { bounds: backgroundFieldBounds(fieldBounds(cells, field.fieldConfig)) };
 }
 
 export function BackgroundImageToggle() {
@@ -99,7 +99,7 @@ export function BackgroundImageToggle() {
         backgroundImage.dataUrl,
         backgroundImage.naturalWidth,
         backgroundImage.naturalHeight,
-        field.tessellationConfig,
+        field.fieldConfig,
         state.pngExportSettings.print,
         backgroundImageCrop(backgroundImage),
       );

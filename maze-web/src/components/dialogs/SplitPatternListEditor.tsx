@@ -6,10 +6,13 @@ import { TileFaceEditor } from "../features/TileFaceEditor";
 import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
-import { degreeFor, patternAnchorPoint, tileNodesForPattern } from "../../pixi/splitPatternTile";
-import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { degreeFor, originCellOf, tileNodesForPattern } from "../../pixi/splitPatternTile";
+import { blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "../Tooltip";
+import { NumberInput } from "../NumberInput";
 
 interface Props {
   patterns: SplitPattern[];
@@ -31,12 +34,12 @@ const NOOP = () => {};
  *  `TileFaceEditor` itself (no separate rendering path to keep in sync with the abstract editor)
  *  with a fixed small size and no-op click handlers; `TileFaceEditor`'s own cursor is already
  *  `default` (not a pointer), so it doesn't visually suggest interactivity. */
-function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
-  const anchorPoint = patternAnchorPoint(cfg);
+function PatternPreviewTile({ pattern, cfg }: { pattern: SplitPattern; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
+  const anchorPoint = originCellOf(cfg);
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
-        point={anchorPoint} cfg={cfg} nodes={tileNodesForPattern(pattern, degree)} activeIndex={null}
+        point={anchorPoint} cfg={cfg} nodes={tileNodesForPattern(pattern, cfg)} activeIndex={null}
         onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
       />
     </div>
@@ -53,9 +56,9 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
  *  back it with whatever storage its own value lives in (generation's own store slice, or a
  *  JSON-string param round-tripped by the caller). */
 export function SplitPatternListEditor({ patterns, onChange, withWeights, locked = false }: Props) {
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
-  const degree = degreeFor(tessellationConfig);
-  const anchorPoint = patternAnchorPoint(tessellationConfig);
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const degree = degreeFor(fieldConfig);
+  const anchorPoint = originCellOf(fieldConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   function addPattern(pattern: SplitPattern) {
@@ -71,15 +74,15 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   }
 
   function handleAddPattern() {
-    const fresh: SplitPattern = { node_count: 2, faces: [[], []], weight: 1.0 };
+    const fresh: SplitPattern = { shape: patternShapeOf(fieldConfig), node_count: 2, faces: [[], []], weight: 1.0 };
     addPattern(fresh);
     setEditingIndex(patterns.length);
   }
 
-  const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
+  const blueprints = useMemo(() => blueprintsFor(patternShapeOf(fieldConfig), degree), [fieldConfig, degree]);
 
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
-    addPattern(blueprintToSplitPattern(blueprint, tessellationConfig, anchorPoint));
+    addPattern(blueprintToSplitPattern(blueprint, fieldConfig));
   }
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
@@ -118,9 +121,9 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         <div style={styles.sectionHeader}>
           <span style={styles.label}>{m["generation.split_patterns"]()}</span>
           {!locked && (
-            <button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern} title={m["generation.split_pattern_add"]()}>
+            <Tooltip content={m["generation.split_pattern_add"]()}><button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern}>
               <Plus size={14} />
-            </button>
+            </button></Tooltip>
           )}
         </div>
         {patterns.length === 0 ? (
@@ -128,21 +131,19 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         ) : (
           patterns.map((pattern, i) => (
             <div key={i} style={styles.patternCard}>
-              <PatternPreviewTile pattern={pattern} degree={degree} cfg={tessellationConfig} />
+              <PatternPreviewTile pattern={pattern} cfg={fieldConfig} />
               <div style={styles.patternInfo}>
                 {withWeights && (
                   <div style={styles.weightRow}>
                     <span style={styles.label}>{m["generation.split_pattern_weight"]()}</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       name={`split-pattern-${i}-weight`}
                       style={sharedStyles.inputSm}
-                      value={pattern.weight ?? 1.0}
+                      value={String(pattern.weight ?? 1.0)}
                       min={0}
-                      step={0.1}
-                      onChange={(e) => {
-                        const w = Math.max(0, Number(e.target.value));
-                        if (Number.isFinite(w)) updatePattern(i, { ...pattern, weight: w });
+                      onChange={(value) => {
+                        const weight = Number(value);
+                        if (Number.isFinite(weight)) updatePattern(i, { ...pattern, weight });
                       }}
                     />
                     <span style={styles.percent}>{percentOf(pattern.weight ?? 1.0).toFixed(1)}%</span>
@@ -154,8 +155,8 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
               </div>
               {!locked && (
                 <div style={styles.patternActions}>
-                  <button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)} title={m["generation.split_pattern_edit"]()}>✎</button>
-                  <button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)} title={m["generation.split_pattern_remove"]()}>✕</button>
+                  <Tooltip content={m["generation.split_pattern_edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)}>✎</button></Tooltip>
+                  <Tooltip content={m["generation.split_pattern_remove"]()}><button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)}>✕</button></Tooltip>
                 </div>
               )}
             </div>
@@ -173,7 +174,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                   onClick={() => handleAddBlueprint(blueprint)}
                 >
                   <TileFaceEditor
-                    point={anchorPoint} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint, tessellationConfig, anchorPoint)}
+                    point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

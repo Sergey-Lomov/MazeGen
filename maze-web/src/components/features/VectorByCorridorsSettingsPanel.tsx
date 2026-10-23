@@ -4,21 +4,26 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { VerticalArrowStyle } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { SelectRow } from "../SelectRow";
+import { hasCellAreaSpread } from "../../pixi/markerScale";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
 import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
 import { maxFittingFontSize } from "../../pixi/textFit";
 import { CategoryInfoModal } from "../CategoryInfoModal";
 import { SectionHeader } from "../SectionHeader";
+import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
+import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { computeVectorByCorridorsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
+import { requiredTextPlateDimensions } from "../../pixi/textFit";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
@@ -65,34 +70,10 @@ export function VectorByCorridorsSettingsPanel() {
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
   const [renderStyleInfoOpen, setRenderStyleInfoOpen] = useState(false);
+  const setJunctionRadius = useMazeStore((s) => s.setVectorByCorridorsJunctionRadius);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
-  const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
-  const setStartMarkerText = useMazeStore((s) => s.setVectorByCorridorsStartMarkerText);
-  const setStartMarkerTextEnabled = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextEnabled);
-  const setStartMarkerTextFontWeight = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextFontWeight);
-  const setStartMarkerTextSize = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextSize);
-  const setStartMarkerTextMargin = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextMargin);
-  const setStartMarkerTextColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextColor);
-  const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsStartMarkerCornerStyle);
-  const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerFillColor);
-  const setStartMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerBorderColor);
-  const setStartMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsStartMarkerBorderWidth);
-  const setStartMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsStartMarkerGapWidth);
-  const setStartMarkerSize = useMazeStore((s) => s.setVectorByCorridorsStartMarkerSize);
-  const setFinishMarkerShape = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerShape);
-  const setFinishMarkerText = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerText);
-  const setFinishMarkerTextEnabled = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextEnabled);
-  const setFinishMarkerTextFontWeight = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextFontWeight);
-  const setFinishMarkerTextSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextSize);
-  const setFinishMarkerTextMargin = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextMargin);
-  const setFinishMarkerTextColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextColor);
-  const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerCornerStyle);
-  const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerFillColor);
-  const setFinishMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerBorderColor);
-  const setFinishMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerBorderWidth);
-  const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerGapWidth);
-  const setFinishMarkerSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerSize);
+  const patchMarker = useMazeStore((s) => s.patchVectorByCorridorsMarker);
   const setMarkerLayout = useMazeStore((s) => s.setVectorByCorridorsMarkerLayout);
   const setMarkerScale = useMazeStore((s) => s.setVectorByCorridorsMarkerScale);
   const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
@@ -102,28 +83,8 @@ export function VectorByCorridorsSettingsPanel() {
   const patchVerticalSharedStyle = useMazeStore((s) => s.patchVectorByCorridorsVerticalSharedStyle);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByCorridorsElevatorBadges);
   const patchMarkerIndex = useMazeStore((s) => s.patchVectorByCorridorsMarkerIndexSettings);
+  const patchFloorLabel = useMazeStore((s) => s.patchVectorByCorridorsFloorLabelSettings);
   const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorBadgesCornerStyle);
-  const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerShape);
-  const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerCornerStyle);
-  const setTwoWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerFillColor);
-  const setTwoWayPassageMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerBorderColor);
-  const setTwoWayPassageMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerBorderWidth);
-  const setTwoWayPassageMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerGapWidth);
-  const setTwoWayPassageMarkerSize = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerSize);
-  const setOneWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerShape);
-  const setOneWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerCornerStyle);
-  const setOneWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerFillColor);
-  const setOneWayPassageMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerBorderColor);
-  const setOneWayPassageMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerBorderWidth);
-  const setOneWayPassageMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerGapWidth);
-  const setOneWayPassageMarkerSize = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerSize);
-  const setElevatorMarkerShape = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerShape);
-  const setElevatorMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerCornerStyle);
-  const setElevatorMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerFillColor);
-  const setElevatorMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerBorderColor);
-  const setElevatorMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerBorderWidth);
-  const setElevatorMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerGapWidth);
-  const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
   const patchTeleportGroupOverrides = useMazeStore((s) => s.patchVectorByCorridorsTeleportGroupOverrides);
@@ -194,8 +155,9 @@ export function VectorByCorridorsSettingsPanel() {
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   const rawEffectiveEndpoints = useMemo(
     () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
@@ -210,13 +172,15 @@ export function VectorByCorridorsSettingsPanel() {
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
-  // Auto-fit data for every font-size row (GitHub issue #707) — all labels of the whole project,
-  // grouped by size control; `fitAll` is the smallest size that fits every label.
+  // Auto-fit data for font-size rows (GitHub issue #707) — floor labels have their own independent
+  // size control, so `fitAll` only covers the shared-style label controls.
   const textFit = useMemo<TextFitContextValue>(() => {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
-      fitFor: (kind) => maxFittingFontSize(items[kind]),
+      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
       fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
+      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
+      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
     };
   }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
@@ -241,15 +205,18 @@ export function VectorByCorridorsSettingsPanel() {
   const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
   // "Marker indices" is shown only when some marker could ever carry an index (GitHub issue #730).
   const hasMarkerIndexSource = colorVisibility.markerIndexAvailable;
+  // Marker size adaptation only matters when cells differ in area (GitHub issue #819).
+  const hasAreaSpread = useMemo(() => hasCellAreaSpread(cfg), [cfg]);
 
   // Which registry paths the panel currently shows (GitHub issue #670) — see
   // `VectorByWallsSettingsPanel`'s own doc comment on this.
   const activePaths = useMemo(
     () => computeActivePaths(VECTOR_BY_CORRIDORS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource,
+      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread,
+      hasMultipleFloors: floors.length > 1,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, floors.length, settings],
   );
 
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
@@ -344,7 +311,7 @@ export function VectorByCorridorsSettingsPanel() {
       <div style={styles.divider} />
 
       <SectionHeader
-        label={m["image_export.vector_by_corridors.section_cells"]()}
+        label={m["image_export.vector_by_corridors.section_corridors"]()}
         expanded={isExpanded("cells")}
         onToggle={() => toggleSection("cells")}
       />
@@ -361,16 +328,32 @@ export function VectorByCorridorsSettingsPanel() {
             onChange={setJoin}
             linkTarget="join"
           />
-          <SelectRow
-            label={m["image_export.vector_by_corridors.render_style"]()}
-            value={settings.renderStyle}
-            options={[
-              { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
-              { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
-            ]}
-            onChange={setRenderStyle}
-            info={() => setRenderStyleInfoOpen(true)}
-          />
+          {/* The rendering mode only chooses how round joins are drawn; miter always draws lines. */}
+          {settings.join === "round" && (
+            <SelectRow
+              label={m["image_export.vector_by_corridors.render_style"]()}
+              value={settings.renderStyle}
+              options={[
+                { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
+                { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
+              ]}
+              onChange={setRenderStyle}
+              info={() => setRenderStyleInfoOpen(true)}
+            />
+          )}
+          {/* Only the round-join contour engine reads the junction radius. */}
+          {settings.renderStyle === "contour" && settings.join === "round" && (
+            <LinkedSliderRow
+              label={m["image_export.vector_by_corridors.junction_radius"]()}
+              value={settings.junctionRadius}
+              onChange={setJunctionRadius}
+              min={0}
+              max={TILE_SIZE / 2}
+              step={0.5}
+              format={(v) => String(v)}
+              linkTarget="junctionRadius"
+            />
+          )}
           <LinkedSliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
             value={settings.thickness}
@@ -407,6 +390,30 @@ export function VectorByCorridorsSettingsPanel() {
 
       <div style={styles.divider} />
 
+      {floors.length > 1 && (
+        <>
+          <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
+          {isExpanded("floors") && (
+            <FloorLabelSection
+              renderMode="vector_by_corridors"
+              settings={settings.floorLabel}
+              onChange={patchFloorLabel}
+              fields={{ fill: PC.floorLabelFill, border: PC.floorLabelBorder, text: PC.floorLabelText }}
+              defaults={{ fill: D.floorLabel.fillColor, border: D.floorLabel.borderColor, text: D.floorLabel.textColor }}
+              priorities={{
+                fill: [PC.floorLabelText.at(settings.floorLabel.textColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), bg],
+                border: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelText.at(settings.floorLabel.textColor), bg],
+                text: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), corridor, bg],
+              }}
+              activeFloorId={activeFloorId}
+              activeFloorTitle={floors.find((item) => item.id === activeFloorId)?.title ?? ""}
+              floorIds={floors.map((item) => item.id)}
+            />
+          )}
+          <div style={styles.divider} />
+        </>
+      )}
+
       <SectionHeader
         label={m["image_export.vector_by_walls.section_markers"]()}
         expanded={isExpanded("waypoints")}
@@ -433,24 +440,13 @@ export function VectorByCorridorsSettingsPanel() {
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fields={{ fillColor: PC.startFill, borderColor: PC.startBorder, textColor: PC.startText }}
             onChange={(patch) => {
-              if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
-              if (patch.text !== undefined) setStartMarkerText(patch.text);
-              if (patch.textEnabled !== undefined) setStartMarkerTextEnabled(patch.textEnabled);
-              if (patch.textFontWeight !== undefined) setStartMarkerTextFontWeight(patch.textFontWeight);
-              if (patch.textSize !== undefined) setStartMarkerTextSize(patch.textSize);
-              if (patch.textMargin !== undefined) setStartMarkerTextMargin(patch.textMargin);
-              if (patch.textColor !== undefined) setStartMarkerTextColor(patch.textColor);
-              if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
-              if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
-              if (patch.borderColor !== undefined) setStartMarkerBorderColor(patch.borderColor);
-              if (patch.borderWidth !== undefined) setStartMarkerBorderWidth(patch.borderWidth);
-              if (patch.gapWidth !== undefined) setStartMarkerGapWidth(patch.gapWidth);
-              if (patch.size !== undefined) setStartMarkerSize(patch.size);
+              patchMarker("startMarker", patch);
             }}
             linkTargets={{
               shape: "startMarker.shape",
               cornerStyle: "startMarker.cornerStyle",
               size: "startMarker.size",
+              sizeAdaptation: "startMarker.sizeAdaptation",
               fillColor: "startMarker.fillColor",
               borderColor: "startMarker.borderColor",
               borderWidth: "startMarker.borderWidth",
@@ -474,24 +470,13 @@ export function VectorByCorridorsSettingsPanel() {
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fields={{ fillColor: PC.finishFill, borderColor: PC.finishBorder, textColor: PC.finishText }}
             onChange={(patch) => {
-              if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
-              if (patch.text !== undefined) setFinishMarkerText(patch.text);
-              if (patch.textEnabled !== undefined) setFinishMarkerTextEnabled(patch.textEnabled);
-              if (patch.textFontWeight !== undefined) setFinishMarkerTextFontWeight(patch.textFontWeight);
-              if (patch.textSize !== undefined) setFinishMarkerTextSize(patch.textSize);
-              if (patch.textMargin !== undefined) setFinishMarkerTextMargin(patch.textMargin);
-              if (patch.textColor !== undefined) setFinishMarkerTextColor(patch.textColor);
-              if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
-              if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
-              if (patch.borderColor !== undefined) setFinishMarkerBorderColor(patch.borderColor);
-              if (patch.borderWidth !== undefined) setFinishMarkerBorderWidth(patch.borderWidth);
-              if (patch.gapWidth !== undefined) setFinishMarkerGapWidth(patch.gapWidth);
-              if (patch.size !== undefined) setFinishMarkerSize(patch.size);
+              patchMarker("finishMarker", patch);
             }}
             linkTargets={{
               shape: "finishMarker.shape",
               cornerStyle: "finishMarker.cornerStyle",
               size: "finishMarker.size",
+              sizeAdaptation: "finishMarker.sizeAdaptation",
               fillColor: "finishMarker.fillColor",
               borderColor: "finishMarker.borderColor",
               borderWidth: "finishMarker.borderWidth",
@@ -615,6 +600,7 @@ export function VectorByCorridorsSettingsPanel() {
                 lineCornerStyle: "teleportMarker.cornerStyle",
                 lineShape: "teleportMarker.shape",
                 lineSize: "teleportMarker.size",
+                lineSizeAdaptation: "teleportMarker.sizeAdaptation",
                 edgeColor: "teleportMarker.fillColor",
                 edgeBorderColor: "teleportMarker.borderColor",
                 edgeBorderWidth: "teleportMarker.borderWidth",
@@ -630,6 +616,7 @@ export function VectorByCorridorsSettingsPanel() {
                 floorBadgeShape: "teleportFloorBadge.shape",
                 floorBadgeLabelType: "teleportFloorBadge.labelType",
                 floorBadgeSize: "teleportFloorBadge.size",
+                floorBadgeSizeAdaptation: "teleportFloorBadge.sizeAdaptation",
                 floorBadgeFillColor: "teleportFloorBadge.fillColor",
                 floorBadgeBorderColor: "teleportFloorBadge.borderColor",
                 floorBadgeTextColor: "teleportFloorBadge.textColor",
@@ -720,6 +707,7 @@ export function VectorByCorridorsSettingsPanel() {
                         format={(v) => String(Math.round(v))}
                         linkTarget="verticalSize"
                       />
+                      <SizeAdaptationRow value={settings.verticalSizeAdaptation} onChange={(verticalSizeAdaptation) => patchVerticalSharedStyle({ verticalSizeAdaptation })} linkTarget="verticalSizeAdaptation" />
                       <LinkedColorRow
                         label={m["image_export.vector_by_walls.marker_fill_color"]()}
                         color={settings.verticalFillColor}
@@ -823,18 +811,13 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: PC.twoWayBorder,
                           }}
                           onChange={(patch) => {
-                            if (patch.shape !== undefined) setTwoWayPassageMarkerShape(patch.shape);
-                            if (patch.cornerStyle !== undefined) setTwoWayPassageMarkerCornerStyle(patch.cornerStyle);
-                            if (patch.fillColor !== undefined) setTwoWayPassageMarkerFillColor(patch.fillColor);
-                            if (patch.borderColor !== undefined) setTwoWayPassageMarkerBorderColor(patch.borderColor);
-                            if (patch.borderWidth !== undefined) setTwoWayPassageMarkerBorderWidth(patch.borderWidth);
-                            if (patch.gapWidth !== undefined) setTwoWayPassageMarkerGapWidth(patch.gapWidth);
-                            if (patch.size !== undefined) setTwoWayPassageMarkerSize(patch.size);
+                            patchMarker("twoWayPassageMarker", patch);
                           }}
                           linkTargets={{
                             shape: "twoWayPassageMarker.shape",
                             cornerStyle: "twoWayPassageMarker.cornerStyle",
                             size: "twoWayPassageMarker.size",
+                            sizeAdaptation: "twoWayPassageMarker.sizeAdaptation",
                             fillColor: "twoWayPassageMarker.fillColor",
                             borderColor: "twoWayPassageMarker.borderColor",
                             borderWidth: "twoWayPassageMarker.borderWidth",
@@ -919,18 +902,13 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: PC.oneWayBorder,
                           }}
                           onChange={(patch) => {
-                            if (patch.shape !== undefined) setOneWayPassageMarkerShape(patch.shape);
-                            if (patch.cornerStyle !== undefined) setOneWayPassageMarkerCornerStyle(patch.cornerStyle);
-                            if (patch.fillColor !== undefined) setOneWayPassageMarkerFillColor(patch.fillColor);
-                            if (patch.borderColor !== undefined) setOneWayPassageMarkerBorderColor(patch.borderColor);
-                            if (patch.borderWidth !== undefined) setOneWayPassageMarkerBorderWidth(patch.borderWidth);
-                            if (patch.gapWidth !== undefined) setOneWayPassageMarkerGapWidth(patch.gapWidth);
-                            if (patch.size !== undefined) setOneWayPassageMarkerSize(patch.size);
+                            patchMarker("oneWayPassageMarker", patch);
                           }}
                           linkTargets={{
                             shape: "oneWayPassageMarker.shape",
                             cornerStyle: "oneWayPassageMarker.cornerStyle",
                             size: "oneWayPassageMarker.size",
+                            sizeAdaptation: "oneWayPassageMarker.sizeAdaptation",
                             fillColor: "oneWayPassageMarker.fillColor",
                             borderColor: "oneWayPassageMarker.borderColor",
                             borderWidth: "oneWayPassageMarker.borderWidth",
@@ -1015,18 +993,13 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: PC.elevatorBorder,
                           }}
                           onChange={(patch) => {
-                            if (patch.shape !== undefined) setElevatorMarkerShape(patch.shape);
-                            if (patch.cornerStyle !== undefined) setElevatorMarkerCornerStyle(patch.cornerStyle);
-                            if (patch.fillColor !== undefined) setElevatorMarkerFillColor(patch.fillColor);
-                            if (patch.borderColor !== undefined) setElevatorMarkerBorderColor(patch.borderColor);
-                            if (patch.borderWidth !== undefined) setElevatorMarkerBorderWidth(patch.borderWidth);
-                            if (patch.gapWidth !== undefined) setElevatorMarkerGapWidth(patch.gapWidth);
-                            if (patch.size !== undefined) setElevatorMarkerSize(patch.size);
+                            patchMarker("elevatorMarker", patch);
                           }}
                           linkTargets={{
                             shape: "elevatorMarker.shape",
                             cornerStyle: "elevatorMarker.cornerStyle",
                             size: "elevatorMarker.size",
+                            sizeAdaptation: "elevatorMarker.sizeAdaptation",
                             fillColor: "elevatorMarker.fillColor",
                             borderColor: "elevatorMarker.borderColor",
                             borderWidth: "elevatorMarker.borderWidth",

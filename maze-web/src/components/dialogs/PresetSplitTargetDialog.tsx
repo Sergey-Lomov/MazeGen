@@ -8,12 +8,12 @@ import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
 import type { NodeLockKind } from "../../wasm/types";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -35,6 +35,8 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const rawSplitPoints = useMazeStore((s) => s.presetSplitPoints);
@@ -54,7 +56,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
 
   const preview = useMemo(() => {
     if (!point || !prompt) return null;
-    const levelFields = levelFieldsOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation });
+    const levelFields = levelFieldsOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives });
     const field = levelFields[level ?? 0];
     if (!field) return null;
     const cfg = field.cfg;
@@ -78,12 +80,11 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
       presetEndpoint(point, slotId), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, undefined,
     ));
     const semanticNames = splitNodeSemanticNamesFromKinds(
-      faceKindsByNode,
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+      faceKindsByNode, splitShapeBinding(cfg, point[0], point[1]),
     );
 
     return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };
-  }, [point, floors, floorFields, tessellationKind, hexOrientation, triOrientation, rawSplitPoints, rawConnections, level, prompt]);
+  }, [point, floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives, rawSplitPoints, rawConnections, level, prompt]);
 
   if (!prompt || !point) return null;
   const [x, y] = point;
@@ -102,7 +103,10 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   };
 
   const coords = formatTargetLabel(point, level ?? 0, true, undefined);
-  const targetOptions: SplitTargetOption[] = options.map((slotId, index) => ({
+  // Colors and names follow each node's index on the full list, so a node left out by `excluded`
+  // keeps every other node's own color and name.
+  const shown = shownSplitTargets(options, (slotId) => prompt.excluded !== undefined && prompt.excluded.slotId === slotId);
+  const targetOptions: SplitTargetOption[] = shown.map(({ node: slotId, index }) => ({
     key: slotId === undefined ? "original" : String(slotId),
     color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
     label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),
@@ -113,7 +117,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     hint={lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}
     options={targetOptions}
     preview={preview ? <PresetSplitPointPixiPreview point={point} cfg={preview.cfg} slotIds={prompt.slotIds} presetSplitPoints={preview.presetSplitPoints} presetConnections={preview.presetConnections} cells={preview.cells} showMarkers={preview.special} /> : undefined}
-    onSelect={(option) => pick(options[targetOptions.indexOf(option)] ?? undefined)}
+    onSelect={(option) => pick(shown[targetOptions.indexOf(option)]?.node)}
     onClose={onClose}
   />;
 }

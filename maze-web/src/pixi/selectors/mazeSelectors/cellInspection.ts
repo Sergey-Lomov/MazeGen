@@ -1,11 +1,11 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import { selectVerticalPassagePairSet } from "./vertical";
 import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
 import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
+import { splitShapeBinding } from "../../splitShape";
 import { formatTargetLabel } from "../../targetLabel";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../../cairoGeometry";
 
 /** Semantic split-node short label for `node` (e.g. "Cor1"), when its point's face configuration
  *  matches a recognized special-split topology, else `undefined` for a non-split point/generic
@@ -17,7 +17,7 @@ function resolveNodeSplitLabel(
   node: NodeDto,
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig | null,
+  cfg: FieldConfig | null,
 ): string | undefined {
   if (!cfg) return undefined;
   const nodeLevel = node.level ?? 0;
@@ -36,7 +36,7 @@ function resolveNodeSplitLabel(
   const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
   const semanticNames = splitNodeSemanticNamesFromKinds(
     splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg),
-    cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(node.x, node.y) : undefined,
+    splitShapeBinding(cfg, node.x, node.y),
   );
   const index = pointNodes.findIndex((n) => n.id === node.id);
   return semanticNames?.[index]?.short ?? m["post_edit.split_node_label_short"]({ slotId: node.i + 1 });
@@ -60,7 +60,7 @@ function formatTarget(
   activeFloorLevel: number,
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig | null,
+  cfg: FieldConfig | null,
   floorOnly = false,
 ): string {
   const otherLevel = other.level ?? 0;
@@ -80,7 +80,7 @@ function buildNodeMarkerLines(
   edges: EdgeDto[],
   start: number | null,
   finish: number | null,
-  cfg: TessellationConfig | null,
+  cfg: FieldConfig | null,
 ): string[] {
   const lines: string[] = [];
   if (start === node.id) lines.push(m["status.cell_start"]());
@@ -183,7 +183,7 @@ export function buildCellInspection(
   floorLevel: number,
   start: number | null,
   finish: number | null,
-  cfg: TessellationConfig | null = null,
+  cfg: FieldConfig | null = null,
 ): string {
   const coordLabel = `x:${x}, y:${y}`;
 
@@ -212,7 +212,7 @@ export function buildCellInspection(
     const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
     semanticNames = splitNodeSemanticNamesFromKinds(
       splitPointFaceKindsByNode(nodesHere, byTile, directed, cfg),
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(x, y) : undefined,
+      splitShapeBinding(cfg, nodesHere[0].x, nodesHere[0].y),
     );
   }
 

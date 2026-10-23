@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -27,7 +27,7 @@ export interface DebugRefHighlightData {
    *  falls back to the generic hub position. */
   edges: EdgeDto[];
   ref: HoveredDebugRef | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Cross-floor lookup data used to render an edge/cycle ref with the same stub + floor badge
    *  representation as graph overlays. Omitted callers retain the single-floor behaviour. */
   resolveNodeLevel?: (id: number) => number | undefined;

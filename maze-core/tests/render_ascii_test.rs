@@ -2,12 +2,14 @@ use maze_core::graph::EdgeKind;
 use maze_core::io::render_ascii;
 use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use maze_core::{Graph, IdGenerator, Maze};
+use std::sync::Arc;
 
 use maze_core::NodeId;
 
 fn make_maze(width: usize, height: usize) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(width, height), &mut ids)
+        .unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

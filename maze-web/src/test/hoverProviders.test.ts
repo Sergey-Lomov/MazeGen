@@ -7,12 +7,13 @@ import { TILE_SIZE } from "../pixi/constants";
 import { MazeScene, shouldCancelFieldEditGesture, TESSELLATION_CONFIG_BY_CARD } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";
+import { fieldOf } from "./fieldConfigFixtures";
 
 function fakeViewport(x: number, y: number, scale = 1): Container {
   return { x, y, scale: { x: scale, y: scale } } as unknown as Container;
 }
 
-const squareProjection = makeProjection({ type: "square", width: 10, height: 10 });
+const squareProjection = makeProjection(fieldOf("square", { shape: "rect", cols: 10, rows: 10 }));
 
 describe("canvasToGrid", () => {
   it("maps canvas origin through viewport offset to grid coords", () => {
@@ -44,7 +45,7 @@ describe("DefaultHoverProvider", () => {
 
   it("returns coords even far outside typical field bounds", () => {
     const provider = new DefaultHoverProvider(() => fakeViewport(0, 0), () => squareProjection);
-    const far = provider.getHoverInfo(TILE_SIZE * 1000, -TILE_SIZE * 1000);
+    const far = provider.getHoverInfo(TILE_SIZE * 1000.5, -TILE_SIZE * 1000.5);
     expect(far).toEqual({ x: 1000, y: 1000 });
   });
 
@@ -91,17 +92,17 @@ describe("zoom reset controls", () => {
 
   it("resolves the tessellation config for every feature card", () => {
     const state = useMazeStore.getState();
-    const floorConfig = state.floorFields[state.activeFloorId].tessellationConfig;
+    const floorConfig = state.floorFields[state.activeFloorId].fieldConfig;
 
-    expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewFieldConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.floors(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.field_setup(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.preset_connections(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.quality(state)).toBe(floorConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.generation(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.post_edit(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.analytics(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.image_export(state)).toBe(state.activeTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.generation(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.post_edit(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.analytics(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.image_export(state)).toBe(state.activeFieldConfig);
   });
 
   it("syncs layer transforms, viewport listeners, and the scale listener", () => {
@@ -114,6 +115,7 @@ describe("zoom reset controls", () => {
       viewportListeners: [viewportListener],
       viewportScaleCallback: viewportScaleListener,
       app: { screen: { width: 800, height: 600 } },
+      renderScheduler: { requestRender: vi.fn() },
     } as unknown as MazeScene;
 
     (MazeScene.prototype as any).syncLayersToViewport.call(scene);
@@ -121,6 +123,23 @@ describe("zoom reset controls", () => {
     expect(layer).toEqual({ x: 12, y: -7, scale: { x: 2.5, y: 2.5 } });
     expect(viewportListener.onViewportChanged).toHaveBeenCalledWith(12, -7, 800, 600, 2.5);
     expect(viewportScaleListener).toHaveBeenCalledWith(2.5);
+    expect((scene as any).renderScheduler.requestRender).toHaveBeenCalled();
+  });
+
+  it("resizes the renderer to a new device pixel ratio and skips an unchanged one", () => {
+    const resize = vi.fn();
+    const requestRender = vi.fn();
+    const scene = {
+      app: { screen: { width: 800, height: 600 }, renderer: { resolution: 1, resize } },
+      renderScheduler: { requestRender },
+    } as unknown as MazeScene;
+    const apply = (dpr: number) => (MazeScene.prototype as any).applyDevicePixelRatio.call(scene, dpr);
+
+    apply(1);
+    expect(resize).not.toHaveBeenCalled();
+    apply(2);
+    expect(resize).toHaveBeenCalledWith(800, 600, 2);
+    expect(requestRender).toHaveBeenCalledTimes(1);
   });
 
   it("keeps only one hover and viewport-scale listener and notifies replacements", () => {
@@ -260,7 +279,7 @@ describe("zoom reset controls", () => {
     const canvas = {} as HTMLCanvasElement;
     const pngExporter = { export: vi.fn().mockResolvedValue(new Blob(["png"])) };
     const scene = { cachedProjection: null, pngExporter, app: { canvas } } as unknown as MazeScene;
-    const cfg = { type: "square", width: 2, height: 2 } as const;
+    const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
 
     const first = (MazeScene.prototype as any).getProjectionFor.call(scene, cfg);
     expect((MazeScene.prototype as any).getProjectionFor.call(scene, cfg)).toBe(first);
@@ -314,7 +333,7 @@ describe("zoom reset controls", () => {
 
     stageHandlers.pointermove?.({ globalX: 10, globalY: 10, buttons: 0 });
 
-    expect(updateHover).toHaveBeenCalledWith(null, activeField.tessellationConfig, expect.any(Number), undefined);
+    expect(updateHover).toHaveBeenCalledWith(null, activeField.fieldConfig, expect.any(Number), undefined);
     useMazeStore.setState({
       openCard: state.openCard,
       floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
@@ -369,7 +388,7 @@ describe("zoom reset controls", () => {
 
     expect(getMagicWandPreview).toHaveBeenCalledWith(10, 10);
     expect(updateHover).toHaveBeenCalledWith(
-      [[1, 1], [2, 1]], activeField.tessellationConfig, expect.any(Number), 0.5,
+      [[1, 1], [2, 1]], activeField.fieldConfig, expect.any(Number), 0.5,
     );
     useMazeStore.setState({
       openCard: state.openCard,
@@ -641,6 +660,39 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("clears editor hover when the pointer moves from the canvas to a side panel", () => {
+    const canvas = document.createElement("canvas");
+    const clearHover = vi.fn();
+    const onHoverChanged = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: { x: 0, y: 0, scale: { x: 1, y: 1 } } as any,
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({
+        onPointerDown: vi.fn(),
+        onPointerMove: vi.fn(),
+        onPointerUp: vi.fn(),
+        cancelPointerGesture: vi.fn(),
+        clearHover,
+      }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged,
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    canvas.dispatchEvent(new Event("pointerleave"));
+
+    expect(clearHover).toHaveBeenCalledOnce();
+    expect(onHoverChanged).toHaveBeenCalledWith(null);
+    interaction.destroy();
+  });
+
   it("confirms a persistent field selection when the pointer is released outside the canvas", () => {
     const stageHandlers: Record<string, () => void> = {};
     const state = useMazeStore.getState();
@@ -810,5 +862,65 @@ describe("zoom reset controls", () => {
     interaction.destroy();
     useMazeStore.setState(previous);
     expect(stageHandlers.pointerdown).toBeDefined();
+  });
+
+  it("commits or restores floor-label dragging at its keyboard and outside-canvas boundaries", () => {
+    const previous = useMazeStore.getState();
+    const canvas = document.createElement("canvas");
+    const cancelPointerGesture = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({ cancelPointerGesture: vi.fn() }) as any,
+      fieldEditorOverlay: { updateHover: vi.fn() } as any,
+      getController: () => ({ onPointerDown: vi.fn(), onPointerMove: vi.fn(), onPointerUp: vi.fn(), cancelPointerGesture }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+    useMazeStore.setState({
+      activeRenderMode: "vector_by_walls",
+      vectorByWallsSettings: {
+        ...previous.vectorByWallsSettings,
+        floorLabel: {
+          ...previous.vectorByWallsSettings.floorLabel,
+          positionsByFloorId: { [previous.activeFloorId]: { mode: "free", x: 1, y: 2 } },
+        },
+      },
+    });
+
+    useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+    useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x: 9, y: 10 });
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x: 1, y: 2 });
+
+    for (const [code, x, y] of [["Enter", 3, 4], ["Space", 4, 5]] as const) {
+      useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+      useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x, y });
+      window.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true }));
+      expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+      expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x, y });
+    }
+
+    useMazeStore.getState().startFloorLabelDrag("vector_by_walls");
+    useMazeStore.getState().updateFloorLabelDragPosition({ mode: "free", x: 5, y: 6 });
+    const dragButton = document.createElement("button");
+    dragButton.setAttribute("data-floor-label-drag-control", "true");
+    document.body.appendChild(dragButton);
+    dragButton.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).not.toBeNull();
+    dragButton.remove();
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(useMazeStore.getState().floorLabelDrag).toBeNull();
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.positionsByFloorId[previous.activeFloorId]).toEqual({ mode: "free", x: 5, y: 6 });
+
+    interaction.destroy();
+    useMazeStore.setState(previous);
   });
 });

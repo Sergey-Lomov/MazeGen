@@ -20,8 +20,11 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   elevator_badge_text_overflow: m["image_export.vector_by_walls.warning_elevator_badge_text_overflow"],
   teleport_badge_text_overflow: m["image_export.vector_by_walls.warning_teleport_badge_text_overflow"],
   marker_index_text_overflow: m["image_export.vector_by_walls.warning_marker_index_text_overflow"],
+  marker_index_covers_stop_line: m["image_export.vector_by_walls.warning_marker_index_covers_stop_line"],
+  floor_label_text_overflow: m["image_export.floors.warning_text_overflow"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow"],
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink"],
+  marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable"],
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background"],
@@ -62,6 +65,11 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   vertical_one_way_line_low_contrast_floor: m["image_export.warning.vertical_one_way_line_low_contrast_floor"],
   vertical_one_way_accent_low_contrast_floor: m["image_export.warning.vertical_one_way_accent_low_contrast_floor"],
   elevator_line_low_contrast_floor: m["image_export.warning.elevator_line_low_contrast_floor"],
+  floor_label_fill_low_contrast_corridor: m["image_export.warning.floor_label_fill_low_contrast_corridor"],
+  floor_label_fill_low_contrast_floor: m["image_export.warning.floor_label_fill_low_contrast_floor"],
+  floor_label_border_low_contrast_corridor: m["image_export.warning.floor_label_border_low_contrast_corridor"],
+  floor_label_border_low_contrast_floor: m["image_export.warning.floor_label_border_low_contrast_floor"],
+  floor_label_text_low_contrast: m["image_export.warning.floor_label_text_low_contrast"],
 };
 
 const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
@@ -77,8 +85,11 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   elevator_badge_text_overflow: m["image_export.vector_by_walls.warning_elevator_badge_text_overflow_description"],
   teleport_badge_text_overflow: m["image_export.vector_by_walls.warning_teleport_badge_text_overflow_description"],
   marker_index_text_overflow: m["image_export.vector_by_walls.warning_marker_index_text_overflow_description"],
+  marker_index_covers_stop_line: m["image_export.vector_by_walls.warning_marker_index_covers_stop_line_description"],
+  floor_label_text_overflow: m["image_export.floors.warning_text_overflow_description"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow_description"],
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink_description"],
+  marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor_description"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable_description"],
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor_description"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background_description"],
@@ -119,6 +130,11 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   vertical_one_way_line_low_contrast_floor: m["image_export.warning.vertical_one_way_line_low_contrast_floor_description"],
   vertical_one_way_accent_low_contrast_floor: m["image_export.warning.vertical_one_way_accent_low_contrast_floor_description"],
   elevator_line_low_contrast_floor: m["image_export.warning.elevator_line_low_contrast_floor_description"],
+  floor_label_fill_low_contrast_corridor: m["image_export.warning.floor_label_fill_low_contrast_corridor_description"],
+  floor_label_fill_low_contrast_floor: m["image_export.warning.floor_label_fill_low_contrast_floor_description"],
+  floor_label_border_low_contrast_corridor: m["image_export.warning.floor_label_border_low_contrast_corridor_description"],
+  floor_label_border_low_contrast_floor: m["image_export.warning.floor_label_border_low_contrast_floor_description"],
+  floor_label_text_low_contrast: m["image_export.warning.floor_label_text_low_contrast_description"],
 };
 
 export function resolveExportWarningMessage(id: ExportWarningId): string {

@@ -1,5 +1,8 @@
 import type { NodeDto, EdgeDto, IssueDto } from "../../../wasm/types";
 import type { MazeState } from "../../../store/mazeStore";
+import { splitPatternsFor } from "../../shapeTemplates";
+import { qcForTessellation } from "../../../store/slices/qcTessellationFilter";
+import { sameTessellation } from "../../../store/storeHelpers";
 
 /** Narrows a maze-wide `{ nodes, edges, start, finish }` view down to one floor, by `activeFloorId`
  *  (GitHub issue #337/#347) — the single shared floor-scoping step every render-facing consumer of
@@ -45,6 +48,19 @@ export function selectFloorScopedMaze(
   };
 }
 
+/** Memoized floor-node scoping (GitHub issue #739) — returns the previous array while `nodes`,
+ *  `floors` and `activeFloorId` are unchanged, so a per-pointermove caller gets a stable result and
+ *  identity-keyed caches built on top of it stay valid. Each caller owns its own instance. */
+export function createFloorNodesSelector(): (nodes: NodeDto[], floors: { id: string }[], activeFloorId: string) => NodeDto[] {
+  let last: { nodes: NodeDto[]; floors: { id: string }[]; activeFloorId: string; result: NodeDto[] } | null = null;
+  return (nodes, floors, activeFloorId) => {
+    if (last && last.nodes === nodes && last.floors === floors && last.activeFloorId === activeFloorId) return last.result;
+    const result = selectFloorScopedMaze(nodes, [], floors, activeFloorId).nodes;
+    last = { nodes, floors, activeFloorId, result };
+    return result;
+  };
+}
+
 /** Narrow "ask, don't fetch" access to a node's own floor (GitHub issue #347) — built once from the
  *  full, unscoped `nodes` list (before `selectFloorScopedMaze` narrows it to one floor), so a caller
  *  that only has floor-scoped data in hand (e.g. `VectorByWallsRenderer`, after scoping its own
@@ -79,11 +95,20 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
 /** True when confirming tessellation would destroy data the user has entered. Kind change resets
  * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
-  "previewKind" | "tessellationKind" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  "previewKind" | "previewParams" | "tessellationKind" | "tessellationParams" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  | "previewFieldConfig" | "splitPatterns" | "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams"
 >): boolean {
-  if (s.previewKind === s.tessellationKind) return false;
-  const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
-  return anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
+  // Params define the cell set, so changing them resets the fields like a kind change does.
+  if (!sameTessellation({ kind: s.previewKind, params: s.previewParams }, { kind: s.tessellationKind, params: s.tessellationParams })) {
+    const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
+    if (anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty) return true;
+  }
+  // Split patterns survive only when the new tessellation config provides their shape template
+  // (GitHub issue #758) — checked on any config change, not just a kind change.
+  const tessellation = s.previewFieldConfig.tessellation;
+  if (splitPatternsFor(s.splitPatterns, tessellation).length !== s.splitPatterns.length) return true;
+  const qc = qcForTessellation(s, tessellation);
+  return qc.rules !== s.rules;
 }
 
 /** True when removing `floorId` would discard field data configured on that floor (GitHub issue

@@ -1,35 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { degreeFor, patternAnchorPoint, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
+import { degreeFor, originCellOf, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../pixi/splitPatternTitles";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("degreeFor", () => {
   it("returns 4 for square", () => {
-    expect(degreeFor({ type: "square", width: 3, height: 3 })).toBe(4);
+    expect(degreeFor(fieldOf("square", { shape: "rect", cols: 3, rows: 3 }))).toBe(4);
   });
 
   it("returns 6 for hex", () => {
-    expect(degreeFor({ type: "hex_parallelogram", width: 3, height: 3, orientation: "flat_top" } as never)).toBe(6);
+    expect(degreeFor(fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top") as never)).toBe(6);
   });
 
   it("returns 3 for triangle", () => {
-    expect(degreeFor({ type: "triangle_rect", width: 3, height: 3 } as never)).toBe(3);
+    expect(degreeFor(fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }) as never)).toBe(3);
   });
 
   it("returns 5 for Cairo even though the coordinate origin is not a tile", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
-    expect(patternAnchorPoint(cfg)).toEqual([2, 1]);
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
+    expect(originCellOf(cfg)).toEqual([2, 1]);
     expect(degreeFor(cfg)).toBe(5);
   });
 
   it("builds five-face pattern tiles for Cairo", () => {
-    const nodes = tileNodesForPattern({ node_count: 1, faces: [[]], weight: 1 }, 5);
+    const nodes = tileNodesForPattern({ shape: "cairo_pentagon", node_count: 1, faces: [[]], weight: 1 }, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }));
     expect(nodes[0].faces).toHaveLength(5);
   });
 });
 
 describe("resizePatternNodes", () => {
-  const pattern = (nodeCount: number, faces: SplitPattern["faces"]): SplitPattern => ({ node_count: nodeCount, faces, weight: 1.0 });
+  const pattern = (nodeCount: number, faces: SplitPattern["faces"]): SplitPattern => ({ shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 });
 
   it("truncates extra nodes' face lists when shrinking", () => {
     const p = pattern(3, [[{ face_index: 0, requirement: { kind: "passage" } }], [], [{ face_index: 1, requirement: { kind: "wall" } }]]);
@@ -55,12 +56,13 @@ describe("resizePatternNodes", () => {
 
 describe("removePatternNode", () => {
   it("is a no-op when only one node remains", () => {
-    const p: SplitPattern = { node_count: 1, faces: [[]], weight: 1.0 };
+    const p: SplitPattern = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1.0 };
     expect(removePatternNode(p, 0)).toBe(p);
   });
 
   it("drops the removed node's face list and shifts remaining indices down", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 1 }],
@@ -79,6 +81,7 @@ describe("removePatternNode", () => {
 
   it("re-indexes a sibling_target above the removed index down by one", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 2 }],
@@ -97,6 +100,7 @@ describe("removePatternNode", () => {
 
   it("leaves a sibling_target below the removed index untouched", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [],
@@ -113,19 +117,16 @@ describe("removePatternNode", () => {
 describe("tileNodesForTopology", () => {
   const PASSAGE: SplitFaceRequirement = { kind: "passage" };
   const WALL: SplitFaceRequirement = { kind: "wall" };
-  const cfg = { type: "square", width: 3, height: 3 } as const;
+  const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
-  it("converts core face positions to web face positions per node", () => {
-    // Square core order is [N, S, E, W] (indices 0-3); splitFaceIndexToCore's web->core table is
-    // [2, 0, 3, 1], so web position 0 reads core position 2 (E), web 1 reads core 0 (N), web 2
-    // reads core 3 (W), web 3 reads core 1 (S).
+  it("reads canonical face positions per node", () => {
+    const hexCfg = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const topology: SplitFaceRequirement[][] = [
-      [PASSAGE, WALL, WALL, PASSAGE], // core: N=passage, S=wall, E=wall, W=passage
+      [PASSAGE, PASSAGE, WALL, WALL, WALL, WALL],
     ];
-    const nodes = tileNodesForTopology(topology, cfg);
+    const nodes = tileNodesForTopology(topology, hexCfg);
     expect(nodes).toHaveLength(1);
-    // web0(E)->core2=wall, web1(N)->core0=passage, web2(W)->core3=passage, web3(S)->core1=wall
-    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "passage", "passage", "wall"]);
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["passage", "passage", "wall", "wall", "wall", "wall"]);
   });
 
   it("assigns each node a distinct color and no boundary flag", () => {
@@ -143,8 +144,8 @@ describe("titleKeyForTopology", () => {
 
   it("matches the square Bridge topology by exact structural equality", () => {
     const topology: SplitFaceRequirement[][] = [
-      [PASSAGE, PASSAGE, WALL, WALL],
-      [WALL, WALL, PASSAGE, PASSAGE],
+      [PASSAGE, WALL, PASSAGE, WALL],
+      [WALL, PASSAGE, WALL, PASSAGE],
     ];
     expect(titleKeyForTopology(topology)).toBe("split_pattern_title.bridge");
   });

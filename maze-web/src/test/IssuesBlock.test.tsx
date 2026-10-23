@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { IssueBubble, IssuesBlock } from "../components/IssuesBlock";
 import { useMazeStore } from "../store/mazeStore";
 import type { IssueDto } from "../wasm/types";
 import { invalidLoopIssue, regionNeedsExpansionIssue, excessiveSccCountIssue, missingEndpointsIssue } from "./issuesBlockFixtures";
 
 describe("IssuesBlock", () => {
+  const setShowFullyPresetLockedIssues = (show: boolean) => {
+    act(() => useMazeStore.getState().setShowFullyPresetLockedIssues(show));
+  };
   it("keeps the problems section visible for an empty issues list", () => {
     const { container } = render(<IssuesBlock issues={[]} />);
     expect(container).toHaveTextContent("Problems (0)");
@@ -58,7 +61,7 @@ describe("IssuesBlock", () => {
   it("with showFullyPresetLockedIssues off, a surviving mixed bubble only highlights its non-preset-locked elements on hover", () => {
     // Regression: a bubble stays visible when it has at least one unlocked element, but hovering
     // it must not still light up the preset-locked cycles the toggle is hiding elsewhere.
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue: IssueDto = {
       kind: "invalid_loop",
       payload: {
@@ -81,14 +84,14 @@ describe("IssuesBlock", () => {
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("with showFullyPresetLockedIssues off, a surviving mixed region_needs_expansion bubble (3 regions, 1 locked) only highlights its 2 non-preset-locked regions on hover", () => {
     // Regression: RegionHighlightRenderer draws each group independently with no positional
     // contract, so filtering out the locked region before mapping to `.region` must not disturb
     // the other two regions' rendering.
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue = regionNeedsExpansionIssue("min_region_size", [
       { region: [1, 2], preset_locked: false },
       { region: [3, 4], preset_locked: true },
@@ -103,16 +106,16 @@ describe("IssuesBlock", () => {
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("with showFullyPresetLockedIssues off, a region_needs_expansion bubble with every region locked is hidden entirely", () => {
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue = regionNeedsExpansionIssue("min_region_size", [{ region: [1, 2], preset_locked: true }]);
     render(<IssueBubble issue={issue} sourceCheck="min_region_size" />);
     expect(screen.queryByText("Region expansion")).not.toBeInTheDocument();
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("opening a region_needs_expansion bubble with locked regions shows the preset-locked summary phrase with the right count", () => {
@@ -127,21 +130,21 @@ describe("IssuesBlock", () => {
   });
 
   it("with showFullyPresetLockedIssues off, a fully preset-locked excessive_scc_count bubble is hidden entirely", () => {
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue = excessiveSccCountIssue("scc_count", true);
     render(<IssueBubble issue={issue} sourceCheck="scc_count" />);
     expect(screen.queryByText("Region group validation")).not.toBeInTheDocument();
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("with showFullyPresetLockedIssues off, a non-locked excessive_scc_count bubble stays visible", () => {
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue = excessiveSccCountIssue("scc_count", false);
     render(<IssueBubble issue={issue} sourceCheck="scc_count" />);
     expect(screen.getByText("Region group validation")).toBeInTheDocument();
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("opening a preset-locked excessive_scc_count bubble shows the preset-locked summary phrase", () => {
@@ -192,7 +195,7 @@ describe("IssuesBlock", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     expect(useMazeStore.getState().showFullyPresetLockedIssues).toBe(false);
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("opening a bubble with locked elements shows the preset-locked summary phrase with the right count, not a per-element list", () => {
@@ -226,11 +229,11 @@ describe("IssuesBlock", () => {
       details: {},
     };
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const { rerender } = render(<IssueBubble issue={issue} sourceCheck="split_distance_from_waypoint" />);
     expect(screen.queryByText("Split tile validation")).not.toBeInTheDocument();
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
     rerender(<IssueBubble issue={issue} sourceCheck="split_distance_from_waypoint" />);
     fireEvent.click(screen.getByText("Split tile validation"));
     expect(screen.getByText("1 instance is set by presets and cannot be fixed")).toBeInTheDocument();
@@ -286,7 +289,7 @@ describe("IssuesBlock", () => {
   });
 
   it("with showFullyPresetLockedIssues off, a surviving mixed invalid_split_tile bubble only highlights its non-preset-locked nodes on hover", () => {
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue: IssueDto = {
       kind: "invalid_split_tile",
       payload: {
@@ -309,13 +312,13 @@ describe("IssuesBlock", () => {
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [8], isSplit: true }]);
     fireEvent.mouseLeave(bubble);
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 
   it("with showFullyPresetLockedIssues off, a surviving mixed invalid_split_route bubble only highlights its non-preset-locked route's edges on hover", () => {
     // Whole-route granularity, not per-edge-within-route -- a locked route is entirely hidden from
     // hover, an unlocked route's edges all still highlight.
-    useMazeStore.getState().setShowFullyPresetLockedIssues(false);
+    setShowFullyPresetLockedIssues(false);
     const issue: IssueDto = {
       kind: "invalid_split_route",
       payload: {
@@ -338,6 +341,6 @@ describe("IssuesBlock", () => {
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
-    useMazeStore.getState().setShowFullyPresetLockedIssues(true);
+    setShowFullyPresetLockedIssues(true);
   });
 });

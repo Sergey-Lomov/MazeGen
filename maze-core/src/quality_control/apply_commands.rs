@@ -3,6 +3,7 @@ use crate::Maze;
 use crate::event_log::ScopeGuard;
 use crate::generation::PresetState;
 use crate::ids::NodeId;
+use crate::meta::MazeMeta;
 use crate::repair::MutationCommand;
 use crate::space::Tessellation;
 
@@ -66,14 +67,23 @@ pub fn apply_commands<T: Tessellation>(
         };
         // `ReplacePointNodes`'s `old_nodes` (every node currently at `at`'s point) must be resolved
         // before the mutation runs, same "resolve while it's still live" reasoning as
-        // `edge_endpoints` above — `field.point_of`/`nodes_at` no longer return the old nodes once
+        // `edge_endpoints` above — `field.cell_of`/`nodes_at` no longer return the old nodes once
         // `try_replace_point_nodes` has replaced them.
         let old_point_nodes = match &cmd {
             MutationCommand::ReplacePointNodes { at, .. } => maze
                 .field
                 .level_of(*at)
-                .zip(maze.field.point_of(*at))
+                .zip(maze.field.cell_of(*at))
                 .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
+            _ => None,
+        };
+        // The point a removed node lives on, resolved while still live — after `RemoveNode`
+        // applies, `meta.start`/`meta.finish` pointing at that node move to the point's remaining
+        // slot-0 (see `retarget_endpoints`).
+        let removed_node_point = match &cmd {
+            MutationCommand::RemoveNode { node } => {
+                maze.field.level_of(*node).zip(maze.field.cell_of(*node))
+            }
             _ => None,
         };
         // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
@@ -92,13 +102,13 @@ pub fn apply_commands<T: Tessellation>(
             MutationCommand::AddDirectedEdge { from, to }
             | MutationCommand::AddDirectedTeleport { from, to }
             | MutationCommand::AddDirectedVerticalPassage { from, to } => {
-                maze.field.point_of(*from).is_some() && maze.field.point_of(*to).is_some()
+                maze.field.cell_of(*from).is_some() && maze.field.cell_of(*to).is_some()
             }
             MutationCommand::AddBidirectionalEdge { a, b }
             | MutationCommand::AddBidirectionalTeleport { a, b }
             | MutationCommand::AddBidirectionalVerticalPassage { a, b }
             | MutationCommand::AddBidirectionalElevator { a, b } => {
-                maze.field.point_of(*a).is_some() && maze.field.point_of(*b).is_some()
+                maze.field.cell_of(*a).is_some() && maze.field.cell_of(*b).is_some()
             }
             _ => true,
         };
@@ -213,12 +223,12 @@ pub fn apply_commands<T: Tessellation>(
                 MutationCommand::RemoveNode { node } => {
                     // Note the node's own coordinates into the ledger (GitHub issue #271) *before*
                     // removal, same "resolve while it's still live" reasoning as `old_point_nodes`
-                    // above — `field.point_of` returns `None` once `try_remove_node` has removed it.
+                    // above — `field.cell_of` returns `None` once `try_remove_node` has removed it.
                     // Needed for a node that was never itself minted mid-run (e.g. the field's own
                     // original base nodes), whose coordinates otherwise exist nowhere once gone from
                     // both `Field` and the final snapshot.
                     if let (Some(state), Some(point)) =
-                        (debug_state.as_deref_mut(), maze.field.point_of(node))
+                        (debug_state.as_deref_mut(), maze.field.cell_of(node))
                     {
                         state.note(node, point);
                     }
@@ -235,7 +245,7 @@ pub fn apply_commands<T: Tessellation>(
                     // resolved while still live; its point is `at`'s own (every old node lives there).
                     if let (Some(state), Some(old_nodes)) =
                         (debug_state.as_deref_mut(), old_point_nodes.as_ref())
-                        && let Some(point) = maze.field.point_of(at)
+                        && let Some(point) = maze.field.cell_of(at)
                     {
                         for &old in old_nodes {
                             state.note(old, point);
@@ -256,6 +266,24 @@ pub fn apply_commands<T: Tessellation>(
                 }
             }
         };
+        // A removed or replaced node may be the maze's start/finish: move the endpoint onto the
+        // point's surviving node instead of leaving `meta` pointing at a node no longer in the
+        // field.
+        let mut retargeted: Vec<QcEvent> = Vec::new();
+        if ok {
+            match (&cmd, removed_node_point, &replaced_nodes) {
+                (MutationCommand::RemoveNode { node }, Some((level, point)), _) => {
+                    let survivors = maze.field.nodes_at(level, point).to_vec();
+                    retargeted = retarget_endpoints(&mut maze.meta, &[*node], &survivors);
+                }
+                (MutationCommand::ReplacePointNodes { .. }, _, Some(new_nodes)) => {
+                    if let Some(old_nodes) = old_point_nodes.as_deref() {
+                        retargeted = retarget_endpoints(&mut maze.meta, old_nodes, new_nodes);
+                    }
+                }
+                _ => {}
+            }
+        }
         if ok {
             applied += 1;
         }
@@ -271,8 +299,46 @@ pub fn apply_commands<T: Tessellation>(
         {
             log.emit(event);
         }
+        if let Some(log) = event_log.as_mut() {
+            for event in retargeted {
+                log.emit(event);
+            }
+        }
     }
     ApplyOutcome { proposed, applied }
+}
+
+/// Moves `meta.start`/`meta.finish` off any node in `removed` onto one of `survivors` (the nodes
+/// now at the same point, slot-0 first), returning the matching `StartSet`/`FinishSet` events so
+/// an event-log replay sees the endpoint move too. Each endpoint takes the first survivor the other
+/// endpoint doesn't already hold, so two endpoints on one split point never collapse into one node
+/// while the point still has two; with a single survivor both land on it.
+fn retarget_endpoints(
+    meta: &mut MazeMeta,
+    removed: &[NodeId],
+    survivors: &[NodeId],
+) -> Vec<QcEvent> {
+    let pick = |other: Option<NodeId>| {
+        survivors
+            .iter()
+            .copied()
+            .find(|&n| Some(n) != other)
+            .or_else(|| survivors.first().copied())
+    };
+    let mut events = Vec::new();
+    if meta.start.is_some_and(|n| removed.contains(&n))
+        && let Some(survivor) = pick(meta.finish.filter(|n| !removed.contains(n)))
+    {
+        meta.start = Some(survivor);
+        events.push(QcEvent::StartSet(survivor));
+    }
+    if meta.finish.is_some_and(|n| removed.contains(&n))
+        && let Some(survivor) = pick(meta.start)
+    {
+        meta.finish = Some(survivor);
+        events.push(QcEvent::FinishSet(survivor));
+    }
+    events
 }
 
 /// Builds the `QcEvent` mirroring `cmd` — the mutating variant when `applied`, the matching
@@ -517,7 +583,7 @@ pub(super) fn qc_event_proposed_for_command<T: Tessellation>(
             let old_nodes = maze
                 .field
                 .level_of(*at)
-                .zip(maze.field.point_of(*at))
+                .zip(maze.field.cell_of(*at))
                 .map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
                 .unwrap_or_default();
             QcEvent::PointNodesReplaceProposed {

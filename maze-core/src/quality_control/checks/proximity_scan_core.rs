@@ -153,9 +153,14 @@ fn own_anchor_nearest(
 ) -> Option<(usize, usize)> {
     let mut best: Option<(usize, usize)> = None;
     for own_node in own.nodes() {
-        if let Some((d, i)) =
-            nearest_candidate_within(nav, own_node, &edge_filter, max_dist, ScanDirection::Forward, targets)
-            && best.is_none_or(|(bd, _)| d < bd)
+        if let Some((d, i)) = nearest_candidate_within(
+            nav,
+            own_node,
+            &edge_filter,
+            max_dist,
+            ScanDirection::Forward,
+            targets,
+        ) && best.is_none_or(|(bd, _)| d < bd)
         {
             best = Some((d, i));
         }
@@ -367,13 +372,14 @@ mod tests {
     use crate::graph::nav::build_nav_graph;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     /// A straight `width`-tile corridor, each pair of neighbors joined by a bidirectional `Basic`
     /// edge. Returns the nav graph and a `NodeId` accessor by x-coordinate.
     fn corridor(width: usize) -> (NavGraph, impl Fn(i32) -> NodeId) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -464,7 +470,7 @@ mod tests {
         // One-way edge x=1 -> x=0 only. Scanning forward-only from x=0 can never reach x=1.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -498,7 +504,7 @@ mod tests {
         // genuine pedestrian option, reaching A.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -544,7 +550,7 @@ mod tests {
         // still let the parallel Basic edge count as pedestrian proximity.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -581,8 +587,7 @@ mod tests {
         // Multi anchor with two nodes (x=0, x=5) on a 6-wide corridor -- the nearer of the two
         // (x=5, 1 hop from a candidate at x=4) must win over x=0 (4 hops).
         let (nav, p) = corridor(6);
-        let candidates: Vec<(Vec<NodeId>, ())> =
-            vec![(vec![p(0), p(5)], ()), (vec![p(4)], ())];
+        let candidates: Vec<(Vec<NodeId>, ())> = vec![(vec![p(0), p(5)], ()), (vec![p(4)], ())];
         let groups = pairwise_graph_proximity_scan(
             &nav,
             &candidates,
@@ -623,7 +628,10 @@ mod tests {
             1,
             "x=0's scan must skip excluded x=1 and still find x=2"
         );
-        assert_eq!(groups.iter().find(|(g, _)| g[0] == p(0)).unwrap().0[1], p(2));
+        assert_eq!(
+            groups.iter().find(|(g, _)| g[0] == p(0)).unwrap().0[1],
+            p(2)
+        );
     }
 
     #[test]

@@ -1,13 +1,14 @@
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
-import type { PresetConnectionState } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
+import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
-import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
+import { type SplitFaceKind, canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
+import { splitShapeBinding } from "./splitShape";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
+import { refusedRotation, type SplitRotationResult } from "./splitRotationResult";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -24,7 +25,7 @@ export interface PresetConnectionEntry {
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "clear";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "clear" | "move" | "settings";
 
 export interface FieldEdge {
   key: string;
@@ -160,6 +161,22 @@ export function mapOnLevel<T>(map: Map<string, T>, level: number | undefined): M
   return result;
 }
 
+/** `lockedNodes` with the lock a live drag carries (GitHub issue #748) shown on `override.point`'s
+ *  original node, on the lock's own floor, instead of its committed node. A lock already there is
+ *  replaced in the preview, as it would be on drop. */
+export function lockedNodesWithMovedLock(
+  lockedNodes: Map<string, NodeLockKind>,
+  override: { from: PresetEndpoint; point: [number, number] },
+): Map<string, NodeLockKind> {
+  const fromKey = presetEndpointKey(override.from);
+  const kind = lockedNodes.get(fromKey);
+  if (!kind) return lockedNodes;
+  const next = new Map(lockedNodes);
+  next.delete(fromKey);
+  next.set(presetEndpointKey(presetEndpoint(override.point, undefined, override.from.level)), kind);
+  return next;
+}
+
 export function setOnLevel(set: Set<string>, level: number | undefined): Set<string> {
   const suffix = level === undefined ? undefined : `@${level}`;
   const result = new Set<string>();
@@ -180,7 +197,7 @@ export function setOnLevel(set: Set<string>, level: number | undefined): Set<str
 export function pickTeleportEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   teleports: PresetTeleportEntry[],
 ): PresetTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
@@ -205,7 +222,7 @@ export function pickTeleportEndpointAt(
 export function pickVerticalPassageEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   passages: PresetVerticalPassageEntry[],
   activeLevel: number | undefined,
 ): PresetVerticalPassageEndpointHit | null {
@@ -234,7 +251,7 @@ export function pickVerticalPassageEndpointAt(
 export function pickElevatorEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   elevators: PresetElevatorEntry[],
   activeLevel: number | undefined,
 ): PresetElevatorEndpointHit | null {
@@ -326,10 +343,10 @@ export function edgeKey(a: [number, number], b: [number, number]): string {
   return `${fa[0]},${fa[1]}-${fb[0]},${fb[1]}`;
 }
 
-export function resolveCells(cfg: TessellationConfig, customPoints?: Set<number>): [number, number][] {
+export function resolveCells(cfg: FieldConfig, customPoints?: Set<number>, smooth = false): [number, number][] {
   if (customPoints && customPoints.size > 0)
     return Array.from(customPoints).map(k => decodePoint(k) as [number, number]);
-  return configAllCells(cfg);
+  return configAllCells(cfg, smooth);
 }
 
 /** Per-floor field cells (GitHub issue #340) — `level === undefined` (floor 0) or any other level
@@ -337,15 +354,16 @@ export function resolveCells(cfg: TessellationConfig, customPoints?: Set<number>
  * multi-floor validity/auto-lock function below takes a `resolveFieldAt` callback instead of a
  * single `cfg`, since a flat, maze-wide preset collection can hold entries for several floors at
  * once, each with its own field shape (`FloorFieldConfig`, GitHub issue #338). */
-export type ResolveFieldAt = (level: number | undefined) => { cfg: TessellationConfig; customPoints?: Set<number> } | undefined;
+export type ResolveFieldAt = (level: number | undefined) => { cfg: FieldConfig; customPoints?: Set<number>; smooth?: boolean } | undefined;
 
 /** One floor's own field, for `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340) —
  * `level` is that floor's 0-based index (matches `PresetEndpoint.level`; the first entry is
  * implicitly floor 0). */
 export interface LevelField {
   level: number | undefined;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   customPoints?: Set<number>;
+  smooth?: boolean;
 }
 
 /**
@@ -364,8 +382,8 @@ export function computeAutoLockedNodes(
   presetSplitPoints: Record<string, number[]> = {},
 ): Set<string> {
   const result = new Set<string>();
-  for (const { level, cfg, customPoints } of fields) {
-    const cells = resolveCells(cfg, customPoints);
+  for (const { level, cfg, customPoints, smooth } of fields) {
+    const cells = resolveCells(cfg, customPoints, smooth);
     const cellSet = new Set<number>();
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
 
@@ -509,7 +527,7 @@ export function resolvePresetSplitTargets(
 export function presetSplitNodeFaceKinds(
   endpoint: PresetEndpoint,
   point: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   inFieldCells: Set<string>,
   presetConnections: Map<string, PresetConnectionEntry>,
   presetSplitPoints: Record<string, number[]>,
@@ -569,7 +587,7 @@ function presetDecidedFaceIndicesOf(
   candidatePoint: [number, number],
   candidateForms: PresetEndpoint[],
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]>,
 ): Set<number> {
   const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
@@ -610,7 +628,7 @@ function selectExistingPresetFaceOwner(
   neighborPoint: [number, number],
   targetFace: number,
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]>,
 ): PresetEndpoint | null {
   const matches = candidates.filter((c) => presetDecidedFaceIndicesOf(neighborPoint, [c], presetConnections, cfg, presetSplitPoints).has(targetFace));
@@ -623,8 +641,8 @@ function selectExistingPresetFaceOwner(
  * (`selectExistingPresetFaceOwner`) first, then geometry evidence (`canCompleteOppositePair`, does
  * this candidate's OWN other decided faces complete a bridge/diagonal pair with the new face), then
  * the neighbor's active UI slot or original node, restricted to candidates that do NOT already hold a
- * finished opposite pair (`hasCompleteOppositePair` — a 0/1-decided-face candidate is always safe to
- * extend). `assignedThisRotation` guards the geometry tier against the same neighbor node being
+ * finished opposite pair (`isFinishedSplitPair` — a 0/1-decided-face candidate, or the only
+ * node of a plain point, is always safe to extend). `assignedThisRotation` guards the geometry tier against the same neighbor node being
  * claimed by two different new faces within one multi-move rotation, same as the post-edit side.
  *
  * Returns `null` when EVERY candidate at `newNeighbor` already holds a finished pair (e.g. rotating
@@ -634,7 +652,7 @@ function selectExistingPresetFaceOwner(
 function resolvePresetFaceOwner(
   point: [number, number],
   newNeighbor: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetConnections: Map<string, PresetConnectionEntry>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
@@ -661,7 +679,7 @@ function resolvePresetFaceOwner(
     }
   }
 
-  const safeCandidates = candidates.filter((c) => !hasCompleteOppositePair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), degree));
+  const safeCandidates = candidates.filter((c) => !isFinishedSplitPair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), degree, candidates.length));
   if (safeCandidates.length === 0) return null;
 
   const active = resolvePresetActiveEndpoint(newNeighbor, presetActiveSplitNode, level);
@@ -684,19 +702,19 @@ function resolvePresetFaceOwner(
  * resolved via `resolvePresetFaceOwner` (geometry evidence, then a bridge-safety-aware fallback),
  * not simply the new neighbor's original node.
  *
- * Refuses (returns the input map unchanged, same reference) if any face that currently carries a
- * connection would land on a neighbor outside the field — there'd be nowhere left to draw it. */
+ * Refuses with `refusalReason: "outside_field"` if any face that currently carries a connection
+ * would land on a neighbor outside the field — there'd be nowhere left to draw it. */
 export function rotatePresetSplitPoint(
   presetConnections: Map<string, PresetConnectionEntry>,
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
   level?: number,
-): Map<string, PresetConnectionEntry> {
+): SplitRotationResult<Map<string, PresetConnectionEntry>> {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const n = offsets.length;
   if (n === 0) return presetConnections;
@@ -723,7 +741,9 @@ export function rotatePresetSplitPoint(
 
       const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
-      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return presetConnections; // boundary — refuse entirely
+      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) {
+        return refusedRotation(new Map(presetConnections), "outside_field");
+      }
 
       moves.push({ key, ep, oldNeighborNode, newNeighbor, entry });
     }
@@ -803,7 +823,7 @@ export function rotatePresetSplitPointBreaksNeighborShape(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
@@ -812,24 +832,24 @@ export function rotatePresetSplitPointBreaksNeighborShape(
   const after = rotatePresetSplitPoint(
     presetConnections, point, slotIds, direction, cfg, cellSet, presetSplitPoints, presetActiveSplitNode, level,
   );
-  if (after === presetConnections) return false; // refused — nothing changes
+  if (after.refusalReason) return false; // refused — nothing changes
 
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   for (const [dx, dy] of offsets) {
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
     const neighborEndpoints = allNodesAt(neighbor, presetSplitPoints, level);
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+    const neighborBinding = splitShapeBinding(cfg, neighbor[0], neighbor[1]);
 
     const before = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
-    if (detectSplitSpecialShapeKind(before, canonicalOrder) === null) continue; // wasn't recognized before — nothing to break
+    if (detectSplitSpecialShapeKind(before, neighborBinding) === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, after, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    if (detectSplitSpecialShapeKind(afterKinds, canonicalOrder) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, neighborBinding) === null) return true;
   }
   return false;
 }
@@ -855,10 +875,27 @@ export function materializeReset(
   return next;
 }
 
+/** Edge mutation applied by `applyTool`: a toolbar tool, or `one_way_flip` — the settings tool's
+ *  direction swap of an existing one-way edge (GitHub issue #748). */
+export type PresetEdgeToolMode = PresetConnectionTool | "one_way_flip";
+
+/** Current preset state of the face between `edge.from`/`edge.to`, resolved through the same
+ *  active-node/floor key `applyTool` writes to. `undefined` when the face has no entry. */
+export function presetEdgeStateAt(
+  connections: Map<string, PresetConnectionEntry>,
+  edge: FieldEdge,
+  activeMap: Record<string, PresetEndpoint> = {},
+  level?: number,
+): PresetConnectionClientState | undefined {
+  const from = resolvePresetActiveEndpoint(edge.from, activeMap, level);
+  const to = resolvePresetActiveEndpoint(edge.to, activeMap, level);
+  return connections.get(presetEdgeKey(from, to))?.state;
+}
+
 export function applyTool(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
-  tool: PresetConnectionTool,
+  tool: PresetEdgeToolMode,
   defaultEdgeState: PresetConnectionClientState = "undefined",
   activeMap: Record<string, PresetEndpoint> = {},
   level?: number,
@@ -878,15 +915,14 @@ export function applyTool(
     return materializeReset(connections, { ...edge, key }, defaultEdgeState, from, to);
   }
   const next = new Map(connections);
-  if (tool === "one_way") {
+  if (tool === "one_way" || tool === "one_way_flip") {
     const current = connections.get(key);
-    if (current?.state === "one_way_forward") {
-      next.set(key, { from, to, state: "one_way_backward", source: "user" });
-    } else if (current?.state === "one_way_backward") {
-      next.set(key, { from, to, state: "one_way_forward", source: "user" });
-    } else {
-      next.set(key, { from, to, state: "one_way_forward", source: "user" });
-    }
+    const isOneWay = current?.state === "one_way_forward" || current?.state === "one_way_backward";
+    // The one-way tool creates a forward one-way edge or reverses an existing one; `one_way_flip`
+    // (settings tool, GitHub issue #748) only reverses and leaves any other face unchanged.
+    if (tool === "one_way_flip" && !isOneWay) return connections;
+    const state: PresetConnectionState = current?.state === "one_way_forward" ? "one_way_backward" : "one_way_forward";
+    next.set(key, { from, to, state, source: "user" });
     return next;
   }
   const state: PresetConnectionState = tool === "wall" ? "wall" : "passage";

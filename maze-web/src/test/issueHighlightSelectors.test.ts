@@ -1,25 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
 import type { NodeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
-// getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
+// getCellCenter/getCellVertices (via cartesianCache's getCartesian) delegate to wasm, unavailable
 // in this unit-test environment -- mock with the canonical projections used by the three
 // tessellation families.
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { tessellation_type: "square" | "hex" | "tri"; points: [number, number][] }) => cfg.points.map(([x, y]) => {
-    if (cfg.tessellation_type === "hex") return [x * 1.5, -(y * Math.sqrt(3) + x * Math.sqrt(3) / 2)];
-    if (cfg.tessellation_type === "tri") {
-      const h = Math.sqrt(3);
-      return [x + 0.5, -((x + y) % 2 === 0 ? y * h + h / 3 : y * h + 2 * h / 3)];
-    }
-    return [x, y];
-  }),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSelectors");
 const { buildRegionContours } = await import("../pixi/renderers/RegionHighlightRenderer");
 
-const cfg: TessellationConfig = { type: "square", width: 4, height: 1 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 1 });
 
 function node(id: number, x: number, y: number): NodeDto {
   return { id, x, y, i: 0 };
@@ -44,14 +44,14 @@ describe("buildRegionGeometry", () => {
   });
 
   it("merges adjacent hexagonal cells into one contour", () => {
-    const hexCfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3 } as TessellationConfig;
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }) as FieldConfig;
     const nodes = [node(0, 0, 0), node(1, 1, 0)];
     const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, hexCfg);
     expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
   });
 
   it("merges adjacent triangular cells into one contour", () => {
-    const triangleCfg: TessellationConfig = { type: "triangle_rect", cols: 3, rows: 3 };
+    const triangleCfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 3, rows: 3 });
     const nodes = [node(0, 0, 0), node(1, 1, 0)];
     const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, triangleCfg);
     expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
@@ -79,7 +79,7 @@ describe("buildRegionGeometry", () => {
   });
 
   it("keeps corner-touching triangles as two separate contours instead of one self-intersecting shape (GitHub issue #618)", () => {
-    const triangleCfg: TessellationConfig = { type: "triangle_rect", cols: 5, rows: 5 };
+    const triangleCfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 5, rows: 5 });
     // (0,0) and (1,1) are both "up" triangles (parity even) that touch only at one apex vertex --
     // not tessellation neighbors, so they must trace as independent contours.
     const nodes = [node(0, 0, 0), node(1, 1, 1)];

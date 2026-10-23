@@ -1,4 +1,5 @@
 // GitHub issue #219 — a point can resolve to more than one NodeId via Field::add_node_at.
+use std::sync::Arc;
 
 use maze_core::IdGenerator;
 use maze_core::space::{Field, SquarePoint, SquareTessellation, Tessellation, square_rect};
@@ -7,7 +8,7 @@ use maze_core::space::{TriPoint, TriTessellation, tri_rect};
 
 fn make_square_field(width: usize, height: usize) -> (Field<SquareTessellation>, IdGenerator) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(width, height), &mut ids).unwrap();
+    let field = Field::new(Arc::default(), square_rect(width, height), &mut ids).unwrap();
     (field, ids)
 }
 
@@ -96,7 +97,7 @@ fn build_nodes_registers_added_nodes_in_the_graph() {
 fn assert_multi_node_behaves_the_same<T: Tessellation>(
     mut field: Field<T>,
     mut ids: IdGenerator,
-    point: T::Point,
+    point: T::CellId,
 ) {
     let original = field.nodes_at(point)[0];
     let added = field.add_node_at(point, &mut ids);
@@ -108,13 +109,15 @@ fn assert_multi_node_behaves_the_same<T: Tessellation>(
 #[test]
 fn hex_tessellation_supports_multi_node_points_the_same_way() {
     let mut ids = IdGenerator::new();
-    let field: Field<HexTessellation> = Field::new(hex_parallelogram(3, 3), &mut ids).unwrap();
+    let field: Field<HexTessellation> =
+        Field::new(Arc::default(), hex_parallelogram(3, 3), &mut ids).unwrap();
     assert_multi_node_behaves_the_same(field, ids, HexPoint { q: 1, r: 1 });
 }
 
 #[test]
 fn tri_tessellation_supports_multi_node_points_the_same_way() {
     let mut ids = IdGenerator::new();
-    let field: Field<TriTessellation> = Field::new(tri_rect(4, 3), &mut ids).unwrap();
+    let field: Field<TriTessellation> =
+        Field::new(Arc::default(), tri_rect(4, 3), &mut ids).unwrap();
     assert_multi_node_behaves_the_same(field, ids, TriPoint { col: 2, row: 1 });
 }

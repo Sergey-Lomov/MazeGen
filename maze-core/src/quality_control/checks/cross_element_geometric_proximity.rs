@@ -164,7 +164,7 @@ pub(super) fn aggregate_pairs(
 /// two occurrences both carry its edge's own `T::edge_position` as `xy` rather than either
 /// endpoint's own position, matching `OneWayGroupGeometricProximityCheck`'s own metric (a one-way
 /// renders on the tile border it crosses, not at either endpoint node) — see GitHub issue #376's
-/// follow-up. Every other element type's `xy` is `T::cartesian(point)`, its endpoint node's own
+/// follow-up. Every other element type's `xy` is `Tessellation::cartesian(point)`, its endpoint node's own
 /// position.
 ///
 /// Zero enabled types is a silent no-op (D7): the check stays a valid instance in the UI, it
@@ -264,6 +264,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "cross_element_geometric_proximity";
 
@@ -313,7 +314,7 @@ mod tests {
     ) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(w, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
         let mut g = Graph::new();
@@ -378,7 +379,7 @@ mod tests {
         // a valid same-type scan (this subsumes the old per-type `*_group_geometric_proximity`).
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(8, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -486,7 +487,7 @@ mod tests {
     fn start_and_finish_pair_is_flagged() {
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -519,7 +520,7 @@ mod tests {
         // edge-position measurement must not.
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 3, y: 0 }, &mut ids); // split tile
         let mut g = Graph::new();
@@ -549,7 +550,7 @@ mod tests {
     fn route_with_one_way_then_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -601,7 +602,7 @@ mod tests {
         // edge). protect_route must NOT exclude this pair.
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // split
         let mut g = Graph::new();
@@ -634,12 +635,17 @@ mod tests {
     /// the same 3 floors. Matching-floor stops of adjacent elevators are 1 tile apart.
     fn elevators(n_elevators: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
                 mf.add_level(
-                    Field::<SquareTessellation>::new(square_rect(n_elevators.max(1), 1), &mut ids)
-                        .unwrap(),
+                    Field::<SquareTessellation>::new(
+                        Arc::default(),
+                        square_rect(n_elevators.max(1), 1),
+                        &mut ids,
+                    )
+                    .unwrap(),
                 )
             })
             .collect();
@@ -714,11 +720,14 @@ mod tests {
     #[test]
     fn same_floor_only_ignores_a_cross_floor_pair() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
+        );
         mf.add_node_at(top, SquarePoint { x: 0, y: 0 }, &mut ids); // split tile on top floor
         let mut g = Graph::new();
         for n in mf.all_node_ids() {

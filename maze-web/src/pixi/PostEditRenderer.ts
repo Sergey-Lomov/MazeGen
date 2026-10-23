@@ -20,7 +20,10 @@ import { postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
-import type { NodeDto } from "../wasm/types";
+import type { EdgeDto, NodeDto } from "../wasm/types";
+import type { FieldConfig } from "../fieldConfig";
+import type { WallEdge } from "./renderers/types";
+import type { SplitPassagesResult } from "./selectors/mazeSelectors/split";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
@@ -30,7 +33,7 @@ import { activeFloorLevel } from "../store/storeHelpers";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
-import { emptyPostEditHoverState, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
+import { emptyPostEditHoverState, sameHoverCell, sameHoverEdge, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -91,6 +94,19 @@ export class PostEditRenderer extends BaseFieldRenderer {
   // those objects after every post-edit command; retaining the input lets the same hover survive
   // a Reset/Delete click without requiring another pointermove (GitHub issue #592).
   private hoverState: PostEditHoverState = emptyPostEditHoverState();
+
+  // Layer-skip bookkeeping (GitHub issue #739) — a drag preview redraws the scene once per cell the
+  // cursor crosses, and rebuilding the floor/wall/split geometry each time cost ~60 ms of JS plus
+  // as much again in Pixi's geometry rebuild on a ~3000-cell maze. See `sceneBase`/`splitScene`.
+  private sceneBaseCache: { key: unknown[]; base: PostEditSceneBase } | null = null;
+  private splitSceneCache: { base: PostEditSceneBase; specialKey: string; scene: PostEditSplitScene } | null = null;
+  private drawnLayers: {
+    floor: PostEditSceneBase | null;
+    closedCells: { cfg: FieldConfig; cells: [number, number][] } | null;
+    split: PostEditSplitScene | null;
+    walls: { wallEdges: WallEdge[]; split: PostEditSplitScene } | null;
+    issueHighlight: PostEditSceneBase | null;
+  } = { floor: null, closedCells: null, split: null, walls: null, issueHighlight: null };
 
   constructor(container: Container) {
     super();
@@ -165,7 +181,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.floorFields[state.activeFloorId].tessellationConfig;
+    return state.floorFields[state.activeFloorId].fieldConfig;
   }
 
   protected setRootVisible(visible: boolean): void {
@@ -183,6 +199,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * `canvas.fieldEditor.danger` (red) instead of the ordinary hover color — signals a destructive
    * tool the same way the Management section's red Reset button does. */
   updateHover(edge: FieldEdge | null, danger = false): void {
+    // Every pointermove calls this — redrawing an unchanged highlight would still request a full
+    // canvas frame (GitHub issue #739). `hoverState` always mirrors what is drawn.
+    if (this.cfg && sameHoverEdge(this.hoverState.edge, edge) && this.hoverState.edgeDanger === danger) return;
     this.hoverState.edge = edge;
     this.hoverState.edgeDanger = danger;
     if (!this.cfg) return;
@@ -195,6 +214,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * #221's follow-up: highlighting a wall there was misleading about what a click would do).
    * `danger` — see `updateHover`'s doc comment. */
   updateCellHover(cell: [number, number] | null, danger = false): void {
+    // Same per-move dedup as `updateHover` (GitHub issue #739).
+    if (this.cfg && sameHoverCell(this.hoverState.cell, cell) && this.hoverState.cellDanger === danger) return;
     this.hoverState.cell = cell;
     this.hoverState.cellDanger = danger;
     if (!this.cfg) return;
@@ -248,7 +269,13 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.nodes !== prev.nodes ||
       state.activeFloorId !== prev.activeFloorId
     ) {
-      this.redrawIssueHighlight(state);
+      // `redrawAll` above may already have drawn it for the new graph/floor; a hovered-issue change
+      // always needs a fresh draw.
+      const hoveredIssueChanged = state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges
+        || state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups;
+      if (hoveredIssueChanged || (this.cfg && this.drawnLayers.issueHighlight !== this.sceneBase(state, this.cfg))) {
+        this.redrawIssueHighlight(state);
+      }
     }
 
     if (state.postEditTool !== prev.postEditTool || state.postEditTeleportPendingFrom !== prev.postEditTeleportPendingFrom) {
@@ -256,13 +283,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     }
   }
 
-  /** Floor-scopes every post-edit piece of state (GitHub issue #358) — `state.nodes`/`state.edges`
-   * and `postEditDraftEdges`/`postEditDraftTeleports`/`postEditDraftSplitPoints`/
-   * `postEditActiveSplitNode` are all one flat, maze-wide collection now (mirroring preset
-   * connections, GitHub issue #340), but every selector below (`buildMazeWalls`,
-   * `buildSplitPassages`, etc.) is still level-agnostic and expects single-floor-shaped data — a
-   * same-(x,y) node/split point on another floor would otherwise be drawn on top of the active
-   * floor's own. */
   /** Substitutes `state.postEditDragOverride`'s live drag target into whichever one of
    *  `postEditDraftMeta`/`postEditDraftTeleports`/`postEditDraftVerticalPassages` it names (GitHub
    *  issue #545) — the other two pass through unchanged. Purely a rendering-time overlay: the
@@ -325,10 +345,27 @@ export class PostEditRenderer extends BaseFieldRenderer {
     };
   }
 
-  private floorScoped(state: MazeState) {
+  /** Floor-scopes the drag-independent post-edit state (GitHub issue #358) — `state.nodes`/`state.edges`
+   * and `postEditDraftEdges`/`postEditDraftSplitPoints`/`postEditActiveSplitNode` are all one flat,
+   * maze-wide collection now (mirroring preset
+   * connections, GitHub issue #340), but every selector below (`buildMazeWalls`,
+   * `buildSplitPassages`, etc.) is still level-agnostic and expects single-floor-shaped data — a
+   * same-(x,y) node/split point on another floor would otherwise be drawn on top of the active
+   * floor's own. */
+  /** Memoized on the identity of every input it reads (GitHub issue #739): a drag preview changes
+   * none of them, so a teleport/marker/vertical drag reuses the whole floor-scoped base instead of
+   * re-deriving it for every cell the cursor crosses. Everything drag-dependent (meta, teleports,
+   * vertical entities) is layered on top of it in `redrawAll`. */
+  private sceneBase(state: MazeState, cfg: FieldConfig): PostEditSceneBase {
+    const key = [
+      cfg, state.nodes, state.edges, state.floors, state.activeFloorId,
+      state.postEditDraftEdges, state.postEditDraftSplitPoints, state.postEditActiveSplitNode,
+    ];
+    const cached = this.sceneBaseCache;
+    if (cached && cached.key.every((v, i) => v === key[i])) return cached.base;
+
     const level = activeFloorLevel(state);
-    const { postEditDraftMeta: overrideMeta, postEditDraftTeleports: overrideTeleports } = this.dragOverrideFields(state);
-    const { nodes: floorNodes, edges, start, finish } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId, state.start, state.finish);
+    const { nodes: floorNodes, edges } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
     const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
     const nodes = pruneRemovedSplitNodes(floorNodes, postEditDraftSplitPoints);
     const floorNodeIds = new Set(nodes.map((n) => n.id));
@@ -348,31 +385,76 @@ export class PostEditRenderer extends BaseFieldRenderer {
         })
         .filter((entry): entry is readonly [string, PostEditEdge] => entry !== null),
     );
-    // Kept whenever *either* endpoint is on the active floor (mirrors `selectFloorScopedMaze`'s own
-    // "keeps an edge whenever `from` is on the active floor" convention for cross-floor kinds) — a
-    // cross-floor teleport must stay visible/editable from both of its ends, not just the one that
-    // happened to be `from` at creation time. Requiring *both* ends on-level (the pre-fix behavior)
-    // made a cross-floor teleport vanish from every floor's own draft entirely. Only the on-level
-    // endpoint is stripped of its `level` (see above) — an off-floor endpoint is left untouched, so
-    // it still fails the scoped resolver and is silently dropped, same as before this fix.
-    const postEditDraftTeleports: PostEditTeleportEntry[] = overrideTeleports
-      .map((t) => {
-        const from = onLevel(t.from);
-        const to = onLevel(t.to);
-        return from !== undefined || to !== undefined ? { ...t, from: from ?? t.from, to: to ?? t.to } : null;
-      })
-      .filter((t): t is PostEditTeleportEntry => t !== null);
     const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
-    const postEditDraftMeta = overrideMeta === null ? null : {
-      start: overrideMeta.start !== null ? onLevel(overrideMeta.start) ?? null : null,
-      finish: overrideMeta.finish !== null ? onLevel(overrideMeta.finish) ?? null : null,
+
+    // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
+    // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
+    // (see postEditEndpoint.ts's doc comment on the unresolved-endpoint contract).
+    const pointNodeMap = new Map<string, number[]>();
+    for (const nd of nodes) {
+      const k = `${nd.x},${nd.y}`;
+      const list = pointNodeMap.get(k);
+      if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
+    }
+    const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
+    const splitNodeIds = new Set<number>();
+    for (const ids of pointNodeMap.values()) {
+      if (ids.length > 1) for (const id of ids) splitNodeIds.add(id);
+    }
+    const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
+    const draftEdges = postEditEdgesToDto(postEditDraftEdges, resolveSplit);
+
+    const base: PostEditSceneBase = {
+      level,
+      nodes,
+      edges,
+      floorNodeIds,
+      onLevel,
+      postEditDraftSplitPoints,
+      postEditActiveSplitNode,
+      resolveSplit,
+      unscopedResolveSplit,
+      splitNodeIds,
+      draftEdges,
+      unscopedDraftEdges: postEditEdgesToDto(state.postEditDraftEdges ?? {}, unscopedResolveSplit),
+      nodeById: new Map<number, NodeDto>(nodes.map(n => [n.id, n])),
+      resolveNodeLevel: selectNodeLevelResolver(state.nodes),
+      // Teleports never open a wall (`buildMazeWalls` skips them), so walls depend on the draft
+      // edges alone and survive any teleport/marker drag unchanged.
+      wallEdges: buildMazeWalls(nodes, draftEdges, cfg),
     };
-    return { nodes, edges, start, finish, postEditDraftEdges, postEditDraftTeleports, postEditDraftSplitPoints, postEditActiveSplitNode, postEditDraftMeta };
+    this.sceneBaseCache = { key, base };
+    return base;
+  }
+
+  /** Split passages depend on the drag only through `specialNodeIds` restricted to split points'
+   * own nodes (a hub is kept for a marker/teleport endpoint there) — memoized on that subset so a
+   * drag across ordinary cells reuses the previous result and its wall/junction layers. */
+  private splitScene(base: PostEditSceneBase, cfg: FieldConfig, specialNodeIds: ReadonlySet<number>): PostEditSplitScene {
+    const specialKey = [...specialNodeIds].filter((id) => base.splitNodeIds.has(id)).sort((a, b) => a - b).join(",");
+    const cached = this.splitSceneCache;
+    if (cached && cached.base === base && cached.specialKey === specialKey) return cached.scene;
+    const { passages, wallFaces, specialShapes } = buildSplitPassages(
+      base.nodes, base.draftEdges, cfg, specialNodeIds, base.postEditActiveSplitNode, base.postEditDraftSplitPoints,
+    );
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(wallFaces, specialShapes);
+    const scene = { passages, wallFaces, specialShapes, extraWalls, noCapPoints };
+    this.splitSceneCache = { base, specialKey, scene };
+    return scene;
+  }
+
+  /** Forgets which inputs each skippable layer was last drawn from — any path that clears or
+   * repaints those layers outside `redrawAll` must call it, or the next `redrawAll` would skip a
+   * layer that no longer shows what it last drew. */
+  private resetDrawnLayers(): void {
+    this.drawnLayers = { floor: null, closedCells: null, split: null, walls: null, issueHighlight: null };
   }
 
   private redrawIssueHighlight(state: MazeState): void {
     if (!this.cfg) return;
-    const { nodes, edges } = this.floorScoped(state);
+    const base = this.sceneBase(state, this.cfg);
+    this.drawnLayers.issueHighlight = base;
+    const { nodes, edges } = base;
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
     const unscopedNodeById = new Map(state.nodes.map((n) => [n.id, n]));
     const resolveNodeCell = (id: number): [number, number] | undefined => {
@@ -401,7 +483,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     });
   }
 
-  /** Matches against the *unscoped* `state.nodes`, not `floorScoped(state).nodes` — a cross-floor
+  /** Matches against the *unscoped* `state.nodes`, not `sceneBase(...).nodes` — a cross-floor
    *  link/points entity (a vertical passage/elevator/teleport, GitHub issue #546 follow-up) has
    *  endpoints on different floors, and a floor-scoped list only ever contains the active floor's
    *  own nodes, so the other endpoint could never be found there regardless of the fallback
@@ -440,19 +522,16 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
-    const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages, postEditDraftElevators: overrideElevators } = this.dragOverrideFields(state);
-
-    // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
-    // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
-    // (see postEditEndpoint.ts's doc comment on the unresolved-endpoint contract).
-    const pointNodeMap = new Map<string, number[]>();
-    for (const nd of nodes) {
-      const k = `${nd.x},${nd.y}`;
-      const list = pointNodeMap.get(k);
-      if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
-    }
-    const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
+    const base = this.sceneBase(state, cfg);
+    const { nodes, resolveSplit, unscopedResolveSplit, floorNodeIds, nodeById } = base;
+    const {
+      postEditDraftMeta: overrideMeta, postEditDraftTeleports: overrideTeleportsUnscoped,
+      postEditDraftVerticalPassages: overrideVerticalPassages, postEditDraftElevators: overrideElevators,
+    } = this.dragOverrideFields(state);
+    const postEditDraftMeta = overrideMeta === null ? null : {
+      start: overrideMeta.start !== null ? base.onLevel(overrideMeta.start) ?? null : null,
+      finish: overrideMeta.finish !== null ? base.onLevel(overrideMeta.finish) ?? null : null,
+    };
 
     const start = postEditDraftMeta?.start != null ? resolveEndpoint(postEditDraftMeta.start, resolveSplit) ?? null : null;
     const finish = postEditDraftMeta?.finish != null ? resolveEndpoint(postEditDraftMeta.finish, resolveSplit) ?? null : null;
@@ -465,11 +544,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // a whole entry (both directions of a two-way one) once either endpoint fails to resolve. That
     // silently left only the arrival-only cross-floor pass below to draw *both* ends of the pair as
     // an "exit" badge with an arrow, instead of one real departure marker plus one arrival badge.
-    const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
-    const floorNodeIds = new Set(nodes.map((n) => n.id));
     const unscopedTeleportEdges = postEditTeleportsToDto(overrideTeleportsUnscoped, unscopedResolveSplit);
     const activeEdges = [
-      ...postEditEdgesToDto(postEditDraftEdges, resolveSplit),
+      ...base.draftEdges,
       ...floorScopedTeleportEdges(unscopedTeleportEdges, floorNodeIds),
     ];
 
@@ -483,8 +560,13 @@ export class PostEditRenderer extends BaseFieldRenderer {
       if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
     }
 
-    const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+    // Layers below are skipped when their inputs are unchanged since the last draw (GitHub issue
+    // #739) — re-rendering them would also make Pixi rebuild their whole geometry on the next frame.
+    if (this.drawnLayers.floor !== base) {
+      const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
+      this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+      this.drawnLayers.floor = base;
+    }
     this.backgroundImage.render(state);
 
     // Split points (GitHub issue #223) render every node's passages at once, as colored lines
@@ -499,37 +581,47 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // `buildVerticalConnectionMarkers`'s own call below needs `state.edges` — an arrival-only edge's
     // `from` lives on another floor and is missing from any floor-scoped list.
     const closed = buildClosedCells(nodes, activeEdges, state.edges);
-    this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
+    const drawnClosed = this.drawnLayers.closedCells;
+    if (drawnClosed === null || drawnClosed.cfg !== cfg || !sameCells(drawnClosed.cells, closed)) {
+      this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
+      this.drawnLayers.closedCells = { cfg, cells: closed };
+    }
 
-    const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, postEditActiveSplitNode, postEditDraftSplitPoints);
+    const split = this.splitScene(base, cfg, specialNodeIds);
+    const { passages: splitPassages } = split;
 
-    const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
-    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(wallFaces, specialShapes);
-    this.walls.render({ edges: wallEdges }, cfg, undefined, undefined, extraWalls, noCapPoints);
+    const { wallEdges } = base;
+    const drawnWalls = this.drawnLayers.walls;
+    if (drawnWalls === null || drawnWalls.wallEdges !== wallEdges || drawnWalls.split !== split) {
+      this.walls.render({ edges: wallEdges }, cfg, undefined, undefined, split.extraWalls, split.noCapPoints);
+      this.drawnLayers.walls = { wallEdges, split };
+    }
 
-    this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
+    if (this.drawnLayers.split !== split) {
+      this.splitJunctions.render({ passages: splitPassages, wallFaces: split.wallFaces, specialShapes: split.specialShapes });
+      this.drawnLayers.split = split;
+    }
 
-    const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     // Cross-floor teleports (badge rendering, mirrors `GenerationRenderer`) — `unscopedActiveEdges`
     // resolves post-edit's own *draft* teleports (not `state.edges`, which may be stale/pre-confirm)
-    // without the active-floor filter `postEditDraftTeleports` above applies, so the reverse-
+    // without the active-floor filter `floorScopedTeleportEdges` above applies, so the reverse-
     // direction edge of a bidirectional cross-floor pair (its own `from` on the other floor) is
     // available for `byPair`'s bidirectional check the same way `TeleportFloorContext`'s own doc
     // comment requires. Must read `overrideTeleportsUnscoped` (the drag-overridden field), not raw
     // `state.postEditDraftTeleports` — a same-floor drag's in-progress override is already applied
-    // by the time it reaches `floorScoped`'s own `postEditDraftTeleports`, so this stale-vs-live
-    // mismatch never showed there, but a CROSS-floor drag's badge/blocked-cells context kept reading
+    // to the floor-scoped `activeEdges`, so this stale-vs-live mismatch never showed there, but a
+    // CROSS-floor drag's badge/blocked-cells context kept reading
     // the pre-drag position from here while `activeEdges` below already drew the live dragged one,
     // rendering both a stale and a live copy for the whole duration of every drag (not just the
     // first one, unlike the vertical-passage confirmed-mirror bug this resembles — there's no
     // confirmed-graph fallback for teleports, this was purely two different reads of the draft
     // disagreeing on which one was current).
     const unscopedActiveEdges = [
-      ...postEditEdgesToDto(state.postEditDraftEdges ?? {}, unscopedResolveSplit),
+      ...base.unscopedDraftEdges,
       ...unscopedTeleportEdges,
     ];
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
-    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const { resolveNodeLevel } = base;
     // `unscopedEdges` resolves cross-floor pairs against post-edit's own draft edges; the badge
     // blocked-cells map reads `state.edges` ∪ draft. Draft start/finish (resolved to node ids
     // above), not `state.start`/`.finish` which point at the pre-edit endpoints until confirm.
@@ -563,18 +655,17 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // the entity round-trips fine through the "Changes"/link-bubble UI (which already reads through
     // an unscoped resolver).
     const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, overrideElevators, unscopedResolveSplit);
-    const allVerticalEdges = draftVerticalEdges;
     // Positioning split-node vertical markers also needs the ordinary directed graph edges so
     // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate
     // for pair/arrival semantics, while feeding the full confirmed + draft graph to the selector.
-    const allMarkerEdges = [...allVerticalEdges, ...unscopedActiveEdges];
+    const allMarkerEdges = [...draftVerticalEdges, ...unscopedActiveEdges];
     const floorScopedVerticalEdges = draftVerticalEdges.filter((e) => {
       const fromNode = nodeById.get(e.from);
       return fromNode !== undefined;
     });
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
       nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
-      selectVerticalPassagePairSet(allVerticalEdges), allMarkerEdges,
+      selectVerticalPassagePairSet(draftVerticalEdges), allMarkerEdges,
     );
 
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
@@ -630,13 +721,15 @@ export class PostEditRenderer extends BaseFieldRenderer {
       borderWidth: 3,
     }, cfg);
     this.redrawHoveredEntity(state);
-    this.redrawIssueHighlight(state);
+    // Reads only `sceneBase` inputs plus the hovered issue, which `onStoreChange` redraws on its own.
+    if (this.drawnLayers.issueHighlight !== base) this.redrawIssueHighlight(state);
   }
 
   protected clearAll(): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.hoverState = emptyPostEditHoverState();
+    this.resetDrawnLayers();
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
@@ -689,6 +782,40 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.entityHighlightContainer.destroy();
     this.issueHighlightContainer.destroy();
   }
+}
+
+/** Drag-independent, floor-scoped part of the post-edit scene — see `PostEditRenderer.sceneBase`. */
+interface PostEditSceneBase {
+  level: number | undefined;
+  nodes: NodeDto[];
+  edges: EdgeDto[];
+  floorNodeIds: Set<number>;
+  onLevel: (ep: PostEditEndpoint) => PostEditEndpoint | undefined;
+  postEditDraftSplitPoints: Record<string, number[]>;
+  postEditActiveSplitNode: Record<string, PostEditEndpoint>;
+  resolveSplit: (point: [number, number], slotId: number) => number | undefined;
+  unscopedResolveSplit: (point: [number, number], slotId: number) => number | undefined;
+  /** Every node of a point with more than one node on this floor. */
+  splitNodeIds: Set<number>;
+  draftEdges: EdgeDto[];
+  unscopedDraftEdges: EdgeDto[];
+  nodeById: Map<number, NodeDto>;
+  resolveNodeLevel: ReturnType<typeof selectNodeLevelResolver>;
+  wallEdges: WallEdge[];
+}
+
+/** `buildSplitPassages`' output plus the split wall paths derived from it — see `PostEditRenderer.splitScene`. */
+type PostEditSplitScene = SplitPassagesResult & {
+  extraWalls: ReturnType<typeof collectSplitWallPaths>["paths"];
+  noCapPoints: ReturnType<typeof collectSplitWallPaths>["noCapPoints"];
+};
+
+function sameCells(a: [number, number][], b: [number, number][]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+  }
+  return true;
 }
 
 /** Same `(x,y) -> NodeId[]` map as `PostEditController`'s own `buildNodeMap`, but spanning every

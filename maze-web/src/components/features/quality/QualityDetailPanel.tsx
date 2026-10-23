@@ -39,22 +39,23 @@ export function resolveNestedStrategyVM(topLevel: NestedStrategyVM[], path: Path
 export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props) {
   const rules = useMazeStore((s) => s.rules);
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
-  const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
 
-  if (!selection) {
-    return (
-      <div style={styles.detailPanel}>
-        <span style={styles.detailEmpty}>{m["quality.select_to_view"]()}</span>
-      </div>
-    );
-  }
+  const emptyPanel = (
+    <div style={styles.detailPanel}>
+      <span style={styles.detailEmpty}>{m["quality.select_to_view"]()}</span>
+    </div>
+  );
+
+  // A selection can outlive its target — e.g. after a quality preset load replaced every rule
+  // (GitHub issue #751) — so an unresolved selection shows the same hint as no selection.
+  if (!selection) return emptyPanel;
 
   if (selection.type === "check") {
     const check = vm.checks.find((c) => c.id === selection.id);
-    if (!check) return <div style={styles.detailPanel} />;
+    if (!check) return emptyPanel;
     const storeValues = rules.find((r) => r.id === check.ruleId)?.checks.find((c) => c.localId === check.localId)?.params ?? {};
     return (
       <ParamizedDetail
@@ -81,7 +82,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
   if (selection.type === "strategy") {
     const slot = vm.strategySlots.find((s) => s.ruleId === selection.ruleId);
     const strategy = slot?.strategy;
-    if (!strategy) return <div style={styles.detailPanel} />;
+    if (!strategy) return emptyPanel;
     const passageOverrides = strategy.id === "add_vertical_passage"
       ? addVerticalPassageOverrides(slot.params.passage_type)
       : null;
@@ -92,8 +93,8 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         description={resolveStrategyDescription(strategy.id)}
         warning={strategy.experimental}
         params={strategy.params}
-        storeValues={strategyParams[strategy.id] ?? {}}
-        onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}
+        storeValues={rules.find((r) => r.id === slot.ruleId)?.strategyParams ?? {}}
+        onCommit={(paramId, value) => setStrategyParam(slot.ruleId, paramId, value)}
         flushRef={flushRef}
         contextId={strategy.id}
         valueOverrides={passageOverrides?.values}
@@ -125,7 +126,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
   if (selection.type === "nested_strategy") {
     const slot = vm.strategySlots.find((s) => s.ruleId === selection.ruleId);
     const node = slot ? resolveNestedStrategyVM(slot.nestedStrategies, selection.path) : undefined;
-    if (!slot || !node) return <div style={styles.detailPanel} />;
+    if (!slot || !node) return emptyPanel;
     const { path } = selection;
     const rawNested = findRawNested(rules.find((r) => r.id === selection.ruleId), path);
     return (
@@ -186,7 +187,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
       param = descriptor ? { id: descriptor.id, label: resolveParamLabel(descriptor.id, descriptor.label), kind: descriptor.kind } : undefined;
     }
 
-    if (!param) return <div style={styles.detailPanel} />;
+    if (!param) return emptyPanel;
     return (
       <div style={styles.detailPanel}>
         <span style={styles.detailTitle}>{param.label}</span>
@@ -221,5 +222,5 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
     );
   }
 
-  return <div style={styles.detailPanel} />;
+  return emptyPanel;
 }

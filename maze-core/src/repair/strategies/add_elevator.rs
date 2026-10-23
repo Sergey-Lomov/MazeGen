@@ -250,7 +250,7 @@ fn try_build_elevator<T: Tessellation>(
     rng: &mut dyn RngCore,
 ) -> Option<Vec<NodeId>> {
     let start_idx = maze.field.level_index_of(start)?;
-    let point = maze.field.point_of(start)?;
+    let point = maze.field.cell_of(start)?;
 
     let max_len_here = levels.len().min(length_max);
     if max_len_here < length_min {
@@ -489,6 +489,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(<AddElevatorStrategy as RepairStrategy<SquareTessellation, MissingElevatorsIssue>>::params(&AddElevatorStrategy), None)
@@ -504,10 +505,12 @@ mod tests {
 
     fn multi_floor_maze(floors: usize, side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         for _ in 0..floors {
             mf.add_level(
-                Field::<SquareTessellation>::new(square_rect(side, side), &mut ids).unwrap(),
+                Field::<SquareTessellation>::new(Arc::default(), square_rect(side, side), &mut ids)
+                    .unwrap(),
             );
         }
         let mut g = Graph::new();
@@ -633,7 +636,8 @@ mod tests {
     #[test]
     fn apply_fails_on_a_single_level_field() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -690,7 +694,7 @@ mod tests {
                 .field
                 .field_of(level)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .filter_map(|p| {
                     if p == survivor_point {
                         None

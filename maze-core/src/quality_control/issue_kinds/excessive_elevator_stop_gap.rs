@@ -78,13 +78,18 @@ mod tests {
     use super::*;
     use crate::IdGenerator;
     use crate::space::{Field, MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn levels(count: u32) -> Vec<LevelId> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         (0..count)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect()
     }

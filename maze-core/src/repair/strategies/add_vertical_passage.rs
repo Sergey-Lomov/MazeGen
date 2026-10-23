@@ -189,6 +189,7 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn any_strategy() -> AddVerticalPassageStrategy {
         AddVerticalPassageStrategy {
@@ -222,9 +223,12 @@ mod tests {
 
     fn two_level_maze(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a, field_b]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a, field_b]);
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -288,8 +292,8 @@ mod tests {
                 "a vertical passage must connect two different floors"
             );
             assert_eq!(
-                maze.field.point_of(edge.from),
-                maze.field.point_of(edge.to),
+                maze.field.cell_of(edge.from),
+                maze.field.cell_of(edge.to),
                 "a vertical passage must connect the same x-y point across floors"
             );
         }
@@ -298,7 +302,8 @@ mod tests {
     #[test]
     fn apply_fails_on_single_level_field() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

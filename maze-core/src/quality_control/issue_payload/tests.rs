@@ -13,6 +13,7 @@ use crate::ids::NodeId;
 use crate::space::MultiLevelField;
 use crate::space::{SquareTessellation, square_rect};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn empty_graph_and_scc() -> (Graph, ConnectedComponents) {
     let graph = Graph::new();
@@ -29,7 +30,7 @@ fn empty_graph_and_scc() -> (Graph, ConnectedComponents) {
 /// build a field whose points actually correspond to their graph's nodes.
 fn dummy_field() -> MultiLevelField<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap()
+    MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap()
 }
 
 fn resolve(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
@@ -1364,7 +1365,7 @@ fn region_needs_shrink_criterion_matches_split_region_s_own_none_condition() {
 
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let maze = Maze::new(field, graph.clone());
 
     let mut preset_state = PresetState::empty();
@@ -1401,7 +1402,7 @@ fn two_point_field_and_region() -> (
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -1423,7 +1424,7 @@ fn region_needs_expansion_not_locked_when_region_has_no_external_geometric_bound
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -1548,7 +1549,7 @@ fn excessive_scc_count_not_locked_when_only_one_region_is_preset_locked() {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -1923,10 +1924,13 @@ fn two_level_field() -> (
 ) {
     use crate::space::{Field, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let bottom =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let bottom = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let top = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     (mf, bottom, top)
 }
 

@@ -8,6 +8,7 @@ use crate::space::{Field, MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use region_merge_core::{MODE_LARGEST, MODE_SMALLEST};
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn params_with(
     mode: &str,
@@ -56,13 +57,13 @@ fn default_params() -> StrategyParams {
     )
 }
 
-/// Builds a `w`x`h` square field with no edges and returns its nodes in `all_points` order
-/// (row-major, since `square_rect` yields points row-major and `all_points` is sorted by
+/// Builds a `w`x`h` square field with no edges and returns its nodes in `all_cells` order
+/// (row-major, since `square_rect` yields points row-major and `all_cells` is sorted by
 /// `NodeId`/creation order) — the common setup every test in this file starts from before
 /// wiring up its own edges.
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -71,7 +72,7 @@ fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (Maze::new(field, g), nodes)
@@ -814,9 +815,9 @@ fn is_deterministic_for_fixed_seed() {
 fn maze_two_floors_2x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..2)
-        .map(|_| Field::new(square_rect(2, 1), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = G::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -828,7 +829,7 @@ fn maze_two_floors_2x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })
@@ -841,9 +842,9 @@ fn maze_two_floors_2x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
 fn maze_two_floors_1x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..2)
-        .map(|_| Field::new(square_rect(1, 1), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = G::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -855,7 +856,7 @@ fn maze_two_floors_1x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })
@@ -930,9 +931,9 @@ fn allow_cross_floor_false_keeps_endpoints_on_floor_even_when_the_neighbor_spans
     // floor -- the endpoint-level restriction must keep the pair on the bottom floor.
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..2)
-        .map(|_| Field::new(square_rect(2, 1), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = G::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -944,7 +945,7 @@ fn allow_cross_floor_false_keeps_endpoints_on_floor_even_when_the_neighbor_spans
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })
@@ -992,9 +993,9 @@ fn allow_cross_floor_false_keeps_one_way_endpoints_on_floor() {
     // the one_way path picks must also stay on the region's floor.
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..2)
-        .map(|_| Field::new(square_rect(3, 1), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = G::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -1006,7 +1007,7 @@ fn allow_cross_floor_false_keeps_one_way_endpoints_on_floor() {
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })

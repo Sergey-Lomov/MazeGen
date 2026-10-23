@@ -3,6 +3,14 @@ import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
 
+/** A generation-run failure stored as data for generation state; the user-facing error is emitted
+ *  through the notification channel (GitHub issue #769). */
+export type GenerationError =
+  /** The free field being edited has fewer than 2 cells. */
+  | { kind: "free_field_too_small" }
+  /** WASM generation threw; `message` is retained as error-card detail text. */
+  | { kind: "run_failed"; message: string };
+
 export interface GenerationState {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -16,7 +24,12 @@ export interface GenerationState {
   showMaze: boolean;
   selectedNode: number | null;
   issues: IssueDto[];
-  error: string | null;
+  /** Last generation-run error. Only generation runs write it (GitHub issue #769). */
+  error: GenerationError | null;
+  /** WASM registry load failure (`loadRegistry`). Kept apart from `error` so seed changes and
+   *  generation runs never erase it; cleared only by a successful `loadRegistry`. While set,
+   *  Generate stays disabled. */
+  registryError: string | null;
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
@@ -34,8 +47,6 @@ export interface GenerationState {
   /** Named, ordered rule groups — see `RepairStageState`'s doc comment and GitHub issue #65.
    * Always non-empty (see `generationSlice.ts`'s initial state and `removeStage`). */
   stages: RepairStageState[];
-  /** strategyParams[strategyId][paramId] = raw string value */
-  strategyParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
   routeInfo: RouteInfoDto | null;
@@ -211,7 +222,7 @@ export interface GenerationActions {
    * of its own — its params move with it (no separate lookup, they're already part of the
    * `CheckInstance`). */
   removeCheckFromRule: (ruleId: string, localId: number) => void;
-  setStrategy: (ruleId: string, strategyId: string) => void;
+  setStrategy: (ruleId: string, strategyId: string, initialStrategyParams?: Record<string, string>) => void;
   clearStrategy: (ruleId: string) => void;
   /** Sets, replaces, or removes (`strategyId: null`) the nested strategy at `path` — a chain of
    * `(slotId, index)` steps, each resolved relative to the node selected by the previous element
@@ -275,10 +286,9 @@ export interface GenerationActions {
   toggleStageDisabled: (stageId: string) => void;
   /** Flips the stage section's `collapsed` — UI-only, does not mark the config stale. */
   toggleStageCollapsed: (stageId: string) => void;
-  setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
+  setStrategyParam: (ruleId: string, paramId: string, value: string) => void;
   /** Sets one rule-level parameter (e.g. `protect_route`) on `ruleId`'s own `params` — see
-   * GitHub issue #253. Unlike `setStrategyParam`, scoped to a single rule, not shared globally
-   * by strategy id. */
+   * GitHub issue #253. */
   setRuleParam: (ruleId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
@@ -311,8 +321,11 @@ export interface GenerationActions {
   toggleKruskalDsuGroups: () => void;
   /** Sets `debugSearchQuery` (raw substring typed into the debug event tree's search field). */
   setDebugSearchQuery: (query: string) => void;
-  setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
+  /** Replaces the whole quality control configuration (rules, stages, strategy params, repair
+   *  limits) with a loaded quality preset's (GitHub issue #751). Everything else in the project
+   *  is untouched. The caller validates the file and drops unknown ids first. */
+  loadQualityPreset: (quality: import("./projectExport").ProjectFileQuality) => void;
   setRepairTimeBudgetSecs: (v: number | null) => void;
   setSplitPatternMode: (v: boolean) => void;
   setSplitMaxNodes: (v: number) => void;

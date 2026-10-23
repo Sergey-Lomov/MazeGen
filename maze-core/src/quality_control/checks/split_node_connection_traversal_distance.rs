@@ -93,8 +93,8 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue>
     ) {
         let max_steps = self.min_detour.saturating_sub(1) as usize;
 
-        let split_points: Vec<(crate::space::LevelId, T::Point)> =
-            maze.field.split_points().collect();
+        let split_points: Vec<(crate::space::LevelId, T::CellId)> =
+            maze.field.split_cells().collect();
         if split_points.is_empty() {
             return;
         }
@@ -113,8 +113,8 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue>
                             .into_iter()
                             .map(|edge_id| {
                                 let is_split_edge = maze.graph.edge(edge_id).is_some_and(|e| {
-                                    maze.field.point_of(e.from) == Some(point)
-                                        || maze.field.point_of(e.to) == Some(point)
+                                    maze.field.cell_of(e.from) == Some(point)
+                                        || maze.field.cell_of(e.to) == Some(point)
                                 });
                                 (edge_id, is_split_edge)
                             })

@@ -1,12 +1,9 @@
-import { tessellationFamily, type FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { TESSELLATION_UI, isIdentityLinear, type Linear } from "./geometry/tessellationUi";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
-import { squareVertices } from "./squareGeometry";
-import { hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
-import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import { isCairoPoint } from "./cairoGeometry";
-import type { TriOrientation } from "./triGeometry";
+import { originCellOf } from "./splitPatternTile";
+import { cellsInDisplayRect, getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 
 export type ShapeKind = "rectangle" | "circle" | "triangle" | "hexagon" | "parallelogram";
 export type ShapeInclusion = "center" | "contained";
@@ -29,7 +26,7 @@ export type ShapeDefinition =
   | { kind: "rectangle"; width: number; height: number }
   | { kind: "parallelogram"; width: number; height: number; skewSign?: -1 | 1 }
   | { kind: "circle"; radius: number; width?: number; height?: number }
-  | { kind: "triangle"; side: number; width?: number; height?: number; orientation?: TriOrientation; polygon?: Point[] }
+  | { kind: "triangle"; side: number; width?: number; height?: number; orientation?: Linear; polygon?: Point[] }
   | { kind: "hexagon"; radius: number; width?: number; height?: number; orientation?: "flat_top" | "pointy_top"; polygon?: Point[] };
 
 type Point = { x: number; y: number };
@@ -37,7 +34,7 @@ const BOUNDARY_EPSILON_PX = 0.25;
 
 export function shapeForPrimitive(
   primitive: Exclude<PrimitiveShape, "equilateral_triangle">,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   geometry: PrimitiveShapeGeometry,
 ): ShapeDefinition {
   if (primitive === "rectangle") return { kind: "rectangle", width: geometry.width, height: geometry.height };
@@ -50,7 +47,7 @@ export function shapeForPrimitive(
       : { kind: "circle", radius: Math.max(geometry.width, geometry.height) / 2, width: geometry.width, height: geometry.height };
   }
   if (primitive === "triangle") {
-    if (geometry.side !== undefined) return { kind: "triangle", side: geometry.side, orientation: triangleOrientation(cfg) };
+    if (geometry.side !== undefined) return { kind: "triangle", side: geometry.side, orientation: TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation) };
     return {
       kind: "triangle",
       side: 1,
@@ -61,7 +58,10 @@ export function shapeForPrimitive(
       ],
     };
   }
-  const orientation = hexOrientation(cfg) === "flat_top" ? "pointy_top" : "flat_top";
+  // The shape is axis-aligned (pointy) while the field's orientation is the identity, and turned a
+  // sixth of a revolution with any other instance of the display orientation.
+  const o = TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation);
+  const orientation = isIdentityLinear(o) ? "pointy_top" : "flat_top";
   const radius = Math.max(geometry.width, geometry.height) / 2;
   const width = geometry.width;
   const height = geometry.height;
@@ -94,16 +94,6 @@ export function regularHexagonDimensions(radius: number, orientation: "flat_top"
   return orientation === "pointy_top"
     ? { width: radius * Math.sqrt(3), height: radius * 2 }
     : { width: radius * 2, height: radius * Math.sqrt(3) };
-}
-
-function hexOrientation(cfg: TessellationConfig): "flat_top" | "pointy_top" {
-  const orientation = (cfg as { orientation?: string }).orientation;
-  return orientation === "pointy_top" ? "pointy_top" : "flat_top";
-}
-
-function triangleOrientation(cfg: TessellationConfig): TriOrientation {
-  const orientation = (cfg as { orientation?: string }).orientation;
-  return orientation === "r90" || orientation === "r180" || orientation === "r270" ? orientation : "r0";
 }
 
 function hexDimensions(shape: Extract<ShapeDefinition, { kind: "hexagon" }>): { width: number; height: number } {
@@ -190,14 +180,9 @@ export function polygonForShape(shape: ShapeDefinition): Point[] | null {
       if (shape.polygon) return shape.polygon;
       const width = shape.width ?? shape.side;
       const height = shape.height ?? shape.side * Math.sqrt(3) / 2;
-      const rotatePoint = (point: Point): Point => {
-        switch (shape.orientation) {
-          case "r90": return { x: -point.y, y: -point.x };
-          case "r180": return { x: -point.x, y: -point.y };
-          case "r270": return { x: point.y, y: point.x };
-          default: return point;
-        }
-      };
+      const o = shape.orientation;
+      const rotatePoint = (point: Point): Point =>
+        o ? { x: o.a * point.x + o.c * point.y, y: o.b * point.x + o.d * point.y } : point;
       return [
         { x: 0, y: -height * 2 / 3 },
         { x: width / 2, y: height / 3 },
@@ -264,21 +249,16 @@ function containsCell(shape: ShapeDefinition, vertices: Point[]): boolean {
   return vertices.every((p) => containsPoint(shape, p));
 }
 
-function candidateBounds(cfg: TessellationConfig, shape: ShapeDefinition, origin: Point): { minX: number; maxX: number; minY: number; maxY: number } {
+function candidateCells(cfg: FieldConfig, shape: ShapeDefinition, origin: Point): [number, number][] {
   const b = shapeBounds(shape);
-  const projection = makeProjection(cfg);
-  const corners = [
-    projection.screenToGrid(b.minX + origin.x, -(b.minY + origin.y)),
-    projection.screenToGrid(b.minX + origin.x, -(b.maxY + origin.y)),
-    projection.screenToGrid(b.maxX + origin.x, -(b.minY + origin.y)),
-    projection.screenToGrid(b.maxX + origin.x, -(b.maxY + origin.y)),
-  ];
-  return {
-    minX: Math.min(...corners.map((p) => p.x)) - 3,
-    maxX: Math.max(...corners.map((p) => p.x)) + 3,
-    minY: Math.min(...corners.map((p) => p.y)) - 3,
-    maxY: Math.max(...corners.map((p) => p.y)) + 3,
-  };
+  // Shape coordinates are Y-up; display space is Y-down.
+  const y0 = -(b.minY + origin.y), y1 = -(b.maxY + origin.y);
+  return cellsInDisplayRect({
+    minX: b.minX + origin.x,
+    maxX: b.maxX + origin.x,
+    minY: Math.min(y0, y1),
+    maxY: Math.max(y0, y1),
+  }, "intersects", cfg);
 }
 
 function cellCenter(projection: ReturnType<typeof makeProjection>, origin: Point, x: number, y: number): Point {
@@ -286,44 +266,16 @@ function cellCenter(projection: ReturnType<typeof makeProjection>, origin: Point
   return { x: point.x - origin.x, y: -point.y - origin.y };
 }
 
-function cellVertices(cfg: TessellationConfig, projection: ReturnType<typeof makeProjection>, origin: Point, x: number, y: number): Point[] {
-  const center = cellCenter(projection, origin, x, y);
-  const asPositiveY = (point: Point): Point => ({ x: point.x, y: -point.y });
-  switch (cfg.type) {
-    case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
-      return squareVertices(center.x, -center.y).map(asPositiveY);
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_triangle":
-    case "hex_custom":
-      return hexVertices(center.x, -center.y, cfg.orientation ?? "flat_top").map(asPositiveY);
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_hexagon":
-    case "triangle_circle":
-    case "tri_custom":
-      return triVertices(x, y, cfg.orientation ?? "r0").map(asPositiveY)
-        .map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
-    case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
-      return geometryCellVertices(x, y, cfg)?.map((point) => ({
-        x: point.x - origin.x,
-        y: -point.y - origin.y,
-      })) ?? [];
-  }
+function cellVertices(cfg: FieldConfig, origin: Point, x: number, y: number): Point[] {
+  return geometryCellVertices(x, y, cfg).map((point) => ({
+    x: point.x - origin.x,
+    y: -point.y - origin.y,
+  }));
 }
 
 /** Selects cells by one geometric rule for every tessellation and every predefined shape. */
 export function cellsInsideShape(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   shape: ShapeDefinition,
   inclusion: ShapeInclusion = "center",
   origin?: ShapeOrigin,
@@ -339,21 +291,16 @@ export function cellsInsideShape(
     ...((shape.kind === "circle" || shape.kind === "triangle" || shape.kind === "hexagon") && shape.height !== undefined ? { height: shape.height * TILE_SIZE } : {}),
   } as ShapeDefinition;
   const projection = makeProjection(cfg);
-  const originScreen = projection.gridToScreen(0, 0);
+  const originScreen = projection.gridToScreen(...originCellOf(cfg));
   const shapeOrigin = origin ?? { x: originScreen.x, y: -originScreen.y };
-  const bounds = candidateBounds(cfg, pixelShape, shapeOrigin);
   const result: [number, number][] = [];
-  for (let x = bounds.minX; x <= bounds.maxX; x++) {
-    for (let y = bounds.minY; y <= bounds.maxY; y++) {
-      if (tessellationFamily(cfg) === "cairo" && !isCairoPoint(x, y)) continue;
-      const normalized = cellCenter(projection, shapeOrigin, x, y);
-      if (inclusion === "contained") {
-        if (!containsCell(pixelShape, cellVertices(cfg, projection, shapeOrigin, x, y))) continue;
-      } else if (!containsPoint(pixelShape, normalized)) {
-        continue;
-      }
-      result.push([x, y]);
+  for (const [x, y] of candidateCells(cfg, pixelShape, shapeOrigin)) {
+    if (inclusion === "contained") {
+      if (!containsCell(pixelShape, cellVertices(cfg, shapeOrigin, x, y))) continue;
+    } else if (!containsPoint(pixelShape, cellCenter(projection, shapeOrigin, x, y))) {
+      continue;
     }
+    result.push([x, y]);
   }
-  return result;
+  return result.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }

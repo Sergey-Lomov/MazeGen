@@ -131,6 +131,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -144,7 +145,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -245,7 +248,8 @@ mod tests {
         // assert the priority strategy reaches Failed only after trying every listed candidate,
         // observable via each candidate's own inability to add anything.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -254,7 +258,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);

@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { TeleportGroupOverride } from "../renderers/types";
 import { buildTeleportEdges, buildTeleportFloorInputs, selectFloorScopedMaze } from "./mazeSelectors";
 import { buildTeleportGroups, coordKey, type TeleportGroup } from "./teleportGroups";
@@ -66,7 +66,7 @@ export function mergeTeleportGroupsAcrossFloors(perFloor: TeleportGroup[][]): Te
 type ProjectGroupArgs = {
   nodes: NodeDto[];
   edges: EdgeDto[];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   floors: { id: string }[];
   avoidFieldExit: boolean;
   start: number | null;

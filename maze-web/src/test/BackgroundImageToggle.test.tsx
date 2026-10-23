@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BackgroundImageToggle } from "../components/BackgroundImageToggle";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipControl } from "./tooltipTestUtils";
 
 const autoFillStub = vi.hoisted(() => ({
   delayed: false,
@@ -152,16 +154,16 @@ describe("BackgroundImageToggle", () => {
   it("uses default fitting bounds for empty and very small fields", async () => {
     const fieldId = useMazeStore.getState().activeFloorId;
     const field = useMazeStore.getState().floorFields[fieldId];
-    useMazeStore.setState({
+    act(() => useMazeStore.setState({
       floorFields: {
         [fieldId]: {
           ...field,
           fieldEditMode: "custom",
           fieldPoints: new Set(),
-          tessellationConfig: { type: "square_custom", points: [] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [] }),
         },
       },
-    });
+    }));
     backgroundLayoutStub.fieldBounds
       .mockReturnValueOnce(null)
       .mockReturnValueOnce({ minX: 10, minY: 20, maxX: 10.5, maxY: 21 });
@@ -372,7 +374,7 @@ describe("BackgroundImageToggle", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull();
-    autoFillStub.resolve?.();
+    await act(async () => { autoFillStub.resolve?.(); });
     await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull());
   });
 
@@ -434,18 +436,18 @@ describe("BackgroundImageToggle", () => {
 
     autoFillStub.delayed = true;
     autoFillStub.nextPoints = new Set([0x00030003]);
-    useMazeStore.setState({
+    act(() => useMazeStore.setState({
       floorFields: {
         [fieldId]: {
           ...useMazeStore.getState().floorFields[fieldId],
-          tessellationConfig: { type: "square", width: 7, height: 7 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 7 }),
         },
       },
-    });
+    }));
 
     expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001]));
     await waitFor(() => expect(autoFillStub.resolve).not.toBeNull());
-    autoFillStub.resolve?.();
+    await act(async () => { autoFillStub.resolve?.(); });
     await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00030003])));
   });
 
@@ -528,7 +530,7 @@ describe("BackgroundImageToggle", () => {
 
     expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
     expect(screen.queryByText("Cell size")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Landscape"));
+    fireEvent.click(getTooltipControl("Landscape"));
     fireEvent.change(document.querySelector('input[name="background-print-margin-horizontal"]')!, { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     expect(useMazeStore.getState().showPaperLayout).toBe(false);

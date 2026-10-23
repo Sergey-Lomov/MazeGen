@@ -1,6 +1,6 @@
 import { TILE_SIZE } from "../constants";
 import { contentWorldBounds, type ContentBoundsBasis } from "./contentBounds";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { ExportMargin } from "./exportMargins";
 import type { DigitalExportSettings, PrintAnchor } from "../../store/storeTypes";
 
@@ -68,7 +68,7 @@ function addUniform(margin: ExportMargin, extra: number): ExportMargin {
  * `"cell"` (default) for a mode whose content reaches the cell's own polygon boundary, `"center"`
  * for one whose content stops at the cell center (e.g. "Vector by corridors", GitHub issue #324). */
 export function computeDigitalExportFit(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   margin: ExportMargin,
   settings: DigitalExportSettings,

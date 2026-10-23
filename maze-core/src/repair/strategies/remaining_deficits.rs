@@ -74,14 +74,21 @@ mod tests {
     use super::*;
     use crate::IdGenerator;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     /// Three real, distinctly-ordered `LevelId`s to build test fixtures from.
     fn three_levels() -> (RepairArea, RepairArea, RepairArea) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([]);
-        let a = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
-        let b = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
-        let c = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(Arc::default(), []);
+        let a = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+        );
+        let b = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+        );
+        let c = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+        );
         (
             RepairArea::Level(a),
             RepairArea::Level(b),

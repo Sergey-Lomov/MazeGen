@@ -10,20 +10,22 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tessellationKind` | `"square" \| "hex" \| "triangle"` | Confirmed tessellation type |
+| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo" \| "square_octagon" \| "brick" \| "trihexagonal" \| "snub_hexagonal" \| "rhombitrihexagonal" \| "truncated_hexagonal" \| "truncated_trihexagonal" \| "elongated_triangular" \| "snub_square" \| "curved_quadrilateral" \| "radial" \| "voronoi"` | Confirmed tessellation kind |
+| `tessellationParams` | `Record<string, unknown>` | Params of the confirmed kind: `{}` for the parameterless kinds, `first_ring_cells`, `ring_layout` and `max_cells` for `radial`, `jitter`, `seed` and `max_cells` for `voronoi`; they define the cell set, so changing them resets the maze like a kind change |
 | `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
 | `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
 | `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |
 | `previewKind` | `TessellationKind` | Preview (changes on every dropdown change) |
+| `previewParams` | `Record<string, unknown>` | Preview params; `setPreviewKind` resets them to the kind's registry defaults, `setPreviewParams` edits them |
 | `previewHexOrientation` | `HexOrientation` | Preview hex orientation |
 | `previewTriOrientation` | `TriOrientation` | Preview tri orientation |
-| `previewTessellationConfig` | `TessellationConfig` | Drives canvas grid during field setup |
+| `previewFieldConfig` | `FieldConfig` | Drives canvas grid during field setup |
 | `squareShape` | `"rect" \| "circle" \| "triangle" \| "free"` | Active square shape |
-| `hexShape` | `"rectangle" \| "circle" \| "parallelogram" \| "hexagon" \| "free"` | Active hex shape |
+| `hexShape` | `"rect" \| "circle" \| "triangle" \| "parallelogram" \| "hexagon" \| "free"` | Active hex shape |
 | `triangleShape` | `"rect" \| "triangle" \| "circle" \| "hexagon" \| "free"` | Active triangle shape |
-| `savedConfigs` | `Partial<Record<type, TessellationConfig>>` | Saved config per type, survives shape switches |
-| `tessellationConfig` | `TessellationConfig` | Active config for field setup |
-| `activeTessellationConfig` | `TessellationConfig` | Config that was active at last generation |
+| `savedShapes` | `Partial<Record<PresetFieldShapeName, PresetFieldShape>>` | Saved params per preset shape, survives shape switches |
+| `fieldConfig` | `FieldConfig` | Active config for field setup: `{ tessellation: { kind, params }, orientation?, shape }` |
+| `activeFieldConfig` | `ResolvedField` | Config that was active at last generation, its shape resolved to `custom` cells |
 
 ### Field
 
@@ -67,7 +69,6 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `elementsConfig` | `ElementsConfig` | One-way chance etc. |
 | `selectedChecks` | `string[]` | Active quality check ids |
 | `selectedStrategies` | `Record<string, string>` | issueKind → strategyId |
-| `strategyParams` | `Record<strategyId, Record<paramId, string>>` | Raw string param values |
 | `checkParams` | `Record<checkId, Record<paramId, string>>` | Raw string param values |
 | `registryLoaded` | `boolean` | WASM check/strategy registry loaded |
 | `availableChecks` | `CheckDescriptor[]` | All checks from WASM registry |
@@ -102,7 +103,9 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `showCoords` | `boolean` | Show coordinate labels on graph |
 | `showMaze` | `boolean` | Show maze tile renderer |
 | `warnings` | `string[]` | Generation warnings |
-| `error` | `string \| null` | Last error message |
+| `error` | `GenerationError \| null` | Last generation-run error as data (`free_field_too_small` or `run_failed` + raw WASM message); written only by generation runs |
+| `registryError` | `string \| null` | WASM registry load failure (`loadRegistry`) |
+| `postEditRefreshError` | `string \| null` | Last failed `confirmPostEdit` analytics refresh |
 
 ### Debug
 
@@ -118,9 +121,9 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 
 ## Key Invariants
 
-- `tessellationConfig` = config driving field setup UI; `activeTessellationConfig` = config used at last generation. They diverge when user changes config after generating.
+- `fieldConfig` = config driving field setup UI; `activeFieldConfig` = config used at last generation. They diverge when user changes config after generating.
 - `fieldPoints` mirrors `freeFieldPoints[tessellationKind]` when `isEditingField`.
-- `autoLockedNodes` is recomputed whenever `presetConnections`, `tessellationConfig`, or `autoLock` change.
+- `autoLockedNodes` is recomputed whenever `presetConnections`, `fieldConfig`, or `autoLock` change.
 - `debugStale = true` whenever any generation-relevant config changes after an arena exists.
 - `debugMode = false` clears `debugStale`.
 
@@ -131,7 +134,7 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `confirmTessellation()` — copies preview → confirmed; resets maze data if kind changed
 - `syncPreviewToConfirmed()` — sync preview dropdowns to confirmed values
 - `setTessellationKind/setSquareShape/setHexShape/setTriangleShape/setHexOrientation/setTriOrientation` — update confirmed tessellation
-- `setTessellationConfig(cfg)` — full config override, derives kind/shape from config type
+- `setFieldConfig(cfg)` — full config override, derives kind/shape from `cfg.tessellation.kind` and `cfg.shape`
 
 ### Generation
 - `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`. Also updates `seedHistory`: truncates from `seedHistoryIndex` and appends the used seed (capped at 20, oldest dropped), unless this is a repeat-generate on the exact seed just navigated to via history (`seedAttachedToHistory` and unchanged)
@@ -161,4 +164,11 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 
 ## Error Handling
 
-`generate()` catches WASM exceptions and stores message in `error`. Does not throw. `error` is cleared on successful generate or `setSeed`.
+`generate()` catches WASM exceptions and stores `{ kind: "run_failed", message }` in `error`; a free field with fewer than 2 cells stores `{ kind: "free_field_too_small" }`. The generation card turns it into text at render time (`generationErrorText`), so a locale switch re-translates it. Does not throw. `error` is cleared on successful generate or `setSeed`. It is shown only in the generation card while `generationStatus === "error"`; no other code writes it (GitHub issue #769).
+
+Other failures go through toasts (`Specs/notifications.md`):
+
+- `loadRegistry` failure sets `registryError` (untouched by seed changes and generation; cleared by a successful `loadRegistry`) and raises an `error` toast. The generation card shows it as a persistent status line and disables Generate with a `Tooltip` reason; the card header (`computeGenerationCard`) reads `critical` regardless of other config. Overlapping `loadRegistry` calls share one in-flight promise (React StrictMode mounts twice in dev), so one failure is one toast occurrence; a call after it settles starts a fresh load.
+- `confirmPostEdit` failure sets `postEditRefreshError` and raises an `error` toast; the post-edit card shows it as a persistent status line. Cleared by the next successful refresh and whenever post-edit state is rebuilt (generation, project load, downstream reset).
+- Project / style preset / quality preset load failures are `error` toasts; the load is aborted before any state change.
+- Removing a split node assigned as start/finish (post-edit) or start/finish/gen-source (presets) is rejected with a `notice` toast.

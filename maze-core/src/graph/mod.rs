@@ -76,6 +76,21 @@ impl Graph {
         self.incoming.insert(id, Vec::new());
     }
 
+    /// Removes `id` and every edge incident to it, both directions. A no-op for a node not in
+    /// the graph. Bumps `version` even when the node had no edges — unlike an addition, a removal
+    /// can make cached node-set data (e.g. SCC components) wrong.
+    pub(crate) fn remove_node(&mut self, id: NodeId) {
+        let Some(outgoing) = self.outgoing.remove(&id) else {
+            return;
+        };
+        let incoming = self.incoming.remove(&id).unwrap_or_default();
+        for edge in outgoing.into_iter().chain(incoming) {
+            self.remove_edge(edge);
+        }
+        self.nodes.retain(|n| n.id != id);
+        self.version += 1;
+    }
+
     pub(crate) fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
         debug_assert!(
             self.outgoing.contains_key(&from),
@@ -395,6 +410,42 @@ mod parallel_edges_tests {
         let (ab, ba) = g.add_bidirectional_edge(0, 1, EdgeKind::Teleport);
         assert_ne!(ab, ba);
         assert_eq!(g.edges().count(), 4);
+    }
+}
+
+#[cfg(test)]
+mod remove_node_tests {
+    use super::*;
+
+    #[test]
+    fn removes_the_node_and_every_incident_edge_and_bumps_version() {
+        let mut g = Graph::new();
+        for n in 0..3 {
+            g.add_node(n);
+        }
+        g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(2, 1, EdgeKind::Teleport);
+        g.add_edge(0, 2, EdgeKind::Basic);
+        let before = g.version();
+
+        g.remove_node(1);
+
+        assert!(g.nodes().all(|n| n.id != 1));
+        let remaining: Vec<(NodeId, NodeId)> = g.edges().map(|e| (e.from, e.to)).collect();
+        assert_eq!(remaining, vec![(0, 2)]);
+        assert!(g.version() > before);
+        assert_eq!(g.outgoing_neighbors(0).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(g.incoming_neighbors(2).collect::<Vec<_>>(), vec![0]);
+    }
+
+    #[test]
+    fn removing_an_unknown_node_is_a_noop() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        let before = g.version();
+        g.remove_node(7);
+        assert_eq!(g.node_count(), 1);
+        assert_eq!(g.version(), before);
     }
 }
 

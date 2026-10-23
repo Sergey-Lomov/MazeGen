@@ -3,8 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
-import { typography, spacing, indent } from "../../styles/theme";
+import { typography, spacing, indent, ui } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
@@ -17,10 +16,13 @@ import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDia
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
+import { PostEditEntityPickDialog } from "../dialogs/PostEditEntityPickDialog";
+import { PostEditConnectionSettingsDialog } from "../dialogs/PostEditConnectionSettingsDialog";
 import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
 import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import { postEditToolShortcut } from "../../pixi/toolShortcuts";
 
 function getEdgeTools(): [PostEditTool, string][] {
   return [
@@ -73,6 +75,7 @@ export function PostEditFeature() {
   const confirmPostEdit     = useMazeStore((s) => s.confirmPostEdit);
   const resetPostEdit       = useMazeStore((s) => s.resetPostEdit);
   const postEditAnalytics   = useMazeStore((s) => s.postEditAnalytics);
+  const postEditRefreshError = useMazeStore((s) => s.postEditRefreshError);
   const postEditFocusedPoint = useMazeStore((s) => s.postEditFocusedPoint);
   const setPostEditFocusedPoint = useMazeStore((s) => s.setPostEditFocusedPoint);
   const openCard = useMazeStore((s) => s.openCard);
@@ -84,11 +87,13 @@ export function PostEditFeature() {
   const postEditSplitTargetPrompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
   const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
   const postEditEntityDeletePrompt = useMazeStore((s) => s.postEditEntityDeletePrompt);
+  const postEditEntityPickPrompt = useMazeStore((s) => s.postEditEntityPickPrompt);
+  const cancelPostEditEntityPick = useMazeStore((s) => s.cancelPostEditEntityPick);
+  const postEditConnectionSettingsPrompt = useMazeStore((s) => s.postEditConnectionSettingsPrompt);
+  const cancelPostEditConnectionSettings = useMazeStore((s) => s.cancelPostEditConnectionSettings);
   const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
   const postEditResetPrompt = useMazeStore((s) => s.postEditResetPrompt);
   const cancelPostEditReset = useMazeStore((s) => s.cancelPostEditReset);
-  const postEditDragFailureMessage = useMazeStore((s) => s.postEditDragFailureMessage);
-  const dismissPostEditDragFailureMessage = useMazeStore((s) => s.dismissPostEditDragFailureMessage);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
@@ -116,6 +121,15 @@ export function PostEditFeature() {
     }
   }, [openCard, postEditEntityDeletePrompt, cancelPostEditEntityDelete]);
 
+  // The move/settings pickers and the connection settings dialog (GitHub issue #748) have no
+  // meaning once the user leaves the post-edit card either.
+  useEffect(() => {
+    if (openCard !== "post_edit") {
+      if (postEditEntityPickPrompt !== null) cancelPostEditEntityPick();
+      if (postEditConnectionSettingsPrompt !== null) cancelPostEditConnectionSettings();
+    }
+  }, [openCard, postEditEntityPickPrompt, cancelPostEditEntityPick, postEditConnectionSettingsPrompt, cancelPostEditConnectionSettings]);
+
   // Same reasoning as the entity-delete picker above — the reset picker (GitHub issue #549) has no
   // meaning once the user leaves the post-edit card.
   useEffect(() => {
@@ -140,6 +154,9 @@ export function PostEditFeature() {
 
   return (
     <Stack gap="groupGap">
+      {postEditRefreshError !== null && (
+        <div style={styles.statusError}>{m["post_edit.refresh_error"]({ message: postEditRefreshError })}</div>
+      )}
       {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.tools"]()}</span>
@@ -151,11 +168,14 @@ export function PostEditFeature() {
             ...getTeleportTools(),
             ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
             ...(floors.length > 1 ? getVerticalTools() : []),
-            ["reset", m["post_edit.reset_tool"]()],
-            ["delete", m["post_edit.delete_tool"]()],
+            ["move", m["tools.move"]()],
+            ["settings", m["tools.settings"]()],
+            ["reset", m["post_edit.reset_tool"](), m["post_edit.reset_tooltip"](), ["shift"]],
+            ["delete", m["post_edit.delete_tool"](), m["post_edit.delete_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={postEditToolShortcut}
           glyphFor={glyphKeyFor}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
@@ -177,11 +197,17 @@ export function PostEditFeature() {
         <PostEditEntityDeleteDialog onClose={cancelPostEditEntityDelete} />
       )}
 
+      {postEditEntityPickPrompt && (
+        <PostEditEntityPickDialog onClose={cancelPostEditEntityPick} />
+      )}
+
+      {postEditConnectionSettingsPrompt && (
+        <PostEditConnectionSettingsDialog onClose={cancelPostEditConnectionSettings} />
+      )}
+
       {postEditResetPrompt && (
         <PostEditResetDialog onClose={cancelPostEditReset} />
       )}
-
-      {postEditDragFailureMessage && <VerticalDragFailureAlert failure={postEditDragFailureMessage} onClose={dismissPostEditDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <div style={styles.nestedContent}>
@@ -262,5 +288,9 @@ const styles: Record<string, React.CSSProperties> = {
   // One indent level for a section's own content, relative to its `sectionLabel`.
   nestedContent: {
     paddingLeft: indent.tree,
+  },
+  statusError: {
+    ...typography.body,
+    color: ui.text.error,
   },
 };

@@ -4,6 +4,7 @@ use maze_core::generation::{
 };
 use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use maze_core::{Graph, IdGenerator, NodeId};
+use std::sync::Arc;
 
 pub fn build(width: usize, height: usize) -> (Graph, MultiLevelField<SquareTessellation>, NodeId) {
     let (graph, field, start, _ids) = build_with_ids(width, height);
@@ -24,7 +25,8 @@ pub fn build_with_ids(
     IdGenerator,
 ) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(width, height), &mut ids)
+        .unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -62,7 +64,7 @@ pub fn build_with_two_disconnected_clusters() -> (
         SquarePoint { x: 20, y: 0 },
         SquarePoint { x: 21, y: 0 },
     ];
-    let field = MultiLevelField::single_level(points, &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), points, &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { buildPresetCellInspection } from "../pixi/selectors/presetCellInspection";
 import { presetEndpoint, type PresetEndpoint } from "../pixi/presetEndpoint";
 import { presetEdgeKey, type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../pixi/fieldEditUtils";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { NodeLockKind } from "../wasm/types";
 import { setLocale } from "~/paraglide/runtime";
+import { fieldOf } from "./fieldConfigFixtures";
 
 function empty(x: number, y: number, floorLevel = 0) {
   return buildPresetCellInspection(
@@ -230,7 +231,7 @@ describe("buildPresetCellInspection", () => {
   // GitHub issue #487 — a preset split point whose face configuration matches a recognized
   // special-split topology titles each block with the semantic node name instead of "Node N".
   describe("semantic split-node names (GitHub issue #487)", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     // Square neighbor offsets are [+x, +y, -x, -y]. Point (1,1): the original node owns the
     // +x/-x opposite pair (the through "Corridor"), slot 0 owns the +y/-y pair (the "Bridge").
     const inFieldCells = new Set(["0,1", "1,0", "1,1", "1,2", "2,1"]);

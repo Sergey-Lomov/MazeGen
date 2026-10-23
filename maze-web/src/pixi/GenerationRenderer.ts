@@ -16,7 +16,7 @@ import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "./renderers/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorTokens";
 import { resolveDebugValueColor } from "./debugValueColors";
@@ -59,7 +59,7 @@ export class GenerationRenderer {
   private geometryCache: {
     nodes: NodeDto[];
     edges: EdgeDto[];
-    cfg: TessellationConfig;
+    cfg: FieldConfig;
     start: number | null;
     finish: number | null;
     closedCells: [number, number][];
@@ -142,8 +142,8 @@ export class GenerationRenderer {
         state.finish !== prev.finish ||
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors ||
-        state.floorFields[state.activeFloorId].tessellationConfig !== prev.floorFields[prev.activeFloorId]?.tessellationConfig ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.floorFields[state.activeFloorId].fieldConfig !== prev.floorFields[prev.activeFloorId]?.fieldConfig ||
+        state.activeFieldConfig !== prev.activeFieldConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugArena !== prev.debugArena ||
         state.debugStep !== prev.debugStep ||
@@ -181,7 +181,7 @@ export class GenerationRenderer {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "generation" && state.showMaze) {
-      const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state._generatedNodes.length > 0 ? state.activeFieldConfig : state.floorFields[state.activeFloorId].fieldConfig;
       this.grid.render({ viewport: this.viewport }, cfg);
     }
   }
@@ -214,7 +214,7 @@ export class GenerationRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.floorFields[state.activeFloorId].tessellationConfig;
+    const cfg = state._generatedNodes.length > 0 ? state.activeFieldConfig : state.floorFields[state.activeFloorId].fieldConfig;
     this.grid.render({ viewport: this.viewport }, cfg);
     // Single call, reused below for both highlight overlays — selectDebugMazeView is itself
     // memoized per (arena, debugStep), but calling it three times per render still meant three

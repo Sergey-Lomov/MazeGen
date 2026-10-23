@@ -2,8 +2,9 @@ import { cellsInsideShape, polygonForShape, shapeForPrimitive, type PrimitiveSha
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "./triShapeHelpers";
-import { cairoNeighborOffsets } from "./cairoGeometry";
-import type { FieldConfig } from "../fieldConfig";
+import { getCellNeighborOffsets } from "./tessellationGeometry";
+import { TESSELLATION_UI, isIdentityLinear } from "./geometry/tessellationUi";
+import { kindFieldConfig, type FieldConfig } from "../fieldConfig";
 import type { TessellationKind } from "../store/mazeStore";
 
 export type { TessellationKind };
@@ -31,6 +32,8 @@ export type PrimitiveWorldGeometry =
   | {
       kind: "boundary";
       segments: Array<[WorldPoint, WorldPoint]>;
+      /** Edge-connected component id per segment; keeps corner-touching cells in separate contours. */
+      components?: number[];
       /** Optional fill style for temporary cells rendered with the boundary. */
       cellColor?: number;
       cellAlpha?: number;
@@ -53,14 +56,7 @@ export type PrimitiveWorldGeometry =
   | { kind: "ellipse"; center: WorldPoint; width: number; height: number; dashed?: boolean };
 
 function contextConfig(ctx: PrimitiveContext): FieldConfig {
-  if (ctx.config) return ctx.config;
-  return ctx.kind === "square"
-    ? { type: "square", width: 0, height: 0 }
-    : ctx.kind === "hex"
-      ? { type: "hex_hexagon", radius: 0 }
-      : ctx.kind === "triangle"
-        ? { type: "triangle_rect", cols: 0, rows: 0 }
-        : { type: "cairo", cols: 0, rows: 0 };
+  return ctx.config ?? kindFieldConfig(ctx.kind);
 }
 
 function worldPoint(config: FieldConfig, point: { x: number; y: number }): WorldPoint {
@@ -130,15 +126,16 @@ function worldFrame(ctx: PrimitiveContext, config: FieldConfig, primitive?: Shap
 }
 
 export function primitiveCells(primitive: ShapePrimitive, ctx: PrimitiveContext): [number, number][] {
-  if (primitive === "equilateral_triangle" && ctx.kind === "triangle" && ctx.latticeSide !== undefined) {
+  const ui = TESSELLATION_UI[ctx.kind].editor;
+  if (primitive === "equilateral_triangle" && ui.latticeTriangle && ctx.latticeSide !== undefined) {
     return centeredTriangularTriangle(ctx.latticeSide);
   }
   const config = contextConfig(ctx);
-  if (primitive === "hexagon" && ctx.kind === "hex" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
+  if (primitive === "hexagon" && ui.latticeHexagon === "hex" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
     const radius = ctx.latticeRadius ?? centeredHexRadius(worldFrame(ctx, config, primitive), config);
     return translateCells(centeredHexagon(radius), ctx.startGrid);
   }
-  if (primitive === "hexagon" && ctx.kind === "triangle" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
+  if (primitive === "hexagon" && ui.latticeHexagon === "tri" && (ctx.latticeRadius !== undefined || (ctx.symmetric && ctx.constrainSquare))) {
     const frame = worldFrame(ctx, config, primitive);
     const radius = ctx.latticeRadius ?? Math.max(1, Math.round(frame.height / TILE_SIZE / 4));
     return translateCells(centeredTriangularHexagon(radius), ctx.startGrid);
@@ -161,7 +158,7 @@ export function primitiveCells(primitive: ShapePrimitive, ctx: PrimitiveContext)
     startOffsetX: (frame.start.x - frame.origin.x) / TILE_SIZE,
     startOffsetY: (frame.start.y - frame.origin.y) / TILE_SIZE,
   });
-  const inclusion = primitive === "circle" && ctx.kind === "triangle" ? "contained" : "center";
+  const inclusion = primitive === "circle" ? ui.circleInclusion : "center";
   return cellsInsideShape(config, shape, inclusion, frame.origin);
 }
 
@@ -208,30 +205,24 @@ function equilateralTriangleDragShape(ctx: PrimitiveContext, config: FieldConfig
   };
 }
 
-function snapEquilateralAngle(angle: number, config: FieldConfig): number {
-  let step: number;
-  let offset: number;
-  if (config.type === "hex_hexagon" || config.type === "hex_rectangle"
-    || config.type === "hex_circle" || config.type === "hex_triangle"
-    || config.type === "hex_parallelogram" || config.type === "hex_custom") {
-    step = Math.PI / 3;
-    offset = config.orientation === "pointy_top" ? 0 : Math.PI / 6;
-  } else if (config.type === "square" || config.type === "square_circle"
-    || config.type === "square_triangle" || config.type === "square_custom") {
-    step = Math.PI / 2;
-    offset = -Math.PI / 2;
-  } else if (config.type === "triangle_rect" || config.type === "triangle_triangle"
-    || config.type === "triangle_circle" || config.type === "triangle_hexagon"
-    || config.type === "tri_custom") {
-    // An equilateral triangle can point along either normal of each of the
-    // three edge families in the triangular lattice: six directions total.
-    // The tessellation orientation selects the first direction in that set;
-    // it must not turn the snap into four right angles.
-    step = Math.PI / 3;
-    offset = ({ r0: -Math.PI / 2, r90: 0, r180: Math.PI / 2, r270: Math.PI } as const)[config.orientation ?? "r0"];
-  } else {
-    return angle;
-  }
+/** A hexagon-of-cells outline has points on the vertical axis while the display orientation is the
+ *  identity, and is turned a sixth of a revolution with any other instance of it. */
+function hexShapeIsPointy(config: FieldConfig): boolean {
+  return isIdentityLinear(TESSELLATION_UI[config.tessellation.kind].orientation(config.orientation));
+}
+
+export function snapEquilateralAngle(angle: number, config: FieldConfig): number {
+  const ui = TESSELLATION_UI[config.tessellation.kind];
+  if (!ui.equilateralSnap) return angle;
+  // The canonical snap directions turned by the display orientation: a tri lattice can point a
+  // triangle along either normal of its three edge families (six directions), and the display
+  // orientation picks the first of them; it must not turn the snap into four right angles.
+  const { step, offset: canonical } = ui.equilateralSnap;
+  const o = ui.orientation(config.orientation);
+  const offset = Math.atan2(
+    o.b * Math.cos(canonical) + o.d * Math.sin(canonical),
+    o.a * Math.cos(canonical) + o.c * Math.sin(canonical),
+  );
   const snapped = offset + Math.round((angle - offset) / step) * step;
   const difference = Math.atan2(Math.sin(angle - snapped), Math.cos(angle - snapped));
   return Math.abs(difference) <= Math.PI / 30 ? snapped : angle;
@@ -250,62 +241,41 @@ function centeredHexagon(radius: number): [number, number][] {
 }
 
 function centeredHexRadius(frame: WorldFrame, config: FieldConfig): number {
-  const orientation = (config as { orientation?: string }).orientation;
-  const diameter = orientation === "pointy_top" ? frame.width : frame.height;
+  const diameter = hexShapeIsPointy(config) ? frame.height : frame.width;
   return Math.max(1, Math.round(diameter / TILE_SIZE / 4));
 }
 
 /** Removes one-cell-wide terminal spikes from a primitive result. */
 export function smoothPrimitiveCells(
   cells: [number, number][],
-  kind: TessellationKind,
+  cfg: FieldConfig,
 ): [number, number][] {
   if (cells.length < 4) return cells;
   const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  const offsets = kind === "square"
-    ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      : kind === "hex"
-        ? [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
-      : undefined;
-
   return cells.filter(([x, y]) => {
-    const neighbors = kind === "cairo"
-      ? cairoNeighborOffsets(x, y)
-      : offsets ?? ((x + y) % 2 === 0
-        ? [[-1, 0], [1, 0], [0, -1]]
-        : [[-1, 0], [1, 0], [0, 1]]);
     let count = 0;
-    for (const [dx, dy] of neighbors) if (selected.has(`${x + dx},${y + dy}`)) count++;
+    for (const [dx, dy] of getCellNeighborOffsets(cfg, x, y)) if (selected.has(`${x + dx},${y + dy}`)) count++;
     return count !== 1;
   });
 }
 
 export function normalizePrimitiveCells(
   cells: [number, number][],
-  kind: TessellationKind,
+  cfg: FieldConfig,
   smooth: boolean,
 ): [number, number][] {
-  let result = removeIsolatedPrimitiveCells(cells, kind);
-  if (smooth) result = smoothPrimitiveCells(result, kind);
-  return removeIsolatedPrimitiveCells(result, kind);
+  let result = removeIsolatedPrimitiveCells(cells, cfg);
+  if (smooth) result = smoothPrimitiveCells(result, cfg);
+  return removeIsolatedPrimitiveCells(result, cfg);
 }
 
-function removeIsolatedPrimitiveCells(cells: [number, number][], kind: TessellationKind): [number, number][] {
+function removeIsolatedPrimitiveCells(cells: [number, number][], cfg: FieldConfig): [number, number][] {
   // Fewer than two cells cannot contain an accidental isolated cell. This preserves a valid
   // one-cell primitive such as a 1×1 rectangle.
   if (cells.length < 2) return cells;
   const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  return cells.filter(([x, y]) => primitiveNeighborOffsets(kind, x, y)
+  return cells.filter(([x, y]) => getCellNeighborOffsets(cfg, x, y)
     .some(([dx, dy]) => selected.has(`${x + dx},${y + dy}`)));
-}
-
-function primitiveNeighborOffsets(kind: TessellationKind, x: number, y: number): number[][] {
-  if (kind === "square") return [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  if (kind === "hex") return [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
-  if (kind === "cairo") return cairoNeighborOffsets(x, y);
-  return (x + y) % 2 === 0
-    ? [[-1, 0], [1, 0], [0, -1]]
-    : [[-1, 0], [1, 0], [0, 1]];
 }
 
 export function primitiveWorldGeometry(primitive: ShapePrimitive, ctx: PrimitiveContext): PrimitiveWorldGeometry {
@@ -392,9 +362,7 @@ function equalSideParallelogramFrame(width: number, height: number): { width: nu
 
 function regularHexagonFrame(width: number, height: number, config: FieldConfig): { width: number; height: number } {
   const diameter = Math.max(TILE_SIZE, Math.min(width, height));
-  const tessellationOrientation = (config as { orientation?: string }).orientation;
-  const primitiveOrientation = tessellationOrientation === "pointy_top" ? "flat_top" : "pointy_top";
-  return primitiveOrientation === "pointy_top"
+  return hexShapeIsPointy(config)
     ? { width: diameter * Math.sqrt(3) / 2, height: diameter }
     : { width: diameter, height: diameter * Math.sqrt(3) / 2 };
 }
@@ -421,9 +389,3 @@ function rectanglePoints(origin: WorldPoint, halfWidth: number, halfHeight: numb
   ];
 }
 
-export function cfgKind(cfgType: string): TessellationKind {
-  if (cfgType.startsWith("hex")) return "hex";
-  if (cfgType.startsWith("tri")) return "triangle";
-  if (cfgType.startsWith("cairo")) return "cairo";
-  return "square";
-}

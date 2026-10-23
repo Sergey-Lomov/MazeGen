@@ -1,18 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { DigitalExportSettings } from "../store/storeTypes";
-
-// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
-// same square-tessellation mock as hexGeometry.test.ts.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
+import { fieldOf } from "./fieldConfigFixtures";
 
 const { computeDigitalExportFit, placeInBox } = await import("../pixi/imageExport/exportFit");
 
-const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
 const uniformMargin = (v: number): ExportMargin => ({ left: v, right: v, top: v, bottom: v });
 

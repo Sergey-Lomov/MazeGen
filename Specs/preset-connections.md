@@ -50,7 +50,7 @@ key = `${a.point[0]},${a.point[1]}${aSlotSuffix}-${b.point[0]},${b.point[1]}${bS
 
 `one_way_forward` means passage in direction A → B (A = canonically lesser). `one_way_backward` means B → A.
 
-Clicking a one-way tool on an undecided or non-one-way edge sets `one_way_forward`. Clicking again on `one_way_forward` sets `one_way_backward`. Clicking again on `one_way_backward` sets `one_way_forward`. No other states are toggled this way.
+Clicking the one-way tool on an undecided or non-one-way edge sets `one_way_forward`; on an existing one-way edge it reverses the direction (`one_way_forward` ↔ `one_way_backward`). The settings tool reverses one-way edges too (`one_way_flip` mode of `applyTool`, which leaves any other edge unchanged) — see `Specs/element-tools.md` (GitHub issue #748).
 
 ## Markers
 
@@ -63,7 +63,7 @@ If `presetGenSource` is not set, the geometric fallback start point is governed 
 - `"default"` — seeds from the center-nearest node (the long-standing behavior; also what a config predating this field, or a project file saved before this feature, deserializes to).
 - `"random"` — seeds from a uniformly random node among all field points, deterministic per the run's generation seed via an independent RNG stream (not the same draw the generation algorithm itself consumes) — see `maze-core::generation::resolve_generation_start`/`GenerationSourceMode`.
 
-A new project (created from scratch in the editor, not loaded from a file) defaults `generationSourceMode` to `"random"`. The Generation panel shows a toggle for this mode, always reflecting the actual `generationSourceMode` value (checked for `"random"`, unchecked for `"default"`) even while disabled. The toggle is **disabled** whenever `presetGenSource` is set, since the pin always takes priority regardless of the mode — a tooltip explains the source is set in presets. The start endpoint assigned after generation (`maze.meta.start`) is still ultimately up to the repair strategy unless `presetStart` pins it explicitly; `generationSourceMode` only affects where the generation algorithm's traversal begins.
+A new project (created from scratch in the editor, not loaded from a file) defaults `generationSourceMode` to `"random"`. The Generation panel shows a toggle for this mode, always reflecting the actual `generationSourceMode` value (checked for `"random"`, unchecked for `"default"`) even while disabled. Its custom tooltip has a primary explanation that this setting selects the cell where generation starts: the center-nearest default cell when off, or a random cell when on. When disabled because `presetGenSource` is set, a separate tertiary line explains that the preset source takes priority. The start endpoint assigned after generation (`maze.meta.start`) is still ultimately up to the repair strategy unless `presetStart` pins it explicitly; `generationSourceMode` only affects where the generation algorithm's traversal begins.
 
 ## Preset teleports
 
@@ -91,6 +91,13 @@ Both live in the single Tools section (GitHub issue #456 — see "## Tools" belo
 
 ### Shared vertex editing mode
 
+`Specs/element-tools.md` (GitHub issue #748) supersedes the click semantics below: a plain click
+with a vertex tool always adds the tool's own element (completing a pending teleport where one is
+pending), including on a cell that already holds elements. A press on an existing element still
+arms a drag; releasing in the same cell is that click. Direction changes and elevator floor edits
+belong to the settings tool, and the move tool relocates any element, including the generation
+source, locks, and elements on split nodes.
+
 All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_two_way`) share one editing mode: whichever vertex tool is active, drag-to-move and right-click-to-delete apply uniformly to the start marker, the finish marker, and every teleport endpoint — not just the element type matching the active tool.
 
 - **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker. Live preview only (`presetDragOverride`'s `marker` variant, GitHub issue #613): the pointermove handler writes the drag's current cell to `presetDragOverride` instead of calling `setPresetStart` on every move — `PresetConnectionsRenderer` substitutes it in place of the committed `presetStart` while it's set. Returning to the origin clears the preview back to the committed marker, while the drag remains armed so a later cell is still previewed (GitHub issue #695). Nothing is written to `presetStart` until pointerup, and only if the cursor actually left the origin cell; a plain click that never moved stays a no-op.
@@ -102,7 +109,7 @@ All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_
 
 Hit-testing checks the start marker, then the finish marker, then teleport endpoints, regardless of which vertex tool is active — so drag/delete on overlapping elements at the same cell resolves in that priority order.
 
-Only when nothing is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools (still tool-specific: the placement gesture and preview line only run while a teleport tool is active). A plain click (no drag) on an existing teleport endpoint's own cell, with no placement pending, still cycles that entry's direction only when a teleport tool is active (see below).
+Only when nothing is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools (still tool-specific: the placement gesture and preview line only run while a teleport tool is active). A plain click (no drag) on an existing teleport endpoint's own cell starts or completes a new teleport there, like a click on an empty cell; direction changes belong to the settings tool (`Specs/element-tools.md`, GitHub issue #748).
 
 ### Placement gesture
 
@@ -111,14 +118,16 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 3. Clicking the same cell *and* the same floor as the pending origin is a no-op (does not complete or cancel) — the same `(x, y)` on a *different* floor is a legitimate second endpoint, not a same-point click.
 4. **Cancelling a pending placement**: ESC key, or RMB with no existing endpoint under the cursor, clears `presetTeleportPendingFrom` and the preview line — no entry is created.
 
+A teleport click outside the active floor field is rejected with
+`edit_refusal.teleport_outside_field`; it never starts or completes placement.
+
 ### Editing existing teleports
 
 Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell determines the hit and the closest endpoint in that cell wins) while a teleport tool is active:
 
 - **RMB on an existing endpoint** — removes that entire teleport entry (`removePresetTeleport`).
-- **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor (`movePresetTeleportEndpoint`), live-updating on every cell change during the drag. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
-- **LMB click (no drag) on an existing endpoint**, when no placement is pending — cycles that entry's direction: `forward ↔ backward`; `two_way` is unaffected (`cyclePresetTeleportDirection`). This is how a one-way teleport's direction is flipped after creation; there's no other UI path to reach `"backward"`.
-- **LMB click (no drag) on an existing endpoint's cell**, while a placement *is* pending — completes the pending placement at that cell (starts a new link) rather than cycling the existing entry's direction.
+- **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor. The drag is a live preview (`presetDragOverride`'s `teleportEndpoint` variant) committed once on release through `movePresetTeleportEndpointTo`, which opens the node picker when the landing point is split. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
+- **LMB click (no drag) on an existing endpoint's cell** — starts a new placement there, or completes the pending one (GitHub issue #748). The type and direction of an existing teleport are edited with the settings tool (`setPresetTeleportDirection`), or with the preset list's direction toggle.
 
 A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags. The controller captures the pointerdown viewport position so this release-only resolution remains correct even when no `pointermove` event was delivered.
 
@@ -137,6 +146,18 @@ A teleport is **invalid** if either endpoint is outside the current field (`comp
 - get a dedicated invalid-cell fill at each visible endpoint (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on; point invalidity is never represented by a square or circle outline
 
 `presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
+
+### Unresolvable endpoints
+
+Generation does not skip a preset endpoint it cannot resolve. `build_preset_state` (connections,
+vertical passages, elevator floors, locked nodes) and the `preset_start` / `preset_finish` /
+`preset_gen_source` markers return `Err` naming the endpoint — an unknown level, a point outside
+the level's field, or a slot not declared in `split_points`. `PresetState::resolve_endpoint` has the
+same contract. The client therefore sends only valid entries to `generate()`: connections,
+teleports, vertical passages, elevators, split points, markers and locked nodes outside their
+floor's field are omitted (see "Validity"). The post-edit `compute_analytics` path keeps its lenient
+contract: its `preset_*` fields only flag `preset_locked` elements, and an entry that no longer
+resolves against the rebuilt field is skipped.
 
 ### Rendering (`TeleportRenderer`)
 
@@ -213,13 +234,13 @@ Single click, not a two-click gesture like teleports (GitHub issue #357 follow-u
 3. **Both directions available** → `presetVerticalPassagePending: { origin, tool, availableDirections: ["up","down"] }` is set and `PresetVerticalDirectionDialog` opens — a small `Modal` with two plain buttons, "Up"/"Down", no separate Confirm/Cancel footer; picking one commits the entry via `choosePresetVerticalPassageDirection` and closes the dialog in the same click. ESC or closing the dialog calls `cancelPresetVerticalPassagePlacement()`, discarding the pending placement.
 4. **Neither direction available** (no floor above or below has a cell at that point) → no-op; the tools are hidden entirely below 2 floors, so this only guards a same-point edge case on a taller maze.
 
-Hit-testing, right-click-to-delete, and click-to-cycle-direction on an *existing* endpoint (`pickVerticalPassageEndpointAt`) mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click (no drag) on an existing endpoint still cycles `forward ↔ backward` the same way a teleport endpoint's own click-to-cycle works. A plain click anywhere else in a cell with an existing vertical passage also targets that same cell/floor pair: one available pair cycles `forward ↔ backward`, while two existing adjacent-floor pairs are left unchanged rather than duplicated (GitHub issue #495; same behavior as post-edit issues #385/#491).
+Hit-testing and right-click-to-delete on an *existing* endpoint (`pickVerticalPassageEndpointAt`) mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click always adds a new passage, offering every direction that has a cell on the adjacent floor, even where passages already exist (GitHub issue #748, superseding #495). Direction and type changes use the settings tool.
 
-**Drag-to-move** (GitHub issue #566): dragging an existing vertical-passage endpoint moves BOTH ends to the dragged point's `(x, y)` — a vertical passage's two ends are the same column on different floors, so moving only the dragged end would desync them. The drag is a live preview only (`presetDragOverride`, set on pointerdown/pointermove, read by `PresetConnectionsRenderer` in place of the entry's committed endpoint); nothing is written to `presetVerticalPassages`/`presetElevators` until pointerup. On release, `moveVerticalPassageEndpoint` (`fieldValidity.ts`) validates that the OTHER end's own floor has a cell at the new `(x, y)` (`cellExistsAt`) — if not, the whole drag is reverted (no state change) and `presetDragFailureMessage` is set so `PresetConnectionsFeature` can show an `AlertModal` naming the rejecting floor/point. The dragged end's own floor is never rejected: the pointermove handler already gates candidate points to `getCachedCellSet()` (the active floor's own valid cells) before a drag override is even set.
+**Drag-to-move** (GitHub issue #566): dragging an existing vertical-passage endpoint moves BOTH ends to the dragged point's `(x, y)` — a vertical passage's two ends are the same column on different floors, so moving only the dragged end would desync them. The drag is a live preview only (`presetDragOverride`, set on pointerdown/pointermove, read by `PresetConnectionsRenderer` in place of the entry's committed endpoint); nothing is written to `presetVerticalPassages`/`presetElevators` until pointerup. On release, `moveVerticalPassageEndpoint` (`fieldValidity.ts`) validates that the OTHER end's own floor has a cell at the new `(x, y)` (`cellExistsAt`) — if not, the whole drag is reverted (no state change) and emits `vertical_drag.failed_passage` with the rejecting floor/point. The dragged end's own floor is never rejected: the pointermove handler already gates candidate points to `getCachedCellSet()` (the active floor's own valid cells) before a drag override is even set.
 
 ### Elevator drag-to-move
 
-Same override-preview + commit-on-release mechanics as vertical-passage drag (GitHub issue #566), extended to elevators: an elevator's floors all share one `(x, y)` column, so dragging any one floor's own marker moves EVERY other floor's own endpoint to the same new point. On release, `moveElevatorEndpoint` (`fieldValidity.ts`) validates the new point against every OTHER floor's own field (`cellExistsAt`); if any of them has no cell there, the whole drag is reverted and `presetDragFailureMessage` is set the same way as the vertical-passage case (message wording picks "stop" instead of "passage" via `entityKind: "elevator"`).
+Same override-preview + commit-on-release mechanics as vertical-passage drag (GitHub issue #566), extended to elevators: an elevator's floors all share one `(x, y)` column, so dragging any one floor's own marker moves EVERY other floor's own endpoint to the same new point. On release, `moveElevatorEndpoint` (`fieldValidity.ts`) validates the new point against every OTHER floor's own field (`cellExistsAt`); if any of them has no cell there, the whole drag is reverted and emits `vertical_drag.failed_elevator` with the rejecting floor/point.
 
 ### Elevator placement
 
@@ -231,11 +252,11 @@ Same override-preview + commit-on-release mechanics as vertical-passage drag (Gi
 3. Confirm (`confirmPresetElevatorPlacement`) is disabled until at least 2 floors are selected. On confirm, one `PresetElevatorEntry` is created with one `PresetEndpoint` per selected floor — **the same `(x, y)` point on every floor**, only `level` differs.
 4. Cancel (ESC, or closing the dialog) calls `cancelPresetElevatorPlacement()`, discarding the pending placement without creating an entry.
 
-Editing an existing elevator: right-click any of its floor endpoints removes the entire entry (`removePresetElevator`). Dragging a floor endpoint moves the whole elevator (see "Elevator drag-to-move" below); there is no other per-floor endpoint edit — floor membership itself is only set at creation time.
+Editing an existing elevator: right-click any of its floor endpoints removes the entire entry (`removePresetElevator`). Dragging a floor endpoint moves the whole elevator (see "Elevator drag-to-move" above). Floor membership is edited with the settings tool or the preset list's gear (`editPresetElevator`, which seeds the dialog with the entry's current floors and sets `editingId`). A click with the elevator tool always starts a new elevator (GitHub issue #748).
 
 ### Validity
 
-A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — mirrors the Rust side's own "fewer than two resolved endpoints connects nothing" fallback in `build_preset_state`, so a client-invalid elevator would have been a no-op edge-wise anyway. Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
+A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — the Rust side (`build_preset_state`) connects nothing for an elevator with fewer than two floors, and rejects an elevator endpoint that does not resolve (see "Unresolvable endpoints" below). Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
 
 ### Rendering
 
@@ -366,10 +387,12 @@ All tools live in one **Tools** section of the feature card, rendered as a wrapp
 | `vertical_passage_one_way` | Two-click placement of a one-way vertical passage — see "Preset vertical passages and elevators" |
 | `vertical_passage_two_way` | Two-click placement of a two-way vertical passage — see "Preset vertical passages and elevators" |
 | `elevator` | Click a point, then pick reachable floors in a dialog — see "Preset vertical passages and elevators" |
-| `lock_in` | Locks node to block incoming edges |
+| `move` | Moves any element of a cell, including split nodes' elements — see `Specs/element-tools.md` |
+| `settings` | Reverses a one-way edge, or opens the settings of a cell's teleport, vertical passage, elevator, lock, or split tile — see `Specs/element-tools.md` |
+| `lock_in` | Locks node to block incoming edges (lock tools set their kind and never toggle it off; press-dragging an existing lock moves it — see `Specs/element-tools.md`) |
 | `lock_out` | Locks node to block outgoing edges |
 | `full_lock` | Locks node both in and out (`"both"`) |
-| `gen_source` | On a plain (unsplit) cell: toggles `presetGenSource` on left-click (click the same cell to clear). On a declared split point: left-click opens `PresetSplitTargetDialog` (GitHub issue #494) — the picked node is assigned unconditionally (no toggle). Right-click clears `presetGenSource` whenever it sits on the clicked cell, on any cell (split or not). |
+| `gen_source` | Left-click sets `presetGenSource` (no toggle, GitHub issue #748). On a declared split point: left-click opens `PresetSplitTargetDialog` (GitHub issue #494) and the picked node is assigned. Right-click clears `presetGenSource` whenever it sits on the clicked cell, on any cell (split or not). |
 | `manage_split_nodes` | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
 | `clear` | Removes any preset object in the clicked cell. Shown with a danger-hued selected border (`btn-tool-icon-selected-danger`) and a trash-can glyph; previously a text button in the Control section. |
 
@@ -383,7 +406,7 @@ Right-click on an edge clears its user override and re-materializes it as the cu
 
 Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as square icon-only buttons.
 
-- **`ToolIconButton`** (`components/ToolIconButton.tsx`) — a `<button>` sized to one tessellation cell (`TILE_SIZE + 4` square), its own button type (`btn-tool-icon` in `global.css`), not a toggle. Selection shows as an accent border + inset shadow, never a fill swap; the button face stays the canvas floor fill so the pictogram reads exactly as it does on the field. A `danger` prop (destructive tools — preset `clear`, post-edit `reset`/`delete`) swaps the accent border for the `base.error` hue (`btn-tool-icon-selected-danger`). `title` is the tool's own label (native tooltip), since the button carries no visible text.
+- **`ToolIconButton`** (`components/ToolIconButton.tsx`) — a `<button>` sized to one tessellation cell (`TILE_SIZE + 4` square), its own button type (`btn-tool-icon` in `global.css`), not a toggle. Selection shows as an accent border + inset shadow, never a fill swap; the button face stays the canvas floor fill so the pictogram reads exactly as it does on the field. A `danger` prop (destructive tools — preset `clear`, post-edit `reset`/`delete`) swaps the accent border for the `base.error` hue (`btn-tool-icon-selected-danger`). `ToolTooltip` owns the shared accessible presentation: `title` is primary and optional `description` is a separate tertiary-colored line; keyboard shortcuts are non-interactive keycap badges aligned with the title or description. The optional-connection (`reset`) tool uses the latter for its generation-time behavior. While the card is open, tools use their mnemonic (`W` wall, `P` passage, `Alt`+`P` one-way, `S` start, `F` finish, `T` two-way teleport, `Alt`+`T` one-way teleport, `V`/`Alt`+`V` vertical passages, `E` elevator, `N` split-node management, `M` move, `C` settings, `R` reset; `I`/`O`/`L` locks, `G` generation source, and `D` clear). Vertical shortcuts are unavailable on a single-floor field.
 - **`ToolGlyph`** (`components/features/ToolGlyph.tsx`) — blits the offscreen-rendered pictogram bitmap for a tool into a `<canvas>`.
 - **`toolGlyphs.ts`** — renders every pictogram once, module-wide, through a single throwaway Pixi `Application` at device-pixel resolution (no `RenderTexture`/`extract` round-trip — that pixelated the result). Each glyph is drawn with the exact `DEFAULT_MAZE_RENDER_STYLE` primitives the canvas uses for that element (wall stroke, marker shape + gap ring, one-way indicator, lock icon, teleport diamond, gen-source cross, ...), so the icons track the render style. `GLYPHS` is a `Partial<Record<PresetConnectionTool | PostEditTool | "post_edit_reset", GlyphFn>>`; `toolGlyphs.test.ts` asserts every real tool resolves to an entry (post-edit `reset` maps to the synthetic `post_edit_reset` key — a counter-clockwise circular arrow, distinct from the preset `reset` grey undecided-edge stub). `getToolGlyphs()` caches the built bitmap map and drops a rejected build so a later call can retry.
 
@@ -435,11 +458,11 @@ Layers (bottom to top):
 
 **Exterior edges** (one endpoint outside field) are drawn as solid walls. **Interior edges** (both endpoints inside field) are drawn according to their preset state.
 
-**Cell cache** (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt only when `tessellationConfig`, `fieldPoints`, or `fieldEditMode` changes. All redraw calls use the cache. `getCachedCells()` and `getCachedCellSet()` expose the cache to the controller.
+**Cell cache** (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt only when `fieldConfig`, `fieldPoints`, or `fieldEditMode` changes. All redraw calls use the cache. `getCachedCells()` and `getCachedCellSet()` expose the cache to the controller.
 
 **`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
 
-`PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`tessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
+`PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`fieldConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
 
 **Pointer cleanup and modal ownership.** `PresetConnectionsController.clearHover()` clears edge hover, cell hover, and teleport preview together. While a preset split-target/entity-delete picker or a pending vertical-passage/elevator placement is open, pointerdown is ignored and pointermove clears both hover targets without dispatching canvas mutations. The controller keeps the active-floor teleport hit-test scoped to entries whose `from` endpoint belongs to that floor; cross-floor entries are edited from their owning floor.
 
@@ -456,7 +479,7 @@ Hit-test for click/hover:
 2. Check the cell and all its neighbors as candidates
 3. For each candidate pair both in field, compute distance from pointer to the actual polygon edge segment (`getSharedEdgeSegment`)
 4. If `deadZone` is passed and the closest point on a segment falls within `EDGE_ENDPOINT_DEAD_ZONE_FRACTION` (0.2) of either endpoint, skip that segment — this stops the cursor from hair-triggering a perpendicular edge while it passes near a shared grid vertex during a drag (#188)
-5. Accept the closest remaining edge within `threshold = TILE_SIZE * 0.4` (squares/hexes) or `TRI_TILE_SIZE * 0.12` (triangles — kept well under the incenter-to-side distance `≈ 0.29 * side`, so a triangle cell's own centroid never falls inside the edge-hit zone; a wider ratio tuned for squares made every dead-center triangle click misread as an edge click, GitHub issue #340 follow-up)
+5. Accept the closest remaining edge within `threshold = TESSELLATION_UI[family].edgeHitThreshold` (`TILE_SIZE * 0.08` for squares/hexes, `TILE_SIZE * 2 * 0.12` for triangles/Cairo — kept well under the incenter-to-side distance `≈ 0.29 * side`, so a triangle cell's own centroid never falls inside the edge-hit zone; a wider ratio tuned for squares made every dead-center triangle click misread as an edge click, GitHub issue #340 follow-up)
 
 `deadZone` defaults to `false` and is passed `true` only from `onPointerMove` (hover + drag-continuation) in both `PresetConnectionsController` and `PostEditController`; `onPointerDown` (plain click) calls omit it, so a single click can still hit an edge whose nearest point is close to a vertex.
 
@@ -482,11 +505,12 @@ Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionE
 
 ### Rotating a split point (`rotatePresetSplitPoint`, GitHub issue #580)
 
-Cairo uses its five stable face slots directly. Rotation orders those slots by the actual
-neighbor-vector angles and moves each face to the adjacent physical offset, rather than treating
-the stable core slot order as a perimeter. Its odd degree never participates in the opposite-face
-bridge heuristic; owner resolution otherwise follows the existing-owner and safe-fallback tiers
-used by the other tessellations.
+`rotatePresetSplitPoint` returns `refusalReason: "outside_field"` when a moved connection would
+leave the field. The store leaves presets unchanged and emits
+`edit_refusal.split_rotation_outside_field`. Boundary-face clicks use
+`edit_refusal.split_boundary_face`; the shared tile editor has no persistent inline hint.
+
+Rotation follows the cell's shape template, exactly as in post-edit (see `Specs/post-edit.md`'s "Rotating a split point"): one step is the allowed-group element shifting every canonical face by one, and a cell whose group has none (Cairo) cannot rotate. Owner resolution follows the existing-owner and safe-fallback tiers.
 
 Mirrors post-edit's own `rotateSplitPointNodes` (see `Specs/post-edit.md`'s "Rotating a split point" section for the full algorithm) over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`: each of the point's own declared nodes independently shifts its decided faces by one adjacent physical face; a new neighbor's owning node is resolved by the same existing-connection → geometry-evidence (`canCompleteOppositePair`) → active/original-fallback tiering (`resolvePresetFaceOwner`/`selectExistingPresetFaceOwner`).
 
@@ -570,7 +594,7 @@ Preset markers and edges use the same node-position geometry as generated and po
 
 **All-nodes-wall.** A face where every one of a point's nodes explicitly has `"wall"` renders as one plain solid wall spanning the whole face (`SplitPassagesResult.wallFaces`, same color as an ordinary non-split wall) instead of per-node segments — it isn't attributable to any single node's color.
 
-The shared geometric algorithm (face division among connected nodes, hub-point fan-out, the 2-passage straightening exception, active-node z-order, one-way arrow placement on the connector rather than the along-face segment) lives in `pixi/splitFaceLayout.ts`, used by both `buildSplitPassagesCore` (canvas) and `TileFaceEditor` (the "Manage split nodes" panel's tile diagram) so the two never drift apart.
+The shared geometric algorithm (face division among connected nodes, hub-point fan-out, the 2-passage straightening exception (dropped when the line is nearly parallel to a face, issue #791), active-node z-order, one-way arrow placement on the connector rather than the along-face segment) lives in `pixi/splitFaceLayout.ts`, used by both `buildSplitPassagesCore` (canvas) and `TileFaceEditor` (the "Manage split nodes" panel's tile diagram) so the two never drift apart.
 
 **Panel link sections.** Each node's card in "Manage split nodes" groups its links into three sections: **Required** (a decided passage/one-way — the connection *will* exist), **Undefined** (preset's optional/undecided faces — *may* exist, not forced either way; always empty for post-edit, which has no such concept), **Forbidden** (`wall` — this node's face is explicitly closed here). An empty section shows a dash placeholder.
 

@@ -1,31 +1,10 @@
-import { TILE_SIZE } from "./constants";
-import { TRI_TILE_SIZE } from "./triGeometry";
+import { TESSELLATION_UI } from "./geometry/tessellationUi";
+import { closestPointOnPolyline, fractionAlong } from "./geometry/polylineOps";
 import { makeProjection } from "./tessellationProjection";
 import { encodePoint } from "./tessellationProjection";
 import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
-import { tessellationFamily, type FieldConfig, type Tessellation as TessellationConfig } from "../fieldConfig";
+import { tessellationFamily, type FieldConfig } from "../fieldConfig";
 import { canonicalize, edgeKey, type FieldEdge } from "./fieldEditUtils";
-
-interface SegmentHit {
-  distSq: number;
-  /** Fraction along the segment (0 = v0, 1 = v1) of the closest point to the query position. */
-  t: number;
-}
-
-function closestPointOnSegment(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number,
-): SegmentHit {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return { distSq: (px - ax) * (px - ax) + (py - ay) * (py - ay), t: 0 };
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-  const cx = ax + t * dx;
-  const cy = ay + t * dy;
-  return { distSq: (px - cx) * (px - cx) + (py - cy) * (py - cy), t };
-}
 
 /** Fraction of a segment's length, at each end, treated as a dead zone: hover/drag hit-testing
  * ignores the segment there so the cursor must clearly enter its interior before it registers.
@@ -35,27 +14,14 @@ function closestPointOnSegment(
  * nearest point is close to a vertex, so pointerdown call sites opt out. */
 const EDGE_ENDPOINT_DEAD_ZONE_FRACTION = 0.2;
 
-/** Geometry helpers still accept an editor config while field editing is active. A resolved
- * runtime field is mapped to a shape-free canonical config at that boundary. */
-function geometryConfig(cfg: TessellationConfig): FieldConfig {
-  if (!("kind" in cfg)) return cfg;
-  switch (cfg.kind) {
-    case "square": return { type: "square", width: 0, height: 0 };
-    case "hex": return { type: "hex_parallelogram", cols: 0, rows: 0, orientation: cfg.orientation };
-    case "triangle": return { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation };
-    case "cairo": return { type: "cairo", cols: 0, rows: 0 };
-  }
-}
-
 export function pickEdgeAtPosition(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cells: [number, number][],
   cellSet?: Set<number>,
   deadZone = false,
 ): FieldEdge | null {
-  const geometry = geometryConfig(cfg);
   const proj = makeProjection(cfg);
   const cell = proj.screenToGrid(viewportX, viewportY);
 
@@ -64,9 +30,6 @@ export function pickEdgeAtPosition(
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
   }
 
-  const kind = tessellationFamily(cfg);
-  const isTriangle = kind === "triangle";
-  const isHex = kind === "hex";
   // Cell-center-to-nearest-side distance, as a fraction of the tile's own edge-length scale, is
   // much smaller for triangles/hexagons (incenter-to-side ≈ 0.29 * side for an equilateral
   // triangle; hexagon center-to-side is the apothem, ≈ 0.87 * (side/2) ≈ 0.43 * side) than for a
@@ -74,7 +37,7 @@ export function pickEdgeAtPosition(
   // tuned for one shape puts another shape's own cell center inside the edge-hit zone, so a
   // dead-center click is misread as an edge click (GitHub issue #340 follow-up). Each shape's own
   // threshold stays strictly under its own center-to-side ratio.
-  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
+  const threshold = TESSELLATION_UI[tessellationFamily(cfg)].edgeHitThreshold;
   const thresholdSq = threshold * threshold;
 
   let bestKey: string | null = null;
@@ -83,24 +46,26 @@ export function pickEdgeAtPosition(
   let bestDist = Infinity;
 
   const candidates: [number, number][] = [[cell.x, cell.y]];
-  for (const [dx, dy] of getCellNeighborOffsets(geometry, cell.x, cell.y))
+  for (const [dx, dy] of getCellNeighborOffsets(cfg, cell.x, cell.y))
     candidates.push([cell.x + dx, cell.y + dy]);
 
   const checked = new Set<string>();
   for (const [cx, cy] of candidates) {
     if (!cellSet.has(encodePoint(cx, cy))) continue;
-    for (const [dx, dy] of getCellNeighborOffsets(geometry, cx, cy)) {
+    for (const [dx, dy] of getCellNeighborOffsets(cfg, cx, cy)) {
       const nx = cx + dx, ny = cy + dy;
       if (!cellSet.has(encodePoint(nx, ny))) continue;
       const key = edgeKey([cx, cy], [nx, ny]);
       if (checked.has(key)) continue;
       checked.add(key);
 
-      const seg = getSharedEdgeSegment([cx, cy], [nx, ny], geometry);
+      const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
       if (!seg) continue;
-      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
-      if (deadZone && (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
-      const distSq = hit.distSq;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
+      const distSq = hit.distance * hit.distance;
       if (distSq < thresholdSq && distSq < bestDist) {
         bestDist = distSq;
         bestKey = key;
@@ -128,11 +93,10 @@ export function pickEdgeAtPosition(
 export function isInEdgeVertexDeadZone(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cells: [number, number][],
   cellSet?: Set<number>,
 ): boolean {
-  const geometry = geometryConfig(cfg);
   const proj = makeProjection(cfg);
   const cell = proj.screenToGrid(viewportX, viewportY);
 
@@ -141,31 +105,29 @@ export function isInEdgeVertexDeadZone(
     for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
   }
 
-  const kind = tessellationFamily(cfg);
-  const isTriangle = kind === "triangle";
-  const isHex = kind === "hex";
-  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
+  const threshold = TESSELLATION_UI[tessellationFamily(cfg)].edgeHitThreshold;
   const thresholdSq = threshold * threshold;
 
   const candidates: [number, number][] = [[cell.x, cell.y]];
-  for (const [dx, dy] of getCellNeighborOffsets(geometry, cell.x, cell.y))
+  for (const [dx, dy] of getCellNeighborOffsets(cfg, cell.x, cell.y))
     candidates.push([cell.x + dx, cell.y + dy]);
 
   const checked = new Set<string>();
   for (const [cx, cy] of candidates) {
     if (!cellSet.has(encodePoint(cx, cy))) continue;
-    for (const [dx, dy] of getCellNeighborOffsets(geometry, cx, cy)) {
+    for (const [dx, dy] of getCellNeighborOffsets(cfg, cx, cy)) {
       const nx = cx + dx, ny = cy + dy;
       if (!cellSet.has(encodePoint(nx, ny))) continue;
       const key = edgeKey([cx, cy], [nx, ny]);
       if (checked.has(key)) continue;
       checked.add(key);
 
-      const seg = getSharedEdgeSegment([cx, cy], [nx, ny], geometry);
+      const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
       if (!seg) continue;
-      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
-      if (hit.distSq >= thresholdSq) continue;
-      if (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit || hit.distance * hit.distance >= thresholdSq) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
     }
   }
   return false;

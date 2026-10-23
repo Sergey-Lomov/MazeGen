@@ -43,6 +43,7 @@ mod run_initial_generation_tests {
     use maze_core::graph::Graph;
     use maze_core::ids::IdGenerator;
     use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation};
+    use std::sync::Arc;
 
     /// A 3x3 square field with no preset connections/locks — enough for Recursive Backtracker
     /// to actually run and emit events.
@@ -57,7 +58,8 @@ mod run_initial_generation_tests {
             .collect();
         let mut ids = IdGenerator::new();
         let mut field =
-            MultiLevelField::<SquareTessellation>::single_level(points, &mut ids).unwrap();
+            MultiLevelField::<SquareTessellation>::single_level(Arc::default(), points, &mut ids)
+                .unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);
@@ -1228,12 +1230,14 @@ mod preset_locked_end_to_end_tests {
     use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
     use maze_core::{Graph, IdGenerator, Maze};
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     /// Same 3-node triangle as `invalid_loop_random.rs`'s `maze_with_triangle` — every edge below
     /// the check's `length: 10` threshold, so `LoopLengthCheck` always flags it.
     fn maze_with_triangle() -> (Maze<SquareTessellation>, Vec<maze_core::ids::EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -1242,7 +1246,7 @@ mod preset_locked_end_to_end_tests {
         let nodes: Vec<_> = field
             .field_of(level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.nodes_at(level, p)[0])
             .collect();
         let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -1373,13 +1377,13 @@ mod preset_locked_end_to_end_tests {
         // in split_node_connection_group_select_tests.rs, but built via the real config path.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);
         }
 
-        let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
+        let xy_to_cell = |x: i32, y: i32| SquarePoint { x, y };
         let split_points = vec![((1, 0), 0u32, 0u32)];
         // Both slot0's and the extra slot's connections to the neighbor are preset Passages --
         // the whole group must resolve preset_locked: true (all_preset_locked requires *every*
@@ -1409,7 +1413,7 @@ mod preset_locked_end_to_end_tests {
             &[],
             &[],
             &split_points,
-            xy_to_point,
+            xy_to_cell,
             None,
             None,
         )

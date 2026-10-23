@@ -1,12 +1,12 @@
 import {
   type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
-  type DigitalExportSettings, type PrintExportSettings,
+  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -58,9 +58,14 @@ export function optVerticalArrowStyle(obj: Record<string, unknown> | null, key: 
   return v === "triangle" || v === "chevron" || v === "arrow" || v === "sign" ? v : fallback;
 }
 
-export function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal"): "none" | "straight" | "orthogonal" {
+export function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal" | "curved"): "none" | "straight" | "orthogonal" | "curved" {
   const v = obj?.[key];
-  return v === "none" || v === "straight" || v === "orthogonal" ? v : fallback;
+  return v === "none" || v === "straight" || v === "orthogonal" || v === "curved" ? v : fallback;
+}
+
+function optTeleportCurveDirection(obj: Record<string, unknown> | null, key: string, fallback: "inward" | "outward"): "inward" | "outward" {
+  const v = obj?.[key];
+  return v === "inward" || v === "outward" ? v : fallback;
 }
 
 export function optTeleportArrowMode(obj: Record<string, unknown> | null, key: string, fallback: "none" | "center" | "double" | "periodic"): "none" | "center" | "double" | "periodic" {
@@ -83,12 +88,21 @@ function readMarkerAppearance(obj: Record<string, unknown> | null, fallback: Mar
   };
 }
 
+/** A marker size adaptation fraction (GitHub issue #819) — clamped into [0, 1]. */
+function optSizeAdaptation(obj: Record<string, unknown> | null, key: string, fallback: number): number {
+  return Math.min(1, Math.max(0, optNumber(obj, key, fallback)));
+}
+
 function clampTextMargin(value: number): number {
   return Math.min(TEXT_MARGIN_RANGE.max, Math.max(TEXT_MARGIN_RANGE.min, value));
 }
 
 function readTextMargin(obj: Record<string, unknown> | null, fallback: number): number {
   return clampTextMargin(optNumber(obj, "textMargin", fallback));
+}
+
+function readTextAlignment(obj: Record<string, unknown> | null, fallback: TextHorizontalAlignment = "center"): TextHorizontalAlignment {
+  return optEnum(obj, "textAlignment", ["left", "center", "right"] as const, fallback);
 }
 
 /** `BadgeSettings` fields (GitHub issue #701): the shared marker look plus label type and the
@@ -114,6 +128,7 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
   }
   return {
     ...readMarkerAppearance(obj, fallback),
+    sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
     textFontWeight: obj?.textFontWeight === undefined
@@ -153,6 +168,8 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
     teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
     teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
+    teleportCurveDirection: optTeleportCurveDirection(obj, "teleportCurveDirection", d.teleportCurveDirection ?? "inward"),
+    teleportCurveStrength: Math.min(1, Math.max(0, optNumber(obj, "teleportCurveStrength", d.teleportCurveStrength ?? 0.25))),
     teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
     teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
     teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
@@ -175,7 +192,7 @@ export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fal
   } catch {
     return fallback;
   }
-  return readBadgeSettings(obj, fallback);
+  return { ...readBadgeSettings(obj, fallback), sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation) };
 }
 
 /** `DecorativeLineStyle` validation (GitHub issue #428) — same lenient-recovery convention as
@@ -192,6 +209,7 @@ export function validateDecorativeLineStyle(v: unknown, path: string, fallback: 
     lineColor: optNumber(obj, "lineColor", fallback.lineColor),
     lineWidth: optNumber(obj, "lineWidth", fallback.lineWidth),
     size: optNumber(obj, "size", fallback.size),
+    sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation),
   };
 }
 
@@ -260,6 +278,57 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
     coverage: validateMarkerIndexCoverage(obj.coverage, `${path}.coverage`, fallback.coverage),
   };
+}
+
+export function validateFloorLabelSettings(v: unknown, path: string, fallback: FloorLabelSettings): FloorLabelSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try { obj = assertObject(v, path); } catch { return fallback; }
+  return {
+    enabled: optBool(obj, "enabled", fallback.enabled),
+    // Floor labels predate label modes (GitHub issue #747): keep index-based output for saved
+    // settings without a mode.
+    labelMode: obj.labelMode === undefined
+      ? "index"
+      : optEnum(obj, "labelMode", ["index", "title"] as const, fallback.labelMode),
+    prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
+    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
+    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textAlignment: readTextAlignment(obj, fallback.textAlignment),
+    textSize: Math.min(FLOOR_LABEL_TEXT_SIZE_RANGE.max, Math.max(FLOOR_LABEL_TEXT_SIZE_RANGE.min, optNumber(obj, "textSize", fallback.textSize))),
+    textMargin: readTextMargin(obj, fallback.textMargin),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    backgroundShape: optEnum(obj, "backgroundShape", ["none", "rectangle", "parallelogram"] as const, fallback.backgroundShape),
+    width: Math.min(FLOOR_LABEL_WIDTH_RANGE.max, Math.max(FLOOR_LABEL_WIDTH_RANGE.min, optNumber(obj, "width", fallback.width))),
+    height: optNumber(obj, "height", fallback.height),
+    cornerRadius: optNumber(obj, "cornerRadius", fallback.cornerRadius),
+    gap: optNumber(obj, "gap", fallback.gap),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    positionsByFloorId: validateFloorLabelPositions(obj.positionsByFloorId, fallback.positionsByFloorId),
+  };
+}
+
+function validateFloorLabelPositions(v: unknown, fallback: FloorLabelSettings["positionsByFloorId"]): FloorLabelSettings["positionsByFloorId"] {
+  if (v == null) return fallback;
+  if (typeof v !== "object" || Array.isArray(v)) return fallback;
+  const result: FloorLabelSettings["positionsByFloorId"] = {};
+  const anchors = new Set<FloorLabelAnchor>(FLOOR_LABEL_ANCHORS);
+  for (const [floorId, raw] of Object.entries(v)) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const value = raw as Record<string, unknown>;
+    if (value.mode === "anchored" && typeof value.anchor === "string" && anchors.has(value.anchor as FloorLabelAnchor)) {
+      result[floorId] = { mode: "anchored", anchor: value.anchor as FloorLabelAnchor };
+    } else if (value.mode === "cell" && Array.isArray(value.cell) && value.cell.length === 2
+      && value.cell.every((n) => typeof n === "number" && Number.isInteger(n))) {
+      result[floorId] = { mode: "cell", cell: [value.cell[0] as number, value.cell[1] as number] };
+    } else if (value.mode === "free" && typeof value.x === "number" && Number.isFinite(value.x)
+      && typeof value.y === "number" && Number.isFinite(value.y)) {
+      result[floorId] = { mode: "free", x: value.x, y: value.y };
+    }
+  }
+  return result;
 }
 
 function validateMarkerIndexCoverage(v: unknown, path: string, fallback: MarkerIndexSettings["coverage"]): MarkerIndexSettings["coverage"] {
@@ -458,6 +527,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerSizeAdaptation: optSizeAdaptation(obj, "markerSizeAdaptation", d.markerSizeAdaptation),
     markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
@@ -465,9 +535,12 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
+    floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
+    floorLabel: validateFloorLabelSettings(obj.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),
+    verticalSizeAdaptation: optSizeAdaptation(obj, "verticalSizeAdaptation", d.verticalSizeAdaptation),
     verticalBorderWidth: optNumber(obj, "verticalBorderWidth", d.verticalBorderWidth),
     verticalGapWidth: optNumber(obj, "verticalGapWidth", d.verticalGapWidth),
     verticalFillColor: optNumber(obj, "verticalFillColor", d.verticalFillColor),
@@ -478,6 +551,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     verticalDecorativeLineColor: optNumber(obj, "verticalDecorativeLineColor", d.verticalDecorativeLineColor),
     verticalDecorativeLineWidth: optNumber(obj, "verticalDecorativeLineWidth", d.verticalDecorativeLineWidth),
     verticalDecorativeSize: optNumber(obj, "verticalDecorativeSize", d.verticalDecorativeSize),
+    verticalDecorativeSizeAdaptation: optSizeAdaptation(obj, "verticalDecorativeSizeAdaptation", d.verticalDecorativeSizeAdaptation),
     verticalDecorativeArrowSize: optNumber(obj, "verticalDecorativeArrowSize", d.verticalDecorativeArrowSize),
     links,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
@@ -595,6 +669,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
+    junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),
     join: optCornerStyle(obj, "join", d.join),
     renderStyle: optRenderStyle(obj, "renderStyle", d.renderStyle),
     startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),
@@ -617,6 +692,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerSizeAdaptation: optSizeAdaptation(obj, "markerSizeAdaptation", d.markerSizeAdaptation),
     markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
     markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
@@ -624,9 +700,12 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
+    floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
+    floorLabel: validateFloorLabelSettings(obj?.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),
+    verticalSizeAdaptation: optSizeAdaptation(obj, "verticalSizeAdaptation", d.verticalSizeAdaptation),
     verticalBorderWidth: optNumber(obj, "verticalBorderWidth", d.verticalBorderWidth),
     verticalGapWidth: optNumber(obj, "verticalGapWidth", d.verticalGapWidth),
     verticalFillColor: optNumber(obj, "verticalFillColor", d.verticalFillColor),
@@ -639,6 +718,11 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerLayout: optMarkerLayout(obj, "markerLayout", d.markerLayout),
     markerScale: optNumber(obj, "markerScale", d.markerScale),
   };
+}
+
+function hasFloorLabelSettings(obj: Record<string, unknown> | null): boolean {
+  return [obj?.vectorByWallsSettings, obj?.vectorByCorridorsSettings].some((settings) =>
+    settings != null && typeof settings === "object" && (settings as Record<string, unknown>).floorLabel != null);
 }
 
 export function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
@@ -666,6 +750,9 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)
       : {},
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
+    // A file saved before GitHub issue #747 that already carries floor-label settings keeps them
+    // as-is; one without them gets the mode chosen on the next first open of Image Export.
+    floorLabelModeChosen: optBool(obj, "floorLabelModeChosen", hasFloorLabelSettings(obj)),
     vectorByWallsLinks: linksMatchDefaults(vectorByWallsLinks, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : vectorByWallsLinks,
     vectorByCorridorsLinks: linksMatchDefaults(vectorByCorridorsLinks, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : vectorByCorridorsLinks,
   };

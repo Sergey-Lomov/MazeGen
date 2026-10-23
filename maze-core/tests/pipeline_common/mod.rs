@@ -201,7 +201,8 @@ pub fn make_engines() -> QualityControlEngine<SquareTessellation> {
 
 pub fn make_generated_graph(seed: u64) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(5, 5), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::single_level(Arc::default(), square_rect(5, 5), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

@@ -2,9 +2,11 @@ import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { getSharedEdgeSegment, getCellCenter } from "../tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { drawRoundedPolygon } from "./markerShapes";
 import { WALL_THICKNESS } from "../renderConstants";
+import { tracePath } from "../geometry/pathRenderer";
+import { offsetPolyline, polylineLength, trimPolyline } from "../geometry/polylineOps";
 
 /** Shared style knobs for every one-way indicator pattern (`drawOneWayTriangle`/`Chevron`/`Arrow`)
  *  — GitHub issue #292 (renamed border->gap in #302 follow-up, consistent with the marker/connector
@@ -164,7 +166,7 @@ export function drawOneWayWallHighlight(
   g: Graphics,
   from: [number, number],
   to: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   width: number,
   alpha: number,
@@ -172,8 +174,7 @@ export function drawOneWayWallHighlight(
   const seg = getSharedEdgeSegment(from, to, cfg);
   if (!seg) return false;
 
-  g.moveTo(seg.v0.x, seg.v0.y);
-  g.lineTo(seg.v1.x, seg.v1.y);
+  tracePath(g, seg.path);
   g.stroke({ width, color, alpha });
 
   const fromCenter = getCellCenter(from[0], from[1], cfg);
@@ -182,9 +183,7 @@ export function drawOneWayWallHighlight(
   const tdy = toCenter.y - fromCenter.y;
   const len = Math.sqrt(tdx * tdx + tdy * tdy);
   if (len > 0) {
-    const cx = (seg.v0.x + seg.v1.x) / 2;
-    const cy = (seg.v0.y + seg.v1.y) / 2;
-    drawOneWayTriangle(g, cx, cy, tdx / len, tdy / len, { color, size: MAP_ONE_WAY_SIZE });
+    drawOneWayTriangle(g, seg.contact.x, seg.contact.y, tdx / len, tdy / len, { color, size: MAP_ONE_WAY_SIZE });
   }
   return true;
 }
@@ -210,7 +209,7 @@ export function drawCellBoundaryHighlight(
   g: Graphics,
   from: [number, number],
   to: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   fillAlpha = 0.25,
   borderWidth = 3,
@@ -224,31 +223,24 @@ export function drawCellBoundaryHighlight(
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
   const centerDistance = Math.hypot(dx, dy);
-  const edgeLength = Math.hypot(seg.v1.x - seg.v0.x, seg.v1.y - seg.v0.y);
+  const edgeLength = polylineLength(seg.polyline);
   if (centerDistance === 0 || edgeLength === 0) return false;
 
   // Derive the normal from the shared edge itself. The centre-to-centre vector is only used to
-  // choose the normal's sign; for triangular/hexagonal coordinates it is not guaranteed to be
-  // exactly perpendicular to the edge after the tessellation transform.
-  const tx = (seg.v1.x - seg.v0.x) / edgeLength;
-  const ty = (seg.v1.y - seg.v0.y) / edgeLength;
-  let nx = -ty;
-  let ny = tx;
-  if (nx * dx + ny * dy < 0) {
-    nx = -nx;
-    ny = -ny;
-  }
+  // choose the normal's sign (the side of the edge's direction of travel the band is built on
+  // first); for triangular/hexagonal coordinates it is not guaranteed to be exactly perpendicular
+  // to the edge after the display transform.
+  const first = seg.polyline[0], second = seg.polyline[1];
+  const leftNormalX = -(second[1] - first[1]), leftNormalY = second[0] - first[0];
+  const leftSign = leftNormalX * dx + leftNormalY * dy < 0 ? -1 : 1;
   const halfWidth = (spanWidth ?? centerDistance) / 2;
   const clampedInset = clampBoundaryInset(inset, edgeLength);
-  const v0x = seg.v0.x + tx * clampedInset, v0y = seg.v0.y + ty * clampedInset;
-  const v1x = seg.v1.x - tx * clampedInset, v1y = seg.v1.y - ty * clampedInset;
-  const insetLength = Math.hypot(v1x - v0x, v1y - v0y);
+  const trimmed = trimPolyline(seg.polyline, clampedInset, edgeLength - clampedInset);
+  const insetLength = polylineLength(trimmed);
   const points = [
-    v0x + nx * halfWidth, v0y + ny * halfWidth,
-    v1x + nx * halfWidth, v1y + ny * halfWidth,
-    v1x - nx * halfWidth, v1y - ny * halfWidth,
-    v0x - nx * halfWidth, v0y - ny * halfWidth,
-  ];
+    ...offsetPolyline(trimmed, leftSign * halfWidth),
+    ...offsetPolyline(trimmed, -leftSign * halfWidth).reverse(),
+  ].flat();
   const cornerRadius = Math.min(insetLength, centerDistance) * 0.18;
   drawRoundedPolygon(g, points, cornerRadius);
   g.fill({ color, alpha: fillAlpha });
@@ -272,7 +264,7 @@ export function splitWallAndLineEdges<TId>(
   g: Graphics,
   edges: { from: TId; to: TId; asWall: boolean }[],
   cellOf: (id: TId) => [number, number] | undefined,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   fillAlpha = 0.25,
   borderWidth = 3,

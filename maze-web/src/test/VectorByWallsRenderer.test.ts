@@ -6,6 +6,8 @@ import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -26,13 +28,6 @@ function makeBounds(minX: number, minY: number, maxX: number, maxY: number): Fak
 function makeEmptyBounds(): FakeBounds {
   return makeBounds(Infinity, Infinity, -Infinity, -Infinity);
 }
-
-// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
-// same square-tessellation mock as VectorByCorridorsRenderer.test.ts, needed since
-// getRequiredExportMargin's pixel-accurate path calls exactCellBounds/getCellCenter directly.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
 
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildMazeWalls: vi.fn(() => []),
@@ -162,6 +157,7 @@ const {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
@@ -180,9 +176,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWayThickness: 4,
     oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
-    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-    teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
+    startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+    finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "straight",
@@ -191,13 +187,13 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportArrowPeriod: 5,
     teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+    teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     verticalStyle: "abstract",
-    twoWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
-    oneWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
-    elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    twoWayPassageMarker: { sizeAdaptation: 0, shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    oneWayPassageMarker: { sizeAdaptation: 0, shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    elevatorMarker: { sizeAdaptation: 0, shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
     twoWayArrowColor: 0x111111,
     twoWayArrowSize: 0.6,
     twoWayArrowStyle: "triangle",
@@ -210,9 +206,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",
     elevatorArrowCornerStyle: "round",
-    decorativeStairsTwoWay: { lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
-    decorativeStairsOneWay: { lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
-    decorativeElevator: { lineColor: 0x9955ff, lineWidth: 3, size: 0.22 },
+    decorativeStairsTwoWay: { sizeAdaptation: 0, lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
+    decorativeStairsOneWay: { sizeAdaptation: 0, lineColor: 0x33bbff, lineWidth: 3, size: 0.22 },
+    decorativeElevator: { sizeAdaptation: 0, lineColor: 0x9955ff, lineWidth: 3, size: 0.22 },
     decorativeStairsArrowColor: 0x111111,
     decorativeStairsArrowSize: 0.6,
     decorativeStairsOneWayArrowColor: 0x2a2a2a,
@@ -224,7 +220,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     cornerStyle: "round",
     markerSize: 0.16,
     markerBorderWidth: 3, markerShape: "circle", markerFillColor: 0, markerBorderColor: 0,
-    gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold",
+    gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold", floorLabelType: "letters",
     verticalCornerStyle: "round",
     verticalShape: "circle",
     verticalSize: 0.2,
@@ -237,7 +233,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     verticalArrowCornerStyle: "round",
     verticalDecorativeLineColor: 0x33bbff,
     verticalDecorativeLineWidth: 3,
-    verticalDecorativeSize: 0.22,
+    verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0, markerSizeAdaptation: 0,
     verticalDecorativeArrowSize: 0.75,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
@@ -246,14 +242,14 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 const stableNodes: NodeDto[] = [];
 const stableEdges: never[] = [];
-const stableCfg = { type: "square" as const, width: 4, height: 4 };
+const stableCfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 
 function baseState(overrides: Record<string, unknown> = {}) {
   return {
     openCard: "image_export",
     nodes: stableNodes,
     edges: stableEdges,
-    activeTessellationConfig: stableCfg,
+    activeFieldConfig: stableCfg,
     vectorByWallsSettings: baseSettings(),
     vectorByWallsSectionsExpanded: {},
     start: null,
@@ -317,7 +313,7 @@ describe("buildOneWayStyle", () => {
 describe("buildTeleportLineStyle", () => {
   it("maps line-pattern settings straight through", () => {
     const style = buildTeleportLineStyle(baseSettings({
-      teleportMarker: { cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
+      teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
       teleportConnectorColor: 0x222,
       teleportConnectorWidth: 7,
       teleportConnectorStyle: "orthogonal",
@@ -327,23 +323,32 @@ describe("buildTeleportLineStyle", () => {
       teleportConnectorGapWidth: 9,
     }), 0x999);
     expect(style).toEqual({
-      shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
-      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
+      shape: "star", cornerStyle: "round", size: 0.4, sizeAdaptation: 0, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
+      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal", curveDirection: "inward", curveStrength: 0.25,
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
-      floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, sizeAdaptation: 0, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     });
+  });
+
+  it("passes explicit curved connector settings through the shared renderer style", () => {
+    const style = buildTeleportLineStyle(baseSettings({
+      teleportConnectorStyle: "curved",
+      teleportCurveDirection: "outward",
+      teleportCurveStrength: 0.6,
+    }), 0x999);
+    expect(style).toMatchObject({ connectorStyle: "curved", curveDirection: "outward", curveStrength: 0.6 });
   });
 });
 
 describe("buildMarkerStyle", () => {
   it("spreads MarkerSettings straight through and sets gapColor to the given floorColor", () => {
-    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5, text: "S" };
+    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5, text: "S", sizeAdaptation: 0 };
     const style = buildMarkerStyle(settings, 0xdead00);
     expect(style).toEqual({ ...settings, gapColor: 0xdead00 });
   });
 
   it("gapColor tracks floorColor independently of the marker's own fillColor/borderColor", () => {
-    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225, text: "" };
+    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225, text: "", sizeAdaptation: 0 };
     expect(buildMarkerStyle(settings, 0x111).gapColor).toBe(0x111);
     expect(buildMarkerStyle(settings, 0x222).gapColor).toBe(0x222);
   });
@@ -425,6 +430,24 @@ describe("resolveEffectiveEndpoints", () => {
 });
 
 describe("VectorByWallsRenderer", () => {
+  it("uses the active floor's tessellation config for rendered geometry", () => {
+    const secondFloorCfg = fieldOf("square", { shape: "rect", cols: 9, rows: 2 });
+    currentState = baseState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      activeFloorId: "floor_2",
+      activeFieldConfig: secondFloorCfg,
+      floorFields: {
+        floor_1: { fieldConfig: stableCfg },
+        floor_2: { fieldConfig: secondFloorCfg },
+      },
+    });
+
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    const floor = (renderer as unknown as { floor: { render: ReturnType<typeof vi.fn> } }).floor;
+
+    expect(floor.render).toHaveBeenCalledWith(expect.anything(), secondFloorCfg);
+  });
+
   it("keeps the original background grid separate from the optional inner grid", () => {
     const nodes: NodeDto[] = [
       { id: 10, x: 0, y: 0, i: 0 },
@@ -466,7 +489,7 @@ describe("VectorByWallsRenderer", () => {
     // (verified directly against the tessellation's own cell-polygon math).
     const nodes: NodeDto[] = [];
     for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) nodes.push({ id: y * 3 + x, x, y, i: 0 });
-    currentState = baseState({ nodes, activeTessellationConfig: { type: "square", width: 3, height: 3 } });
+    currentState = baseState({ nodes, activeFieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
 
     const asAny = renderer as unknown as {

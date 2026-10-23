@@ -1,21 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { describe, it, expect } from "vitest";
+import type { FieldConfig } from "../fieldConfig";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/postEditTypes";
-
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
-  }),
-  initWasm: vi.fn(() => Promise.resolve()),
-}));
+import { fieldOf } from "./fieldConfigFixtures";
 
 const { buildSplitFloorGeometry } = await import("../pixi/splitFloorPreview");
 const { splitEndpoint, nodeEndpoint } = await import("../pixi/postEditEndpoint");
 
 describe("buildSplitFloorGeometry", () => {
   it("resolves draft edges touching a split-node slot on floor 0 (GitHub issue #632 regression)", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     // Point (1,1) split into original node (id 0) + one slot (slotId 0, node id 1).
     const allNodes: NodeDto[] = [
       { id: 0, x: 1, y: 1, i: 0, level: 0 },
@@ -46,7 +40,7 @@ describe("buildSplitFloorGeometry", () => {
   });
 
   it("returns null when the point has fewer than 2 nodes on this floor (not actually split)", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const allNodes: NodeDto[] = [{ id: 0, x: 1, y: 1, i: 0, level: 0 }];
 
     const geo = buildSplitFloorGeometry([1, 1], 0, allNodes, {}, [], {}, cfg);
@@ -55,7 +49,7 @@ describe("buildSplitFloorGeometry", () => {
   });
 
   it("resolves teleport entries touching a split-node slot, respecting direction (forward/backward/two_way)", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const allNodes: NodeDto[] = [
       { id: 0, x: 1, y: 1, i: 0, level: 0 },
       { id: 1, x: 1, y: 1, i: 1, level: 0 },

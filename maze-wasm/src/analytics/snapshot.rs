@@ -43,7 +43,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // node/edge list, never from `PresetConnection`s) via `preset_edges_for_post_edit`/
     // `resolve_preset_nodes_for_post_edit`, resolved fresh against the rebuilt field each call.
     preset_state: &PresetState,
-    point_to_xy: impl Fn(T::Point) -> (i32, i32),
+    cell_to_xy: impl Fn(T::CellId) -> (i32, i32),
     // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
     // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
     // position within `nodes_at(point)` (the default every call site but `run_compute_analytics`
@@ -53,7 +53,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // `split_map` (GitHub issue #626) for a node this exact call just minted via
     // `apply_split_points` — never to raw position, since a re-added slot's `slot_id` can exceed
     // the point's current node count once an earlier sibling was removed.
-    index_of: impl Fn(maze_core::ids::NodeId, T::Point, usize) -> u32,
+    index_of: impl Fn(maze_core::ids::NodeId, T::CellId, usize) -> u32,
     // The project's configured `scored_endpoints` weights, if that strategy is configured on any
     // rule (GitHub issue #532) — used to compute `route_info.score` directly from the current
     // `maze.meta.start`/`finish`, independent of whether a repair actually dispatched (see
@@ -200,27 +200,28 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
-    // Iterates via `Field::all_points`/`nodes_at` (deterministic order — see their doc comments),
+    // Iterates via `Field::all_cells`/`nodes_at` (deterministic order — see their doc comments),
     // not `maze.graph.nodes()` (insertion-order, an implementation detail) — GitHub issue #221:
     // this makes "which node of a split point comes first in the snapshot" a real contract (the
     // point's original node, then each `add_node_at` in creation order), which the web-side
     // controller relies on to tell a point's original node apart from its extra split nodes.
     //
-    // `all_points()` yields one entry per *NodeId* (see its doc comment), not per unique point —
+    // `all_cells()` yields one entry per *NodeId* (see its doc comment), not per unique point —
     // for a split point with N nodes it repeats that point N times. Deduping by point here (first
-    // occurrence wins, `all_points()`'s NodeId-sorted order is preserved) is required so
+    // occurrence wins, `all_cells()`'s NodeId-sorted order is preserved) is required so
     // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
     // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
     // every node of a point instead of just one).
     let levels: Vec<maze_core::space::LevelId> = maze.field.levels_ordered().collect();
     let mut nodes: Vec<NodeDto> = Vec::new();
     for (level_index, &level) in levels.iter().enumerate() {
-        let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
-        let points: Vec<T::Point> = maze
+        let mut seen_points: std::collections::HashSet<T::CellId> =
+            std::collections::HashSet::new();
+        let points: Vec<T::CellId> = maze
             .field
             .field_of(level)
             .expect("levels_ordered always resolves")
-            .all_points()
+            .all_cells()
             .filter(|p| seen_points.insert(*p))
             .collect();
         for p in points {
@@ -228,7 +229,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 let Some(id32) = u32::try_from(id).ok() else {
                     continue;
                 };
-                let (x, y) = point_to_xy(p);
+                let (x, y) = cell_to_xy(p);
                 let i = index_of(id, p, pos);
                 nodes.push(NodeDto {
                     id: id32,
@@ -342,13 +343,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         region_classes,
     };
 
-    // Real geometric cell count — `Field::all_points()`, deduped by point (mirrors
+    // Real geometric cell count — `Field::all_cells()`, deduped by point (mirrors
     // `split_totals_scoped`'s own `seen_points` dedup), not reconstructed from `cell_stats`
     // (which would double-count a split point's every extra node).
     let level_cell_count = |level: maze_core::space::LevelId| -> usize {
         maze.field.field_of(level).map_or(0, |f| {
             let mut seen = std::collections::HashSet::new();
-            f.all_points().filter(|p| seen.insert(*p)).count()
+            f.all_cells().filter(|p| seen.insert(*p)).count()
         })
     };
     let cell_count = FloorScoped {
@@ -420,7 +421,9 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         groups
             .into_iter()
             .map(|(topology, count)| SplitGroupDto {
+                shape: topology.shape,
                 topology: topology
+                    .nodes
                     .into_iter()
                     .map(|node_faces| {
                         node_faces
@@ -544,6 +547,7 @@ mod tests {
     use maze_core::ids::IdGenerator;
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
     use maze_core::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     #[test]
     fn pushes_cycle_analysis_overflowed_issue_on_overflow() {
@@ -551,9 +555,12 @@ mod tests {
         // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
-                .unwrap();
+        let field = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(SIDE as usize, SIDE as usize),
+            &mut ids,
+        )
+        .unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -610,7 +617,8 @@ mod tests {
     #[test]
     fn no_overflow_issue_on_sparse_graph() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -654,7 +662,8 @@ mod tests {
     fn statistics_dto_reflects_cells_passages_and_elements() {
         // 3x1 line: a-b bidirectional (open passage), b-c wall (no edge at all).
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -715,12 +724,13 @@ mod tests {
 
     #[test]
     fn snapshot_nodes_lists_a_split_points_nodes_exactly_once_each() {
-        // GitHub issue #223 regression: `Field::all_points()` yields one entry per NodeId, so a
+        // GitHub issue #223 regression: `Field::all_cells()` yields one entry per NodeId, so a
         // split point (2+ NodeIds at the same coordinate) used to make `nodes` list that point's
         // node pair once per its own node count — a 2-node split point appeared 2x (4 entries
         // instead of 2), a 3-node split point 3x, etc.
         let mut ids = IdGenerator::new();
-        let mut field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, p, &mut ids);
@@ -770,10 +780,12 @@ mod tests {
         // `build_analytics_snapshot`, not just `compute_elevator_stop_count_scoped` in isolation.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level0 = field.single_level_id();
-        let _level1 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
-        let level2 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
+        let _level1 =
+            field.add_level(Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap());
+        let level2 =
+            field.add_level(Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap());
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -828,7 +840,8 @@ mod tests {
     #[test]
     fn region_classes_empty_when_start_or_finish_unset() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -866,7 +879,8 @@ mod tests {
     #[test]
     fn region_classes_populated_when_start_and_finish_set() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

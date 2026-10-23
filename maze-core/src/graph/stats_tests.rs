@@ -2,6 +2,7 @@ use super::*;
 use crate::IdGenerator;
 use crate::graph::{EdgeKind, Graph};
 use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 /// Two independent `w`x`h` floors, no cross-floor edges wired — callers add those themselves.
 fn make_two_level_field_and_graph(
@@ -10,9 +11,9 @@ fn make_two_level_field_and_graph(
 ) -> (MultiLevelField<SquareTessellation>, Graph, LevelId, LevelId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let level0 = field.single_level_id();
-    let level1 = field.add_level(Field::new(square_rect(w, h), &mut ids).unwrap());
+    let level1 = field.add_level(Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap());
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -22,7 +23,7 @@ fn make_two_level_field_and_graph(
 
 fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -396,10 +397,10 @@ fn make_three_level_field_and_graph(
 ) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let level0 = field.single_level_id();
-    let level1 = field.add_level(Field::new(square_rect(w, h), &mut ids).unwrap());
-    let level2 = field.add_level(Field::new(square_rect(w, h), &mut ids).unwrap());
+    let level1 = field.add_level(Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap());
+    let level2 = field.add_level(Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap());
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -488,9 +489,11 @@ fn compute_vertical_stats_elevator_same_point_disjoint_floor_sets_count_as_two_g
     // elevator at the same x-y point, with no edges connecting the two sets.
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
     let levels: Vec<LevelId> = std::iter::once(field.single_level_id())
-        .chain((1..6).map(|_| field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap())))
+        .chain((1..6).map(|_| {
+            field.add_level(Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap())
+        }))
         .collect();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

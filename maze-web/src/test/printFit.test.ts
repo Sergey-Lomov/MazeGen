@@ -1,15 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { describe, it, expect } from "vitest";
+import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { PrintExportSettings } from "../store/storeTypes";
-
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
+import { fieldOf } from "./fieldConfigFixtures";
 
 const { cellMeasureWorldUnits, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 
-const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
 
 const baseSettings: PrintExportSettings = {
@@ -46,9 +43,9 @@ describe("pxToMm", () => {
 
 describe("print cell measure", () => {
   it("uses circumcircle diameter for hexagons and triangles", () => {
-    expect(printMeasureToCellSideMm({ type: "hex_hexagon" }, 10)).toBeCloseTo(5);
-    expect(printMeasureToCellSideMm({ type: "triangle_triangle" }, 10)).toBeCloseTo(10 * Math.sqrt(3) / 2);
-    expect(cellMeasureWorldUnits({ type: "square" })).toBe(40);
+    expect(printMeasureToCellSideMm(fieldOf("hex", { shape: "hexagon", radius: 1 }), 10)).toBeCloseTo(5);
+    expect(printMeasureToCellSideMm(fieldOf("tri", { shape: "triangle", side: 1 }), 10)).toBeCloseTo(10 * Math.sqrt(3) / 2);
+    expect(cellMeasureWorldUnits(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }))).toBe(40);
   });
 });
 

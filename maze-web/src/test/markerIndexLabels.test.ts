@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
@@ -10,9 +16,10 @@ import { formatIndexLabel } from "../pixi/renderers/indexLabel";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg: TessellationConfig = { type: "square", width: 8, height: 8 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 8, rows: 8 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });
 const style = (patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings => ({
   ...DEFAULT_MARKER_INDEX_SETTINGS,
@@ -22,7 +29,7 @@ const style = (patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings =>
 
 // Stub endpoint visual — fixed radius + a color derived from the node id so per-endpoint
 // resolution can still be asserted where a test cares.
-const resolveVisual: ResolveMarkerEndpointVisual = (nodeId) => ({ outerRadius: 10, borderWidth: 3, borderMatchColor: 0x100 + nodeId });
+const resolveVisual: ResolveMarkerEndpointVisual = (nodeId) => ({ outerRadius: 10, fillRadius: 7, sizeAdaptation: 0, borderWidth: 3, borderMatchColor: 0x100 + nodeId });
 const build = (
   nodes: Parameters<typeof buildMarkerIndexLabels>[0],
   edges: Parameters<typeof buildMarkerIndexLabels>[1],
@@ -153,7 +160,7 @@ describe("buildMarkerIndexLabels — endpoint visual", () => {
     const nodes = [n(0, 1, 1, 0), n(1, 1, 1, 1)];
     const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "teleport" }];
     const set = buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), (id) => ({
-      outerRadius: 7 + id,
+      outerRadius: 7 + id, fillRadius: 5, sizeAdaptation: 0,
       borderWidth: 4,
       borderMatchColor: 0xabc00 + id,
     }));
@@ -168,9 +175,27 @@ describe("buildMarkerIndexLabels — endpoint visual", () => {
     const calls: Array<[number, string, boolean | undefined]> = [];
     buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), (id, kind, oneWay) => {
       calls.push([id, kind, oneWay]);
-      return { outerRadius: 7, borderWidth: 2, borderMatchColor: 0xabc00 };
+      return { outerRadius: 7, fillRadius: 5, sizeAdaptation: 0, borderWidth: 2, borderMatchColor: 0xabc00 };
     });
     expect(calls).toEqual([[0, "vertical", true]]);
+  });
+});
+
+describe("buildMarkerIndexLabels — size adaptation (GitHub issue #819)", () => {
+  const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "teleport" }];
+  const nodes = [n(0, 1, 1, 0), n(1, 1, 1, 1)];
+  const scaler = { factorAt: () => 2, maxFactor: 2 };
+
+  it("grows only the fill part of the outer radius for an ordinary marker", () => {
+    const set = buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), () => ({ outerRadius: 10, fillRadius: 7, sizeAdaptation: 1, borderWidth: 3, borderMatchColor: 0 }), scaler);
+    expect(set.labels[0].markerOuterRadius).toBe(17);
+    expect(set.labels[0].markerBorderWidth).toBe(3);
+  });
+
+  it("scales radius and border together for a marker that scales as a whole", () => {
+    const set = buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), () => ({ outerRadius: 10, fillRadius: 7, scalesAsWhole: true, sizeAdaptation: 1, borderWidth: 3, borderMatchColor: 0 }), scaler);
+    expect(set.labels[0].markerOuterRadius).toBe(20);
+    expect(set.labels[0].markerBorderWidth).toBe(6);
   });
 });
 

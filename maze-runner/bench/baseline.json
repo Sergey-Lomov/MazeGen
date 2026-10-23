@@ -1,0 +1,86 @@
+{
+  "measurements": {
+    "generation/baseline-cairo-gen": {
+      "median_ms": 2.6573018518518516,
+      "spread": 0.027344528667689362,
+      "threshold": 0.05
+    },
+    "generation/baseline-hex-gen": {
+      "median_ms": 6.8089140000000015,
+      "spread": 0.02987782388400479,
+      "threshold": 0.05
+    },
+    "generation/baseline-square-gen": {
+      "median_ms": 6.1468026,
+      "spread": 0.018490155082145146,
+      "threshold": 0.05
+    },
+    "generation/baseline-tri-gen": {
+      "median_ms": 6.652690857142858,
+      "spread": 0.016497846327960596,
+      "threshold": 0.05
+    },
+    "geometry/baseline-cairo-gen": {
+      "median_ms": 3.4002498125,
+      "spread": 0.05794901429760776,
+      "threshold": 0.06
+    },
+    "geometry/baseline-hex-gen": {
+      "median_ms": 7.740474272727273,
+      "spread": 0.024083067402364856,
+      "threshold": 0.05
+    },
+    "geometry/baseline-square-gen": {
+      "median_ms": 5.240992666666667,
+      "spread": 0.04372720189097329,
+      "threshold": 0.05
+    },
+    "geometry/baseline-tri-gen": {
+      "median_ms": 4.573779318181819,
+      "spread": 0.025787098982048146,
+      "threshold": 0.05
+    },
+    "qc/baseline-cairo-qc": {
+      "median_ms": 8.706587454545454,
+      "spread": 0.05041785393383737,
+      "threshold": 0.06
+    },
+    "qc/baseline-hex-qc": {
+      "median_ms": 17.182214333333334,
+      "spread": 0.00934279076136917,
+      "threshold": 0.05
+    },
+    "qc/baseline-square-qc": {
+      "median_ms": 17.259824499999997,
+      "spread": 0.024747712044619296,
+      "threshold": 0.05
+    },
+    "qc/baseline-tri-qc": {
+      "median_ms": 15.928543666666668,
+      "spread": 0.023788960744287387,
+      "threshold": 0.05
+    },
+    "repair/baseline-cairo-qc": {
+      "median_ms": 1032.00531,
+      "spread": 0.03669491584302039,
+      "threshold": 0.05
+    },
+    "repair/baseline-hex-qc": {
+      "median_ms": 1649.296916,
+      "spread": 0.013634852391853865,
+      "threshold": 0.05
+    },
+    "repair/baseline-square-qc": {
+      "median_ms": 1821.305382,
+      "spread": 0.009260211476166392,
+      "threshold": 0.05
+    },
+    "repair/baseline-tri-qc": {
+      "median_ms": 1450.401498,
+      "spread": 0.020841820724594992,
+      "threshold": 0.05
+    }
+  },
+  "runs": 15,
+  "seed": 753
+}

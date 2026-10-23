@@ -11,11 +11,13 @@ use maze_core::space::{MultiLevelField, SquarePoint, square_rect};
 use maze_core::validation::is_connected;
 use maze_core::{Graph, IdGenerator};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn main() {
     let seed = 3u64;
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(10, 10), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::single_level(Arc::default(), square_rect(10, 10), &mut ids).unwrap();
     let level = field.single_level_id();
     let start = field
         .nodes_at(level, SquarePoint { x: 0, y: 0 })

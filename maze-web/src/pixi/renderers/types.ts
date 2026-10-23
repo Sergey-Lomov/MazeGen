@@ -1,5 +1,6 @@
+import type { PathCommand } from "../../wasm/mazeService";
 import type { LabelFontWeight } from "./indexLabel";
-import type { TeleportFloorBadgeSettings } from "../../store/imageExportTypes";
+import type { TeleportFloorBadgeSettings, ElevatorBadgeSettings } from "../../store/imageExportTypes";
 
 export type Viewport = {
   x: number;
@@ -64,6 +65,8 @@ export type OneWayStyleOverride = {
 export type WallEdge = {
   a: [number, number];
   b: [number, number];
+  /** Face of `a` this wall covers; set only for a face with no neighbor (`b` equals `a`). */
+  face?: number;
   kind: PassageKind;
   style: WallStyle;
   oneWayDir?: { dx: number; dy: number };
@@ -100,6 +103,8 @@ export type SplitPassage = {
   wallSegments: {
     v0: { x: number; y: number };
     v1: { x: number; y: number };
+    /** The share's boundary from `v0` to `v1` — absent for a straight share, the flattened arc for a curved face. */
+    polyline?: { x: number; y: number }[];
     center: { x: number; y: number };
     /** Optional/undecided ("optional connection") share — draw in `disabledOfNumber(color)`
      *  instead of `color`, same tentative-color rule as `TileFaceEditor`'s `disabledOf`. Named
@@ -222,6 +227,9 @@ export type SplitStyleOverride = { nodeColors?: readonly number[]; specialShapes
 export type EdgeHL = {
   from: [number, number];
   to: [number, number];
+  /** The highlighted edge's exact path in display space (a curved edge keeps its shape); when
+   *  absent the highlight is the straight line `from` -> `to`. */
+  path?: readonly PathCommand[];
   color: number;
   alpha: number;
   width: number;
@@ -265,6 +273,8 @@ export type MarkerData = {
   /** Label font size in px (unified with elevator/teleport floor badges). Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`; unset means `0`. */
+  sizeAdaptation?: number;
 };
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
@@ -343,7 +353,10 @@ export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
  *  `teleportConnectorRouting.ts`), offset perpendicular to itself wherever it locally overlaps
  *  another connector's segment, so parallel runs read as distinct lines instead of one merged
  *  stroke. */
-export type TeleportConnectorStyle = "none" | "straight" | "orthogonal";
+export type TeleportConnectorStyle = "none" | "straight" | "orthogonal" | "curved";
+
+/** Which side of the field origin a curved connector bows toward. */
+export type TeleportCurveDirection = "inward" | "outward";
 
 /** How a one-way connector draws its direction arrow(s) (GitHub issue #293 follow-up):
  *  - `"none"`: no arrow.
@@ -367,6 +380,8 @@ export type TeleportLineStyle = {
   shape: MarkerShape;
   cornerStyle: CornerStyle;
   size: number;
+  /** Marker size adaptation (GitHub issue #819) of the ordinary teleport markers — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
   edgeColor: number;
   /** Independent from `edgeColor` — a marker's border doesn't have to mirror its fill color. */
   edgeBorderColor: number;
@@ -387,6 +402,9 @@ export type TeleportLineStyle = {
   connectorColor: number;
   connectorWidth: number;
   connectorStyle: TeleportConnectorStyle;
+  curveDirection?: TeleportCurveDirection;
+  /** Quadratic-curve control-point offset as a fraction of the endpoint span (0..1). */
+  curveStrength?: number;
   arrowMode: TeleportArrowMode;
   /** Tile-width period between arrows in `"periodic"` mode — unused otherwise. */
   arrowPeriod: number;
@@ -450,4 +468,80 @@ export type LockEntry = {
   position?: { x: number; y: number };
   scale?: number;
   color?: number;
+};
+
+/** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
+ *  own type since this lower-level renderer module must not depend on the store layer, same
+ *  rationale as `mazeSelectors.ts`'s own `MarkerStyle`. `gapColor` mirrors the caller's own floor
+ *  color, same convention every other marker's gap ring in this codebase uses (never the marker's
+ *  own `fillColor`). */
+export type VerticalMarkerStyle = {
+  shape: MarkerShape;
+  cornerStyle: CornerStyle;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+  gapWidth: number;
+  gapColor: number;
+  size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
+};
+
+/** Same field shape as `DecorativeLineStyle` (`imageExportTypes.ts`), kept as its own type for the
+ *  same "no store-layer dependency" reason as `VerticalMarkerStyle` (GitHub issue #428). A
+ *  decorative pictogram's stroke — no fill/border/gap/shape concept, unlike a marker. */
+export type VerticalDecorativeLineStyle = {
+  lineColor: number;
+  lineWidth: number;
+  size: number;
+  /** Marker size adaptation (GitHub issue #819) — see `SizeAdaptationField`. */
+  sizeAdaptation: number;
+};
+
+/** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc
+ *  comment (`storeTypes.ts`, GitHub issue #347) for the settings this is built from. Three
+ *  independent marker/arrow styles (GitHub issue #347 three-section follow-up), by how a marker
+ *  actually reads on the map: `twoWayPassageMarker` for a two-way `VerticalPassage`
+ *  (`marker.filled === true`), `oneWayPassageMarker` for a one-way `VerticalPassage`
+ *  (`marker.filled === false`, both ends), `elevatorMarker` for every `Elevator` (always two-way by
+ *  construction, but its own separate section/look). `"decorative"` (GitHub issue #428) draws
+ *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator` instead — a separate,
+ *  line-only style surface (see `VerticalDecorativeLineStyle`), replacing the marker-shaped fields
+ *  above for that style only. */
+export type VerticalConnectionStyle = {
+  style: "abstract" | "decorative";
+  twoWayPassageMarker: VerticalMarkerStyle;
+  oneWayPassageMarker: VerticalMarkerStyle;
+  elevatorMarker: VerticalMarkerStyle;
+  twoWayArrowColor: number;
+  /** Direction-arrow size, as a fraction of the marker's own radius (0-1). */
+  twoWayArrowSize: number;
+  twoWayArrowStyle: VerticalArrowStyle;
+  twoWayArrowCornerStyle: CornerStyle;
+  oneWayArrowColor: number;
+  oneWayArrowSize: number;
+  oneWayArrowStyle: VerticalArrowStyle;
+  oneWayArrowCornerStyle: CornerStyle;
+  elevatorArrowColor: number;
+  elevatorArrowSize: number;
+  elevatorArrowStyle: VerticalArrowStyle;
+  elevatorArrowCornerStyle: CornerStyle;
+  decorativeStairsTwoWay: VerticalDecorativeLineStyle;
+  decorativeStairsOneWay: VerticalDecorativeLineStyle;
+  decorativeElevator: VerticalDecorativeLineStyle;
+  decorativeStairsArrowColor: number;
+  /** Direction-arrow size, as a fraction of the stairs icon's own half-width (0-1) — same
+   *  convention as `twoWayArrowSize`. */
+  decorativeStairsArrowSize: number;
+  /** One-way stairs arrow color, both ends — same color for the departure and arrival end (there's
+   *  no fill on a line icon to split into a per-end accent, unlike the abstract marker's own
+   *  wall-tick indicator, GitHub issue #693). */
+  decorativeStairsOneWayArrowColor: number;
+  /** One-way stairs arrow size, independent of `decorativeStairsArrowSize` (GitHub issue #583) —
+   *  same fraction-of-half-width convention. */
+  decorativeStairsOneWayArrowSize: number;
+  /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
+   *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
+  elevatorBadges: ElevatorBadgeSettings;
 };

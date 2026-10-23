@@ -1,19 +1,20 @@
 use maze_core::IdGenerator;
 use maze_core::space::{Field, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
+use std::sync::Arc;
 
 fn make_rect_field(cols: usize, rows: usize) -> Field<TriTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(tri_rect(cols, rows), &mut ids).unwrap()
+    Field::new(Arc::default(), tri_rect(cols, rows), &mut ids).unwrap()
 }
 
 fn make_triangle_field(side: usize) -> Field<TriTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(tri_triangle(side), &mut ids).unwrap()
+    Field::new(Arc::default(), tri_triangle(side), &mut ids).unwrap()
 }
 
 fn make_hexagon_field(radius: usize) -> Field<TriTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(tri_hexagon(radius), &mut ids).unwrap()
+    Field::new(Arc::default(), tri_hexagon(radius), &mut ids).unwrap()
 }
 
 fn assert_neighbors_symmetric(field: &Field<TriTessellation>) {
@@ -24,7 +25,7 @@ fn assert_neighbors_symmetric(field: &Field<TriTessellation>) {
             assert!(
                 field.neighbors(neighbor).contains(&node),
                 "neighbor relation not symmetric for node {:?}",
-                field.point_of(node)
+                field.cell_of(node)
             );
         }
     }

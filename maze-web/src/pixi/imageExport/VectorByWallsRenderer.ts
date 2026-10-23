@@ -3,6 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { buildMarkerScaler } from "../markerScale";
+import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
@@ -11,11 +13,12 @@ import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRende
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
 import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
+import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
@@ -48,7 +51,7 @@ export class ExportWarningHighlight<TSettings> {
   private readonly computeWarnings: (
     nodes: NodeDto[],
     edges: EdgeDto[],
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     settings: TSettings,
     start: number | null,
     finish: number | null,
@@ -58,7 +61,7 @@ export class ExportWarningHighlight<TSettings> {
   private cache: {
     nodes: NodeDto[];
     edges: EdgeDto[];
-    cfg: TessellationConfig;
+    cfg: FieldConfig;
     settings: TSettings;
     start: number | null;
     finish: number | null;
@@ -71,7 +74,7 @@ export class ExportWarningHighlight<TSettings> {
     computeWarnings: (
       nodes: NodeDto[],
       edges: EdgeDto[],
-      cfg: TessellationConfig,
+      cfg: FieldConfig,
       settings: TSettings,
       start: number | null,
       finish: number | null,
@@ -86,7 +89,7 @@ export class ExportWarningHighlight<TSettings> {
     hoveredKey: string | null,
     nodes: NodeDto[],
     edges: EdgeDto[],
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     settings: TSettings,
     start: number | null,
     finish: number | null,
@@ -172,7 +175,7 @@ export class ExportWarningHighlight<TSettings> {
   renderNodes(
     nodeIds: number[] | null,
     nodes: NodeDto[],
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     settings: TSettings,
     inset = 2,
   ): void {
@@ -245,7 +248,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   /** Redraws the background rect + (if `showGrid`) the grid against the current viewport — call on
    *  both a settings/data change (`renderAll`) and a pan/zoom-only change (`onViewportChanged`),
    *  same dual-trigger convention `VectorByWallsRenderer` originally had inlined. */
-  render(settings: TSettings, cfg: TessellationConfig): void {
+  render(settings: TSettings, cfg: FieldConfig): void {
     const { x, y, w, h } = viewportWorldRect(this.viewport);
     this.background.clear();
     this.background.rect(x, y, w, h).fill({ color: settings.background });
@@ -292,6 +295,7 @@ export class VectorByWallsRenderer {
    *  (so a plate's gap never occludes its marker), the body pass *above* them (GitHub issue #471). */
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
+  private readonly floorLabelContainer: Container;
   private readonly warningHighlightContainer: Container;
   /** Optional grid overlay inside the filled maze cells, below walls and markers. */
   private readonly innerGridContainer: Container;
@@ -310,6 +314,7 @@ export class VectorByWallsRenderer {
   private readonly markers: WaypointsRenderer;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #471). */
   private readonly markerIndex: MarkerIndexRenderer;
+  private readonly floorLabel: FloorLabelRenderer;
   /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay or
    *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
    *  rule. Highlights the currently hovered export warning's cells (GitHub issue #298 follow-up —
@@ -328,7 +333,7 @@ export class VectorByWallsRenderer {
     rawNodes: NodeDto[];
     rawEdges: EdgeDto[];
     activeFloorId: string;
-    cfg: TessellationConfig;
+    cfg: FieldConfig;
     start: number | null;
     finish: number | null;
     splitNodeColors: readonly number[];
@@ -356,6 +361,7 @@ export class VectorByWallsRenderer {
     this.markersContainer = new Container();
     this.markerIndexGapContainer = new Container();
     this.markerIndexBodyContainer = new Container();
+    this.floorLabelContainer = new Container();
 
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
@@ -367,6 +373,7 @@ export class VectorByWallsRenderer {
     container.addChild(this.verticalContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.markerIndexBodyContainer);
+    container.addChild(this.floorLabelContainer);
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
 
@@ -379,6 +386,7 @@ export class VectorByWallsRenderer {
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
+    this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByWallsWarnings);
 
     this.syncVisibility(useMazeStore.getState());
@@ -398,7 +406,7 @@ export class VectorByWallsRenderer {
         state.finish !== prev.finish ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFieldConfig !== prev.activeFieldConfig ||
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors;
 
@@ -426,6 +434,7 @@ export class VectorByWallsRenderer {
     this.markersContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
@@ -435,12 +444,12 @@ export class VectorByWallsRenderer {
     this.backgroundGrid.onViewportChanged(this.viewport);
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
-      this.backgroundGrid.render(state.vectorByWallsSettings, state.activeTessellationConfig);
+      this.backgroundGrid.render(state.vectorByWallsSettings, state.activeFieldConfig);
       this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
       if (state.vectorByWallsSettings.showInnerGrid) {
         this.innerGrid.render(
           { viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor },
-          state.activeTessellationConfig,
+          state.activeFieldConfig,
           this.innerGridCells,
         );
       }
@@ -477,9 +486,9 @@ export class VectorByWallsRenderer {
     // Floor-scoped (GitHub issue #347), same reason `renderAll` scopes its own `nodes` — the
     // *drawn* content is only ever one floor's worth, so the bounds basis must match.
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
-    const cellBounds = exactCellBounds(floorNodes, state.activeTessellationConfig);
+    const cellBounds = exactCellBounds(floorNodes, state.activeFieldConfig);
     return measureContentMargin(
-      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
+      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
   }
@@ -497,13 +506,13 @@ export class VectorByWallsRenderer {
     const settings = withResolvedGroupOverrides(state.vectorByWallsSettings);
     if (!settings.teleportGroupCustomization) return settings.teleportGroupOverrides;
     return resolveRendererGroupOverrides(buildTeleportGroups(teleportEdges), settings.teleportGroupOverrides, {
-      nodes: state.nodes, edges: state.edges, cfg: state.activeTessellationConfig, floors: state.floors,
+      nodes: state.nodes, edges: state.edges, cfg: state.activeFieldConfig, floors: state.floors,
       avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
     });
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state.activeTessellationConfig;
+    const cfg = state.activeFieldConfig;
 
     // Scoped to `activeFloorId` (GitHub issue #347) — `state.nodes`/`state.edges` can span every
     // floor once generation is multi-level-aware (GitHub issue #337); every selector below assumes
@@ -632,9 +641,18 @@ export class VectorByWallsRenderer {
     });
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, layout.teleportEdges);
+    const teleportStyle = buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor);
+    // Marker size adaptation (GitHub issue #819): one scaler for every marker kind on this floor,
+    // fitted against the laid-out positions (GitHub issue #735).
+    const scaler = buildMarkerScaler(cfg, [
+      ...footprintsOfMarkers(markerData),
+      ...footprintsOfVertical(layout.verticalMarkers, verticalStyle),
+      ...footprintsOfTeleports(layout.teleportEdges, teleportStyle),
+    ]);
     this.teleports.render({
       edges: layout.teleportEdges,
-      lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
+      scaler,
+      lineStyle: teleportStyle,
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
       groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
@@ -647,11 +665,12 @@ export class VectorByWallsRenderer {
       fieldCells: cells,
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: markerData, scaler });
 
     this.verticalConnections.render({
       markers: layout.verticalMarkers,
       style: verticalStyle,
+      scaler,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
       interactive: true,
@@ -660,16 +679,25 @@ export class VectorByWallsRenderer {
     if (state.vectorByWallsSettings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
-        teleportStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
+        teleportStyle,
         groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual);
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler);
       this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: state.vectorByWallsSettings.markerIndex, floorColor });
     } else {
       this.markerIndex.clear();
     }
+
+    this.floorLabel.render(
+      state.vectorByWallsSettings.floorLabel,
+      floorLabelPosition(state.vectorByWallsSettings.floorLabel, state.activeFloorId, exactCellBounds(nodes, cfg), cfg),
+      activeFloorIndex,
+      state.floors.length,
+      floorColor,
+      state.floors[activeFloorIndex]?.title,
+    );
 
     this.renderWarningHighlight(state);
   }
@@ -686,11 +714,11 @@ export class VectorByWallsRenderer {
           state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
         );
         this.warningHighlight.renderNodes(
-          hoveredTeleportNodeIds, nodes, state.activeTessellationConfig, state.vectorByWallsSettings,
+          hoveredTeleportNodeIds, nodes, state.activeFieldConfig, state.vectorByWallsSettings,
           getCellHighlightInset(state.vectorByWallsSettings.wallThickness),
         );
       } else {
-        this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByWallsSettings, null, null);
+        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByWallsSettings, null, null);
       }
       return;
     }
@@ -702,11 +730,11 @@ export class VectorByWallsRenderer {
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     const warnings = computeVectorByWallsWarningsAcrossFloors(
-      state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByWallsSettings,
+      state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByWallsSettings,
       rawEndpoints.start, rawEndpoints.finish,
     );
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset);
   }
 
   destroy(): void {
@@ -721,6 +749,7 @@ export class VectorByWallsRenderer {
     this.verticalConnections.destroy();
     this.markers.destroy();
     this.markerIndex.destroy();
+    this.floorLabel.destroy();
     this.warningHighlight.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -732,6 +761,7 @@ export class VectorByWallsRenderer {
     this.markersContainer.destroy();
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
+    this.floorLabelContainer.destroy();
     this.warningHighlightContainer.destroy();
   }
 }

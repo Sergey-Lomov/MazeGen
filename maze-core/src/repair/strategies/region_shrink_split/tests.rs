@@ -6,10 +6,11 @@ use crate::repair::strategies::test_utils::apply_and_commit_default;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -18,7 +19,7 @@ fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (Maze::new(field, g), nodes)

@@ -1,6 +1,6 @@
 # Image Export Feature
 
-The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today.
+The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today. Below the export formats, "Save style" / "Load style" buttons save and load the card's whole visual configuration as a standalone style file (GitHub issue #750 — see `Specs/project-file.md`'s "Visual preset" section).
 
 ## Feature Card Status
 
@@ -74,7 +74,7 @@ Sections:
 
 - **Splits** (issue #294, placed after Teleports, hidden entirely when no floor of the maze has a split point — `maxSplitNodeCount(unscopedNodes) === 0`, see "Section visibility is project-wide" above; `maxSplitNodeCount` groups nodes by `(level, x, y)`, not `(x, y)` alone, so a stack of one node per floor at the same cell — routine in a multi-floor project — is not mistaken for a split point and does not force the section open) — per-split-node-slot identity colors (`splitNodeColors: number[]`) plus a "Special shapes" toggle (`splitSpecialShapes`, on by default). The panel shows exactly as many color rows as the maze's largest split point actually needs (`maxSplitNodeCount`); an untouched slot displays (and, until edited, renders with) `splitSlotColor`'s own default palette (`canvas.node.splitSlots` for slots 0-2, `buildPalette`'s rotating hue wheel beyond that) — `buildEffectiveSplitNodeColors` (`VectorByWallsRenderer.ts`) is what backfills any slot the user hasn't touched yet with that same default before building the render geometry, so the panel's displayed color and the canvas's drawn color never disagree. `setVectorByWallsSplitNodeColor` grows the `splitNodeColors` array on demand, filling any skipped intermediate slots with their own default rather than leaving them sparse.
 
-  The "Special shapes" toggle recognizes a split point's topology (`SplitSpecialShapeKind`, `pixi/renderers/types.ts`, `detectSplitSpecialShapeKind` in `splitFaceLayout.ts`) and draws dedicated geometry instead of the generic per-node segment reading. Degree-4 **"bridge"** points use two 4-point edges: full width at the cross faces, a flat 60%-wide deck, and the original gradual 20% taper at each end. Degree-4 **"diagonal"** points use the real dividing corner pair. Degree-6 **"hex_bridge"** points use the same bridge construction at 60°, but retain the sharp taper of `0.08 * (1 - 0.6) / (1 - 0.4)` (approximately 5.33% of the bridge length); **"hex_triple_bridge"** points draw two narrower bridges sharing the same through corridor. **"hex_diagonal"** endpoints come from `buildHexDiagonalEndpoints` according to whether the two face pairs share two, one, or zero real corners. For **"hex_triple_corridor"**, a through pair `{0,3}` with adjacent pairs `{1,2}`/`{4,5}` contributes two three-point wall polylines between boundary-corner pairs `1-3` and `4-0`; both bend toward the cell center, with their central points exactly one third of the cell's vertex-to-vertex diameter apart.
+  The "Special shapes" toggle recognizes a split point's topology (`SplitSpecialShapeKind`, `pixi/renderers/types.ts`, `detectSplitSpecialShapeKind` in `splitFaceLayout.ts`) and draws dedicated geometry instead of the generic per-node segment reading. Degree-4 **"bridge"** points use two 4-point edges: full width at the cross faces, a flat 60%-wide deck, and a 20% taper at each end. The `square_octagon` tessellation's `regular:4` square selects its own bridge renderer: the deck still has the same width, but its taper is 8% at each end so the silhouette separates from the seams of neighboring octagons. Degree-4 **"diagonal"** points use the real dividing corner pair. Degree-6 **"hex_bridge"** points use the same bridge construction at 60°, but retain the sharp taper of `0.08 * (1 - 0.6) / (1 - 0.4)` (approximately 5.33% of the bridge length); **"hex_triple_bridge"** points draw two narrower bridges sharing the same through corridor. **"hex_diagonal"** endpoints come from `buildHexDiagonalEndpoints` according to whether the two face pairs share two, one, or zero real corners. For **"hex_triple_corridor"**, a through pair `{0,3}` with adjacent pairs `{1,2}`/`{4,5}` contributes two three-point wall polylines between boundary-corner pairs `1-3` and `4-0`; both bend toward the cell center, with their central points exactly one third of the cell's vertex-to-vertex diameter apart.
 
   All shapes draw in the plain wall color/width (`WallStyleOverride`, same as `wallFaces`), never a node's own identity color. Their geometry is no longer drawn by `SplitJunctionRenderer` itself (removed in the #319 follow-up) — `SplitJunctionRenderer.collectSplitWallPaths(wallFaces, specialShapes, includeSpecialShapes)` instead returns `{ paths, noCapPoints }`, plain joinable `Point[][]` geometry with no style, which every caller feeds into `WallRenderer.render`'s `extraWalls`/`extraWallsNoCap` params so special-shape lines join with ordinary walls in one shared stroked `Graphics` pass (a Pixi `join` only renders within one continuous stroke of a single `Graphics`, never across two independently-stroked ones). `WallRenderer` chains `extraWalls` together with its own solid segments via `chainPathsAtSharedVertices` and computes each chained path's own vertex degree (`vertexDegrees`): a degree-1 endpoint is a genuine free end and gets the caller's own `cap` (patched in separately as a filled circle/quad after an unconditional `cap: "butt"` stroke — see "Cap patching at T-junctions" below); any other degree (a T-junction, or a triple-point where three special-shape/wall lines converge) always draws `cap: "butt"`, since a protruding round/square cap there has no shared join with the other lines converging at that angle and visibly pokes across them. A `hex_triple_bridge` point's earlier-drawn crossing bridge, cut open wherever the later bridge's own silhouette crosses over it (`clipPolylineOutsidePolygon`, replacing an older opaque-fill occlusion that stopped working once both bridges joined into one shared stroke), produces synthetic cut-point endpoints that must never get a protruding cap even if they coincidentally round to the same vertex key as some unrelated nearby wall end — collected into `noCapPoints` and forced to `cap: "butt"` unconditionally regardless of their computed degree.
 
@@ -84,9 +84,9 @@ Sections:
 
   **Not just special drawing — special node-point positioning too** (GitHub issue #318): a recognized special-shape node's marker/teleport-endpoint/debug-overlay point also moves off the generic evenly-spaced hub circle onto a shape-specific point (`specialSplitNodePoint`, `tessellationGeometry.ts`) — see `Specs/post-edit.md`'s "Marker/teleport anchoring" and "Shape-aware node point" notes for the exact per-shape geometry. Same detection (`detectSplitSpecialShapeKind`, shared via `splitFaceLayout.ts`), independent of this drawing toggle — positioning always applies once a shape is recognized, it isn't gated by `specialShapes`/`splitSpecialShapes`.
 
-  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`; Cairo bridge gaps are clipped as cell-bounded polygons, allowing different lengths at the two ends, and the Cairo 2x3 fork remains as the ordinary corridor underlay beneath the deck. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The Cairo parallel divider draws canonical connection `2-3` above `1-4`, scales its top bow so `0.5` has the previous `0.3` effect, and omits the lower connection's gap underlay; a large upper gap is clipped to the cell polygon. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Ordinary three-port junctions and this divider use a dedicated shallower fillet style, while other junction arities retain the default contour geometry. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
+  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`; Cairo bridge gaps are clipped as cell-bounded polygons, allowing different lengths at the two ends, and the Cairo 2x3 fork remains as the ordinary corridor underlay beneath the deck. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The Cairo parallel divider draws canonical connection `2-3` above `1-4`, scales its top bow so `0.5` has the previous `0.3` effect, and omits the lower connection's gap underlay; a large upper gap is clipped to the cell polygon. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Every contour junction (ordinary, divider, bridge underlay) uses the same `junctionRadius`; under the miter join, contour mode draws the bridge underlay as plain connector lines. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
 
-  **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — the plain corridor's own chained paths (`chainSegmentsAtSharedVertices`) each draw as their own independent `stroke()` call, so a Pixi `join` never forms between two chained paths that happen to meet at the same point where chaining itself declined to extend through it (a degree != 2 vertex — an ordinary 3+-corridor T-junction, not a split hub, which `drawSplitPassages` owns entirely and is untouched by this fix): separate `moveTo`/`stroke` calls at a shared vertex draw independent caps, not a join, so a `"miter"` setting's own `cap: "square"` visibly poked out at every such T-junction instead of mitering cleanly. Every chained path here draws `butt` unconditionally first (never protrudes), then each of its own two non-split ends is patched back in separately — a genuine free end (nothing else meets it there) gets a plain round/square cap same as an ordinary stroke would draw, but a T-junction where 2+ chained paths' own ends meet gets one shared **miter polygon** instead of each path patching its own end independently (an earlier attempt at the latter left visible gaps between the independent per-path patches at non-perpendicular junction angles — each path's own patch only ever follows *that* path's own direction, not its neighbors'). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free specifically to allow memoizing by a rounded-angle+width key, though the renderer itself doesn't cache yet. Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
+  **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — a Pixi `join` only forms within one stroked polyline, so lines meeting at a 3+-corridor junction (not a split hub, which `drawSplitPassages` owns entirely) would each draw an independent cap, and a `"miter"` setting's own `cap: "square"` would visibly poke out across its neighbors at non-perpendicular angles. Since GitHub issue #736 the plain corridor network draws per-cell miter line tiles (see "Corridor tiles"): every line draws `butt` unconditionally (never protrudes); a dead-end cell gets a plain square cap patch at its centre, and a junction cell of 3+ lines gets one set of shared **miter wedges** instead of each line patching its own end independently (an earlier attempt at the latter left visible gaps between independent per-line patches at non-perpendicular junction angles — each patch only ever follows *its own* line's direction, not its neighbors'). Wedge rays use the same direction the former chained-path renderer passed (junction minus the line's next point, i.e. from the port toward the centre). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free; since GitHub issue #736 the plain corridor network applies it per miter line tile, so each junction shape is computed and triangulated once (see "Corridor tiles"). Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
 
   **Group customization** (`teleportGroupCustomization` toggle) layers per-group overrides on top of the base style: every group shares one style unless overridden via `TeleportGroupOverride` (fillColor/borderColor/shape, each falling back to the shared style when unset), stored in `VectorByWallsSettings.teleportGroupOverrides` keyed by `TeleportGroup.key`. `borderColor` is the group's "secondary" color (the panel's own tooltip, GitHub issue #503 follow-up, calls it out by name) — besides the marker's own border and this group's connector color, it also drives this group's own cross-floor badge fill *and* border, in place of the base style's `floorBadge.fillColor`/`borderColor` (`TeleportRenderer.drawGroupPoints`). Each override is named in the color picker's "Project colors" list (GitHub issue #503 follow-up) as "Teleports: Group N fill"/"Group N border" — `N` is the group's 1-based *display* order (`PC.teleportGroup(index, role)`, `projectColorsSelector.ts`), not its internal `key` (an unstable coordinate-pair string) — both the selector and the panel sort by the same `key.localeCompare` `buildTeleportGroups` already uses, so a color's "Group N" always matches the row numbered N on the panel. Each group row's own fill/border swatch lists, as its own "Project colors" priority group: this group's own other color first, then every other group's fill+border colors (in the same group order), then the section's common teleport colors (edge/border/connector/badges) last. The settings panel's group list is built over the *whole project* (GitHub issue #484), so every teleport connection group is customizable regardless of which floor is displayed and switching floors never changes the list. `useTeleportGroupsAndCollisions` (`TeleportSettingsSection.tsx`) builds the list **one floor at a time** — for each floor, `selectFloorScopedMaze` + `buildTeleportEdges` with the *exact same* `TeleportFloorContext` and badge-spread inputs that floor's own `VectorByWallsRenderer`/`VectorByCorridorsRenderer` passes, then `buildTeleportGroups` — and merges the per-floor results by `TeleportGroup.key`. Those `{ floorContext, spread }` inputs come from the shared `buildTeleportFloorInputs` helper (`mazeSelectors/teleport.ts`) — the same helper every floor-aware `buildTeleportEdges` caller uses (`GenerationRenderer`, `AnalyticsRenderer`, `PostEditRenderer`, both vector export renderers), so the hook can't drift from what the renderers pass; `spread` is floor-independent, built once, and only `floorContext.activeFloorIndex` is swapped per floor in the loop. Per-floor (not once over the unscoped `nodes`/`edges`) is required because `buildNodePositions` keys nodes by `(x, y)` with no floor component and `buildTeleportGroups`' union-find merges by rounded coordinate: two unrelated teleports at the same cell on different floors, built together, would collapse into one group whose `key` no per-floor renderer ever produces, and an override set against it would silently never apply. Building per floor keeps every list key identical to the key that floor's renderer resolves overrides against. A cross-floor pair is built once, on its `from` node's floor (far endpoint resolved via the `floorContext`), so it appears exactly once in the merged list. The on-canvas hit areas and selection stay per-floor (a group whose pair is entirely on another floor has a row but nothing to click on the canvas). Each group's canvas hit area (only wired while the Teleports section is expanded — `interactive: true`, gated on `vectorByWallsSectionsExpanded.teleports` AND `teleportGroupCustomization`) is its own invisible circle of radius `size + 4px`, bucketed into a `hitRadius`-sized spatial grid so a click only scans its own 3x3 cell neighborhood instead of every point of every group. The Teleports section's group list (one `TeleportGroupRow` per group, in `buildTeleportGroups`' sorted-key order) shows an `AlertTriangle` warning icon on any group whose *resolved* color+shape (after its own override falls back to the shared style) exactly matches another group's, but only when the connector style is `"none"` (with a connector drawn, two groups sharing a look are still visually distinguishable by which links connect to what).
 
@@ -110,7 +110,7 @@ Sections:
 
   `<kind>ArrowSize` (0-1, a fraction of the marker's own radius) is normalized so `1` always makes the arrow's own **tip** reach exactly the marker's own radius, for every pattern — `drawArrowPattern` rescales the `size` it passes down to `wallUtils.ts` by `1 / patternTipFraction(pattern)` first (GitHub issue #347 fourth follow-up), since the three shared primitives don't agree among themselves on what fraction of their own `size` param reaches the tip: `drawOneWayChevron`/`drawOneWayArrow` both put their tip at exactly `size` (`patternTipFraction: 1`, no rescale needed), but `drawOneWayTriangle`'s own tip sits at only `0.65 * size` (its own "tip 65% ahead" convention, GitHub issue #292 follow-up) — left unrescaled, a triangle at `arrowSizeFraction: 1` visibly fell well short of the marker's own edge while a chevron/arrow already reached it exactly.
 
-  A two-way passage/elevator's arrow(s) draw filled, solid, in the sub-group's own arrow color (`marker.filled === true` -> `drawArrowFilled`, an ordinary single pattern draw); a one-way passage's two ends (GitHub issue #347 fourth follow-up redesign) now both draw a solid arrow too — the old outline-only arrival-end treatment (a larger pass in the arrow color underneath a smaller pass in the gap color) is gone, replaced by the arrival/departure distinction described below on the marker's own fill/border instead. Each sub-group's own `<kind>ArrowColor`/`<kind>ArrowSize` directly set that sub-group's arrow color/size, defaulting to `twoWayArrowStyle`/`oneWayArrowStyle`/`elevatorArrowStyle: "triangle"` and `*ArrowCornerStyle: "round"`, `<kind>ArrowSize: 0.75` (raised from `0.6` in GitHub issue #347's fifth follow-up) — every live-canvas renderer without a settings panel of its own (`GenerationRenderer`, `PostEditRenderer`, `PresetConnectionsRenderer`, `AnalyticsRenderer`) uses the same fixed values via its own fixed `VerticalConnectionStyle`. `chevron`/`arrow`'s own stroke thickness (`triangle` has no stroke of its own, being a filled shape) scales linearly with `arrowSizeFraction` too (`arrowThickness`, `VerticalConnectionRenderer.ts`, GitHub issue #347 fifth follow-up) — `2`px at the slider's own minimum (`0.2`) up to `4`px at its maximum (`1`), so a shrunk arrow doesn't keep drawing with the same fixed-width stroke a full-size one does.
+  A two-way passage/elevator's arrow(s) draw filled, solid, in the sub-group's own arrow color (`marker.filled === true` -> `drawArrowFilled`, an ordinary single pattern draw); a one-way passage's two ends (GitHub issue #347 fourth follow-up redesign) now both draw a solid arrow too — the old outline-only arrival-end treatment (a larger pass in the arrow color underneath a smaller pass in the gap color) is gone, replaced by the arrival/departure distinction described below on the marker's own fill/border instead. Each sub-group's own `<kind>ArrowColor`/`<kind>ArrowSize` directly set that sub-group's arrow color/size, defaulting to `twoWayArrowStyle`/`oneWayArrowStyle`/`elevatorArrowStyle: "triangle"` and `*ArrowCornerStyle: "round"`, `<kind>ArrowSize: 0.75` (raised from `0.6` in GitHub issue #347's fifth follow-up) — every live-canvas renderer without a settings panel of its own (`GenerationRenderer`, `PostEditRenderer`, `PresetConnectionsRenderer`, `AnalyticsRenderer`) uses the same fixed values via its own fixed `VerticalConnectionStyle`. `chevron`/`arrow`'s own stroke thickness (`triangle` has no stroke of its own, being a filled shape) scales linearly with `arrowSizeFraction` too (`arrowThickness`, `verticalConnectionGeometry.ts`, GitHub issue #347 fifth follow-up) — `2`px at the slider's own minimum (`0.2`) up to `4`px at its maximum (`1`), so a shrunk arrow doesn't keep drawing with the same fixed-width stroke a full-size one does.
 
   A bidirectional elevator's two arrows (one per direction) spread apart by a **fixed fraction of the marker's own `radius`** — `originOffset = radius * 0.4` for `triangle`/`arrow`, `radius * 0.5` for `chevron` (GitHub issue #347 sixth follow-up: chevron's own pair widened again after the fifth follow-up's `0.55 -> 0.4` tightening read too cramped for that pattern specifically) — never of the arrow-size fraction itself, otherwise shrinking the arrow-size slider would also shrink the gap between the two arrows, making them visually converge toward the marker center instead of shrinking in place around their own fixed spot (GitHub issue #347 third follow-up regression fix). Which **axis** the pair spreads along depends on the pattern: `chevron`/`triangle` spread **vertically** — stacked one above the other, each still pointing its own up/down, matching how it used to be positioned before the pattern dispatch existed; `arrow` spreads **sideways** (its own shaft/head reads cramped if stacked vertically). The sixth follow-up had briefly moved `triangle` onto the sideways spread too, but the seventh follow-up reverted that — a vertically-stacked triangle pair reads better once each triangle also draws smaller, so a stacked `triangle` pair now additionally draws at `0.75 *` the ordinary `arrowSizeFraction`-derived size (`pairArrowSizeFraction`, only for `dys.length > 1 && arrowStyle === "triangle"`; a single triangle and every other pattern/pair combination still draw at the ordinary size). Their shared `oy` is additionally compensated per pattern (`patternMidpointOffset`, expressed as a fraction of the caller's own tip-reach `size` — the *pair's own, possibly `0.75`-scaled* size for a stacked triangle pair, not the rescaled `drawnSize` passed further down) so both arrows' own visual tip/base midpoints land symmetrically around the marker's own center regardless of which pattern is selected — none of the three shared primitives is actually centered on its own `(cx, cy)` input: `drawOneWayChevron` draws its tip/back directly off the input with no internal recentering (visual midpoint `0.2 * size` ahead of the input); `drawOneWayTriangle` recenters internally around a `roundPoly` centroid, netting a much smaller residual offset (`-size/39`, after folding in the tip-reach rescale above) than its own input-relative tip/base numbers alone would suggest; `drawOneWayArrow`'s tail/tip are exactly symmetric (offset `0`). Mirrors the old hand-built `drawDirectionArrow`'s own single `size*0.25` compensation constant, generalized to one constant per pattern when the pattern dispatch was introduced. A **single** (non-paired) `chevron` uses a stronger empirical midpoint fraction, `0.3` instead of the pair's own `0.2` (GitHub issue #347 sixth follow-up: a lone chevron read visibly off-center toward its own back/base with the pair's compensation value) — `triangle`/`arrow` use the same `patternMidpointOffset` value whether alone or paired, only `chevron`'s single case differs.
 
@@ -169,7 +169,7 @@ Sections:
   priority list leads with `verticalArrowColor` (and vice versa), never both at once via a shared tail
   constant — the two are siblings of each other, not each other's own downstream receiver.
 
-  **One-way passage wall-tick indicator** (GitHub issue #693, replacing the earlier GitHub issue #347 fourth/fifth follow-up accent-color redesign): a one-way `VerticalPassage`'s two markers (`filled: false` on both ends, `VerticalConnectionMarker`'s own doc comment) draw the ordinary fill/border — same `oneWayPassageMarker.fillColor`/`borderColor` on both ends, no accent tint, matching the two-way/elevator marker's own look. Directionality is instead shown by `drawOneWayWallTick` (`VerticalConnectionRenderer.ts`): a filled rounded rect perpendicular to the direction arrow, drawn in the arrow's own color — not a stroked line, so its own ends read with the same corner style as the triangle arrowhead rather than a stroke's round-cap bulge. Its corner radius (`ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION`) matches `drawOneWayTriangle`'s own `roundPoly` corner radius exactly (both derived from the same `size`-fraction geometry), and its length (`ONE_WAY_WALL_TICK_LENGTH_FRACTION`) matches the triangle's own base width, so the tick reads as "the wall this end runs into" at the same visual scale as the arrowhead itself; its thickness is the arrow's own stroke thickness, thinned 25% (a rounded rect reads visually heavier than the old stroked line at the same thickness value). Placed along the arrow's axis near its **tail** for the departure end (`arrowFilled: true`, "from" — the wall you'd meet walking back the way you came) or near its **tip** for the arrival end (`arrowFilled: false`, "to" — the wall this passage dead-ends into, the reason you can't walk back out); both ticks mark the same physical wall, seen from each end. The arrow+tick pair is centered as a whole on the marker (`patternVisualTipFraction`/`patternBaseFraction`, both exported from `VerticalConnectionRenderer.ts` and reused by `toolGlyphs.ts`'s own glyph copy) — not just the arrow alone, which would leave the tick sitting off to one side of the marker's true visual center; `patternVisualTipFraction` accounts for the triangle pattern's own `roundPoly` corner rounding, which cuts its sharp tip back along the axis by a non-negligible amount relative to its nominal unrounded reach. Never drawn for the `"sign"` arrow style (a plain +/- glyph has no directional axis to place it against) or for an elevator's bidirectional arrow pair (no single departure/arrival end to anchor it to). The former `oneWayAccentColor` field and its "Secondary color" settings row are gone — the one-way sub-group's `MarkerSettingsGroup` now shows the ordinary "Border color" row, same as the two-way sub-group.
+  **One-way passage wall-tick indicator** (GitHub issue #693, replacing the earlier GitHub issue #347 fourth/fifth follow-up accent-color redesign): a one-way `VerticalPassage`'s two markers (`filled: false` on both ends, `VerticalConnectionMarker`'s own doc comment) draw the ordinary fill/border — same `oneWayPassageMarker.fillColor`/`borderColor` on both ends, no accent tint, matching the two-way/elevator marker's own look. Directionality is instead shown by `drawOneWayWallTick` (`VerticalConnectionRenderer.ts`; its rect comes from the Pixi-free `oneWayWallTickRect`, `verticalConnectionGeometry.ts`): a filled rounded rect perpendicular to the direction arrow, drawn in the arrow's own color — not a stroked line, so its own ends read with the same corner style as the triangle arrowhead rather than a stroke's round-cap bulge. Its corner radius (`ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION`) matches `drawOneWayTriangle`'s own `roundPoly` corner radius exactly (both derived from the same `size`-fraction geometry), and its length (`ONE_WAY_WALL_TICK_LENGTH_FRACTION`) matches the triangle's own base width, so the tick reads as "the wall this end runs into" at the same visual scale as the arrowhead itself; its thickness is the arrow's own stroke thickness, thinned 25% (a rounded rect reads visually heavier than the old stroked line at the same thickness value). Placed along the arrow's axis near its **tail** for the departure end (`arrowFilled: true`, "from" — the wall you'd meet walking back the way you came) or near its **tip** for the arrival end (`arrowFilled: false`, "to" — the wall this passage dead-ends into, the reason you can't walk back out); both ticks mark the same physical wall, seen from each end. The arrow+tick pair is centered as a whole on the marker (`oneWayTickCenteringFraction`, built on `patternVisualTipFraction`/`patternBaseFraction` — all in the Pixi-free `renderers/verticalConnectionGeometry.ts`, shared by `VerticalConnectionRenderer`, `toolGlyphs.ts`'s glyph copy, and the `marker_index_covers_stop_line` export warning's `oneWayStopLineShape`) — not just the arrow alone, which would leave the tick sitting off to one side of the marker's true visual center; `patternVisualTipFraction` accounts for the triangle pattern's own `roundPoly` corner rounding, which cuts its sharp tip back along the axis by a non-negligible amount relative to its nominal unrounded reach. Never drawn for the `"sign"` arrow style (a plain +/- glyph has no directional axis to place it against) or for an elevator's bidirectional arrow pair (no single departure/arrival end to anchor it to). The former `oneWayAccentColor` field and its "Secondary color" settings row are gone — the one-way sub-group's `MarkerSettingsGroup` now shows the ordinary "Border color" row, same as the two-way sub-group.
 
   Each of the three vertical sub-groups (`vertical_two_way`/`vertical_one_way`/`vertical_elevator`) is itself split into two further sub-subsections (GitHub issue #347 seventh/eighth follow-up), scoped to this section only — no other panel section got this treatment: "Marker" (the sub-group's own `MarkerSettingsGroup`, identical shape/corner-style/size/fill/border/gap rows for all three sub-groups, including one-way — GitHub issue #693 removed the one-way sub-group's former "Secondary color" row) and "Arrow" (`<kind>ArrowColor`/`<kind>ArrowSize`/`<kind>ArrowStyle`/`<kind>ArrowCornerStyle`, renamed from "Arrows" in the eighth follow-up; each of these four rows also dropped its own trailing "arrow" word — "Color"/"Size"/"Style"/"Corner style" — since the "Arrow" sub-subsection header already establishes that). Unlike the outer sub-group, these two are **plain indented labels, not collapsible** (GitHub issue #347 eighth follow-up: the sixth/seventh follow-ups' own nested-collapsible treatment was reverted) — always visible once their parent sub-group is expanded, following the same plain-label pattern `MarkerSettingsGroup`'s own `title` prop already uses for "Start"/"Finish".
 
@@ -207,7 +207,7 @@ Sections:
 
   **Coverage.** Only the master `enabled` toggle sits at the section's top level; everything else is nested one indent deep under three sub-groups: "Coverage", "Caption" (label style, font weight, text size with Auto-fit, text color) and "Backplate" (width, height, position, rounding, gap, border width/color, plate color). Each sub-group is a collapsible `SectionHeader` (GitHub issue #734) whose state lives in the panel's own sections-expanded record under `marker_index_coverage`/`marker_index_caption`/`marker_index_backplate`, collapsed by default. "Coverage" is four per-kind toggles — `coverage.singleFloorTeleport` (off by default), `coverage.crossFloorTeleport`, `coverage.verticalPassage`, `coverage.elevator` (the last three on) — filtering which connection kinds `buildMarkerIndexLabels` builds a link for at all (a filtered-out kind takes no index; numbering closes up over what remains). A `teleport` link counts as cross-floor when its two endpoints differ in `node.level`, single-floor otherwise. The `elevator_indistinguishable` warning treats elevator indices as "shown" only when `enabled && coverage.elevator`.
 
-Settings (`MarkerIndexSettings`, `imageExportTypes.ts`; all geometric fields are in px; `borderWidth` and `gap` are whole pixels): `enabled`, `coverage` (above), `labelStyle`, `width` (fixed plate width, 8–20 px, independent of the text; GitHub issue #725), `height` (plate height, minimum 8 px), `textSize` (label font size in px, `TEXT_SIZE_RANGE`, with an "Auto-fit" button; with `textFontWeight` and `textColor` it is the shared `TextStyleFields`, rendered by `TextStyleRows` in the order weight, size, color), `offset` (marker edge → plate center), `cornerRadius` (`roundRect` corner, 0 = sharp), `gap` (floor-colored gap ring around the plate, whole pixels, 0 = none — drawn in the gap layer so it never eats into the marker; wraps the plate's *outer* edge, i.e. `gap + borderWidth / 2` beyond the box since the border stroke is centered on the box edge; a member of the "Shared style" `gapWidth` group, default 3 = the shared default, so it follows the shared value until overridden), `fillColor`, `borderColor`, `borderColorFromMarker` (on by default; when on, the plate border takes the endpoint marker's `borderMatchColor` and the `borderColor` row is disabled in the panel), `borderWidth`. The plate is a fixed `width` x `height` rectangle, identical for every index. The label is an MSDF `BitmapText` (see `maze-web/Specs/renderer.md`'s "MSDF label font"). A label that does not fit the plate rectangle (`textMargin` per side, glyph-ink outline — same rules as the other texts, `textFit.ts` with `plateWidth`/`plateHeight`) raises the `marker_index_text_overflow` export warning (`export-warnings.md`); the font-size row's Auto-fit button picks the largest fitting size over all labels (`TextFitKind` `markerIndex`), and when indexes are enabled the Shared style text-size Auto-fit also takes them into account. `markerTextSize` also links to `markerIndex.textSize` (disabled by default). `textFontWeight` (`"regular"`/`"bold"`) picks the atlas via `msdfFontFamily`. Both marker-index containers are included in `measureContentMargin` so an enabled plate near the content's bottom edge grows the export margin. Panel section is the last item in both settings panels (before `ExportWarningsSection`), a self-contained collapsible; only its `gap` field is wired to "Shared style" (the `gapWidth` group), with an `OverrideResetButton` like the other `gapWidth` members. Persistence: `validateMarkerIndexSettings` (`validateImageExport.ts`), lenient recovery like `validateElevatorBadgeSettings`.
+Settings (`MarkerIndexSettings`, `imageExportTypes.ts`; all geometric fields are in px; `borderWidth` and `gap` are whole pixels): `enabled`, `coverage` (above), `labelStyle`, `width` (fixed plate width, 8–20 px, independent of the text; GitHub issue #725), `height` (plate height, minimum 8 px), `textSize` (label font size in px, `TEXT_SIZE_RANGE`, with an "Auto-fit" button; with `textFontWeight` and `textColor` it is the shared `TextStyleFields`, rendered by `TextStyleRows` in the order weight, size, color), `offset` (marker edge → plate center), `cornerRadius` (`roundRect` corner, 0 = sharp), `gap` (floor-colored gap ring around the plate, whole pixels, 0 = none — drawn in the gap layer so it never eats into the marker; wraps the plate's *outer* edge, i.e. `gap + borderWidth / 2` beyond the box since the border stroke is centered on the box edge; a member of the "Shared style" `gapWidth` group, default 3 = the shared default, so it follows the shared value until overridden), `fillColor`, `borderColor`, `borderColorFromMarker` (on by default; when on, the plate border takes the endpoint marker's `borderMatchColor` and the `borderColor` row is disabled in the panel), `borderWidth`. The plate is a fixed `width` x `height` rectangle, identical for every index. The label is an MSDF `BitmapText` (see `maze-web/Specs/renderer.md`'s "MSDF label font"). A label that does not fit the plate rectangle (`textMargin` per side, glyph-ink outline — same rules as the other texts, `textFit.ts` with `plateWidth`/`plateHeight`) raises the `marker_index_text_overflow` export warning (`export-warnings.md`); a plate (border included) that overlaps a one-way vertical passage marker's stop line raises `marker_index_covers_stop_line` (GitHub issue #744); the font-size row's Auto-fit button picks the largest fitting size over all labels (`TextFitKind` `markerIndex`), and when indexes are enabled the Shared style text-size Auto-fit also takes them into account. `markerTextSize` also links to `markerIndex.textSize` (disabled by default). `textFontWeight` (`"regular"`/`"bold"`) picks the atlas via `msdfFontFamily`. Both marker-index containers are included in `measureContentMargin` so an enabled plate near the content's bottom edge grows the export margin. Panel section is the last item in both settings panels (before `ExportWarningsSection`), a self-contained collapsible; only its `gap` field is wired to "Shared style" (the `gapWidth` group), with an `OverrideResetButton` like the other `gapWidth` members. Persistence: `validateMarkerIndexSettings` (`validateImageExport.ts`), lenient recovery like `validateElevatorBadgeSettings`.
 
   One-way vertical passages use their one-way-specific marker color for the index border. In
   abstract mode this is `oneWayPassageMarker.borderColor` (or its `fillColor` when borderless, same
@@ -227,7 +227,8 @@ passage between two geometrically adjacent cells draws as a stroked line between
 (`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
-Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Cells" section, a
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Corridor" section (section id `cells`, kept for
+persisted expand state), a
 collapsible "Waypoints" section, a "One-ways" section (GitHub issue #312, hidden entirely when the
 maze has no one-way basic edge — same `hasOneWays` check `VectorByWallsSettingsPanel` uses, placed
 before "Teleports" per that panel's own section order), a "Teleports" section (hidden entirely when
@@ -235,10 +236,13 @@ the maze has no teleport edge), and a warnings section (`vectorByCorridorsSectio
 collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
 `VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
-- **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
+- **"Corridor"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`), **Rendering mode** (a Contour/Line
   `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
-  `join === "round"`-gated "Round junctions" toggle; see the "Rendering mode" section below) and
+  `join === "round"`-gated "Round junctions" toggle; shown only for the round join; see the "Rendering
+  mode" section below), **Corner radius** (`junctionRadius`, 0 to `TILE_SIZE / 2` in 0.5 steps,
+  derived by the default parameter link as half `thickness` — shown only for the round join in Contour mode,
+  the only path that reads it) and
   thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
   wall-thickness range). At thick junctions, the contour builder applies one shared clamp to every
@@ -252,7 +256,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `padding` param and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms; a
   "Marker widen shape" select sets `markerWidenShape` (`"match_marker"` default — each patch draws
   in that marker's own shape, `"circle"`/`"square"` — every patch draws in that one fixed shape
-  regardless of the marker's own, `"square"`'s corners following the Cells section's own `join`
+  regardless of the marker's own, `"square"`'s corners following the Corridor section's own `join`
   rather than a separate corner-style setting).
 - **"Waypoints"** (GitHub issue #311) — start/finish marker appearance, `startMarker`/`finishMarker:
   MarkerSettings` fields on `VectorByCorridorsSettings`, identical shape and defaults to
@@ -285,7 +289,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   corridor, default 0.5), `oneWayLength` (0.1-1, a *multiplier* of the chevron's own full opening
   width `oneWayWidth * thickness` rather than an absolute pixel size — so the chevron's opening angle
   stays constant as `oneWayWidth`/`thickness` change instead of visibly flattening/sharpening on its
-  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Cells section's own `join`).
+  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Corridor section's own `join`).
   Drawn via `drawOneWayChevronRow` (`pixi/renderers/wallUtils.ts`) — reuses `drawOneWayChevron` per
   chevron rather than a hand-rolled multi-chevron path, spacing adjacent chevrons by
   `chevronRowStep = length + gap + thickness` (both `VectorByCorridorsRenderer` and
@@ -330,7 +334,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   does, and a marker's floor-colored gap ring must cut through the corridor's own color rather than
   the canvas background behind it; and every teleport marker also gets its own widen patch under the corridor
   stroke (`buildTeleportWidenMarkers`, `VectorByCorridorsRenderer.ts` — exported, unit-tested
-  directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
+  directly), reusing the Corridor section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
   group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
   `TeleportRenderer` actually draws there). A cross-floor badge endpoint (a coordinate tagged
@@ -369,7 +373,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   actually read since `style` is always `"abstract"` for this mode. The occluding-color parameter
   reuses the convention this mode's Teleports/Waypoints sections already use in place of a separate
   `floorColor` field. Every vertical marker also gets its own widen patch under the corridor stroke
-  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Cells section's
+  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Corridor section's
   `markerWidenPadding`/`markerWidenShape` the same way `buildTeleportWidenMarkers` does. "Shared
   style" integration (GitHub issue #322, generalized by #643) is identical to "Vector by walls"':
   `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges`' own `cornerStyle`/
@@ -395,8 +399,9 @@ special-shape drawing — the only code the two modes share is `setupSplitPassag
 clip-scratch reset, the `drawConnectorLine` helper, and the plain-connector pass — boilerplate with
 no special-shape geometry) and the geometry helpers in `vectorByCorridorsGeometry.ts` that already
 predate #493 — so a bug in one mode's contour/line geometry can never leak into the other.
-It replaced the old `join`-gated `roundJunctions` boolean. Both modes still honor the `join`
-(round/miter) setting; each applies its own round/miter behavior. An old project file predating the
+It replaced the old `join`-gated `roundJunctions` boolean. The setting only distinguishes the two
+**round** renderings: under `join: "miter"` both values draw the same straight miter line tiles
+(see "Corridor tiles" below), and the settings panel hides the selector. An old project file predating the
 field — or carrying only the removed `roundJunctions` boolean — recovers to `"contour"`
 (`optRenderStyle`, `validateImageExport.ts`).
 
@@ -404,100 +409,141 @@ field — or carrying only the removed `roundJunctions` boolean — recovers to 
   included, but has shown stability issues. Described below.
 - **Line** (`"legacy_line"`) — the corridor renderer as it stood before the #493 contour rework
   (`ac2e998~1`), restored verbatim (the
-  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` — the
-  `strokeChainedPathsWithPatchedCaps` miter path predates #493 and was never touched by the contour
-  rework, so both modes share it). More
+  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` — the miter look predates #493
+  and was never touched by the contour rework, so both modes share it). More
   stable, but junctions/turns have sharp corners under `join: "miter"`. Under `join: "round"` it
-  draws each chained corridor path as a `butt`-capped stroke with a plain filled circle patched at
-  every genuine free end (a T-junction needs no patch — coincident round caps safely overlap);
+  draws straight `butt` lines with round corners and round free ends (line tiles, see "Corridor
+  tiles" below);
   split shapes render via `drawSplitPassagesLegacy` (through corridor as a plain straight line,
   cross corridor on top with a background-colored gap; diagonal nodes as bowed ribbons) — never a
   contour fill regardless of `join`.
+
+#### Corridor tiles (GitHub issue #736)
+
+Every corridor style draws the plain corridor network as **one tile per cell**
+(`VectorByCorridorsRenderer.updateCorridorTiles`), in a `CorridorTileLayer` below the `corridors`
+`Graphics` (one-way chevrons, split passages and bridge underlays still draw there, on top):
+
+- **Contour + round join** — the contour tile shape described below.
+- **Miter join (either mode)** and **Line + round join** — line tiles (`vectorByCorridorsLineTiles.ts`):
+  every centre-to-centre segment is cut at its midpoint (a split-touching segment stays whole and
+  belongs to its `v0` cell), and each cell draws `butt` lines from its centre to those ports. Miter:
+  a degree-2 cell is one miter-joined polyline, a dead end gets a square cap patch
+  (`computeSquareCapPatch`), a junction of 3+ lines gets `computeMiterJunctionPatch` wedges. Round:
+  the lines plus a centre disc. Because the halves stay collinear and a chained path only ever bends
+  at a cell centre, this draws the same network the former per-chained-path stroke drew.
+
+Each distinct tile shape key (style + width + local shape) is traced once, in white, into a shared
+`GraphicsContext`; every tile is a `Graphics` using it, positioned at the cell centre and tinted with
+the corridor color. Pixi triangulates each shape once, and a color change only re-tints. Tiles are
+rebuilt only when the segments, style, thickness or (contour) junction radius change, and then
+incrementally: an unchanged cell keeps its `Graphics`, a changed one swaps context/position in place,
+and contexts no tile uses are destroyed.
 
 #### Contour mode — one filled shape per tile (GitHub issue #493)
 
 With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
 built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
-no polygon boolean union (`vectorByCorridorsContour.ts`, `buildCorridorContour`).
+no polygon boolean union. The pure geometry engine (`buildCorridorGeometry`) accepts cell
+polygons (convex, or with arc sides flattened — a concave side is allowed) and face ports; `buildCorridorContour` is only the compatibility adapter from the selector's
+centre-to-centre records (`vectorByCorridorsContour.ts`).
 
-**Ports.** The centre-to-centre segments (`buildCorridorSegments`) are grouped by cell centre; each
-segment end is one *port* of that cell — the middle of the shared border (`(v0+v1)/2`, or the split
-face midpoint `v1` for a split neighbour), plus the outward unit normal there. A port's drawn border
-is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on the border middle.
+**Ports.** A cell supplies its centre and polygon, while each passage supplies one *port* —
+the middle of a finite shared face, its outward unit normal, and (when available) the face endpoints.
+A port's drawn border is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on
+the border middle. Selector-specific centre-to-centre records are adapted to this same shape before
+geometry generation (a cell with no known polygon gets a square of half-side `thickness`).
+**Curved faces.** A port on an arc side also carries the face's flattened curve (`facePolyline`, three or
+more points, from the shared edge's polyline; both cells of the face get the same one). Its mouth
+ends are then the curve points `thickness/2` of arc length either side of the port midpoint, and its
+normal is the curve's direction around the midpoint rotated a quarter turn, so the two mirrored mouths coincide. Straight faces keep the
+`mid ± tangent · thickness/2` border. Containment checks use the supporting (convex) polygon edges
+as half-plane limits and sampled points for the rest (`pointsInside`), so a concave side limits dead-end
+caps and closure arcs too. Split-passage segments (`bridgeUnderlaySegments`, diagonal ribbons) still use straight chords.
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
-two filled shapes meet edge-to-edge with no seam and no overlap. Ports are ordered CCW around the
-cell centre.
+two filled shapes meet edge-to-edge with no seam and no overlap. The half-width is clamped once for
+the whole call to half the shortest finite face, so mirrored mouths always match. "Vector by corridors"
+still draws one width on every floor: `VectorByCorridorsRenderer` passes `min(thickness, shortest passage
+face over all floors)` (`shortestCorridorFaceAcrossFloors`, memoized on the maze data, not on the
+thickness) to every contour call, the split-passage contours included, and the export warnings use the
+same limit. The per-call clamp then never lowers it, since a call sees a subset of the faces.
 
-**Per-tile shape** (`tileContour`), by port count:
+**Tile types.** A tile's shape depends only on its geometry relative to its centre (cell polygon +
+port set, half-width, junction radius), so `buildCorridorGeometryInstances` builds each distinct local
+shape once around the origin and returns per-tile instances (shape key, shared shape, centre offset).
+An optional `CorridorShapeCache` carries built shapes across calls. `buildCorridorGeometry` expands
+instances into world-space paths. Drawing: see "Corridor tiles" below.
 
-- **1 port — dead end**: a `thickness`-wide stub running from the shared border straight into the
-  tile to its centre, then a 180-degree semicircular cap of radius `thickness/2`. Four anchor
-  points — two on the border (shared with the neighbour tile), two where the straight walls hand off
-  to the cap.
-- **2 collinear ports — straight through**: a rectangle joining the two borders (four corners
-  ordered by angle around their centroid to guarantee a simple quad).
-- **2 ports at an angle — turn**: a pair of **concentric** circular arcs. `O` is where the two
-  border *lines* meet, `R` the distance from `O` to each border midpoint; the inner (concave) elbow
-  is an arc of radius `R − thickness/2`, the outer (convex) elbow a concentric arc of radius
-  `R + thickness/2`. The corridor therefore keeps a **constant `thickness` width right through the
-  bend, both elbows rounded** — the fix for issue #493 (the old renderer rounded only the outer
-  elbow, leaving the inner corner a sharp point). For a square tile with the port at the face
-  middle: `R` = half the tile step, `O` = the tile corner, inner radius `step/2 − thickness/2`.
-- **3+ ports — junction**: the outline is walked CCW — each port lays its `thickness`-wide border,
-  then the piece between it and the next port is one of:
-  - **concave armpit** (passages on both sides, CCW turn between the two arm axes < 180°): a
-    **tangent fillet**. Each arm's own side-wall is run *inward* from its inner border end; the two
-    extended walls meet at `W`; the corner is rounded with an arc that touches each wall, radius
-    `min(R − thickness/2, ARMPIT_FILLET_K · thickness, reach · tan(half-angle))` where `R` is the
-    distance from `O` (border lines' intersection) to each border midpoint, `ARMPIT_FILLET_K` = 0.9,
-    and `reach` is how far `W` sits from the nearer inner border end. Capping the radius against the
-    corridor width keeps a thin corridor at a wide junction about one corridor wide instead of
-    ballooning with the tessellation step; when no cap bites it is the turn-tile inner elbow
-    `R − thickness/2`.
-  - **convex gap** (the wide dead sector between the two outermost arms — reflex turn, e.g. a hex
-    cell with passages on 3 adjacent faces): the *outer* elbow of the same turn construction — an
-    arc of radius `R + thickness/2` around `O` between the two borders' outer ends, the exact arc a
-    one-face-apart passage draws. By construction `R + thickness/2 ≈ |O − tile centre|`, so the arc
-    passes close by the centre without reaching it; the fill still reads as one smooth junction.
-    Drawing the *inner* arc here instead would invert and punch a hole in the tile.
-  - **straight-through** (collinear arms): a plain line across.
+**Per-tile shape** (`buildTileGeometry`) — one algorithm for every port count and cell shape:
 
-  **Special case — exactly one dead sector** (e.g. a hex cell with passages on 3 *adjacent* faces):
-  a corridor bends one-face-apart across the junction. Its outer edge is the dead sector's
-  `R + thickness/2` arc about `O`; its inner edge must be the **concentric** `R − thickness/2` arc
-  about the *same* `O`, running unbroken from one dead-sector arm to the other along the short side.
-  Any arm in between cuts a shallow notch out of that single inner arc (its two side-walls each
-  cross the circle once; between the crossings the arm's own `thickness`-wide border juts outward),
-  and each concave corner where the inner arc meets such a side-wall is rounded with a small tangent
-  fillet (radius `min(ARMPIT_FILLET_K · thickness, (R − thickness/2)/2)`). The whole junction
-  contour is emitted by a dedicated traversal that bypasses the per-piece loop above — building
-  those middle sections as stand-alone armpit fillets about their own local corner would leave a
-  straight inner edge against the curved outer one and pinch the fill (issue #493).
+1. **Target.** The *most opposite pair* is the port pair whose normals are farthest apart (ties →
+   the pair passing closest to the cell centre, so the pass the tessellation calls straight keeps its
+   line when a third port joins it, GitHub issue #789; still tied → no pair). The target is the middle of a cubic joining that pair's mouths, its handles following an
+   arc around the intersection of the two faces' lines (parallel opposite faces: straight-line handles; two faces looking the same way, like the half faces of a brick edge: a half-circle U-turn, handles 2/3 of the chord, GitHub issue #789); with no pair (one port, or a tie) the target
+   is the cell centre. The target is pulled inside the cell polygon if needed. A **dead end** (one
+   port) caps its ribbon with a half-disc of the half-width around the target, facing along the
+   centre curve. When that half-disc does not fit the cell (checked exactly against every face),
+   the target moves back along the original centre curve toward the port — the curve is cut there
+   as an exact cubic — to the farthest point where it fits. When it does not fit even at the port,
+   the cap becomes one circular arc through the two mouth ends, bulging into the cell as deep as
+   fits (`kinkedDeadEndCap`): below a semicircle it meets the mouth at an angle — a kink at each
+   mouth end — instead of flattening. Its depth (sagitta) is computed in closed form per face as the
+   larger root of `(1 + β)s² − 2rs + (1 − β)h² ≤ 0` (`β` = face normal · inward, `r` = room from
+   the port, `h` = half-width). That cap is the whole tile.
+2. **Centre curves.** Every port gets a cubic from its mouth (leaving along the inward normal) to the
+   target. The opposite pair forms a smooth *biarc*: both halves share one tangent at the target,
+   the compromise between the two circular arcs from each mouth through the target, so a two-port
+   turn on a regular cell is one exact circular arc. Other ports arrive radially.
+3. **Ribbons.** Each centre curve is offset by the half-width on both sides (a least-squares cubic
+   fit with a curvature limit), the first point snapped to the port's border ends, and every sample
+   pulled inside the cell polygon.
+4. **Contour.** Ribbons are ordered CCW around the target; each ribbon's right side is joined to the
+   next ribbon's left side at their first intersection. A tangent-continuous crossing (the inner
+   side of a smooth turn) is kept as is; any other crossing is rounded with an arc of radius
+   `junctionRadius` (default `0.75 · half-width` when not given). Sides that never meet are joined
+   by an arc centred on the target — for a single port this is the dead-end cap, bulging along the
+   centre curve's end direction. Curve control points are clamped into the cell. Each corner arc is
+   limited to what fits its own corner (`junctionCornerBridge`: at most `reach · tan(half-angle)`),
+   so no radius search is done.
 
-  **No core disc.**
+**Junction closure near a face.** At a junction, two neighbouring sides that never cross are joined
+by an arc centred on the target with the radius of the nearer side end, plus a straight piece to the
+farther one. When that arc would cross a face (checked exactly against convex edges, plus sampled points for concave sides: `arcInsideCell`), it is
+replaced by the deepest arc straight between the two side ends that fits (`deepestChordArc`, the
+same closed form as the kinked dead-end cap), kinked at both ends. Not seen on the real
+tessellations; the lab's "Overflow problems" view shows irregular cells where it applies.
 
-  In contour mode a 3+-port junction always gets this arc treatment (`buildCorridorContour`'s
-  `roundJunctions` param is passed `true` unconditionally now — the old user-facing toggle was
-  replaced by the Rendering mode switch, GitHub issue #510). To leave junctions angular, select the
-  **Line** rendering mode instead.
+`buildCorridorGeometryDebug` returns every stage (target, centre curves, raw and constrained
+ribbons, the radius-0 and final contours) for the geometry lab (`/corridor-geometry`,
+`CorridorGeometryTestPage.tsx`); `buildCorridorGeometry` returns only the final contours.
+`buildCorridorContour` is `corridorSegmentsToGeometryInput` (segment records → cells and ports)
+followed by `buildCorridorGeometry`.
 
-All arc sweeps take the short way between their endpoints (`shortSweepCcw`), except the dead-end cap
-which sweeps the long way (around its own centre). Angle-based throughout, so it works unchanged on
-square / hex / triangle and any future tessellation — there is no radius parameter and no per-grid
-constant.
+**Geometry lab.** Shows every port combination of one cell per tessellation. `FAMILIES` lists square, hex, triangle, Cairo, brick, curved quadrilateral (a cell with arc faces; GitHub issue #789; its four half-edge faces are ports like any other, so the 6-face cell has 64 combinations) and radial (a ring cell of the default size with five faces, arcs and lines, so 32 combinations; GitHub issue #804). A "Cell size" slider
+sets the cell's longest face in pixels, per tessellation (`cellSize`/`scaleCell`), while thickness
+stays in pixels too — e.g. the triangle at 40px (half its native 80px) shows a dead-end cap moving
+toward the port above thickness 23.1 and bending into a kinked arc on the port's face above 34.6.
+Cell borders and face lines keep a constant on-screen width at any cell size. The "Cell outline on top" debug layer redraws the cell border over the corridor to
+make such overflow visible. The "Overflow problems" view (`PROBLEM_TYPES`) lists each way a contour
+used to leave its cell — a description followed by five ordinary cards, each a hand-picked cell with
+its own fixed thickness (the thickness and cell-size sliders are hidden there).
+`CorridorGeometryTestPage.test.tsx` checks that every example now stays inside its cell. The lab
+builds each cell through the production adapter (`labCellGeometry`: each port becomes a segment record like `buildCorridorSegments` emits) and
+clamps the thickness to the cell's shortest face, as a whole maze does. `corridorLabParity.test.ts`
+checks, on the real wasm build, that every lab combination equals the same cell taken from a maze
+run through `buildCorridorSegments`; `vectorByCorridorsContour.test.ts` checks that the SVG
+(`contourToSvgPath`, lab) and pixi (`traceCorridorContour`, export) outputs draw the same arcs.
 
-**Tracing.** `traceCorridorContour` plays each tile path's `move` / `line` / `arc` onto the
-`Graphics` and `closePath()`s it; the caller fills once. The tiles never overlap, so a plain fill is
-seamless. `contourToPolyline` samples a path to a plain point list (arcs at ~0.2 rad) — for tests
+**Tracing.** `traceCorridorContour` plays each path's `move` / `line` / `arc` onto a `Graphics` or
+`GraphicsContext` and `closePath()`s it; the caller fills. The corridor network traces each distinct
+tile shape into its own shared context (see "Corridor tiles"); the tiles never overlap, so the fills
+meet without seams. `contourToPolyline` samples a path to a plain point list (arcs at ~0.2 rad) — for tests
 and export-margin measurement only, never for the render. `ContourPath.hole` is always `false` in
 this model (kept only so the trace/fill call site and tests need no signature change).
 
-Segments are still chained into polylines (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` —
-reused as-is) but only the **miter** branch (and the whole **Line** rendering mode) uses the chains
-now.
-
-A **miter** join keeps the straight
-`lineTo` polyline plus the square-cap/`computeMiterJunctionPatch` treatment below. `getRequiredExportMargin`/`getRequiredWallExportMargin`
+The corridor network no longer chains segments into polylines: every style draws per-cell tiles. A
+**miter** join draws straight miter line tiles with the square-cap/`computeMiterJunctionPatch`
+treatment (see "Corridor tiles"). `getRequiredExportMargin`/`getRequiredWallExportMargin`
 both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the widest of half the
 corridor stroke's own width, a start/finish marker's own footprint, the one-way chevron row's own
 width, a teleport marker/connector's own footprint, and (via `this.verticalContainer`'s own measured
@@ -525,7 +571,9 @@ separately on every marker-like field that conceptually shares them:
 | `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportMarker.gapWidth`, `teleportConnectorGapWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
 | `markerTextSize` / `markerTextFontWeight` (GitHub issue #707) | 17 px / bold | `startMarker`/`finishMarker`, `teleportFloorBadge` and `elevatorBadges` `.textSize` / `.textFontWeight` — **all links disabled by default** (each kind keeps its own default size) |
 
-GitHub issue #707: the section's "Text" sub-section holds the shared font weight and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate's shape (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. Every text also has a "Margin" row (`textMargin`, 0–10 px in 0.5 steps (fractional values are used as-is), default 1; `TextStyleFields`, Shared style `markerTextMargin` linked to every `textMargin`, links disabled by default): the distance the glyph ink must keep from the plate edge, used by the overflow warnings and auto-fit only (never by rendering). The shared size has the same button, applying the smallest fit over all four controls (start, finish, elevator, teleport). Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
+GitHub issue #707: the section's "Text" sub-section holds the shared font weight and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate or marker (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). Its custom tooltip uses a primary action label and a tertiary explanation of that fit rule. It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. Every text also has a "Margin" row (`textMargin`, 0–10 px in 0.5 steps (fractional values are used as-is), default 1; `TextStyleFields`, Shared style `markerTextMargin` linked to every `textMargin`, links disabled by default): the distance the glyph ink must keep from the plate edge. It drives overflow warnings and auto-fit for every text; rendering additionally uses it to inset left/right-aligned floor-label text. The shared size has the same button, applying the smallest fit over all four shared-style controls (start, finish, elevator, teleport); floor-label text is intentionally independent and is excluded from this calculation. Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
+
+**Floor labels** — On multi-floor exports, the collapsible "Floors" section contains independent "Position", "Caption", and "Backplate" subsections plus a "Show floor captions" toggle; in the parameter-links tree that toggle sits directly under "Floors", after the subsections. The position header includes the active floor title in parentheses. `FloorLabelSettings.labelMode` selects the label content: `"title"` uses that floor's title from the Floors feature, while `"index"` renders the full `prefix` plus the selected `labelType` value. Title mode falls back to the index label when no non-empty title is available. Floor labels are disabled by default (`enabled: false`). The mode for both renderers is chosen once, on the first open of the Image Export card (`chooseFloorLabelModeOnce` in `store/floorLabelModeChoice.ts`, also applied when a loaded project lands on that card), and again on "Reset all": `title` if any floor has `titleCustomized` (was renamed in the Floors feature), `index` otherwise (`defaultFloorLabelMode`). `ImageExportState.floorLabelModeChosen` records that the choice was made and is persisted in the project file; a file without it counts as chosen when it already carries floor-label settings. Later renames never switch an existing setting. Persisted floor-label settings without `labelMode` (saved before GitHub issue #747) load as index mode, preserving their output. Its `textAlignment` (`"left"`, `"center"`, or `"right"`) aligns that text inside the configured label frame; it defaults to `"center"` for backward compatibility. Alignment moves only the text, never the frame's world position or placement anchor. Left/right placement uses the baked glyph-ink bounds rather than the `BitmapText` line box, respects `textMargin`, and stays inside the parallelogram's narrowed inner span. `textAlignment` belongs to the reusable `TextStyleFields`, while other label types remain centered and expose no alignment control. Position is stored per stable floor id in `FloorLabelSettings.positionsByFloorId`; a missing entry remains backward-compatible and uses the centered anchor. The active floor can use one of three modes: `anchored` aligns the corresponding point of the label frame with one of the 3×3 anchor points on that floor's exact cell bounds (for example, top-left frame corner to top-left bounds corner), `cell` follows the world-space center of the requested mathematical-grid cell whether or not that cell belongs to the field, and `free` uses arbitrary world coordinates. Coordinate inputs display the integer part only; hidden free-position precision is preserved until that axis is edited. Changing modes minimizes visual movement: free keeps the current world position, cell snaps that point to the nearest mathematical-grid cell, and anchored selects the closest of the nine anchor placements. Cell/free modes expose an explicit canvas-drag mode: dragging starts only on the label, cell placement snaps to the nearest grid coordinate and free placement follows the pointer; Enter, Space, or a pointer press outside the canvas commits and exits, while Escape restores the position captured when drag mode was enabled. The position section can copy the current floor's placement to every floor without changing the shared label or backplate style. Floor-label bounds participate in export margin measurement, so edge and free positions are included by auto-fit instead of being clipped. Its `textSize` is independent from Shared style and ranges from 6–72 px; its auto-fit considers the widest label across all floors. The backplate supports `none`, a rounded rectangle, or a rounded parallelogram, with width 20–250 px, height, corner radius, gap (a surface-colour cutout), border width, fill and border colours. Text-fit and overflow checks use the same parallelogram skew as `FloorLabelRenderer`, with the configured text margin applied as an inner clearance. Width/height auto-fit uses the current text size and margin and considers every floor label; Roman labels are measured by glyph metrics rather than character count. The floor-label fill, border and text participate in the mode-specific contrast warnings. Floor-label text size is not driven by Shared style links.
 
 GitHub issue #701: `markerFillColor`/`markerBorderColor` are also project colors (section "Shared style", `PC.sharedMarkerFill`/`sharedMarkerBorder`). The section is a single "Markers" sub-section rendered with the shared `MarkerAppearanceRows` (`MarkerFieldRows.tsx`) — same rows, labels and order as every marker (shape, corner style, size, fill color, border color, border width, gap width). `teleportFloorBadge` and `elevatorBadges` also get disabled links for corner style, size, border width and gap width. Edits go through `patchVectorBy{Walls,Corridors}SharedStyle` (propagate-on-change).
 
@@ -545,7 +593,11 @@ to a `ParamDescriptor` (`{ type, equals, label, group, format }`) — same-`type
 `"number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "indexLabelStyle" |
 "labelFontWeight" | "boolean"`) is the only constraint on what can link to what; `equals` is
 `Object.is` in every case (a `"color"` value is just a packed 24-bit RGB number, same representation
-every other color field in the app uses — see `store/colorMath.ts`). `settings.links:
+every other color field in the app uses — see `store/colorMath.ts`). The registries are module-level
+constants, so a descriptor's `label`/`group` are getters over message thunks, resolved in the current
+locale on every read (GitHub issue #742) — a UI language switch relabels the links dialog, link
+editor and link-icon tooltips without a remount; a memoized copy of a descriptor (spread snapshots
+the getters, e.g. `TeleportGroupCell`'s virtual group registry) must list `locale` as a dependency. `settings.links:
 ParamLink<...>[]` (persisted — see "Persistence" below) holds the live graph for that mode, seeded
 from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` (`parameterLinksDefaults.ts`),
 which reproduce the table above as plain equality links (each link's `enabled: false` is exactly the
@@ -586,7 +638,7 @@ Propagation (`propagate(settings, links, changedPaths)`) is a BFS over enabled e
 are all one level deep, but supported by the engine) would carry a change at `A` through to `C`
 transitively. Editing the shared value itself (`setVectorByWallsSharedMarkerSize`, etc.) calls
 `propagate(settings, links, [sourcePath])`; editing a dependent field through its own per-mode
-setter (e.g. `setVectorByWallsStartMarkerSize`) writes the value, disables that field's incoming link
+setter (`patchVectorByWallsMarker("startMarker", { size })`, one generic action per mode for every marker field) writes the value, disables that field's incoming link
 and propagates from it, so sibling fields in the same group keep following the shared value and
 anything linked *from* the edited field follows it too (GitHub issue #704). Every store setter for a
 registry field goes through one helper in `parameterLinksEngine.ts` rather than hand-writing that
@@ -596,8 +648,8 @@ root-shaped patch), and `propagateLinkedSources(next, changed)` for source-style
 detach (the vertical "Shared style" patch). Both return `Linked<S>`, a branded settings type: the
 image-export slice's `set` accepts only `Linked` values for `vectorByWallsSettings`/
 `vectorByCorridorsSettings`, so a hand-rolled `{ ...settings, field: v }` write does not compile.
-Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`,
-`markerWidenShape`, `*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
+Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`, `markerWidenShape`,
+`*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
 `wallsPlain`/`corridorsPlain`, whose `path` is restricted to `WALLS_PLAIN_PATHS`/
 `CORRIDORS_PLAIN_PATHS` (a test asserts these never overlap the registry); link-management actions and
 reset-to-defaults use the explicit `markLinked` escape hatch.
@@ -620,11 +672,18 @@ or disabled as an override); the blue **dependents indicator** (bottom-right) wh
 dependent link exists; and, only for an unsupported (`linkTarget: null`) field, a red **unsupported
 indicator** (bottom-right `X`) over a disabled-gray chain. A field with no link of any kind (but
 linkable) renders the chain alone, broken and disabled-gray, with no badge — the glyph itself says
-enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each followed by the link's
-modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and suffixed
-"(disabled)" when inactive, plus a click hint); clicking opens `LinkEditor` (add/edit) or, for a
+enough. Hovering shows a tooltip whose bubble alone can grow to 560px (other tooltips retain their
+normal cap): its relationship lines stay single-line until that cap, then wrap within the bubble.
+The semantic-colored header is
+green for an active driving link, blue when the field only has dependents, disabled gray for a
+disabled driving link, and primary for no links. The field's own driving/dependent lines follow,
+each with its modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and a
+disabled line is suffixed "(disabled)" and rendered disabled gray, followed by a click hint.
+For linkable fields, clicking opens `LinkEditor` (add/edit) or, for a
 disabled driving link, re-enables it directly (`onSetLinkEnabled`, equivalent to the old
-`OverrideResetButton`'s reset action) without a dialog. An unsupported field's click opens a small
+`OverrideResetButton`'s reset action) without a dialog. An unsupported field instead has an
+error-colored "Links not supported" heading and its tertiary explanation on the next line;
+its click opens a small
 info dialog instead, explaining why (a per-field `unsupportedHint` override is supported for a field
 whose unsupported reason isn't the generic "type not modeled yet", e.g. the random-wall-color-mode
 toggle).
@@ -980,6 +1039,30 @@ hover-highlight via `hoveredExportWarningKey`) — including its own `RegionHigh
 instance (`VectorByCorridorsRenderer`'s own, per the feature-renderer ownership rule, mirroring
 `VectorByWallsRenderer`'s own highlight overlay described below).
 
+### Marker size adaptation (`sizeAdaptation`, `pixi/markerScale.ts`, GitHub issue #819)
+
+Markers can grow or shrink with the area of the cell they sit in, so tessellations with cells of very different sizes (Voronoi, square-octagon, ...) keep markers in proportion. A cell of area `A` scales a marker by `S = (A / A_mean)^(k / 2)`, where `k` is the marker's own "Size adaptation" fraction in [0, 1] (default `0`, shown as 0-100%; validated by clamping on import). `0%` keeps the configured size, `100%` makes marker area proportional to cell area. Both vector render modes carry the fields.
+
+Placement (all next to the matching `size` slider, rendered through `SizeAdaptationRow`):
+
+- Per marker type: `sizeAdaptation` on `MarkerSettings` (start, finish, teleport marker, abstract two-way/one-way passage and elevator markers), `TeleportFloorBadgeSettings` and `DecorativeLineStyle` (the three decorative vertical lines, walls mode only). The field is the shared `SizeAdaptationField`; it is deliberately not part of `MarkerAppearance`, so elevator floor-number badges have no field of their own and follow the elevator marker.
+- Shared vertical-connections style: `verticalSizeAdaptation` (abstract) and `verticalDecorativeSizeAdaptation` (decorative, walls only), next to `verticalSize` / `verticalDecorativeSize`.
+- "Markers" part of the Shared style section: `markerSizeAdaptation`.
+
+All of them take part in parameter links like the sizes: `markerSizeAdaptation` feeds start/finish/teleport marker (enabled) and the vertical shared field and floor badge (disabled); `verticalSizeAdaptation` feeds the three abstract vertical markers and `verticalDecorativeSizeAdaptation` the three decorative lines (disabled).
+
+Behaviour:
+
+- Each marker type scales by its own value. Markers of different kinds in one cell may end up with different sizes.
+- The row is rendered only when `hasCellAreaSpread(cfg)` (`A_max / A_min > 1.2`); `isPathActive` mirrors it via `ParamActivityContext.hasAreaSpread` for every `*SizeAdaptation` / `*.sizeAdaptation` path.
+- Cell areas and their mean/min/max are computed once per field geometry (`getFieldAreaStats` in `cartesianCache.ts`, memoized by `fieldVersion`). Changing the setting only re-renders; the maze is not regenerated.
+- One `MarkerScaler` is built per render pass (`buildMarkerScaler`) from the footprints of every marker kind on the floor (`markerFootprints.ts`), each carrying its adaptation. Sub-renderers multiply their fill radius by `scaler.factorAt(pos, adaptation)`; border, gap and stroke sizes of start/finish and teleport markers do not scale. Vertical-connection markers scale as a whole — fill, border, gap ring, arrow and decorative strokes, elevator badges. The caption text of start/finish waypoints scales with the same factor; other text sizes do not.
+- A marker never leaves its cell: a factor above `1` is capped by bisection so the actual shape outline at the actual position, plus its border/gap ring, stays inside the cell polygon. Footprints sharing a position and an adaptation share the smallest capped factor. A marker that already overflows at `1` is never shrunk by the setting.
+- Vertical-connection markers (abstract and decorative) scale as a whole: their footprint sets `outsetScales`, so the fit check grows border/gap/line width with the factor too. Their `MarkerEndpointVisual` sets `scalesAsWhole`, so a marker-index plate offset scales the full outer radius and, with `borderWidthFromMarker`, the plate border follows the scaled marker border.
+- Text: start/finish captions, elevator badge text and teleport floor-badge labels scale with their marker. Marker-index plate text and plate size do not.
+- Corridor widen patches (`drawMarkerWidenPatches`), teleport router clearance (`maxFactor`) and marker-index plate offsets follow the scaled radius. A position without a footprint gets the plain area factor, capped at `maxFactor`.
+- Export warnings still measure markers at their unscaled sizes.
+
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
 
 Circle markers use the shared `circlePolygonPoints` adaptive closed polygon instead of PixiJS
@@ -1031,7 +1114,7 @@ PNG export has two **output modes** (`PngExportSettings.outputMode`, `storeTypes
 
 ### Content bounds — one source of truth
 
-`contentWorldBounds(cfg, nodes, margin)` (`contentBounds.ts`) is the single function answering "how big is the maze, actually" for every PNG canvas-fit computation: the exact per-tessellation-vertex bounding box (`exactCellBounds`, not a uniform per-center pad) inset by a caller-supplied `ExportMargin` (`{ left, right, top, bottom }`, world-space). Two different margins are in play, both resolved from store state without needing a live Pixi renderer instance (`exportMargins.ts`):
+`contentWorldBounds(cfg, nodes, margin)` (`contentBounds.ts`) is the single function answering "how big is the maze, actually" for every PNG canvas-fit computation. Every caller (`PngExporter`, `ExportFrameOverlay`, `PngExportSettingsPanel`) passes only the **active floor's** nodes (`selectFloorScopedMaze`/`createFloorNodesSelector`), never `state.nodes` of all floors, so centering, auto-fit scale and the out-of-bounds/overflow warnings describe exactly what the active floor's image draws (GitHub issue #790). The bounding box is: the exact per-tessellation-vertex bounding box (`exactCellBounds`, not a uniform per-center pad) inset by a caller-supplied `ExportMargin` (`{ left, right, top, bottom }`, world-space). Two different margins are in play, both resolved from store state without needing a live Pixi renderer instance (`exportMargins.ts`):
 - `resolveExportMargin(mode, state)` — the mode's full required margin (markers, one-way indicators, teleport connectors — anything that can visually extend past a cell's raw boundary). For "Vector by walls": `computeVectorByWallsExportMargin`, the `Math.max` of every world-space half-extent the mode can draw (wall half-thickness, one-way indicator extent, start/finish marker extent, teleport line/connector extent).
 - `resolveWallExportMargin(mode, state)` — a narrower "just the wall stroke" margin (`computeVectorByWallsWallMargin`: `wallThickness / 2` alone), used wherever a canvas should hug the walls tightly instead of reserving room for markers/indicators a given maze may not even have (digital's `edge_to_edge`/`margin_px`/`margin_cells`, and *all* of print mode's placement math — see below).
 
@@ -1048,7 +1131,7 @@ Pure function: `(cfg, nodes, margin, settings: DigitalExportSettings, wallMargin
 | `margin_cells` | bbox + `wallMargin` + `marginValue * TILE_SIZE` on every side | same idea, in cell units — scales with `scale` (unlike `margin_px`, which stays a fixed output pixel amount) |
 | `fixed_size` | exactly `fixedWidth × fixedHeight` px | full `margin` (marker-inclusive — content is centered via `placeInBox`, and a marker must never get clipped by a coincidentally tight fixed canvas even if the maze happens to have no visible wall stroke there) |
 
-`contentWidth`/`contentHeight` (the maze's own rendered size after scaling) are always returned alongside `width`/`height` (the canvas/file's own pixel size — only differs from content size in `fixed_size`) so the panel can compute a fill percentage. `overflow` is `true` only for `fixed_size`, when content doesn't fit the fixed canvas — export still proceeds; content outside `PngExporter`'s `RenderTexture` bounds is simply not drawn (hardware clip), not an error.
+`contentWidth`/`contentHeight` (the maze's own rendered size after scaling) are always returned alongside `width`/`height` (the canvas/file's own pixel size — only differs from content size in `fixed_size`) so the panel can compute a fill percentage. `overflow` is `true` only for `fixed_size`, when content doesn't fit the fixed canvas — export still proceeds; content outside `PngExporter`'s `RenderTexture` bounds is simply not drawn (hardware clip), not an error. The digital margin and fixed-width/height controls use `NumberInput` (GitHub issue #770), so an empty draft never writes `NaN`; margin clamps to a minimum of 0 and fixed dimensions clamp to a minimum of 1 on blur, with a field-anchored correction hint.
 
 `worldX`/`worldY` (the canvas's own world-space top-left corner, distinct from `x`/`y` which are screen/canvas-pixel-space) exist solely for `ExportFrameOverlay`'s digital-mode frame — it lives in a viewport-synced container and needs the canvas rect in the same coordinate space the maze itself is drawn in.
 
@@ -1075,7 +1158,7 @@ Digital mode's frame is stateless — recomputed every call from `computeDigital
 - **Canvas → settings** (`onViewportChanged` → `syncPlacementToViewport`): panning/zooming the maze under the frame recomputes `print.scale`/`offsetXMm`/`offsetYMm` (`computePrintPlacementFromViewport`) and sets `anchor: "custom"` (`setPrintCustomPlacement`) — a real pan/zoom is the user manually positioning content, which also turns `scaleAutoFit` off first (otherwise the panel's own auto-fit `useEffect` would immediately overwrite the scale this sync just set). Guarded by `actuallyMoved` (the reported `x`/`y`/`scale` must genuinely differ from the last known viewport) so a resize-triggered echo — see below — never gets mistaken for real user pan/zoom and stomps a fixed anchor back to `"custom"`.
 - **Settings → canvas** (`redraw()` → `syncViewportToPlacement`): typing a new scale, picking a fixed anchor, changing the sheet size, or switching into print mode moves the editor viewport (`computeViewportFromPrintPlacement`) so the canvas shows exactly that placement under the still-fixed frame.
 
-Both directions are guarded by a re-entrant-safe `syncingDepth` counter (not a boolean — `syncViewportToPlacement`'s `setViewportTransform` call synchronously triggers `onViewportChanged` → `syncPlacementToViewport` before either returns, so a plain boolean's inner `finally` would clear the guard early and mutually recurse the two sync directions into a stack overflow). `redraw()` re-syncs the canvas placement (`becameActive` — print mode just became visible; `sheetSizeChanged` — the frame's own screen rect, `x`/`y`/`w`/`h`, changed, whether from a paper-size/orientation/DPI change *or* the available screen area changing e.g. a side panel opening; `placementChanged` — scale/offset/anchor changed) but skips it entirely while `syncing`.
+Both directions are guarded by a re-entrant-safe `syncingDepth` counter (not a boolean — `syncViewportToPlacement`'s `setViewportTransform` call synchronously triggers `onViewportChanged` → `syncPlacementToViewport` before either returns, so a plain boolean's inner `finally` would clear the guard early and mutually recurse the two sync directions into a stack overflow). `redraw()` re-syncs the canvas placement (`becameActive` — print mode just became visible; `activeFloorChanged` — a floor switch needs the newly active floor's own geometry placed under the fixed frame; `sheetSizeChanged` — the frame's own screen rect, `x`/`y`/`w`/`h`, changed, whether from a paper-size/orientation/DPI change *or* the available screen area changing e.g. a side panel opening; `placementChanged` — scale/offset/anchor changed) but skips it entirely while `syncing`.
 
 `MazeScene.notifyScreenResized()` (triggered by an `App.tsx` `ResizeObserver` on the canvas DOM element — side panel opening/closing, card switching, DevTools toggling) forces `app.resize()` (Pixi's own `resizeTo` `ResizeObserver` on the same element races independently against the caller's, so `app.screen` can read one tick stale without this) then calls `ExportFrameOverlay.notifyExternalResize()`, which re-runs `redraw()` explicitly — a pure screen resize doesn't itself flow through the store subscription `redraw()` normally relies on, so without this the frame's `sheetSizeChanged` check would never re-fire and the canvas would stay fit against the *previous* (pre-resize) screen size.
 
@@ -1130,4 +1213,4 @@ Both output modes show a result-info block (image size in px for digital, sheet 
 
 ## Scene integration
 
-`MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (resolves to `activeTessellationConfig`, same as generation/post-edit/analytics) and to `refit()`'s `showsMaze` gate. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.
+`MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (which resolves to `activeFieldConfig`, as generation/post-edit/analytics do) and to `refit()`'s `showsMaze` gate. Image-export renderers therefore use the active floor's shape consistently for drawing, measured export margins, preview placement, and the exported PNG. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.

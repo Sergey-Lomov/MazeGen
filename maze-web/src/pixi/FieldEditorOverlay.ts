@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { decodePoint, encodePoint, makeProjection } from "./tessellationProjection";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
@@ -13,10 +13,12 @@ import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
 import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
-import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
+import { computeSymmetryPreview, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
+import type { FieldOpError } from "../wasm/mazeService";
 import { cellBounds } from "./tessellationGeometry";
+import { controlLineWidth } from "./controlLineWidth";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
@@ -112,19 +114,24 @@ export class FieldEditorOverlay {
         this.redrawFieldBoundary(state);
       }
 
-      if (isOpen && field.tessellationConfig !== prevField.tessellationConfig) {
+      if (isOpen && state.smoothPrimitives !== prev.smoothPrimitives) {
+        this.redrawFloor(state);
+        this.redrawFieldBoundary(state);
+      }
+
+      if (isOpen && field.fieldConfig !== prevField.fieldConfig) {
         this.redrawAll(state);
       }
 
       if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
         this.redrawFloor(state);
         this.redrawFieldBoundary(state);
-        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
         this.redrawPaperLayout(state);
       }
 
       if (isOpen && field.fieldPrimitive !== prevField.fieldPrimitive) {
-        this.updateHover(null, field.tessellationConfig);
+        this.updateHover(null, field.fieldConfig);
         this.redrawSymmetry(state);
       }
 
@@ -140,7 +147,7 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
-        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
       }
 
       if (isOpen && (state.showPaperLayout !== prev.showPaperLayout
@@ -158,7 +165,7 @@ export class FieldEditorOverlay {
 
   updateHover(
     cellOrCells: [number, number] | [number, number][] | null,
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     color = CELL_HOVER_COLOR,
     alpha = HOVER_ALPHA,
   ): void {
@@ -172,11 +179,12 @@ export class FieldEditorOverlay {
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
+    this.lastSymmetryDraw = null;
     if (this.root.visible) {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
-      this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
-      this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+      this.grid.render({ viewport: this.viewport }, field.fieldConfig);
+      this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
       this.redrawPaperLayout(state);
       this.redrawSymmetry(state);
     }
@@ -184,18 +192,18 @@ export class FieldEditorOverlay {
 
   private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const field = state.floorFields[state.activeFloorId];
-    this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
+    this.grid.render({ viewport: this.viewport }, field.fieldConfig);
     this.redrawFloor(state);
     this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
     this.redrawFieldBoundary(state);
-    this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+    this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
   }
 
   private redrawFloor(state: ReturnType<typeof useMazeStore.getState>): void {
     const field = state.floorFields[state.activeFloorId];
-    const cfg = field.tessellationConfig;
+    const cfg = field.fieldConfig;
     const cells = this.visibleFieldCells(state);
     this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
   }
@@ -212,9 +220,9 @@ export class FieldEditorOverlay {
     const { preset: boundaryWalls } = buildPresetWallGroups(
       this.visibleFieldCells(state),
       new Map(),
-      field.tessellationConfig,
+      field.fieldConfig,
     );
-    this.fieldBoundary.render({ edges: boundaryWalls }, field.tessellationConfig);
+    this.fieldBoundary.render({ edges: boundaryWalls }, field.fieldConfig);
     // BackgroundImageLayer keeps its interactive transform/crop frame last; stay immediately
     // below that frame while remaining above the image itself.
     this.root.setChildIndex(this.fieldBoundaryContainer, Math.max(0, this.root.children.length - 2));
@@ -225,7 +233,7 @@ export class FieldEditorOverlay {
     const preview = state.backgroundAutoFillPreview;
     const fieldPoints = preview ?? field.fieldPoints;
     const fieldEditMode = preview !== null ? "custom" : field.fieldEditMode;
-    const cells = buildActiveCells(fieldPoints, fieldEditMode, field.tessellationConfig)
+    const cells = buildActiveCells(fieldPoints, fieldEditMode, field.fieldConfig, state.smoothPrimitives)
       .filter(([x, y]) => !this.selectionMoveHidden.has(encodePoint(x, y)));
     const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
     for (const key of this.selectionMoveTemporary) {
@@ -255,7 +263,7 @@ export class FieldEditorOverlay {
     }
   }
 
-  private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
+  private redrawOrigin(show: boolean, cfg: FieldConfig): void {
     this.origin.render({ show }, cfg);
   }
 
@@ -263,7 +271,7 @@ export class FieldEditorOverlay {
     const field = state.floorFields[state.activeFloorId];
     this.paperLayout.render(
       state.showPaperLayout && field.fieldEditMode === "custom",
-      field.tessellationConfig,
+      field.fieldConfig,
       state.pngExportSettings.print,
       this.viewport,
     );
@@ -273,33 +281,65 @@ export class FieldEditorOverlay {
     this.redrawSymmetry(useMazeStore.getState(), axisOverride, polygonOverride);
   }
 
+  private pendingSymmetry: { axis?: SymmetryAxisPoints; polygon?: SymmetryPoint[] } | null = null;
+  private symmetryFrameRequested = false;
+
+  /** Pointer-driven preview updates: pointer events can outpace the frame rate, so only the latest
+   * one per frame is drawn. Any other symmetry redraw supersedes a pending one. */
+  scheduleSymmetryPreview(axisOverride?: SymmetryAxisPoints, polygonOverride?: SymmetryPoint[]): void {
+    this.pendingSymmetry = { axis: axisOverride, polygon: polygonOverride };
+    if (this.symmetryFrameRequested) return;
+    this.symmetryFrameRequested = true;
+    requestAnimationFrame(() => {
+      this.symmetryFrameRequested = false;
+      const pending = this.pendingSymmetry;
+      if (pending) this.redrawSymmetry(useMazeStore.getState(), pending.axis, pending.polygon);
+    });
+  }
+
+  /** Publishes the preview's refusal so the field editor can show it; identical errors are not re-published. */
+  private reportFieldOpError(error: FieldOpError | null): void {
+    const store = useMazeStore.getState();
+    if (JSON.stringify(store.fieldOpError) !== JSON.stringify(error)) store.setFieldOpError(error);
+  }
+
+  /** Inputs of the last drawn symmetry preview; an identical redraw (a pointer move that snaps to
+   * the same point) is skipped, since the preview costs a core call and a cell re-render. */
+  private lastSymmetryDraw: { objects: unknown[]; shape: string } | null = null;
+
   private redrawSymmetry(
     state: ReturnType<typeof useMazeStore.getState>,
     axisOverride?: SymmetryAxisPoints,
     polygonOverride?: SymmetryPoint[],
   ): void {
+    this.pendingSymmetry = null;
     const field = state.floorFields[state.activeFloorId];
     const visible = state.openCard === "field_setup"
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "symmetry";
     this.symmetryContainer.visible = visible;
-    this.symmetryGraphics.clear();
-    if (!visible) {
-      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.tessellationConfig);
-      return;
-    }
-
     const axisPoints = axisOverride ?? state.symmetryAxisPoints;
     const polygon = polygonOverride ?? state.symmetryPolygon;
     const color = field.fieldOperation === "remove"
       ? canvas.fieldEditor.previewRemove
       : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
+    const objects = [color, visible, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.symmetryScope, state.symmetrySourceSide, state.symmetryPolygonFinished];
+    const shape = JSON.stringify([axisPoints, polygon, polygonOverride !== undefined]);
+    const last = this.lastSymmetryDraw;
+    if (last && last.shape === shape && last.objects.every((value, index) => value === objects[index])) return;
+    this.lastSymmetryDraw = { objects, shape };
+    this.symmetryGraphics.clear();
+    if (!visible) {
+      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
+      this.reportFieldOpError(null);
+      return;
+    }
+
     if (axisPoints.length === 2) {
       const axis: [SymmetryPoint, SymmetryPoint] = [axisPoints[0], axisPoints[1]];
       const preview = computeSymmetryPreview(
         field.fieldPoints,
-        symmetryCandidateCells(field.fieldPoints, field.tessellationConfig, axisPoints, decodePoint),
-        field.tessellationConfig,
+        field.fieldConfig,
         {
           scope: state.symmetryScope,
           sourceSide: state.symmetrySourceSide,
@@ -307,8 +347,10 @@ export class FieldEditorOverlay {
           polygon,
         },
         encodePoint,
+        decodePoint,
       );
-      this.symmetryCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.tessellationConfig);
+      this.reportFieldOpError(preview.error);
+      this.symmetryCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.fieldConfig);
       const dx = axis[1].x - axis[0].x;
       const dy = axis[1].y - axis[0].y;
       const length = Math.hypot(dx, dy);
@@ -319,7 +361,7 @@ export class FieldEditorOverlay {
         const my = (axis[0].y + axis[1].y) / 2;
         this.symmetryGraphics.moveTo(mx - ux * 100000, -my + uy * 100000);
         this.symmetryGraphics.lineTo(mx + ux * 100000, -my - uy * 100000);
-        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: 1.5 });
+        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: this.strokeWidth(1.5) });
         this.symmetryGraphics.circle(axis[0].x, -axis[0].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.circle(axis[1].x, -axis[1].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.fill({ color, alpha: 0.95 });
@@ -331,16 +373,17 @@ export class FieldEditorOverlay {
           const to = { x: mx + normalX * TILE_SIZE * 0.7, y: my + normalY * TILE_SIZE * 0.7 };
           this.symmetryGraphics.moveTo(from.x, -from.y);
           this.symmetryGraphics.lineTo(to.x, -to.y);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
           const head = TILE_SIZE * 0.18;
           this.symmetryGraphics.moveTo(to.x - normalX * head + normalY * head, -to.y + normalY * head + normalX * head);
           this.symmetryGraphics.lineTo(to.x, -to.y);
           this.symmetryGraphics.lineTo(to.x - normalX * head - normalY * head, -to.y + normalY * head - normalX * head);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
         }
       }
     } else {
-      this.symmetryCells.render({ cells: [], color, alpha: 0 }, field.tessellationConfig);
+      this.symmetryCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
+      this.reportFieldOpError(null);
       if (axisPoints.length === 1) {
         this.symmetryGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
         this.symmetryGraphics.fill({ color, alpha: 0.95 });
@@ -361,19 +404,14 @@ export class FieldEditorOverlay {
             { x: polygon[i - 1].x, y: -polygon[i - 1].y },
             { x: polygon[i].x, y: -polygon[i].y },
             SYMMETRY_POLYGON_COLOR,
+            this.strokeWidth(SYMMETRY_POLYGON_WIDTH),
           );
         }
       }
       if (polygon.length >= 2) {
         const last = { x: polygon[polygon.length - 1].x, y: -polygon[polygon.length - 1].y };
         const first = { x: polygon[0].x, y: -polygon[0].y };
-        if (state.symmetryPolygonFinished) {
-          this.symmetryGraphics.moveTo(last.x, last.y);
-          this.symmetryGraphics.lineTo(first.x, first.y);
-          this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
-        } else {
-          drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR);
-        }
+        drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR, this.strokeWidth(SYMMETRY_POLYGON_WIDTH));
       }
       for (const point of state.symmetryPolygon) {
         this.symmetryGraphics.circle(point.x, -point.y, TILE_SIZE * 0.12);
@@ -402,6 +440,10 @@ export class FieldEditorOverlay {
     this.originContainer.destroy();
     this.hoverContainer.destroy();
   }
+
+  private strokeWidth(width: number): number {
+    return controlLineWidth(width, this.viewport.scale);
+  }
 }
 
 function drawDashedSegment(
@@ -409,6 +451,7 @@ function drawDashedSegment(
   start: { x: number; y: number },
   end: { x: number; y: number },
   color: number,
+  width: number,
 ): void {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -421,11 +464,11 @@ function drawDashedSegment(
     const dashEnd = Math.min(travelled + SYMMETRY_POLYGON_DASH_LENGTH, length);
     graphics.moveTo(start.x + ux * travelled, start.y + uy * travelled);
     graphics.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
-    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width });
   }
 }
 
-export function configScreenCenter(cfg: TessellationConfig): { x: number; y: number } {
+export function configScreenCenter(cfg: FieldConfig): { x: number; y: number } {
   const cells = configAllCells(cfg);
   if (cells.length === 0) return { x: 0, y: 0 };
   const proj = makeProjection(cfg);
@@ -437,7 +480,7 @@ export function configScreenCenter(cfg: TessellationConfig): { x: number; y: num
   return { x: sx / cells.length, y: sy / cells.length };
 }
 
-function fieldBounds(cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } | null {
+function fieldBounds(cfg: FieldConfig): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const cells = configAllCells(cfg);
   if (cells.length === 0) return null;
   return cellBounds(cells, cfg);
@@ -448,11 +491,11 @@ function fieldBounds(cfg: TessellationConfig): { minX: number; minY: number; max
  * by the *largest* floor's own bounding box (max width, max height independently — possibly from
  * two different floors), not by the active floor's own size, so switching floors or features never
  * changes the zoom level, only what's centered. `allCfgs` must carry every floor's own
- * `TessellationConfig` (including `activeCfg` itself). The viewport is centered on `activeCfg`'s
+ * `FieldConfig` (including `activeCfg` itself). The viewport is centered on `activeCfg`'s
  * own bbox center. */
 export function fitFieldViewport(
-  activeCfg: TessellationConfig,
-  allCfgs: TessellationConfig[],
+  activeCfg: FieldConfig,
+  allCfgs: FieldConfig[],
   screenW: number,
   screenH: number,
 ): { x: number; y: number; scale: number } {

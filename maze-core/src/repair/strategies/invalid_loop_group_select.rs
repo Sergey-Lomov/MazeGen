@@ -270,6 +270,7 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         crate::repair::params::build_params(
@@ -308,8 +309,12 @@ mod tests {
     /// flagged invalid.
     fn maze_with_two_disjoint_loops() -> (Maze<SquareTessellation>, Vec<EdgeId>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(7, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -318,7 +323,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -549,7 +554,12 @@ mod tests {
         // strategy a second time.
         let mut ids = IdGenerator::new();
         let field: crate::space::MultiLevelField<SquareTessellation> =
-            crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            crate::space::MultiLevelField::single_level(
+                Arc::default(),
+                square_rect(4, 1),
+                &mut ids,
+            )
+            .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -558,7 +568,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)

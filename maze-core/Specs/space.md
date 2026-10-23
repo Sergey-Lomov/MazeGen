@@ -14,11 +14,12 @@ Pure stateless geometry. Knows nothing about nodes or fields. Defines:
 - `Size` — bounds descriptor (e.g. `SquareSize { width, height }`)
 
 Methods:
-- `step(point, face) -> Option<Point>` — move from a valid point through a face to the adjacent point, or return `None` when that transition does not exist
-- `is_valid_point(point) -> bool` — whether a coordinate represents an actual tile in this tessellation
+- `is_valid_cell(point) -> bool` — whether a coordinate represents an actual tile in this tessellation
 - `contains(size, point) -> bool` — whether a point is within the given bounds
-- `faces() -> &'static [Face]` — all possible faces for this tessellation
-- `all_points(size) -> Vec<Point>` — every point within the given size
+- `faces_of(cell) -> &[Face]` — the cell's faces (allocation-free)
+- `neighbor(cell, face) -> Option<(Point, Face)>` — the adjacent cell and its face on the same boundary piece (reciprocal), or `None` when no cell exists there
+- `is_straight(cell, in_face, out_face) -> bool` — whether a pass through `cell` is straight
+- `all_cells(size) -> Vec<Point>` — every point within the given size
 
 ### Field (trait)
 
@@ -28,11 +29,11 @@ Methods:
 - `node_count() -> usize`
 - `neighbors(node) -> Vec<NodeId>` — topologically adjacent nodes (respects boundaries and topology)
 - `node_at(point) -> Option<NodeId>`
-- `point_of(node) -> Option<Point>` — `None` if node not registered in this field
+- `cell_of(node) -> Option<Point>` — `None` if node not registered in this field
 - `build_nodes(graph: &mut Graph)` — calls `graph.add_node` for every node in the field (no edges)
 
-`Field::new` and `Field::from_id_points` reject points for which
-`Tessellation::is_valid_point` returns `false`.
+`Field::new` and `Field::from_id_cells` reject points for which
+`Tessellation::is_valid_cell` returns `false`.
 
 ### StandardField\<T: Tessellation\>
 
@@ -42,14 +43,14 @@ Default Field implementation for bounded rectangular-like fields. Constructor:
 StandardField::new(size: T::Size, ids: &mut IdGenerator) -> Self
 ```
 
-Generates NodeIds, populates `point_to_node` and `node_to_point` HashMaps. Internally:
+Generates NodeIds, populates `cell_to_node` and `node_to_cell` HashMaps. Internally:
 - `size: T::Size`
-- `point_to_node: HashMap<T::Point, NodeId>`
-- `node_to_point: HashMap<NodeId, T::Point>`
+- `cell_to_node: HashMap<T::CellId, NodeId>`
+- `node_to_cell: HashMap<NodeId, T::CellId>`
 
-`neighbors` implementation: iterate `T::faces()`, apply `T::step`, discard `None` results, filter by `T::contains`, and look up NodeId.
+`neighbors` implementation: iterate `T::faces_of(point)`, apply `T::neighbor`, discard `None` results, filter by `T::contains`, and look up NodeId.
 
-`build_nodes` implementation: iterate `node_to_point.keys()`, call `graph.add_node(id)` for each.
+`build_nodes` implementation: iterate `node_to_cell.keys()`, call `graph.add_node(id)` for each.
 
 For non-standard topologies (torus, irregular shapes) — implement `Field` directly instead of using `StandardField`.
 
@@ -65,16 +66,18 @@ of the origin.  The four occupied orientation classes are `L`, `R`, `U`, and
 `D`; each point has exactly five direct neighbours, represented by the
 `CairoFace` table.
 
-`CairoTessellation::step` and `face_between` use the explicit integer offset
-tables, not a geometric search.  Both reject unused coordinate pairs, and the
-tables are reverse-consistent, so a neighbour relationship is bidirectional.
+`CairoTessellation::neighbor` uses the explicit integer offset tables, not a
+geometric search.  The tables are reverse-consistent, so the destination's
+table yields the reciprocal face and a neighbour relationship is bidirectional.
 `cairo_rect(cols, rows)` provides the two cells from each fundamental square;
 arbitrary fields can supply any subset of valid Cairo points directly to
 `Field::new`.
 
-The pentagon has two 90-degree and three 120-degree corners.  Its explicit
-symmetry contract therefore contains the identity rotation and one reflection
-that fixes the long side and exchanges the two pairs of short sides.
+The pentagon has two 90-degree and three 120-degree corners.  Its shape
+template (`cairo_pentagon`) therefore has the identity and one reflection that
+fixes the long side and exchanges the two pairs of short sides.  `faces_of`
+lists each orientation's faces counter-clockwise from `Twin`, so the slot order
+differs per orientation (see `Specs/space.md`).
 
 ### SquareTessellation
 
@@ -83,7 +86,7 @@ that fixes the long side and exchanges the two pairs of short sides.
 - `Size = SquareSize { width: usize, height: usize }`
 - `step`: N→y+1, S→y-1, E→x+1, W→x-1
 - `contains`: `0 <= x < width && 0 <= y < height`
-- `all_points`: row-major order, y outer loop, x inner loop
+- `all_cells`: row-major order, y outer loop, x inner loop
 
 ### SquareField
 
@@ -95,4 +98,4 @@ Type alias: `StandardField<SquareTessellation>`
 - Field is the only place that knows the Point↔NodeId mapping.
 - Graph does not know about Field or coordinates.
 - `build_nodes` must be called before using the Graph for generation or validation.
-- `point_of` and `node_at` return `None` for unknown inputs (no panic).
+- `cell_of` and `node_at` return `None` for unknown inputs (no panic).

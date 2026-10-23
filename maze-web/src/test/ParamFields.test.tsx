@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ParamFields, isEntityVisible } from "../components/features/ParamFields";
 import type { ParamDescriptor } from "../wasm/types";
 import { useMazeStore } from "../store/mazeStore";
+import * as m from "~/paraglide/messages";
 
 // ParamFields is intentionally uncontrolled -- it re-renders off whatever `values` prop it's
 // given, same as its real callers (useParamEditor's local `values` state). A bare static
@@ -24,6 +25,18 @@ function StatefulParamFields({ params, initial, onCommit }: {
         setValues((prev) => ({ ...prev, [paramId]: value }));
         onCommit?.(paramId, value);
       }}
+    />
+  );
+}
+
+function StatefulAddSplitWeights() {
+  const [values, setValues] = useState({ split_config: "[1]" });
+  return (
+    <ParamFields
+      params={[addSplitConfigParam]}
+      values={values}
+      addSplitPatternsOverride={[{ shape: "regular:4", node_count: 1, faces: [[]], weight: 1 }]}
+      onChange={(paramId, value) => setValues((previous) => ({ ...previous, [paramId]: value }))}
     />
   );
 }
@@ -210,11 +223,11 @@ describe("ParamFields", () => {
       expect(onCommit).toHaveBeenLastCalledWith("max_attempts", "9");
     });
 
-    it("passes integer=true for an integer param (decimal point blocked)", () => {
+    it("passes integer=true for an integer param and explains rejected decimal input", () => {
       render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
-      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
-      expect(input.dispatchEvent(event)).toBe(false);
+      fireEvent.keyDown(input, { key: "." });
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.decimal_separator_rejected"]());
     });
 
     it("does not pass integer=true for a float param (decimal point allowed)", () => {
@@ -330,6 +343,19 @@ describe("ParamFields", () => {
     it("falls back to the kind's own default when the stored value is empty", () => {
       render(<ParamFields params={[addSplitConfigParam]} values={{ split_config: "" }} onChange={vi.fn()} />);
       expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("3");
+    });
+  });
+
+  describe("add_split_config pattern weights", () => {
+    it("keeps an empty weight draft until blur, then restores it with the shared input hint", () => {
+      render(<StatefulAddSplitWeights />);
+      fireEvent.click(screen.getByText("Weight settings"));
+      const input = document.querySelector('input[name="split-pattern-0-weight"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "" } });
+      expect(input).toHaveValue("");
+      fireEvent.blur(input);
+      expect(input).toHaveValue("1");
+      expect(screen.getByTestId("field-hint")).toHaveTextContent(m["input_hint.restored"]());
     });
   });
 

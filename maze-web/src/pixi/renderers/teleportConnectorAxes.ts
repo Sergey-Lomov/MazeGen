@@ -1,4 +1,5 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig, TessellationKind } from "../../fieldConfig";
+import { TESSELLATION_UI } from "../geometry/tessellationUi";
 
 /** A connector bend axis, as a unit direction vector — a segment along this axis can run either
  *  way (`(ux, uy)` and `(-ux, -uy)` are the same axis). */
@@ -17,12 +18,25 @@ function axisFromDeg(deg: number): Axis {
 export const SQUARE_AXES: Axis[] = [axisFromDeg(0), axisFromDeg(90)];
 
 // Bend axes must run *perpendicular* to a cell's own face directions (a connector crossing a wall
-// head-on, not running alongside it) — verified numerically from `hexVertices`' own vertex angles
-// (GitHub issue #297 follow-up). `flat_top` hex faces run along {0°,60°,120°} so their normals are
-// {30°,90°,150°}; `pointy_top` is flat_top rotated 30°, so its faces run along {30°,90°,150°} and
-// its normals land back on {0°,60°,120°} — the two orientations do NOT share one axis set.
-const AXES_0_60_120: Axis[] = [axisFromDeg(0), axisFromDeg(60), axisFromDeg(120)];
-const AXES_30_90_150: Axis[] = [axisFromDeg(30), axisFromDeg(90), axisFromDeg(150)];
+// head-on, not running alongside it) -- GitHub issue #297 follow-up. The canonical (`flat_top`)
+// hex faces run along {0°,60°,120°}, so their normals are {30°,90°,150°}; the display orientation
+// (`pointy_top` turns the lattice 30°) turns the axes with it, see `orientedAxes`.
+const HEX_CANONICAL_AXES_DEG = [30, 90, 150];
+const TRI_AXES: Axis[] = [axisFromDeg(0), axisFromDeg(60), axisFromDeg(120)];
+
+/** `degrees` (canonical directions) turned by the display orientation of `cfg`, as undirected
+ *  axes in ascending angle order. */
+function orientedAxes(cfg: FieldConfig, degrees: readonly number[]): Axis[] {
+  const o = TESSELLATION_UI[cfg.tessellation.kind].orientation(cfg.orientation);
+  return degrees
+    .map((deg) => {
+      const rad = (deg * Math.PI) / 180;
+      const turned = (Math.atan2(o.b * Math.cos(rad) + o.d * Math.sin(rad), o.a * Math.cos(rad) + o.c * Math.sin(rad)) * 180) / Math.PI;
+      return Math.round((((turned % 180) + 180) % 180) * 1e9) / 1e9 % 180;
+    })
+    .sort((a, b) => a - b)
+    .map(axisFromDeg);
+}
 
 // Cairo's base pentagon has edge slopes 0 and +/-atan(1/3). Its four tile orientations produce
 // four useful oblique axes. The horizontal/vertical normals are deliberately excluded: on the
@@ -37,6 +51,48 @@ const CAIRO_AXES: Axis[] = [
   axisFromDeg(180 - CAIRO_SLOPE_DEG),
 ];
 
+// Octagon and square faces face the eight compass directions, so the face normals give four axes
+// 45 degrees apart; the display transform is a reflection, which keeps this set unchanged.
+const SQUARE_OCTAGON_AXES: Axis[] = [0, 45, 90, 135].map(axisFromDeg);
+
+// Bricks have vertical side edges and horizontal (half) top and bottom edges, so the face normals
+// are the horizontal and vertical axes.
+const BRICK_AXES: Axis[] = [0, 90].map(axisFromDeg);
+
+// Hexagon and triangle faces are the sides of a flat-top hexagon, whose normals are 30, 90 and 150
+// degrees; the display transform is a reflection, which keeps this set unchanged.
+const TRIHEXAGONAL_AXES: Axis[] = [30, 90, 150].map(axisFromDeg);
+
+// Hexagon faces have normals at 30, 90 and 150 degrees, square faces (three orientations, 60 degrees
+// apart) add 0, 60 and 120 degrees, so the face normals give six axes 30 degrees apart; the display
+// transform is a reflection, which keeps this set unchanged.
+const RHOMBITRIHEXAGONAL_AXES: Axis[] = [0, 30, 60, 90, 120, 150].map(axisFromDeg);
+
+// Dodecagon edges run along every multiple of 30 degrees, but the dodecagon centers form a
+// triangular lattice with lattice directions 0, 60 and 120 degrees. A connector line through a cell
+// center at 30, 90 or 150 degrees coincides with the shared wall of lattice-neighbor dodecagons, so
+// only the lattice directions (the normals of the dodecagon-dodecagon faces) are safe; the display
+// transform is a reflection, which keeps this set unchanged.
+const TRUNCATED_HEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
+
+// Dodecagon centers form the same triangular lattice, joined by a square across every lattice
+// direction, and the dodecagon edges again run along every multiple of 30 degrees. The lattice
+// directions 0, 60 and 120 degrees are the normals of the dodecagon-square faces, so they run
+// through the middle of those squares and never along a wall; the display transform is a
+// reflection, which keeps this set unchanged.
+const TRUNCATED_TRIHEXAGONAL_AXES: Axis[] = [0, 60, 120].map(axisFromDeg);
+// Squares add horizontal and vertical faces, triangles faces at 60 and 120 degrees. A vertical line
+// through a square center runs along the vertical walls of the band above or below, because bands
+// are shifted by half a square, so the vertical direction is unsafe. The normals of the remaining
+// faces (0, 30 and 150 degrees) are safe; the display transform is a reflection, which keeps this
+// set unchanged.
+const ELONGATED_TRIANGULAR_AXES: Axis[] = [0, 30, 150].map(axisFromDeg);
+
+// Cell edges of the snub square tiling run along every multiple of 30 degrees, so each of those
+// directions lies on a wall through some cell center. The odd multiples of 15 degrees never do (a
+// web test checks it); the display transform is a reflection, which keeps this set unchanged.
+const SNUB_SQUARE_AXES: Axis[] = [15, 45, 75, 105, 135, 165].map(axisFromDeg);
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
@@ -45,36 +101,30 @@ const CAIRO_AXES: Axis[] = [
  *  because they can coincide with Cairo cell edges. This is a
  *  display-only routing concern (not a tessellation concept core cares about — some tessellations
  *  have no meaningful "face axis" at all), so it lives entirely on the web side. */
-export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
-  switch (cfg.type) {
-    case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
-      return SQUARE_AXES;
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      return orientation === "pointy_top" ? AXES_0_60_120 : AXES_30_90_150;
-    }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom":
-      return AXES_0_60_120;
-    case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
-      return CAIRO_AXES;
-    default:
-      cfg satisfies never;
-      return SQUARE_AXES;
-  }
+export function getConnectorAxes(cfg: FieldConfig): Axis[] {
+  return CONNECTOR_AXES[cfg.tessellation.kind](cfg);
 }
+
+/** Connector axes per kind -- a registry lookup, not a branch on the kind. */
+const CONNECTOR_AXES: Record<TessellationKind, (cfg: FieldConfig) => Axis[]> = {
+  square: () => SQUARE_AXES,
+  hex: (cfg) => orientedAxes(cfg, HEX_CANONICAL_AXES_DEG),
+  tri: () => TRI_AXES,
+  cairo: () => CAIRO_AXES,
+  square_octagon: () => SQUARE_OCTAGON_AXES,
+  brick: () => BRICK_AXES,
+  trihexagonal: () => TRIHEXAGONAL_AXES,
+  // Every edge is a unit step of the triangular lattice, so the face normals are the trihexagonal ones.
+  snub_hexagonal: () => TRIHEXAGONAL_AXES,
+  rhombitrihexagonal: () => RHOMBITRIHEXAGONAL_AXES,
+  truncated_hexagonal: () => TRUNCATED_HEXAGONAL_AXES,
+  truncated_trihexagonal: () => TRUNCATED_TRIHEXAGONAL_AXES,
+  elongated_triangular: () => ELONGATED_TRIANGULAR_AXES,
+  snub_square: () => SNUB_SQUARE_AXES,
+  // The arcs bend inside the unit squares of the square grid, so the face normals are the square's.
+  curved_quadrilateral: () => SQUARE_AXES,
+  // Rings and spokes meet at right angles, so the square's face normals stand in for the cell axes.
+  radial: () => SQUARE_AXES,
+  // Irregular cells have no preferred direction; the square's face normals stand in for the cell axes.
+  voronoi: () => SQUARE_AXES,
+};

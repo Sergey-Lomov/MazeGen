@@ -8,6 +8,7 @@ use crate::graph::EdgeKind;
 use crate::ids::NodeId;
 use crate::space::test_support::GappedSquareTessellation;
 use crate::space::{MultiLevelField, SquareFace, SquarePoint};
+use std::sync::Arc;
 
 fn empty_presets() -> PresetState {
     PresetState::empty()
@@ -15,22 +16,23 @@ fn empty_presets() -> PresetState {
 
 fn simple_two_node_pattern() -> SplitPattern {
     SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![
                 SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 },
                 SplitPatternFace {
-                    face_index: 1,
+                    face_index: 3,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: Some(1),
                 },
             ],
             vec![SplitPatternFace {
-                face_index: 2,
+                face_index: 0,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -80,8 +82,7 @@ fn enumerate_adaptations_pure_rng_free_same_inputs_same_output() {
         "enumerate_adaptations must be deterministic across identical calls"
     );
     for (x, y) in a.iter().zip(b.iter()) {
-        assert_eq!(x.rotation, y.rotation);
-        assert_eq!(x.mirror, y.mirror);
+        assert_eq!(x.transform, y.transform);
     }
 }
 
@@ -94,11 +95,12 @@ fn enumerate_adaptations_boundary_excludes_off_field_non_wall_faces() {
     let src = field
         .node_at(field_level, SquarePoint { x: 0, y: 0 })
         .unwrap();
-    // Single-node pattern requiring Passage on face 0 (N) — only valid where N exists.
+    // Single-node pattern requiring Passage on face 1 (N) — only valid where its image exists.
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: 0,
+            face_index: 1,
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -116,18 +118,12 @@ fn enumerate_adaptations_boundary_excludes_off_field_non_wall_faces() {
         None,
         false,
     );
-    // At (0,0) in a 2x2 field: N and E exist, S and W don't. Exactly half the rotation/mirror
-    // combinations (degree=4, 2 mirror states = 8 total) should resolve face 0 to an existing
-    // neighbor (N or E) -> 4 valid combos expected (2 directions accessible x 2 mirror states
-    // each map to one of them in some pairing) — assert at least one and at most all-but-some
-    // are valid, i.e. it's neither trivially all nor none.
-    assert!(
-        !adaptations.is_empty(),
-        "at least one rotation must land on an existing neighbor"
-    );
-    assert!(
-        adaptations.len() < 8,
-        "at least one rotation must be excluded (off-field neighbor)"
+    // At (0,0) in a 2x2 field: N and E exist, S and W don't. The pattern's 4 distinct variants
+    // (one per face) resolve its face to N or E in exactly 2 of them.
+    assert_eq!(
+        adaptations.len(),
+        2,
+        "only the variants landing on an existing neighbor survive"
     );
 }
 
@@ -137,10 +133,10 @@ fn resolve_face_rejects_a_required_connection_when_step_has_no_coordinate() {
     let east = SquarePoint { x: 1, y: 0 };
     let mut ids = crate::IdGenerator::new();
     let field: MultiLevelField<GappedSquareTessellation> =
-        MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), [origin, east], &mut ids).unwrap();
     let level = field.single_level_id();
     let face = SplitPatternFace {
-        face_index: GappedSquareTessellation::face_index(SquareFace::E).unwrap(),
+        face_index: east_face_index(),
         requirement: SplitFaceRequirement::Passage,
         sibling_target: None,
     };
@@ -164,8 +160,7 @@ fn resolve_face_rejects_a_required_connection_when_step_has_no_coordinate() {
         false,
         0,
         &face,
-        0,
-        None,
+        east_face_index(),
         &mut builder,
     ));
     assert!(builder.faces.is_empty());
@@ -182,9 +177,10 @@ fn enumerate_adaptations_requires_bridge_targeted_face_when_bridge_present() {
         .node_at(field_level, SquarePoint { x: 2, y: 3 })
         .unwrap(); // north neighbor
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: 0,
+            face_index: 1,
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -233,9 +229,10 @@ fn enumerate_adaptations_accepts_a_face_matching_the_existing_parent_edge() {
         .unwrap(); // north neighbor
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: 0,
+            face_index: 1,
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -281,9 +278,10 @@ fn enumerate_adaptations_rejects_a_one_way_face_against_a_bidirectional_parent_e
         .unwrap();
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: 0,
+            face_index: 1,
             requirement: SplitFaceRequirement::OneWay(OneWayDirection::Forward),
             sibling_target: None,
         }]],
@@ -321,9 +319,10 @@ fn enumerate_adaptations_requires_parent_targeted_face_when_parent_present() {
         .unwrap();
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: 0,
+            face_index: 1,
             requirement: SplitFaceRequirement::Wall,
             sibling_target: None,
         }]],
@@ -409,4 +408,13 @@ fn ResolvedFace_for_test(
         sibling_target,
         neighbor,
     }
+}
+
+/// Position of `SquareFace::E` in `GappedSquareTessellation`'s (uniform) face order.
+fn east_face_index() -> usize {
+    GappedSquareTessellation
+        .faces_of(SquarePoint { x: 0, y: 0 })
+        .iter()
+        .position(|&face| face == SquareFace::E)
+        .unwrap()
 }

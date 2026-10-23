@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyPostEditHoverState, shouldClearPostEditHover } from "../pixi/postEditHoverState";
+import { emptyPostEditHoverState, sameHoverCell, sameHoverEdge, shouldClearPostEditHover } from "../pixi/postEditHoverState";
 
 const base = {
   postEditTool: "reset",
@@ -23,5 +23,22 @@ describe("post-edit hover invalidation", () => {
 
   it("provides an empty state for a new canvas or changed graph", () => {
     expect(emptyPostEditHoverState()).toEqual({ edge: null, edgeDanger: false, cell: null, cellDanger: false });
+  });
+});
+
+describe("post-edit hover dedup (GitHub issue #739)", () => {
+  it("compares cells by coordinates", () => {
+    expect(sameHoverCell([1, 2], [1, 2])).toBe(true);
+    expect(sameHoverCell([1, 2], [2, 1])).toBe(false);
+    expect(sameHoverCell(null, null)).toBe(true);
+    expect(sameHoverCell(null, [0, 0])).toBe(false);
+  });
+
+  it("compares edges by key and both cells", () => {
+    const edge = { key: "0,0|1,0", from: [0, 0] as [number, number], to: [1, 0] as [number, number] };
+    expect(sameHoverEdge(edge, { ...edge, from: [0, 0], to: [1, 0] })).toBe(true);
+    expect(sameHoverEdge(edge, { ...edge, key: "0,0|0,1", to: [0, 1] })).toBe(false);
+    expect(sameHoverEdge(edge, null)).toBe(false);
+    expect(sameHoverEdge(null, null)).toBe(true);
   });
 });

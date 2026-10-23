@@ -161,6 +161,10 @@ All 8 new parameters live in `ElementsConfig` (not `GenerationParams`) alongside
 | `elevator_branching` | 0.0–1.0 | 0.5 | Growth factor from `elevator_span_min` toward the run's actual `max_slots` (clamped by `elevator_span_max`) — same binomial shape as `junction_count`, but parameterized by `elevator_span_min` instead of a fixed `2`. |
 | `allow_non_consecutive_elevator_floors` | bool | false | When false, an elevator's unvisited floor pool is clamped to the longest contiguous run (by floor order) before the branching roll — `floor_count` is never drawn from an unreachable range. When true, any unvisited floor is eligible regardless of gaps. |
 
+The two elevator-span controls use the shared integer `NumberInput` (GitHub issue #770): decimal
+separators are rejected with an immediate field hint; rounding, the minimum-1 clamp, and invalid
+draft restoration are explained on blur/Enter.
+
 `cross_floor_teleport_balance` (0.0–1.0, default 0.0) lives in `ElementsConfig` alongside `teleport_chance` — balance between preferring a teleport target on another floor (1) vs. the same floor (0), rolled once `teleport_chance` already hit and only when `field.level_count() > 1`.
 
 ### Roll order in the main per-node step
@@ -173,7 +177,7 @@ All 8 new parameters live in `ElementsConfig` (not `GenerationParams`) alongside
 
 ### `VerticalPassage`
 
-The target floor (which of the two adjacent floors, if either) is resolved **by position in `levels_ordered()`**, never by raw `LevelId` arithmetic (`LevelId` is a stable minted id, never reused or renumbered — see `Specs/space.md`). A boundary floor (first/last in order) has only one adjacent floor; there the target is that floor unconditionally, no choice to make. Target *node* resolution goes exclusively through `MultiLevelField::node_at(level, point)` (`point` from `field.point_of(src)`) — never a coordinate comparison of the generation code's own. If `node_at` returns `None` (floors don't share a cell shape at that point) or the resolved node fails the growth/cyclic context check (already visited in growth context; no visited neighbor in cyclic context), the `VerticalPassage` attempt fails.
+The target floor (which of the two adjacent floors, if either) is resolved **by position in `levels_ordered()`**, never by raw `LevelId` arithmetic (`LevelId` is a stable minted id, never reused or renumbered — see `Specs/space.md`). A boundary floor (first/last in order) has only one adjacent floor; there the target is that floor unconditionally, no choice to make. Target *node* resolution goes exclusively through `MultiLevelField::node_at(level, point)` (`point` from `field.cell_of(src)`) — never a coordinate comparison of the generation code's own. If `node_at` returns `None` (floors don't share a cell shape at that point) or the resolved node fails the growth/cyclic context check (already visited in growth context; no visited neighbor in cyclic context), the `VerticalPassage` attempt fails.
 
 The one-way roll (`one_way_vertical_passage_chance`) and, if one-way, the direction roll (`vertical_up_down_balance`) apply *after* the target is already fixed — they decide which way the edge points between `src` and that already-resolved target, not which floor the target is on. This works identically on a boundary floor (single possible target) and an interior floor (two candidates) — no special-casing needed for the direction roll itself.
 
@@ -254,9 +258,15 @@ Web UI: `CustomVertexBased`'s generation params (Growth, One-way, Teleport, Spli
 
 Whether the panel is open is a persistent part of generation config, following the same pattern as `qcExperiment` above: `vertexSettingsPanelOpen` (`maze-web/src/store/generationTypes.ts`) is serialized into the project file (`ProjectFile.generation.vertexSettingsPanelOpen`, `maze-web/src/store/projectExport/types.ts`), so loading a project restores the panel to the state it was saved in. Old project files predating this field default to closed (`optBool` fallback in `parseAndValidate`). The panel auto-closes (`vertexSettingsPanelOpen` reset to `false`) whenever `setGenerationMethod` switches the algorithm away from `custom_vertex_based`, since the panel has nothing to show for any other method.
 
+Every `SliderRow` in this panel also has a bounded numeric density editor. It accepts any finite value from `0` through `1`, preserving precision beyond the slider's `0.01` increment. This applies consistently to growth, one-way, teleport, split, and vertical controls; the existing Rust/WASM range clamp remains the final validation boundary. Each editor has an accessible name; where a short row label is reused, that name includes its category.
+
+## Seed-history navigation
+
+The seed field's previous/next history buttons use the shared tool-tooltip layout: the primary line identifies the action (for example, "Previous seed") and a tertiary second line identifies the destination seed (for example, "Seed: 42"). At a history boundary, each disabled button instead gives a tertiary explanation that there is no earlier or later seed. This makes the current position clear without opening the Seed History dialog (GitHub issue #780).
+
 ## Generation progress feedback
 
-The web generation action runs WASM generation in a module worker so the main thread can render progress feedback. The Generate/Re-Generate button uses independent timing defaults: `spinnerShowDelay = 200 ms` and `spinnerMinVisible = 750 ms`. A generation that completes before the show delay leaves the button unchanged. If it is still running at the delay, one spinner replaces the button title; it remains visible for at least the minimum duration and is hidden immediately afterward. The button is disabled while the operation is running. Timers are cleaned up on unmount, and generation tokens prevent stale completions from changing the current button state.
+The web generation action runs WASM generation in a module worker so the main thread can render progress feedback. The Generate/Re-Generate button uses independent timing defaults: `spinnerShowDelay = 200 ms` and `spinnerMinVisible = 750 ms`. A generation that completes before the show delay leaves the button unchanged. If it is still running at the delay, one spinner replaces the button title; it remains visible for at least the minimum duration and is hidden immediately afterward. While the generation card is open, `Enter` or `Space` invokes the same action unless focus is in a text-entry control; this capture-phase handler takes precedence over a focused non-text control's native activation and clears feature-card focus. The button is disabled while the operation is running, and also while `registryError` is set (the WASM registry failed to load, GitHub issue #769): the card then shows a persistent "maze engine failed to load" status line, the button is wrapped in a `Tooltip` giving that reason, and the card header status is `critical`. Timers are cleaned up on unmount, and generation tokens prevent stale completions from changing the current button state.
 
 ## QC Experiment Mode
 

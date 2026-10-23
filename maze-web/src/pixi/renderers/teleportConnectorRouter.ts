@@ -1,6 +1,6 @@
 import type { TeleportEdge } from "./types";
 import { getConnectorAxes, SQUARE_AXES, type Axis } from "./teleportConnectorAxes";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellVertices, type Pos } from "../tessellationGeometry";
 import type { RoutedConnector } from "./teleportConnectorRouting";
 import { chooseOrthogonalPaths, segmentsOverlap, type Segment } from "./teleportPathSelection";
@@ -17,13 +17,13 @@ function cacheKey(
   edges: TeleportEdge[],
   gap: number,
   maxEndpointOffset: number,
-  cfg: TessellationConfig | undefined,
+  cfg: FieldConfig | undefined,
   endpointStyle: EndpointMarkerStyle | undefined,
   waypoints: [number, number][],
   avoidFieldExit: boolean,
   fieldCells: [number, number][],
 ): string {
-  const cfgKey = cfg === undefined ? "" : `${cfg.type}:${(cfg as { orientation?: string }).orientation ?? ""}`;
+  const cfgKey = cfg === undefined ? "" : `${cfg.tessellation.kind}:${cfg.orientation ?? ""}`;
   const endpointStyleKey =
     endpointStyle === undefined
       ? ""
@@ -95,7 +95,7 @@ export class TeleportConnectorRouter {
    *  connector's endpoint far enough to visibly drift outside its teleport marker's shape; the bend
    *  point (mid-path, no marker to stay inside) is never clamped. `cfg` drives the tessellation's own
    *  candidate bend directions (see `getConnectorAxes`, GitHub issue #297) — square's original 2-axis
-   *  (horizontal/vertical) behavior when omitted, for callers that don't have a `TessellationConfig`
+   *  (horizontal/vertical) behavior when omitted, for callers that don't have a `FieldConfig`
    *  in hand. `endpointStyle` (when given) weights a candidate that would cut through another
    *  connector's own marker (see `endpointCollisionRadius`) at `ENDPOINT_COLLISION_WEIGHT`× an
    *  ordinary mid-path collision — omitted entirely (falls back to a zero radius, so no candidate
@@ -119,7 +119,7 @@ export class TeleportConnectorRouter {
     edges: TeleportEdge[],
     gap: number,
     maxEndpointOffset = Infinity,
-    cfg?: TessellationConfig,
+    cfg?: FieldConfig,
     endpointStyle?: EndpointMarkerStyle,
     waypoints: [number, number][] = [],
     avoidFieldExit = false,
@@ -138,7 +138,7 @@ export class TeleportConnectorRouter {
     edges: TeleportEdge[],
     gap: number,
     maxEndpointOffset: number,
-    cfg: TessellationConfig | undefined,
+    cfg: FieldConfig | undefined,
     endpointStyle: EndpointMarkerStyle | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,

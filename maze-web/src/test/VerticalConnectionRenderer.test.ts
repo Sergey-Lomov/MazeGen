@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
-import { patternVisualTipFraction, patternBaseFraction } from "../pixi/renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
+import { patternVisualTipFraction, patternBaseFraction, oneWayStopLineShape } from "../pixi/renderers/verticalConnectionGeometry";
 
 const navigateToFloorMock = vi.fn();
 vi.mock("../pixi/renderers/floorNavigation", () => ({
@@ -112,7 +112,7 @@ function circleMarkerStyle(overrides: Partial<VerticalMarkerStyle> = {}): Vertic
   return {
     shape: "circle", cornerStyle: "round",
     fillColor: 0x111111, borderColor: 0x222222, borderWidth: 0, gapWidth: 0, gapColor: 0x333333,
-    size: 8.8, // 0.22 * TILE_SIZE (GitHub issue #681 — now a direct px value; a diameter — GitHub issue #681 diameter follow-up, so the effective radius is 4.4)
+    size: 8.8, sizeAdaptation: 0, // 0.22 * TILE_SIZE (GitHub issue #681 — now a direct px value; a diameter — GitHub issue #681 diameter follow-up, so the effective radius is 4.4)
     ...overrides,
   };
 }
@@ -135,9 +135,9 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",
     elevatorArrowCornerStyle: "round",
-    decorativeStairsTwoWay: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
-    decorativeStairsOneWay: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
-    decorativeElevator: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeStairsTwoWay: { sizeAdaptation: 0, lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeStairsOneWay: { sizeAdaptation: 0, lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeElevator: { sizeAdaptation: 0, lineColor: 0x111111, lineWidth: 3, size: 0.22 },
     decorativeStairsArrowColor: 0x444444,
     decorativeStairsArrowSize: 0.6,
     decorativeStairsOneWayArrowColor: 0x2a2a2a,
@@ -231,6 +231,39 @@ describe("VerticalConnectionRenderer", () => {
     expect(gapBaseRadius).toBeCloseTo(markerRadius + 4 + 3);
     expect(g.strokeCalls).toHaveLength(0);
     expect(g.fillCalls[0]).toMatchObject({ color: 0x999999 });
+  });
+
+  it("scales the whole abstract marker — fill, border and gap ring — by the size-adaptation factor (GitHub issue #819)", () => {
+    const gapRingOffset = (factor: number) => {
+      const renderer = new VerticalConnectionRenderer(new Container() as never);
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      render(renderer, {
+        markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+        style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ borderWidth: 4, gapWidth: 3, sizeAdaptation: 1 }) }),
+        scaler: { factorAt: () => factor, maxFactor: factor },
+      });
+      const polys = g.calls.filter((c) => c.method === "poly");
+      const fill = polygonRadius(polys[2].args, 0, 0);
+      return { fill, ring: polygonRadius(polys[0].args, 0, 0) - fill };
+    };
+    const base = gapRingOffset(1);
+    const scaled = gapRingOffset(2);
+    expect(scaled.fill).toBeCloseTo(base.fill * 2);
+    expect(scaled.ring).toBeCloseTo(base.ring * 2);
+  });
+
+  it("scales the decorative line width with the factor (GitHub issue #819)", () => {
+    const strokeWidths = (factor: number) => {
+      const renderer = new VerticalConnectionRenderer(new Container() as never);
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      render(renderer, {
+        markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+        style: baseStyle({ style: "decorative", decorativeStairsTwoWay: { sizeAdaptation: 1, lineColor: 0x111111, lineWidth: 3, size: 20 } }),
+        scaler: { factorAt: () => factor, maxFactor: factor },
+      });
+      return g.strokeCalls.map((c) => c.width ?? 0);
+    };
+    expect(strokeWidths(2)[0]).toBeCloseTo(strokeWidths(1)[0] * 2);
   });
 
   it("gapWidth 0 (or unset) skips the gap ring entirely — not a zero-radius circle", () => {
@@ -874,6 +907,52 @@ describe("VerticalConnectionRenderer", () => {
     expect(g.fillCalls[0]).toBe(0x666666);
     expect(g.fillCalls[1]).toBe(0x555555);
     expect(g.fillCalls.at(-1)).toBe(style.oneWayArrowColor);
+  });
+
+  it("draws the stop line exactly where `oneWayStopLineShape` puts it, for every arrow style and end (GitHub issue #744)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    for (const arrowStyle of ["triangle", "chevron", "arrow"] as const) {
+      for (const arrowFilled of [true, false]) {
+        for (const direction of ["up", "down"] as const) {
+          const style = baseStyle({ oneWayArrowStyle: arrowStyle });
+          const m = marker({ pos: [10, 20], filled: false, arrowFilled, direction });
+          g.calls.length = 0;
+          render(renderer, { markers: [m], style });
+          const shape = oneWayStopLineShape(m, style);
+          expect(shape?.kind).toBe("roundedRect");
+          if (shape?.kind !== "roundedRect") continue;
+          expect(g.calls.filter((c) => c.method === "roundRect").at(-1)?.args).toEqual([shape.x, shape.y, shape.w, shape.h, shape.radius]);
+        }
+      }
+    }
+  });
+
+  it("draws the decorative stairs' stop line exactly where `oneWayStopLineShape` puts it (GitHub issue #744)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const style = baseStyle({ style: "decorative", decorativeStairsOneWay: { sizeAdaptation: 0, lineColor: 0x111111, lineWidth: 3, size: 17.6 } });
+    for (const arrowFilled of [true, false]) {
+      for (const direction of ["up", "down"] as const) {
+        const m = marker({ pos: [10, 20], filled: false, arrowFilled, direction });
+        g.calls.length = 0;
+        render(renderer, { markers: [m], style });
+        const shape = oneWayStopLineShape(m, style);
+        expect(shape?.kind).toBe("segment");
+        if (shape?.kind !== "segment") continue;
+        expect(shape.halfWidth).toBe(1.5);
+        expect(g.calls.slice(-2).map((c) => [c.method, ...c.args])).toEqual([["moveTo", shape.x0, shape.y0], ["lineTo", shape.x1, shape.y1]]);
+      }
+    }
+  });
+
+  it("has no stop line for two-way passages, elevators and the sign arrow style", () => {
+    expect(oneWayStopLineShape(marker({ direction: "up" }), baseStyle())).toBeNull();
+    expect(oneWayStopLineShape(marker({ kind: "elevator", direction: "up" }), baseStyle())).toBeNull();
+    expect(oneWayStopLineShape(marker({ filled: false, direction: "up" }), baseStyle({ oneWayArrowStyle: "sign" }))).toBeNull();
+    expect(oneWayStopLineShape(marker({ filled: false }), baseStyle())).toBeNull();
   });
 
   describe("elevator floor-number badges (GitHub issue #430)", () => {

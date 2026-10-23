@@ -1,6 +1,7 @@
 import type React from "react";
 import { X } from "lucide-react";
 import { ui } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 /** Shared "remove/delete this row" icon button — the plain `X` glyph convention used throughout the
  *  quality panels (`RulesColumn`, `RuleCheckRow`, `NestedStrategyPanel`'s own `removeBtn`/`X`) rather
@@ -15,16 +16,17 @@ export function RemoveIconButton({ onClick, title, size = 18, disabled }: {
   disabled?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      className={disabled ? undefined : "hoverable"}
-      style={disabled ? { ...styles.removeBtn, ...styles.removeBtnDisabled } : styles.removeBtn}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <X size={size} color={ui.text.tertiary} />
-    </button>
+    <Tooltip content={title}>
+      <button
+        type="button"
+        className={disabled ? undefined : "hoverable"}
+        style={disabled ? { ...styles.removeBtn, ...styles.removeBtnDisabled } : styles.removeBtn}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        <X size={size} color={ui.text.tertiary} />
+      </button>
+    </Tooltip>
   );
 }
 

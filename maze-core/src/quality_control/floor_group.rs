@@ -41,7 +41,7 @@ pub fn floors_of_node<T: Tessellation>(
 }
 
 /// Number of field cells (tiles) on `level` — the per-floor denominator for a density check under
-/// `FloorScope::PerFloor`, mirroring `Field::point_count()`'s whole-maze role.
+/// `FloorScope::PerFloor`, mirroring `Field::cell_count()`'s whole-maze role.
 pub fn floor_point_count<T: Tessellation>(field: &MultiLevelField<T>, level: LevelId) -> usize {
-    field.field_of(level).map(|f| f.point_count()).unwrap_or(0)
+    field.field_of(level).map(|f| f.cell_count()).unwrap_or(0)
 }

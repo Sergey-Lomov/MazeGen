@@ -5,6 +5,7 @@ use crate::random::MazeRng;
 use crate::repair::draft::DraftMaze;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 /// 1x2 path (start=0, finish=1) plus a 3-armed star of Unreachable singletons centered on
 /// `hub` (node 2): each arm is a straight bidirectional chain of `arm_len` nodes running in a
@@ -19,7 +20,8 @@ fn maze_with_three_armed_star(
     let width = (arm_len + 4) as usize;
     let height = (arm_len * 2 + 2) as usize;
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(width, height), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -159,7 +161,7 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
 fn maze_with_one_way_and_two_way_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -591,7 +593,7 @@ fn maze_with_uneven_branches_and_a_bridgeable_neighbor() -> (Maze<SquareTessella
 {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -727,7 +729,7 @@ fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
 fn maze_with_plus_shaped_region_and_external_edge() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 4), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 4), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {

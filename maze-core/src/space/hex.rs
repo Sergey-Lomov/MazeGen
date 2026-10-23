@@ -1,12 +1,21 @@
-use super::Tessellation;
+use super::field_ops::{
+    CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, PARALLELOGRAM_PRESET, RECT_PRESET, TRIANGLE_PRESET,
+    circle_cells, param, triangle_cells,
+};
+use super::square::cell_range;
+use super::{
+    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
+    Tessellation, validate_preset,
+};
+use std::sync::LazyLock;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct HexPoint {
     pub q: i32,
     pub r: i32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum HexFace {
     E,
     NE,
@@ -16,46 +25,38 @@ pub enum HexFace {
     SE,
 }
 
+impl HexFace {
+    /// The face on the other side of the same edge — also the face a straight pass leaves by.
+    pub fn opposite(self) -> Self {
+        match self {
+            HexFace::E => HexFace::W,
+            HexFace::NE => HexFace::SW,
+            HexFace::NW => HexFace::SE,
+            HexFace::W => HexFace::E,
+            HexFace::SW => HexFace::NE,
+            HexFace::SE => HexFace::NW,
+        }
+    }
+}
+
+static HEX_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
+    LazyLock::new(|| [ShapeDescriptor::regular_polygon(6)]);
+
+/// Local `[E, NE, NW, W, SW, SE]` is already counter-clockwise.
+const HEX_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
+
+#[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
 
 impl Tessellation for HexTessellation {
-    type Point = HexPoint;
+    type CellId = HexPoint;
     type Face = HexFace;
 
-    fn step(point: HexPoint, face: HexFace) -> Option<HexPoint> {
-        Some(match face {
-            HexFace::E => HexPoint {
-                q: point.q + 1,
-                r: point.r,
-            },
-            HexFace::NE => HexPoint {
-                q: point.q + 1,
-                r: point.r - 1,
-            },
-            HexFace::NW => HexPoint {
-                q: point.q,
-                r: point.r - 1,
-            },
-            HexFace::W => HexPoint {
-                q: point.q - 1,
-                r: point.r,
-            },
-            HexFace::SW => HexPoint {
-                q: point.q - 1,
-                r: point.r + 1,
-            },
-            HexFace::SE => HexPoint {
-                q: point.q,
-                r: point.r + 1,
-            },
-        })
-    }
-
-    fn is_valid_point(_point: HexPoint) -> bool {
+    fn is_valid_cell(&self, _cell: HexPoint) -> bool {
         true
     }
 
-    fn faces() -> &'static [HexFace] {
+    fn faces_of(&self, _cell: HexPoint) -> &[HexFace] {
         &[
             HexFace::E,
             HexFace::NE,
@@ -66,51 +67,129 @@ impl Tessellation for HexTessellation {
         ]
     }
 
-    fn face_between(from: HexPoint, to: HexPoint) -> Option<HexFace> {
-        match (to.q - from.q, to.r - from.r) {
-            (1, 0) => Some(HexFace::E),
-            (1, -1) => Some(HexFace::NE),
-            (0, -1) => Some(HexFace::NW),
-            (-1, 0) => Some(HexFace::W),
-            (-1, 1) => Some(HexFace::SW),
-            (0, 1) => Some(HexFace::SE),
-            _ => None,
+    fn neighbor(&self, cell: HexPoint, face: HexFace) -> Option<(HexPoint, HexFace)> {
+        let (dq, dr) = match face {
+            HexFace::E => (1, 0),
+            HexFace::NE => (1, -1),
+            HexFace::NW => (0, -1),
+            HexFace::W => (-1, 0),
+            HexFace::SW => (-1, 1),
+            HexFace::SE => (0, 1),
+        };
+        let neighbor = HexPoint {
+            q: cell.q.checked_add(dq)?,
+            r: cell.r.checked_add(dr)?,
+        };
+        Some((neighbor, face.opposite()))
+    }
+
+    fn is_straight(&self, _cell: HexPoint, in_face: HexFace, out_face: HexFace) -> bool {
+        out_face == in_face.opposite()
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        &*HEX_SHAPES
+    }
+
+    fn shape_of(&self, _cell: HexPoint) -> Option<CellShape<'_>> {
+        Some(CellShape::full(&HEX_SHAPES[0], &HEX_LOCAL_TO_CANONICAL))
+    }
+
+    /// Flat-top hexagon of area 1. Lattice coordinates (`hex_lattice`): center `(3q, -(2r + q))`.
+    fn center(&self, cell: HexPoint) -> Point {
+        hex_lattice(3 * cell.q as i64, -(2 * cell.r as i64 + cell.q as i64))
+    }
+
+    /// Face `k` of `[E, NE, NW, W, SW, SE]` runs from the vertex at `60k - 60` degrees to the one
+    /// at `60k` degrees.
+    fn face_segments(&self, cell: HexPoint, face: HexFace) -> Vec<Segment> {
+        const VERTEX: [(i64, i64); 6] = [(2, 0), (1, 1), (-1, 1), (-2, 0), (-1, -1), (1, -1)];
+        let k = match face {
+            HexFace::E => 0,
+            HexFace::NE => 1,
+            HexFace::NW => 2,
+            HexFace::W => 3,
+            HexFace::SW => 4,
+            HexFace::SE => 5,
+        };
+        let (ci, cj) = (3 * cell.q as i64, -(2 * cell.r as i64 + cell.q as i64));
+        let vertex = |index: usize| {
+            let (di, dj) = VERTEX[index % 6];
+            hex_lattice(ci + di, cj + dj)
+        };
+        vec![Segment::line(vertex(k + 5), vertex(k))]
+    }
+
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<HexPoint>> {
+        let (x_unit, y_unit) = hex_units();
+        let (lo, hi) = (
+            Point::new(min.x.min(max.x), min.y.min(max.y)),
+            Point::new(min.x.max(max.x), min.y.max(max.y)),
+        );
+        let qs = cell_range(lo.x / (3.0 * x_unit) - 1.0, hi.x / (3.0 * x_unit) + 1.0);
+        // Center lattice j = -(2r + q), so r = (-j - q) / 2.
+        let rs = move |q: i32| {
+            let r_of = |y: f64| (-(y / y_unit) - q as f64) / 2.0;
+            cell_range(r_of(hi.y) - 1.0, r_of(lo.y) + 1.0)
+        };
+        let count: i64 = qs
+            .clone()
+            .map(|q| {
+                let r = rs(q);
+                (*r.end() as i64 - *r.start() as i64 + 1).max(0)
+            })
+            .sum();
+        if count > i64::try_from(limit).unwrap_or(i64::MAX) {
+            return None;
         }
+        Some(
+            qs.flat_map(|q| rs(q).map(move |r| HexPoint { q, r }))
+                .collect(),
+        )
     }
 
-    /// Canonical (flat_top-equivalent) projection, unit tile scale. `INRADIUS` = sqrt(3)/2 at
-    /// unit tile size — same formula as `maze-web`'s `hexCenter` (flat_top branch), minus the
-    /// `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side concerns
-    /// — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(point: HexPoint) -> (f64, f64) {
-        let inradius = 3f64.sqrt() / 2.0;
-        let (q, r) = (point.q as f64, point.r as f64);
-        (q * 1.5, -(r * inradius * 2.0 + q * inradius))
+    fn presets(&self) -> &[PresetDescriptor] {
+        &HEX_PRESETS
     }
 
-    /// Faces in `[E, NE, NW, W, SW, SE]` order (indices 0-5) — a genuinely angular order (60° per
-    /// step), so every rotation is just a cyclic shift of that index list.
-    fn rotation_symmetries() -> &'static [&'static [usize]] {
-        &[
-            &[0, 1, 2, 3, 4, 5], // identity
-            &[1, 2, 3, 4, 5, 0], // 60°
-            &[2, 3, 4, 5, 0, 1], // 120°
-            &[3, 4, 5, 0, 1, 2], // 180°
-            &[4, 5, 0, 1, 2, 3], // 240°
-            &[5, 0, 1, 2, 3, 4], // 300°
-        ]
+    fn build_preset(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<HexPoint>, FieldOpError> {
+        validate_preset(&HEX_PRESETS, key, params)?;
+        let origin = self.center(HexPoint { q: 0, r: 0 });
+        let mut cells = match key {
+            "rect" => centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "parallelogram" => centered_hex_parallelogram(
+                param(params, "cols") as i32,
+                param(params, "rows") as i32,
+            ),
+            "hexagon" => hex_hexagon(param(params, "radius") as usize),
+            "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center)?,
+            "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center)?,
+            _ => return Err(FieldOpError::Unavailable),
+        };
+        cells.sort();
+        Ok(cells)
     }
 
-    /// Three independent mirror axes, each through a pair of opposite face directions: E-W,
-    /// NE-SW, NW-SE. Each axis fixes the two faces sitting on it and swaps the remaining two
-    /// pairs.
-    fn mirror_symmetries() -> &'static [&'static [usize]] {
-        &[
-            &[0, 5, 4, 3, 2, 1], // mirror across the E-W axis
-            &[2, 1, 0, 5, 4, 3], // mirror across the NE-SW axis
-            &[4, 3, 2, 1, 0, 5], // mirror across the NW-SE axis
-        ]
+    fn area(&self, _cell: HexPoint) -> f64 {
+        1.0
     }
+}
+
+/// World units of the hex lattice: side `s` with `3·sqrt(3)/2·s² = 1`; `x = s/2 · i`,
+/// `y = s·sqrt(3)/2 · j`. Every vertex sits on integer `(i, j)`, so a vertex shared by several
+/// cells gets identical coordinates from each of them.
+fn hex_units() -> (f64, f64) {
+    let side = (2.0 / (3.0 * 3f64.sqrt())).sqrt();
+    (side / 2.0, side * 3f64.sqrt() / 2.0)
+}
+
+fn hex_lattice(i: i64, j: i64) -> Point {
+    let (x_unit, y_unit) = hex_units();
+    Point::new(x_unit * i as f64, y_unit * j as f64)
 }
 
 pub fn hex_parallelogram(cols: usize, rows: usize) -> Vec<HexPoint> {
@@ -128,5 +207,43 @@ pub fn hex_hexagon(radius: usize) -> Vec<HexPoint> {
     let n = radius as i32;
     (-n..=n)
         .flat_map(move |q| ((-n).max(-q - n)..=n.min(-q + n)).map(move |r| HexPoint { q, r }))
+        .collect()
+}
+
+/// Preset field shapes of the hex grid, in UI order.
+const HEX_PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    PARALLELOGRAM_PRESET,
+    HEXAGON_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+];
+
+/// An axial rectangle: each parameter runs along one grid axis; the origin cell sits at
+/// `size / 2` (rounded down) of each.
+fn centered_hex_parallelogram(cols: i32, rows: i32) -> Vec<HexPoint> {
+    let (ox, oy) = (cols / 2, rows / 2);
+    hex_parallelogram(cols as usize, rows as usize)
+        .into_iter()
+        .map(|p| HexPoint {
+            q: p.q - ox,
+            r: p.r - oy,
+        })
+        .collect()
+}
+
+/// A rectangle with screen-aligned sides: the hex lattice is flat-topped (columns step `1.5·side`
+/// in x), so each column is shifted by half a row per column step. Every increment of `cols` or
+/// `rows` adds a complete layer.
+fn centered_hex_rect(cols: i32, rows: i32) -> Vec<HexPoint> {
+    let (origin_col, origin_row) = (cols / 2, rows / 2);
+    (0..cols)
+        .flat_map(|col| {
+            let q = col - origin_col;
+            (0..rows).map(move |row| HexPoint {
+                q,
+                r: row - origin_row - q.div_euclid(2),
+            })
+        })
         .collect()
 }

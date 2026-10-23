@@ -114,7 +114,8 @@ mod tests {
     #[test]
     fn resolve_generation_start_default_mode_picks_centroid_nearest() {
         let points = grid(5, 5);
-        let picked = resolve_generation_start(&points, None, GenerationSourceMode::Default, 7, to_xy);
+        let picked =
+            resolve_generation_start(&points, None, GenerationSourceMode::Default, 7, to_xy);
         assert_eq!(picked, pick_start_default(&points, to_xy));
     }
 
@@ -129,14 +130,19 @@ mod tests {
             resolve_generation_start(&points, None, GenerationSourceMode::Random, 7, to_xy);
         let picked_again =
             resolve_generation_start(&points, None, GenerationSourceMode::Random, 7, to_xy);
-        assert_eq!(picked, picked_again, "same seed must reproduce the same pick");
+        assert_eq!(
+            picked, picked_again,
+            "same seed must reproduce the same pick"
+        );
     }
 
     #[test]
     fn resolve_generation_start_random_mode_varies_across_seeds() {
         let points = grid(6, 6);
         let picks: std::collections::HashSet<P> = (0u64..20)
-            .map(|seed| resolve_generation_start(&points, None, GenerationSourceMode::Random, seed, to_xy))
+            .map(|seed| {
+                resolve_generation_start(&points, None, GenerationSourceMode::Random, seed, to_xy)
+            })
             .collect();
         assert!(
             picks.len() > 1,
@@ -174,7 +180,11 @@ mod tests {
         let points = vec![(3, 4)];
         for mode in [GenerationSourceMode::Default, GenerationSourceMode::Random] {
             let picked = resolve_generation_start(&points, None, mode, 7, to_xy);
-            assert_eq!(picked, (3, 4), "a single-point field must resolve to that point ({mode:?})");
+            assert_eq!(
+                picked,
+                (3, 4),
+                "a single-point field must resolve to that point ({mode:?})"
+            );
         }
     }
 }

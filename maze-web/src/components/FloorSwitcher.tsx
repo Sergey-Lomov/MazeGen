@@ -4,6 +4,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { FloorState } from "../store/mazeStore";
 import { ui, radius, typography, spacing, inset, shadow, font } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "./Tooltip";
 
 /** Widest a floor title is allowed to push the panel to — beyond this the title itself truncates
  *  with an ellipsis instead of growing the panel further. */
@@ -73,25 +74,23 @@ export function FloorSwitcher() {
 
   return (
     <div style={styles.panel}>
-      <button
+      <Tooltip content={m["floors.switcher_prev_floor"]()}><button
         className={canGoDown ? "hoverable" : undefined}
         style={{ ...styles.arrowBtn, ...(canGoDown ? {} : styles.arrowBtnDisabled) }}
-        title={m["floors.switcher_prev_floor"]()}
         disabled={!canGoDown}
         onClick={goDown}
       >
         <ChevronDown size={16} color={ui.text.tertiary} />
-      </button>
+      </button></Tooltip>
       <span style={{ ...styles.title, width: titleWidth, textAlign: "center" }}>{floorDisplayLabel(activeFloor, index)}</span>
-      <button
+      <Tooltip content={m["floors.switcher_next_floor"]()}><button
         className={canGoUp ? "hoverable" : undefined}
         style={{ ...styles.arrowBtn, ...(canGoUp ? {} : styles.arrowBtnDisabled) }}
-        title={m["floors.switcher_next_floor"]()}
         disabled={!canGoUp}
         onClick={goUp}
       >
         <ChevronUp size={16} color={ui.text.tertiary} />
-      </button>
+      </button></Tooltip>
     </div>
   );
 }

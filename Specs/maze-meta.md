@@ -16,7 +16,7 @@ Both fields are `Option` — a meta value is absent until explicitly assigned by
 ## Invariants
 
 - `start` and `finish` are expected to differ when both are `Some`. This is not enforced by the type; it is the responsibility of the strategies that assign them.
-- `MazeMeta` does not own or reference graph nodes. It holds `NodeId` values only. Validity (i.e. the node actually exists in the graph) is not checked.
+- `MazeMeta` does not own or reference graph nodes. It holds `NodeId` values only. Validity (i.e. the node actually exists in the graph) is not checked by `MazeMeta` itself; repair keeps it valid — removing or replacing a start/finish node moves the endpoint onto the point's surviving node (see `repair.md`, "Node removal is graph+field atomic").
 
 ## Construction
 

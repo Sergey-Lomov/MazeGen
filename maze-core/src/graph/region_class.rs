@@ -108,6 +108,7 @@ mod tests {
     use crate::graph::scc::build_scc;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     /// Layout (all one-way, left to right unless noted):
     /// start(0) -> 1 -> finish(2)   (the shortest path, each node its own SCC)
@@ -117,7 +118,7 @@ mod tests {
     fn layout() -> (MultiLevelField<SquareTessellation>, Graph, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(7, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -165,7 +166,7 @@ mod tests {
         // it's the start (regression for issue #104).
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

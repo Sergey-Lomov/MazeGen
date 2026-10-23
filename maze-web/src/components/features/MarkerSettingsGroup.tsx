@@ -69,7 +69,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
    *  other field its registry doesn't model. */
   /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
   textFitKind?: "start" | "finish";
-  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
+  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;

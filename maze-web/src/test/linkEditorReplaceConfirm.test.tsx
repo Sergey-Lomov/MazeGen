@@ -37,7 +37,8 @@ describe("LinkEditor cycle filtering", () => {
     const onSave = renderEditor(null, "a", existing);
     const disabledRow = document.querySelector('[aria-disabled="true"]') as HTMLElement;
     expect(disabledRow.textContent).toBe("Beta");
-    expect(disabledRow.title).toMatch(/cyclic/i);
+    const tooltipAnchor = disabledRow.closest<HTMLElement>('[data-testid="tooltip-anchor"]');
+    expect(document.getElementById(tooltipAnchor?.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/cyclic/i);
     fireEvent.click(disabledRow);
     expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
     expect(onSave).not.toHaveBeenCalled();
@@ -49,6 +50,30 @@ describe("LinkEditor cycle filtering", () => {
     fireEvent.click(screen.getAllByText("Alpha")[0]);
     expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe("LinkEditor grouped picker layout", () => {
+  it("uses block wrappers for leaves inside a group", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Group"] },
+      b: { ...registry.b, group: ["Group"] },
+      c: registry.c,
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "b", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget="a"
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Alpha").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
+    expect(screen.getByText("Beta").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
   });
 });
 

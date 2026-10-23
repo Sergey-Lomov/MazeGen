@@ -13,7 +13,7 @@ pub const SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 /// Flags a deficit against a minimum split-tile count — see GitHub issue #247, part of epic #246.
 /// Mirrors `MinLoopsCountCheck`'s shape exactly, applied to split tiles instead of loops. When
 /// `patterns` is non-empty, only a split tile structurally matching one of the listed patterns
-/// (any rotation/mirror, see `split_tile_matches_any`) counts toward the total; an empty list
+/// (any allowed transform, see `split_tile_matches_any`) counts toward the total; an empty list
 /// means every split tile counts regardless of pattern. **Known limitation** (see GitHub issue
 /// #247/#253): this `patterns` list is independent from `AddSplitStrategy`'s own pattern
 /// selection — the repair strategy has no visibility into which patterns this check actually
@@ -105,8 +105,8 @@ pub(super) fn count_matching_split_tiles_per_floor<T: Tessellation>(
 fn matching_split_tile_points<'a, T: Tessellation>(
     maze: &'a Maze<T>,
     patterns: &'a [SplitPattern],
-) -> impl Iterator<Item = (LevelId, T::Point)> + 'a {
-    maze.field.split_points().filter(move |&(level, point)| {
+) -> impl Iterator<Item = (LevelId, T::CellId)> + 'a {
+    maze.field.split_cells().filter(move |&(level, point)| {
         patterns.is_empty()
             || split_tile_matches_any(
                 &maze.graph,
@@ -124,6 +124,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_count";
 
@@ -133,8 +134,12 @@ mod tests {
 
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(count.max(1) + 1, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(count.max(1) + 1, 1),
+            &mut ids,
+        )
+        .unwrap();
         let level = field.single_level_id();
         for x in 0..count as i32 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
@@ -203,15 +208,16 @@ mod tests {
         // all — the tile can never structurally match it), so the count-with-filter is 0.
         let maze = maze_with_split_tiles(2);
         let unmatched_pattern = SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 }],
                 vec![SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 }],
@@ -238,11 +244,14 @@ mod tests {
     fn maze_with_split_tiles_on_two_floors() -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 1), &mut ids).unwrap(),
+        );
         mf.add_node_at(bottom, SquarePoint { x: 0, y: 0 }, &mut ids);
         let mut g = Graph::new();
         for node in mf.all_node_ids() {

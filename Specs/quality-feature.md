@@ -11,11 +11,13 @@ The Quality feature manages active checks, their **rules** (the unit a fix strat
 
 Subtitle: `"N check(s) active"`.
 
-The card body (`QualityFeature` component) renders a status hint only when the panel is **closed**. When `qualityOpen` is true, `QualityFeature` returns `null`.
+The card body (`QualityFeature` component) shows `status.no_checks` when no check is active, otherwise the `quality.open_to_configure` hint while the panel is **closed** (no hint while it is open). Below that it always shows the repair limits (max iterations, time budget — each a switch plus a number input), then a divider, then "Save rules" / "Load rules" buttons that save and load the whole quality configuration as a standalone rules file (GitHub issue #751 — see `Specs/project-file.md`'s "Quality preset" section). Unknown ids skipped on load are listed in an `AlertModal`. Repair-limit drafts commit on blur/Enter; max iterations rounds to an integer and clamps to 1, while time budget clamps to 0.1. Each correction gets a field-anchored hint (GitHub issue #770), even when the corrected value equals the stored value.
+
+`QualityDetailPanel` shows the `quality.select_to_view` hint both for no selection and for a selection that no longer resolves (e.g. after a rules load replaced every rule).
 
 ## Canvas lifecycle
 
-`qualityOpen` is derived in `App.tsx` as `openCard === "quality"`, not its own store field — opening Quality means calling `setOpenCard("quality")` (the same action every feature card uses to become the active card). `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place when `qualityOpen` is true. `MazeScene` subscribes to `qualityOpen` and stops the Pixi ticker when open, restarts it when closed.
+`qualityOpen` is derived in `App.tsx` as `openCard === "quality"`, not its own store field — opening Quality means calling `setOpenCard("quality")` (the same action every feature card uses to become the active card). `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place when `qualityOpen` is true. `MazeScene` subscribes to `qualityOpen` and suspends its `RenderScheduler` while it is open (no renders at all, including Pixi's own resize renders); on close the scheduler resumes with one render that draws everything changed meanwhile. See `Specs/canvas-rendering.md`.
 
 ## What a rule is
 
@@ -38,6 +40,7 @@ interface QcRuleState {
   checks: CheckInstance[]; // member check instances — can be empty (see below)
   nextLocalCheckId: number; // monotonic per-rule counter minting new CheckInstance.localId — never reused
   strategyId: string | null;
+  strategyParams: Record<string, string>; // top-level strategy overrides for this rule only
   disabled: boolean;     // strategy-only toggle, see below
   ruleDisabled: boolean; // whole-rule toggle, see below
   collapsed: boolean;    // UI-only card collapse state, see below
@@ -54,6 +57,7 @@ own field.
 All check types may have multiple independent instances across rules and stages.
 
 - `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
+- `strategyParams` belongs to the rule, not the strategy id: two rules using the same strategy may configure independent values.
 - A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`.
 - The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, and is `null` for an un-renamed rule, in which case the view model resolves it to the current-locale `kind label`. Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
@@ -99,7 +103,7 @@ There is no separate "Checks" column — each rule card shows its own member che
 
 One card per rule (`slots: StrategySlotVM[]`, one entry per rule in the store, not deduplicated by kind). Each card is split left/right:
 
-- **Left half — checks list** (`RuleCheckRow`, one per member check instance): label, a `Switch` toggle bound to `CheckInstance.disabled` (see "What a rule is" above — dims the row and its params, and disables their controls, while off), params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck(ruleId, localId)`, which deletes this `CheckInstance` from the rule's `checks`). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` listing this rule's `kind`'s check descriptors via `RulesColumn.candidatesFor` (see "AddCheckToRuleDialog" below for which types are offered); if `candidatesFor` returns empty, opens an `AlertModal` instead (`quality.no_checks_for_kind`).
+- **Left half — checks list** (`RuleCheckRow`, one per member check instance): label, a `Switch` toggle bound to `CheckInstance.disabled` (see "What a rule is" above — dims the row and its params, and disables their controls, while off), params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck(ruleId, localId)`, which deletes this `CheckInstance` from the rule's `checks`). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` listing this rule's `kind`'s check descriptors via `RulesColumn.candidatesFor` (see "AddCheckToRuleDialog" below for which types are offered); if `candidatesFor` returns empty, the row is disabled (`aria-disabled`, dimmed, click ignored) and wrapped in a `Tooltip` with `quality.no_checks_for_kind` (GitHub issue #772) — there is no modal.
 - **Right half — strategy panel** (`RuleStrategyPanel`): strategy label (or `strategy.no_fix.label` if `strategyId` is null), a `WarningIcon` (⚠, shared component) next to the label when `strategy.experimental` is true, its params shown always-expanded underneath (same layout as the checks side), a `Switch` toggle (visible only when a strategy is set) bound to `disabled`, and a `✎` edit button opening `StrategySelectDialog`.
 - **Card title row**: rule name (or inline rename input), a `Switch` bound to `ruleDisabled`, `✎` rename button, `✖` remove button (opens a `ConfirmModal` before calling `removeRule`, since it deletes member checks too).
 
@@ -316,7 +320,7 @@ Modal using `ItemSelectDialog`, targets one specific existing rule (`ruleId`, `k
 - Right panel: check label, description.
 - Footer: `[Cancel]` `[Add]`.
 - Add: calls `addCheck(typeId, ruleId)` — mints a fresh `CheckInstance` directly into the target rule's `checks` array, not as a new rule (see `addCheck`'s `ruleId` parameter below). Closes.
-- If `candidatesFor` returns empty when the row is clicked (no check descriptor at all handles this `kind`), this dialog never opens — an `AlertModal` (`quality.no_checks_for_kind`) shows instead.
+- If `candidatesFor` returns empty when the row is clicked (no check descriptor at all handles this `kind`), this dialog never opens — the row is disabled with a `Tooltip` (`quality.no_checks_for_kind`) instead.
 
 ## StrategySelectDialog
 
@@ -576,7 +580,6 @@ precisely because nothing is ever reset when hidden.)
 // State
 rules: QcRuleState[]
 stages: RepairStageState[]   // see "What a stage is" above — no minimum count
-strategyParams: Record<string, Record<string, string>>   // strategyId → paramId → value
 
 // Actions
 addCheck(typeId: string, ruleId?: string, initialParams?: Record<string, string>): void
@@ -584,7 +587,7 @@ createRule(typeIds: string[], strategyId: string | null, initialCheckParams?: Re
 removeCheck(ruleId: string, localId: number): void
 setCheckParam(ruleId: string, localId: number, paramId: string, value: string): void
 removeCheckFromRule(ruleId: string, localId: number): void
-setStrategy(ruleId: string, strategyId: string): void
+setStrategy(ruleId: string, strategyId: string, initialStrategyParams?: Record<string, string>): void
 clearStrategy(ruleId: string): void
 toggleStrategyDisabled(ruleId: string): void
 toggleRuleDisabled(ruleId: string): void
@@ -598,7 +601,7 @@ removeStage(stageId: string): void
 moveStage(stageId: string, direction: "up" | "down"): void
 toggleStageDisabled(stageId: string): void
 toggleStageCollapsed(stageId: string): void
-setStrategyParam(strategyId: string, paramId: string, value: string): void
+setStrategyParam(ruleId: string, paramId: string, value: string): void
 setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
 setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
 addNestedStrategy(ruleId: string, path: PathSegment[], slotKind: string): void
@@ -627,7 +630,7 @@ id searched across all rules.
 - Creates exactly **one** new rule with one fresh `CheckInstance` per surviving `typeIds` entry (`localId` 0..n by position) — the multiselect "Add new rule" flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`). Unlike calling `addCheck` once per id, this never creates intermediate singleton rules for ids after the first.
 - `kind` is taken from `typeIds[0]`'s descriptor — same one-kind-per-rule assumption as `addCheck`; callers pre-filter candidates by kind.
 - Each instance's params: `initialCheckParams[typeId]` if given, else descriptor defaults.
-- If `strategyId` is given and has no existing `strategyParams` entry: uses `initialStrategyParams` if given, else the strategy descriptor's defaults.
+- If `strategyId` is given: stores `initialStrategyParams` on the new rule, or the strategy descriptor's defaults when omitted.
 
 ### removeCheck(ruleId, localId)
 
@@ -647,7 +650,7 @@ id searched across all rules.
 ### toggleStrategyDisabled(ruleId)
 
 - Flips the rule's `disabled` (absent/`false` ↔ `true`).
-- Does **not** touch `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
+- Does **not** touch the rule's `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
 - A disabled rule's strategy is sent as `strategy: null` in its stage's `GenerateConfig.stages[].rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned. Distinct from `ruleDisabled` (below), which omits the rule entirely rather than sending it with `strategy: null`.
 
 ### toggleRuleDisabled(ruleId)
@@ -750,7 +753,7 @@ descriptor defaults. Values are clamped server-side.
 1. Filters out every stage with `disabled: true` entirely — a disabled stage is absent from `stages: StageConfig[]`, not sent as an entry with an empty `rules: []` (that shape means "stage exists but nothing to dispatch", a different thing from "stage doesn't exist for this run").
 2. Builds `stages: StageConfig[]` from the remaining (enabled) stages, one entry per stage, **in `state.stages` order** — order is significant now (see `moveRule`'s doc comment above and `repair.md`'s "Stages" section for why).
 3. Within each stage: excludes `ruleDisabled` rules entirely from that stage's `rules`, and also excludes any remaining rule left with zero *effective* checks (every member `CheckInstance.disabled`, or `checks` already empty) — same "as if never selected" treatment, since core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright ("rule `<id>` has no checks"). Neither exclusion sends the rule as `strategy: null` (that shape means something different — see below). **Every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`. Each rule's `checks` is filtered to its non-`disabled` members, then mapped to `CheckInstanceConfig[]` via `c => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })` — order preserved from `QcRuleState.checks`, never resorted, so serialization stays deterministic. `localId` is a `number` in the store but crosses the wasm boundary as a `string` (`CheckInstanceConfig.local_id: string`) — the numeric type never crosses; only this conversion point.
-4. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+4. For a rule with a strategy: resolves the strategy's param overrides from that rule's `strategyParams`, filtered to keys the strategy descriptor actually declares.
 5. A stage left with an empty `rules` array after step 3's filtering is sent as-is (`{ id, name, rules: [] }`) — core treats a stage with no dispatchable rules as a trivial degenerate case (see `repair.md`'s "Stages" section), no special-casing needed here.
 
 See `quality_control.md`'s "StageConfig"/"QcRuleConfig" sections for the wasm-side shapes this maps onto, and `repair.md`'s "Stages" / "QcRule and rule-based RepairEngine" sections for how core turns it into a `RepairEngine`.

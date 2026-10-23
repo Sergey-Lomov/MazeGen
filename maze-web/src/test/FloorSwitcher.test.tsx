@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { FloorSwitcher } from "../components/FloorSwitcher";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
+import { getTooltipControl } from "./tooltipTestUtils";
 
 const floors = [
   { id: "a", title: "Floor 1" },
@@ -22,26 +23,26 @@ describe("FloorSwitcher", () => {
 
   it("moving up (toward the array's end) advances to the next floor", () => {
     render(<FloorSwitcher />);
-    fireEvent.click(screen.getByTitle(m["floors.switcher_next_floor"]()));
+    fireEvent.click(getTooltipControl(m["floors.switcher_next_floor"]()));
     expect(useMazeStore.getState().activeFloorId).toBe("c");
   });
 
   it("moving down (toward the array's start) goes to the previous floor", () => {
     render(<FloorSwitcher />);
-    fireEvent.click(screen.getByTitle(m["floors.switcher_prev_floor"]()));
+    fireEvent.click(getTooltipControl(m["floors.switcher_prev_floor"]()));
     expect(useMazeStore.getState().activeFloorId).toBe("a");
   });
 
   it("disables the up arrow at the top floor", () => {
     useMazeStore.setState({ activeFloorId: "c" });
     render(<FloorSwitcher />);
-    expect(screen.getByTitle(m["floors.switcher_next_floor"]())).toBeDisabled();
+    expect(getTooltipControl(m["floors.switcher_next_floor"]())).toBeDisabled();
   });
 
   it("disables the down arrow at the bottom floor", () => {
     useMazeStore.setState({ activeFloorId: "a" });
     render(<FloorSwitcher />);
-    expect(screen.getByTitle(m["floors.switcher_prev_floor"]())).toBeDisabled();
+    expect(getTooltipControl(m["floors.switcher_prev_floor"]())).toBeDisabled();
   });
 
   it("falls back to the bottom floor when activeFloorId is stale", () => {

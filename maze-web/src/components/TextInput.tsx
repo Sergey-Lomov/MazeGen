@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useFieldHint } from "./FieldHint";
+import { inputHintReason, type NormalizerResult } from "./inputNormalization";
 
 interface Props {
   /** Current committed value. */
@@ -30,27 +32,54 @@ const alwaysValid = () => true;
 // the last valid value on blur if left invalid. No error styling of its own — the caller just
 // never sees a rejected draft committed.
 export function TextInput({ value, onChange, normalize = identity, isValid = alwaysValid, disabled, name = "text-input", id, style, spellCheck = false, autoComplete = "off", ...aria }: Props) {
+  const hint = useFieldHint();
   const [draft, setDraft] = useState(value);
   const focusedRef = useRef(false);
   const lastValidRef = useRef(value);
+  const editStartValueRef = useRef(value);
 
   useEffect(() => {
-    lastValidRef.current = value;
-    if (!focusedRef.current) setDraft(value);
+    if (!focusedRef.current) {
+      lastValidRef.current = value;
+      editStartValueRef.current = value;
+      setDraft(value);
+    }
   }, [value]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const normalized = normalize(e.target.value);
-    setDraft(normalized);
-    if (isValid(normalized)) {
-      lastValidRef.current = normalized;
-      onChange(normalized);
+    const raw = e.target.value;
+    const value = normalize(raw);
+    const valid = isValid(value);
+    const result: NormalizerResult<string> = {
+      raw,
+      value,
+      reason: !valid
+        ? { kind: "character_rejected" }
+        : value.length < raw.length
+          ? { kind: "text_truncated" }
+          : null,
+    };
+    setDraft(result.value);
+    if (result.reason) hint.show(inputHintReason(result.reason));
+    else hint.dismiss();
+    if (valid) {
+      lastValidRef.current = result.value;
+      onChange(result.value);
     }
   }
 
   function handleBlur() {
     focusedRef.current = false;
-    if (!isValid(draft)) setDraft(lastValidRef.current);
+    if (!isValid(draft)) {
+      const result: NormalizerResult<string> = {
+        raw: draft,
+        value: editStartValueRef.current,
+        reason: { kind: "restored", value: editStartValueRef.current },
+      };
+      setDraft(result.value);
+      lastValidRef.current = result.value;
+      hint.show(inputHintReason(result.reason!));
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -58,20 +87,29 @@ export function TextInput({ value, onChange, normalize = identity, isValid = alw
   }
 
   return (
-    <input
-      type="text"
-      name={name}
-      id={id}
-      style={style}
-      value={draft}
-      disabled={disabled}
-      spellCheck={spellCheck}
-      autoComplete={autoComplete}
-      onFocus={() => { focusedRef.current = true; }}
-      onBlur={handleBlur}
-      onChange={handleChange}
-      onKeyDown={handleKeyDown}
-      aria-label={aria["aria-label"]}
-    />
+    <>
+      <input
+        ref={hint.anchorRef as React.Ref<HTMLInputElement>}
+        type="text"
+        name={name}
+        id={id}
+        style={{ ...style, ...hint.fieldStyle }}
+        value={draft}
+        disabled={disabled}
+        spellCheck={spellCheck}
+        autoComplete={autoComplete}
+        onFocus={() => {
+          focusedRef.current = true;
+          editStartValueRef.current = value;
+          lastValidRef.current = value;
+        }}
+        onBlur={handleBlur}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        aria-label={aria["aria-label"]}
+        aria-describedby={hint.describedBy}
+      />
+      {hint.hint}
+    </>
   );
 }

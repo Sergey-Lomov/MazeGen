@@ -361,13 +361,16 @@ export type OneWayDirectionDto =
 
 /**
  * One group of maze-wide split tiles sharing the same canonical topology
- * (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied at
- * any rotation/mirror, with node creation order ignored. `topology[i]` is one node's
- * per-face-position requirement list (length = tessellation degree); the outer list is sorted
+ * (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied
+ * through any allowed transform of the cell's shape template, with node creation order ignored.
+ * `topology[i]` is one node's requirement list per canonical face of `shape` (length = the
+ * template's face count); the outer list is sorted
  * (order-independent — see `SplitTopology`'s doc comment), so it also serves as a stable
  * dedup/lookup key on the web side (e.g. for a title registry keyed by serialized topology).
  */
 export interface SplitGroupDto {
+  /** Key of the tiles' shape template (`ShapeDescriptor::key`). */
+  shape: string;
   topology: SplitFaceRequirement[][];
   count: number;
 }
@@ -490,7 +493,7 @@ export interface FloorScoped<T> {
 export interface MazeStatisticsDto {
   graph_stats: GraphStatsDto;
   /**
-   * Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
+   * Real geometric cell count per floor — `Field::all_cells()` count, deduped by point (a
    * split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
    * breakdown, this is derived straight from field shape, not reconstructed by summing
    * `cell_stats`' own counts (which would count a split point's every extra node separately).
@@ -586,7 +589,7 @@ export interface ComputeAnalyticsConfig {
   level_fields: [number, number][][];
   /**
    * The client's authoritative node list (real ids from the previous generation/confirm) —
-   * `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_points`) instead of
+   * `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_cells`) instead of
    * re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a
    * rebuild reproduce the exact same ids the client already holds, including auto-split nodes
    * created by the generator (whose ids come from traversal order, not coordinate order). Each

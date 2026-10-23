@@ -12,6 +12,7 @@ use crate::repair::params::build_params;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn default_params() -> StrategyParams {
     build_params(
@@ -68,7 +69,7 @@ fn test_ctx<'a>(
 /// boilerplate every linear `maze_with_*` fixture in this file starts from.
 fn linear_field(n: usize) -> (MultiLevelField<SquareTessellation>, G, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -77,7 +78,7 @@ fn linear_field(n: usize) -> (MultiLevelField<SquareTessellation>, G, Vec<NodeId
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (field, g, nodes)
@@ -334,7 +335,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
     // reachable both ways through the tree's single connecting path but NOT on the
     // critical path -- a valid growth seed.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -613,7 +614,7 @@ fn maze_with_two_isolated_unreachable_components() -> (Maze<SquareTessellation>,
 fn maze_with_mergeable_pair_bordering_finish() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(1, 6), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 6), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -928,7 +929,7 @@ fn apply_undo_does_not_destroy_a_pre_existing_edge_shared_by_two_candidates() {
     // one existing edge" rather than many.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(10, 11), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(10, 11), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {

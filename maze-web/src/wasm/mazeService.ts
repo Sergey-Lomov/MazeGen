@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig, WasmTessellationConfig } from "./types";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 
 function isNodeDto(v: unknown): v is NodeDto {
@@ -273,11 +273,190 @@ export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
   return validateSnapshot(raw);
 }
 
-/// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point, in the same order
-/// as `config.points` -- see `cartesian_coords`'s doc comment in `maze-wasm/src/lib.rs`. Single
-/// source of truth for tile geometry: `tessellationGeometry.ts`'s `getCellCenter` scales and
-/// (for hex/tri) rotates this per the caller's tessellation config, rather than duplicating the
-/// per-tessellation projection formulas in TypeScript.
-export function getCartesianCoords(config: { tessellation_type: "square" | "hex" | "tri" | "cairo"; points: [number, number][] }): [number, number][] {
-  return getWasm().cartesian_coords(config) as [number, number][];
+/** Mirrors `maze-runner`'s geometry wire types (`runner::geometry`): world units, math convention
+ *  (Y up, counter-clockwise positive), no display transform. */
+export type WorldPoint = [number, number];
+
+export type PathCommand =
+  | { op: "move_to"; to: WorldPoint }
+  | { op: "line_to"; to: WorldPoint }
+  | { op: "arc_to"; center: WorldPoint; radius: number; start_angle: number; end_angle: number; ccw: boolean };
+
+export type SegmentDto =
+  | { kind: "line"; from: WorldPoint; to: WorldPoint }
+  | { kind: "arc"; from: WorldPoint; to: WorldPoint; center: WorldPoint; radius: number; start_angle: number; sweep: number };
+
+export interface FaceGeometry {
+  /// The cell across this face; `null` at the tessellation's edge. Not necessarily a field cell.
+  neighbor: [number, number] | null;
+  /// The face's index in the cell's shape template (the index split patterns use); `null` for a
+  /// cell without a template.
+  canonical_face: number | null;
+  contact_point: WorldPoint;
+  segments: SegmentDto[];
+}
+
+/// The boundary representation of a snapshot: exactly one per request, never both.
+export interface PathBoundary {
+  kind: "path";
+  commands: PathCommand[];
+}
+
+export interface PolylineBoundary {
+  kind: "polyline";
+  /// The boundary flattened at the requested tolerance, first point not repeated.
+  points: WorldPoint[];
+}
+
+export type BoundaryRequest = { kind: "path" } | { kind: "polyline"; tolerance: number };
+
+export interface CellGeometry<B extends PathBoundary | PolylineBoundary = PathBoundary | PolylineBoundary> {
+  cell: [number, number];
+  center: WorldPoint;
+  cell_scale: number;
+  /// The key of the cell's shape template; `null` for a cell without one.
+  shape: string | null;
+  /** Allowed transform group: permutations of canonical face indices, identity first. */
+  allowed_group: number[][] | null;
+  boundary: B;
+  faces: FaceGeometry[];
+}
+
+export type PolylineCellGeometry = CellGeometry<PolylineBoundary>;
+export type PathCellGeometry = CellGeometry<PathBoundary>;
+
+export interface GeometrySnapshot<B extends PathBoundary | PolylineBoundary = PathBoundary | PolylineBoundary> {
+  instance: string;
+  field_version: number;
+  cells: CellGeometry<B>[];
+}
+
+export type RegionMode = "intersects" | "contained" | "center_inside";
+
+/// Immutable geometry of `cells` under one tessellation instance (`geometry_snapshot`). The
+/// snapshot echoes `fieldVersion`; `cartesianCache.ts` owns that counter.
+export function getGeometrySnapshot(config: {
+  tessellation: WasmTessellationConfig;
+  cells: [number, number][];
+  boundary: { kind: "polyline"; tolerance: number };
+  fieldVersion: number;
+}): GeometrySnapshot<PolylineBoundary>;
+export function getGeometrySnapshot(config: {
+  tessellation: WasmTessellationConfig;
+  cells: [number, number][];
+  boundary: { kind: "path" };
+  fieldVersion: number;
+}): GeometrySnapshot<PathBoundary>;
+export function getGeometrySnapshot(config: {
+  tessellation: WasmTessellationConfig;
+  cells: [number, number][];
+  boundary: BoundaryRequest;
+  fieldVersion: number;
+}): GeometrySnapshot {
+  return getWasm().geometry_snapshot({
+    tessellation: config.tessellation,
+    cells: config.cells,
+    boundary: config.boundary,
+    field_version: config.fieldVersion,
+  }) as GeometrySnapshot;
+}
+
+/// The cell at a world point within `scope` (`null` = the whole tessellation space).
+export function getCellAt(config: {
+  tessellation: WasmTessellationConfig;
+  point: WorldPoint;
+  scope: [number, number][] | null;
+}): [number, number] | null {
+  return (getWasm().geometry_cell_at(config) as [number, number] | null | undefined) ?? null;
+}
+
+/// Cells matching the closed polygon `region` under `mode`. An unscoped (`scope: null`) region
+/// whose bounding box holds more than core's `MAX_REGION_CANDIDATES` cells is an error.
+export function getCellsInRegion(config: {
+  tessellation: WasmTessellationConfig;
+  region: WorldPoint[];
+  mode: RegionMode;
+  scope: [number, number][] | null;
+}): [number, number][] {
+  return getWasm().geometry_cells_in_region(config) as [number, number][];
+}
+
+/** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell
+ *  without a template comes back as `undefined` in `point_shapes`. */
+export interface TessellationShapes {
+  keys: string[];
+  point_shapes: (string | undefined)[];
+}
+
+/// Shape templates of the tessellation instance `config.tessellation` builds (GitHub issue #758):
+/// every template key it provides plus the template of each of `config.points`. The single source
+/// for shape keys on the web side — `shapeTemplates.ts` memoizes it per tessellation config.
+export function getTessellationShapes(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): TessellationShapes {
+  return getWasm().tessellation_shapes(config) as TessellationShapes;
+}
+
+/** Mirrors `maze-wasm`'s `TessellationCellTypes` — see `tessellation_cell_types`'s doc comment.
+ *  Configs that parametrize generation or quality control by cell type name types by these keys. */
+export interface TessellationCellTypes {
+  keys: string[];
+  point_types: string[];
+}
+
+/// Cell types of the tessellation instance `config.tessellation` builds (GitHub issue #822): every
+/// type key it provides plus the type of each of `config.points`.
+export function getTessellationCellTypes(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): TessellationCellTypes {
+  return getWasm().tessellation_cell_types(config) as TessellationCellTypes;
+}
+
+/** Why a field operation failed — mirrors `maze-runner`'s `FieldOpWireError`. */
+export type FieldOpError =
+  | { kind: "unavailable" | "not_a_symmetry" | "outside_tessellation" }
+  | { kind: "invalid_preset" | "invalid_request"; message: string };
+
+/** Mirrors `maze-runner`'s `FieldCapabilities` — see `field_capabilities`'s doc comment. */
+export interface FieldCapabilities {
+  operations: ("translate" | "reflect")[];
+  presets: { key: string; params: { name: string; min: number; max?: number }[] }[];
+}
+
+export function getFieldCapabilities(tessellation: WasmTessellationConfig): FieldCapabilities {
+  return getWasm().field_capabilities({ tessellation }) as FieldCapabilities;
+}
+
+/// Cells of a preset field shape built by `maze-core` (`field_preset`, GitHub issue #760), around
+/// the tessellation origin. Throws the wire `FieldOpError` when core refuses the request.
+export function getFieldPreset(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): [number, number][] {
+  return getWasm().field_preset({ tessellation, preset, params }) as [number, number][];
+}
+
+/// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions.
+export function getFieldPresetExtents(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+  directions: [[number, number], [number, number]],
+): [[number, number], [number, number]] {
+  return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
+}
+
+/// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
+export function translateFieldCells(
+  tessellation: WasmTessellationConfig,
+  cells: [number, number][],
+  vector: [number, number],
+): [number, number][] {
+  return getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+}
+
+/// Cells mirrored across the world line through two points; it must be a reflection symmetry.
+export function reflectFieldCells(
+  tessellation: WasmTessellationConfig,
+  cells: [number, number][],
+  axis: [[number, number], [number, number]],
+): [number, number][] {
+  return getWasm().field_reflect_cells({ tessellation, cells, axis }) as [number, number][];
 }

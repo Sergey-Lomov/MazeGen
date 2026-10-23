@@ -2,19 +2,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, mockGenerateMazeResult, resetGenerationMocks, makeRule } from "./storeTestHelpers";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
 import { generateMaze, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
+import { ruleStrategyToConfig } from "../store/slices/generateConfigBuilder";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
@@ -22,33 +30,23 @@ beforeEach(() => {
 });
 
 describe("mazeStore.setStrategyParam", () => {
-  it("stores param value keyed by strategyId", () => {
-    useMazeStore.setState({ strategyParams: {} });
-    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2.5");
-    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("2.5");
+  it("keeps same strategy params independent between rules", () => {
+    useMazeStore.setState({ rules: [makeRule({ id: "a", strategyId: "scored_endpoints", strategyParams: { path_weight: "1" } }), makeRule({ id: "b", strategyId: "scored_endpoints", strategyParams: { path_weight: "2" } })] });
+    useMazeStore.getState().setStrategyParam("a", "path_weight", "5");
+    expect(useMazeStore.getState().rules.map((r) => r.strategyParams.path_weight)).toEqual(["5", "2"]);
   });
 
-  it("merges params for same strategyId", () => {
-    useMazeStore.setState({ strategyParams: {} });
-    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2");
-    useMazeStore.getState().setStrategyParam("scored_endpoints", "junction_weight", "6");
-    const params = useMazeStore.getState().strategyParams["scored_endpoints"];
-    expect(params["path_weight"]).toBe("2");
-    expect(params["junction_weight"]).toBe("6");
-  });
-
-  it("keeps params for different strategyIds independent", () => {
-    useMazeStore.setState({ strategyParams: {} });
-    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2");
-    useMazeStore.getState().setStrategyParam("farthest_endpoints", "path_weight", "9");
-    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("2");
-    expect(useMazeStore.getState().strategyParams["farthest_endpoints"]["path_weight"]).toBe("9");
-  });
-
-  it("overrides existing param value", () => {
-    useMazeStore.setState({ strategyParams: { scored_endpoints: { path_weight: "1" } } });
-    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "5");
-    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("5");
+  it("builds distinct configs for two rules using the same strategy", () => {
+    const rules = [
+      makeRule({ id: "a", strategyId: "scored_endpoints", strategyParams: { path_weight: "2" } }),
+      makeRule({ id: "b", strategyId: "scored_endpoints", strategyParams: { path_weight: "9" } }),
+    ];
+    useMazeStore.setState({
+      rules,
+      availableStrategies: [{ id: "scored_endpoints", handles: "k1", experimental: false, nested_slots: [], params: [{ id: "path_weight", label: "", kind: { type: "float", default: 1, min: 0, max: 10 } }] }],
+    });
+    const state = useMazeStore.getState();
+    expect(rules.map((rule) => ruleStrategyToConfig(state, rule)?.params.path_weight)).toEqual(["2", "9"]);
   });
 });
 

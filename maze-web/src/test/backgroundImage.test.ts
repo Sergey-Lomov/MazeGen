@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const pixi = vi.hoisted(() => ({
   images: [] as FakeImage[],
@@ -103,7 +104,7 @@ const baseImage = {
 
 describe("underlay layout", () => {
   it("returns no bounds for an empty field", () => {
-    expect(fieldBounds([], { type: "square_custom", points: [] })).toBeNull();
+    expect(fieldBounds([], fieldOf("square", { shape: "custom", points: [] }))).toBeNull();
   });
 
   it("uses 50% opacity", () => {
@@ -245,7 +246,7 @@ describe("underlay layout", () => {
       baseImage.dataUrl,
       200,
       100,
-      { type: "square" },
+      fieldOf("square", { shape: "rect", cols: 1, rows: 1 }),
       {
         density: "screen_96",
         paperSize: "a4",
@@ -271,7 +272,7 @@ describe("underlay layout", () => {
       baseImage.dataUrl,
       200,
       100,
-      { type: "square" },
+      fieldOf("square", { shape: "rect", cols: 1, rows: 1 }),
       {
         density: "screen_96",
         paperSize: "a4",
@@ -295,7 +296,7 @@ describe("underlay layout", () => {
       baseImage.dataUrl,
       200,
       100,
-      { type: "square" },
+      fieldOf("square", { shape: "rect", cols: 1, rows: 1 }),
       {
         density: "screen_96",
         paperSize: "a4",

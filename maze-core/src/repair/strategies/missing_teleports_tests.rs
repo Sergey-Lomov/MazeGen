@@ -7,6 +7,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     build_params(<MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy), None)
@@ -14,7 +15,8 @@ fn no_params() -> StrategyParams {
 
 fn maze_grid(side: usize) -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+    let field =
+        MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -71,7 +73,7 @@ fn apply_adds_teleport_edges_on_a_grid() {
 #[test]
 fn apply_fails_on_single_node_field() {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -168,7 +170,8 @@ fn desired_length_interval_restricts_the_exit_distance() {
     // instead assert on distance directly -- with min=max=3, any accepted teleport not
     // falling back to set 3/1 must land exactly 3 tile-hops from its entry.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+    let field =
+        MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -177,7 +180,7 @@ fn desired_length_interval_restricts_the_exit_distance() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..9 {
@@ -238,7 +241,7 @@ fn one_way_chance_zero_falls_back_to_directed_when_reverse_is_preset_blocked() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let mut preset_state = PresetState::empty();
@@ -292,7 +295,7 @@ fn attempts_limit_failure_on_one_slot_does_not_abort_remaining_slots() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let mut preset_state = PresetState::empty();
@@ -348,9 +351,10 @@ fn apply_restricts_entry_to_the_named_level_but_allows_any_exit() {
     // only for level_b -- every added teleport's entry must be on level_b, but its exit is
     // free to land on either level (a teleport can legitimately cross floors).
     let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), [field_a]);
     let level_b = mf.add_level(field_b);
     let mut g = Graph::new();
     for node in mf.all_node_ids() {
@@ -392,10 +396,11 @@ fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor
     // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
     // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 teleports total, not 6.
     let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let field_c = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), [field_a]);
     let level_b = mf.add_level(field_b);
     let level_c = mf.add_level(field_c);
     let level_a = mf.levels_ordered().next().unwrap();
@@ -493,7 +498,7 @@ fn apply_is_deterministic_for_fixed_seed() {
 #[test]
 fn apply_does_not_duplicate_an_existing_edge_between_the_same_pair() {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -502,7 +507,7 @@ fn apply_does_not_duplicate_an_existing_edge_between_the_same_pair() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -534,7 +539,7 @@ fn entry_pick_farthest_from_random_places_entry_at_the_far_end_of_a_directed_cha
     // regardless of which candidate the pool's random pick offers, which is exactly what
     // distinguishes this mode from plain `random` (whose entry would vary with the pick).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -543,7 +548,7 @@ fn entry_pick_farthest_from_random_places_entry_at_the_far_end_of_a_directed_cha
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -596,7 +601,7 @@ fn entry_pick_farthest_from_random_resolves_a_corridor_interior_candidate() {
     // the `corridor_index` fallback, `farthest_from_via_nav` returned such a candidate
     // unchanged instead of hopping to a dead end -- this pins the fix.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -605,7 +610,7 @@ fn entry_pick_farthest_from_random_resolves_a_corridor_interior_candidate() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -663,7 +668,7 @@ fn farthest_from_via_nav_exhaustive_mode_finds_a_mid_corridor_node_nav_graph_mod
     // into the junction via nodes[2..6], with the loop's midpoint (nodes[3]) farther in
     // tile-hops than the dead end but invisible to the nav-graph search.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -672,7 +677,7 @@ fn farthest_from_via_nav_exhaustive_mode_finds_a_mid_corridor_node_nav_graph_mod
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -703,7 +708,7 @@ fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qu
     // only way apply() can still succeed is by falling through to set 1 (out_of_interval),
     // which requires allow_out_of_interval=true.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -712,7 +717,7 @@ fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qu
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -758,7 +763,7 @@ fn allow_out_of_interval_false_fails_when_nothing_satisfies_the_interval() {
     // allow_out_of_interval=false: set 1 is never offered, and with a single connected
     // component the unreachable set is always empty too, so every entry attempt must fail.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -767,7 +772,7 @@ fn allow_out_of_interval_false_fails_when_nothing_satisfies_the_interval() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..4 {
@@ -819,7 +824,7 @@ fn unreachable_priority_bridges_a_separate_strongly_connected_component() {
     // empty here (the other component's 3 nodes are always unreachable from any entry), the
     // resulting teleport must land on a node in the OTHER component from its entry.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -828,7 +833,7 @@ fn unreachable_priority_bridges_a_separate_strongly_connected_component() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     for i in 0..2 {
@@ -924,9 +929,10 @@ fn two_level_maze() -> (
     crate::space::LevelId,
 ) {
     let mut ids = IdGenerator::new();
-    let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+    let field_a = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let field_b = crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), [field_a]);
     let level_a = mf.levels_ordered().next().unwrap();
     let level_b = mf.add_level(field_b);
     let mut g = Graph::new();
@@ -1077,7 +1083,8 @@ fn entry_pick_dead_end_priority_always_resolves_entry_to_a_dead_end() {
 
     for seed in 0..10u64 {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -1086,7 +1093,7 @@ fn entry_pick_dead_end_priority_always_resolves_entry_to_a_dead_end() {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         for i in 0..4 {
@@ -1126,7 +1133,7 @@ fn exit_pick_dead_end_priority_prefers_a_dead_end_exit_within_the_resolved_zone(
     // exit is asserted to always be a dead end (nodes[1], nodes[2], or nodes[5]), never the
     // degree-2 interior node[4].
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -1135,7 +1142,7 @@ fn exit_pick_dead_end_priority_prefers_a_dead_end_exit_within_the_resolved_zone(
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     // Rewire into a star-ish shape: nodes[0] hub connects to nodes[1] (dead end) and nodes[3];
@@ -1198,7 +1205,7 @@ fn exit_pick_dead_end_priority_falls_back_to_uniform_pick_when_the_zone_has_no_d
     // dead-end filter must fall through to its plain-uniform fallback here instead of
     // panicking on an empty dead-end slice.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -1207,7 +1214,7 @@ fn exit_pick_dead_end_priority_falls_back_to_uniform_pick_when_the_zone_has_no_d
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);

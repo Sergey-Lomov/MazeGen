@@ -1,936 +1,1220 @@
-import type { Graphics } from "pixi.js";
+import type { Graphics, GraphicsContext } from "pixi.js";
 
-type Pt = { x: number; y: number };
-
-/** One command in a traced contour path. `line` draws a straight segment to `to`; `quadratic`
- *  and `bezier` draw smooth handoffs; `arc` draws a circular arc around `c` of radius `r` from
- *  angle `a0` to `a1`, `ccw` picking the sweep direction. Angles are in radians. */
+export type CorridorPoint = { x: number; y: number };
+type Pt = CorridorPoint;
+export type CorridorCellId = string | number;
+export type CorridorCell = { id: CorridorCellId; center: CorridorPoint; polygon: readonly CorridorPoint[] };
+export type CorridorPort = {
+  cellId: CorridorCellId;
+  midpoint: CorridorPoint;
+  normal: CorridorPoint;
+  face?: readonly [CorridorPoint, CorridorPoint];
+  /** The shared face's flattened boundary, for a curved side. With three or more points the mouth
+   *  ends lie on this curve and the normal follows its tangent at `midpoint`; both cells sharing the
+   *  face get the same curve, so their corridor mouths agree. */
+  facePolyline?: readonly CorridorPoint[];
+};
 export type PathCmd =
   | { kind: "move"; to: Pt }
   | { kind: "line"; to: Pt }
   | { kind: "quadratic"; cp: Pt; to: Pt }
   | { kind: "bezier"; cp1: Pt; cp2: Pt; to: Pt }
   | { kind: "arc"; c: Pt; r: number; a0: number; a1: number; ccw: boolean };
-
-/** One closed sub-path of the corridor contour. With the per-tile build every tile emits exactly
- *  one path, they never overlap, and none is a hole — `hole` stays `false` and is kept only so the
- *  trace/fill call site and the tests need no change. */
 export type ContourPath = { cmds: PathCmd[]; hole: boolean };
+export type CorridorGeometryDebug = {
+  cellId: CorridorCellId;
+  target: Pt;
+  centerCurves: Array<{ portIndex: number; path: PathCmd[]; controlPoints: Pt[] }>;
+  rawRibbons: Array<{ portIndex: number; left: Pt[]; right: Pt[] }>;
+  ribbons: Array<{ portIndex: number; left: Pt[]; right: Pt[] }>;
+  contourBeforeCornerRadius: ContourPath[];
+  contour: ContourPath[];
+};
 
 const sub = (a: Pt, b: Pt): Pt => ({ x: a.x - b.x, y: a.y - b.y });
 const add = (a: Pt, b: Pt): Pt => ({ x: a.x + b.x, y: a.y + b.y });
-const mul = (a: Pt, s: number): Pt => ({ x: a.x * s, y: a.y * s });
+const mul = (a: Pt, scalar: number): Pt => ({ x: a.x * scalar, y: a.y * scalar });
 const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 const len = (a: Pt): number => Math.hypot(a.x, a.y);
 const norm = (a: Pt): Pt => {
-  const l = len(a) || 1;
-  return { x: a.x / l, y: a.y / l };
+  const length = len(a) || 1;
+  return { x: a.x / length, y: a.y / length };
 };
-/** Left normal (90° CCW). */
-const leftN = (d: Pt): Pt => ({ x: -d.y, y: d.x });
+const leftN = (direction: Pt): Pt => ({ x: -direction.y, y: direction.x });
 const cross = (a: Pt, b: Pt): number => a.x * b.y - a.y * b.x;
 const dot = (a: Pt, b: Pt): number => a.x * b.x + a.y * b.y;
-const angleOf = (v: Pt): number => Math.atan2(v.y, v.x);
+const angleOf = (point: Pt): number => Math.atan2(point.y, point.x);
 
-type Seg = {
+export type CorridorSegmentInput = {
   v0: Pt;
   v1: Pt;
   faceMidpoint?: Pt;
   faceNormal?: Pt;
   faceLength?: number;
+  /** The shared face's flattened boundary (see `CorridorPort.facePolyline`). */
+  facePolyline?: readonly Pt[];
   cellVertices0?: Pt[];
   cellVertices1?: Pt[];
-  fromNode?: number;
-  toNode?: number;
   v1TouchesSplit?: boolean;
 };
+/** `ends`, given for a curved face, are the mouth's two border points on that face's curve. */
+type Port = { centre: Pt; mid: Pt; out: Pt; ends?: { left: Pt; right: Pt } };
+type Tile = { id: CorridorCellId; centre: Pt; ports: Port[]; boundary: readonly Pt[] };
 
-/** One connection of a tile: the passage leaves the tile centre `centre` toward `mid` (the middle
- *  of the shared border), `out` is the outward unit normal there. The drawn corridor is `2h` wide,
- *  so the border it must draw is the segment `mid ± tangent·h`. */
-type Port = { centre: Pt; mid: Pt; out: Pt; useCubicMouth?: boolean };
+/** Angular tolerance, in radians, for treating a port as lying on the atan2 branch cut. */
+const PORT_ANGLE_EPSILON = 1e-9;
 
-/** One tile: its centre and every port, in CCW order around the centre. */
-type Tile = { centre: Pt; ports: Port[]; boundary?: Pt[] };
-export type CorridorJunctionStyle = "default" | "shallowThreeWay";
+/** Junction corner radius used when the caller requests none, as a fraction of the half-width. */
+const DEFAULT_JUNCTION_RADIUS_FACTOR = 0.75;
 
-/** Groups the centre-to-centre corridor segments into per-tile port lists. Every segment端 is a
- *  connection of the tile whose centre sits at that segment end. A split-touching far end (`v1TouchesSplit`)
- *  contributes a port only to the near (plain) tile — the split tile's own geometry is drawn
- *  elsewhere (`drawSplitPassages`). */
-function buildTiles(segments: Seg[]): Tile[] {
-  const byKey = new Map<string, Tile>();
-  const keyOf = (p: Pt): string => `${Math.round(p.x * 1e4)},${Math.round(p.y * 1e4)}`;
-  const tileAt = (centre: Pt, boundary?: Pt[]): Tile => {
-    const k = keyOf(centre);
-    let t = byKey.get(k);
-    if (!t) {
-      t = { centre, ports: [], boundary };
-      byKey.set(k, t);
-    } else if (!t.boundary && boundary) {
-      t.boundary = boundary;
+function faceLength(face: CorridorPort["face"]): number | undefined {
+  if (!face) return undefined;
+  const value = len(sub(face[1], face[0]));
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function halfWidthForPorts(ports: readonly CorridorPort[], requested: number): number {
+  const lengths = ports.map((port) => faceLength(port.face)).filter((value): value is number => value !== undefined && value > 0);
+  const shortest = Math.min(...lengths);
+  return Number.isFinite(shortest) ? Math.min(requested, shortest / 2) : requested;
+}
+
+/** Mouth border points of a port on a curved face: the points `halfWidth` along the face's curve to
+ *  either side of the port's midpoint. `undefined` for a straight (or unknown) face. */
+function curvedMouthEnds(port: CorridorPort, out: Pt, halfWidth: number): Port["ends"] {
+  const curve = port.facePolyline;
+  if (!curve || curve.length < 3) return undefined;
+  const total = polylineLength(curve);
+  const at = distanceAlongPolyline(curve, port.midpoint);
+  const first = pointAtPolylineDistance(curve, Math.max(0, at - halfWidth)).point;
+  const second = pointAtPolylineDistance(curve, Math.min(total, at + halfWidth)).point;
+  const across = leftN(out);
+  return dot(sub(first, port.midpoint), across) >= dot(sub(second, port.midpoint), across)
+    ? { left: first, right: second }
+    : { left: second, right: first };
+}
+
+function buildTilesFromCells(cells: readonly CorridorCell[], ports: readonly CorridorPort[], halfWidth: number): Tile[] {
+  const cellById = new Map<CorridorCellId, CorridorCell>(cells.map((cell) => [cell.id, cell]));
+  const tiles = new Map<CorridorCellId, Tile>();
+  for (const port of ports) {
+    const cell = cellById.get(port.cellId);
+    if (!cell || cell.polygon.length < 3) continue;
+    const tile = tiles.get(cell.id) ?? { id: cell.id, centre: cell.center, ports: [], boundary: cell.polygon };
+    const out = norm(port.normal);
+    tile.ports.push({ centre: cell.center, mid: port.midpoint, out, ends: curvedMouthEnds(port, out, halfWidth) });
+    tiles.set(cell.id, tile);
+  }
+  return [...tiles.values()];
+}
+
+/** How far a pair of ports is from a pass straight through the cell: the distance between the
+ *  midpoint of their mouths and the cell centre. Zero for two faces mirrored through the centre
+ *  (opposite faces of a hexagon or of a brick), larger for faces that face each other off-centre. */
+function pairCentreOffset(first: Port, second: Port): number {
+  return len(sub(mul(add(first.mid, second.mid), 0.5), first.centre));
+}
+
+/** Returns the pair of ports whose normals are farthest apart in angle. The angle between two
+ *  directions is taken the short way round, so it never exceeds 180°: a pair 270° apart counts as
+ *  90° and loses to a pair 170° apart. Each unordered pair is considered once (1-2 and 2-1 are the
+ *  same pair). When several distinct pairs share the maximum angle the one passing closest to the
+ *  cell centre wins (the pass the tessellation calls straight keeps its line when a third port
+ *  joins it, instead of being bent through the centre). When that is tied too there is no
+ *  preferred pair, and `null` sends the target to the cell centre. */
+function mostOppositePortPair(ports: readonly Port[]): [Port, Port] | null {
+  if (ports.length < 2) return null;
+  let smallestNormalDot = Number.POSITIVE_INFINITY;
+  for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
+      smallestNormalDot = Math.min(smallestNormalDot, dot(ports[firstIndex].out, ports[secondIndex].out));
     }
-    return t;
+  }
+  const widest: Array<{ pair: [Port, Port]; offset: number }> = [];
+  for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
+      const pair: [Port, Port] = [ports[firstIndex], ports[secondIndex]];
+      if (dot(pair[0].out, pair[1].out) <= smallestNormalDot + 1e-9) widest.push({ pair, offset: pairCentreOffset(...pair) });
+    }
+  }
+  const closest = Math.min(...widest.map((candidate) => candidate.offset));
+  const best = widest.filter((candidate) => candidate.offset <= closest + PAIR_OFFSET_EPSILON);
+  return best.length === 1 ? best[0].pair : null;
+}
+
+/** Offsets closer than this (world units) count as equally close to the centre. */
+const PAIR_OFFSET_EPSILON = 1e-6;
+
+function directPairCurveCenter(from: Port, to: Port): Pt {
+  // This provisional pair curve is used only to locate the target. The target-side tangents of the
+  // actual centre curves are set separately by `biarcTargetTangents`.
+  const distance = len(sub(to.mid, from.mid));
+  if (distance <= 1e-7) return from.centre;
+  const handle = distance * pairCurveHandleRatio(from, to);
+  const cp1 = sub(from.mid, mul(from.out, handle));
+  const cp2 = sub(to.mid, mul(to.out, handle));
+  const points = sampledCubicPoints(from.mid, cp1, cp2, to.mid, curveSampleSteps(distance));
+  return pointAtPolylineDistance(points, polylineLength(points) / 2).point;
+}
+
+/** Direction of travel at `target` of the circular arc that leaves `port` inward and passes
+ *  through `target`: the inward direction mirrored across the port-to-target chord. */
+function arcArrivalTangent(port: Port, target: Pt): Pt {
+  const inward = norm(mul(port.out, -1));
+  const chord = norm(sub(target, port.mid));
+  return norm(sub(mul(chord, 2 * dot(inward, chord)), inward));
+}
+
+/** Unsigned angle between two directions, in `[0, π]`. */
+function angleBetween(a: Pt, b: Pt): number {
+  return Math.acos(Math.max(-1, Math.min(1, dot(norm(a), norm(b)))));
+}
+
+/** Cubic handle ratio (handle length / chord length) that approximates a circular arc turning
+ *  from `start` to `end`: `1 / (3 cos²(phi / 4))`, where `phi` is the arc's turning angle. */
+function arcHandleRatio(start: Pt, end: Pt): number {
+  const cosine = Math.cos(angleBetween(start, end) / 4);
+  return 1 / (3 * cosine * cosine);
+}
+
+/** Target tangents and handle ratios for the most opposite pair, built as a biarc: each half would
+ *  be a circular arc from its port through the target, and the shared target tangent is the
+ *  compromise between the two arcs' arrival directions. Both halves then pass through the target as
+ *  one smooth curve. On regular cells both arcs agree and the turn is one exact circular arc;
+ *  on irregular cells (Cairo) the compromise depends on the real port positions, not on the port
+ *  normals alone, which would skew the curve into an S-shaped hump. */
+function biarcTargetTangents(first: Port, second: Port, target: Pt): {
+  firstTangent: Pt;
+  secondTangent: Pt;
+  firstHandleRatio: number;
+  secondHandleRatio: number;
+} {
+  // `secondTangent` is the second half's travel direction at the target (port -> target), so the
+  // continuous curve needs `firstTangent === -secondTangent`.
+  const joined = sub(arcArrivalTangent(first, target), arcArrivalTangent(second, target));
+  const firstTangent = len(joined) > 1e-7 ? norm(joined) : norm(sub(second.mid, first.mid));
+  const secondTangent = mul(firstTangent, -1);
+  return {
+    firstTangent,
+    secondTangent,
+    firstHandleRatio: arcHandleRatio(mul(first.out, -1), firstTangent),
+    secondHandleRatio: arcHandleRatio(mul(second.out, -1), secondTangent),
   };
-
-  for (const s of segments) {
-    if (len(sub(s.v1, s.v0)) < 1e-6) continue;
-    // A Cairo port uses the actual shared-face centre and its perpendicular outward normal. The
-    // centroid-to-centroid axis is not the face normal for these irregular pentagons.
-    const faceMid = s.faceMidpoint ?? (s.v1TouchesSplit ? s.v1 : mid(s.v0, s.v1));
-    const nearMid = s.v1TouchesSplit ? { ...s.v1 } : faceMid;
-    const nearOut = s.faceNormal ?? norm(sub(s.v1, s.v0));
-    tileAt(s.v0, s.cellVertices0).ports.push({ centre: s.v0, mid: nearMid, out: nearOut, useCubicMouth: Boolean(s.faceMidpoint) });
-
-    if (!s.v1TouchesSplit) {
-      const farMid = faceMid;
-      const farOut = s.faceNormal ? mul(s.faceNormal, -1) : norm(sub(s.v0, s.v1));
-      tileAt(s.v1, s.cellVertices1).ports.push({ centre: s.v1, mid: farMid, out: farOut, useCubicMouth: Boolean(s.faceMidpoint) });
-    }
-  }
-
-  const tiles = [...byKey.values()];
-  for (const t of tiles) {
-    t.ports.sort((a, b) => angleOf(sub(a.mid, t.centre)) - angleOf(sub(b.mid, t.centre)));
-  }
-  return tiles;
 }
 
-/** The two endpoints of a port's border segment, `mid ± tangent·h`. `left` is on the +left-normal
- *  side of `out` (i.e. CCW), `right` the other. */
-function portBorderEnds(port: Port, h: number): { left: Pt; right: Pt } {
-  const t = leftN(port.out); // tangent along the border, CCW around the tile
-  return { left: add(port.mid, mul(t, h)), right: sub(port.mid, mul(t, h)) };
+function portBorderEnds(port: Port, halfWidth: number): { left: Pt; right: Pt } {
+  if (port.ends) return port.ends;
+  const tangent = leftN(port.out);
+  return { left: add(port.mid, mul(tangent, halfWidth)), right: sub(port.mid, mul(tangent, halfWidth)) };
 }
 
-/** A port mouth must fit on the finite face of its cell. The limit is computed once for the whole
- * segment set so both sides of a shared face use exactly the same effective width; deriving it per
- * tile would leave a junction clamped while its one-port neighbour still used the requested width. */
-function fitHalfWidth(segments: Seg[], h: number): number {
-  const cairoFaceHalf = Math.min(...segments
-    .map((s) => s.faceLength)
-    .filter((length): length is number => length !== undefined && Number.isFinite(length))
-    .map((length) => length / 2));
-  if (Number.isFinite(cairoFaceHalf)) return Math.min(h, cairoFaceHalf);
-
-  const apothems = segments.map((s) => {
-    const distance = len(sub(s.v1, s.v0));
-    return s.v1TouchesSplit ? distance : distance / 2;
-  });
-  const apothem = Math.min(...apothems);
-  const angles = segments
-    .map((s) => {
-      const a = angleOf(sub(s.v1, s.v0));
-      return a < 0 ? a + Math.PI : a % Math.PI;
-    })
-    .sort((a, b) => a - b);
-  const uniqueAngles = angles.filter((a, i) => i === 0 || a - angles[i - 1] > 1e-5);
-  if (uniqueAngles.length < 2) return h;
-  let minGap = Math.PI * 2;
-  for (let i = 0; i < uniqueAngles.length; i++) {
-    const next = i + 1 < uniqueAngles.length ? uniqueAngles[i + 1] : uniqueAngles[0] + Math.PI;
-    minGap = Math.min(minGap, next - uniqueAngles[i]);
+function cubicPoint(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const u = 1 - t;
+  return {
+    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+  };
+}
+function cubicTangent(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const u = 1 - t;
+  return {
+    x: 3 * u * u * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x),
+    y: 3 * u * u * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y),
+  };
+}
+function pointsEqual(a: Pt, b: Pt): boolean {
+  return Math.abs(a.x - b.x) <= 1e-7 && Math.abs(a.y - b.y) <= 1e-7;
+}
+function arcPoint(centre: Pt, radius: number, angle: number): Pt {
+  return { x: centre.x + Math.cos(angle) * radius, y: centre.y + Math.sin(angle) * radius };
+}
+/** Signed sweep of an arc command, normalized to its drawing direction (`ccw` sweeps negative). */
+function arcSweep(command: Extract<PathCmd, { kind: "arc" }>): number {
+  let sweep = command.a1 - command.a0;
+  if (command.ccw) {
+    while (sweep > 0) sweep -= Math.PI * 2;
+    while (sweep <= -Math.PI * 2) sweep += Math.PI * 2;
+  } else {
+    while (sweep < 0) sweep += Math.PI * 2;
+    while (sweep >= Math.PI * 2) sweep -= Math.PI * 2;
   }
-  const faceHalf = apothem * Math.tan(minGap / 2);
-  return Number.isFinite(faceHalf) && faceHalf > 0 ? Math.min(h, faceHalf) : h;
+  return sweep;
+}
+function pathCommandEnd(command: PathCmd): Pt {
+  return command.kind === "arc" ? arcPoint(command.c, command.r, command.a1) : command.to;
 }
 
-/** Builds the corridor contour as one closed path per tile (the per-tile rework).
- *
- *  Each tile is drawn from its own connections only. On every border where the tile has a passage it
- *  draws a straight border segment `thickness` long, centred on the middle of that border. Between
- *  two consecutive ports the tile's outline is:
- *   - a **straight-through** tile (2 opposite ports): a rectangle, the two borders joined straight.
- *   - a **turn** tile (2 ports at an angle): a pair of *concentric* circular arcs — inner radius
- *     `R - h`, outer `R + h`, where `R` is the distance from the corner point (where the two border
- *     lines meet) to each border midpoint — so the corridor keeps a constant `thickness` width all
- *     the way through the bend. This is the fix for issue #493: the old renderer left the inner
- *     elbow a sharp point, so turns read as half-rounded and thicker.
- *   - a **dead-end** tile (1 port): a `thickness`-wide stub from the border to the tile centre, then
- *     a 180-degree semicircular cap of radius `h`.
- *   - a **junction** tile (3+ ports): each port's border, joined to the next around the tile centre
- *     by an arc (see `junctionContour`) when `roundJunctions` is set, or by a straight mitre corner
- *     when it is not — turns and dead ends stay rounded either way.
- *
- *  Adjacent tiles draw mirror-image borders on the shared face (same midpoint, same length), so the
- *  filled shapes meet edge-to-edge with no seam and no overlap. `thickness` is the corridor width;
- *  every tile's radii follow from its own geometry, so there is no radius parameter. */
-export function buildCorridorContour(
-  segments: Seg[],
-  thickness: number,
-  // `VectorByCorridorsRenderer` always passes `true` since GitHub issue #510 replaced the old
-  // `roundJunctions` setting with a Contour-vs-Line rendering-mode switch (angular junctions now
-  // mean picking Line mode, not this flag). Kept parameterized for `vectorByCorridorsContour.test.ts`,
-  // which drives the `false` branch directly.
-  roundJunctions = true,
-  junctionStyle: CorridorJunctionStyle = "default",
-): ContourPath[] {
-  const h = fitHalfWidth(segments, thickness / 2);
-  const tiles = buildTiles(segments);
-  const paths: ContourPath[] = [];
-
-  for (const tile of tiles) {
-    const cmds = tileContour(tile, h, roundJunctions, junctionStyle);
-    if (cmds.length >= 2) paths.push({ cmds, hole: false });
-  }
-  return paths;
+/** Sample count for a centre curve of chord `distance`. The ribbon sides are later trimmed at their
+ *  first intersection, so their inner side is much more sensitive to polyline resolution than the
+ *  outer closure arc. Do not make the resolution inversely proportional to corridor thickness: a
+ *  thicker ribbon must not turn a smooth side into a short faceted chain. Keep a stable geometric
+ *  step and a bounded upper cost. */
+function curveSampleSteps(distance: number): number {
+  return Math.max(32, Math.min(96, Math.ceil(distance / 2)));
 }
 
-/** Emits one closed path for a single tile. */
-function tileContour(tile: Tile, h: number, roundJunctions: boolean, junctionStyle: CorridorJunctionStyle): PathCmd[] {
-  const { ports } = tile;
-  const n = ports.length;
-  if (n === 0) return [];
-
-  // Irregular convex cells can make a wall-intersection junction reach outside the cell. Use the
-  // same convex-safe fallback for every junction whose ports carry real face geometry:
-  // a cubic between consecutive mouth endpoints, with both controls directed into the cell. A
-  // cubic stays inside the convex hull of its endpoints and controls, so it keeps the bend without
-  // recreating the external spike.
-  if (n >= 3 && ports.every((port) => port.useCubicMouth)) {
-    return convexSafeJunctionContour(ports, h);
-  }
-
-  if (n === 1) {
-    // Dead end: a `thickness`-wide stub running from the shared border straight into the tile, then
-    // a 180-degree semicircular cap of radius `h`. Four anchor points — two where the stub meets the
-    // border (shared with the neighbour tile), two where the straight walls hand off to the cap.
-    const p = ports[0];
-    const { left, right } = portBorderEnds(p, h); // on the border
-    const inn = mul(p.out, -1);
-    const tangent = leftN(p.out);
-    // Cairo's face midpoint and centroid are not always on the same normal line. Put the cap
-    // centre on the actual tile centre so a marker at the cell centre is never left off-axis. Keep
-    // the cap diameter perpendicular to the shared face so its two handoff points stay ordered
-    // with the exact mouth endpoints; only the selected semicircle side follows the cell centre.
-    const capC = p.centre;
-    const capDirection = norm(sub(capC, p.mid));
-    const capBoundaryRadius = tile.boundary ? convexCellClearance(capC, tile.boundary) : h;
-    // Leave a little room for the quadratic handoff to turn into the cap tangent before the boundary.
-    const capRadius = Math.min(h, capBoundaryRadius * (capBoundaryRadius < h ? 0.98 : 1));
-    let leftIn = add(capC, mul(tangent, capRadius));     // start of the cap, left wall
-    let rightIn = sub(capC, mul(tangent, capRadius));   // start of the cap, right wall
-
-    // Keep the handoff direction at the shared face, but move the cap endpoints along the same
-    // circle when a quadratic's endpoint tangent would otherwise disagree with the round cap.
-    // This changes only the local join point, not the curve's direction at the neighbouring cell.
-    const initialA0 = angleOf(sub(rightIn, capC));
-    const initialA1 = angleOf(sub(leftIn, capC));
-    const initialCcw = chooseArcSweep(initialA0, initialA1, capDirection);
-    const initialTangentAtStart = initialCcw
-      ? { x: Math.sin(initialA0), y: -Math.cos(initialA0) }
-      : { x: -Math.sin(initialA0), y: Math.cos(initialA0) };
-    const initialTangentAtEnd = initialCcw
-      ? { x: Math.sin(initialA1), y: -Math.cos(initialA1) }
-      : { x: -Math.sin(initialA1), y: Math.cos(initialA1) };
-    const initialRightControl = quadraticControlPoint(right, rightIn, inn, initialTangentAtStart, tile.boundary, "start");
-    const initialLeftControl = quadraticControlPoint(leftIn, left, initialTangentAtEnd, p.out, tile.boundary, "end");
-    rightIn = tangentPointOnCircle(initialRightControl, capC, capRadius, rightIn, tile.boundary) ?? rightIn;
-    leftIn = tangentPointOnCircle(initialLeftControl, capC, capRadius, leftIn, tile.boundary) ?? leftIn;
-
-    const a0 = angleOf(sub(rightIn, capC));
-    const a1 = angleOf(sub(leftIn, capC));
-    // The endpoints are opposite across the cap centre, so choose between the two exact 180-degree
-    // sweeps by testing the actual midpoint direction used by Pixi (`ccw: true` decreases angle).
-    const ccw = chooseArcSweep(a0, a1, capDirection);
-    const tangentAtStart = ccw
-      ? { x: Math.sin(a0), y: -Math.cos(a0) }
-      : { x: -Math.sin(a0), y: Math.cos(a0) };
-    const tangentAtEnd = ccw
-      ? { x: Math.sin(a1), y: -Math.cos(a1) }
-      : { x: -Math.sin(a1), y: Math.cos(a1) };
-    return [
-      { kind: "move", to: right },
-      {
-        kind: "quadratic",
-        cp: quadraticControlPoint(right, rightIn, inn, tangentAtStart, tile.boundary, "start"),
-        to: rightIn,
-      },
-      { kind: "arc", c: capC, r: capRadius, a0, a1, ccw },
-      {
-        kind: "quadratic",
-        cp: quadraticControlPoint(leftIn, left, tangentAtEnd, p.out, tile.boundary, "end"),
-        to: left,
-      },
-      { kind: "line", to: right },
-    ];
-  }
-
-  if (n === 2) {
-    const [p0, p1] = ports;
-    const collinear = dot(p0.out, p1.out) < -1 + 1e-4;
-    if (collinear) {
-      // Straight through: rectangle between the two border segments.
-      const e0 = portBorderEnds(p0, h);
-      const e1 = portBorderEnds(p1, h);
-      // Order the four corners into a simple quad. p0.left -> p0.right are one edge; the opposite
-      // edge is p1's, whichever orientation makes a non-self-crossing loop.
-      const loop = [e0.left, e0.right, e1.left, e1.right];
-      // Sort by angle around the centroid to guarantee a simple polygon.
-      const cx = (loop[0].x + loop[1].x + loop[2].x + loop[3].x) / 4;
-      const cy = (loop[0].y + loop[1].y + loop[2].y + loop[3].y) / 4;
-      loop.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-      return [
-        { kind: "move", to: loop[0] },
-        { kind: "line", to: loop[1] },
-        { kind: "line", to: loop[2] },
-        { kind: "line", to: loop[3] },
-        { kind: "line", to: loop[0] },
-      ];
-    }
-    return turnContour(p0, p1, h);
-  }
-
-  const filletScale = junctionStyle === "shallowThreeWay" && n === 3 ? 0.55 : 1;
-  return junctionContour(ports, h, roundJunctions, filletScale);
+function sampledCubicPoints(p0: Pt, p1: Pt, p2: Pt, p3: Pt, steps: number): Pt[] {
+  const points: Pt[] = [];
+  for (let index = 0; index <= steps; index++) points.push(cubicPoint(p0, p1, p2, p3, index / steps));
+  return points;
 }
 
-/** Max concave-armpit fillet radius, as a multiple of the corridor width `2h`. The armpit corner is
- *  a tangent fillet between the two arms' extended side-walls of radius `min(R - h, ARMPIT_FILLET_K
- *  * 2h)`. The turn-tile inner elbow `R - h` grows with the tessellation step, ballooning a
- *  thin-corridor junction; capping the radius against the corridor width keeps the fill about one
- *  corridor wide regardless of the step. When the cap does not bite it is exactly the `R - h` turn
- *  elbow. */
-const ARMPIT_FILLET_K = 0.9;
-
-/** A junction tile (3+ ports). Walk the outline CCW: each port contributes its `thickness`-wide
- *  border (`right` -> `left`), then between it and the next port:
- *   - **concave armpit** (both arms have a passage, CCW turn between the two arm axes < 180 degrees):
- *     a tangent fillet of radius `min(R - h, ARMPIT_FILLET_K * 2h)` between the two arm side-walls —
- *     `R` = distance from `O` (where the two border lines meet) to each border midpoint. Capping the
- *     radius against the corridor width keeps the junction fill about one corridor wide regardless
- *     of the tessellation step; when the cap does not bite it is exactly the turn-tile inner elbow.
- *   - **convex gap** (the wide dead sector between the two outermost arms, no passage there — a
- *     reflex turn): the turn's *outer* elbow — an arc of radius `R + h` between the two borders'
- *     outer ends, swept the short way (as `turnContour` sweeps its outer arc). Same arc a
- *     one-face-apart passage draws; by construction `R + h` is roughly `|O - tile centre|`, so the
- *     arc runs close past the centre without quite reaching it — that is fine, the fill still reads
- *     as one smooth junction.
- *   - **straight-through** (collinear arms, no `O`): a plain line across.
- *
- *  No core disc. Ports are CCW around the centre. */
-/** A junction with exactly one reflex "dead sector" (e.g. a hex cell with passages on 3 adjacent
- *  faces) has a corridor bending one-face-apart across it. That corridor's OUTER edge is the dead
- *  sector's `R + h` arc about `O`; its INNER edge must be the concentric `R - h` arc about the same
- *  `O`, running unbroken from one dead-sector arm to the other along the short side, with each
- *  in-between arm cutting a notch out of that one arc where its two side-walls cross the circle.
- *  Drawing those sections as stand-alone armpit fillets leaves a straight inner edge against the
- *  curved outer one and pinches the fill. `ia`/`ib` are the dead sector's two arms, `ib === ia + 1`
- *  (mod n); the short side runs `ib, ib+1, ..., ia`. Returns the whole closed contour, or null if
- *  the junction has zero or several dead sectors (then the per-section loop handles it). */
-function bendJunctionContour(ports: Port[], h: number, filletScale: number): PathCmd[] | null {
-  const n = ports.length;
-  let dead: { O: Pt; ia: number; ib: number } | null = null;
-  let deadCount = 0;
-  for (let i = 0; i < n; i++) {
-    const p = ports[i];
-    const next = ports[(i + 1) % n];
-    let turn = angleOf(mul(next.out, -1)) - angleOf(mul(p.out, -1));
-    while (turn <= 0) turn += Math.PI * 2;
-    if (turn <= Math.PI) continue;
-    deadCount++;
-    const O = lineIntersect(p.mid, leftN(p.out), next.mid, leftN(next.out));
-    if (O) dead = { O, ia: i, ib: (i + 1) % n };
+function sampledPolylineCurvature(points: readonly Pt[]): number {
+  let maximum = 0;
+  for (let index = 1; index + 1 < points.length; index++) {
+    const before = sub(points[index], points[index - 1]);
+    const after = sub(points[index + 1], points[index]);
+    const beforeLength = len(before);
+    const afterLength = len(after);
+    if (beforeLength <= 1e-7 || afterLength <= 1e-7) continue;
+    const cosine = Math.max(-1, Math.min(1, dot(before, after) / (beforeLength * afterLength)));
+    maximum = Math.max(maximum, Math.acos(cosine) / ((beforeLength + afterLength) / 2));
   }
-  if (deadCount !== 1 || !dead) return null;
+  return maximum;
+}
 
-  const { O, ia, ib } = dead;
-  const R =
-    (len(sub(ports[ia].mid, O)) + len(sub(ports[ib].mid, O))) / 2;
-  const rIn = Math.max(0, R - h);
-  if (rIn < 1e-4) return null;
-
-  // Short-side arms in CCW order: ib, ib+1, ..., ia.
-  const shortLen = ((ia - ib + n) % n) + 1;
-  const arm: number[] = [];
-  for (let k = 0; k < shortLen; k++) arm.push((ib + k) % n);
-
-  // For each short-side arm, its two border ends and which one is inner (nearer `O`).
-  const info = arm.map((idx) => {
-    const port = ports[idx];
-    const e = portBorderEnds(port, h);
-    const inner = len(sub(e.left, O)) < len(sub(e.right, O)) ? e.left : e.right;
-    const outer = inner === e.left ? e.right : e.left;
-    return { port, e, inner, outer, into: norm(mul(port.out, -1)) };
+function regularizedOffsetCubic(
+  p0: Pt,
+  cp1: Pt,
+  cp2: Pt,
+  p3: Pt,
+  halfWidth: number,
+  side: number,
+  steps: number,
+): Pt[] {
+  const startTangent = norm(sub(cp1, p0));
+  const endTangent = norm(sub(p3, cp2));
+  const start = add(p0, mul(leftN(startTangent), side * halfWidth));
+  const end = add(p3, mul(leftN(endTangent), side * halfWidth));
+  const exactOffset = sampledCubicPoints(p0, cp1, cp2, p3, steps).map((centre, index) => {
+    const t = index / steps;
+    const tangentValue = cubicTangent(p0, cp1, cp2, p3, t);
+    const tangent = norm(len(tangentValue) > 1e-7 ? tangentValue : sub(p3, p0));
+    return add(centre, mul(leftN(tangent), side * halfWidth));
   });
 
-  const cmds: PathCmd[] = [];
-  const arcTo = (from: Pt, to: Pt) => {
-    cmds.push(arcThroughPoints(from, to, O));
-  };
-
-  // Concave-fillet radius for the corners where the inner arc hands off to an arm's side-wall.
-  const rf = Math.min(ARMPIT_FILLET_K * 2 * h, h * 0.7) * filletScale;
-
-  /** Where the line through `wallP` along `wallU` crosses `C(O, rIn)`, taking the crossing closest
-   *  to `wallP` (the in-between arm's mouth sits inside the circle between the tile centre and the
-   *  through-corridor's inner arc, so its wall exits the circle just past the border end). Null if
-   *  the line misses. */
-  const wallCrossesArc = (wallP: Pt, wallU: Pt, near: Pt): Pt | null => {
-    const f = sub(wallP, O);
-    const b = dot(f, wallU);
-    const disc = b * b - (dot(f, f) - rIn * rIn);
-    if (disc < 0) return null;
-    const root = Math.sqrt(disc);
-    const pA = add(wallP, mul(wallU, -b - root));
-    const pB = add(wallP, mul(wallU, -b + root));
-    return len(sub(pA, near)) <= len(sub(pB, near)) ? pA : pB;
-  };
-
-  /** Small fillet tangent to the inner circle and a straight wall. The old implementation moved
-   *  the circle's tangent point along its tangent, which made it a chord point rather than a point
-   *  on C(O, rIn). Solve the two offset-line/circle intersections instead, then derive both actual
-   *  tangent points from the same fillet centre. */
-  const cornerFillet = (
-    corner: Pt,
-    wallDir: Pt,
-    rMax: number,
-    arcHint: Pt,
-    reverse: boolean,
-    wallEnd: Pt,
-  ): { cmd: PathCmd | null; arcT: Pt; wallT: Pt } => {
-    const d = norm(wallDir);
-    const nrm = leftN(d);
-    const wallReach = dot(sub(wallEnd, corner), d);
-    if (wallReach <= 1e-6) return { cmd: null, arcT: corner, wallT: corner };
-    const candidates: { fc: Pt; arcT: Pt; wallT: Pt; radius: number; score: number }[] = [];
-    // A thick corridor may not have room for the requested radius on the external side of the
-    // inner circle. Try smaller radii rather than falling back to a malformed fillet.
-    for (const radius of [rMax, rMax * 0.75, rMax * 0.5, rMax * 0.25]) {
-      for (const side of [-1, 1]) {
-        const offset = mul(nrm, side * radius);
-      const q = add(corner, offset);
-      const along = d;
-      const f = sub(q, O);
-      const b = dot(f, along);
-      const tangentDistance = rIn - radius;
-      const disc = b * b - (dot(f, f) - tangentDistance * tangentDistance);
-      if (disc < 0) continue;
-      const root = Math.sqrt(disc);
-      for (const t of [-b - root, -b + root]) {
-        const fc = add(q, mul(along, t));
-        const fo = sub(fc, O);
-        const foLen = len(fo);
-        if (foLen < 1e-6) continue;
-        const arcT = add(O, mul(fo, rIn / foLen));
-        const wallT = sub(fc, offset);
-        const wallDistance = dot(sub(wallT, corner), d);
-        if (wallDistance < -1e-6 || wallDistance > wallReach + 1e-6) continue;
-        const towardArc = norm(sub(arcT, corner));
-        if (dot(towardArc, norm(arcHint)) <= 0) continue;
-        const score =
-          wallDistance +
-          len(sub(arcT, corner)) -
-          10 * dot(towardArc, norm(arcHint));
-        candidates.push({ fc, arcT, wallT, radius, score });
-      }
-      }
-    }
-    const best = candidates.sort((a, b) => b.radius - a.radius || a.score - b.score)[0];
-    if (!best) return { cmd: null, arcT: corner, wallT: corner };
-    const aArc = angleOf(sub(best.arcT, best.fc));
-    const aWall = angleOf(sub(best.wallT, best.fc));
-    return {
-      cmd: {
-        kind: "arc",
-        c: best.fc,
-        r: best.radius,
-        a0: reverse ? aWall : aArc,
-        a1: reverse ? aArc : aWall,
-        ccw: shortSweepCcw(reverse ? aWall : aArc, reverse ? aArc : aWall),
-      },
-      arcT: best.arcT,
-      wallT: best.wallT,
-    };
-  };
-  // Walk the inner edge CCW: arm `ib`'s border to its inner end, then `R - h` arcs about `O` along
-  // the short side. An in-between arm's mouth (its shared grid face) sits inside `C(O, rIn)`, so its
-  // corridor runs from there toward the tile centre, crossing `C(O, rIn)` once on the way. The inner
-  // arc runs to where the arm's trailing side-wall crosses the circle -- rounded there -- then out
-  // along that wall to the border end, across the `thickness` mouth, back along the leading
-  // side-wall to its own crossing -- rounded again -- and the arc resumes. The dead sector's
-  // `R + h` arc closes the loop from arm `ia`'s outer end to arm `ib`'s.
-  const first = info[0];
-  cmds.push({ kind: "move", to: first.outer });
-  cmds.push({ kind: "line", to: first.inner });
-  let cursor = first.inner;
-
-  for (let k = 1; k < shortLen; k++) {
-    const b = info[k];
-    if (b.port === ports[ia]) {
-      arcTo(cursor, b.inner);
-      cmds.push({ kind: "line", to: b.outer });
-      break;
-    }
-    // In-between arm. Both side-walls run along `b.into` (border end -> tile centre); the mouth
-    // (`b.e.right` -> `b.e.left`) sits inside `C(O, rIn)`, so each wall crosses that circle once.
-    // `outward` = away from the tile centre along the wall.
-    const outward = mul(b.into, -1); // border end -> away from tile centre, along the wall
-    const bm = mid(b.e.right, b.e.left); // arm mouth midpoint
-    const cT = wallCrossesArc(b.e.right, b.into, bm); // trailing wall x inner arc, mouth-side crossing
-    const cL = wallCrossesArc(b.e.left, b.into, bm); // leading wall x inner arc, mouth-side crossing
-    // Leave room on both sides of the thick arm mouth. A fillet that consumes the whole available
-    // wall interval is technically continuous but folds the two sides over one another visually.
-    const r2 = Math.min(rf, rIn * 0.2, h * 0.35);
-    if (!cT || !cL) {
-      // There is no valid circle crossing to use as an arc endpoint. Keep the contour closed with
-      // the actual wall endpoints instead of asking `arcTo` to project a non-circle point.
-      cmds.push({ kind: "line", to: b.e.right });
-      cmds.push({ kind: "line", to: b.e.left });
-      cursor = b.e.left;
-      continue;
-    }
-    // Trailing corner `cT`: big arc arrives, then contour turns OUT along the trailing wall
-    // (`outward`). The arc's tangent away from the corner points back toward `cursor`.
-    const fT = cornerFillet(cT, outward, r2, sub(cursor, cT), false, b.e.right);
-    // A failed fillet has no usable circle endpoint. Do not consume its fallback `corner`: it is
-    // only a search anchor and can be outside the cell. The mouth endpoint is the safe fallback.
-    if (fT.cmd) {
-      arcTo(cursor, fT.arcT);
-      cmds.push(fT.cmd);
-    }
-    cmds.push({ kind: "line", to: b.e.right });
-    cmds.push({ kind: "line", to: b.e.left });
-    // Leading corner `cL`: contour arrives down the leading wall (travel dir `b.into`), then the big
-    // arc resumes toward `first.outer`. Wall direction away from corner = `b.into`; arc tangent away
-    // from corner points on toward the dead sector's outer end.
-    const fL = cornerFillet(cL, mul(b.into, -1), r2, sub(info[shortLen - 1].outer, cL), true, b.e.left);
-    if (fL.cmd) {
-      cmds.push({ kind: "line", to: fL.wallT });
-      cmds.push(fL.cmd);
-      cursor = fL.arcT;
-    } else {
-      // `wallT`/`arcT` are the search-corner fallback when no fillet fits. Finish at the actual
-      // outer endpoint so the following closing arc starts from the point it expects.
-      const finalOuter = info[shortLen - 1].outer;
-      cmds.push({ kind: "line", to: finalOuter });
-      cursor = finalOuter;
-    }
+  let aa = 0;
+  let ab = 0;
+  let bb = 0;
+  let ay = 0;
+  let by = 0;
+  const totalLength = polylineLength(exactOffset);
+  let travelled = 0;
+  for (let index = 0; index < exactOffset.length; index++) {
+    if (index > 0) travelled += len(sub(exactOffset[index], exactOffset[index - 1]));
+    const t = totalLength > 1e-7 ? travelled / totalLength : index / steps;
+    const u = 1 - t;
+    const firstBasis = 3 * u * u * t;
+    const secondBasis = 3 * u * t * t;
+    const base = add(mul(start, u * u * u + firstBasis), mul(end, secondBasis + t * t * t));
+    const firstCoefficient = mul(startTangent, firstBasis);
+    const secondCoefficient = mul(endTangent, -secondBasis);
+    const residual = sub(exactOffset[index], base);
+    aa += dot(firstCoefficient, firstCoefficient);
+    ab += dot(firstCoefficient, secondCoefficient);
+    bb += dot(secondCoefficient, secondCoefficient);
+    ay += dot(firstCoefficient, residual);
+    by += dot(secondCoefficient, residual);
   }
 
-  arcTo(info[shortLen - 1].outer, first.outer);
+  const determinant = aa * bb - ab * ab;
+  const fallback = Math.max(1e-4, len(sub(end, start)) / 3);
+  const fittedFirst = determinant > 1e-8 ? (ay * bb - by * ab) / determinant : fallback;
+  const fittedSecond = determinant > 1e-8 ? (by * aa - ay * ab) / determinant : fallback;
+  const chord = Math.max(1e-4, len(sub(end, start)));
+  const candidates = [0.25, 0.35, 0.45, 0.55, 0.7, 0.9, 1.1].map((factor) => chord * factor);
+  const makeCandidate = (firstHandle: number, secondHandle: number): Pt[] => sampledCubicPoints(
+    start,
+    add(start, mul(startTangent, firstHandle)),
+    sub(end, mul(endTangent, secondHandle)),
+    end,
+    steps,
+  );
+  const initial = makeCandidate(Math.max(0, fittedFirst), Math.max(0, fittedSecond));
+  const maximumCurvature = 0.8 / Math.max(halfWidth, 1);
+  if (sampledPolylineCurvature(initial) <= maximumCurvature) return initial;
 
-  const anchor = firstAnchor(cmds);
-  if (anchor) cmds.push({ kind: "line", to: anchor });
-  return cmds;
+  let best = initial;
+  let bestCurvature = sampledPolylineCurvature(initial);
+  let bestError = Number.POSITIVE_INFINITY;
+  for (const firstHandle of candidates) {
+    for (const secondHandle of candidates) {
+      const candidate = makeCandidate(firstHandle, secondHandle);
+      const curvature = sampledPolylineCurvature(candidate);
+      let error = 0;
+      for (let index = 0; index < candidate.length; index++) error += len(sub(candidate[index], exactOffset[index])) ** 2;
+      if ((curvature <= maximumCurvature && (bestCurvature > maximumCurvature || error < bestError)) ||
+        (bestCurvature > maximumCurvature && curvature < bestCurvature)) {
+        best = candidate;
+        bestCurvature = curvature;
+        bestError = error;
+      }
+    }
+  }
+  return best;
 }
 
-function junctionContour(ports: Port[], h: number, round: boolean, filletScale = 1): PathCmd[] {
-  const n = ports.length;
-  const cmds: PathCmd[] = [];
+/** `endDirection` is the centre curve's travel direction at its end (see `centreCurveEndDirection`). */
+type Ribbon = { left: Pt[]; right: Pt[]; path: PathCmd[]; controlPoints: Pt[]; endDirection: Pt };
+type TargetTangent = { tangent: Pt; handleRatio: number };
 
-  if (round) {
-    const bent = bendJunctionContour(ports, h, filletScale);
-    if (bent) return bent;
-  }
+type Cubic = { p0: Pt; p1: Pt; p2: Pt; p3: Pt };
 
-  for (let i = 0; i < n; i++) {
-    const p = ports[i];
-    const next = ports[(i + 1) % n];
-    const into = mul(p.out, -1); // border -> centre, this arm's axis
-    const nextInto = mul(next.out, -1);
-    const ends = portBorderEnds(p, h);
-    const nextEnds = portBorderEnds(next, h);
-
-    // This arm's CCW-trailing side-wall starts at `ends.left` and runs along `into`; the next arm's
-    // CCW-leading side-wall starts at `nextEnds.right` and runs along `nextInto`.
-    if (i === 0) cmds.push({ kind: "move", to: ends.right });
-    else cmds.push({ kind: "line", to: ends.right });
-    cmds.push({ kind: "line", to: ends.left });
-
-    const t0 = leftN(p.out);
-    const t1 = leftN(next.out);
-    const O = lineIntersect(p.mid, t0, next.mid, t1);
-
-    if (!round) {
-      // `roundJunctions` off: join the two arm side-walls with a straight mitre. Extend this arm's
-      // trailing wall and the next arm's leading wall to their own intersection; fall back to a
-      // plain bridge if they are parallel.
-      const meet = lineIntersect(ends.left, into, nextEnds.right, nextInto);
-      if (meet) cmds.push({ kind: "line", to: meet });
-      cmds.push({ kind: "line", to: nextEnds.right });
-      continue;
-    }
-
-    // CCW turn between the two arm axes. Reflex => the wide dead sector (convex gap).
-    let turn = angleOf(nextInto) - angleOf(into);
-    while (turn <= 0) turn += Math.PI * 2;
-    const convexGap = turn > Math.PI;
-
-    if (!O) {
-      // Collinear arms — straight bridge, no arc.
-      cmds.push({ kind: "line", to: nextEnds.right });
-      continue;
-    }
-
-    const R = (len(sub(p.mid, O)) + len(sub(next.mid, O))) / 2;
-
-    // Inner / outer end of each border relative to `O`.
-    const pInner = len(sub(ends.left, O)) < len(sub(ends.right, O)) ? ends.left : ends.right;
-    const pOuter = pInner === ends.left ? ends.right : ends.left;
-    const nInner = len(sub(nextEnds.left, O)) < len(sub(nextEnds.right, O)) ? nextEnds.left : nextEnds.right;
-    const nOuter = nInner === nextEnds.left ? nextEnds.right : nextEnds.left;
-
-    if (convexGap) {
-      // Wide dead sector between the two outermost arms: the *outer* elbow of the same turn-tile
-      // construction -- one arc of radius `R + h` around `O` between the two outer border ends,
-      // swept the same short way `turnContour` sweeps its outer arc (`shortSweepCcw(aOut_next,
-      // aOut_this)`). Constant `thickness` corridor width around the bend, exactly like a
-      // one-face-apart passage.
-      cmds.push({ kind: "line", to: pOuter });
-      cmds.push(smoothMouthCurve(pOuter, nOuter, O, mul(p.out, -1), next.out, Boolean(p.useCubicMouth || next.useCubicMouth)));
-      cmds.push({ kind: "line", to: nextEnds.right });
-      continue;
-    }
-
-    // Concave armpit. The turn-tile inner elbow `R - h` about `O` grows with the tessellation step,
-    // so a thin corridor at a wide junction gets a huge shallow arc that balloons the fill.
-    // Instead: run each arm's own side-wall *inward* from its
-    // inner border end (`pInner` along `into`, `nInner` along `nextInto`) and round the corner
-    // between the two extended walls with a tangent fillet of radius `min(R - h, ARMPIT_FILLET_K *
-    // 2h)`. `W` = where the two walls meet; the fillet touches each wall `rFillet / tan(half)` back
-    // from `W`, its centre on the in-pointing bisector at `rFillet / sin(half)`.
-    const wallA = norm(into);
-    const wallB = norm(nextInto);
-    const W = lineIntersect(pInner, wallA, nInner, wallB);
-    const rTurnIn = Math.max(0, R - h);
-    const half = Math.acos(Math.max(-1, Math.min(1, dot(wallA, wallB)))) / 2;
-    const sinHalf = Math.sin(half);
-    const tanHalf = Math.tan(half);
-    if (!W || sinHalf < 1e-4 || rTurnIn < 1e-4) {
-      // Parallel walls / collinear — straight bridge across the inner ends.
-      cmds.push({ kind: "line", to: pInner });
-      cmds.push({ kind: "line", to: nInner });
-      cmds.push({ kind: "line", to: nextEnds.right });
-    } else {
-      // How far `W` is from each inner border end, along that arm's wall.
-      const sA = dot(sub(W, pInner), wallA);
-      const sB = dot(sub(W, nInner), wallB);
-      // Fillet radius: capped against the corridor width, and shrunk so its tangent points
-      // (`rFillet / tan(half)` back from `W`) stay between the border ends and `W`.
-      const reach = Math.max(0, Math.min(sA, sB));
-      const rFillet = Math.min(rTurnIn, ARMPIT_FILLET_K * 2 * h, reach * tanHalf) * filletScale;
-      if (rFillet < 1e-4) {
-        // `W` is only the intersection of the two infinitely extended walls. When the requested
-        // fillet has no room, that intersection can be outside the convex cell (the Cairo corner
-        // case produces the visible spike). Never emit it as a contour point; bridge the two safe
-        // mouth endpoints directly instead.
-        cmds.push({ kind: "line", to: pInner });
-        cmds.push({ kind: "line", to: nInner });
-        cmds.push({ kind: "line", to: nextEnds.right });
-        continue;
-      }
-      const back = rFillet / tanHalf; // W -> tangent point, along each wall
-      const tanA = add(W, mul(wallA, -back));
-      const tanB = add(W, mul(wallB, -back));
-      const fc = add(W, mul(norm(add(mul(wallA, -1), mul(wallB, -1))), rFillet / sinHalf));
-      const a0 = angleOf(sub(tanA, fc));
-      const a1 = angleOf(sub(tanB, fc));
-      cmds.push({ kind: "line", to: pInner });
-      cmds.push({ kind: "line", to: tanA });
-      cmds.push({ kind: "arc", c: fc, r: rFillet, a0, a1, ccw: shortSweepCcw(a0, a1) });
-      cmds.push({ kind: "line", to: tanB });
-      cmds.push({ kind: "line", to: nextEnds.right });
-    }
-  }
-
-  const first = firstAnchor(cmds);
-  if (first) cmds.push({ kind: "line", to: first });
-  return cmds;
+/** Cubic centre curve from `port` (leaving along its inward normal) to `target`. Without
+ *  `targetTangent` the curve arrives radially with straight-line handles (ratio 1/3). */
+function centreCurve(port: Port, target: Pt, targetTangent?: TargetTangent): Cubic {
+  const from = port.mid;
+  const handle = len(sub(target, from)) * (targetTangent?.handleRatio ?? 1 / 3);
+  return {
+    p0: from,
+    p1: sub(from, mul(port.out, handle)),
+    p2: sub(target, mul(norm(targetTangent?.tangent ?? sub(target, from)), handle)),
+    p3: target,
+  };
 }
 
-/** A turn tile: two ports meeting at an angle. Concentric inner/outer arcs of constant gap `2h`. */
-function turnContour(p0: Port, p1: Port, h: number): PathCmd[] {
-  // Corner point: intersection of the two border *lines* (through each midpoint, along its tangent).
-  const t0 = leftN(p0.out);
-  const t1 = leftN(p1.out);
-  const corner = lineIntersect(p0.mid, t0, p1.mid, t1);
-  const O = corner ?? mid(p0.mid, p1.mid);
+/** The part of `curve` over `[0, t]`, as an exact cubic (de Casteljau). */
+function cubicHead(curve: Cubic, t: number): Cubic {
+  const lerp = (a: Pt, b: Pt): Pt => add(a, mul(sub(b, a), t));
+  const a = lerp(curve.p0, curve.p1);
+  const b = lerp(curve.p1, curve.p2);
+  const c = lerp(curve.p2, curve.p3);
+  const ab = lerp(a, b);
+  const bc = lerp(b, c);
+  return { p0: curve.p0, p1: a, p2: ab, p3: lerp(ab, bc) };
+}
 
-  const e0 = portBorderEnds(p0, h);
-  const e1 = portBorderEnds(p1, h);
-  // Which endpoint of each port is the inner (closer to O) one.
-  const p0Inner = len(sub(e0.left, O)) < len(sub(e0.right, O)) ? e0.left : e0.right;
-  const p0Outer = p0Inner === e0.left ? e0.right : e0.left;
-  const p1Inner = len(sub(e1.left, O)) < len(sub(e1.right, O)) ? e1.left : e1.right;
-  const p1Outer = p1Inner === e1.left ? e1.right : e1.left;
+/** Offsets `curve` (starting at `port`) by `halfWidth` on both sides. */
+function ribbonAlong(port: Port, curve: Cubic, halfWidth: number): Ribbon {
+  const { p0, p1, p2, p3 } = curve;
+  const steps = curveSampleSteps(len(sub(p3, p0)));
+  const left = regularizedOffsetCubic(p0, p1, p2, p3, halfWidth, 1, steps);
+  const right = regularizedOffsetCubic(p0, p1, p2, p3, halfWidth, -1, steps);
+  const ends = portBorderEnds(port, halfWidth);
+  left[0] = ends.right;
+  right[0] = ends.left;
+  return {
+    left,
+    right,
+    path: [{ kind: "move", to: p0 }, { kind: "bezier", cp1: p1, cp2: p2, to: p3 }],
+    controlPoints: [p1, p2],
+    endDirection: centreCurveEndDirection(port, curve),
+  };
+}
 
-  // Walk: p0 outer end -> p0 inner end -> inner arc to p1 inner end -> p1 outer end -> outer arc
-  // back to p0 outer end. `arcThroughPoints` adjusts the circle centre when the two Cairo faces
-  // have different apothems, so the arc's mathematical endpoints remain exactly on both mouths.
+type SupportingFace = { outward: Pt; anchor: Pt };
+const supportingFacesByBoundary = new WeakMap<readonly Pt[], SupportingFace[]>();
+
+/** The faces of a cell with the whole cell behind their line, outward normal each. A face bulging
+ *  into a cell (a concave arc side, flattened) is no half-plane limit, so it is left out and covered
+ *  by the sampled checks (`pointsInside`). Cached per boundary: finding them is quadratic in its size. */
+function supportingFaces(boundary: readonly Pt[]): SupportingFace[] {
+  const cached = supportingFacesByBoundary.get(boundary);
+  if (cached) return cached;
+  const interior = mul(boundary.reduce((sum, vertex) => add(sum, vertex), { x: 0, y: 0 }), 1 / boundary.length);
+  const faces: SupportingFace[] = [];
+  boundary.forEach((a, index) => {
+    const edge = sub(boundary[(index + 1) % boundary.length], a);
+    if (len(edge) <= 1e-9) return;
+    let outward = norm(leftN(edge));
+    if (dot(outward, sub(a, interior)) < 0) outward = mul(outward, -1);
+    if (boundary.some((vertex) => dot(sub(vertex, a), outward) > 1e-7)) return;
+    faces.push({ outward, anchor: a });
+  });
+  supportingFacesByBoundary.set(boundary, faces);
+  return faces;
+}
+
+/** Outward unit normal and room (signed distance from `point`) for every supporting face of a cell. */
+function facesSeenFrom(point: Pt, boundary: readonly Pt[]): Array<{ outward: Pt; room: number }> {
+  return supportingFaces(boundary).map(({ outward, anchor }) => ({ outward, room: dot(sub(anchor, point), outward) }));
+}
+
+/** Whether `point` lies on an edge of `boundary` (within float noise). */
+function pointOnPolygonEdge(point: Pt, boundary: readonly Pt[]): boolean {
+  return boundary.some((a, index) => {
+    const edge = sub(boundary[(index + 1) % boundary.length], a);
+    const edgeLength = len(edge);
+    if (edgeLength <= 1e-9) return len(sub(point, a)) <= 1e-6;
+    const along = dot(sub(point, a), edge) / edgeLength;
+    if (along < -1e-6 || along > edgeLength + 1e-6) return false;
+    return Math.abs(cross(edge, sub(point, a))) / edgeLength <= 1e-6;
+  });
+}
+
+/** Whether `point` is inside `boundary` or on its edge; the boundary may be concave. */
+function pointInPolygon(point: Pt, boundary: readonly Pt[]): boolean {
+  if (pointOnPolygonEdge(point, boundary)) return true;
+  let inside = false;
+  for (let index = 0, previous = boundary.length - 1; index < boundary.length; previous = index++) {
+    const a = boundary[index];
+    const b = boundary[previous];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function pointsInside(points: readonly Pt[], boundary: readonly Pt[]): boolean {
+  return points.every((point) => pointInPolygon(point, boundary));
+}
+
+const ARC_CHECK_SAMPLES = 24;
+
+/** Points along an arc, ends included. */
+function sampledArcPoints(centre: Pt, radius: number, a0: number, sweep: number): Pt[] {
+  return Array.from({ length: ARC_CHECK_SAMPLES + 1 }, (_, index) => arcPoint(centre, radius, a0 + (sweep * index) / ARC_CHECK_SAMPLES));
+}
+
+/** Whether a round dead-end cap — the half-disc of `halfWidth` around `centre`, facing `forward` —
+ *  fits the `boundary`. Toward a convex face ahead of it (outward normal pointing forward) the
+ *  half-disc reaches the full `halfWidth`; toward any other face only `halfWidth · |sin|` of the
+ *  angle between that normal and `forward`. */
+function roundCapFits(centre: Pt, forward: Pt, halfWidth: number, boundary: readonly Pt[]): boolean {
+  const along = norm(forward);
+  const supported = facesSeenFrom(centre, boundary).every(({ outward, room }) => {
+    const reach = dot(outward, along) > 0 ? halfWidth : halfWidth * Math.abs(cross(outward, along));
+    return room >= reach - 1e-7;
+  });
+  return supported && pointsInside(sampledArcPoints(centre, halfWidth, angleOf(along) - Math.PI / 2, Math.PI), boundary);
+}
+
+/** Centre curve of a dead end whose round cap (a half-disc of `halfWidth` around the curve's end)
+ *  fits the cell. When the cap does not fit at the target, the end moves back along the original
+ *  centre curve toward the port, to the farthest point where it fits. `null` when it does not fit
+ *  even at the port (see `kinkedDeadEndCap`). */
+function deadEndCentreCurve(port: Port, target: Pt, halfWidth: number, boundary: readonly Pt[]): Cubic | null {
+  const curve = centreCurve(port, target);
+  const roundCapFitsAt = (t: number): boolean =>
+    roundCapFits(cubicHead(curve, t).p3, cubicTangent(curve.p0, curve.p1, curve.p2, curve.p3, t), halfWidth, boundary);
+  if (roundCapFitsAt(1)) return curve;
+  if (!roundCapFitsAt(0)) return null;
+  // Advancing the end moves the cap toward the far faces, so the ends where it fits are taken as one
+  // interval starting at the port; bisect its far end.
+  let fits = 0;
+  let fails = 1;
+  for (let iteration = 0; iteration < 40; iteration++) {
+    const candidate = (fits + fails) / 2;
+    if (roundCapFitsAt(candidate)) fits = candidate;
+    else fails = candidate;
+  }
+  return cubicHead(curve, fits);
+}
+
+/** The deepest circular arc from `start` to `end`, bulging toward `bulge` (perpendicular to the
+ *  chord), by at most `maxSagitta`, that stays inside the `boundary`; a straight line when no
+ *  bulge fits. It meets the chord's ends at an angle (a kink) unless it is a full semicircle.
+ *
+ *  With half-chord `c` and sagitta `s`, the arc has radius `R = (c² + s²) / 2s`, its centre `R − s`
+ *  behind the chord, and spans `±θ` around `bulge` with `cos θ = (c² − s²) / (c² + s²)`. A face
+ *  with outward normal `o` (`β = o·bulge`) and room `r` from the chord's middle is only reached by
+ *  the arc's interior once `β ≥ cos θ`; the arc's farthest point toward it is then `sβ + R(1 − β)`
+ *  from the middle, which stays within `r` for `(1 + β)s² − 2rs + (1 − β)c² ≤ 0`, i.e. up to the
+ *  larger root. Below that span only the chord's ends face it, and they lie inside the cell. */
+function deepestChordArc(start: Pt, end: Pt, bulge: Pt, maxSagitta: number, boundary: readonly Pt[]): PathCmd {
+  const middle = mid(start, end);
+  const direction = norm(bulge);
+  const halfChord = len(sub(end, start)) / 2;
+  let sagitta = Math.min(maxSagitta, halfChord);
+  for (const { outward, room } of facesSeenFrom(middle, boundary)) {
+    const beta = dot(outward, direction);
+    if (beta <= 0) continue;
+    const discriminant = room * room - (1 - beta * beta) * halfChord * halfChord;
+    // A negative discriminant would mean a chord end outside the cell; the arc then only fits while
+    // it does not reach this face at all.
+    const faceLimit = discriminant >= 0 ? (room + Math.sqrt(discriminant)) / (1 + beta) : halfChord * Math.sqrt((1 - beta) / (1 + beta));
+    sagitta = Math.min(sagitta, faceLimit);
+  }
+  const arcWithSagitta = (depth: number): Extract<PathCmd, { kind: "arc" }> => {
+    const radius = (halfChord * halfChord + depth * depth) / (2 * depth);
+    const centre = add(middle, mul(direction, depth - radius));
+    const apex = add(middle, mul(direction, depth));
+    const fromCentre = sub(start, centre);
+    // `ccw: true` decreases the angle, starting along `(y, -x)` of `fromCentre`; take the way through the apex.
+    const ccw = dot({ x: fromCentre.y, y: -fromCentre.x }, sub(apex, start)) > 0;
+    return { kind: "arc", c: centre, r: radius, a0: angleOf(fromCentre), a1: angleOf(sub(end, centre)), ccw };
+  };
+  // A concave side bulging into the cell limits the arc beyond the half-plane limits above.
+  const fits = (depth: number): boolean => {
+    const arc = arcWithSagitta(depth);
+    return pointsInside(sampledArcPoints(arc.c, arc.r, arc.a0, arcSweep(arc)), boundary);
+  };
+  for (let attempt = 0; attempt < 40 && sagitta > 1e-9 && !fits(sagitta); attempt++) sagitta *= 0.8;
+  if (sagitta <= 1e-9) return { kind: "line", to: end };
+  return arcWithSagitta(sagitta);
+}
+
+/** Dead end whose round cap does not fit even at the port: the deepest arc through both mouth ends
+ *  (`deepestChordArc`), meeting the mouth at an angle instead of leaving it perpendicularly. */
+function kinkedDeadEndCap(port: Port, halfWidth: number, boundary: readonly Pt[]): PathCmd[] {
+  const across = leftN(port.out);
+  const start = add(port.mid, mul(across, halfWidth));
+  const end = sub(port.mid, mul(across, halfWidth));
   return [
-    { kind: "move", to: p0Outer },
-    { kind: "line", to: p0Inner },
-    smoothMouthCurve(p0Inner, p1Inner, O, mul(p0.out, -1), p1.out, Boolean(p0.useCubicMouth || p1.useCubicMouth)),
-    { kind: "line", to: p1Outer },
-    smoothMouthCurve(p1Outer, p0Outer, O, mul(p1.out, -1), p0.out, Boolean(p1.useCubicMouth || p0.useCubicMouth)),
-    { kind: "line", to: p0Outer },
+    { kind: "move", to: start },
+    deepestChordArc(start, end, mul(port.out, -1), halfWidth, boundary),
+    { kind: "line", to: start },
   ];
 }
 
-function convexSafeJunctionContour(ports: Port[], h: number): PathCmd[] {
-  const cmds: PathCmd[] = [];
-  for (let i = 0; i < ports.length; i++) {
-    const port = ports[i];
-    const nextPort = ports[(i + 1) % ports.length];
-    const { left, right } = portBorderEnds(port, h);
-    const next = portBorderEnds(nextPort, h);
-    cmds.push({ kind: i === 0 ? "move" : "line", to: right });
-    cmds.push({ kind: "line", to: left });
-    const chord = sub(next.right, left);
-    const chordLength = len(chord);
-    const into = mul(port.out, -1);
-    const nextInto = mul(nextPort.out, -1);
-    const startReach = Math.max(0, dot(sub(port.centre, left), into));
-    const endReach = Math.max(0, dot(sub(nextPort.centre, next.right), nextInto));
-    const handle = Math.min(chordLength / 3, startReach * 0.65, endReach * 0.65);
-    if (handle > 1e-6) {
-      cmds.push({
-        kind: "bezier",
-        cp1: add(left, mul(into, handle)),
-        cp2: add(next.right, mul(nextInto, handle)),
-        to: next.right,
-      });
-    } else {
-      cmds.push({ kind: "line", to: next.right });
+/** Whether an arc stays inside the `boundary`. Per convex face, the arc's farthest point toward it
+ *  is the full radius when the face's outward normal lies within the arc's swept angles, and one of
+ *  the arc's two ends otherwise; sampled points cover a concave side. */
+function arcInsideCell(arc: Extract<PathCmd, { kind: "arc" }>, boundary: readonly Pt[]): boolean {
+  const sweep = arcSweep(arc);
+  const ends = [arcPoint(arc.c, arc.r, arc.a0), arcPoint(arc.c, arc.r, arc.a1)];
+  const supported = facesSeenFrom(arc.c, boundary).every(({ outward, room }) => {
+    let fromStart = (sweep >= 0 ? angleOf(outward) - arc.a0 : arc.a0 - angleOf(outward)) % (Math.PI * 2);
+    if (fromStart < 0) fromStart += Math.PI * 2;
+    const reach = fromStart <= Math.abs(sweep) ? arc.r : Math.max(...ends.map((point) => dot(sub(point, arc.c), outward)));
+    return room >= reach - 1e-7;
+  });
+  return supported && pointsInside(sampledArcPoints(arc.c, arc.r, arc.a0, sweep), boundary);
+}
+
+type PolylineHit = { point: Pt; aDistance: number; bDistance: number };
+function firstPolylineIntersection(a: readonly Pt[], b: readonly Pt[]): PolylineHit | null {
+  let aOffset = 0;
+  let best: PolylineHit | null = null;
+  for (let ai = 0; ai + 1 < a.length; ai++) {
+    const a0 = a[ai];
+    const ad = sub(a[ai + 1], a0);
+    const aLength = len(ad);
+    if (aLength <= 1e-8) continue;
+    let bOffset = 0;
+    for (let bi = 0; bi + 1 < b.length; bi++) {
+      const b0 = b[bi];
+      const bd = sub(b[bi + 1], b0);
+      const bLength = len(bd);
+      if (bLength <= 1e-8) continue;
+      const denominator = cross(ad, bd);
+      if (Math.abs(denominator) <= 1e-9) {
+        bOffset += bLength;
+        continue;
+      }
+      const delta = sub(b0, a0);
+      const ta = cross(delta, bd) / denominator;
+      const tb = cross(delta, ad) / denominator;
+      if (ta >= -1e-7 && ta <= 1 + 1e-7 && tb >= -1e-7 && tb <= 1 + 1e-7) {
+        const aAmount = Math.max(0, Math.min(1, ta));
+        const bAmount = Math.max(0, Math.min(1, tb));
+        const candidate = {
+          point: add(a0, mul(ad, aAmount)),
+          aDistance: aOffset + aLength * aAmount,
+          bDistance: bOffset + bLength * bAmount,
+        };
+        if (!best || candidate.aDistance < best.aDistance - 1e-7 ||
+          (Math.abs(candidate.aDistance - best.aDistance) <= 1e-7 && candidate.bDistance < best.bDistance)) best = candidate;
+      }
+      bOffset += bLength;
     }
+    aOffset += aLength;
   }
-  const first = cmds[0];
-  if (first && (first.kind === "move" || first.kind === "line")) cmds.push({ kind: "line", to: first.to });
-  return cmds;
+  return best;
 }
-
-/** Uses the old circular arc when both mouth endpoints have the same radius. When Cairo joins
- *  faces of different lengths, one circle cannot both pass through the exact mouth endpoints and
- *  have the correct perpendicular tangent at both ends. A cubic then preserves both invariants:
- *  exact endpoints and opposite continuation directions across the shared face. */
-function smoothMouthCurve(from: Pt, to: Pt, preferredCenter: Pt, fromTangent: Pt, toTangent: Pt, useCubic: boolean): PathCmd {
-  const fromRadius = len(sub(from, preferredCenter));
-  const toRadius = len(sub(to, preferredCenter));
-  if (!useCubic || Math.abs(fromRadius - toRadius) <= 1e-7) return arcThroughPoints(from, to, preferredCenter);
-
-  const chordLength = len(sub(to, from));
-  const handle = Math.max(1, chordLength / 3);
-  const start = norm(fromTangent);
-  const end = norm(toTangent);
-  return {
+function polylineLength(points: readonly Pt[]): number {
+  let result = 0;
+  for (let index = 1; index < points.length; index++) result += len(sub(points[index], points[index - 1]));
+  return result;
+}
+function pointAtPolylineDistance(points: readonly Pt[], distance: number): { point: Pt; tangent: Pt } {
+  if (points.length === 0) return { point: { x: 0, y: 0 }, tangent: { x: 1, y: 0 } };
+  if (points.length === 1) return { point: points[0], tangent: { x: 1, y: 0 } };
+  let remaining = Math.max(0, distance);
+  for (let index = 1; index < points.length; index++) {
+    const segment = sub(points[index], points[index - 1]);
+    const segmentLength = len(segment);
+    if (segmentLength <= 1e-8) continue;
+    if (remaining <= segmentLength || index === points.length - 1) {
+      const amount = Math.max(0, Math.min(1, remaining / segmentLength));
+      return { point: add(points[index - 1], mul(segment, amount)), tangent: norm(segment) };
+    }
+    remaining -= segmentLength;
+  }
+  return { point: points[points.length - 1], tangent: norm(sub(points[points.length - 1], points[points.length - 2])) };
+}
+/** Distance along `points` to the polyline point nearest `target`. */
+function distanceAlongPolyline(points: readonly Pt[], target: Pt): number {
+  let best = { distance: 0, gap: Number.POSITIVE_INFINITY };
+  let travelled = 0;
+  for (let index = 1; index < points.length; index++) {
+    const segment = sub(points[index], points[index - 1]);
+    const segmentLength = len(segment);
+    if (segmentLength <= 1e-9) continue;
+    const amount = Math.max(0, Math.min(1, dot(sub(target, points[index - 1]), segment) / (segmentLength * segmentLength)));
+    const gap = len(sub(target, add(points[index - 1], mul(segment, amount))));
+    if (gap < best.gap) best = { distance: travelled + amount * segmentLength, gap };
+    travelled += segmentLength;
+  }
+  return best.distance;
+}
+function polylineTangentAt(points: readonly Pt[], index: number): Pt {
+  if (points.length < 2) return { x: 1, y: 0 };
+  if (index <= 0) return norm(sub(points[1], points[0]));
+  if (index >= points.length - 1) return norm(sub(points[points.length - 1], points[points.length - 2]));
+  return norm(sub(points[index + 1], points[index - 1]));
+}
+function appendPolylineCurve(cmds: PathCmd[], from: Pt, to: Pt, fromTangent: Pt, toTangent: Pt): void {
+  if (pointsEqual(from, to)) return;
+  // The sampled side is already a smooth curve. Reconstructing each small section with a
+  // tangent-intersection quadratic makes the control point jump on the concave offset and turns
+  // a smooth side into a handful of visibly different bends. Use a short cubic whose handles are
+  // tied to the path tangents instead; neighboring sections then meet with matching derivatives.
+  const distance = len(sub(to, from));
+  const handle = Math.max(1e-4, distance / 3);
+  cmds.push({
     kind: "bezier",
-    cp1: add(from, mul(start, handle)),
-    cp2: sub(to, mul(end, handle)),
+    cp1: add(from, mul(norm(fromTangent), handle)),
+    // `toTangent` is the direction of travel at the end of the segment. The second
+    // control point must therefore lie behind the endpoint, opposite to that direction.
+    cp2: sub(to, mul(norm(toTangent), handle)),
     to,
-  };
+  });
 }
-
-/** Builds the short circular arc through both explicit endpoints. A Cairo turn may join a short
- *  and a long face, so their mouth endpoints are not always at the same radius from the nominal
- *  face-line corner. Using that nominal radius would move one arc endpoint away from the face.
- *  Keep the nominal centre when possible; otherwise project it onto the endpoints' perpendicular
- *  bisector, producing the nearest circle that passes through both exact mouth points. */
-function arcThroughPoints(from: Pt, to: Pt, preferredCenter: Pt): PathCmd {
-  const chord = sub(to, from);
-  const chordLength = len(chord);
-  if (chordLength < 1e-9) return { kind: "line", to };
-
-  const fromRadius = len(sub(from, preferredCenter));
-  const toRadius = len(sub(to, preferredCenter));
-  let center = preferredCenter;
-  if (Math.abs(fromRadius - toRadius) > 1e-7) {
-    const midpoint = mid(from, to);
-    const bisector = leftN(mul(chord, 1 / chordLength));
-    center = add(midpoint, mul(bisector, dot(sub(preferredCenter, midpoint), bisector)));
+function appendPolylineForward(cmds: PathCmd[], points: readonly Pt[], distance: number): void {
+  const end = pointAtPolylineDistance(points, distance);
+  let travelled = 0;
+  let currentTangent = polylineTangentAt(points, 0);
+  for (let index = 1; index < points.length; index++) {
+    const segmentLength = len(sub(points[index], points[index - 1]));
+    if (segmentLength <= 1e-8) continue;
+    if (travelled + segmentLength >= distance - 1e-7) break;
+    const current = cmds[cmds.length - 1];
+    const previousPoint = current ? pathCommandEnd(current) : points[0];
+    appendPolylineCurve(cmds, previousPoint, points[index], currentTangent, polylineTangentAt(points, index));
+    currentTangent = polylineTangentAt(points, index);
+    travelled += segmentLength;
   }
-
-  const a0 = angleOf(sub(from, center));
-  const a1 = angleOf(sub(to, center));
-  return { kind: "arc", c: center, r: len(sub(from, center)), a0, a1, ccw: shortSweepCcw(a0, a1) };
+  const current = cmds[cmds.length - 1];
+  const currentPoint = current ? pathCommandEnd(current) : points[0];
+  appendPolylineCurve(cmds, currentPoint, end.point, currentTangent, end.tangent);
+}
+function appendPolylineReverse(cmds: PathCmd[], points: readonly Pt[], distance: number): void {
+  const start = pointAtPolylineDistance(points, distance);
+  let remaining = distance;
+  for (let index = 0; index < points.length - 1; index++) {
+    const segment = sub(points[index + 1], points[index]);
+    const segmentLength = len(segment);
+    if (segmentLength <= 1e-8) continue;
+    if (remaining <= segmentLength + 1e-7) {
+      const candidate = add(points[index], mul(segment, Math.max(0, remaining / segmentLength)));
+      const current = cmds[cmds.length - 1];
+      const currentPoint = current ? pathCommandEnd(current) : start.point;
+      let currentTangent = mul(norm(segment), -1);
+      appendPolylineCurve(cmds, currentPoint, candidate, currentTangent, currentTangent);
+      for (let reverse = index; reverse >= 0; reverse--) {
+        const cursor = cmds[cmds.length - 1];
+        const cursorPoint = cursor ? pathCommandEnd(cursor) : candidate;
+        const tangent = mul(polylineTangentAt(points, reverse), -1);
+        appendPolylineCurve(cmds, cursorPoint, points[reverse], currentTangent, tangent);
+        currentTangent = tangent;
+      }
+      return;
+    }
+    remaining -= segmentLength;
+  }
+  const current = cmds[cmds.length - 1];
+  const currentPoint = current ? pathCommandEnd(current) : start.point;
+  appendPolylineCurve(cmds, currentPoint, points[0], mul(start.tangent, -1), mul(polylineTangentAt(points, 0), -1));
 }
 
-/** The `ccw` flag (pixi / canvas `arc` convention: `true` sweeps toward *decreasing* angle) that
- *  makes the arc from `a` to `b` take the short way round. */
-function shortSweepCcw(a: number, b: number): boolean {
-  let d = b - a;
-  while (d <= -Math.PI) d += Math.PI * 2;
-  while (d > Math.PI) d -= Math.PI * 2;
-  // d > 0 -> short way is increasing angle -> counterclockwise=false.
-  return d < 0;
-}
-
-/** Intersection of line (p, dir dp) and line (q, dir dq); null if near-parallel. */
 function lineIntersect(p: Pt, dp: Pt, q: Pt, dq: Pt): Pt | null {
-  const denom = cross(dp, dq);
-  if (Math.abs(denom) < 1e-9) return null;
-  const t = cross(sub(q, p), dq) / denom;
-  return add(p, mul(dp, t));
+  const denominator = cross(dp, dq);
+  if (Math.abs(denominator) <= 1e-9) return null;
+  return add(p, mul(dp, cross(sub(q, p), dq) / denominator));
 }
 
-/** Select the Pixi arc sweep whose midpoint points toward `direction`. */
-function chooseArcSweep(a0: number, a1: number, direction: Pt): boolean {
-  let increasing = a1 - a0;
-  while (increasing <= 0) increasing += Math.PI * 2;
-  let decreasing = a1 - a0;
-  while (decreasing >= 0) decreasing -= Math.PI * 2;
-  const increasingMid = { x: Math.cos(a0 + increasing / 2), y: Math.sin(a0 + increasing / 2) };
-  const decreasingMid = { x: Math.cos(a0 + decreasing / 2), y: Math.sin(a0 + decreasing / 2) };
-  // Pixi's `ccw: true` uses the decreasing-angle sweep.
-  return dot(decreasingMid, direction) >= dot(increasingMid, direction);
+/** Handle length over chord length of a cubic that approximates a half circle over the chord. */
+const U_TURN_HANDLE_RATIO = 2 / 3;
+
+/** Returns the cubic handle ratio for a pair of ports. The pre-726 renderer's turn was a
+ * circular arc around the intersection of the two supporting side lines: neighboring faces have
+ * a nearby corner and need a stronger bend, while faces with one side between them have a farther
+ * corner and need a flatter bend (`arcHandleRatio` of the arc's sweep around that corner); parallel
+ * sides naturally fall back to the straight-line ratio 1/3. */
+function pairCurveHandleRatio(from: Port, to: Port): number {
+  // Two faces looking the same way (the half faces of one brick edge) have no corner to turn
+  // around: the pair curve is a U-turn, a half circle over the chord, whose cubic handles are 2/3
+  // of the chord. The straight-line ratio would flatten it to a quarter of the chord's depth,
+  // and the ribbon's inner side would then fold over itself.
+  if (dot(from.out, to.out) > 1 - 1e-9) return U_TURN_HANDLE_RATIO;
+  const corner = lineIntersect(from.mid, leftN(from.out), to.mid, leftN(to.out));
+  return corner ? arcHandleRatio(sub(from.mid, corner), sub(to.mid, corner)) : 1 / 3;
 }
 
-/** Find the circle point nearest `reference` where the line from `control` is tangent to the
- * circle. This lets a quadratic keep its existing face-side direction while ending tangent to the
- * round cap. Returns null when the control point lies inside the circle and no tangent exists. */
-function tangentPointOnCircle(control: Pt, centre: Pt, radius: number, reference: Pt, boundary?: Pt[]): Pt | null {
-  const fromCentre = sub(control, centre);
-  const distance = len(fromCentre);
-  if (distance <= radius + 1e-6 || radius <= 1e-6) return null;
-
-  const base = angleOf(fromCentre);
-  const offset = Math.acos(Math.max(-1, Math.min(1, radius / distance)));
-  const candidates = [
-    { x: centre.x + Math.cos(base + offset) * radius, y: centre.y + Math.sin(base + offset) * radius },
-    { x: centre.x + Math.cos(base - offset) * radius, y: centre.y + Math.sin(base - offset) * radius },
-  ].filter((point) => !boundary || pointInConvexPolygon(point, boundary));
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => len(sub(a, reference)) - len(sub(b, reference)));
-  return candidates[0];
+function shortSweepCcw(a: number, b: number): boolean {
+  let delta = b - a;
+  while (delta <= -Math.PI) delta += Math.PI * 2;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  return delta < 0;
 }
-
-/** Radius of the largest circle centred at `origin` that is guaranteed to stay in a convex cell. */
-function convexCellClearance(origin: Pt, vertices: Pt[]): number {
-  let clearance = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < vertices.length; i++) {
-    const a = vertices[i];
-    const edge = sub(vertices[(i + 1) % vertices.length], a);
-    const edgeLength = len(edge);
-    if (edgeLength > 1e-9) clearance = Math.min(clearance, Math.abs(cross(edge, sub(origin, a))) / edgeLength);
-  }
-  return clearance;
-}
-
-/** A quadratic has one control point, so its two endpoint tangents must meet at that point.
- *  Use that exact intersection when it is a forward, cell-safe point. If the tangent lines are
- *  parallel or their intersection would leave the convex tile, keep the control point on the
- *  tangent selected by the caller. Dead-end handoffs select the cap tangent so the contour joins
- *  the semicircle without a visible kink. */
-function quadraticControlPoint(
-  from: Pt,
-  to: Pt,
-  fromTangent: Pt,
-  toTangent: Pt,
-  boundary: Pt[] | undefined,
-  preferredTangent: "start" | "end",
-): Pt {
+/** `fromTangent`/`toTangent` point from each endpoint toward the control point. */
+function quadraticBridgeSegment(from: Pt, to: Pt, fromTangent: Pt, toTangent: Pt): PathCmd {
   const start = norm(fromTangent);
   const end = norm(toTangent);
   const intersection = lineIntersect(from, start, to, end);
-  if (intersection) {
-    const startReach = dot(sub(intersection, from), start);
-    const endReach = dot(sub(to, intersection), end);
-    if (startReach > 1e-6 && endReach > 1e-6 && (!boundary || pointInConvexPolygon(intersection, boundary))) {
-      return intersection;
-    }
+  const startReach = intersection ? len(sub(intersection, from)) : 0;
+  const endReach = intersection ? len(sub(intersection, to)) : 0;
+  if (intersection && startReach > 1e-5 && endReach > 1e-5) {
+    return { kind: "quadratic", cp: intersection, to };
   }
-  const chordLength = len(sub(to, from));
-  const distance = Math.min(chordLength / 3, 10);
-  const origin = preferredTangent === "start" ? from : to;
-  const direction = preferredTangent === "start" ? start : mul(end, -1);
-  return controlInside(origin, direction, distance, boundary);
+
+  // A tangent intersection at an endpoint produces a degenerate quadratic (`cp === from` or
+  // `cp === to`). That is especially visible where the two inner sides of a thick turn meet. Use
+  // independent cubic controls for this fallback so both endpoint tangents remain non-zero.
+  const distance = len(sub(to, from));
+  const handle = Math.max(1e-4, distance / 3);
+  return {
+    kind: "bezier",
+    cp1: add(from, mul(start, handle)),
+    cp2: add(to, mul(end, handle)),
+    to,
+  };
 }
-
-/** Move a fallback control point along a tangent, stopping at a convex cell boundary. */
-function controlInside(origin: Pt, direction: Pt, distance: number, boundary?: Pt[]): Pt {
-  const candidate = add(origin, mul(direction, distance));
-  if (!boundary || pointInConvexPolygon(candidate, boundary)) return candidate;
-
+/** Rounds the corner where two ribbon sides cross: runs from `from` toward `corner`, fillets it with
+ *  an arc of at most `requestedRadius`, and continues back out to `to`. */
+function junctionCornerBridge(
+  from: Pt,
+  to: Pt,
+  fromDirection: Pt,
+  toDirection: Pt,
+  corner: Pt,
+  requestedRadius: number,
+): PathCmd[] {
+  const fromReach = dot(sub(corner, from), fromDirection);
+  const toReach = dot(sub(corner, to), toDirection);
+  if (fromReach <= 1e-6 || toReach <= 1e-6) return [{ kind: "line", to }];
+  const fromRay = norm(sub(from, corner));
+  const toRay = norm(sub(to, corner));
+  const halfAngle = Math.acos(Math.max(-1, Math.min(1, dot(fromRay, toRay)))) / 2;
+  const sinHalf = Math.sin(halfAngle);
+  const tanHalf = Math.tan(halfAngle);
+  if (sinHalf <= 1e-6 || tanHalf <= 1e-6) return [{ kind: "line", to }];
+  const maximumRadius = Math.min(fromReach, toReach) * tanHalf;
+  const radius = Math.min(maximumRadius, requestedRadius);
+  if (radius <= 1e-6) return [{ kind: "line", to: corner }, { kind: "line", to }];
+  const tangentDistance = radius / tanHalf;
+  const fromTangent = add(corner, mul(fromRay, tangentDistance));
+  const toTangent = add(corner, mul(toRay, tangentDistance));
+  const centre = add(corner, mul(norm(add(fromRay, toRay)), radius / sinHalf));
+  const a0 = angleOf(sub(fromTangent, centre));
+  const a1 = angleOf(sub(toTangent, centre));
+  const ccw = shortSweepCcw(a0, a1);
+  const arcTangent = (angle: number): Pt => ccw ? { x: Math.sin(angle), y: -Math.cos(angle) } : { x: -Math.sin(angle), y: Math.cos(angle) };
+  return [
+    // `quadraticBridgeSegment` receives the direction from the endpoint toward the control point.
+    // At the beginning of an arc that direction is opposite to the arc's forward tangent; using
+    // the forward tangent here makes the control point collapse onto the arc endpoint and creates
+    // the visible kink on the inner edge of a thick ribbon.
+    quadraticBridgeSegment(from, fromTangent, fromDirection, mul(arcTangent(a0), -1)),
+    { kind: "arc", c: centre, r: radius, a0, a1, ccw },
+    // The contour leaves the arc toward `to` in the reverse direction of the next ribbon. Since
+    // the quadratic helper expects the endpoint-to-control direction (the opposite of the path
+    // tangent at the endpoint), that direction is the next ribbon's forward tangent itself.
+    quadraticBridgeSegment(toTangent, to, arcTangent(a1), toDirection),
+  ];
+}
+/** `bulge`, when given, is the direction the arc's middle must face. A dead-end cap joins the two
+ *  sides of one ribbon, whose ends sit diametrically opposite around the target: both sweeps are
+ *  exactly half a turn, and picking the "short" one leaves the choice to rounding noise, which
+ *  sometimes folds the cap back through the ribbon as a concave bite. */
+function targetCenteredClosureArc(from: Pt, to: Pt, target: Pt, bulge?: Pt): Extract<PathCmd, { kind: "arc" }> | null {
+  const fromVector = sub(from, target);
+  const toVector = sub(to, target);
+  const radius = len(fromVector);
+  if (radius <= 1e-7 || len(toVector) <= 1e-7) return null;
+  const a0 = angleOf(fromVector);
+  const a1 = angleOf(toVector);
+  // `ccw: true` decreases the angle, i.e. starts moving along `(fromVector.y, -fromVector.x)`.
+  const ccw = bulge ? cross(fromVector, bulge) < 0 : shortSweepCcw(a0, a1);
+  return { kind: "arc", c: target, r: radius, a0, a1, ccw };
+}
+/** Maximum direction change at which two ribbon sides are treated as one smooth side. */
+const SMOOTH_JOIN_ANGLE = Math.PI / 18;
+/** `deadEndForward`, given only for a dead end, is the direction its cap must bulge toward. */
+function appendContourBetweenRibbons(cmds: PathCmd[], current: readonly Pt[], next: readonly Pt[], target: Pt, halfWidth: number, radius: number, boundary: readonly Pt[], deadEndForward?: Pt): void {
+  const hit = firstPolylineIntersection(current, next);
+  if (!hit) {
+    appendPolylineForward(cmds, current, polylineLength(current));
+    const currentEnd = current[current.length - 1];
+    const nextEnd = next[next.length - 1];
+    if (!pointsEqual(currentEnd, nextEnd)) {
+      const closure = targetCenteredClosureArc(currentEnd, nextEnd, target, deadEndForward);
+      if (closure && !deadEndForward && !arcInsideCell(closure, boundary)) {
+        // A junction side closure that would leave the cell (target close to a face): the deepest
+        // arc straight from one side end to the other that fits, bulging the way the closure did.
+        // A dead end's cap already fits by construction (`deadEndCentreCurve`).
+        const closureMiddle = arcPoint(closure.c, closure.r, closure.a0 + arcSweep(closure) / 2);
+        const chordMiddle = mid(currentEnd, nextEnd);
+        let bulge = leftN(norm(sub(nextEnd, currentEnd)));
+        if (dot(bulge, sub(closureMiddle, chordMiddle)) < 0) bulge = mul(bulge, -1);
+        cmds.push(deepestChordArc(currentEnd, nextEnd, bulge, Math.max(0, dot(bulge, sub(closureMiddle, chordMiddle))), boundary));
+      } else if (closure) {
+        cmds.push(closure);
+        if (!pointsEqual(pathCommandEnd(closure), nextEnd)) cmds.push({ kind: "line", to: nextEnd });
+      } else cmds.push({ kind: "line", to: nextEnd });
+    }
+    appendPolylineReverse(cmds, next, polylineLength(next));
+    return;
+  }
+  // Sides that already meet tangent-continuously (the inner side of a smooth two-port turn, whose
+  // halves share the target tangent) have no corner to round: a corner bridge there would only cut
+  // a dent into an otherwise circular side.
+  const currentTangent = pointAtPolylineDistance(current, hit.aDistance).tangent;
+  const nextTangent = pointAtPolylineDistance(next, hit.bDistance).tangent;
+  if (dot(currentTangent, nextTangent) <= -Math.cos(SMOOTH_JOIN_ANGLE)) {
+    appendPolylineForward(cmds, current, hit.aDistance);
+    appendPolylineReverse(cmds, next, hit.bDistance);
+    return;
+  }
+  // Keep enough room for the requested corner, but do not discard a large part of the sampled
+  // ribbon when the radius is zero. The latter would replace the curve with one long straight
+  // transition segment.
+  const probe = Math.min(Math.max(radius, halfWidth * 0.25), halfWidth * 2, hit.aDistance * 0.75, hit.bDistance * 0.75);
+  const aDistance = Math.max(0, hit.aDistance - probe);
+  const bDistance = Math.max(0, hit.bDistance - probe);
+  const a = pointAtPolylineDistance(current, aDistance);
+  const b = pointAtPolylineDistance(next, bDistance);
+  appendPolylineForward(cmds, current, aDistance);
+  cmds.push(...junctionCornerBridge(a.point, b.point, a.tangent, b.tangent, hit.point, radius));
+  appendPolylineReverse(cmds, next, bDistance);
+}
+/** Pulls `point` toward `anchor` (assumed inside) until it lies within the `boundary`. */
+function constrainPointInside(point: Pt, anchor: Pt, boundary: readonly Pt[]): Pt {
+  if (pointInPolygon(point, boundary)) return point;
   let low = 0;
-  let high = distance;
-  for (let i = 0; i < 24; i++) {
-    const middle = (low + high) / 2;
-    if (pointInConvexPolygon(add(origin, mul(direction, middle)), boundary)) low = middle;
-    else high = middle;
+  let high = 1;
+  for (let iteration = 0; iteration < 24; iteration++) {
+    const amount = (low + high) / 2;
+    if (pointInPolygon(add(anchor, mul(sub(point, anchor), amount)), boundary)) low = amount;
+    else high = amount;
   }
-  return add(origin, mul(direction, low));
+  return add(anchor, mul(sub(point, anchor), low));
+}
+function constrainPathControls(cmds: PathCmd[], boundary: readonly Pt[]): PathCmd[] {
+  let current: Pt | null = null;
+  return cmds.map((command) => {
+    if (command.kind === "move") {
+      current = command.to;
+      return command;
+    }
+    if (command.kind === "quadratic") {
+      const anchor = current ?? command.cp;
+      current = command.to;
+      return { ...command, cp: constrainPointInside(command.cp, anchor, boundary) };
+    }
+    if (command.kind === "bezier") {
+      const anchor = current ?? command.cp1;
+      current = command.to;
+      return { ...command, cp1: constrainPointInside(command.cp1, anchor, boundary), cp2: constrainPointInside(command.cp2, command.to, boundary) };
+    }
+    current = pathCommandEnd(command);
+    return command;
+  });
+}
+/** Travel direction at the end of a centre curve. Taken from the curve's control points: the
+ *  sampled sides of a very short ribbon (a dead-end cap moved right up to its port) are too short to
+ *  give a reliable direction, which used to flip the cap back through the port. A curve collapsed to
+ *  a point still leaves the port inward. */
+function centreCurveEndDirection(port: Port, curve: Cubic): Pt {
+  for (const from of [curve.p2, curve.p1, curve.p0]) {
+    if (len(sub(curve.p3, from)) > 1e-9) return norm(sub(curve.p3, from));
+  }
+  return mul(port.out, -1);
 }
 
-function pointInConvexPolygon(point: Pt, vertices: Pt[]): boolean {
-  let positive = false;
-  let negative = false;
-  for (let i = 0; i < vertices.length; i++) {
-    const a = vertices[i];
-    const b = vertices[(i + 1) % vertices.length];
-    const side = cross(sub(b, a), sub(point, a));
-    if (side > 1e-7) positive = true;
-    if (side < -1e-7) negative = true;
+function universalJunctionContour(ribbons: readonly Ribbon[], halfWidth: number, target: Pt, boundary: readonly Pt[], radius: number): PathCmd[] {
+  if (ribbons.length === 0 || ribbons.some((ribbon) => ribbon.left.length < 2 || ribbon.right.length < 2)) return [];
+
+  const cmds: PathCmd[] = [{ kind: "move", to: ribbons[0].left[0] }];
+  for (let index = 0; index < ribbons.length; index++) {
+    const current = ribbons[index].right;
+    const next = ribbons[(index + 1) % ribbons.length].left;
+    const mouth = current[0];
+    const cursor = pathCommandEnd(cmds[cmds.length - 1]);
+    if (!pointsEqual(cursor, mouth)) cmds.push({ kind: "line", to: mouth });
+    appendContourBetweenRibbons(cmds, current, next, target, halfWidth, radius, boundary, ribbons.length === 1 ? ribbons[0].endDirection : undefined);
   }
-  return !(positive && negative);
+  const first = ribbons[0].left[0];
+  const cursor = pathCommandEnd(cmds[cmds.length - 1]);
+  if (!pointsEqual(cursor, first)) cmds.push({ kind: "line", to: first });
+  return constrainPathControls(cmds, boundary);
+}
+/** Builds one tile's shape: a centre curve from every port to a shared target, offset into a ribbon,
+ *  with consecutive ribbons joined around the target and their corners rounded. The radius-0 contour
+ *  is a lab-only stage, built only `withStages`. */
+function buildTileGeometry(tile: Tile, halfWidth: number, requestedRadius: number | undefined, withStages: boolean): CorridorGeometryDebug {
+  const oppositePair = mostOppositePortPair(tile.ports);
+  const baseTarget = constrainPointInside(oppositePair ? directPairCurveCenter(oppositePair[0], oppositePair[1]) : tile.centre, tile.centre, tile.boundary);
+  const deadEndCurve = tile.ports.length === 1 ? deadEndCentreCurve(tile.ports[0], baseTarget, halfWidth, tile.boundary) : null;
+  if (tile.ports.length === 1 && !deadEndCurve) {
+    // No ribbon and no junction corners: the cap is the whole tile.
+    const cap: ContourPath[] = [{ cmds: kinkedDeadEndCap(tile.ports[0], halfWidth, tile.boundary), hole: false }];
+    return { cellId: tile.id, target: tile.ports[0].mid, centerCurves: [], rawRibbons: [], ribbons: [], contourBeforeCornerRadius: cap, contour: cap };
+  }
+  const target = deadEndCurve ? deadEndCurve.p3 : baseTarget;
+  const portAngle = (port: Port): number => {
+    const angle = angleOf(sub(port.mid, target));
+    // A port straight behind the target sits on the atan2 branch cut, where float noise flips -π and π.
+    return angle < -Math.PI + PORT_ANGLE_EPSILON ? angle + Math.PI * 2 : angle;
+  };
+  const orderedPorts = [...tile.ports].sort((a, b) => portAngle(a) - portAngle(b));
+  const targetTangents = new Map<Port, TargetTangent>();
+  if (oppositePair) {
+    const biarc = biarcTargetTangents(oppositePair[0], oppositePair[1], target);
+    targetTangents.set(oppositePair[0], { tangent: biarc.firstTangent, handleRatio: biarc.firstHandleRatio });
+    targetTangents.set(oppositePair[1], { tangent: biarc.secondTangent, handleRatio: biarc.secondHandleRatio });
+  }
+  const rawRibbons = orderedPorts.map((port) => ribbonAlong(port, deadEndCurve ?? centreCurve(port, target, targetTangents.get(port)), halfWidth));
+  const ribbons = rawRibbons.map((ribbon) => ({
+    ...ribbon,
+    left: ribbon.left.map((point) => constrainPointInside(point, target, tile.boundary)),
+    right: ribbon.right.map((point) => constrainPointInside(point, target, tile.boundary)),
+  }));
+
+  const radius = Math.max(0, requestedRadius ?? halfWidth * DEFAULT_JUNCTION_RADIUS_FACTOR);
+  // Each corner fillet is already limited to what fits its corner (`junctionCornerBridge`).
+  const sharp = withStages ? universalJunctionContour(ribbons, halfWidth, target, tile.boundary, 0) : [];
+  const final = universalJunctionContour(ribbons, halfWidth, target, tile.boundary, radius);
+  return {
+    cellId: tile.id,
+    target,
+    centerCurves: ribbons.map((ribbon, portIndex) => ({ portIndex, path: ribbon.path, controlPoints: ribbon.controlPoints })),
+    rawRibbons: rawRibbons.map((ribbon, portIndex) => ({ portIndex, left: ribbon.left, right: ribbon.right })),
+    ribbons: ribbons.map((ribbon, portIndex) => ({ portIndex, left: ribbon.left, right: ribbon.right })),
+    contourBeforeCornerRadius: sharp.length > 0 ? [{ cmds: sharp, hole: false }] : [],
+    contour: final.length > 0 ? [{ cmds: final, hole: false }] : [],
+  };
 }
 
-function firstAnchor(cmds: PathCmd[]): Pt | null {
-  for (const c of cmds) {
-    if (c.kind === "move" || c.kind === "line" || c.kind === "quadratic") return c.to;
-    if (c.kind === "arc") return { x: c.c.x + Math.cos(c.a0) * c.r, y: c.c.y + Math.sin(c.a0) * c.r };
-  }
-  return null;
+/** Pure geometry engine: one filled path per cell that has at least one port. `junctionRadius`
+ *  defaults to `DEFAULT_JUNCTION_RADIUS_FACTOR` of the half-width. */
+export function buildCorridorGeometry(
+  cells: readonly CorridorCell[],
+  ports: readonly CorridorPort[],
+  thickness: number,
+  junctionRadius?: number,
+): ContourPath[] {
+  return buildCorridorGeometryInstances(cells, ports, thickness, junctionRadius)
+    .map((instance) => translateContourPath(instance.shape, instance.offset));
 }
 
-/** Samples a contour path to a plain point polyline — arcs at ~0.2 rad steps. For tests /
- *  export-margin measurement; the renderer traces the real line/curve/arc commands. */
-export function contourToPolyline(path: ContourPath): Pt[] {
-  const out: Pt[] = [];
-  for (const cmd of path.cmds) {
-    if (cmd.kind === "move" || cmd.kind === "line") {
-      out.push(cmd.to);
-    } else if (cmd.kind === "quadratic") {
-      const from = out[out.length - 1] ?? cmd.cp;
-      const steps = Math.max(2, Math.ceil(len(sub(cmd.to, from)) / 8));
-      for (let k = 1; k <= steps; k++) {
-        const t = k / steps;
-        const u = 1 - t;
-        out.push({
-          x: u * u * from.x + 2 * u * t * cmd.cp.x + t * t * cmd.to.x,
-          y: u * u * from.y + 2 * u * t * cmd.cp.y + t * t * cmd.to.y,
-        });
+/** One tile placed as a shared local shape: `shape` is built around the origin and drawn at
+ *  `offset` (the tile centre). Tiles with equal `key` share the same `shape` object. */
+export type CorridorContourInstance = { cellId: CorridorCellId; key: string; shape: ContourPath; offset: CorridorPoint };
+
+/** Local tile shapes by key; `null` marks a key that produced no drawable path. A caller may keep
+ *  one across calls: keys include the effective half-width and junction radius. */
+export type CorridorShapeCache = Map<string, ContourPath | null>;
+
+/** `buildCorridorGeometry` without the final translation, in tile order: every tile of the same
+ *  local shape (cell polygon + port set relative to the tile centre, half-width, junction radius)
+ *  shares one shape built around the origin. Port order is not part of the shape key: the builder
+ *  orders ports by angle and the most-opposite-pair search is order-independent. Lab stages
+ *  (`buildCorridorGeometryDebug`) always build per tile. */
+export function buildCorridorGeometryInstances(
+  cells: readonly CorridorCell[],
+  ports: readonly CorridorPort[],
+  thickness: number,
+  junctionRadius?: number,
+  shapeCache: CorridorShapeCache = new Map(),
+): CorridorContourInstance[] {
+  if (thickness <= 0 || cells.length === 0 || ports.length === 0) return [];
+  const halfWidth = halfWidthForPorts(ports, thickness / 2);
+  const keyPrefix = "contour/" + halfWidth + "/" + (junctionRadius ?? "default") + "@";
+  const instances: CorridorContourInstance[] = [];
+  for (const tile of buildTilesFromCells(cells, ports, halfWidth)) {
+    const toLocal = (point: Pt): Pt => sub(point, tile.centre);
+    const portKeys = tile.ports.map((port) => keyPoint(toLocal(port.mid)) + ";" + keyPoint(port.out) + (port.ends ? ";" + keyPoint(toLocal(port.ends.left)) + ";" + keyPoint(toLocal(port.ends.right)) : "")).sort();
+    const key = keyPrefix + tile.boundary.map((point) => keyPoint(toLocal(point))).join("|") + "#" + portKeys.join("|");
+    let shape = shapeCache.get(key);
+    if (shape === undefined) {
+      const origin = { x: 0, y: 0 };
+      const localTile: Tile = {
+        id: tile.id,
+        centre: origin,
+        ports: tile.ports.map((port) => ({
+          centre: origin,
+          mid: toLocal(port.mid),
+          out: port.out,
+          ends: port.ends && { left: toLocal(port.ends.left), right: toLocal(port.ends.right) },
+        })),
+        boundary: tile.boundary.map(toLocal),
+      };
+      const path = buildTileGeometry(localTile, halfWidth, junctionRadius, false).contour[0];
+      shape = path !== undefined && path.cmds.length >= 2 ? path : null;
+      shapeCache.set(key, shape);
+    }
+    if (shape) instances.push({ cellId: tile.id, key, shape, offset: tile.centre });
+  }
+  return instances;
+}
+
+/** `buildCorridorGeometry` with every intermediate construction stage, for the geometry lab. */
+export function buildCorridorGeometryDebug(
+  cells: readonly CorridorCell[],
+  ports: readonly CorridorPort[],
+  thickness: number,
+  junctionRadius?: number,
+): CorridorGeometryDebug[] {
+  if (thickness <= 0 || cells.length === 0 || ports.length === 0) return [];
+  const halfWidth = halfWidthForPorts(ports, thickness / 2);
+  return buildTilesFromCells(cells, ports, halfWidth).map((tile) => buildTileGeometry(tile, halfWidth, junctionRadius, true));
+}
+
+/** Key quantum for tile-type keys, in world units: far below any visible difference, far above the
+ *  float noise left by subtracting the cell centre. */
+const TILE_KEY_QUANTUM = 1e-6;
+const keyNumber = (value: number): number => Math.round(value / TILE_KEY_QUANTUM);
+const keyPoint = (point: Pt): string => keyNumber(point.x) + "," + keyNumber(point.y);
+
+function translateContourPath(path: ContourPath, offset: Pt): ContourPath {
+  return {
+    hole: path.hole,
+    cmds: path.cmds.map((command): PathCmd => {
+      switch (command.kind) {
+        case "move":
+        case "line":
+          return { kind: command.kind, to: add(command.to, offset) };
+        case "quadratic":
+          return { kind: "quadratic", cp: add(command.cp, offset), to: add(command.to, offset) };
+        case "bezier":
+          return { kind: "bezier", cp1: add(command.cp1, offset), cp2: add(command.cp2, offset), to: add(command.to, offset) };
+        case "arc":
+          return { ...command, c: add(command.c, offset) };
       }
-    } else if (cmd.kind === "bezier") {
-      const from = out[out.length - 1] ?? cmd.cp1;
-      const steps = Math.max(2, Math.ceil(len(sub(cmd.to, from)) / 8));
-      for (let k = 1; k <= steps; k++) {
-        const t = k / steps;
-        const u = 1 - t;
-        out.push({
-          x: u * u * u * from.x + 3 * u * u * t * cmd.cp1.x + 3 * u * t * t * cmd.cp2.x + t * t * t * cmd.to.x,
-          y: u * u * u * from.y + 3 * u * u * t * cmd.cp1.y + 3 * u * t * t * cmd.cp2.y + t * t * t * cmd.to.y,
-        });
-      }
-    } else {
-      let sweep = cmd.a1 - cmd.a0;
-      if (!cmd.ccw) {
-        while (sweep < 0) sweep += Math.PI * 2;
-        while (sweep >= Math.PI * 2) sweep -= Math.PI * 2;
-      } else {
-        while (sweep > 0) sweep -= Math.PI * 2;
-        while (sweep <= -Math.PI * 2) sweep += Math.PI * 2;
-      }
-      const steps = Math.max(1, Math.ceil(Math.abs(sweep) / 0.2));
-      for (let k = 1; k <= steps; k++) {
-        const a = cmd.a0 + (sweep * k) / steps;
-        out.push({ x: cmd.c.x + Math.cos(a) * cmd.r, y: cmd.c.y + Math.sin(a) * cmd.r });
-      }
+    }),
+  };
+}
+
+/** Unit normal of a curved face at `midpoint`, on the same side as `sideHint`; `sideHint` itself for a
+ *  straight face. The tangent is the chord over a small span of the curve around `midpoint`, so a
+ *  midpoint sitting on a flattening vertex gets the curve's direction, not one segment's. */
+function curvedFaceNormal(curve: readonly Pt[] | undefined, midpoint: Pt, sideHint: Pt): Pt {
+  if (!curve || curve.length < 3) return sideHint;
+  const total = polylineLength(curve);
+  const at = distanceAlongPolyline(curve, midpoint);
+  const span = total / 20;
+  const before = pointAtPolylineDistance(curve, Math.max(0, at - span)).point;
+  const after = pointAtPolylineDistance(curve, Math.min(total, at + span)).point;
+  const normal = leftN(norm(sub(after, before)));
+  return dot(normal, sideHint) >= 0 ? normal : mul(normal, -1);
+}
+
+/** Adapts the selector's centre-to-centre corridor segments to the engine's cells and face ports.
+ *  A segment with `v1TouchesSplit` contributes only its `v0` port. A cell without a known polygon
+ *  gets a square of half-side `thickness` around its centre. Cell ids are the rounded centres. */
+export function corridorSegmentsToGeometryInput(segments: readonly CorridorSegmentInput[], thickness: number): { cells: CorridorCell[]; ports: CorridorPort[] } {
+  const cells = new Map<string, CorridorCell>();
+  const ports: CorridorPort[] = [];
+  const addCell = (centre: Pt, polygon?: readonly Pt[]): string => {
+    const id = String(Math.round(centre.x * 1e6)) + "," + String(Math.round(centre.y * 1e6));
+    const current = cells.get(id);
+    if (!current) cells.set(id, { id, center: centre, polygon: polygon ?? [] });
+    else if (polygon && polygon.length >= 3 && current.polygon.length < 3) cells.set(id, { ...current, polygon });
+    return id;
+  };
+
+  for (const segment of segments) {
+    if (len(sub(segment.v1, segment.v0)) < 1e-6) continue;
+    const midpoint = segment.faceMidpoint ?? (segment.v1TouchesSplit ? segment.v1 : mid(segment.v0, segment.v1));
+    const chordNormal = segment.faceNormal ?? norm(sub(segment.v1, segment.v0));
+    const normal = curvedFaceNormal(segment.facePolyline, midpoint, chordNormal);
+    const halfFaceOffset = segment.faceLength === undefined ? undefined : mul(leftN(normal), segment.faceLength / 2);
+    const face = halfFaceOffset === undefined ? undefined : [sub(midpoint, halfFaceOffset), add(midpoint, halfFaceOffset)] as const;
+    const fromId = addCell(segment.v0, segment.cellVertices0);
+    ports.push({ cellId: fromId, midpoint, normal, face, facePolyline: segment.facePolyline });
+    if (!segment.v1TouchesSplit) {
+      const toId = addCell(segment.v1, segment.cellVertices1);
+      ports.push({ cellId: toId, midpoint, normal: mul(normal, -1), face, facePolyline: segment.facePolyline });
     }
   }
-  return out;
+
+  return {
+    cells: [...cells.values()].map((cell) => ({
+      ...cell,
+      polygon: cell.polygon.length >= 3 ? cell.polygon : [
+        { x: cell.center.x - thickness, y: cell.center.y - thickness },
+        { x: cell.center.x + thickness, y: cell.center.y - thickness },
+        { x: cell.center.x + thickness, y: cell.center.y + thickness },
+        { x: cell.center.x - thickness, y: cell.center.y + thickness },
+      ],
+    })),
+    ports,
+  };
 }
 
-/** Traces every tile path onto `target` as a closed sub-path; the caller fills once afterwards. The
- *  tiles never overlap, so a plain (non-zero) fill is seamless. */
-export function traceCorridorContour(target: Graphics, paths: ContourPath[]): void {
+/** `corridorSegmentsToGeometryInput` followed by `buildCorridorGeometryInstances`. */
+export function buildCorridorContourInstances(segments: readonly CorridorSegmentInput[], thickness: number, junctionRadius?: number, shapeCache?: CorridorShapeCache): CorridorContourInstance[] {
+  const { cells, ports } = corridorSegmentsToGeometryInput(segments, thickness);
+  return buildCorridorGeometryInstances(cells, ports, thickness, junctionRadius, shapeCache);
+}
+
+/** `corridorSegmentsToGeometryInput` followed by `buildCorridorGeometry`. */
+export function buildCorridorContour(segments: readonly CorridorSegmentInput[], thickness: number, junctionRadius?: number): ContourPath[] {
+  const { cells, ports } = corridorSegmentsToGeometryInput(segments, thickness);
+  return buildCorridorGeometry(cells, ports, thickness, junctionRadius);
+}
+
+export function contourToPolyline(path: ContourPath, curveStep = 8): Pt[] {
+  const result: Pt[] = [];
+  for (const command of path.cmds) {
+    if (command.kind === "move" || command.kind === "line") {
+      result.push(command.to);
+    } else if (command.kind === "quadratic") {
+      const from = result.length > 0 ? result[result.length - 1] : command.cp;
+      const steps = Math.max(2, Math.ceil(len(sub(command.to, from)) / curveStep));
+      for (let index = 1; index <= steps; index++) {
+        const t = index / steps;
+        const u = 1 - t;
+        result.push({ x: u * u * from.x + 2 * u * t * command.cp.x + t * t * command.to.x, y: u * u * from.y + 2 * u * t * command.cp.y + t * t * command.to.y });
+      }
+    } else if (command.kind === "bezier") {
+      const from = result.length > 0 ? result[result.length - 1] : command.cp1;
+      const steps = Math.max(4, Math.ceil(len(sub(command.to, from)) / curveStep));
+      result.push(...sampledCubicPoints(from, command.cp1, command.cp2, command.to, steps).slice(1));
+    } else {
+      const sweep = arcSweep(command);
+      const steps = Math.max(1, Math.ceil(Math.abs(sweep) / 0.2));
+      for (let index = 1; index <= steps; index++) result.push(arcPoint(command.c, command.r, command.a0 + sweep * index / steps));
+    }
+  }
+  return result;
+}
+
+export function traceCorridorContour(target: Graphics | GraphicsContext, paths: ContourPath[]): void {
   for (const path of paths) {
-    for (const cmd of path.cmds) {
-      if (cmd.kind === "move") target.moveTo(cmd.to.x, cmd.to.y);
-      else if (cmd.kind === "line") target.lineTo(cmd.to.x, cmd.to.y);
-      else if (cmd.kind === "quadratic") target.quadraticCurveTo(cmd.cp.x, cmd.cp.y, cmd.to.x, cmd.to.y);
-      else if (cmd.kind === "bezier") target.bezierCurveTo(cmd.cp1.x, cmd.cp1.y, cmd.cp2.x, cmd.cp2.y, cmd.to.x, cmd.to.y);
-      else target.arc(cmd.c.x, cmd.c.y, cmd.r, cmd.a0, cmd.a1, cmd.ccw);
+    for (const command of path.cmds) {
+      if (command.kind === "move") target.moveTo(command.to.x, command.to.y);
+      else if (command.kind === "line") target.lineTo(command.to.x, command.to.y);
+      else if (command.kind === "quadratic") target.quadraticCurveTo(command.cp.x, command.cp.y, command.to.x, command.to.y);
+      else if (command.kind === "bezier") target.bezierCurveTo(command.cp1.x, command.cp1.y, command.cp2.x, command.cp2.y, command.to.x, command.to.y);
+      else target.arc(command.c.x, command.c.y, command.r, command.a0, command.a1, command.ccw);
     }
     target.closePath();
   }
+}
+
+export function contourToSvgPath(paths: readonly ContourPath[], closePaths = true): string {
+  const format = (value: number): string => Object.is(value, -0) ? "0" : String(value);
+  const parts: string[] = [];
+  for (const path of paths) {
+    for (const command of path.cmds) {
+      if (command.kind === "move") parts.push("M " + format(command.to.x) + " " + format(command.to.y));
+      else if (command.kind === "line") parts.push("L " + format(command.to.x) + " " + format(command.to.y));
+      else if (command.kind === "quadratic") parts.push("Q " + format(command.cp.x) + " " + format(command.cp.y) + " " + format(command.to.x) + " " + format(command.to.y));
+      else if (command.kind === "bezier") parts.push("C " + format(command.cp1.x) + " " + format(command.cp1.y) + " " + format(command.cp2.x) + " " + format(command.cp2.y) + " " + format(command.to.x) + " " + format(command.to.y));
+      else {
+        const sweep = arcSweep(command);
+        if (Math.abs(sweep) <= 1e-9 || command.r <= 0) continue;
+        const arcCount = Math.max(1, Math.ceil(Math.abs(sweep) / Math.PI));
+        const step = sweep / arcCount;
+        for (let index = 0; index < arcCount; index++) {
+          const end = arcPoint(command.c, command.r, command.a0 + step * (index + 1));
+          parts.push("A " + format(command.r) + " " + format(command.r) + " 0 0 " + (command.ccw ? "0 " : "1 ") + format(end.x) + " " + format(end.y));
+        }
+      }
+    }
+    if (closePaths) parts.push("Z");
+  }
+  return parts.join(" ");
 }

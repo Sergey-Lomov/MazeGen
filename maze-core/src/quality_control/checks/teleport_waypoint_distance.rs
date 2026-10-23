@@ -101,6 +101,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "teleport_waypoint_distance";
 
@@ -112,7 +113,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = entry_distance + 2;
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -215,7 +216,7 @@ mod tests {
         // is far -- EntryOrExit must catch it via the exit side.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -258,7 +259,7 @@ mod tests {
         // finish is very close to the teleport entry, start is far -- Any must catch it via finish.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -393,7 +394,7 @@ mod tests {
         // teleport starts past a one-way wall) -- distance map has no entry for it.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

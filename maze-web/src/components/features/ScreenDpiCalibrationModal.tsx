@@ -66,10 +66,10 @@ export function ScreenDpiCalibrationModal({ onClose }: Props) {
       </Stack>
 
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.btn} onClick={onClose}>
+        <Button variant="secondary" dialogAction layoutStyle={styles.btn} onClick={onClose}>
           {m["image_export.calibration.cancel"]()}
         </Button>
-        <Button variant="primary" layoutStyle={styles.btn} onClick={handleApply}>
+        <Button variant="primary" dialogAction layoutStyle={styles.btn} onClick={handleApply}>
           {m["image_export.calibration.apply"]()}
         </Button>
       </div>

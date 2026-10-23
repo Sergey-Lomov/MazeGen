@@ -35,7 +35,7 @@ pub fn resolve_vertical_target<T: Tessellation>(
     constraint: &DirectionConstraint,
     direction_balance: f64,
 ) -> Option<(NodeId, NodeId)> {
-    let point = maze.field.point_of(src)?;
+    let point = maze.field.cell_of(src)?;
     let src_level = maze.field.level_of(src)?;
     let levels: Vec<_> = maze.field.levels_ordered().collect();
     let idx = levels.iter().position(|&l| l == src_level)?;
@@ -83,23 +83,30 @@ mod tests {
     use crate::random::MazeRng;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn three_level_maze(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let field_c = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let field_c =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::new([field_a, field_b, field_c]);
+            MultiLevelField::new(Arc::default(), [field_a, field_b, field_c]);
         let g = Graph::new();
         Maze::new(mf, g)
     }
 
     fn two_level_maze(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a, field_b]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(side, side), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a, field_b]);
         let g = Graph::new();
         Maze::new(mf, g)
     }
@@ -215,9 +222,12 @@ mod tests {
     #[test]
     fn resolve_vertical_target_returns_none_on_a_single_level_field() {
         let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::<SquareTessellation>::single_level(square_rect(3, 3), &mut ids)
-                .unwrap();
+        let field = MultiLevelField::<SquareTessellation>::single_level(
+            Arc::default(),
+            square_rect(3, 3),
+            &mut ids,
+        )
+        .unwrap();
         let g = Graph::new();
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let src = maze

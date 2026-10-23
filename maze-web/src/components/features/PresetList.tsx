@@ -25,6 +25,7 @@ import { SidePanel } from "../SidePanel";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { ToolIconButton } from "../ToolIconButton";
+import { Tooltip } from "../Tooltip";
 import { Button } from "../Button";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ToolGlyphKey } from "./toolGlyphs";
@@ -61,7 +62,7 @@ export interface PresetListBubble {
 
 export type PresetListControl =
   | { kind: "direction"; id: string }
-  | { kind: "elevator"; endpoint: PresetEndpoint }
+  | { kind: "elevator"; id: number; endpoint: PresetEndpoint }
   | { kind: "split"; endpoint: PresetEndpoint };
 
 export interface PresetListCell {
@@ -287,7 +288,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       title,
       id: `e${entry.id}`,
       bubbles: entry.floors.map(pointBubble),
-      control: { kind: "elevator", endpoint: entry.floors[0] },
+      control: { kind: "elevator", id: entry.id, endpoint: entry.floors[0] },
       descriptor: descriptor("elevator", String(entry.id), entry.floors[0], title),
     });
   }
@@ -368,7 +369,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   const cyclePresetConnectionDirection = useMazeStore((s) => s.cyclePresetConnectionDirection);
   const cyclePresetTeleportDirection = useMazeStore((s) => s.cyclePresetTeleportDirection);
   const cyclePresetVerticalPassageDirection = useMazeStore((s) => s.cyclePresetVerticalPassageDirection);
-  const startPresetElevatorPlacement = useMazeStore((s) => s.startPresetElevatorPlacement);
+  const editPresetElevator = useMazeStore((s) => s.editPresetElevator);
   const removePresetPointEntity = useMazeStore((s) => s.removePresetPointEntity);
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
   const setPresetHoveredEntity = useMazeStore((s) => s.setPresetHoveredEntity);
@@ -386,10 +387,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
       splitPoints: presetSplitPoints,
       presetConnections,
       activeSplitNode,
-      cfgAt: (level) => floorFields[floors[level]?.id]?.tessellationConfig ?? fallbackField.tessellationConfig,
+      cfgAt: (level) => floorFields[floors[level]?.id]?.fieldConfig ?? fallbackField.fieldConfig,
       inFieldCellsAt: (level) => {
         const field = floorFields[floors[level]?.id] ?? fallbackField;
-        return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig));
+        return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig));
       },
     };
   }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
@@ -494,7 +495,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
               key={cell.key}
               cell={cell}
               onCycleDirection={() => cycleDirection(cell)}
-              onEditElevator={() => cell.control?.kind === "elevator" && startPresetElevatorPlacement(cell.control.endpoint)}
+              onEditElevator={() => cell.control?.kind === "elevator" && editPresetElevator(cell.control.id, cell.control.endpoint)}
               onEditSplit={() => {
                 if (cell.control?.kind !== "split") return;
                 navigateToFloor(cell.control.endpoint.level ?? 0);
@@ -538,13 +539,12 @@ function PresetCell({
   type ActionKind = "direction" | "settings" | "delete";
 
   const actionButton = (kind: ActionKind, title: string, onAction: () => void, child: React.ReactNode, danger = false) => (
-    <button
+    <Tooltip content={title}><button
       type="button"
       data-testid={`preset-action-${kind}`}
       data-preset-key={cell.key}
       className="hoverable"
       style={{ ...styles.iconButton, ...(danger ? { color: ui.text.error } : {}) }}
-      title={title}
       aria-label={title}
       onPointerDown={(event) => {
         event.preventDefault();
@@ -558,7 +558,7 @@ function PresetCell({
       }}
     >
       {child}
-    </button>
+    </button></Tooltip>
   );
 
   return (

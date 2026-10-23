@@ -99,6 +99,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     /// 1x3 corridor, all three nodes in the pool but only the middle one (n1) has two neighbors
     /// (n0, n2) — isolates the "reject one neighbor, retry the next" branch from pool eviction
@@ -107,7 +108,7 @@ mod tests {
     -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

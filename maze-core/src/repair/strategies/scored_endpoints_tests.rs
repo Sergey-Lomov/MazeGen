@@ -8,6 +8,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn default_params() -> StrategyParams {
     build_params(
@@ -18,7 +19,9 @@ fn default_params() -> StrategyParams {
 
 fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(n_cols, n_rows), &mut ids).unwrap();
+    let field =
+        MultiLevelField::single_level(Arc::default(), square_rect(n_cols, n_rows), &mut ids)
+            .unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -195,7 +198,7 @@ fn apply_prefers_junction_path_when_junction_weight_dominates() {
     // (1,0) a 3-way junction. With junction_weight dominating and path/one-way zeroed,
     // the best-scoring pair must be the one whose route passes through (1,0).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 2), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -259,7 +262,7 @@ fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
     // 1 -> 4. With teleport_weight dominating and path/junction/one-way zeroed, the
     // best-scoring pair must be the one whose route crosses the teleport.
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -331,7 +334,7 @@ fn apply_prefers_cross_floor_path_when_cross_floor_weight_dominates() {
     // crosses the vertical passage. Exercises the full `apply` pipeline (not just
     // `score_path`/`cross_floor_flags` in isolation).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -404,7 +407,7 @@ fn apply_prefers_pair_whose_own_endpoint_sits_on_a_split_tile() {
     // for the route's own start/finish node being excluded from split_count (GitHub issue #261).
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
     let level = field.single_level_id();
     let extra = field.add_node_at(level, SquarePoint { x: 0, y: 0 }, &mut ids);
     let mut graph = Graph::new();
@@ -469,12 +472,17 @@ fn apply_prefers_elevator_path_with_more_stops_when_elevator_stop_weight_dominat
     // dominating and path/junction/one-way/cross_floor zeroed, the winning pair must cross
     // the 4-stop elevator (bonus 2), not the 2-stop one (bonus 0).
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), std::iter::empty());
     let floors: Vec<_> = (0..4)
         .map(|_| {
             mf.add_level(
-                crate::space::Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids)
-                    .unwrap(),
+                crate::space::Field::<SquareTessellation>::new(
+                    Arc::default(),
+                    square_rect(3, 1),
+                    &mut ids,
+                )
+                .unwrap(),
             )
         })
         .collect();
@@ -764,12 +772,17 @@ fn elevator_stop_counts_applies_max_0_stops_minus_2_per_elevator_hop() {
     // (bonus max(0, 2-2) = 0), edge 1 crosses one leg of the 4-stop elevator
     // (bonus max(0, 4-2) = 2), edge 2 is a non-elevator hop (bonus 0).
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), std::iter::empty());
     let floors: Vec<_> = (0..6)
         .map(|_| {
             mf.add_level(
-                crate::space::Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids)
-                    .unwrap(),
+                crate::space::Field::<SquareTessellation>::new(
+                    Arc::default(),
+                    square_rect(1, 1),
+                    &mut ids,
+                )
+                .unwrap(),
             )
         })
         .collect();
@@ -1053,7 +1066,7 @@ fn apply_picks_deepest_leaf_across_a_branching_tree_of_plain_dead_end_tails() {
     // are strictly shallower and must lose) -- this is exactly the "peel dominated dead-end tails"
     // optimization's target shape (GitHub issue #634 follow-up).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 4), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -1076,12 +1089,14 @@ fn apply_picks_deepest_leaf_across_a_branching_tree_of_plain_dead_end_tails() {
     let mut overrides = StdHashMap::new();
     overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
     overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
-    let params = build_params(
-        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
-            &ScoredEndpointsStrategy,
-        ),
-        Some(&overrides),
-    );
+    let params =
+        build_params(
+            <ScoredEndpointsStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingEndpointsIssue,
+            >>::params(&ScoredEndpointsStrategy),
+            Some(&overrides),
+        );
 
     let result = apply_and_commit(
         &ScoredEndpointsStrategy,
@@ -1121,7 +1136,7 @@ fn apply_does_not_prune_when_path_weight_is_zero() {
     // junction node), so the depth-1 tail tip winning here can only happen if it was never pruned
     // from the candidate list in the first place (GitHub issue #634 follow-up).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 4), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -1143,12 +1158,14 @@ fn apply_does_not_prune_when_path_weight_is_zero() {
     let mut overrides = StdHashMap::new();
     overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
     overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
-    let params = build_params(
-        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
-            &ScoredEndpointsStrategy,
-        ),
-        Some(&overrides),
-    );
+    let params =
+        build_params(
+            <ScoredEndpointsStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingEndpointsIssue,
+            >>::params(&ScoredEndpointsStrategy),
+            Some(&overrides),
+        );
 
     let result = apply_and_commit(
         &ScoredEndpointsStrategy,
@@ -1182,7 +1199,7 @@ fn apply_keeps_a_plain_fork_as_a_candidate_when_two_of_its_branches_are_a_loop()
     // therefore survive pruning as its own candidate (GitHub issue #634 follow-up: a fork must only
     // be dropped when at most one of its original branches leads back into the rest of the graph).
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 2), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -1202,12 +1219,14 @@ fn apply_keeps_a_plain_fork_as_a_candidate_when_two_of_its_branches_are_a_loop()
     let mut overrides = StdHashMap::new();
     overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
     overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
-    let params = build_params(
-        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
-            &ScoredEndpointsStrategy,
-        ),
-        Some(&overrides),
-    );
+    let params =
+        build_params(
+            <ScoredEndpointsStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingEndpointsIssue,
+            >>::params(&ScoredEndpointsStrategy),
+            Some(&overrides),
+        );
 
     let result = apply_and_commit(
         &ScoredEndpointsStrategy,

@@ -4,10 +4,11 @@ import { ColorSwatch } from "./ColorSwatch";
 import type { ColorField, ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import { Inline } from "./Layout";
 import { useColorVisibility } from "./ColorVisibilityContext";
+import { Tooltip } from "./Tooltip";
 
 /** Shared labeled color-picker row — label + `ColorSwatch`, mirrors `ToggleRow`'s label + `Switch`
  *  shape so a color param and a toggle param line up identically in the same settings list. */
-export function ColorRow({ field, disabled, ...rest }: ColorRowViewProps & {
+export function ColorRow({ field, disabled, disabledHint, ...rest }: ColorRowViewProps & {
   /** This row's project-color field (GitHub issues #503, #717) — required: its name is the picker's
    *  header, its key drops the field's own row from the "Project colors" list and selects its export
    *  warnings, and its visibility predicate decides whether the row is currently in play (a hidden
@@ -16,7 +17,9 @@ export function ColorRow({ field, disabled, ...rest }: ColorRowViewProps & {
 }) {
   const visibility = useColorVisibility();
   const hidden = visibility !== null && !field.isVisible(visibility);
-  return <ColorRowView {...rest} field={field} disabled={disabled || hidden} />;
+  // `disabledHint` explains the caller's own `disabled`; a row disabled only because its field is
+  // hidden must not show that unrelated reason.
+  return <ColorRowView {...rest} field={field} disabled={disabled || hidden} disabledHint={disabled ? disabledHint : undefined} />;
 }
 
 /** A color row for a value that is not a project-color field (e.g. the background-image auto-fill
@@ -27,7 +30,8 @@ export function UnregisteredColorRow(props: ColorRowViewProps) {
 
 interface ColorRowViewProps {
   label: string; color: number; onChange: (color: number) => void; disabled?: boolean;
-  /** Tooltip explaining why the row is disabled — shown over the whole row while `disabled`. */
+  /** Tooltip explaining why the row is disabled — shown over the whole row while `disabled`
+   *  (accessible `Tooltip`, GitHub issue #768). */
   disabledHint?: string;
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
    *  label stays `flex: 1`, so this never shrinks it. */
@@ -51,11 +55,13 @@ interface ColorRowViewProps {
 
 function ColorRowView({ label, color, onChange, disabled, disabledHint, resetButton, onOpen, onCancel, priorityColors, defaultColor, field }: ColorRowViewProps) {
   return (
-    <Inline gap="groupGap" title={disabled ? disabledHint : undefined}>
-      <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      <ColorSwatch color={color} onChange={onChange} disabled={disabled} onOpen={onOpen} onCancel={onCancel} priorityColors={priorityColors} defaultColor={defaultColor} field={field} fallbackName={label} />
-      {resetButton}
-    </Inline>
+    <Tooltip content={disabled ? disabledHint : undefined} block>
+      <Inline gap="groupGap">
+        <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+        <ColorSwatch color={color} onChange={onChange} disabled={disabled} onOpen={onOpen} onCancel={onCancel} priorityColors={priorityColors} defaultColor={defaultColor} field={field} fallbackName={label} />
+        {resetButton}
+      </Inline>
+    </Tooltip>
   );
 }
 

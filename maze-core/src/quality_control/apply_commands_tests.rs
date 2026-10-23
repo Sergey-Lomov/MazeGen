@@ -8,10 +8,11 @@ use crate::repair::MutationCommand;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
     let mut ids = crate::IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -20,7 +21,7 @@ fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     (Maze::new(field, g), nodes)
@@ -142,7 +143,7 @@ fn add_directed_teleport_to_a_node_removed_earlier_in_the_batch_is_declined() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .next()
         .as_ref()
         .unwrap();
@@ -185,7 +186,7 @@ fn add_bidirectional_teleport_to_a_node_removed_earlier_in_the_batch_is_declined
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .next()
         .as_ref()
         .unwrap();
@@ -229,7 +230,7 @@ fn other_add_kinds_targeting_a_node_removed_earlier_in_the_batch_are_declined() 
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .next()
         .as_ref()
         .unwrap();
@@ -1022,7 +1023,7 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
     );
     let point0 = maze
         .field
-        .point_of(nodes[0])
+        .cell_of(nodes[0])
         .expect("declined command must leave nodes[0]'s point untouched");
     assert_eq!(
         maze.field.nodes_at(maze.field.single_level_id(), point0),
@@ -1030,7 +1031,7 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
         "nodes[0]'s point must be untouched by the declined second command"
     );
     assert!(
-        maze.field.point_of(nodes[1]).is_none(),
+        maze.field.cell_of(nodes[1]).is_none(),
         "nodes[1] must have been replaced by the first command"
     );
 
@@ -1084,7 +1085,7 @@ fn remove_node_notes_the_removed_nodes_coordinates_into_the_debug_ledger() {
         }
     );
     assert!(
-        maze.field.point_of(extra).is_none(),
+        maze.field.cell_of(extra).is_none(),
         "the node must actually be gone from the field"
     );
 
@@ -1127,7 +1128,7 @@ fn replace_point_nodes_notes_every_old_nodes_coordinates_into_the_debug_ledger()
         }
     );
     assert!(
-        maze.field.point_of(slot0).is_none(),
+        maze.field.cell_of(slot0).is_none(),
         "the old slot0 id must be gone from the field"
     );
 
@@ -1148,4 +1149,101 @@ fn replace_point_nodes_notes_every_old_nodes_coordinates_into_the_debug_ledger()
         2,
         "exactly the old node plus the one new node, no extras"
     );
+}
+
+/// A removed node must leave the graph too — a lingering node would count as its own SCC.
+/// `meta.start` on the removed node moves to the point's surviving node, with a `StartSet` event
+/// so a tape replay sees the move.
+#[test]
+fn remove_node_drops_it_from_the_graph_and_retargets_start() {
+    let (mut maze, nodes) = maze_n(2);
+    let level = maze.field.single_level_id();
+    let point = maze.field.cell_of(nodes[0]).unwrap();
+    let extra = maze.field.add_node_at(level, point, &mut maze.ids);
+    maze.graph.add_node(extra);
+    maze.graph
+        .build_initial_bidirectional_edge(extra, nodes[1], EdgeKind::Basic);
+    maze.meta.start = Some(extra);
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::RemoveNode { node: extra }],
+        Some(&mut scope),
+        None,
+    );
+    drop(scope);
+    let tape = log.finish();
+
+    assert!(maze.graph.nodes().all(|n| n.id != extra));
+    assert_eq!(maze.graph.edges().count(), 0);
+    assert_eq!(maze.meta.start, Some(nodes[0]));
+    assert_eq!(maze.analysis.scc(&maze.graph).components.len(), 2);
+    assert!(
+        tape.iter()
+            .any(|e| matches!(e, QcEvent::StartSet(n) if *n == nodes[0]))
+    );
+}
+
+/// Replacing every node at a point moves an endpoint sitting on any of them to the point's new
+/// slot-0, and none of the old nodes linger in the graph.
+#[test]
+fn replace_point_nodes_drops_old_nodes_and_retargets_finish() {
+    let (mut maze, nodes) = maze_n(2);
+    maze.meta.finish = Some(nodes[0]);
+
+    let outcome = apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::ReplacePointNodes {
+            at: nodes[0],
+            nodes: vec![vec![SplitNodeEdge {
+                target: nodes[1],
+                direction: SplitNodeEdgeDirection::Passage,
+                kind: EdgeKind::Basic,
+            }]],
+        }],
+        None,
+        None,
+    );
+    assert_eq!(outcome.applied, 1);
+
+    let level = maze.field.single_level_id();
+    let point = maze.field.cell_of(nodes[1]).unwrap();
+    let new_slot0 = maze
+        .field
+        .all_node_ids()
+        .find(|&n| n != nodes[1] && maze.field.level_of(n) == Some(level))
+        .unwrap();
+    assert_ne!(maze.field.cell_of(new_slot0), Some(point));
+    assert!(maze.graph.nodes().all(|n| n.id != nodes[0]));
+    assert_eq!(maze.meta.finish, Some(new_slot0));
+}
+
+/// Two endpoints on one split point must not collapse into one node while the point still has
+/// two: the moved start skips the survivor the finish already holds.
+#[test]
+fn remove_node_keeps_start_and_finish_on_distinct_survivors() {
+    let (mut maze, nodes) = maze_n(1);
+    let level = maze.field.single_level_id();
+    let point = maze.field.cell_of(nodes[0]).unwrap();
+    let a = maze.field.add_node_at(level, point, &mut maze.ids);
+    let b = maze.field.add_node_at(level, point, &mut maze.ids);
+    maze.graph.add_node(a);
+    maze.graph.add_node(b);
+    maze.meta.start = Some(a);
+    maze.meta.finish = Some(nodes[0]);
+
+    apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::RemoveNode { node: a }],
+        None,
+        None,
+    );
+
+    assert_eq!(maze.meta.finish, Some(nodes[0]));
+    assert_eq!(maze.meta.start, Some(b));
 }

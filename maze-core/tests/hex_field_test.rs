@@ -1,14 +1,15 @@
 use maze_core::IdGenerator;
 use maze_core::space::{Field, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
+use std::sync::Arc;
 
 fn make_parallelogram(cols: usize, rows: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(hex_parallelogram(cols, rows), &mut ids).unwrap()
+    Field::new(Arc::default(), hex_parallelogram(cols, rows), &mut ids).unwrap()
 }
 
 fn make_hexagon(radius: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(hex_hexagon(radius), &mut ids).unwrap()
+    Field::new(Arc::default(), hex_hexagon(radius), &mut ids).unwrap()
 }
 
 // --- HexParallelogram ---
@@ -63,7 +64,7 @@ fn parallelogram_point_of_round_trip() {
     let field = make_parallelogram(3, 3);
     let point = HexPoint { q: 2, r: 1 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }
 
 #[test]
@@ -149,5 +150,5 @@ fn hexagon_point_of_round_trip() {
     let field = make_hexagon(2);
     let point = HexPoint { q: 1, r: -1 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }

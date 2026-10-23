@@ -4,17 +4,32 @@
 
 Pixi.js-based rendering system. `MazeScene` owns a Pixi `Application` and orchestrates all renderers. Created by `App` once on mount, destroyed on unmount.
 
+**Canvas density.** `App` initializes the `Application` (WebGL by default) with `antialias: true`,
+`resolution: window.devicePixelRatio` and `autoDensity: true`: the canvas backing store is sized in
+physical pixels (2x on Retina) while its CSS size follows the container, so the maze stays sharp
+instead of being upscaled by the browser. The resolution is read once at init — moving the window to
+a display with a different pixel ratio keeps the old density until reload. Eyedropper sampling
+(`MazeScene.sampleColorAt`/`sampleRegionAt`) already converts through `renderer.resolution`; PNG
+export renders into its own explicitly sized `RenderTexture`, independent of the screen density.
+
 ## Cairo geometry
 
 Cairo uses the same integer point coordinates as `maze-core`, including Euclidean residue classes
-for negative coordinates. `pixi/cairoGeometry.ts` is the single browser-side source for its four
-tile orientations, five neighbor offsets, pentagon vertices, and shared-edge indices. Projection,
-grid bounds, selection, primitive inclusion, and edge hit-testing all consume that geometry through
-`tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
+for negative coordinates. Its geometry, like every tessellation's, comes from core's geometry snapshot
+(`Specs/space.md`) through `cartesianCache.ts`; no per-tessellation geometry lives in the web.
+Projection, grid bounds, selection, primitive inclusion, and edge hit-testing all consume it
+through `tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
 coordinate positions are never rendered or selected. The standard rectangular field follows the
 core `cairo_rect(cols, rows)` layout: each fundamental 4-by-4 block contributes two points, then
 the whole block rectangle is translated around the editor origin. Print sizing uses the same
 polygon geometry and a bounded outer block layer to evaluate exact field bounds.
+
+
+### Region queries and origin cell
+
+- `originCell` (registry, `pixi/geometry/tessellationUi.ts`) is the lattice cell used as the pattern anchor and origin marker. Cairo has unoccupied lattice coordinates, so it is `[2, 1]`; others `[0, 0]`. Read it through `originCellOf(cfg)`.
+- `cellsInDisplayRect(rect, mode, cfg)` returns the cells touching a display-space rect. It splits the rect into chunks of at most `RECT_CHUNK_CELLS` (150) cells per side, queries core per chunk (each stays under `MAX_REGION_CANDIDATES`), dedupes and sorts by x then y.
+- `GridRenderer` draws only cells returned by `cellsInDisplayRect` for the viewport plus `VIEWPORT_CELL_PAD` cells; it never iterates a lattice box, so unoccupied lattice coordinates are never requested.
 
 ## Shared pointer interaction primitives
 
@@ -81,7 +96,7 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 **Visibility:** all layers hidden when `openCard !== "generation" || !showMaze`.
 
 **Store subscription fires `renderAll` when:**
-- `nodes`, `edges`, `start`, `finish`, `tessellationConfig`, `activeTessellationConfig` change
+- `nodes`, `edges`, `start`, `finish`, `fieldConfig`, `activeFieldConfig` change
 - `debugMode`, `debugArena`, `debugStep` change
 
 **Debug view projection (`debugView`)** — event-tree based (GitHub issue #124/#125), replaces the old per-step full-graph-snapshot model:
@@ -102,13 +117,13 @@ visible. This also prevents extreme zoom-out from turning every pointermove into
 rebuild (GitHub issue #650).
 
 ### CellFillRenderer
-Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Uses `getCellVertices` for polygon geometry.
+Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Draws each cell's display-space path (`getCellPath`, `tracePath`); an inset highlight works on the flattened `getCellVertices` polygon. `insetPolygon` ignores consecutive coincident vertices so every corner gets inset.
 
 ### WallRenderer
-Draws wall segments between cell pairs. Each `WallEdge` specifies two cell coordinates, passage kind (`both/forward/backward/none`), and style (`solid/faint/invalid`). One-way passages get a directional triangle marker at the midpoint. Split points (more than one `NodeDto` per point) are excluded entirely — see `SplitJunctionRenderer` below.
+Draws wall segments between cell pairs. Each `WallEdge` specifies two cell coordinates, passage kind (`both/forward/backward/none`), and style (`solid/faint/invalid`). One-way passages get a directional triangle marker at the face's core contact point. Strokes follow the shared edge's path (`SharedEdge.path`), so arcs stay arcs. Split points (more than one `NodeDto` per point) are excluded entirely — see `SplitJunctionRenderer` below.
 
 ### SplitJunctionRenderer (GitHub issue #223/#231/#234/#294)
-Draws a split point's independent passages — wired into `PostEditRenderer` (its own instance), `GenerationRenderer` (its own instance, geometry cached alongside `wallEdges`/`teleportEdges`, keyed additionally on `start`/`finish` since `specialNodeIds` depends on them), `AnalyticsRenderer` (via `MazeOverlayRenderer`, which owns a `SplitJunctionRenderer` layer alongside its walls/floor/teleports/markers), and `PresetConnectionsRenderer` (GitHub issue #231 — presets run before generation, so its instantiation has no `NodeId`/`specialNodeIds` concept, identity is `presetEndpointKey` instead) — see `Specs/post-edit.md`'s Rendering section and `Specs/preset-connections.md`'s "Split nodes" section for the full geometry/color rules. Each `SplitPassage` (one per connected node) draws its `wallSegments` (its own share of the wall on every face it connects across) plus `connectors` linking those shares — a single straight line between the two shares for a node with exactly 2 plain two-way connections, or one line per share from a small circle point otherwise. A one-way's arrowhead is drawn on its connector line (never on the along-face segment); an `isUndefined` share/connector draws desaturated (`disabledOfNumber`) instead of the node's normal color. `render()` also takes `wallFaces` — faces where every one of a point's nodes explicitly has `wall`, drawn once as a plain solid wall (`canvas.wall.default`) instead of per-node segments. All per-node drawing in the node's own color. Built by `buildSplitPassagesCore`/`buildSplitPassages`/`buildPresetSplitPassages` (`mazeSelectors.ts`/`presetSelectors.ts`), sharing the geometric algorithm with the dialog's tile diagram via `pixi/splitFaceLayout.ts`. Every post-generation caller builds `specialNodeIds` the same way: `start`/`finish` plus every teleport edge's `from`/`to` (presets have no such concept).
+Draws a split point's independent passages — wired into `PostEditRenderer` (its own instance), `GenerationRenderer` (its own instance, geometry cached alongside `wallEdges`/`teleportEdges`, keyed additionally on `start`/`finish` since `specialNodeIds` depends on them), `AnalyticsRenderer` (via `MazeOverlayRenderer`, which owns a `SplitJunctionRenderer` layer alongside its walls/floor/teleports/markers), and `PresetConnectionsRenderer` (GitHub issue #231 — presets run before generation, so its instantiation has no `NodeId`/`specialNodeIds` concept, identity is `presetEndpointKey` instead) — see `Specs/post-edit.md`'s Rendering section and `Specs/preset-connections.md`'s "Split nodes" section for the full geometry/color rules. Each `SplitPassage` (one per connected node) draws its `wallSegments` (its own share of the wall on every face it connects across) plus `connectors` linking those shares — a single straight line between the two shares for a node with exactly 2 plain two-way connections, or one line per share from a small circle point otherwise. A one-way's arrowhead is drawn on its connector line (never on the along-face segment); an `isUndefined` share/connector draws desaturated (`disabledOfNumber`) instead of the node's normal color. `render()` also takes `wallFaces` — faces where every one of a point's nodes explicitly has `wall`, drawn once as a plain solid wall (`canvas.wall.default`) instead of per-node segments. A `wallSegment` and a `wallFace` may carry a `polyline` (the flattened arc of a curved face, GitHub issue #800); it is drawn as consecutive straight pieces chained at their shared vertices, and an absent one means the straight chord. All per-node drawing in the node's own color. Built by `buildSplitPassagesCore`/`buildSplitPassages`/`buildPresetSplitPassages` (`mazeSelectors.ts`/`presetSelectors.ts`), sharing the geometric algorithm with the dialog's tile diagram via `pixi/splitFaceLayout.ts`. Every post-generation caller builds `specialNodeIds` the same way: `start`/`finish` plus every teleport edge's `from`/`to` (presets have no such concept).
 
 **Wall-segment cap (GitHub issue #304/#317).** A `wallSegment`'s two ends draw `cap: "butt"` only where a real neighbor sits — an internal division point where this face is shared with another node's own sub-segment, or (for a chained multi-face path, see below) a tile vertex a `join` applies at instead. An end that lands on the face's own real endpoint (`SplitFaceSegment.atFaceStart`/`atFaceEnd`, `pixi/splitFaceLayout.ts` — set when this share's `v0`/`v1` is the first/last in that face's division order) has no such neighbor and instead follows the caller's own cap (`wallFaceStyleOverride?.cap`, defaulting to `"round"` when no override is given, same default `wallFaces` itself uses). Since Pixi's `stroke()` applies one `cap` to both of a path's ends, a path with exactly one free end draws `"butt"` first and gets that one end's own round/square cap patched in afterward as a standalone filled shape (`computeSquareCapPatch`, `pixi/renderers/wallUtils.ts` — pure geometry shared with `VectorByCorridorsRenderer`'s own free-end restore, so neither feature-renderer owns the other's utility); a path with both ends free (e.g. a lone node spanning the whole face) draws once with the real cap directly. Connectors have no such concept — their outer end is always either a hub point (several connectors meet there) or a shared face-division point — so they stay `cap: "butt"` unconditionally.
 
@@ -148,7 +163,7 @@ left/right = base ± perp * side/2
 
 Every canvas text label is drawn as a **multi-channel signed distance field** `BitmapText`, not pixi's plain `Text`. Plain `Text` rasterizes each instance at a fixed pixel size and blurs once the viewport zooms past it; an MSDF `BitmapText` stays crisp at any zoom because the GPU reconstructs the glyph edges from the distance field.
 
-**Baking.** pixi.js v8 has no runtime MSDF generator, so the atlases are baked offline by `tools/msdf/generate.mjs` (`npm run gen:msdf` from `maze-web/`) from `tools/msdf/Roboto-Regular.ttf` + `tools/msdf/Roboto-Bold.ttf` (Apache-2.0). Two weights — MSDF glyph shapes can't be synthesized bold at runtime, so the `fontWeight` label setting needs a real atlas per weight. Output is committed under `public/fonts/roboto-{regular,bold}-msdf.{fnt,png}` and **must** be `.fnt` (AngelCode XML): pixi's bitmap-font loader recognizes only `.fnt`/`.xml` by file extension; a `.json` atlas loads as a plain object and `BitmapText` silently falls back to a blurry runtime canvas font. Baked at `fontSize` 54 / `distanceRange` 8 into a 512×512 page. Charset: `A-Z`, `0-9`, `:`, `(`, `)`, `,`, space — extend `CHARSET` in the script and re-commit both weights when a new label needs a new glyph.
+**Baking.** pixi.js v8 has no runtime MSDF generator, so the atlases are baked offline by `tools/msdf/generate.mjs` (`npm run gen:msdf` from `maze-web/`) from `tools/msdf/Roboto-Regular.ttf` + `tools/msdf/Roboto-Bold.ttf` (Apache-2.0). Two weights — MSDF glyph shapes can't be synthesized bold at runtime, so the `fontWeight` label setting needs a real atlas per weight. Output is committed under `public/fonts/roboto-{regular,bold}-msdf.{fnt,png}` and **must** be `.fnt` (AngelCode XML): pixi's bitmap-font loader recognizes only `.fnt`/`.xml` by file extension; a `.json` atlas loads as a plain object and `BitmapText` silently falls back to a blurry runtime canvas font. Baked at `fontSize` 54 / `distanceRange` 8 with a 1024×1024 maximum texture size and smart-size output. Charset: uppercase/lowercase Latin and Cyrillic letters, `0-9`, `:`, `(`, `)`, `,`, `#`, `№`, `+`, `-`, `=`, space, and the text punctuation `. ; ! ? ' " / & _ * % @ [ ] « » – — …` needed by free-form floor titles (GitHub issue #747) — extend `CHARSET` in the script and re-commit both weights when a new label needs a new glyph.
 
 **Runtime** (`pixi/renderers/msdfFont.ts`):
 - `loadMsdfFont()` — loads both `.fnt` atlases via `Assets.load`, idempotent, awaited once at app startup in `App.tsx` before `setReady` (so there's no flash of missing labels). The init chain has a `.catch` that logs a failed WebGL/font init rather than hanging silently on the loading screen.

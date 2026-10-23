@@ -11,7 +11,7 @@ use crate::repair::strategies::region_merge_core::{
     self, MODE_OPTIONS, MODE_RANDOM, PARAM_PREFER_PARTIALLY_CONNECTED, PARAM_TARGET_MODE,
 };
 use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
-use crate::space::Tessellation;
+use crate::space::{ScaledPoint, Tessellation, cell_position, floor_aware_xy_distance};
 use rand::RngCore;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -412,10 +412,11 @@ fn farthest_pair<T: Tessellation>(
     references: &[(NodeId, NodeId)],
     maze: &Maze<T>,
 ) -> Option<(NodeId, NodeId)> {
-    let ref_points: Vec<(f64, f64)> = references
+    let tessellation = maze.field.tessellation();
+    let ref_points: Vec<ScaledPoint> = references
         .iter()
-        .filter_map(|r| maze.field.point_of(r.0))
-        .map(T::cartesian)
+        .filter_map(|r| maze.field.cell_of(r.0))
+        .map(|p| cell_position(tessellation, p))
         .collect();
     if ref_points.is_empty() {
         return None;
@@ -425,11 +426,11 @@ fn farthest_pair<T: Tessellation>(
         .copied()
         .filter(|p| !references.contains(p))
         .filter_map(|(a, b)| {
-            let point = maze.field.point_of(a)?;
-            let (px, py) = T::cartesian(point);
+            let point = maze.field.cell_of(a)?;
+            let position = cell_position(tessellation, point);
             let min_dist = ref_points
                 .iter()
-                .map(|&(rx, ry)| ((px - rx).powi(2) + (py - ry).powi(2)).sqrt())
+                .map(|&r| floor_aware_xy_distance(0, position, 0, r, false))
                 .fold(f64::INFINITY, f64::min);
             Some(((a, b), min_dist))
         })
@@ -439,7 +440,7 @@ fn farthest_pair<T: Tessellation>(
 
 /// Finds the pair of distinct bridging cell pairs (by region-side node) with the maximum
 /// geometric distance between each other. `None` if fewer than two pairs are given. Caches each
-/// pair's region-side `cartesian` coordinate once (`O(n)` lookups) rather than recomputing it on
+/// pair's region-side `cell_position` once (`O(n)` lookups) rather than recomputing it on
 /// every inner-loop iteration (`O(n^2)` lookups for `O(n^2)` distance comparisons).
 fn farthest_pair_combination<T: Tessellation>(
     pairs: &[(NodeId, NodeId)],
@@ -448,17 +449,22 @@ fn farthest_pair_combination<T: Tessellation>(
     if pairs.len() < 2 {
         return None;
     }
-    let points: Vec<Option<(f64, f64)>> = pairs
+    let tessellation = maze.field.tessellation();
+    let points: Vec<Option<ScaledPoint>> = pairs
         .iter()
-        .map(|&(a, _)| maze.field.point_of(a).map(T::cartesian))
+        .map(|&(a, _)| {
+            maze.field
+                .cell_of(a)
+                .map(|p| cell_position(tessellation, p))
+        })
         .collect();
     #[allow(clippy::type_complexity)]
     let mut best: Option<((NodeId, NodeId), (NodeId, NodeId), f64)> = None;
     for i in 0..pairs.len() {
-        let Some((x1, y1)) = points[i] else { continue };
+        let Some(first) = points[i] else { continue };
         for j in (i + 1)..pairs.len() {
-            let Some((x2, y2)) = points[j] else { continue };
-            let d = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+            let Some(second) = points[j] else { continue };
+            let d = floor_aware_xy_distance(0, first, 0, second, false);
             if best.as_ref().map(|(_, _, bd)| d > *bd).unwrap_or(true) {
                 best = Some((pairs[i], pairs[j], d));
             }

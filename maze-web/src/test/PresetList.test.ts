@@ -20,6 +20,7 @@ vi.mock("../pixi/fieldEditUtils", async () => {
 import { buildPresetListCells, filterPresetListCells, PRESET_LIST_TYPES, PRESET_LIST_TYPES_OFF_BY_DEFAULT, type PresetListInput, type PresetListType } from "../components/features/PresetList";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { PresetSplitLabelContext } from "../pixi/presetSplitLabels";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const emptyInput = (): PresetListInput => ({
   presetConnections: new Map(),
@@ -69,7 +70,7 @@ describe("buildPresetListCells", () => {
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.control).toEqual({ kind: "direction", id: "user" });
     expect(cells.find((cell) => cell.key === "teleport:4")?.control).toEqual({ kind: "direction", id: "4" });
     expect(cells.find((cell) => cell.key === "vertical_passage:5")?.control).toEqual({ kind: "direction", id: "5" });
-    expect(cells.find((cell) => cell.key === "elevator:6")?.control).toEqual({ kind: "elevator", endpoint: from });
+    expect(cells.find((cell) => cell.key === "elevator:6")?.control).toEqual({ kind: "elevator", id: 6, endpoint: from });
     expect(cells.find((cell) => cell.key === "teleport:4")?.arrow).toBe("->");
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.id).toBeUndefined();
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.linkHighlightStyle).toBe("one_way");
@@ -127,7 +128,7 @@ describe("buildPresetListCells", () => {
       splitPoints: { "2,2": [7] },
       presetConnections: new Map(),
       activeSplitNode: {},
-      cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+      cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
       inFieldCellsAt: () => new Set(),
     };
     const input = emptyInput();

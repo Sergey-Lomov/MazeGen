@@ -1,10 +1,10 @@
-import type { ParamLink } from "../parameterLinks";
+import type { ParamLink, ParamModifier } from "../parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
 let nextLinkId = 0;
-function link<P extends string>(source: P, target: P, enabled = true): ParamLink<P> {
+function link<P extends string>(source: P, target: P, enabled = true, modifiers?: ParamModifier[]): ParamLink<P> {
   nextLinkId += 1;
-  return { id: `default-${nextLinkId}`, source, target, enabled };
+  return { id: `default-${nextLinkId}`, source, target, enabled, ...(modifiers ? { modifiers } : {}) };
 }
 
 /** Default "Shared style" link graph for "Vector by walls" (GitHub issue #322, generalized by
@@ -24,9 +24,13 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("cornerStyle", "elevatorBadges.cornerStyle", false),
 
   link("markerSize", "startMarker.size"),
+  link("markerSizeAdaptation", "startMarker.sizeAdaptation"),
   link("markerSize", "finishMarker.size"),
+  link("markerSizeAdaptation", "finishMarker.sizeAdaptation"),
   link("markerSize", "teleportMarker.size"),
+  link("markerSizeAdaptation", "teleportMarker.sizeAdaptation"),
   link("markerSize", "verticalSize", false),
+  link("markerSizeAdaptation", "verticalSizeAdaptation", false),
 
   link("markerBorderWidth", "startMarker.borderWidth"),
   link("markerBorderWidth", "finishMarker.borderWidth"),
@@ -64,6 +68,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("markerBorderColor", "elevatorMarker.borderColor", false),
   link("cornerStyle", "teleportFloorBadge.cornerStyle", false),
   link("markerSize", "teleportFloorBadge.size", false),
+  link("markerSizeAdaptation", "teleportFloorBadge.sizeAdaptation", false),
   link("markerSize", "elevatorBadges.size", false),
   link("markerBorderWidth", "teleportFloorBadge.borderWidth", false),
   link("markerBorderWidth", "elevatorBadges.borderWidth", false),
@@ -83,6 +88,9 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("markerTextFontWeight", "finishMarker.textFontWeight", false),
   link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
   link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
+  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "elevatorBadges.labelType"),
+  link("floorLabelType", "floorLabel.labelType"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — the panel-level group
   // above chains into this one (cornerStyle -> verticalCornerStyle, etc.), which in turn drives the
@@ -96,8 +104,11 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("verticalShape", "oneWayPassageMarker.shape", false),
   link("verticalShape", "elevatorMarker.shape", false),
   link("verticalSize", "twoWayPassageMarker.size", false),
+  link("verticalSizeAdaptation", "twoWayPassageMarker.sizeAdaptation", false),
   link("verticalSize", "oneWayPassageMarker.size", false),
+  link("verticalSizeAdaptation", "oneWayPassageMarker.sizeAdaptation", false),
   link("verticalSize", "elevatorMarker.size", false),
+  link("verticalSizeAdaptation", "elevatorMarker.sizeAdaptation", false),
   link("verticalBorderWidth", "twoWayPassageMarker.borderWidth", false),
   link("verticalBorderWidth", "oneWayPassageMarker.borderWidth", false),
   link("verticalBorderWidth", "elevatorMarker.borderWidth", false),
@@ -126,8 +137,11 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("verticalDecorativeLineWidth", "decorativeStairsOneWay.lineWidth", false),
   link("verticalDecorativeLineWidth", "decorativeElevator.lineWidth", false),
   link("verticalDecorativeSize", "decorativeStairsTwoWay.size", false),
+  link("verticalDecorativeSizeAdaptation", "decorativeStairsTwoWay.sizeAdaptation", false),
   link("verticalDecorativeSize", "decorativeStairsOneWay.size", false),
+  link("verticalDecorativeSizeAdaptation", "decorativeStairsOneWay.sizeAdaptation", false),
   link("verticalDecorativeSize", "decorativeElevator.size", false),
+  link("verticalDecorativeSizeAdaptation", "decorativeElevator.sizeAdaptation", false),
   link("verticalDecorativeArrowSize", "decorativeStairsArrowSize", false),
   link("verticalDecorativeArrowSize", "decorativeStairsOneWayArrowSize", false),
 ];
@@ -136,6 +150,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
  *  `wallJoin`, plus `splitGapWidth` in the `gapWidth` group. Same disabled-by-default vertical-
  *  marker links as the walls mode. */
 export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParamPath>[] = [
+  link("thickness", "junctionRadius", true, [{ op: "div", value: 2 }]),
   link("cornerStyle", "join"),
   link("cornerStyle", "oneWayJoin"),
   link("cornerStyle", "startMarker.cornerStyle"),
@@ -145,9 +160,13 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("cornerStyle", "elevatorBadges.cornerStyle", false),
 
   link("markerSize", "startMarker.size"),
+  link("markerSizeAdaptation", "startMarker.sizeAdaptation"),
   link("markerSize", "finishMarker.size"),
+  link("markerSizeAdaptation", "finishMarker.sizeAdaptation"),
   link("markerSize", "teleportMarker.size"),
+  link("markerSizeAdaptation", "teleportMarker.sizeAdaptation"),
   link("markerSize", "verticalSize", false),
+  link("markerSizeAdaptation", "verticalSizeAdaptation", false),
 
   link("markerBorderWidth", "startMarker.borderWidth"),
   link("markerBorderWidth", "finishMarker.borderWidth"),
@@ -186,6 +205,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("markerBorderColor", "elevatorMarker.borderColor", false),
   link("cornerStyle", "teleportFloorBadge.cornerStyle", false),
   link("markerSize", "teleportFloorBadge.size", false),
+  link("markerSizeAdaptation", "teleportFloorBadge.sizeAdaptation", false),
   link("markerSize", "elevatorBadges.size", false),
   link("markerBorderWidth", "teleportFloorBadge.borderWidth", false),
   link("markerBorderWidth", "elevatorBadges.borderWidth", false),
@@ -205,6 +225,9 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("markerTextFontWeight", "finishMarker.textFontWeight", false),
   link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
   link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
+  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "elevatorBadges.labelType"),
+  link("floorLabelType", "floorLabel.labelType"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — see
   // `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment. "Vector by corridors" has no decorative
@@ -216,8 +239,11 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("verticalShape", "oneWayPassageMarker.shape", false),
   link("verticalShape", "elevatorMarker.shape", false),
   link("verticalSize", "twoWayPassageMarker.size", false),
+  link("verticalSizeAdaptation", "twoWayPassageMarker.sizeAdaptation", false),
   link("verticalSize", "oneWayPassageMarker.size", false),
+  link("verticalSizeAdaptation", "oneWayPassageMarker.sizeAdaptation", false),
   link("verticalSize", "elevatorMarker.size", false),
+  link("verticalSizeAdaptation", "elevatorMarker.sizeAdaptation", false),
   link("verticalBorderWidth", "twoWayPassageMarker.borderWidth", false),
   link("verticalBorderWidth", "oneWayPassageMarker.borderWidth", false),
   link("verticalBorderWidth", "elevatorMarker.borderWidth", false),

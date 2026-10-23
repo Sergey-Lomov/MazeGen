@@ -5,8 +5,18 @@ import { parseAndValidate, serializeProject } from "../store/projectExport";
 import { useMazeStore } from "../store/mazeStore";
 import { computeAnalyticsAsync, generateMaze } from "../wasm/mazeService";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
@@ -15,7 +25,8 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableRuleParams: vi.fn(() => []),
 }));
 
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -71,14 +82,11 @@ describe("Cairo application pipeline", () => {
     const selected = useMazeStore.getState();
     expect(selected.tessellationKind).toBe("cairo");
     expect(selected.floors).toHaveLength(2);
-    expect(selected.floorFields[selected.floors[0].id].tessellationConfig).toEqual({
-      type: "cairo_custom",
-      points: CAIRO_POINTS,
-    });
+    expect(selected.floorFields[selected.floors[0].id].fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: CAIRO_POINTS }));
 
     selected.generate();
     const generateConfig = vi.mocked(generateMaze).mock.calls[0][1];
-    expect(generateConfig.tessellation).toEqual({ tessellation_type: "cairo" });
+    expect(generateConfig.tessellation).toEqual({ kind: "cairo" as const, params: {} });
     expect(generateConfig.level_fields).toEqual([CAIRO_POINTS, CAIRO_POINTS]);
     expect(useMazeStore.getState().nodes.map(({ x, y, level }) => [x, y, level])).toContainEqual([-14, -15, 1]);
 
@@ -89,7 +97,7 @@ describe("Cairo application pipeline", () => {
     await useMazeStore.getState().confirmPostEdit();
 
     const analyticsConfig = vi.mocked(computeAnalyticsAsync).mock.calls[0][0];
-    expect(analyticsConfig.tessellation).toEqual({ tessellation_type: "cairo" });
+    expect(analyticsConfig.tessellation).toEqual({ kind: "cairo" as const, params: {} });
     expect(analyticsConfig.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({ x: -14, y: -15, level: 1 }),
     ]));
@@ -99,10 +107,7 @@ describe("Cairo application pipeline", () => {
     const saved = serializeProject(useMazeStore.getState());
     const restoredFile = parseAndValidate(JSON.parse(JSON.stringify(saved)));
     expect(restoredFile.tessellation.kind).toBe("cairo");
-    expect(restoredFile.floorFields[restoredFile.floors.floors[0].id].config).toEqual({
-      type: "cairo_custom",
-      points: CAIRO_POINTS,
-    });
+    expect(restoredFile.floorFields[restoredFile.floors.floors[0].id].shape).toEqual({ shape: "custom", points: CAIRO_POINTS });
     expect(restoredFile.postEdit?.commands).toHaveLength(1);
 
     useMazeStore.getState().loadProject(restoredFile);
@@ -112,17 +117,14 @@ describe("Cairo application pipeline", () => {
     const restored = useMazeStore.getState();
     expect(restored.tessellationKind).toBe("cairo");
     expect(restored.floors).toHaveLength(2);
-    expect(restored.floorFields[restored.floors[0].id].tessellationConfig).toEqual({
-      type: "cairo_custom",
-      points: CAIRO_POINTS,
-    });
+    expect(restored.floorFields[restored.floors[0].id].fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: CAIRO_POINTS }));
     expect(restored.postEditCommands).toHaveLength(1);
     expect(restored.postEditAnalytics).not.toBeNull();
     expect(restored.nodes).toHaveLength(4);
 
     // Image export's fit calculation consumes the restored Cairo geometry and negative nodes.
     const fit = computeDigitalExportFit(
-      restored.activeTessellationConfig,
+      restored.activeFieldConfig,
       restored.nodes,
       { left: 0, right: 0, top: 0, bottom: 0 },
       { ...restored.pngExportSettings.digital, canvasMode: "edge_to_edge" },

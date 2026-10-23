@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
@@ -10,6 +11,7 @@ import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
+import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
 import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
@@ -24,6 +26,7 @@ import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "./PaperLayoutFields";
+import { NumberInput } from "../NumberInput";
 
 const CANVAS_MODE_OPTIONS: { value: PngCanvasMode; label: string }[] = [
   { value: "edge_to_edge", label: m["image_export.format.png.digital.canvas_edge_to_edge"]() },
@@ -93,8 +96,12 @@ export function PngExportSettingsPanel() {
 
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  // Fit/placement describe only the active floor's image (GitHub issue #790).
+  const floorNodes = useMemo(() => selectFloorScopedMaze(nodes, [], floors, activeFloorId).nodes, [nodes, floors, activeFloorId]);
   const edges = useMazeStore((s) => s.edges);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const rawStart = useMazeStore((s) => s.start);
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
@@ -131,13 +138,13 @@ export function PngExportSettingsPanel() {
   const basis = activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell";
 
   const digitalFit = useMemo(
-    () => (nodes.length > 0 ? computeDigitalExportFit(cfg, nodes, margin, digital, basis) : null),
-    [cfg, nodes, margin, digital, basis],
+    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, margin, digital, basis) : null),
+    [cfg, floorNodes, margin, digital, basis],
   );
 
   const printFit = useMemo(
-    () => (nodes.length > 0 ? computePrintExportFit(cfg, nodes, margin, print, basis) : null),
-    [cfg, nodes, margin, print, basis],
+    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, margin, print, basis) : null),
+    [cfg, floorNodes, margin, print, basis],
   );
 
   function handleCanvasModeChange(mode: PngCanvasMode) {
@@ -154,10 +161,10 @@ export function PngExportSettingsPanel() {
   // recomputed on every change that could affect the fit (sheet size/orientation/DPI, margins, or
   // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
   useEffect(() => {
-    if (!print.scaleAutoFit || nodes.length === 0) return;
-    const autoScale = floor2(computeAutoFitPrintScale(cfg, nodes, margin, print, basis));
+    if (!print.scaleAutoFit || floorNodes.length === 0) return;
+    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, margin, print, basis));
     if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, nodes, margin, print, basis, setPrintScale]);
+  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, margin, print, basis, setPrintScale]);
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];
@@ -213,12 +220,12 @@ export function PngExportSettingsPanel() {
             {(digital.canvasMode === "margin_px" || digital.canvasMode === "margin_cells") && (
               <Inline gap="itemGap" justify="space-between">
                 <span style={styles.label}>{m["image_export.format.png.digital.margin"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-margin"
+                  min={0}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.marginValue}
-                  onChange={(e) => setDigitalMarginValue(Number(e.target.value))}
+                  value={String(digital.marginValue)}
+                  onChange={(value) => setDigitalMarginValue(Number(value))}
                 />
               </Inline>
             )}
@@ -226,20 +233,20 @@ export function PngExportSettingsPanel() {
             {digital.canvasMode === "fixed_size" && (
               <Inline gap="itemGap">
                 <span style={styles.label}>{m["image_export.format.png.digital.width"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-width"
+                  min={1}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.fixedWidth}
-                  onChange={(e) => setDigitalFixedSize(Number(e.target.value), digital.fixedHeight)}
+                  value={String(digital.fixedWidth)}
+                  onChange={(value) => setDigitalFixedSize(Number(value), digital.fixedHeight)}
                 />
                 <span style={styles.label}>{m["image_export.format.png.digital.height"]()}</span>
-                <input
-                  type="number"
+                <NumberInput
                   name="png-digital-height"
+                  min={1}
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
-                  value={digital.fixedHeight}
-                  onChange={(e) => setDigitalFixedSize(digital.fixedWidth, Number(e.target.value))}
+                  value={String(digital.fixedHeight)}
+                  onChange={(value) => setDigitalFixedSize(digital.fixedWidth, Number(value))}
                 />
               </Inline>
             )}
@@ -339,8 +346,7 @@ export function PngExportSettingsPanel() {
                     })}
                   </span>
                   <span style={typography.caption}>
-                    {(cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom"
-                      || cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom"
+                    {(TESSELLATION_UI[cfg.tessellation.kind].editor.pngCellSize === "diameter"
                       ? m["image_export.format.png.result.cell_size_mm_diameter"]
                       : m["image_export.format.png.result.cell_size_mm_side"]
                     )({ size: printCellSizeMm.toFixed(2) })}

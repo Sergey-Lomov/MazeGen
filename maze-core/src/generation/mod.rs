@@ -54,9 +54,10 @@ pub use recursive_backtracker::{
 pub use split_logic::StartReassignment;
 pub(crate) use split_logic::split_is_eligible;
 pub use split_pattern::{
-    OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern, SplitPatternFace,
-    validate_split_patterns,
+    OneWayDirection, PatternVariant, SplitFaceRequirement, SplitGenerationConfig, SplitPattern,
+    SplitPatternFace, pattern_variants, validate_split_patterns,
 };
+pub use split_pattern_logic::{ResolvedFace, split_adaptation_candidates};
 pub use types::{
     ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
     NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,
@@ -172,7 +173,7 @@ pub struct EventedGenerationResult<T: Tessellation> {
     /// `vertex_based.rs`); every other algorithm leaves this empty. Union with QC/repair's own
     /// mint/removal tracking (`maze-wasm/src/runner.rs::run_generate`) is what lets the debug tape
     /// resolve coordinates for a node no longer in the final `Field`.
-    pub all_node_points: Vec<(NodeId, T::Point)>,
+    pub all_node_points: Vec<(NodeId, T::CellId)>,
 }
 
 /// Qualifies debug-value names with their source's scope name when more than one source is
@@ -307,6 +308,7 @@ pub(crate) mod test_utils {
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     pub fn default_elements() -> ElementsConfig {
         ElementsConfig {
@@ -323,7 +325,8 @@ pub(crate) mod test_utils {
         h: usize,
     ) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);
@@ -339,7 +342,8 @@ pub(crate) mod test_utils {
         h: usize,
     ) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);

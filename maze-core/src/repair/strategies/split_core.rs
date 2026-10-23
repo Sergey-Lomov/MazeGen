@@ -1,5 +1,7 @@
 use crate::Maze;
-use crate::generation::{OneWayDirection, SplitFaceRequirement, SplitPattern};
+use crate::generation::{
+    OneWayDirection, PatternVariant, SplitFaceRequirement, SplitPattern, pattern_variants,
+};
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
@@ -9,7 +11,7 @@ use std::collections::HashSet;
 
 /// Shared split-tile face-planning logic used by `AddSplitStrategy` (GitHub issue #247) and
 /// `MissingLoopsSplitStrategy` (GitHub issue #254) — factored out once the latter needed the same
-/// rotation/mirror search and existing-connection bookkeeping with one extra constraint: a
+/// pattern-variant search and existing-connection bookkeeping with one extra constraint: a
 /// specific new node must end up connected to a specific pre-chosen neighbor (the loop-closing
 /// bridge), and that same node must carry at least one more connection so it's a through-node, not
 /// a dead end.
@@ -177,8 +179,10 @@ fn pick_free_neighbor<T: Tessellation>(
         })
 }
 
-/// Pattern-based candidate against `at`, trying every `rotation`/`mirror` combination in random
-/// order until one validates, or returns `None` if every combination fails.
+/// Pattern-based candidate against `at`, trying every variant of `pattern` on `at`'s cell
+/// (`pattern_variants`: the cell's allowed transform group, deduplicated; none when the pattern's
+/// shape is not the cell's) in random order until one validates, or returns `None` if every
+/// variant fails.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn plan_pattern_split<T: Tessellation>(
     maze: &Maze<T>,
@@ -190,33 +194,22 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
     allow_lose: bool,
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let point = maze.field.point_of(at)?;
-    let degree = T::faces().len();
-    if degree == 0 || pattern.node_count < 2 {
+    let point = maze.field.cell_of(at)?;
+    let shape = maze.field.tessellation().shape_of(point)?;
+    if pattern.node_count < 2 {
         return None;
     }
     if required.is_some_and(|r| excluded.contains(&r.neighbor)) {
         return None;
     }
 
-    let mut rotations: Vec<usize> = (0..T::rotation_symmetries().len()).collect();
-    shuffle(&mut rotations, rng);
-    let mut mirrors: Vec<Option<usize>> = std::iter::once(None)
-        .chain((0..T::mirror_symmetries().len()).map(Some))
-        .collect();
-    shuffle(&mut mirrors, rng);
-
-    for &rotation in &rotations {
-        for &mirror in &mirrors {
-            if let Some(nodes) = try_pattern_adaptation(
-                maze, at, point, pattern, rotation, mirror, allow_lose, allow_add, required,
-                excluded,
-            ) {
-                return Some(nodes);
-            }
-        }
-    }
-    None
+    let mut variants = pattern_variants(pattern, &shape);
+    shuffle(&mut variants, rng);
+    variants.iter().find_map(|variant| {
+        try_pattern_adaptation(
+            maze, at, point, pattern, variant, allow_lose, allow_add, required, excluded,
+        )
+    })
 }
 
 pub(crate) fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
@@ -226,45 +219,43 @@ pub(crate) fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
     }
 }
 
-/// One rotation/mirror candidate: resolves every one of the pattern's `node_count` new nodes' own
-/// faces to real neighbors (`T::step` off `point`) — including node 0, the new slot-0, on equal
+/// One pattern variant: resolves every one of the pattern's `node_count` new nodes' own
+/// faces to real neighbors (`T::neighbor` off `point`) — including node 0, the new slot-0, on equal
 /// footing with every other node (split creation has no removal-eligibility rule to apply here).
 ///
 /// When `required` is set, this candidate is only accepted if some node's resolved faces include
 /// an edge to `required.neighbor` in `required.direction` **and** that same node ends up with at
-/// least one other edge — a pattern rotation that doesn't happen to route the bridge through a
-/// multi-face node is rejected outright (a different rotation/mirror, or ultimately the whole
-/// pattern, is tried instead), rather than silently accepted with the required node left as a dead
+/// least one other edge — a variant that doesn't happen to route the bridge through a multi-face
+/// node is rejected outright (a different variant, or ultimately the whole pattern, is tried
+/// instead), rather than silently accepted with the required node left as a dead
 /// end.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn try_pattern_adaptation<T: Tessellation>(
     maze: &Maze<T>,
     at: NodeId,
-    point: T::Point,
+    point: T::CellId,
     pattern: &SplitPattern,
-    rotation: usize,
-    mirror: Option<usize>,
+    variant: &PatternVariant,
     allow_lose: bool,
     allow_add: bool,
     required: Option<&RequiredConnection>,
     excluded: ExcludedTargets,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
+    let tessellation = maze.field.tessellation();
     let mut per_node: Vec<Vec<SplitNodeEdge>> = Vec::with_capacity(pattern.faces.len());
     let mut claimed_directions: HashSet<NodeId> = HashSet::new();
 
-    for node_faces in pattern.faces.iter() {
+    for (node_faces, local_faces) in pattern.faces.iter().zip(&variant.local_faces) {
         let mut node_edges: Vec<SplitNodeEdge> = Vec::new();
-        for face in node_faces {
-            let resolved_index =
-                crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
+        for (face, &local_face) in node_faces.iter().zip(local_faces) {
             if face.sibling_target.is_some() {
                 continue; // inter-split edge, not an outside connection — out of scope here
             }
             match face.requirement {
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let tess_face = T::face_at(resolved_index)?;
-                    let neighbor_point = T::step(point, tess_face)?;
+                    let tess_face = tessellation.faces_of(point)[local_face];
+                    let (neighbor_point, _) = tessellation.neighbor(point, tess_face)?;
                     let level = maze.field.level_of(at).expect("at must be in field");
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
@@ -280,9 +271,9 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
                     // `neighbor` is a `SplitNodeEdge::target`, existing connection or brand-new —
                     // either way this exact `NodeId` must still resolve at apply time. If its
                     // point already got a `ReplacePointNodes` command earlier in the same batch
-                    // (`excluded`), this id won't exist by then — reject this rotation/mirror
-                    // candidate outright rather than plan a doomed edge (a different
-                    // rotation/mirror, or ultimately the whole pattern, is tried instead).
+                    // (`excluded`), this id won't exist by then — reject this variant outright
+                    // rather than plan a doomed edge (a different variant, or ultimately the
+                    // whole pattern, is tried instead).
                     if excluded.contains(&neighbor) {
                         return None;
                     }
@@ -353,11 +344,12 @@ mod tests {
     use crate::random::MazeRng;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -365,22 +357,24 @@ mod tests {
         Maze::new(field, g)
     }
 
-    /// SquareFace order [N, S, E, W] — node 1 gets an East face (index 2) and a North face
-    /// (index 0), matching `at`'s real East and North neighbors on a 3x3 grid centered at (1,1).
+    /// `regular:4` canonical order [E, N, W, S] — node 1 gets an East face (index 0) and a North
+    /// face (index 1), matching `at`'s real East and North neighbors on a 3x3 grid centered at
+    /// (1,1).
     fn two_face_pattern() -> crate::generation::SplitPattern {
         use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![],
                 vec![
                     SplitPatternFace {
-                        face_index: 2,
+                        face_index: 0,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },
                     SplitPatternFace {
-                        face_index: 0,
+                        face_index: 1,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },
@@ -395,11 +389,12 @@ mod tests {
     fn one_face_pattern() -> crate::generation::SplitPattern {
         use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![],
                 vec![SplitPatternFace {
-                    face_index: 2,
+                    face_index: 0,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 }],
@@ -408,10 +403,21 @@ mod tests {
         }
     }
 
+    /// The pattern's untransformed variant on a square cell.
+    fn identity_variant(pattern: &crate::generation::SplitPattern) -> PatternVariant {
+        let shape = SquareTessellation
+            .shape_of(SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let variant = pattern_variants(pattern, &shape).remove(0);
+        assert_eq!(variant.transform, 0);
+        variant
+    }
+
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -429,7 +435,7 @@ mod tests {
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
             .unwrap();
-        let point = maze.field.point_of(at).unwrap();
+        let point = maze.field.cell_of(at).unwrap();
         let east_neighbor = maze
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })
@@ -444,8 +450,7 @@ mod tests {
             at,
             point,
             &two_face_pattern(),
-            0,
-            None,
+            &identity_variant(&two_face_pattern()),
             true,
             true,
             Some(&required),
@@ -471,7 +476,7 @@ mod tests {
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
             .unwrap();
-        let point = maze.field.point_of(at).unwrap();
+        let point = maze.field.cell_of(at).unwrap();
         let east_neighbor = maze
             .field
             .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })
@@ -486,8 +491,7 @@ mod tests {
             at,
             point,
             &one_face_pattern(),
-            0,
-            None,
+            &identity_variant(&one_face_pattern()),
             true,
             true,
             Some(&required),
@@ -607,7 +611,7 @@ mod tests {
         // never gain a second edge.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

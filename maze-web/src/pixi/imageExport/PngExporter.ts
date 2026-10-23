@@ -1,6 +1,7 @@
 import { Container, RenderTexture } from "pixi.js";
 import type { Application, ICanvas } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
+import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
 import { createModeRenderer } from "./modeRendererFactory";
 import { computeDigitalExportFit } from "./exportFit";
 import { computePrintExportFit } from "./printFit";
@@ -41,9 +42,10 @@ export class PngExporter {
     try {
       const margin = modeRenderer.getRequiredExportMargin();
       const basis = resolveContentBoundsBasis(mode);
+      const floorNodes = selectFloorScopedMaze(state.nodes, [], state.floors, state.activeFloorId).nodes;
       const fit = settings.outputMode === "print"
-        ? toDigitalShapedFit(computePrintExportFit(state.activeTessellationConfig, state.nodes, margin, settings.print, basis))
-        : computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, settings.digital, basis);
+        ? toDigitalShapedFit(computePrintExportFit(state.activeFieldConfig, floorNodes, margin, settings.print, basis))
+        : computeDigitalExportFit(state.activeFieldConfig, floorNodes, margin, settings.digital, basis);
 
       if (fit.width <= 0 || fit.height <= 0) return null;
 

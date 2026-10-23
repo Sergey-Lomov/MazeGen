@@ -2,6 +2,7 @@ use super::super::*;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 const TEST_ID: &str = "teleport_group_proximity";
 
@@ -37,7 +38,7 @@ fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
 fn bootstrap_row(width: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -370,7 +371,7 @@ fn a_two_way_teleport_never_pairs_with_its_own_reverse_direction() {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);

@@ -6,6 +6,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     build_params(
@@ -33,7 +34,7 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -93,11 +94,11 @@ fn apply_collapses_the_tile_to_exactly_one_node() {
         "collapse must mint a brand-new node, not reuse an old id"
     );
     assert!(
-        maze.field.point_of(slot0).is_none(),
+        maze.field.cell_of(slot0).is_none(),
         "old slot0 must be gone"
     );
     assert!(
-        maze.field.point_of(extra).is_none(),
+        maze.field.cell_of(extra).is_none(),
         "old extra must be gone"
     );
 }
@@ -272,7 +273,7 @@ fn apply_merge_unions_edges_from_every_node() {
 fn apply_merge_unions_forward_and_backward_to_the_same_target_into_a_passage() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -322,7 +323,7 @@ fn apply_merge_unions_forward_and_backward_to_the_same_target_into_a_passage() {
 fn apply_never_creates_a_self_loop_from_the_sibling_edge() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -372,7 +373,7 @@ fn apply_never_creates_a_self_loop_from_the_sibling_edge() {
 fn apply_preserves_teleport_kind() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -440,11 +441,11 @@ fn apply_reports_failed_and_leaves_the_tile_untouched_when_a_node_is_preset_prot
         "preset-locked tile must report Failed, not silently Fixed"
     );
     assert!(
-        maze.field.point_of(slot0).is_some(),
+        maze.field.cell_of(slot0).is_some(),
         "preset-locked tile must survive untouched"
     );
     assert!(
-        maze.field.point_of(extra).is_some(),
+        maze.field.cell_of(extra).is_some(),
         "preset-locked tile must survive untouched"
     );
 }

@@ -4,15 +4,17 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { fittingRotation, resolveBlueprintFaceIndex, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
+import type { EditRefusalSource } from "../../notifications/editRefusalNotifications";
 
 /** 1-based node number for a split point's node, in row order (GitHub issue #468). Slot 0 is not a
  *  special node any more — every node of a split point, the point's original node included, gets the
@@ -113,7 +115,7 @@ export interface SplitNodesRow<E> {
 interface Props<E> {
   title: string;
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   currentLevel: number;
   rows: SplitNodesRow<E>[];
   /** Every node's faces at once, in row order — the tile diagram draws all of them
@@ -137,6 +139,7 @@ interface Props<E> {
    *  gated behind a `ConfirmModal` instead of silently degrading the neighbor's rendering. Optional
    *  — omitted by the pattern editor, which has no neighbor-shape concept to check. */
   wouldBreakNeighborShape?: (direction: 1 | -1) => boolean;
+  notificationSource: EditRefusalSource;
   /** Hovering a link bubble highlights that specific connection on the canvas (GitHub issue #237)
    *  — same mechanism as `EdgeHighlightRenderer`'s existing hover highlight, driven here by the
    *  panel instead of a canvas pointermove. `row` is the bubble's own card row (the link's "from"
@@ -191,7 +194,7 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape, notificationSource,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
   onTopChange,
 }: Props<E>) {
@@ -216,12 +219,11 @@ export function SplitNodesDialogView<E>({
   // faces (see `fittingRotation`) — a point at the field's edge has some faces with no neighbor
   // at all, so a blueprint requiring a passage there can never be applied as authored. `null`
   // means no rotation fits; the button stays disabled.
+  const shapeBinding = splitShapeBinding(cfg, point[0], point[1]);
+  const orientations = shapeBinding === null ? undefined : orientationsOf(shapeBinding);
   const fittedBlueprints = (blueprints ?? []).map((bp) => ({
     original: bp,
-    fitted: fittingRotation(bp, (faceIndex) => {
-      const rawFaceIndex = resolveBlueprintFaceIndex(bp, cfg, point, faceIndex);
-      return tileNodes[0]?.faces[rawFaceIndex]?.boundary ?? false;
-    }),
+    fitted: fittingRotation(bp, (faceIndex) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false, orientations),
   }));
   const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
 
@@ -271,7 +273,7 @@ export function SplitNodesDialogView<E>({
                     // triangle tile's shape (up vs down) depends on `(x+y) % 2` (see
                     // `getNeighborData`), so a fixed `[0,0]` anchor could show the blueprint
                     // preview in the opposite orientation from the point it'll actually apply to.
-                    point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original, cfg, point)}
+                    point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>
@@ -294,6 +296,7 @@ export function SplitNodesDialogView<E>({
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
+          showFaceIndices notificationSource={notificationSource}
         />
       </div>
 

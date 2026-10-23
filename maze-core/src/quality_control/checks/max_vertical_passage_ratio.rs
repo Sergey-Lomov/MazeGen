@@ -46,7 +46,7 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for MaxVertical
 
         let (group, to_remove) = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 if field_cells == 0 {
                     return;
                 }
@@ -113,6 +113,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_vertical_passage_ratio";
 
@@ -122,11 +123,14 @@ mod tests {
 
     fn maze_with_ten_cell_floors() -> (Maze<SquareTessellation>, LevelId, LevelId) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -208,11 +212,13 @@ mod tests {
     #[test]
     fn per_floor_groups_are_ordered_deterministically_by_level() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
                 mf.add_level(
-                    Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap(),
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids)
+                        .unwrap(),
                 )
             })
             .collect();

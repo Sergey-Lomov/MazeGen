@@ -35,18 +35,26 @@ without duplication. Currently defined:
   variants, three-opposite-pairs, opposite-pair-plus-two-skip-pairs, and a diagonal divider whose
   two nodes own opposite groups of three adjacent faces.
 
-`blueprintsForDegree(degree)` returns the list for a degree, or `[]` if none are defined.
+- **Curved quadrilateral** (`curved_quadrilateral:curved_quadrilateral`, GitHub issue #800) — 2
+  blueprints: the bridge (E/W crossing N/S; node order carries no geometry, so one bridge covers
+  both stackings) and one adjacent divider.
 
-## Rotation (`rotateBlueprint`, `fittingRotation`)
+`blueprintsFor(shape, degree)` returns the shape template's own list when it has one (the curved
+quadrilateral, whose faces differ from the square's), otherwise the list for the degree, or `[]` if
+none are defined.
+
+## Orientation (`orientationsOf`, `fittingRotation`)
 
 A point at the field's boundary has some faces with no neighbor at all — a blueprint whose
 required faces land there can't be applied as authored. Rather than a manual rotate control, every
-caller tries every rotation automatically:
+caller tries every orientation automatically:
 
-- **`rotateBlueprint(blueprint, offset)`** shifts every face index by `offset` steps (mod
-  `degree`) around the tile's faces.
-- **`fittingRotation(blueprint, isBoundary)`** tries every rotation `0..degree-1` and returns the
-  first one whose required faces all avoid the boundary, or `null` if none do (e.g. a blueprint
+- **`orientationsOf(binding)`** lists the cell's allowed group as face maps in `faces_of` indices,
+  identity first (`mapBlueprintFaces` applies one to a blueprint).
+- **`fittingRotation(blueprint, isBoundary, orientations)`** tries every orientation the tile
+  allows (`orientationsOf(binding)`; the default is the `degree` plain rotations) and returns the first one whose
+  required faces all avoid the boundary, or `null` if none do. A tile whose group has no quarter
+  turn (the curved quadrilateral) is therefore only mirrored, never rotated (e.g. a blueprint
   whose nodes together require every face of the tile can never fit a boundary point, since
   rotating doesn't shrink the set of faces used — only relabels which node owns which).
 
@@ -85,7 +93,7 @@ state, not an overlay:
 
 Both actions bound their face loop by `min(blueprint.degree, offsets.length)` (the tile's real
 degree), not `blueprint.degree` alone — defensive against a blueprint authored for a different
-degree being passed directly (the normal UI flow always picks one via `blueprintsForDegree`, so
+degree being passed directly (the normal UI flow always picks one via `blueprintsFor`, so
 this only matters for a direct/programmatic call).
 
 ## Generation-time pattern conversion (`blueprintToSplitPattern`)
@@ -94,10 +102,8 @@ this only matters for a direct/programmatic call).
 standard pattern" shortcut, converting a blueprint into a fresh `SplitPattern` and appending it —
 no editor opens, matching `handleAddPattern`'s own instant-add behavior for a blank pattern. No
 boundary/rotation concept applies here: a pattern isn't tied to any specific field point. For a
-blueprint authored in native face order, conversion is direct and unrotated. A blueprint tagged
-`faceIndexMode: "cairo_canonical"` is translated to the native face slots of the stable Cairo
-anchor point before being stored; the resulting `SplitPattern` remains a normal native-slot
-pattern for the generator's tessellation-specific symmetry handling. Every declared face becomes a
+blueprint, conversion is direct and unrotated: face indices follow core's `faces_of` order, the
+same order the generator reads. Every declared face becomes a
 `Passage` requirement; every other face is simply absent from `faces[i]` (core already treats "no
 entry" as `Wall`). `weight` is always `1.0`, matching a freshly added blank pattern's default.
 
@@ -178,7 +184,7 @@ inspector titling (bridge → "Corridor"/"Bridge", `null`/absent cfg → "Node N
 face-kind helper `presetSplitNodeFaceKinds` is covered directly in `fieldEditUtils.test.ts`
 (passage/wall per face, in-field face with no entry → `"undefined"`, one-way direction →
 `one_way_out`/`one_way_in`). `splitBlueprints.test.ts`
-covers the pure functions (`blueprintsForDegree`, `rotateBlueprint`,
+covers the pure functions (`blueprintsFor`, `orientationsOf`,
 `fittingRotation`, `blueprintToSplitPattern`, `tileNodesForBlueprint`) directly. `postEditSlice.test.ts`
 and `presetConnectionsSlice.test.ts` cover `applySplitBlueprint`/`applyPresetSplitBlueprint`'s
 store-level behavior: full replace of stale slots/edges, occupied-element migration, the
@@ -193,8 +199,8 @@ then follow the pentagon perimeter. Cor1 owns canonical faces `2-3`, while Cor2 
 
 The dedicated divider wall is the polyline corner `1-2` -> tile centre -> corner `3-4`. Marker
 anchors use the line from corner `2-3` to the midpoint of canonical edge `0`: Cor1 is at `1/4`
-and Cor2 at `3/4`. The blueprint is tagged `faceIndexMode: "cairo_canonical"`; concrete Cairo
-previews and point application translate these indices to the target tile's native face slots.
+and Cor2 at `3/4`. Concrete Cairo previews and point application use these indices directly: core's `faces_of`
+order is the canonical order.
 
 The second degree-5 template is **Смежный разделитель**: Cor1 owns canonical faces `1-2`, Cor2
 owns `3-4`. Its walls are the complete canonical side `0` and the straight segment from corner
@@ -208,3 +214,14 @@ face `1` to its centre deck and widening to face `4`. With special rendering ena
 ordinary passages are suppressed, so only the dedicated bridge geometry is drawn. The bridge marker
 is at the midpoint of the line joining the centres of faces `1` and `4`; the fork marker is at `1/3`
 of the line from corner `2-3` toward the centre of side `0`.
+
+## Arc sides (issue #800)
+
+A face's share is cut along its flattened boundary (`SplitFaceInput.polyline`, from
+`getSharedEdgeSegment` / `TileSide.polyline`), not along the chord: `computeSplitFaceLayouts` divides
+it by arc length, each `SplitFaceSegment` carries its `polyline` and `mid` (where connectors end),
+and `TileFaceEditor`, `SplitJunctionRenderer` (segments and all-wall faces, chained as consecutive
+straight pieces) draw those polylines. Straight faces keep the two-point polyline, so their output is
+unchanged. A shared edge is divided in the canonical lower cell's direction from both neighbors.
+`detectSplitSpecialShapeKind` recognizes no special shape for the curved template, so its splits
+render with the generic per-node shares and hub connectors.

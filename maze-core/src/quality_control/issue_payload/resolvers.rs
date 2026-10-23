@@ -708,7 +708,7 @@ pub(super) fn resolve_missing_elevator_stop_count_payload<T: Tessellation>(
 ) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> = HashMap::new();
     for entry @ (elevator, count, levels) in missing {
-        let Some(point) = elevator.0.first().and_then(|&n| field.point_of(n)) else {
+        let Some(point) = elevator.0.first().and_then(|&n| field.cell_of(n)) else {
             continue;
         };
         let (edges, edge_ids) = elevator_edges(elevator, graph);
@@ -922,7 +922,7 @@ fn cross_element_entry<T: Tessellation>(
                 .iter()
                 .find_map(|&anchor| {
                     let level = field.level_of(anchor)?;
-                    let point = field.point_of(anchor)?;
+                    let point = field.cell_of(anchor)?;
                     let live = field.nodes_at(level, point);
                     (live.len() >= 2).then(|| live.to_vec())
                 })
@@ -1048,10 +1048,11 @@ mod cross_element_preset_tests {
     use super::*;
     use crate::ids::IdGenerator;
     use crate::space::{SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn field() -> MultiLevelField<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap()
+        MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap()
     }
 
     #[test]

@@ -2,20 +2,29 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, mockGenerateMazeResult, mockSnapshot, resetGenerationMocks, makeRule } from "./storeTestHelpers";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getAvailableRuleParams: vi.fn(() => []),
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
 import { generateMaze, computeAnalytics, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
@@ -136,7 +145,7 @@ describe("mazeStore.reset", () => {
       start: 0,
       finish: 1,
       selectedNode: 0,
-      error: "something",
+      error: { kind: "run_failed", message: "something" },
     });
     useMazeStore.getState().reset();
     const s = useMazeStore.getState();
@@ -295,15 +304,66 @@ describe("mazeStore.loadRegistry", () => {
     expect(rules[0].strategyId).toBeNull();
   });
 
-  it("sets error when initWasm rejects", async () => {
+  it("sets registryError and raises an error toast when initWasm rejects (GitHub issue #769)", async () => {
+    resetNotifications();
     vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().error).toBe("wasm load failed");
+    expect(useMazeStore.getState().registryError).toBe("wasm load failed");
+    expect(useMazeStore.getState().error).toBeNull();
+    expect(errorCards()).toEqual(["generation/generation.registry_load_failed"]);
+    expect(errorDetails("generation.registry_load_failed")).toBe("wasm load failed");
   });
 
-  it("sets error string when initWasm rejects with non-Error", async () => {
+  it("sets registryError string when initWasm rejects with non-Error", async () => {
     vi.mocked(initWasm).mockRejectedValueOnce("fatal");
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().error).toBe("fatal");
+    expect(useMazeStore.getState().registryError).toBe("fatal");
+  });
+
+  it("adds a retry failure to the existing registry error card", async () => {
+    resetNotifications();
+    vi.mocked(initWasm)
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockRejectedValueOnce(new Error("retry failure"));
+
+    await useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
+
+    expect(errorCards()).toEqual(["generation/generation.registry_load_failed"]);
+    expect(useNotificationStore.getState().errors[0].occurrences).toHaveLength(2);
+    expect(errorDetails("generation.registry_load_failed")).toBe("retry failure");
+  });
+
+  it("keeps registryError across seed changes", async () => {
+    vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
+    await useMazeStore.getState().loadRegistry();
+    useMazeStore.getState().setSeed(123);
+    expect(useMazeStore.getState().registryError).toBe("wasm load failed");
+  });
+
+  it("clears registryError without a toast on a successful load", async () => {
+    resetNotifications();
+    useMazeStore.setState({ registryError: "old" });
+    vi.mocked(getAvailableChecks).mockReturnValue([]);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().registryError).toBeNull();
+    expect(errorCards()).toEqual([]);
+  });
+
+  it("shares one in-flight load between overlapping calls and allows a retry after it settles", async () => {
+    resetNotifications();
+    vi.mocked(initWasm).mockClear();
+    vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
+    const first = useMazeStore.getState().loadRegistry();
+    const second = useMazeStore.getState().loadRegistry();
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(initWasm).toHaveBeenCalledTimes(1);
+    expect(useNotificationStore.getState().errors[0].occurrences).toHaveLength(1);
+
+    await useMazeStore.getState().loadRegistry();
+    expect(initWasm).toHaveBeenCalledTimes(2);
+    expect(useMazeStore.getState().registryError).toBeNull();
   });
 });

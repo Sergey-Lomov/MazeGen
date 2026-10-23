@@ -75,9 +75,10 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
         // other hop, including the reverse direction (which a one-way can't traverse anyway) and
         // any other element's fast-travel connection, is a genuine pedestrian option (GitHub
         // issue #512).
-        let own_hop_pairs = |&(_, own_from, own_to): &(EdgeId, crate::ids::NodeId, crate::ids::NodeId)| {
-            HashSet::from([(own_from, own_to)])
-        };
+        let own_hop_pairs =
+            |&(_, own_from, own_to): &(EdgeId, crate::ids::NodeId, crate::ids::NodeId)| {
+                HashSet::from([(own_from, own_to)])
+            };
 
         let groups = pairwise_graph_proximity_scan(
             &nav,

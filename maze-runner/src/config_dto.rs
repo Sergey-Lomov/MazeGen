@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
@@ -53,24 +53,42 @@ pub struct StageConfig {
     pub rules: Vec<QcRuleConfig>,
 }
 
-#[derive(Deserialize, Clone, PartialEq, Eq)]
+/// Registered tessellation kinds. Branching on a kind is allowed only in the tessellation factory
+/// (`runner::tessellation_factory`), registries and serialization (`Specs/space.md`).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum TessellationType {
+pub enum TessellationKind {
     Square,
     Hex,
     Tri,
     Cairo,
+    SquareOctagon,
+    Brick,
+    Trihexagonal,
+    SnubHexagonal,
+    SnubSquare,
+    Rhombitrihexagonal,
+    TruncatedHexagonal,
+    TruncatedTrihexagonal,
+    ElongatedTriangular,
+    CurvedQuadrilateral,
+    Radial,
+    Voronoi,
 }
 
-#[derive(Deserialize)]
+/// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory
+/// builds the instance deterministically from it and rejects params the kind does not accept.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct TessellationConfig {
-    pub tessellation_type: TessellationType,
+    pub kind: TessellationKind,
+    pub params: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for TessellationConfig {
     fn default() -> Self {
         TessellationConfig {
-            tessellation_type: TessellationType::Square,
+            kind: TessellationKind::Square,
+            params: serde_json::Map::new(),
         }
     }
 }
@@ -118,10 +136,10 @@ pub enum OneWayDirectionDto {
     Backward,
 }
 
-/// Wire shape for `maze_core::generation::SplitPatternFace`. `face_index` is passed through
-/// unvalidated here — this layer isn't generic over a concrete `T: Tessellation` yet, so the
-/// degree-range check happens later, in `dispatch`/`run_generate_typed` (see
-/// `Specs`/plan section 3.6).
+/// Wire shape for `maze_core::generation::SplitPatternFace`. `face_index` is a canonical index of
+/// the pattern's shape template, passed through unvalidated here — this layer isn't generic over a
+/// concrete `T: Tessellation` yet, so the shape/range check happens later
+/// (`validate_split_patterns`, once `T` is known).
 #[derive(Deserialize)]
 pub struct SplitPatternFaceDto {
     pub face_index: usize,
@@ -133,6 +151,8 @@ pub struct SplitPatternFaceDto {
 /// Wire shape for `maze_core::generation::SplitPattern`.
 #[derive(Deserialize)]
 pub struct SplitPatternDto {
+    /// Key of the `ShapeDescriptor` the pattern is authored for (`regular:4`, `cairo_pentagon`, …).
+    pub shape: String,
     pub node_count: usize,
     pub faces: Vec<Vec<SplitPatternFaceDto>>,
     #[serde(default = "default_pattern_weight")]

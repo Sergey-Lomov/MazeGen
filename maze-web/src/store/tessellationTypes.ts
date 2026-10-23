@@ -1,12 +1,7 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldOpError } from "../wasm/mazeService";
+import type { FieldConfig, PresetFieldShape, PresetFieldShapeName, TessellationKind, HexOrientation, TriOrientation } from "../fieldConfig";
 
-export type TessellationKind = "square" | "hex" | "triangle" | "cairo";
-export type SquareShape = "rect" | "circle" | "triangle" | "free";
-export type HexShape = "rectangle" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
-export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
-export type CairoShape = "rect" | "circle" | "triangle" | "hexagon" | "free";
-export type HexOrientation = "flat_top" | "pointy_top";
-export type TriOrientation = "r0" | "r90" | "r180" | "r270";
+export type { TessellationKind, HexOrientation, TriOrientation };
 export type FieldPrimitive =
   | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry" | "magic_wand";
 export type FieldOperation = "add" | "remove" | "select";
@@ -34,18 +29,16 @@ export interface BackgroundImage {
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
-  | { kind: "setSquareShape"; shape: SquareShape }
-  | { kind: "setHexShape"; shape: HexShape }
-  | { kind: "setTriangleShape"; shape: TriangleShape }
-  | { kind: "setCairoShape"; shape: CairoShape }
-  | { kind: "setTessellationConfig"; config: TessellationConfig }
-  | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
-  | { kind: "setTessellationConfigsForFloors"; configs: Record<string, TessellationConfig>; applyToAllStandardFloors: boolean }
+  | { kind: "setSelectedShape"; shape: PresetFieldShapeName }
+  | { kind: "setFieldConfig"; config: FieldConfig }
+  | { kind: "setFieldConfigForFloors"; config: FieldConfig; applyToAllStandardFloors: boolean }
+  | { kind: "setFieldConfigsForFloors"; configs: Record<string, FieldConfig>; applyToAllStandardFloors: boolean }
   | { kind: "addFieldPoint"; x: number; y: number }
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
   | { kind: "removeFieldPoints"; cells: [number, number][] }
-  | { kind: "moveFieldPoints"; cells: [number, number][]; dx: number; dy: number }
+  | { kind: "moveFieldPoints"; cells: [number, number][]; vector: [number, number] }
+  | { kind: "centerFieldPoints" }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
@@ -59,18 +52,21 @@ export interface TessellationState {
   // Confirmed tessellation — set only on confirmTessellation(). Maze-wide: kind/orientation are
   // confirmed once in Basic configuration, not per floor (see Specs/field-editor.md).
   tessellationKind: TessellationKind;
+  /** Params of the confirmed kind (`{}` for the parameterless kinds); they define the cell set. */
+  tessellationParams: Record<string, unknown>;
   hexOrientation: HexOrientation;
   triOrientation: TriOrientation;
   tessellationConfirmed: boolean;
   // Preview tessellation — changes with every dropdown selection, drives canvas grid
   previewKind: TessellationKind;
+  previewParams: Record<string, unknown>;
   previewHexOrientation: HexOrientation;
   previewTriOrientation: TriOrientation;
-  previewTessellationConfig: TessellationConfig;
+  previewFieldConfig: FieldConfig;
   /** Snapshot of the (active floor's) field config taken at generate time — maze-wide, since
    * generation/post-edit/analytics are not yet multi-floor-aware (GitHub issue #355 tracks
    * migrating this once they are; see Specs/floors.md's Non-goals). */
-  activeTessellationConfig: TessellationConfig;
+  activeFieldConfig: FieldConfig;
   showFieldOverlay: boolean;
   showFieldOrigin: boolean;
   showPrimitiveFrame: boolean;
@@ -92,12 +88,16 @@ export interface TessellationState {
   symmetrySourceSide: -1 | 1;
   symmetryPolygon: SymmetryPoint[];
   symmetryPolygonFinished: boolean;
+  /** Why the last field operation (move, symmetry) was refused by core; shown in the field editor. */
+  fieldOpError: FieldOpError | null;
 }
 
 export interface TessellationActions {
   setSeed: (seed: number) => void;
   // Preview actions — only change preview, not confirmed
   setPreviewKind: (kind: TessellationKind) => void;
+  /** Replaces the previewed kind's params (e.g. the radial first-ring size). */
+  setPreviewParams: (params: Record<string, unknown>) => void;
   setPreviewHexOrientation: (orientation: HexOrientation) => void;
   setPreviewTriOrientation: (orientation: TriOrientation) => void;
   // Confirm — copies preview -> confirmed, triggers confirmed-dependent state
@@ -120,6 +120,7 @@ export interface TessellationActions {
   setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
   setBackgroundAutoFillPreview: (points: Set<number> | null) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
+  setFieldOpError: (error: FieldOpError | null) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;
   setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;
@@ -134,18 +135,15 @@ export interface TessellationActions {
  * floor's field" lives here, keyed by floor id; kind/orientation stay maze-wide in
  * TessellationState (see Specs/field-editor.md). */
 export interface FloorFieldConfig {
-  squareShape: SquareShape;
-  hexShape: HexShape;
-  triangleShape: TriangleShape;
-  cairoShape: CairoShape;
-  /** Saved params per predefined config type, preserved across shape/mode switches. */
-  savedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>;
-  tessellationConfig: TessellationConfig;
+  /** The preset shape default mode shows; the tessellation must offer it (`field_capabilities`). */
+  selectedShape: PresetFieldShapeName;
+  /** Saved params per preset shape, preserved across shape/mode switches. */
+  savedShapes: Partial<Record<PresetFieldShapeName, PresetFieldShape>>;
+  fieldConfig: FieldConfig;
   /** Per-kind free-field points, preserved when switching shapes within same kind. */
   freeFieldPoints: Record<TessellationKind, Set<number>>;
   /**
    * True when the active field is custom (free-draw). Set by:
-   * - shape actions (setSquareShape/setHexShape/setTriangleShape) when shape === "free"
    * - setFieldEditMode("custom") / setFieldEditMode("default") for card-based editing
    * generate() reads this directly to decide whether to use fieldPoints.
    */
@@ -172,19 +170,18 @@ export interface FloorFieldsState {
 }
 
 export interface FloorFieldsActions {
-  setSquareShape: (shape: SquareShape) => void;
-  setHexShape: (shape: HexShape) => void;
-  setTriangleShape: (shape: TriangleShape) => void;
-  setCairoShape: (shape: CairoShape) => void;
-  setTessellationConfig: (cfg: TessellationConfig) => void;
-  setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
-  setTessellationConfigsForFloors: (configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean) => void;
+  setSelectedShape: (shape: PresetFieldShapeName) => void;
+  setFieldConfig: (cfg: FieldConfig) => void;
+  setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => void;
+  setFieldConfigsForFloors: (configs: Record<string, FieldConfig>, applyToAllStandardFloors: boolean) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;
   removeFieldPoints: (cells: [number, number][]) => void;
   /** Moves selected custom-field cells atomically, preserving destination collisions. */
-  moveFieldPoints: (cells: [number, number][], dx: number, dy: number) => void;
+  moveFieldPoints: (cells: [number, number][], vector: [number, number]) => void;
+  /** Moves the custom field so the origin cell is closest to its visual center. */
+  centerFieldPoints: () => void;
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldOperation: (operation: FieldOperation) => void;
@@ -193,6 +190,8 @@ export interface FloorFieldsActions {
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;
+  /** Replaces every other floor's field config with a copy of the active floor's config. */
+  copyCurrentFloorFieldToAll: () => void;
   applyBackgroundAutoFill: (points: Set<number>) => void;
   confirmFieldEdit: () => void;
   cancelFieldEdit: () => void;

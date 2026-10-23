@@ -5,10 +5,12 @@ mod draft_tests {
     use super::super::*;
     use crate::graph::EdgeKind;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         let nodes: Vec<_> = field.all_node_ids().collect();
         for &node in &nodes {
@@ -83,12 +85,13 @@ mod draft_tests {
 mod add_node_at_tests {
     use super::super::*;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     #[test]
     fn add_node_at_yields_an_id_not_colliding_with_any_existing_node() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
         let mut g = Graph::new();
         let existing: Vec<ids::NodeId> = field.all_node_ids().collect();
         for &node in &existing {
@@ -106,7 +109,7 @@ mod add_node_at_tests {
     fn add_node_at_registers_the_new_node_in_the_graph() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -131,6 +134,7 @@ mod remove_node_at_tests {
     use super::super::*;
     use crate::graph::EdgeKind;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     #[test]
     fn removes_the_node_and_clears_edges_in_both_directions_leaving_the_sibling_slot_intact() {
@@ -138,7 +142,7 @@ mod remove_node_at_tests {
         // A - B - C line, B split into b0/b1. Wire both b0<->A and b1<->C, then remove b1: its
         // edges must disappear while b0's stay untouched.
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -173,11 +177,11 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot remove a point's last remaining node")]
+    #[should_panic(expected = "cannot remove a cell's last remaining node")]
     fn delegates_the_last_remaining_node_panic() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -194,7 +198,7 @@ mod remove_node_at_tests {
     fn removes_a_node_that_is_not_a_points_original_slot() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -218,11 +222,12 @@ mod distance_cache_tests {
     use super::super::*;
     use crate::graph::EdgeKind;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -336,7 +341,7 @@ mod distance_cache_tests {
     fn directed_line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

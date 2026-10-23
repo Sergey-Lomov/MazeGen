@@ -10,6 +10,7 @@ use crate::repair::strategies::{
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn rng() -> crate::random::MazeRng {
     crate::random::MazeRng::seed_from_u64(0)
@@ -53,7 +54,7 @@ fn corridor_teleport_split(
 ) -> (Maze<SquareTessellation>, CrossElement, CrossElement) {
     let mut ids = IdGenerator::new();
     let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(w, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();
@@ -151,7 +152,7 @@ fn teleport_and_split_pair_removes_exactly_one_side() {
 fn start_finish_pair_fails_and_keeps_the_issue() {
     let mut ids = IdGenerator::new();
     let mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     let mut g = Graph::new();
     for n in mf.all_node_ids() {
@@ -331,10 +332,17 @@ fn corridor_elevator_split(
 ) -> (Maze<SquareTessellation>, NodeId, CrossElement) {
     use crate::space::Field;
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-    let g0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(w, 1), &mut ids).unwrap());
-    let g1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(w, 1), &mut ids).unwrap());
-    let g2 = mf.add_level(Field::<SquareTessellation>::new(square_rect(w, 1), &mut ids).unwrap());
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), std::iter::empty());
+    let g0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(w, 1), &mut ids).unwrap(),
+    );
+    let g1 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(w, 1), &mut ids).unwrap(),
+    );
+    let g2 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(w, 1), &mut ids).unwrap(),
+    );
     mf.add_node_at(g0, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();
     for n in mf.all_node_ids() {
@@ -417,7 +425,7 @@ fn routed_teleport_one_way_split(
 ) {
     let mut ids = IdGenerator::new();
     let mut mf: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(w, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();

@@ -127,6 +127,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "cross_element_graph_proximity";
 
@@ -161,7 +162,7 @@ mod tests {
     fn corridor_with_teleport_and_one_way(w: usize, ow: i32) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(w, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -241,7 +242,7 @@ mod tests {
         // the old `one_way_group_graph_proximity`).
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -278,7 +279,7 @@ mod tests {
     fn start_and_finish_pair_is_flagged() {
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -316,7 +317,7 @@ mod tests {
         // and the teleport lie on it. Their occurrences are ~1 hop apart.
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -361,7 +362,7 @@ mod tests {
         // `pairwise_graph_proximity_scan` (GitHub issue #512 follow-up), not silently dropped.
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // second node at the split tile
         let mut g = Graph::new();
@@ -402,7 +403,7 @@ mod tests {
     fn silent_with_a_single_occurrence() {
         let mut ids = IdGenerator::new();
         let mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -438,7 +439,7 @@ mod tests {
         // end is one walk-hop away.
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // second node at the split tile
         let mut g = Graph::new();

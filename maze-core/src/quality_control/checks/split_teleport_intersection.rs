@@ -76,7 +76,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
 
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .split_points()
+            .split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 if !nodes.iter().any(|&n| node_matches(n)) {
@@ -102,13 +102,14 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_teleport_intersection";
 
     fn split_field(width: usize) -> (MultiLevelField<SquareTessellation>, IdGenerator, NodeId) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
         let _base = field.node_at(level, split_point).unwrap();
@@ -136,7 +137,7 @@ mod tests {
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

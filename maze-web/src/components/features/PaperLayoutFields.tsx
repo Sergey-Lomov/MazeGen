@@ -3,6 +3,7 @@ import type { PaperOrientation, PaperSize } from "../../store/storeTypes";
 import { resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
 import { SelectRow } from "../SelectRow";
 import { Inline } from "../Layout";
+import { Tooltip } from "../Tooltip";
 import { buttonClass, buttonStyle, sharedStyles } from "../../styles/shared";
 import { controlRowHeight, typography } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -81,22 +82,20 @@ export function PaperLayoutFields({
       <Inline gap="itemGap" justify="space-between">
         <span style={styles.label}>{m["image_export.format.png.print.orientation"]()}</span>
         <Inline gap="itemGap">
-          <button
+          <Tooltip content={m["image_export.format.png.print.orientation_portrait"]()}><button
             className={buttonClass(orientation === "portrait" ? "toggle-selected" : "toggle")}
             style={{ ...buttonStyle(orientation === "portrait" ? "toggle-selected" : "toggle"), ...styles.iconToggle }}
-            title={m["image_export.format.png.print.orientation_portrait"]()}
             onClick={() => onOrientationChange("portrait")}
           >
             <RectangleVertical size={16} />
-          </button>
-          <button
+          </button></Tooltip>
+          <Tooltip content={m["image_export.format.png.print.orientation_landscape"]()}><button
             className={buttonClass(orientation === "landscape" ? "toggle-selected" : "toggle")}
             style={{ ...buttonStyle(orientation === "landscape" ? "toggle-selected" : "toggle"), ...styles.iconToggle }}
-            title={m["image_export.format.png.print.orientation_landscape"]()}
             onClick={() => onOrientationChange("landscape")}
           >
             <RectangleHorizontal size={16} />
-          </button>
+          </button></Tooltip>
         </Inline>
       </Inline>
       <Inline gap="itemGap" justify="space-between">

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -7,14 +7,21 @@ import { pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -152,6 +159,43 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(slider).toBeDisabled();
   });
 
+  describe("round-join rendering controls", () => {
+    const renderStyleLabel = () => screen.queryByText(m["image_export.vector_by_corridors.render_style"]());
+    const radiusLabel = () => screen.queryByText(m["image_export.vector_by_corridors.junction_radius"]());
+    const setCorridors = (patch: Partial<typeof DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS>) =>
+      useMazeStore.setState((state) => ({ vectorByCorridorsSettings: { ...state.vectorByCorridorsSettings, ...patch } }));
+
+    it("shows the rendering mode and corner radius for the round-join contour", () => {
+      setCorridors({ join: "round", renderStyle: "contour" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).toBeInTheDocument();
+      expect(radiusLabel()).toBeInTheDocument();
+    });
+
+    it("hides the corner radius in Line mode", () => {
+      setCorridors({ join: "round", renderStyle: "legacy_line" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).toBeInTheDocument();
+      expect(radiusLabel()).not.toBeInTheDocument();
+    });
+
+    it("hides both for the miter join", () => {
+      setCorridors({ join: "miter", renderStyle: "contour" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).not.toBeInTheDocument();
+      expect(radiusLabel()).not.toBeInTheDocument();
+    });
+
+    it("changing the corner radius slider updates the store", () => {
+      setCorridors({ join: "round", renderStyle: "contour", junctionRadius: 4 });
+      render(<VectorByCorridorsSettingsPanel />);
+      const slider = radiusLabel()!.parentElement?.querySelector('input[type="range"]');
+      expect(slider).toBeTruthy();
+      fireEvent.change(slider!, { target: { value: "6.5" } });
+      expect(useMazeStore.getState().vectorByCorridorsSettings.junctionRadius).toBe(6.5);
+    });
+  });
+
   it("changing the thickness slider updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     const slider = screen.getByDisplayValue("6");
@@ -174,7 +218,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_shape"]())).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
+    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_corridors"]()));
     expect(screen.queryByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).not.toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
   });
@@ -190,7 +234,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("clicking the section header toggles expand/collapse", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);
-    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
+    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_corridors"]()));
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.cells).toBe(true);
   });
 
@@ -211,7 +255,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("changing the start marker fill color updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).not.toBe(0x654321);
-    useMazeStore.getState().setVectorByCorridorsStartMarkerFillColor(0x654321);
+    act(() => useMazeStore.getState().patchVectorByCorridorsMarker("startMarker", { fillColor: 0x654321 }));
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
   });
 
@@ -309,7 +353,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       });
       render(<VectorByCorridorsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+      expect(document.querySelectorAll('select[name^="teleport-group-"]')).toHaveLength(1);
     });
   });
 

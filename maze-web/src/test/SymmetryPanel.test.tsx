@@ -7,6 +7,7 @@ import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTest
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
+    fieldOpError: null,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", fieldPrimitive: "symmetry" }),
     },
@@ -50,6 +51,25 @@ describe("SymmetryPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finish polygon" }));
 
     expect(useMazeStore.getState().symmetryPolygonFinished).toBe(true);
+    expect(screen.getByRole("button", { name: "Apply symmetry" })).not.toBeDisabled();
+  });
+
+  it("shows a refused core operation as a warning and disables apply", () => {
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
+      fieldOpError: { kind: "not_a_symmetry" },
+    });
+    render(<SymmetryPanel />);
+
+    expect(screen.getByText(/This axis does not fit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply symmetry" })).toBeDisabled();
+  });
+
+  it("shows no status when the configuration is ready", () => {
+    useMazeStore.setState({ symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }], symmetryScope: "everything" });
+    render(<SymmetryPanel />);
+
+    expect(screen.queryByText("The configuration is ready to apply.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply symmetry" })).not.toBeDisabled();
   });
 });

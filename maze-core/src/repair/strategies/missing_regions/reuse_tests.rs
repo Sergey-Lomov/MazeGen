@@ -5,6 +5,7 @@ use crate::random::MazeRng;
 use crate::repair::draft::DraftMaze;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 #[test]
 fn filter_by_border_drops_a_candidate_with_zero_border_on_every_needed_side() {
@@ -357,7 +358,7 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     // bordering component.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {

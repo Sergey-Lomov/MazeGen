@@ -3,6 +3,25 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* The application shell intentionally occupies the viewport and clips its canvas. The geometry
+   laboratory is a document-sized route, so let its complete combination list scroll normally. */
+html.corridor-geometry-route,
+html.corridor-geometry-route body,
+html.corridor-geometry-route #root {
+  height: 100%;
+  min-height: 0;
+}
+
+html.corridor-geometry-route,
+html.corridor-geometry-route body {
+  overflow: hidden;
+}
+
+html.corridor-geometry-route #root {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 input:focus,
 select:focus {
   outline: none;
@@ -236,6 +255,13 @@ input[type="number"]::-webkit-inner-spin-button {
 
 @keyframes generation-spinner-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Toast countdown line (`NotificationHost`'s `CountdownBar`): shrinks from the remaining fraction
+   (`--countdown-from`) to zero; the duration is the remaining active display time. */
+@keyframes notice-countdown {
+  from { transform: scaleX(var(--countdown-from)); }
+  to { transform: scaleX(0); }
 }
 
 /* Problem headers stay in the layout even while their content is collapsed. Amber text makes a

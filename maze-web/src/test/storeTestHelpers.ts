@@ -7,6 +7,7 @@ import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { replayPostEditCommands } from "../pixi/postEditReplay";
 import { buildPostEditBaseline, derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
+import { fieldOf } from "./fieldConfigFixtures";
 
 export { emptyFreePoints };
 
@@ -18,12 +19,9 @@ export const TEST_FLOOR_ID = "floor_1";
  *  (square/rect, 10x10) — used as the base entry for `floorFields[TEST_FLOOR_ID]`. */
 export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}): FloorFieldConfig {
   return {
-    squareShape: "rect",
-    hexShape: "parallelogram",
-    triangleShape: "rect",
-    cairoShape: "rect",
-    savedConfigs: {},
-    tessellationConfig: { type: "square", width: 10, height: 10 },
+    selectedShape: "rect",
+    savedShapes: {},
+    fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
     freeFieldPoints: emptyFreePoints(),
     isEditingField: false,
     fieldPoints: new Set<number>(),
@@ -41,7 +39,7 @@ export function makeRule(overrides: Partial<QcRuleState> = {}): QcRuleState {
   return {
     id: "g1", name: "Rule 1", kind: "k1",
     checks: [], nextLocalCheckId: 0,
-    strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
+    strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
     collapsed: false,
     ...overrides,
   };
@@ -170,13 +168,15 @@ export function baseStoreState() {
     seedHistoryIndex: 0,
     seedAttachedToHistory: false,
     tessellationKind: "square" as const,
+    tessellationParams: {},
+    previewParams: {},
     hexOrientation: "flat_top" as const,
     triOrientation: "r0" as const,
     floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: TEST_FLOOR_ID,
     floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig() },
-    activeTessellationConfig: { type: "square" as const, width: 10, height: 10 },
+    activeFieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
     nodes: [],
     edges: [],
     start: null,
@@ -210,11 +210,7 @@ export function baseStoreState() {
 /** Free-field-editing state for a given kind, used by free field point mutation tests. Field-shape
  *  fields land in `floorFields[TEST_FLOOR_ID]` (GitHub issue #338) — merge on top of `extra` when
  *  a test also needs to override other floorFields entries. */
-export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo", pts: Set<number>) {
-  const squareShape: "free" | "rect" = kind === "square" ? "free" : "rect";
-  const hexShape: "free" | "parallelogram" = kind === "hex" ? "free" : "parallelogram";
-  const triangleShape: "free" | "rect" = kind === "triangle" ? "free" : "rect";
-  const cairoShape: "free" | "rect" = kind === "cairo" ? "free" : "rect";
+export function freeFieldEditState(kind: "square" | "hex" | "tri" | "cairo", pts: Set<number>) {
   return {
     tessellationKind: kind,
     hexOrientation: "flat_top" as const,
@@ -222,10 +218,6 @@ export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo"
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape,
-        hexShape,
-        triangleShape,
-        cairoShape,
         isEditingField: true,
         fieldPoints: pts,
         freeFieldPoints: { ...emptyFreePoints(), [kind]: pts },
@@ -236,7 +228,7 @@ export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo"
 
 /** State for hex-predefined-mode orientation tests: hexShape=parallelogram, other shapes=rect.
  *  `extra` may contain top-level MazeState fields (e.g. `nodes`) and/or a `floorFieldOverrides`
- *  patch merged into `floorFields[TEST_FLOOR_ID]` (e.g. `tessellationConfig`). */
+ *  patch merged into `floorFields[TEST_FLOOR_ID]` (e.g. `fieldConfig`). */
 export function hexPredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
   const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
@@ -245,9 +237,7 @@ export function hexPredefinedState(extra?: Record<string, unknown> & { floorFiel
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        hexShape: "parallelogram",
-        squareShape: "rect",
-        triangleShape: "rect",
+        selectedShape: "parallelogram",
         ...floorFieldOverrides,
       }),
     },
@@ -260,14 +250,12 @@ export function hexPredefinedState(extra?: Record<string, unknown> & { floorFiel
 export function trianglePredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
   const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
-    tessellationKind: "triangle" as const,
+    tessellationKind: "tri" as const,
     triOrientation: "r0" as const,
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        triangleShape: "rect",
-        hexShape: "parallelogram",
-        squareShape: "rect",
+        selectedShape: "rect",
         ...floorFieldOverrides,
       }),
     },
@@ -298,7 +286,7 @@ export interface PostEditSeed {
 
 /** Builds the full post-edit store patch for a scenario (GitHub issue #543): a real
  *  `postEditBaseline` built from the generation snapshot, the given command log replayed on top of
- *  it, and the legacy `postEditDraft*`/`postEditSuppressed*` mirror fields derived from the result.
+ *  it, and the legacy `postEditDraft*` mirror fields derived from the result.
  *
  *  Post-edit actions read `postEditBaseline.derived` as their source of truth, never the legacy
  *  mirror fields — seeding a scenario by `setState`-ing `postEditDraftEdges` & co. alone silently

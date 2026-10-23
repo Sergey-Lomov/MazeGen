@@ -7,6 +7,7 @@ import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { NodeDto } from "../wasm/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 /** Builds a `PostEditEdgeState` (GitHub issue #564) — `id` is required exactly when `kind` is a
  *  one-way variant, defaulting to "o1" when omitted since most label-formatting tests don't care
@@ -25,7 +26,7 @@ const splitCtxFor = (allNodes: NodeDto[], splitPoints: Record<string, number[]>)
   splitPoints,
   activeSplitNode: {},
   draftEdges: null,
-  cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+  cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
   inFieldCellsAt: () => new Set(),
 });
 
@@ -315,7 +316,7 @@ describe("postEditCommandLabel", () => {
         splitPoints: { "5,5": [0] },
         activeSplitNode: {},
         draftEdges,
-        cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+        cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
         inFieldCellsAt: () => new Set(["5,5", "6,5", "4,5", "5,6", "5,4"]),
       };
       const command: PostEditCommand = { kind: "setEdge", edge: es(originalEp, slotEp, "wall") };
@@ -358,7 +359,7 @@ describe("postEditCommandLabel", () => {
         splitPoints: { "5,5@1": [0] },
         activeSplitNode: {},
         draftEdges,
-        cfgAt: (level) => (level === 1 ? { type: "triangle_rect", cols: 10, rows: 10 } : { type: "square", width: 10, height: 10 }),
+        cfgAt: (level) => (level === 1 ? fieldOf("tri", { shape: "rect", cols: 10, rows: 10 }) : fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
         inFieldCellsAt: () => new Set(["5,5", "6,5", "4,5", "5,6", "5,4"]),
       };
       const command: PostEditCommand = { kind: "setEdge", edge: es(originalEp, slotEp, "wall") };

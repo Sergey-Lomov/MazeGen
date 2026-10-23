@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { VerticalConnectionMarker } from "../../renderers/types";
 import { buildNodePositions } from "../../tessellationGeometry";
 
@@ -48,7 +48,7 @@ export function selectVerticalPassagePairSet(allEdges: EdgeDto[]): ReadonlySet<s
 export function buildVerticalConnectionMarkers(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   resolveNodeLevel: (id: number) => number | undefined,
   activeFloorIndex: number,
   verticalPairs: ReadonlySet<string>,

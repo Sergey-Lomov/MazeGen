@@ -661,16 +661,27 @@ mod tests {
         let source = nav.nav_node_for(0).unwrap();
 
         let mut seen: Vec<(NodeId, NodeId, usize)> = Vec::new();
-        dijkstra_forward_visit_edges_bounded(&nav, source, |_| true, None, |edge, dist| {
-            let from_id = nav.nodes[edge.from].node_id;
-            let to_id = nav.nodes[edge.to].node_id;
-            seen.push((from_id, to_id, dist));
-            true
-        });
+        dijkstra_forward_visit_edges_bounded(
+            &nav,
+            source,
+            |_| true,
+            None,
+            |edge, dist| {
+                let from_id = nav.nodes[edge.from].node_id;
+                let to_id = nav.nodes[edge.to].node_id;
+                seen.push((from_id, to_id, dist));
+                true
+            },
+        );
 
-        assert_eq!(seen.len(), 4, "every edge in the diamond must be visited exactly once");
+        assert_eq!(
+            seen.len(),
+            4,
+            "every edge in the diamond must be visited exactly once"
+        );
         assert!(
-            seen.iter().all(|&(from, _, dist)| (from == 0) == (dist == 0)),
+            seen.iter()
+                .all(|&(from, _, dist)| (from == 0) == (dist == 0)),
             "an edge leaving node 0 must be visited at distance 0, no other edge at distance 0: {seen:?}"
         );
         assert!(
@@ -692,11 +703,20 @@ mod tests {
         let source = nav.nav_node_for(0).unwrap();
 
         let mut visits = 0;
-        dijkstra_forward_visit_edges_bounded(&nav, source, |_| true, None, |_, _| {
-            visits += 1;
-            false // stop right after the first edge
-        });
-        assert_eq!(visits, 1, "on_edge returning false must end the traversal immediately");
+        dijkstra_forward_visit_edges_bounded(
+            &nav,
+            source,
+            |_| true,
+            None,
+            |_, _| {
+                visits += 1;
+                false // stop right after the first edge
+            },
+        );
+        assert_eq!(
+            visits, 1,
+            "on_edge returning false must end the traversal immediately"
+        );
     }
 
     #[test]
@@ -715,12 +735,18 @@ mod tests {
         let target = nav.nav_node_for(2).unwrap();
 
         let mut seen: Vec<(NodeId, NodeId, usize)> = Vec::new();
-        dijkstra_reverse_visit_edges_bounded(&nav, target, |_| true, None, |edge, dist| {
-            let from_id = nav.nodes[edge.from].node_id;
-            let to_id = nav.nodes[edge.to].node_id;
-            seen.push((from_id, to_id, dist));
-            true
-        });
+        dijkstra_reverse_visit_edges_bounded(
+            &nav,
+            target,
+            |_| true,
+            None,
+            |edge, dist| {
+                let from_id = nav.nodes[edge.from].node_id;
+                let to_id = nav.nodes[edge.to].node_id;
+                seen.push((from_id, to_id, dist));
+                true
+            },
+        );
 
         assert_eq!(seen.len(), 2, "both edges on the chain must be visited");
         assert_eq!(
@@ -750,10 +776,16 @@ mod tests {
         let target = nav.nav_node_for(3).unwrap();
 
         let mut seen: Vec<(NodeId, NodeId)> = Vec::new();
-        dijkstra_reverse_visit_edges_bounded(&nav, target, |_| true, Some(1), |edge, _| {
-            seen.push((nav.nodes[edge.from].node_id, nav.nodes[edge.to].node_id));
-            true
-        });
+        dijkstra_reverse_visit_edges_bounded(
+            &nav,
+            target,
+            |_| true,
+            Some(1),
+            |edge, _| {
+                seen.push((nav.nodes[edge.from].node_id, nav.nodes[edge.to].node_id));
+                true
+            },
+        );
 
         assert_eq!(
             seen,

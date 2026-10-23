@@ -4,6 +4,7 @@ use crate::meta::MazeMeta;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 const TEST_ID: &str = "one_way_group_graph_proximity";
 
@@ -21,7 +22,7 @@ fn maze_with_two_one_ways_gapped(gap: usize) -> (Maze<SquareTessellation>, EdgeI
     let mut ids = IdGenerator::new();
     let width = gap + 4;
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -117,7 +118,7 @@ fn silent_when_threshold_is_zero() {
 fn silent_with_fewer_than_two_one_ways() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -138,7 +139,7 @@ fn silent_with_fewer_than_two_one_ways() {
 fn ignores_bidirectional_passage() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -167,7 +168,7 @@ fn protect_route_excludes_a_pair_fully_on_route() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     maze.meta = MazeMeta {
@@ -193,7 +194,7 @@ fn protect_route_disabled_flags_the_route_pair_as_before() {
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     maze.meta = MazeMeta {

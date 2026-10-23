@@ -21,9 +21,12 @@ const item = (text: string, shape: "circle" | "square" | "star" | "cross", plate
 
 describe("textFit", () => {
   it("measures padding-trimmed ink extent linearly in font size", () => {
-    expect(measureText("1", "bold", 100)).toEqual({ width: 50, height: 40 });
-    expect(measureText("18", "bold", 20)).toEqual({ width: 20, height: 8 });
-    expect(measureText("", "bold", 40)).toEqual({ width: 0, height: 0 });
+    expect(measureText("1", "bold", 100)).toEqual({ width: 50, height: 40, left: -21, right: 29 });
+    const twoGlyphs = measureText("18", "bold", 20);
+    expect(twoGlyphs).toMatchObject({ width: 20, height: 8 });
+    expect(twoGlyphs.left).toBeCloseTo(-9.2);
+    expect(twoGlyphs.right).toBeCloseTo(10.8);
+    expect(measureText("", "bold", 40)).toEqual({ width: 0, height: 0, left: 0, right: 0 });
   });
 
   it("circle: fits while the ink rectangle's corners stay inside the circle", () => {

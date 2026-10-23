@@ -1,12 +1,16 @@
-import { useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
+import { canRotateSplit } from "../../pixi/splitShape";
 import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { ui, radius, spacing, typography } from "../../styles/theme";
+import type { FieldConfig } from "../../fieldConfig";
+import { ui, spacing, typography } from "../../styles/theme";
 import { disabledOf } from "../../styles/palette";
 import * as m from "~/paraglide/messages";
+import { Tooltip } from "../Tooltip";
 import type React from "react";
+import {
+  type EditRefusalSource, notifyEditRefusal, SPLIT_BOUNDARY_FACE,
+} from "../../notifications/editRefusalNotifications";
 
 /** What a tile's face currently shows for one node, for the "Manage split nodes" dialog's
  * large-tile diagram (GitHub issue #234). `"one_way_out"`/`"one_way_in"` are relative to that
@@ -15,7 +19,7 @@ export type TileFaceKind = SplitFaceKind;
 
 export interface TileFace {
   kind: TileFaceKind;
-  /** No neighboring tile outside the field on this side — not clickable, shows a hint instead.
+  /** No neighboring tile exists on this side — clicking reports a refusal notice in editors.
    * Identical for every node at this point (a property of the side itself), but carried per-face
    * for convenience at the call site. */
   boundary: boolean;
@@ -29,7 +33,7 @@ export interface TileFaceNode {
 
 interface Props {
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   nodes: TileFaceNode[];
   /** Index into `nodes` of the currently active node (tile-face clicks/z-order), or `null` if
    * none is active. Its segments/connectors always draw last (on top) — GitHub issue #234
@@ -48,7 +52,25 @@ interface Props {
    *  pattern's card in the settings list) where rotate controls would have nothing meaningful to
    *  do. Defaults to `true` (shown), matching every existing caller. */
   showRotateControls?: boolean;
+  /** Draws a pale index (`faces_of` position) outside each physical face. Off by default — small
+   *  previews would only be cluttered by it. */
+  showFaceIndices?: boolean;
+  /** Owning editor for boundary-face refusal feedback. Omitted by read-only previews. */
+  notificationSource?: EditRefusalSource;
 }
+
+/** Face-index label geometry, as fractions of the tile's larger dimension. */
+const FACE_INDEX_OFFSET_FACTOR = 0.04;
+const FACE_INDEX_FONT_FACTOR = 0.09;
+const FACE_INDEX_PAD_FACTOR = 0.14;
+const FACE_INDEX_OPACITY = 0.55;
+/** Extends each face's node-anchor-to-boundary hit wedge slightly past the tile boundary, making
+ * the active node's connector and face equally forgiving click targets. */
+const FACE_HIT_ZONE_OUTSET_FACTOR = 0.08;
+/** Digit glyph box in em: advance width per character, and cap height (the baseline sits half of it
+ *  below the label's visual center). */
+const FACE_INDEX_GLYPH_WIDTH = 0.6;
+const FACE_INDEX_GLYPH_HEIGHT = 0.72;
 
 /** Large single-tile diagram, rendered in the field's own tessellation — shows every node's
  * faces at once, each in its own color (mirrors the canvas's per-slot split-passage coloring),
@@ -59,7 +81,7 @@ interface Props {
  * connection") too, but desaturated (`disabledOf`) to read as tentative rather than a real
  * passage. A `wall` face draws nothing at all for that node (forbidding a face is drawn as an
  * *absence*, not a distinct color). A boundary side (no neighboring tile outside the field) is not
- * clickable — clicking it shows an inline hint instead. The active node's own segments/connectors
+ * clickable — clicking it reports a refusal notice in editing contexts. The active node's own segments/connectors
  * always draw last (on top of every other node's).
  *
  * The geometric layout itself (dividing a face among connected nodes, straightening a 2-passage
@@ -68,8 +90,10 @@ interface Props {
  * node's connector (hub/straight-through line to a face's own segment) and the face segment itself
  * always match: a one-way's arrowhead sits only on the connector, never on the along-face
  * segment. */
-export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate, showRotateControls = true }: Props) {
-  const [boundaryHint, setBoundaryHint] = useState(false);
+export function TileFaceEditor({
+  point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate,
+  showRotateControls = true, showFaceIndices = false, notificationSource,
+}: Props) {
   const diagram = getTileDiagram(point[0], point[1], cfg);
   if (!diagram) return null;
 
@@ -85,10 +109,14 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
   // full-size) SVG viewport. Rotate buttons no longer live inside this SVG (GitHub issue #234
   // follow-up — moved to plain HTML buttons below the diagram), so the viewBox no longer needs
   // the extra side padding they used to require.
-  const pad = Math.max(w, h) * 0.08;
+  const pad = Math.max(w, h) * FACE_INDEX_PAD_FACTOR;
   const viewBox = `${minX - pad} ${minY - pad} ${w + pad * 2} ${h + pad * 2}`;
   const polygonPoints = vertices.map(v => `${v.x},${v.y}`).join(" ");
   const strokeWidth = Math.max(w, h) * 0.05;
+  const faceIndexOffset = Math.max(w, h) * FACE_INDEX_OFFSET_FACTOR;
+  const faceIndexFontSize = Math.max(w, h) * FACE_INDEX_FONT_FACTOR;
+  const centroid = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const center = { x: 0, y: 0 };
 
   const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) =>
     ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -115,7 +143,8 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
     return `${tipX},${tipY} ${baseX + perpX * size},${baseY + perpY * size} ${baseX - perpX * size},${baseY - perpY * size}`;
   };
 
-  const faceInputs = sides.map((side) => ({ v0: side.v0, v1: side.v1 }));
+  const faceInputs = sides.map((side) => ({ v0: side.v0, v1: side.v1, polyline: side.polyline }));
+  const sidePoints = (polyline: readonly { x: number; y: number }[]) => polyline.map((p) => `${p.x},${p.y}`).join(" ");
   // `?? "wall"` is a defensive fallback for a malformed `faces` array (shorter than the
   // tessellation's real face count) — should never happen with consistent caller data, but
   // `"none"` isn't a valid `SplitFaceKind` (see splitFaceLayout.ts's module doc comment) and a
@@ -125,13 +154,29 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
     nodes.map((n, nodeIndex) => ({ nodeIndex, kind: n.faces[side.index]?.kind ?? "wall" })));
   const faceLayouts = computeSplitFaceLayouts(faceInputs, kindsByFace, activeIndex);
 
-  const centerX = 0, centerY = 0;
+  const centerX = center.x, centerY = center.y;
   const hubRadius = Math.max(w, h) * 0.12;
   // Match the canvas split-node anchor layout, including Cairo's five-face 36° offset.
   const rotationRad = getSplitCircleRotationDeg(cfg) * Math.PI / 180;
   const connectors = computeSplitConnectors(
     faceLayouts, nodes.length, activeIndex, { x: centerX, y: centerY }, hubRadius, rotationRad,
   );
+  // The editor routes each node from this point on the split circle. A plain two-passage corridor
+  // draws as a straight line instead of a visible hub, but keeps this same logical anchor so its
+  // face hit zones still follow the selected node rather than reverting to the tile center.
+  const activeNodeIndex = activeIndex ?? 0;
+  const activeNodeAngle = rotationRad + (activeNodeIndex / nodes.length) * Math.PI * 2;
+  const activeNodeAnchor = {
+    x: center.x + Math.cos(activeNodeAngle) * hubRadius,
+    y: center.y + Math.sin(activeNodeAngle) * hubRadius,
+  };
+  const faceHitZonePoints = (side: typeof sides[number]) => {
+    const extendedBoundary = side.polyline.map((p) => ({
+      x: activeNodeAnchor.x + (p.x - activeNodeAnchor.x) * (1 + FACE_HIT_ZONE_OUTSET_FACTOR),
+      y: activeNodeAnchor.y + (p.y - activeNodeAnchor.y) * (1 + FACE_HIT_ZONE_OUTSET_FACTOR),
+    }));
+    return sidePoints([activeNodeAnchor, ...extendedBoundary]);
+  };
 
   const colorFor = (nodeIndex: number, kind: TileFaceKind) => {
     const color = nodes[nodeIndex]?.color ?? ui.border.default;
@@ -142,11 +187,11 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
   // node last), so rendering each node's connector immediately followed by its own face segments,
   // node by node in that same order, keeps the active node's entire drawing on top everywhere, not
   // just within the connector or segment group separately (GitHub issue #234 follow-up).
-  const segmentsByNode = new Map<number, { faceIndex: number; v0: { x: number; y: number }; v1: { x: number; y: number }; kind: TileFaceKind }[]>();
+  const segmentsByNode = new Map<number, { faceIndex: number; polyline: { x: number; y: number }[]; kind: TileFaceKind }[]>();
   faceLayouts.forEach((layout, faceIndex) => {
     for (const seg of layout.segments) {
       const list = segmentsByNode.get(seg.nodeIndex);
-      const entry = { faceIndex, v0: seg.v0, v1: seg.v1, kind: seg.kind };
+      const entry = { faceIndex, polyline: seg.polyline, kind: seg.kind };
       if (list) list.push(entry); else segmentsByNode.set(seg.nodeIndex, [entry]);
     }
   });
@@ -163,13 +208,19 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
           return (
             <g
               key={side.index}
-              onClick={() => (!boundary ? onFaceClick(side.index) : setBoundaryHint(true))}
-              onContextMenu={(e) => { e.preventDefault(); if (!boundary) onFaceRightClick(side.index); }}
-              onMouseLeave={() => setBoundaryHint(false)}
+              data-testid={`tile-face-hit-${side.index}`}
+              onClick={() => {
+                if (!boundary) onFaceClick(side.index);
+                else if (notificationSource) notifyEditRefusal(notificationSource, SPLIT_BOUNDARY_FACE);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!boundary) onFaceRightClick(side.index);
+                else if (notificationSource) notifyEditRefusal(notificationSource, SPLIT_BOUNDARY_FACE);
+              }}
               style={{ cursor: "default" }}
             >
-              <line x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-                stroke="transparent" strokeWidth={strokeWidth * 4} />
+              <polygon points={faceHitZonePoints(side)} fill="transparent" stroke="none" />
             </g>
           );
         })}
@@ -179,8 +230,8 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
         {sides.map((side) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return boundary ? (
-            <line key={`b${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.text.inverse} strokeWidth={strokeWidth} strokeLinecap="round"
+            <polyline key={`b${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.text.inverse} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
               style={{ pointerEvents: "none" }} />
           ) : null;
         })}
@@ -190,8 +241,8 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
         {sides.map((side, sideIndex) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return !boundary && faceLayouts[sideIndex].allWall ? (
-            <line key={`w${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.border.strong} strokeWidth={strokeWidth} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+            <polyline key={`w${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.border.strong} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           ) : null;
         })}
         {/* A face with no connected node at all draws once as a shared neutral line (not
@@ -199,9 +250,33 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
         {sides.map((side, sideIndex) => {
           const boundary = nodes[0]?.faces[side.index]?.boundary ?? false;
           return !boundary && faceLayouts[sideIndex].segments.length === 0 && !faceLayouts[sideIndex].allWall ? (
-            <line key={`n${side.index}`} x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
-              stroke={ui.border.default} strokeWidth={strokeWidth} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+            <polyline key={`n${side.index}`} points={sidePoints(side.polyline)} fill="none"
+              stroke={ui.border.default} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           ) : null;
+        })}
+        {/* Pale per-face index just outside each physical face's midpoint, so two faces lying on
+         * one straight line (e.g. the halves of a brick tessellation's long side) read as distinct. */}
+        {showFaceIndices && sides.map((side) => {
+          const mx = (side.v0.x + side.v1.x) / 2, my = (side.v0.y + side.v1.y) / 2;
+          const dx = side.v1.x - side.v0.x, dy = side.v1.y - side.v0.y;
+          const len = Math.hypot(dx, dy) || 1;
+          let nx = dy / len, ny = -dx / len;
+          if (nx * (mx - centroid.x) + ny * (my - centroid.y) < 0) { nx = -nx; ny = -ny; }
+          // Glyph box half-extent along the normal, so the gap to the side is the same for every
+          // side angle (a fixed offset from the glyph's center leaves a tilted side's label closer).
+          const label = String(side.index);
+          const halfW = faceIndexFontSize * FACE_INDEX_GLYPH_WIDTH * label.length / 2;
+          const halfH = faceIndexFontSize * FACE_INDEX_GLYPH_HEIGHT / 2;
+          // A convex side bulges past its chord, so the label also clears the farthest outward point.
+          const bulge = Math.max(0, ...side.polyline.map((p) => (p.x - mx) * nx + (p.y - my) * ny));
+          const dist = faceIndexOffset + bulge + Math.abs(nx) * halfW + Math.abs(ny) * halfH;
+          return (
+            <text key={`i${side.index}`} x={mx + nx * dist} y={my + ny * dist}
+              textAnchor="middle" dy={`${FACE_INDEX_GLYPH_HEIGHT / 2}em`} fontSize={faceIndexFontSize} fontWeight="600"
+              fill={ui.text.tertiary} opacity={FACE_INDEX_OPACITY} style={{ pointerEvents: "none", userSelect: "none" }}>
+              {label}
+            </text>
+          );
         })}
         {/* Per-node groups, in `connectors`' own draw order (active node last) — each node's
          * connector and every one of its own face segments render together, so the active node's
@@ -212,8 +287,8 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
           return (
             <g key={connector.nodeIndex} style={{ pointerEvents: "none" }}>
               {(segmentsByNode.get(connector.nodeIndex) ?? []).map((seg, i) => (
-                <line key={`s${i}`} x1={seg.v0.x} y1={seg.v0.y} x2={seg.v1.x} y2={seg.v1.y}
-                  stroke={colorFor(connector.nodeIndex, seg.kind)} strokeWidth={strokeWidth} strokeLinecap="round" />
+                <polyline key={`s${i}`} points={sidePoints(seg.polyline)} fill="none"
+                  stroke={colorFor(connector.nodeIndex, seg.kind)} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
               ))}
               {connector.lines.map((line, i) => (
                 <line key={`c${i}`} x1={line.from.x} y1={line.from.y} x2={line.to.x} y2={line.to.y}
@@ -227,19 +302,16 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
           );
         })}
       </svg>
-      {boundaryHint && (
-        <div style={styles.hint}>{m["post_edit.split_boundary_hint"]()}</div>
-      )}
     </div>
-    {showRotateControls && (
+    {showRotateControls && canRotateSplit(cfg, point[0], point[1]) && (
       <div style={styles.rotateRow}>
         <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
-        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)} title={m["post_edit.split_rotate_ccw"]()}>
+        <Tooltip content={m["post_edit.split_rotate_ccw"]()}><button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)}>
           <RotateCcw size={16} />
-        </button>
-        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)} title={m["post_edit.split_rotate_cw"]()}>
+        </button></Tooltip>
+        <Tooltip content={m["post_edit.split_rotate_cw"]()}><button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)}>
           <RotateCw size={16} />
-        </button>
+        </button></Tooltip>
       </div>
     )}
     </div>
@@ -286,18 +358,6 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     maxWidth: "100%",
     maxHeight: "100%",
-  },
-  hint: {
-    ...typography.body,
-    position: "absolute",
-    bottom: spacing.groupGap,
-    left: spacing.groupGap,
-    right: spacing.groupGap,
-    padding: spacing.itemGap,
-    background: ui.bg.warning,
-    color: ui.text.warning,
-    borderRadius: radius.md,
-    textAlign: "center",
   },
   rotateRow: {
     display: "flex",

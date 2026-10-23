@@ -308,10 +308,19 @@ function collapseEntityGroup(
 
   if (!opts.hasDirectionFlip) return;
 
+  // An absolute direction command (settings dialog, GitHub issue #748) fixes the direction outright,
+  // so every earlier direction command of the group is unobservable. Only flips after the latest
+  // absolute command can still pair up.
+  const directionIndices = indices.filter((i) => !superseded.has(i) && isDirectionCommand(commands[i]));
+  const lastAbsolute = [...directionIndices].reverse().find((i) => isAbsoluteDirectionCommand(commands[i]));
+  if (lastAbsolute !== undefined) {
+    for (const i of directionIndices) if (i < lastAbsolute) superseded.add(i);
+  }
+
   // Direction-flip pairs, collapsed from the start of this group's own flip-only subsequence —
   // non-flip commands of the same group (moves, the create) are skipped over, never treated as
   // breaking a pair.
-  const flipIndices = indices.filter((i) => !superseded.has(i) && isDirectionCommand(commands[i]));
+  const flipIndices = directionIndices.filter((i) => (lastAbsolute === undefined || i > lastAbsolute));
   for (let k = 0; k + 1 < flipIndices.length; k += 2) {
     superseded.add(flipIndices[k]);
     superseded.add(flipIndices[k + 1]);
@@ -351,4 +360,8 @@ export function compactPostEditCommands(
     if (result.applied) state = result.state;
   }
   return renormalized;
+}
+
+function isAbsoluteDirectionCommand(command: PostEditCommand): boolean {
+  return (command.kind === "setTeleportDirection" || command.kind === "setVerticalPassageDirection") && command.absolute === true;
 }

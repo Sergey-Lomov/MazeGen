@@ -1,7 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { getSharedEdgeSegment } from "../tessellationGeometry";
+import type { FieldConfig } from "../../fieldConfig";
+import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
+import { tracePath } from "../geometry/pathRenderer";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -152,7 +153,7 @@ export class WallRenderer {
 
   render(
     data: { edges: WallEdge[] },
-    cfg?: TessellationConfig,
+    cfg?: FieldConfig,
     solidStyleOverride?: WallStyleOverride,
     oneWayStyleOverride?: OneWayStyleOverride,
     extraWalls?: Point[][],
@@ -163,7 +164,7 @@ export class WallRenderer {
     this.g.clear();
     if (!cfg) return;
 
-    const solidSegs: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+    const solidSegs: SharedEdge[] = [];
     const oneWays: { cx: number; cy: number; dx: number; dy: number }[] = [];
     for (const edge of data.edges) {
       const seg = this.getEdgeSegment(edge, cfg);
@@ -173,13 +174,14 @@ export class WallRenderer {
         solidSegs.push(seg);
       } else {
         const styleBase = WALL_STYLES[edge.style];
-        this.g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke({ width: WALL_THICKNESS, ...styleBase });
+        tracePath(this.g, seg.path);
+        this.g.stroke({ width: WALL_THICKNESS, ...styleBase });
       }
 
       if (edge.oneWayDir) {
         oneWays.push({
-          cx: (seg.v0.x + seg.v1.x) / 2,
-          cy: (seg.v0.y + seg.v1.y) / 2,
+          cx: seg.contact.x,
+          cy: seg.contact.y,
           dx: edge.oneWayDir.dx,
           dy: edge.oneWayDir.dy,
         });
@@ -207,14 +209,15 @@ export class WallRenderer {
       // vertex-chaining below is only meaningful once a caller actually asks for a `join`/`cap` or
       // supplies `extraWalls`, so it must not change GenerationRenderer's rendering by default.
       for (const seg of solidSegs) {
-        this.g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
+        tracePath(this.g, seg.path);
+        this.g.stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
       }
     } else {
       const width = solidStyleOverride?.width ?? WALL_THICKNESS;
       const color = solidStyleOverride?.color ?? WALL_STYLES.solid.color;
       const join = solidStyleOverride?.join ?? WALL_STYLES.solid.join;
       const realCap = solidStyleOverride?.cap ?? WALL_STYLES.solid.cap;
-      const allPaths = [...solidSegs.map((s) => [s.v0, s.v1]), ...(extraWalls ?? [])];
+      const allPaths = [...solidSegs.map((s) => s.polyline.map(([x, y]) => ({ x, y }))), ...(extraWalls ?? [])];
       const noCapKeys = new Set((extraWallsNoCap ?? []).map(pointKeyOf));
       if (randomColorMode === "per_segment" && randomColorContext) {
         let segmentIndex = 0;
@@ -308,11 +311,8 @@ export class WallRenderer {
     }
   }
 
-  private getEdgeSegment(
-    edge: WallEdge,
-    cfg: TessellationConfig,
-  ): { v0: { x: number; y: number }; v1: { x: number; y: number } } | null {
-    return getSharedEdgeSegment(edge.a, edge.b, cfg);
+  private getEdgeSegment(edge: WallEdge, cfg: FieldConfig): SharedEdge | null {
+    return edge.face === undefined ? getSharedEdgeSegment(edge.a, edge.b, cfg) : getFaceEdgeSegment(edge.a, edge.face, cfg);
   }
 
   destroy(): void {

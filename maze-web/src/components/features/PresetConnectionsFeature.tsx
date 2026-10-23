@@ -8,7 +8,6 @@ import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
@@ -24,14 +23,18 @@ import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog"
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import { PresetEntityDeleteDialog } from "../dialogs/PresetEntityDeleteDialog";
+import { PresetEntityPickDialog } from "../dialogs/PresetEntityPickDialog";
+import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSettingsDialog";
+import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
+import { presetToolShortcut } from "../../pixi/toolShortcuts";
 
-function getEdgeTools(): [PresetConnectionTool, string][] {
+function getEdgeTools(): [PresetConnectionTool, string, string?][] {
   return [
     ["wall", m["preset.wall"]()],
     ["passage", m["preset.passage"]()],
-    ["reset", `${m["preset.reset"]()}\n${m["preset.reset_tooltip"]()}`],
+    ["reset", m["preset.reset"](), m["preset.reset_tooltip"]()],
     ["one_way", m["preset.one_way"]()],
   ];
 }
@@ -108,12 +111,18 @@ export function PresetConnectionsFeature() {
   const cancelPresetSplitTarget = useMazeStore((s) => s.cancelPresetSplitTarget);
   const presetEntityDeletePrompt = useMazeStore((s) => s.presetEntityDeletePrompt);
   const cancelPresetEntityDelete = useMazeStore((s) => s.cancelPresetEntityDelete);
-  const presetDragFailureMessage = useMazeStore((s) => s.presetDragFailureMessage);
-  const dismissPresetDragFailureMessage = useMazeStore((s) => s.dismissPresetDragFailureMessage);
+  const presetEntityPickPrompt = useMazeStore((s) => s.presetEntityPickPrompt);
+  const cancelPresetEntityPick = useMazeStore((s) => s.cancelPresetEntityPick);
+  const presetConnectionSettingsPrompt = useMazeStore((s) => s.presetConnectionSettingsPrompt);
+  const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
+  const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
+  const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const presetSectionsExpanded = useMazeStore((s) => s.presetSectionsExpanded);
@@ -150,8 +159,8 @@ export function PresetConnectionsFeature() {
   const orphanSplitCount = orphanPoints.length;
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
   const invalidKeys = useMemo(
     () => computeInvalidKeys(presetConnections, resolveFieldAt),
@@ -244,10 +253,13 @@ export function PresetConnectionsFeature() {
             ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
             ...(floors.length > 1 ? getVerticalTools() : []),
             ...getGenerationTools(),
-            ["clear", m["preset.clear_tool"]()],
+            ["move", m["tools.move"]()],
+            ["settings", m["tools.settings"]()],
+            ["clear", m["preset.clear_tool"](), m["preset.clear_tooltip"](), ["shift"]],
           ]}
           activeTool={tool}
           onPick={setTool}
+          shortcutFor={presetToolShortcut}
           isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
       </div>
@@ -285,7 +297,17 @@ export function PresetConnectionsFeature() {
         <PresetEntityDeleteDialog onClose={cancelPresetEntityDelete} />
       )}
 
-      {presetDragFailureMessage && <VerticalDragFailureAlert failure={presetDragFailureMessage} onClose={dismissPresetDragFailureMessage} />}
+      {presetEntityPickPrompt && (
+        <PresetEntityPickDialog onClose={cancelPresetEntityPick} />
+      )}
+
+      {presetConnectionSettingsPrompt && (
+        <PresetConnectionSettingsDialog onClose={cancelPresetConnectionSettings} />
+      )}
+
+      {presetLockSettingsPrompt && (
+        <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
+      )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>

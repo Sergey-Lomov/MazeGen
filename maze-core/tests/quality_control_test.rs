@@ -8,10 +8,11 @@ use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
 use maze_core::{Graph, IdGenerator, Maze, RegionClass};
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn make_empty_square_maze() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -122,8 +123,12 @@ fn missing_endpoints_check_no_false_positive_when_both_set() {
 #[test]
 fn unreachable_finish_check_detects_when_not_reachable() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(2, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -162,8 +167,12 @@ fn unreachable_finish_check_skips_when_endpoints_missing() {
 #[test]
 fn unreachable_finish_check_no_false_positive_when_reachable() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(2, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -193,8 +202,12 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
 #[test]
 fn one_min_region_count_instance_reports_multiple_classes_at_once() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(7, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(7, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);

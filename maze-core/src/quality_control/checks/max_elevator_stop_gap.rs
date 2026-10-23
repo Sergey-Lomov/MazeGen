@@ -35,7 +35,7 @@ impl<T: Tessellation> Check<T, ExcessiveElevatorStopGapIssue> for MaxElevatorSto
 
         for elevator in elevator_groups(maze) {
             let floors = stop_floors(&elevator, maze);
-            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else {
+            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.cell_of(n)) else {
                 continue;
             };
             let Some(levels_by_index) = levels_by_index(maze, point) else {
@@ -77,7 +77,7 @@ impl<T: Tessellation> Check<T, ExcessiveElevatorStopGapIssue> for MaxElevatorSto
 
 fn levels_by_index<T: Tessellation>(
     maze: &Maze<T>,
-    point: T::Point,
+    point: T::CellId,
 ) -> Option<std::collections::HashMap<usize, crate::space::LevelId>> {
     Some(
         maze.field
@@ -98,6 +98,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_elevator_stop_gap";
 
@@ -110,10 +111,14 @@ mod tests {
         stop_floor_indices: &[usize],
     ) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..floor_count)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();

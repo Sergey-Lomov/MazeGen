@@ -1,13 +1,17 @@
 import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { getCellVertices } from "../tessellationGeometry";
+import { cellsInDisplayRect, getCellPath } from "../tessellationGeometry";
+import { tracePath } from "../geometry/pathRenderer";
+import { TILE_SIZE } from "../constants";
 import { GRID_LINE_ALPHA } from "../renderConstants";
 import { canvas } from "../colorTokens";
 
 /** Above this count the grid is visually too dense to be useful and too expensive to rebuild. */
 export const MAX_VIEWPORT_GRID_CELLS = 50_000;
+/// Cells drawn beyond the viewport edge on each side; a cell is at most two tiles across.
+const VIEWPORT_CELL_PAD = 6;
 
 export interface GridBounds {
   minX: number;
@@ -27,7 +31,7 @@ export function shouldRenderViewportGrid(bounds: GridBounds): boolean {
 }
 
 interface GridRenderState {
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   color: number;
   scale: number;
   cells: readonly [number, number][] | undefined;
@@ -46,7 +50,7 @@ export class GridRenderer {
 
   render(
     data: { viewport: Viewport; color?: number },
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     cells?: readonly [number, number][],
   ): void {
     const { x, y, w, h, scale } = data.viewport;
@@ -72,10 +76,7 @@ export class GridRenderer {
     this.g.setStrokeStyle({ width: 1 / scale, color, alpha: GRID_LINE_ALPHA });
 
     const drawCell = (xi: number, yi: number): void => {
-      const verts = getCellVertices(xi, yi, cfg);
-      if (!verts) return;
-      this.g.moveTo(verts[verts.length - 1].x, verts[verts.length - 1].y);
-      for (const v of verts) this.g.lineTo(v.x, v.y);
+      tracePath(this.g, getCellPath(xi, yi, cfg));
     };
 
     if (cells) {
@@ -83,9 +84,18 @@ export class GridRenderer {
       // into the viewport/export margin around an irregular field.
       for (const [xi, yi] of cells) drawCell(xi, yi);
     } else if (bounds) {
-      for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
-        for (let yi = bounds.minY; yi <= bounds.maxY; yi++) drawCell(xi, yi);
-      }
+      // Not every lattice coordinate is a cell (Cairo skips some), so ask core which cells the
+      // viewport touches instead of walking the coordinate box.
+      // Wider than the cells the reuse bounds (`sameRender`) tolerate: a pan that keeps the
+      // bounds unchanged moves the viewport by less than `GRID_BOUNDS_PAD` cells.
+      const pad = VIEWPORT_CELL_PAD * TILE_SIZE;
+      const visible = cellsInDisplayRect({
+        minX: -x / scale - pad,
+        maxX: (-x + w) / scale + pad,
+        minY: -y / scale - pad,
+        maxY: (-y + h) / scale + pad,
+      }, "intersects", cfg);
+      for (const [xi, yi] of visible) drawCell(xi, yi);
     }
     this.g.stroke();
     this.lastRender = nextRender;

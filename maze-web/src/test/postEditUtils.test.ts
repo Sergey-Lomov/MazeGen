@@ -3,7 +3,6 @@ import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto,
   floorScopedTeleportEdges,
   rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
-  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes, rotateSplitPointBreaksNeighborShape,
 } from "../pixi/postEditUtils";
@@ -11,6 +10,7 @@ import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitF
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const noSplits = () => undefined;
 
@@ -181,7 +181,7 @@ describe("floorScopedTeleportEdges", () => {
 
 // --- rotateSplitPointNodes ---
 
-const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 // SQUARE_NEIGHBOR_OFFSETS order: [0]=E(1,0), [1]=N(0,1), [2]=W(-1,0), [3]=S(0,-1) — direction 1
 // rotates E->N->W->S->E, direction -1 the reverse.
 const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1", "1,-1", "-1,-1"]);
@@ -200,8 +200,8 @@ function faceOf(neighbor: PostEditEndpoint, toNeighbor: PostEditEdge, fromNeighb
 const wallTo = (from: PostEditEndpoint, to: PostEditEndpoint): PostEditEdge => ({ kind: "wall", from, to });
 
 describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 compaction follow-up)", () => {
-  it("rotates Cairo's five face slots without assuming four or six faces", () => {
-    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+  it("keeps Cairo connections in place: its allowed group has no rotation", () => {
+    const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const from = nodeEndpoint(1);
     const oldNeighbor = nodeEndpoint(2);
     const edges: Record<string, PostEditEdge> = {
@@ -216,7 +216,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
       ], {}, {},
     );
     expect(result).toHaveLength(1);
-    expect(result[0].faces[0].neighbor).toEqual(nodeEndpoint(3));
+    expect(result[0].faces[0].neighbor).toEqual(nodeEndpoint(2));
   });
 
   it("no split slots — a one-way edge from the point moves from its E neighbor to its N neighbor (direction 1)", () => {
@@ -296,6 +296,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     // Rotating by +1 moves the N-face connection to W, which is outside the field.
     const result = rotateSplitPointNodes(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {}, {});
     expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("rotation onto a field cell with no node there is refused entirely — sparse field, not a boundary", () => {
@@ -309,6 +310,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     // Rotating by +1 moves the E-face connection to N (0,1), which is in-field but nodeless.
     const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, sparseNodes, {}, {});
     expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("moves to whichever node is active at the new neighbor, not always its original node", () => {
@@ -410,7 +412,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     }]);
   });
 
-  it("every candidate at the neighbor already holds a finished bridge — the new face is refused outright (stays wall), not wired onto the least-bad option", () => {
+  it("every candidate at the neighbor already holds a finished bridge — the rotation returns an ambiguous-owner refusal", () => {
     // Both of the neighbor's nodes (original AND slot 0) already hold a complete opposite pair.
     // There is no safe node to hand the new face to — picking either would corrupt it, so the
     // rotate must leave this face disconnected rather than guess (this is the actual GitHub #580
@@ -436,10 +438,28 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     const splitPoints: Record<string, number[]> = { "0,1": [0] };
 
     const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
-    // (0,0)'s own E-face one-way move is refused (no safe owner at the neighbor) — the point ends
-    // up with no connection to (0,1) at all (absence reads as wall, same "nothing to draw" contract
-    // `currentSplitNodeFaces` already uses for a neighbor with no edge in either direction).
-    expect(result).toEqual([{ slotId: undefined, faces: [] }]);
+    expect(result).toEqual([]);
+    expect(result.refusalReason).toBe("ambiguous_face_owner");
+  });
+
+  it("rotating onto a plain (non-split) neighbor that is a straight corridor extends it instead of refusing", () => {
+    const plainNodes = ringNodes.filter((n) => n.i === 0);
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward" };
+    // The neighbor's only node already passes straight E-W; with no second node it is no bridge.
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeOriginal, eastOfNeighbor)] = { from: bridgeOriginal, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeOriginal, westOfNeighbor)] = { from: bridgeOriginal, to: westOfNeighbor, kind: "basic" };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, plainNodes, {}, {});
+    expect(result.refusalReason).toBeUndefined();
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(bridgeOriginal, { kind: "one_way_forward", from: center, to: bridgeOriginal }, wallTo(bridgeOriginal, center))],
+    }]);
   });
 
   it("multi-move rotate: two moves land on the same finished-bridge neighbor — both avoid the bridge slot", () => {
@@ -607,36 +627,6 @@ describe("postEditVerticalPassageDirectionToDto", () => {
   it("forward/backward pass through unchanged", () => {
     expect(postEditVerticalPassageDirectionToDto("forward")).toBe("forward");
     expect(postEditVerticalPassageDirectionToDto("backward")).toBe("backward");
-  });
-});
-
-// --- findPostEditVerticalPassageForPair ---
-
-describe("findPostEditVerticalPassageForPair", () => {
-  const passages = [
-    { id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
-    { id: "v2", from: nodeEndpoint(5), to: nodeEndpoint(0), direction: "two_way" as const },
-  ];
-
-  it("matches a pair in either argument order", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(1))?.id).toBe("v1");
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(0))?.id).toBe("v1");
-  });
-
-  it("matches regardless of which end of the entry each id sits on", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(5))?.id).toBe("v2");
-  });
-
-  it("returns undefined when no entry connects the pair", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(5))).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(9))).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair([], nodeEndpoint(0), nodeEndpoint(1))).toBeUndefined();
-  });
-
-  it("matches a split-addressed endpoint too (GitHub issue #550 ninth follow-up)", () => {
-    const withSplit = [{ id: "v3", from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(findPostEditVerticalPassageForPair(withSplit, splitEndpoint([0, 0], 0), nodeEndpoint(1))?.id).toBe("v3");
-    expect(findPostEditVerticalPassageForPair(withSplit, nodeEndpoint(1), splitEndpoint([0, 0], 0))?.id).toBe("v3");
   });
 });
 

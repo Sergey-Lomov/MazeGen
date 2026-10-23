@@ -1,4 +1,5 @@
-﻿import React, { useMemo, useRef } from "react";
+﻿import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import React, { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Save, FolderOpen, Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
@@ -16,24 +17,38 @@ import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
+import { readJsonFile } from "./jsonFile";
+import { registerNotificationCode } from "../notifications/notificationRegistry";
+import { notify } from "../notifications/notificationStore";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
+
+const PROJECT_LOAD_SOURCE = "project_load";
+
+const PROJECT_LOAD_CODES = {
+  invalid: "project.load_error",
+  qualityPreset: "project.load_error_quality_preset",
+  visualPreset: "project.load_error_visual_preset",
+} as const;
+for (const code of Object.values(PROJECT_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,
-  floorFields: { fieldEditMode: "default" | "custom"; fieldPoints: Set<number>; tessellationConfig: TessellationConfig }[],
+  floorFields: { fieldEditMode: "default" | "custom"; fieldPoints: Set<number>; fieldConfig: FieldConfig }[],
 ): FeatureStatus {
   if (!tessellationConfirmed) return "unavailable";
   const totalCount = floorFields.reduce(
-    (sum, f) => sum + (f.fieldEditMode === "custom" ? f.fieldPoints.size : configCellCount(f.tessellationConfig)),
+    (sum, f) => sum + (f.fieldEditMode === "custom" ? f.fieldPoints.size : configCellCount(f.fieldConfig)),
     0,
   );
   if (totalCount === 0) return "critical";
@@ -80,8 +95,20 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
   const labels: Record<TessellationKind, () => string> = {
     square: m["tessellation.square"],
     hex: m["tessellation.hex"],
-    triangle: m["tessellation.triangle"],
+    tri: m["tessellation.triangle"],
     cairo: m["tessellation.cairo"],
+    square_octagon: m["tessellation.square_octagon"],
+    brick: m["tessellation.brick"],
+    trihexagonal: m["tessellation.trihexagonal"],
+    snub_hexagonal: m["tessellation.snub_hexagonal"],
+    rhombitrihexagonal: m["tessellation.rhombitrihexagonal"],
+    truncated_hexagonal: m["tessellation.truncated_hexagonal"],
+    truncated_trihexagonal: m["tessellation.truncated_trihexagonal"],
+    elongated_triangular: m["tessellation.elongated_triangular"],
+    snub_square: m["tessellation.snub_square"],
+    curved_quadrilateral: m["tessellation.curved_quadrilateral"],
+    radial: m["tessellation.radial"],
+    voronoi: m["tessellation.voronoi"],
   };
   return labels[kind]();
 }
@@ -158,6 +185,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -183,7 +212,6 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const loadProject = useMazeStore((s) => s.loadProject);
-  const setError = useMazeStore((s) => s.setError);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,26 +239,21 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const reader = new FileReader();
-    reader.onerror = () => setError(m["project.load_error_io"]());
-    reader.onload = (ev) => {
+    readJsonFile(file, PROJECT_LOAD_SOURCE, (json) => {
+      // Validation runs before `loadProject`, so a rejected file leaves the store untouched.
+      let project: ReturnType<typeof parseAndValidate>;
       try {
-        const text = ev.target?.result as string;
-        let json: unknown;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          setError(m["project.load_error_json"]());
+        project = parseAndValidate(json);
+      } catch (err) {
+        if (err instanceof FileKindMismatchError) {
+          notify({ source: PROJECT_LOAD_SOURCE, code: err.found === "quality_preset" ? PROJECT_LOAD_CODES.qualityPreset : PROJECT_LOAD_CODES.visualPreset });
           return;
         }
-        const projectFile = parseAndValidate(json);
-        loadProject(projectFile);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(m["project.load_error"]({ message }));
+        notify({ source: PROJECT_LOAD_SOURCE, code: PROJECT_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
+        return;
       }
-    };
-    reader.readAsText(file);
+      loadProject(project);
+    });
   }
 
   function handleToggle(id: FeatureId) {
@@ -247,8 +270,9 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   function basicConfigSubtitle(): string | undefined {
     if (!tessellationConfirmed) return undefined;
     const label = getTessellationKindLabel(tessellationKind);
-    if (tessellationKind === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
-    if (tessellationKind === "triangle") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
+    const slot = TESSELLATION_UI[tessellationKind].orientationSlot;
+    if (slot === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
+    if (slot === "tri") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
     return label;
   }
 
@@ -264,8 +288,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     : m["status.field_configured"]();
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
   const presetInvalidKeys = useMemo(
     () => computeInvalidKeys(presetConnections, resolveFieldAt),
@@ -442,7 +466,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
           ref={fileInputRef}
           type="file"
           name="project-file"
-          accept=".json"
+          accept={projectFileAccept(navigator)}
           style={{ display: "none" }}
           onChange={handleFileChange}
         />

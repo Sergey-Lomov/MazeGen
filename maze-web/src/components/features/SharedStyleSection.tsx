@@ -142,6 +142,7 @@ export function SharedStyleSection<P extends string>({
             shape: settings.markerShape,
             cornerStyle: settings.cornerStyle,
             size: settings.markerSize,
+            sizeAdaptation: settings.markerSizeAdaptation,
             fillColor: settings.markerFillColor,
             borderColor: settings.markerBorderColor,
             borderWidth: settings.markerBorderWidth,
@@ -152,6 +153,7 @@ export function SharedStyleSection<P extends string>({
             if (patch.shape !== undefined) mapped.markerShape = patch.shape;
             if (patch.cornerStyle !== undefined) mapped.cornerStyle = patch.cornerStyle;
             if (patch.size !== undefined) mapped.markerSize = patch.size;
+            if (patch.sizeAdaptation !== undefined) mapped.markerSizeAdaptation = patch.sizeAdaptation;
             if (patch.fillColor !== undefined) mapped.markerFillColor = patch.fillColor;
             if (patch.borderColor !== undefined) mapped.markerBorderColor = patch.borderColor;
             if (patch.borderWidth !== undefined) mapped.markerBorderWidth = patch.borderWidth;
@@ -162,6 +164,7 @@ export function SharedStyleSection<P extends string>({
             shape: "markerShape" as P,
             cornerStyle: "cornerStyle" as P,
             size: "markerSize" as P,
+            sizeAdaptation: "markerSizeAdaptation" as P,
             fillColor: "markerFillColor" as P,
             borderColor: "markerBorderColor" as P,
             borderWidth: "markerBorderWidth" as P,
@@ -209,6 +212,17 @@ export function SharedStyleSection<P extends string>({
           linkTarget={"markerTextMargin" as P}
         />
       </div>
+      <LinkedSelectRow
+        label={m["image_export.floors.general_style_floor_label"]()}
+        value={settings.floorLabelType}
+        options={[
+          { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+          { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+          { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+        ]}
+        onChange={(floorLabelType) => onChange({ floorLabelType })}
+        linkTarget={"floorLabelType" as P}
+      />
     </div>
   );
 }

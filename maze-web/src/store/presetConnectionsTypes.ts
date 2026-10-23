@@ -1,8 +1,9 @@
 import type { NodeLockKind } from "../wasm/types";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetEdgeToolMode, PresetTeleportDirection, PresetVerticalPassageDirection, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../pixi/pointEntities";
+import type { EntityToolPurpose } from "../pixi/entityToolKinds";
 
 export function isPresetLockTool(tool: PresetConnectionTool): boolean {
   return tool === "lock_in" || tool === "lock_out" || tool === "full_lock";
@@ -130,6 +131,10 @@ export interface PresetConnectionsState {
         slotIds: number[];
         action:
           | { tool: "set_start" | "set_finish" }
+          /** Drop of a moved teleport endpoint on a split tile (GitHub issue #748). */
+          | { tool: "move_teleport_endpoint"; id: number; end: "from" | "to" }
+          /** Drop of a moved lock on a split tile (GitHub issue #748). */
+          | { tool: "move_lock"; from: PresetEndpoint }
           | { tool: "lock_in" | "lock_out" | "full_lock" }
           | { tool: "gen_source" }
           | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
@@ -165,6 +170,9 @@ export interface PresetConnectionsState {
          *  (`fieldEditUtils.ts`) and `applyPresetSplitTargetPick`'s own doc comment. */
         queue?: { targetIndex: number; point: [number, number]; level?: number; slotIds: number[] }[];
         picks?: (PresetEndpoint | undefined)[];
+        /** A node the picker leaves out (`slotId` `undefined` = the original node): the other
+         *  endpoint of a teleport whose endpoint is being moved onto this tile (GitHub issue #748). */
+        excluded?: { slotId?: number };
       }
     | null;
   /** In-progress entity-delete prompt (GitHub issue #540) — set whenever a `clear` cell click, or a
@@ -185,13 +193,17 @@ export interface PresetConnectionsState {
    *  `presetVerticalPassages`/`presetElevators`/`presetStart`/`presetFinish` until release, so an
    *  intermediate cell the cursor passes over never gets written even transiently. Not persisted. */
   presetDragOverride: PresetDragOverride | null;
-  /** Set when a vertical-passage/elevator drag is released over a point that doesn't exist on one
-   *  of the entity's OTHER floors (GitHub issue #566) — the whole drag is reverted (see
-   *  `movePresetVerticalPassageEndpoint`/`movePresetElevatorEndpoint`'s own doc comments) and this
-   *  is populated so the `AlertModal` rendered in `PresetConnectionsFeature` can tell the user which
-   *  floor/point rejected the move. Cleared by `dismissPresetDragFailureMessage` (the dialog's own
-   *  OK button). */
-  presetDragFailureMessage: PresetDragFailure | null;
+  /** Point whose elements the move or settings tool must disambiguate (GitHub issue #748) — set by
+   *  `requestPresetEntityPick` when the cell carries more than one element relevant to `purpose`.
+   *  `PresetEntityPickDialog` lists every node's elements of a split tile at once. */
+  presetEntityPickPrompt: { point: [number, number]; level?: number; purpose: EntityToolPurpose } | null;
+  /** Element chosen for the move tool from `presetEntityPickPrompt`. `PresetConnectionsController`
+   *  takes it on the next pointer event and starts carrying it (click-to-drop). */
+  presetMoveRequest: PresetPointEntityDescriptor | null;
+  /** Teleport or vertical passage whose type/direction the settings dialog edits (GitHub issue #748). */
+  presetConnectionSettingsPrompt: { kind: "teleport" | "vertical_passage"; id: number } | null;
+  /** Lock whose kind the settings dialog edits (GitHub issue #748). */
+  presetLockSettingsPrompt: { endpoint: PresetEndpoint } | null;
 }
 
 /** See `PresetConnectionsState.presetDragOverride`. */
@@ -202,16 +214,12 @@ export type PresetDragOverride =
    *  `postEditDragOverride`'s `marker` variant: nothing is written to `presetStart`/`presetFinish`
    *  until pointerup, so a fast drag no longer forces a full store update (and canvas redraw) on
    *  every pointermove. */
-  | { kind: "marker"; marker: "start" | "finish"; point: [number, number] };
-
-/** See `PresetConnectionsState.presetDragFailureMessage`. `entityKind` picks the message wording
- *  ("passage" vs. "stop") — `level` is 0-based, `PresetConnectionsFeature` formats it 1-based
- *  (`level + 1`) when building the message. */
-export interface PresetDragFailure {
-  entityKind: "vertical_passage" | "elevator";
-  level: number;
-  point: [number, number];
-}
+  | { kind: "marker"; marker: "start" | "finish" | "gen_source"; point: [number, number] }
+  /** Live preview for a teleport endpoint drag — committed on pointerup like the other variants, so
+   *  cancelling a carried teleport (GitHub issue #748) leaves the entry untouched. */
+  | { kind: "teleportEndpoint"; id: number; end: "from" | "to"; point: [number, number] }
+  /** Live preview for a lock drag (GitHub issue #748) — `from` is the lock's committed node. */
+  | { kind: "lock"; from: PresetEndpoint; point: [number, number] };
 
 export interface PresetConnectionsActions {
   setPresetConnectionsTool: (tool: PresetConnectionTool) => void;
@@ -219,7 +227,7 @@ export interface PresetConnectionsActions {
   /** Same as `applyPresetConnectionsTool`, but takes `tool` explicitly instead of reading
    * `state.presetConnectionsTool` — used by the "Manage split nodes" dialog's own kind switcher
    * (GitHub issue #234), which must not disturb the canvas's globally active edge tool. */
-  applyPresetConnectionsToolAt: (tool: PresetConnectionTool, key: string, from: [number, number], to: [number, number]) => void;
+  applyPresetConnectionsToolAt: (tool: PresetEdgeToolMode, key: string, from: [number, number], to: [number, number]) => void;
   /** Cycles a user-defined one-way edge between its forward and backward directions. */
   cyclePresetConnectionDirection: (key: string) => void;
   /** Sets an edge to the client-only `"undefined"` state (explicit "preset allows but doesn't
@@ -275,8 +283,8 @@ export interface PresetConnectionsActions {
   cyclePresetVerticalPassageDirection: (id: number) => void;
   removePresetVerticalPassage: (id: number) => void;
   /** Moves BOTH ends of the passage to `point` (GitHub issue #566) — see
-   *  `moveVerticalPassageEndpoint` (fieldValidity.ts)'s own doc comment. Sets
-   *  `presetDragFailureMessage` and leaves `presetVerticalPassages` unchanged when `point` doesn't
+   *  `moveVerticalPassageEndpoint` (fieldValidity.ts)'s own doc comment. Emits a notice and leaves
+   *  `presetVerticalPassages` unchanged when `point` doesn't
    *  resolve on the other end's own floor. When either end's landing point turns out to be split
    *  (GitHub issue #594), defers the commit through `presetSplitTargetPrompt`
    *  (`move_vertical_passage_endpoint`) instead of silently attaching both ends to their original
@@ -300,7 +308,7 @@ export interface PresetConnectionsActions {
   removePresetElevator: (id: number) => void;
   /** Moves EVERY floor endpoint of the elevator to `point` (GitHub issue #566) — see
    *  `moveElevatorEndpoint` (fieldValidity.ts)'s own doc comment. `level` is the dragged marker's
-   *  own floor (the drag's "own end"). Sets `presetDragFailureMessage` and leaves `presetElevators`
+   *  own floor (the drag's "own end"). Emits a notice and leaves `presetElevators`
    *  unchanged when `point` doesn't resolve on one of the OTHER floors. When any floor's landing
    *  point turns out to be split (GitHub issue #594), defers the commit through
    *  `presetSplitTargetPrompt` (`move_elevator_endpoint`) instead of silently attaching every floor
@@ -309,8 +317,6 @@ export interface PresetConnectionsActions {
   /** Live drag preview setter (GitHub issue #566) — mirrors post-edit's own
    *  `setPostEditDragOverride`. */
   setPresetDragOverride: (override: PresetDragOverride | null) => void;
-  /** Closes the drag-failure `AlertModal` rendered in `PresetConnectionsFeature` (its own OK button). */
-  dismissPresetDragFailureMessage: () => void;
   addPresetSplitNode: (point: [number, number]) => void;
   removePresetSplitNode: (point: [number, number], slotId: number) => void;
   /** Removes an entire split point (every declared slot at once) and migrates every entity
@@ -364,4 +370,32 @@ export interface PresetConnectionsActions {
    *  necessarily the whole point — a `vertex_markers` scope only removes its own 1-5 markers) and
    *  closes the prompt. For `scope: "point_all"` this is equivalent to the old `resetPresetPoint`. */
   removeAllPresetPointEntities: () => void;
+  /** Entry point of the move and settings tools (GitHub issue #748) for one cell: lists the cell's
+   *  elements relevant to `purpose` across every node of a split tile. 0 is a no-op, exactly 1 is
+   *  acted on directly, more than 1 opens `presetEntityPickPrompt`. */
+  requestPresetEntityPick: (point: [number, number], level: number | undefined, purpose: EntityToolPurpose) => void;
+  /** Acts on the element picked in `PresetEntityPickDialog` and closes the prompt. */
+  choosePresetEntityPick: (descriptor: PresetPointEntityDescriptor) => void;
+  cancelPresetEntityPick: () => void;
+  /** Returns and clears `presetMoveRequest`. */
+  takePresetMoveRequest: () => PresetPointEntityDescriptor | null;
+  /** Opens the settings surface of one element: the connection or lock dialog, the elevator floor
+   *  dialog, or the split-node panel. Other kinds have no settings and are ignored. */
+  openPresetEntitySettings: (descriptor: PresetPointEntityDescriptor) => void;
+  cancelPresetConnectionSettings: () => void;
+  cancelPresetLockSettings: () => void;
+  setPresetTeleportDirection: (id: number, direction: PresetTeleportDirection) => void;
+  setPresetVerticalPassageDirection: (id: number, direction: PresetVerticalPassageDirection) => void;
+  setPresetLockKind: (endpoint: PresetEndpoint, kind: NodeLockKind) => void;
+  /** Opens the floor dialog for the existing elevator `id`, seeded with its current floors. */
+  editPresetElevator: (id: number, origin: PresetEndpoint) => void;
+  /** Moves the start, finish or generation-source marker to `point` on the active floor. A split
+   *  `point` defers to `presetSplitTargetPrompt` so the user picks the node. */
+  movePresetMarker: (marker: "start" | "finish" | "gen_source", point: [number, number]) => void;
+  /** Moves one teleport endpoint to `point` on the active floor, prompting for the node when `point`
+   *  is split. */
+  movePresetTeleportEndpointTo: (id: number, end: "from" | "to", point: [number, number]) => void;
+  /** Moves the user lock on `from` to `point` on the same floor, keeping its kind (GitHub issue
+   *  #748). A split tile asks for the node first. A lock already on the target node is replaced. */
+  movePresetLockTo: (from: PresetEndpoint, point: [number, number]) => void;
 }

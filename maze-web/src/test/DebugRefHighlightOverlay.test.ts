@@ -54,6 +54,7 @@ import { Container, Graphics } from "pixi.js";
 import { DebugRefHighlightOverlay } from "../pixi/DebugRefHighlightOverlay";
 import { NODE_RADIUS } from "../pixi/renderConstants";
 import { canvas } from "../pixi/colorTokens";
+import { fieldOf } from "./fieldConfigFixtures";
 
 type FakeContainer = InstanceType<typeof Container> & { children: unknown[] };
 type FakeGraphics = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -70,7 +71,7 @@ describe("DebugRefHighlightOverlay cross-floor refs (GitHub issue #449)", () => 
       allNodes: [],
       edges: [{ from: 1, to: 2, kind: "vertical_passage" }],
       ref: { kind: "edge", from: 1n, to: 2n, bidirectional: false },
-      cfg: { type: "square", width: 2, height: 2 },
+      cfg: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }),
       resolveNodeLevel,
       resolveNodeCell,
       activeFloorIndex: 0,
@@ -78,7 +79,7 @@ describe("DebugRefHighlightOverlay cross-floor refs (GitHub issue #449)", () => 
 
     expect(graphSpies.buildCrossFloorMarkers).toHaveBeenCalledWith(
       [{ from: 1, to: 2 }], expect.any(Map), resolveNodeLevel, resolveNodeCell,
-      0, expect.objectContaining({ type: "square" }), NODE_RADIUS,
+      0, expect.objectContaining({ tessellation: { kind: "square", params: {} } }), NODE_RADIUS,
     );
     expect(graphSpies.drawCrossFloorMarkers).toHaveBeenCalledWith(
       root.children[3], root.children[4], expect.any(Array), NODE_RADIUS,
@@ -105,7 +106,7 @@ describe("DebugRefHighlightOverlay issue refs (GitHub issue #619)", () => {
     nodes: [{ id: 1, i: 0, x: 0, y: 0, level: 0 }, { id: 2, i: 1, x: 1, y: 0, level: 0 }],
     allNodes: [],
     edges: [],
-    cfg: { type: "square" as const, width: 2, height: 2 },
+    cfg: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }),
   };
 
   it("a null target renders neither edges nor a region", () => {

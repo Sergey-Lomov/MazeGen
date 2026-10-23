@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { buildProjectTeleportGroups, mergeTeleportGroupsAcrossFloors, resolveFloorGroupOverrides, resolveRendererGroupOverrides } from "../pixi/selectors/projectTeleportGroups";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { TeleportGroup } from "../pixi/selectors/teleportGroups";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // Cell centers resolve through wasm, unavailable in unit tests — canonical square formula.
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const group = (edgeKeys: string[], links: [number, number][], points: [number, number][]): TeleportGroup => ({
@@ -54,7 +61,7 @@ describe("resolveFloorGroupOverrides", () => {
 });
 
 describe("cross-floor teleports on a real two-floor maze (GitHub issue #727 follow-up)", () => {
-  const cfg: TessellationConfig = { type: "square", width: 8, height: 8 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 8, rows: 8 });
   const floors = [{ id: "f1" }, { id: "f2" }];
   // 0-1 inside floor 0, 2-3 inside floor 1, 1<->2 crosses floors.
   const nodes = [

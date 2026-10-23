@@ -1,12 +1,21 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
+import { SizeParam } from "./SizeParam";
 import { spacing, inset } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import { hasOpenModal } from "../Modal";
+import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
+import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
+
+/** Message keys of the labels of every kind's `paramSpecs` entry. */
+type TessellationParamMessage = "tessellation.param.first_ring_cells" | "tessellation.param.ring_layout" | "tessellation.param.max_cells" | "tessellation.param.jitter" | "tessellation.param.seed";
+type TessellationChoiceMessage = "tessellation.param.ring_layout.classic" | "tessellation.param.ring_layout.smooth";
 
 export function getHexOrientationLabel(o: HexOrientation): string {
   return o === "flat_top" ? m["tessellation.flat_top"]() : m["tessellation.pointy_top"]();
@@ -24,26 +33,40 @@ export function getTriOrientationLabel(o: TriOrientation): string {
 
 export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
+  const previewParams = useMazeStore((s) => s.previewParams);
+  const setPreviewParams = useMazeStore((s) => s.setPreviewParams);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
   const previewTriOrientation = useMazeStore((s) => s.previewTriOrientation);
   const setPreviewKind = useMazeStore((s) => s.setPreviewKind);
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
   const confirmTessellation = useMazeStore((s) => s.confirmTessellation);
-  const wouldLoseData = useMazeStore(selectTessellationWouldLoseData);
 
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const isHex = previewKind === "hex";
-  const isTri = previewKind === "triangle";
+  const isHex = TESSELLATION_UI[previewKind].orientationSlot === "hex";
+  const isTri = TESSELLATION_UI[previewKind].orientationSlot === "tri";
 
+  // Read once on click rather than subscribed: the predicate filters every QC pattern list, and
+  // a subscription would rerun it on each unrelated store update while the preview differs.
   function handleConfirmTessellation() {
-    if (wouldLoseData) {
+    if (selectTessellationWouldLoseData(useMazeStore.getState())) {
       setShowConfirm(true);
     } else {
       confirmTessellation();
     }
   }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (useMazeStore.getState().openCard !== "basic_config" || showConfirm || hasOpenModal() || !isFeatureCardConfirmShortcut(event)) return;
+      event.preventDefault();
+      blurActiveElement();
+      handleConfirmTessellation();
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [showConfirm, confirmTessellation]);
 
   return (
     <div style={styles.root}>
@@ -57,10 +80,55 @@ export function BasicConfigFeature() {
         >
           <option value="square">{m["tessellation.square"]()}</option>
           <option value="hex">{m["tessellation.hex"]()}</option>
-          <option value="triangle">{m["tessellation.triangle"]()}</option>
+          <option value="tri">{m["tessellation.triangle"]()}</option>
           <option value="cairo">{m["tessellation.cairo"]()}</option>
+          <option value="square_octagon">{m["tessellation.square_octagon"]()}</option>
+          <option value="brick">{m["tessellation.brick"]()}</option>
+          <option value="trihexagonal">{m["tessellation.trihexagonal"]()}</option>
+          <option value="snub_hexagonal">{m["tessellation.snub_hexagonal"]()}</option>
+          <option value="rhombitrihexagonal">{m["tessellation.rhombitrihexagonal"]()}</option>
+          <option value="truncated_hexagonal">{m["tessellation.truncated_hexagonal"]()}</option>
+          <option value="truncated_trihexagonal">{m["tessellation.truncated_trihexagonal"]()}</option>
+          <option value="elongated_triangular">{m["tessellation.elongated_triangular"]()}</option>
+          <option value="snub_square">{m["tessellation.snub_square"]()}</option>
+          <option value="curved_quadrilateral">{m["tessellation.curved_quadrilateral"]()}</option>
+          <option value="radial">{m["tessellation.radial"]()}</option>
+          <option value="voronoi">{m["tessellation.voronoi"]()}</option>
         </select>
       </label>
+      {TESSELLATION_UI[previewKind].paramSpecs.map((spec) => {
+        const label = m[`tessellation.param.${spec.name}` as TessellationParamMessage]();
+        if (spec.type === "integer" || spec.type === "number")
+          return (
+            <SizeParam
+              key={`${previewKind}:${spec.name}`}
+              label={label}
+              value={Number(previewParams[spec.name])}
+              min={spec.min}
+              max={spec.max}
+              step={spec.type === "number" ? spec.step : undefined}
+              integer={spec.type === "integer"}
+              onCommit={(value) => setPreviewParams({ ...previewParams, [spec.name]: value })}
+            />
+          );
+        return (
+          <label key={`${previewKind}:${spec.name}`} style={styles.label}>
+            {label}
+            <select
+              name={`preview-${spec.name}`}
+              style={styles.select}
+              value={String(previewParams[spec.name])}
+              onChange={(e) => setPreviewParams({ ...previewParams, [spec.name]: e.target.value })}
+            >
+              {spec.options.map((option) => (
+                <option key={option} value={option}>
+                  {m[`tessellation.param.${spec.name}.${option}` as TessellationChoiceMessage]()}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
       {isHex && (
         <label style={styles.label}>
           {m["tessellation.orientation"]()}

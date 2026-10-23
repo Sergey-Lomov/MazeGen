@@ -6,6 +6,7 @@ use crate::repair::{MutationCommand, NestedStrategyConfig, RepairResult, RepairS
 use crate::space::SquareTessellation;
 use rand::SeedableRng;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 /// Records every `requirement` value it's called with — lets the test assert exactly what
 /// `Rule::run_checks_typed` threads through, not just that *an* issue was produced.
@@ -50,9 +51,12 @@ impl RepairStrategy<SquareTessellation, InvalidLoopIssue> for InvalidOnlyStrateg
 
 fn empty_maze() -> Maze<SquareTessellation> {
     let mut ids = crate::IdGenerator::new();
-    let field =
-        crate::space::MultiLevelField::single_level(crate::space::square_rect(1, 1), &mut ids)
-            .unwrap();
+    let field = crate::space::MultiLevelField::single_level(
+        Arc::default(),
+        crate::space::square_rect(1, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut g = crate::Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);

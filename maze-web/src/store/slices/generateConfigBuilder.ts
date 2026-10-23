@@ -1,8 +1,8 @@
 import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
+import type { FieldConfig } from "../../fieldConfig";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
@@ -13,7 +13,14 @@ import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resol
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
-import { splitPatternsToCore } from "../../pixi/tessellationGeometry";
+import { notify } from "../../notifications/notificationStore";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import * as m from "~/paraglide/messages";
+
+const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
+const GENERATION_RUN_FAILED = "generation.run_failed";
+registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { category: "error", message: () => m["generation.error_free_field_too_small"]() });
+registerNotificationCode(GENERATION_RUN_FAILED, { category: "error", message: () => m[GENERATION_RUN_FAILED]() });
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -31,19 +38,14 @@ export function resolveAlgorithmKind(sources: DebugArenaHandle["sources"]): Debu
   return generationSource?.kind ?? sources[sources.length - 1].kind;
 }
 
-export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
-  const t = cfg.type;
-  const tessellation_type = t.startsWith("hex") ? "hex" as const
-    : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
-    : t.startsWith("cairo") ? "cairo" as const
-    : "square" as const;
-  return { tessellation_type };
+export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
+  return cfg.tessellation;
 }
 
 // Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
 // `ruleToConfig`'s param-filtering (only descriptor-known param ids are forwarded), plus its own
 // `slot_id` and recursively-built `nested` list. Unlike top-level strategies, nested params are
-// per-node (`n.params`), not looked up in the global `strategyParams` map — see
+// per-node (`n.params`), not looked up from another rule — see
 // `NestedStrategyState`'s doc comment for why (two rules must be able to configure the same
 // nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
 // from a project file) blowing the call stack on every `generate()` call — see
@@ -76,14 +78,14 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   };
 }
 
-// Builds a rule's `StrategyConfig` from its own `strategyId`/`state.strategyParams` (the project's
+// Builds a rule's `StrategyConfig` from its own `strategyId`/`strategyParams` (the rule's
 // real, user-configured weights) — shared by `ruleToConfig` (generation) and `confirmPostEdit`
 // (GitHub issue #532, so post-edit's route score is computed from the same real weights generation
 // uses, never defaults — see `AnalyticsRuleGroupConfig.strategy` on the wasm side).
 export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): StrategyConfig | null {
   if (!g.strategyId || g.disabled) return null;
   const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-  const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+  const paramOverrides = g.strategyParams;
   const params: Record<string, string> = {};
   if (descriptor) {
     for (const p of descriptor.params) {
@@ -199,7 +201,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   }
   // Key is "x,y" (floor 0) or "x,y@level" (GitHub issue #340) — parsed back into (point, level)
   // for the wire DTO, same convention `presetEndpointKey`/`splitPointsCore.ts`'s `pointKey` use.
+  // A lock outside its floor's field is dropped here: the Rust side rejects an unresolvable endpoint.
+  const invalidLockKeys = computeInvalidLockedNodeKeys(lockedEntries, resolveFieldAt);
   const locked_nodes = Array.from(lockedEntries.entries()).flatMap(([key, kind]) => {
+    if (invalidLockKeys.has(key)) return [];
     const endpoint = presetEndpointFromKey(key);
     return endpoint === null ? [] : [{ point: presetEndpointToDto(endpoint), kind }];
   });
@@ -214,7 +219,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       const level = levelPart === undefined ? 0 : Number(levelPart);
       return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
     });
-  const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
+  const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id), state.smoothPrimitives));
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     level_fields,
@@ -231,7 +236,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     split_generation: {
       pattern_mode: state.splitPatternMode,
       max_split_nodes: state.splitMaxNodes,
-      patterns: splitPatternsToCore(state.splitPatterns, activeTessellation),
+      patterns: state.splitPatterns,
     },
     ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
     ...(state.presetGenSource && !invalidGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
@@ -253,7 +258,8 @@ function prepareGeneration(get: StoreGet, set: StoreSet, qcExperiment: boolean) 
   const state = get();
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) {
-    set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
+    set({ error: { kind: "free_field_too_small" }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_FREE_FIELD_TOO_SMALL });
     return null;
   }
   const activeTessellation = activeFloorTessellationOf(state);
@@ -350,7 +356,7 @@ function applyGenerationResult(
       selectedNode: null,
       issues: snapshot.issues,
       error: null,
-      activeTessellationConfig: resolveFieldConfig(activeTessellation),
+      activeFieldConfig: resolveFieldConfig(activeTessellation, get().smoothPrimitives),
       routeInfo: snapshot.route_info,
       timing: snapshot.timing,
       generationStatus: "done",
@@ -380,6 +386,7 @@ function applyGenerationResult(
       // non-empty.
       postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports, () => undefined),
       postEditMeta: draftMeta,
+      postEditRefreshError: null,
       postEditAnalytics: {
         statistics: snapshot.statistics,
         routeInfo: snapshot.route_info,
@@ -413,7 +420,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     applyGenerationResult(generateMaze(seed, prepared.config), get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    set({ error: msg, generationStatus: "error" });
+    set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
   }
 }
 
@@ -425,7 +433,8 @@ export async function generateWithSeedAsync(seed: number, get: StoreGet, set: St
     applyGenerationResult(result, get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    set({ error: msg, generationStatus: "error" });
+    set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
   }
 }
 

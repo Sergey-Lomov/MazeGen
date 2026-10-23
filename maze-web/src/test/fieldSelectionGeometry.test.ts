@@ -1,45 +1,50 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { type: string }): [number, number] => {
-    if (cfg.type.startsWith("hex")) {
-      const inradius = Math.sqrt(3) / 2;
-      return [x * 1.5, -(y * inradius * 2 + x * inradius)];
-    }
-    return [x, y];
-  },
-}));
+import { selectionBoundary } from "../pixi/fieldSelectionGeometry";
+import { fieldOf } from "./fieldConfigFixtures";
 
-import { selectionBoundarySegments } from "../pixi/fieldSelectionGeometry";
-
-describe("selectionBoundarySegments", () => {
+describe("selectionBoundary segments", () => {
   it("removes internal edges from a selected square-cell union", () => {
-    const segments = selectionBoundarySegments(
+    const { segments } = selectionBoundary(
       [[0, 0], [1, 0], [0, 1], [1, 1]],
-      "square",
-      { type: "square", width: 2, height: 2 },
+      fieldOf("square", { shape: "rect", cols: 2, rows: 2 }),
     );
 
     expect(segments).toHaveLength(8);
   });
 
   it("removes shared edges from adjacent hex cells", () => {
-    const segments = selectionBoundarySegments(
+    const { segments } = selectionBoundary(
       [[0, 0], [1, 0]],
-      "hex",
-      { type: "hex_hexagon", radius: 1, orientation: "flat_top" },
+      fieldOf("hex", { shape: "hexagon", radius: 1 }, "flat_top"),
     );
 
     expect(segments).toHaveLength(10);
   });
 
   it("removes shared edges from adjacent triangle cells", () => {
-    const segments = selectionBoundarySegments(
+    const { segments } = selectionBoundary(
       [[0, 0], [1, 0]],
-      "triangle",
-      { type: "triangle_rect", cols: 2, rows: 2, orientation: "r0" },
+      fieldOf("tri", { shape: "rect", cols: 2, rows: 2 }, "r0"),
     );
 
     expect(segments).toHaveLength(4);
+  });
+});
+
+describe("selectionBoundary", () => {
+  const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+
+  it("puts edge-adjacent cells in one component", () => {
+    const { segments, components } = selectionBoundary([[0, 0], [1, 0]], cfg);
+
+    expect(components).toHaveLength(segments.length);
+    expect(new Set(components).size).toBe(1);
+  });
+
+  it("splits cells touching only at a corner into separate components", () => {
+    const { components } = selectionBoundary([[0, 0], [1, 1]], cfg);
+
+    expect(new Set(components).size).toBe(2);
   });
 });

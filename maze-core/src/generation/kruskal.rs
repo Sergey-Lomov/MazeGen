@@ -232,12 +232,12 @@ pub fn generate<T: Tessellation>(
         };
         let a_siblings = field
             .level_of(a)
-            .zip(field.point_of(a))
+            .zip(field.cell_of(a))
             .map(|(l, p)| field.nodes_at(l, p))
             .unwrap_or(&[]);
         let b_siblings = field
             .level_of(b)
-            .zip(field.point_of(b))
+            .zip(field.cell_of(b))
             .map(|(l, p)| field.nodes_at(l, p))
             .unwrap_or(&[]);
         let split_conflict = a_siblings.iter().any(|&sib| sib != a && has_edge(sib, b))

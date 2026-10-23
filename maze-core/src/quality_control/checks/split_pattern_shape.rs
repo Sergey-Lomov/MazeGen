@@ -7,7 +7,7 @@ use crate::space::Tessellation;
 use rand::RngCore;
 
 /// Flags a split tile whose current shape no longer structurally matches any declared pattern
-/// (any rotation/mirror — see `split_tile_matches_any`) — GitHub issue #382, part of epic #246.
+/// (any allowed transform of the cell's shape template — see `split_tile_matches_any`) — GitHub issue #382, part of epic #246.
 ///
 /// A split can be minted matching a configured pattern (by `AddSplitStrategy`, or by generation's
 /// own pattern path), then have one of its nodes/connections removed by a later, independent
@@ -49,7 +49,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitPatternShapeCheck
 
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .split_points()
+            .split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 if split_tile_matches_any(&maze.graph, &maze.field, nodes, &self.patterns) {
@@ -75,6 +75,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_pattern_shape";
 
@@ -82,19 +83,20 @@ mod tests {
         crate::random::MazeRng::seed_from_u64(0)
     }
 
-    /// SquareFace order: [N, S, E, W] (see square.rs). A through-split pattern: node 0 gets an
+    /// `regular:4` canonical order: [E, N, W, S]. A through-split pattern: node 0 gets an
     /// East face, node 1 gets a West face, both required as `req`.
     fn through_pattern(req: SplitFaceRequirement) -> SplitPattern {
         SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![SplitPatternFace {
-                    face_index: 2,
+                    face_index: 0,
                     requirement: req,
                     sibling_target: None,
                 }],
                 vec![SplitPatternFace {
-                    face_index: 3,
+                    face_index: 2,
                     requirement: req,
                     sibling_target: None,
                 }],
@@ -108,7 +110,7 @@ mod tests {
     fn maze_with_middle_split() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
@@ -200,15 +202,16 @@ mod tests {
         maze.graph.remove_edge(fwd2);
 
         let one_way_pattern = SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![SplitPatternFace {
-                    face_index: 3,
+                    face_index: 2,
                     requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward),
                     sibling_target: None,
                 }],
                 vec![SplitPatternFace {
-                    face_index: 2,
+                    face_index: 0,
                     requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward),
                     sibling_target: None,
                 }],
@@ -234,7 +237,7 @@ mod tests {
     fn silent_when_no_split_tiles_exist() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

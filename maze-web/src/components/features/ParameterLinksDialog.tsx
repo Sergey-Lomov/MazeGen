@@ -11,6 +11,7 @@ import { AddIconButton } from "../AddIconButton";
 import { SelectRow } from "../SelectRow";
 import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
+import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, disabled as disabledText, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel } from "../../store/parameterLinks";
@@ -120,9 +121,9 @@ function HierarchicalLabelSegments<P extends string>({
         </span>
       ))}
       {inactive && (
-        <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+        <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
           <EyeOff size={13} strokeWidth={2.5} />
-        </span>
+        </span></Tooltip>
       )}
     </>
   );
@@ -314,32 +315,30 @@ function BreadcrumbNav<P extends string>({
           ))
         )}
         {value.length > 0 && (
-          <button
+          <Tooltip content={m["image_export.param_links.breadcrumb_back"]()}><button
             type="button"
             className="hoverable"
             style={styles.breadcrumbPop}
-            title={m["image_export.param_links.breadcrumb_back"]()}
             onClick={(e) => {
               e.stopPropagation();
               onPopLast();
             }}
           >
             <ArrowLeft size={16} />
-          </button>
+          </button></Tooltip>
         )}
         {value.length > 0 && (
-          <button
+          <Tooltip content={m["image_export.param_links.breadcrumb_clear"]()}><button
             type="button"
             className="hoverable"
             style={styles.breadcrumbClear}
-            title={m["image_export.param_links.breadcrumb_clear"]()}
             onClick={(e) => {
               e.stopPropagation();
               onChange([]);
             }}
           >
             <X size={16} />
-          </button>
+          </button></Tooltip>
         )}
       </div>
       {open && children && children.length > 0 && (
@@ -447,10 +446,8 @@ function ParamPicker<P extends string>({
         const inactive = !activePaths.has(node.path);
         const disabled = disabledPaths?.has(node.path) ?? false;
         return (
-          <div
-            key={node.path}
+          <Tooltip key={node.path} block content={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}><div
             className={disabled || locked ? undefined : "hoverable"}
-            title={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}
             aria-disabled={disabled || undefined}
             style={{
               ...styles.pickerRow,
@@ -469,11 +466,11 @@ function ParamPicker<P extends string>({
               </span>
             )}
             {inactive && (
-              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+              <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
-              </span>
+              </span></Tooltip>
             )}
-          </div>
+          </div></Tooltip>
         );
       }
       const isExpanded = forcedExpanded?.has(node.groupKey) ?? expanded.has(node.groupKey);
@@ -500,9 +497,9 @@ function ParamPicker<P extends string>({
               </span>
             )}
             {groupInactive && (
-              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+              <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
-              </span>
+              </span></Tooltip>
             )}
           </div>
           {isExpanded && renderNodes(node.children, depth + 1)}
@@ -607,8 +604,8 @@ function ModifierStepDialog({
           </Inline>
           {divideByZero && <span style={styles.modifierError}>{m["image_export.param_links.modifier_divide_by_zero"]()}</span>}
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" disabled={!canSave} onClick={save}>
+            <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
               {m["image_export.param_links.save_link"]()}
             </Button>
           </div>
@@ -729,8 +726,8 @@ function ColorModifierStepDialog({
           </Inline>
           {divideByZero && <span style={styles.modifierError}>{m["image_export.param_links.modifier_divide_by_zero"]()}</span>}
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" disabled={!canSave} onClick={save}>
+            <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
               {m["image_export.param_links.save_link"]()}
             </Button>
           </div>
@@ -917,8 +914,8 @@ export function LinkEditor<P extends string>({
                 layoutStyle={styles.showInactiveToggle}
               />
               <div style={styles.editorFooter}>
-                <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-                <Button variant="primary" disabled={!canSave} onClick={save}>
+                <Button variant="secondary" dialogAction onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+                <Button variant="primary" dialogAction disabled={!canSave} onClick={save}>
                   {m["image_export.param_links.save_link"]()}
                 </Button>
               </div>
@@ -936,8 +933,8 @@ export function LinkEditor<P extends string>({
             {m["image_export.param_links.replace_message"]({ source: hierarchicalLabel(existingLink.source, registry), modifiers: linkModifiersSuffix(existingLink) })}
           </div>
           <div style={styles.editorFooter}>
-            <Button variant="secondary" onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
-            <Button variant="primary" onClick={save}>{m["image_export.param_links.replace_confirm"]()}</Button>
+            <Button variant="secondary" dialogAction onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" dialogAction onClick={save}>{m["image_export.param_links.replace_confirm"]()}</Button>
           </div>
         </Modal>
       )}

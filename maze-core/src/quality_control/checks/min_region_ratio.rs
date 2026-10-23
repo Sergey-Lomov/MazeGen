@@ -10,7 +10,7 @@ pub const MIN_REGION_RATIO_DEFAULT: f64 = 25.0;
 
 /// Flags SCC regions smaller than a configured share of the field — see GitHub issue #50.
 /// Counterpart to `MinRegionSizeCheck` using a relative threshold (a percentage of
-/// `maze.field.point_count()`) instead of an absolute tile count.
+/// `maze.field.cell_count()`) instead of an absolute tile count.
 ///
 /// `region_classes`: SCC regions whose `RegionClass` (see `graph::region_class`) is not in this
 /// list are ignored entirely — never flagged, never assigned for expansion repair. Empty means no
@@ -34,7 +34,7 @@ impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionRatioChec
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let field_cells = maze.field.point_count();
+        let field_cells = maze.field.cell_count();
         if field_cells == 0 {
             return;
         }
@@ -63,6 +63,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "min_region_ratio";
 
@@ -73,7 +74,8 @@ mod tests {
     /// 10 cells: a 3-node SCC (30%) + 7 singleton SCCs (10% each).
     fn maze_with_small_region() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -82,7 +84,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -136,7 +138,8 @@ mod tests {
     /// 2 cells, one bidirectional pair forming a single 2-node SCC -> 100% density, no singletons.
     fn maze_with_one_region() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -145,7 +148,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -235,7 +238,7 @@ mod tests {
     fn fires_only_for_regions_matching_the_selected_class() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -244,7 +247,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);

@@ -1,12 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
-    // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
-    // comment on squareCenter.
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
-  }),
-}));
 import {
   canonicalize,
   edgeKey,
@@ -39,12 +32,14 @@ import {
   pickTeleportEndpointAt,
   pickVerticalPassageEndpointAt,
   pickElevatorEndpointAt,
+  lockedNodesWithMovedLock,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
 import type { LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // --- canonicalize ---
 
@@ -75,7 +70,7 @@ describe("edgeKey", () => {
 });
 
 describe("preset endpoint hit-testing", () => {
-  const cfg = { type: "square" as const, width: 4, height: 4 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
   const point: [number, number] = [1, 2];
   const markerCenter = makeProjection(cfg).gridToScreen(point[0], point[1]);
   const insideCell = { x: markerCenter.x + 15, y: markerCenter.y + 15 };
@@ -239,22 +234,40 @@ describe("applyTool — one_way", () => {
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
   });
 
-  it("one_way_forward → one_way_backward", () => {
-    const connections = new Map([[
-      edgeKey([0, 0], [1, 0]),
-      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const },
-    ]]);
-    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
-    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
-  });
-
-  it("one_way_backward → one_way_forward", () => {
+  it("a repeated click on a one-way edge reverses it (GitHub issue #748)", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
       { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_backward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
+  });
+
+  it("one_way_flip: one_way_forward → one_way_backward", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const },
+    ]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way_flip");
+    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
+  });
+
+  it("one_way_flip: one_way_backward → one_way_forward", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_backward" as const, source: "user" as const },
+    ]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way_flip");
+    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
+  });
+
+  it("one_way_flip leaves a non-one-way edge unchanged", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const },
+    ]]);
+    expect(applyTool(connections, fe(0, 0, 1, 0), "one_way_flip")).toBe(connections);
+    expect(applyTool(new Map(), fe(0, 0, 1, 0), "one_way_flip").size).toBe(0);
   });
 
   it("does not mutate input map", () => {
@@ -315,7 +328,7 @@ describe("presetConnectionsOnLevel", () => {
 
 describe("presetSplitNodeFaceKinds", () => {
   // 3x3 square, point (1,1). Square offsets are [+x, +y, -x, -y] -> neighbors (2,1),(1,2),(0,1),(1,0).
-  const cfg = { type: "square" as const, width: 3, height: 3 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
   const inFieldCells = new Set(["0,1", "1,0", "1,1", "1,2", "2,1"]);
   const point: [number, number] = [1, 1];
   const original = presetEndpoint(point);
@@ -378,7 +391,7 @@ describe("presetSplitNodeFaceKinds", () => {
 
 // --- computeAutoLockedNodes ---
 
-const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 const squareLevelFields: LevelField[] = [{ level: undefined, cfg: squareCfg }];
 const resolveSquare: ResolveFieldAt = (level) => (level === undefined || level === 0 ? { cfg: squareCfg } : undefined);
 
@@ -744,7 +757,7 @@ describe("pickEdgeAtPosition", () => {
   // 2x2 square field: cells (0,0), (1,0), (0,1), (1,1). Their shared corner (grid vertex)
   // sits at viewport (TILE_SIZE, -TILE_SIZE), where the vertical edge between (0,0)/(1,0)
   // meets the horizontal edge between (0,0)/(0,1).
-  const cfg = { type: "square" as const, width: 2, height: 2 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
   const cells: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
   const proj = makeProjection(cfg);
   const vx = proj.gridToScreen(0, 0).x + TILE_SIZE / 2; // = TILE_SIZE, shared corner x
@@ -790,8 +803,8 @@ describe("presetTeleportEntryToState", () => {
 const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1", "1,-1", "-1,-1"]);
 
 describe("rotatePresetSplitPoint", () => {
-  it("rotates Cairo's five face slots without assuming four or six faces", () => {
-    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+  it("keeps Cairo connections in place: its allowed group has no rotation", () => {
+    const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const from = presetEndpoint([2, 1]);
     const oldNeighbor = presetEndpoint([-1, 2]);
     const newNeighbor = presetEndpoint([1, -2]);
@@ -802,8 +815,8 @@ describe("rotatePresetSplitPoint", () => {
       connections, [2, 1], [], 1, cairoCfg,
       new Set(["2,1", "-1,2", "1,-2"]), {}, {},
     );
-    expect(result.has(presetEdgeKey(from, oldNeighbor))).toBe(false);
-    expect(result.get(presetEdgeKey(from, newNeighbor))?.state).toBe("passage");
+    expect(result.get(presetEdgeKey(from, oldNeighbor))?.state).toBe("passage");
+    expect(result.has(presetEdgeKey(from, newNeighbor))).toBe(false);
   });
 
   it("no split slots — plain point's passage moves from E to N (direction 1)", () => {
@@ -869,7 +882,8 @@ describe("rotatePresetSplitPoint", () => {
       [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
     ]);
     const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet, {}, {});
-    expect(result).toBe(connections); // same reference — untouched
+    expect(result).toEqual(connections);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("rotating onto a neighbor whose split slot already forms a finished bridge doesn't add a 3rd face to it (GitHub issue #580 preset counterpart)", () => {
@@ -895,6 +909,21 @@ describe("rotatePresetSplitPoint", () => {
     // The bridge slot's own two faces must be untouched.
     expect(result.get(presetEdgeKey(bridgeSlot, eastOfNeighbor))?.state).toBe("passage");
     expect(result.get(presetEdgeKey(bridgeSlot, westOfNeighbor))?.state).toBe("passage");
+  });
+
+  it("rotating onto a plain (non-split) neighbor that is a straight corridor extends it instead of refusing", () => {
+    // Neighbor (0,1) has one node passing straight E-W; with no second node it is no bridge.
+    const eastOfNeighbor = presetEndpoint([1, 1]);
+    const westOfNeighbor = presetEndpoint([-1, 1]);
+    const neighbor = presetEndpoint([0, 1]);
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const }],
+      [presetEdgeKey(neighbor, eastOfNeighbor), { from: neighbor, to: eastOfNeighbor, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighbor, westOfNeighbor), { from: neighbor, to: westOfNeighbor, state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, {}, {});
+    expect(result.refusalReason).toBeUndefined();
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), neighbor))?.state).toBe("one_way_forward");
   });
 
   it("rotating a bridge tile re-stitches the static neighbor's existing bridge slot onto the original node that lands on the shared face — and a SECOND rotation still resolves it correctly (GitHub issue #580 preset second-rotation repro)", () => {
@@ -1163,5 +1192,19 @@ describe("resolvePresetPartnerAt (GitHub issue #243)", () => {
   it("falls back to the neighbor's original node when nothing is decided and nothing is active", () => {
     const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], new Map(), { "1,0": [0] }, {});
     expect(result).toEqual(presetEndpoint([1, 0]));
+  });
+});
+
+describe("lockedNodesWithMovedLock (GitHub issue #748)", () => {
+  it("shows the dragged lock on the target's original node, on the lock's own floor, replacing a lock there", () => {
+    const locks = new Map([["0,0:1@2", "in" as const], ["2,0@2", "out" as const], ["5,5", "both" as const]]);
+    const result = lockedNodesWithMovedLock(locks, { from: presetEndpoint([0, 0], 1, 2), point: [2, 0] });
+    expect(result).toEqual(new Map([["2,0@2", "in"], ["5,5", "both"]]));
+    expect(locks.size).toBe(3);
+  });
+
+  it("returns the map unchanged when the dragged node has no user lock", () => {
+    const locks = new Map([["5,5", "both" as const]]);
+    expect(lockedNodesWithMovedLock(locks, { from: presetEndpoint([0, 0]), point: [1, 0] })).toBe(locks);
   });
 });

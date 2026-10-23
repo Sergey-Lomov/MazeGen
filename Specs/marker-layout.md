@@ -74,6 +74,12 @@ vertical styles; the laid-out copies feed the renderers and the teleport-connect
 teleport point only warns when the layout could not separate them. Vertical markers are not inputs of
 that warning and take no slot there.
 
+## Size adaptation (#819)
+
+Layout runs first, on base sizes. The `MarkerScaler` is then fitted on the laid-out copies (`footprintsOfMarkers` / `footprintsOfVertical` / `footprintsOfTeleports`), and the final radius is `adaptation factor * layout scale`.
+Limits: slot radii in the layout ignore the adaptation factor, and corridor bridge patches use the layout radius without it.
+`markerIndexPlateBox` applies `MarkerIndexLabel.scale`; `verticalMarkerFootprint` is exported from `VerticalConnectionRenderer.ts`.
+
 ## Known limits
 
 Marker index labels on a split-tile node (hub point ≠ cell center) are not shifted.

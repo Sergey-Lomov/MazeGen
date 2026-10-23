@@ -3,14 +3,14 @@ import { useMazeStore } from "../../store/mazeStore";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -44,7 +44,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   const prompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
   const pick = useMazeStore((s) => s.applyPostEditSplitTargetPick);
   const allNodes = useMazeStore((s) => s.nodes);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
@@ -65,9 +65,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     const geometry = buildSplitFloorGeometry(point, level ?? 0, allNodes, draftEdges, draftTeleports, splitPoints, cfg);
     if (!geometry) return null;
     const { pointNodes, floorNodes, edges, faceKindsByNode } = geometry;
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined;
-    const special = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder) !== null;
-    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode, canonicalOrder);
+    const binding = splitShapeBinding(cfg, point[0], point[1]);
+    const special = detectSplitSpecialShapeKind(faceKindsByNode, binding) !== null;
+    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode, binding);
 
     return { pointNodes, floorNodes, edges, special, semanticNames };
   }, [point, allNodes, level, cfg, draftEdges, draftTeleports, splitPoints]);
@@ -75,7 +75,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   if (!prompt || !point) return null;
 
   const coords = formatTargetLabel(point, level, true, undefined);
-  const targetOptions: SplitTargetOption[] = prompt.nodeIds.map((id, index) => ({
+  // Colors and names follow each node's index on the full list, so a node left out by
+  // `excludedNodeId` keeps every other node's own color and name.
+  const targetOptions: SplitTargetOption[] = shownSplitTargets(prompt.nodeIds, (id) => id === prompt.excludedNodeId).map(({ node: id, index }) => ({
     key: String(id),
     color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
     label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),

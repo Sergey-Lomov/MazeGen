@@ -7,6 +7,7 @@ export const ui = {
     panelAlt: base.bgPanelAlt,
     hover: base.bgSurfaceRaised,
     input: base.bgSurfaceRaised,
+    keycap: base.bgKeycap,
     error: base.errorBg,
     warning: base.warningBg,
     success: base.successBg,
@@ -224,6 +225,9 @@ export const dialogSize = {
   // wrap constantly at `approve`'s narrow 360px cap. A row still wraps onto a second line past
   // `maxWidth` (the row's own `flexWrap`) — this only raises the point where that kicks in.
   approveWide: { minWidth: 260, maxWidth: 640 },
+  // Shrink-to-fit with no width floor — for a pick list whose rows stay on one line and set the
+  // dialog's width themselves (move/settings element pickers, GitHub issue #748).
+  fit: { minWidth: 0, maxWidth: 640 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
   // Same height as `complex`, wider — `LinkEditor` (GitHub issue #645) needs a third column for a

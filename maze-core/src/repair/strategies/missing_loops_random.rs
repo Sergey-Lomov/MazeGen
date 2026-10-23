@@ -204,6 +204,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy), None)
@@ -211,7 +212,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -278,7 +281,8 @@ mod tests {
     fn apply_does_not_add_connection_blocked_by_preset_state() {
         // 1x2 field: only one possible neighbor pair, fully blocked both ways.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -287,7 +291,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -318,7 +322,8 @@ mod tests {
         // exercising the "skip this pair, try the next neighbor" branch distinct from the
         // strictly-bidirectional infeasibility check covered above.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -327,7 +332,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -367,7 +372,8 @@ mod tests {
         // A strictly-bidirectional strategy must skip this pair entirely, not add
         // a full bidirectional edge that overwrites the protected direction.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -376,7 +382,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -402,7 +408,8 @@ mod tests {
     #[test]
     fn apply_does_not_add_connection_when_src_locked_out() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -411,7 +418,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -437,7 +444,8 @@ mod tests {
     #[test]
     fn apply_does_not_add_connection_when_dst_locked_in() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -446,7 +454,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -571,7 +579,8 @@ mod tests {
     #[test]
     fn apply_does_not_duplicate_an_existing_edge() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -580,7 +589,7 @@ mod tests {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -669,9 +678,12 @@ mod tests {
         // Two 4x4 levels. The issue reports a deficit only on level_b, so every added edge must
         // land there, even though level_a's nodes are just as available in the field overall.
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a]);
         let level_a = mf.single_level_id();
         let level_b = mf.add_level(field_b);
         let mut g = Graph::new();
@@ -721,10 +733,16 @@ mod tests {
         // *same* requirement as the three per-floor entries, not an independent one, so satisfying
         // every per-floor entry (9 total) must leave only 3 more needed to reach 12 whole-maze.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([]);
-        let level_a = mf.add_level(crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap());
-        let level_b = mf.add_level(crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap());
-        let level_c = mf.add_level(crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(Arc::default(), []);
+        let level_a = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap(),
+        );
+        let level_b = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap(),
+        );
+        let level_c = mf.add_level(
+            crate::space::Field::new(Arc::default(), square_rect(6, 6), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);

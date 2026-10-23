@@ -20,7 +20,8 @@ Canvas labels are drawn as MSDF `BitmapText` (crisp at any zoom), not pixi `Text
 
 **When a new label needs a glyph not in the atlas**, extend `CHARSET` in `generate.mjs`, re-run
 `npm run gen:msdf`, and commit the regenerated `.fnt` + `.png` (both weights). Current charset:
-`A-Z`, `0-9`, `:`, `(`, `)`, `,`, space.
+uppercase/lowercase Latin and Cyrillic, `0-9`, `: ( ) , # № + - =`, space, and text punctuation
+`. ; ! ? ' " / & _ * % @ [ ] « » – — …` (floor titles, GitHub issue #747).
 
 ## Feature-Renderer ownership rule
 

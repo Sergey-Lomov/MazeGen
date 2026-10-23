@@ -1,8 +1,9 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { buildSplitPointKeys } from "./split";
+import { selectFloorScopedMaze } from "./state";
 
 /** One `buildCorridorSegments` result entry — `oneWayDir` mirrors `WallEdge.oneWayDir`'s own
  *  convention (GitHub issue #312): unset for a bidirectional passage, else a unit vector along the
@@ -15,13 +16,15 @@ import { buildSplitPointKeys } from "./split";
 export type CorridorSegment = {
   v0: { x: number; y: number };
   v1: { x: number; y: number };
-  /** Centre of the actual shared face used as the corridor mouth for Cairo cells. */
+  /** Centre of the actual shared face used as the corridor mouth. */
   faceMidpoint?: { x: number; y: number };
   /** Unit normal to the shared face, pointing out of `v0`'s cell. */
   faceNormal?: { x: number; y: number };
-  /** Real shared-face length, used by contour width clamping for Cairo's irregular pentagons. */
+  /** Real shared-face length, used by contour width clamping. */
   faceLength?: number;
-  /** Cairo cell polygons, used to keep a centre-anchored dead-end cap inside its own cell. */
+  /** The shared face's flattened boundary; three or more points mark a curved face. */
+  facePolyline?: { x: number; y: number }[];
+  /** Cell polygons (arc sides flattened, so possibly concave), used by the contour engine's containment guard. */
   cellVertices0?: { x: number; y: number }[];
   cellVertices1?: { x: number; y: number }[];
   oneWayDir?: { dx: number; dy: number };
@@ -51,7 +54,7 @@ export type CorridorSegment = {
 export function buildCorridorSegments(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): CorridorSegment[] {
   const nodeById = new Map<number, NodeDto>();
   const nodeByCoord = new Map<string, NodeDto>();
@@ -107,11 +110,11 @@ export function buildCorridorSegments(
       // reaching all the way to the split cell's center — `buildSplitPassages`' own per-node share
       // (`SplitPassage.wallSegments[*].center`) picks up from there.
       let v1 = getCellCenter(nx, ny, cfg);
-      const needsFaceGeometry = neighborSplit || cfg.type.startsWith("cairo");
-      const sharedFace = needsFaceGeometry ? getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg) : undefined;
-      const faceMidpoint = sharedFace
-        ? { x: (sharedFace.v0.x + sharedFace.v1.x) / 2, y: (sharedFace.v0.y + sharedFace.v1.y) / 2 }
-        : undefined;
+      // Every production segment carries its real shared face and both convex cell polygons. This
+      // keeps the renderer on the tessellation-independent contour engine for square, hex, triangle,
+      // Cairo, and future convex cell families alike.
+      const sharedFace = getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg);
+      const faceMidpoint = sharedFace?.contact;
       const faceLength = sharedFace
         ? Math.hypot(sharedFace.v1.x - sharedFace.v0.x, sharedFace.v1.y - sharedFace.v0.y)
         : undefined;
@@ -140,10 +143,11 @@ export function buildCorridorSegments(
       result.push({
         v0,
         v1,
-        ...(cfg.type.startsWith("cairo") && faceMidpoint && faceNormal ? {
+        ...(faceMidpoint && faceNormal ? {
           faceMidpoint,
           faceNormal,
           faceLength,
+          ...(sharedFace && sharedFace.polyline.length >= 3 ? { facePolyline: sharedFace.polyline.map(([px, py]) => ({ x: px, y: py })) } : {}),
           cellVertices0: getCellVertices(n.x, n.y, cfg) ?? undefined,
           cellVertices1: getCellVertices(nx, ny, cfg) ?? undefined,
         } : {}),
@@ -169,4 +173,29 @@ export function buildOneWayCorridorIndicatorPositions(segments: CorridorSegment[
     result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
   }
   return result;
+}
+
+/** Length of the shortest face carrying a passage, or `Infinity` when there is none. The contour
+ *  engine never draws a corridor wider than this face. */
+export function shortestCorridorFace(segments: readonly CorridorSegment[]): number {
+  let shortest = Infinity;
+  for (const segment of segments) {
+    if (segment.faceLength !== undefined && segment.faceLength > 0) shortest = Math.min(shortest, segment.faceLength);
+  }
+  return shortest;
+}
+
+/** `shortestCorridorFace` over every floor, so all floors draw one corridor width. */
+export function shortestCorridorFaceAcrossFloors(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  floors: { id: string }[],
+  cfg: FieldConfig,
+): number {
+  let shortest = Infinity;
+  for (const floor of floors) {
+    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id);
+    shortest = Math.min(shortest, shortestCorridorFace(buildCorridorSegments(scoped.nodes, scoped.edges, cfg)));
+  }
+  return shortest;
 }

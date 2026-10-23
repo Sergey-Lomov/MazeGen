@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
@@ -36,7 +36,7 @@ export interface IssueHighlightData {
    * pair (a one-way member alongside a split/region member, GitHub issue #619) sets both at once,
    * and both are rendered independently. */
   regionGroups: { nodes: number[]; isSplit: boolean }[] | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a highlighted edge whose other endpoint crosses to another floor
    *  (GitHub issue #367, closing the #339 gap for this overlay). Omitted callers draw no

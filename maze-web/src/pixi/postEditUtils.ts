@@ -1,16 +1,17 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import { getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import {
   type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointKey, endpointsEqual,
   buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement,
 } from "./postEditEndpoint";
-import { canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
+import { canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
+import { splitShapeBinding } from "./splitShape";
 import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import { cairoCanonicalFaceOrder } from "./cairoGeometry";
+import { refusedRotation, type SplitRotationResult } from "./splitRotationResult";
 
 export {
   extractPostEditTeleports,
@@ -25,7 +26,6 @@ export {
 export {
   pickPostEditVerticalPassageEndpointAt,
   pickPostEditElevatorEndpointAt,
-  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection,
   removePostEditVerticalPassage,
   movePostEditVerticalPassageEndpoint,
@@ -128,7 +128,7 @@ function collectRotateMoves(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   level: number | undefined,
@@ -386,7 +386,7 @@ export function buildNeighborRedirectCommands(
 export function postEditSplitNodeFaceKinds(
   endpoint: PostEditEndpoint,
   point: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   edges: Record<string, PostEditEdge>,
   splitPoints: Record<string, number[]>,
@@ -426,7 +426,7 @@ function decidedFaceIndicesOf(
   candidatePoint: [number, number],
   candidateForms: PostEditEndpoint[],
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): Set<number> {
   const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
@@ -466,7 +466,7 @@ function selectExistingFaceOwner(
   neighborPoint: [number, number],
   targetFace: number,
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): LogicalCandidate | null {
   const matches = candidates.filter((c) => decidedFaceIndicesOf(neighborPoint, c.forms, edges, cfg, nodes).has(targetFace));
@@ -482,7 +482,7 @@ function selectOppositeFaceOwner(
   targetFace: number,
   degree: number,
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): LogicalCandidate | null {
   const matches = candidates.filter((c) => canCompleteOppositePair(decidedFaceIndicesOf(neighborPoint, c.forms, edges, cfg, nodes), targetFace, degree));
@@ -523,7 +523,7 @@ function selectOppositeFaceOwner(
 function resolveFaceOwner(
   point: [number, number],
   newNeighbor: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edges: Record<string, PostEditEdge>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
@@ -564,7 +564,7 @@ function resolveFaceOwner(
 
   const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
   const active = activeSplitNode[pointKey(newNeighbor)];
-  const safeCandidates = candidates.filter((c) => !hasCompleteOppositePair(decidedFaceIndicesOf(newNeighbor, c.forms, edges, cfg, nodes), degree));
+  const safeCandidates = candidates.filter((c) => !isFinishedSplitPair(decidedFaceIndicesOf(newNeighbor, c.forms, edges, cfg, nodes), degree, candidates.length));
   // Every candidate already holds a finished opposite pair — there is no safe node to hand this new
   // face to at all, not even "the least bad" one (that would still corrupt whichever candidate gets
   // picked). Refuse the new connection outright (the face reverts to wall) rather than guess.
@@ -593,23 +593,23 @@ function resolveFaceOwner(
  * produce). Computed by applying `collectRotateMoves`' raw re-key list to a scratch copy of `edges`,
  * then reading each node's resulting wiring back via `currentSplitNodeFaces` — replay has no
  * tessellation/field access (`PostEditReplayContext` is identity-only), so this resolution only
- * happens once, here, at construction time. Returns `[]` if the rotation must be refused (a moved
- * connection would land outside the field) — the caller treats an empty node list as "nothing to
- * do", same as the old diff-shaped `moves` convention. */
+ * happens once, here, at construction time. A refusal returns `[]` with `refusalReason` set to
+ * `outside_field` or `ambiguous_face_owner`; a plain empty array means there was nothing to move. */
 export function rotateSplitPointNodes(
   edges: Record<string, PostEditEdge>,
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
   splitPoints: Record<string, number[]>,
   level?: number,
-): ResolvedRotateNode[] {
+): SplitRotationResult<ResolvedRotateNode[]> {
   const moves = collectRotateMoves(edges, point, slotIds, direction, cfg, cellSet, nodes, level);
-  if (moves === undefined || moves.length === 0) return [];
+  if (moves === undefined) return refusedRotation([], "outside_field");
+  if (moves.length === 0) return [];
 
   const levelSplitPoints = recordOnLevel(splitPoints, level);
   const splitPointsAt = (p: [number, number]) => levelSplitPoints[`${p[0]},${p[1]}`] ?? [];
@@ -642,6 +642,7 @@ export function rotateSplitPointNodes(
     ...slotIds.map((slotId) => splitEndpoint(point, slotId, level)),
   ];
   const resolvedOwners = moves.map((m) => resolveFaceOwner(point, m.newNeighbor, cfg, edges, nodes, activeSplitNode, assignedThisRotation, level, splitPointsAt));
+  if (resolvedOwners.some((owner) => owner === null)) return refusedRotation([], "ambiguous_face_owner");
   for (const newOther of resolvedOwners) {
     if (!newOther) continue;
     for (const pf of pointForms) {
@@ -760,7 +761,7 @@ export function rotateSplitPointBreaksNeighborShape(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
@@ -783,14 +784,14 @@ export function rotateSplitPointBreaksNeighborShape(
       ...neighborSlots.map((slotId) => splitEndpoint(neighbor, slotId, level)),
     ];
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+    const neighborBinding = splitShapeBinding(cfg, neighbor[0], neighbor[1]);
 
     const before = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, edges, splitPoints, activeSplitNode, nodes, level));
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
-    const beforeKind = detectSplitSpecialShapeKind(before, canonicalOrder);
+    const beforeKind = detectSplitSpecialShapeKind(before, neighborBinding);
     if (beforeKind === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, after, splitPoints, activeSplitNode, nodes, level));
-    if (detectSplitSpecialShapeKind(afterKinds, canonicalOrder) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, neighborBinding) === null) return true;
   }
   return false;
 }

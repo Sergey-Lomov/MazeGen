@@ -1,24 +1,28 @@
 import {
   CURRENT_VERSION,
+  VISUAL_PRESET_KIND,
+  QUALITY_PRESET_KIND,
+  FileKindMismatchError,
   type ProjectFile,
   type ProjectFileDirtyFlags,
   type ProjectFileAnalytics,
   type ProjectFileDebug,
   type ProjectFileUi,
-  type ProjectFileStage,
   type ProjectFileFloors,
   type ProjectFileFloorField,
 } from "./types";
-import { buildPredefinedConfig } from "../storeHelpers";
+import { buildPredefinedConfig, defaultShapeOf } from "../storeHelpers";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
+import type { TessellationKind } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { FeatureId } from "../mazeStore";
 import {
-  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertStringRecordRecord, assertBoolRecord,
+  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertBoolRecord,
   optBool, optNumber, optEnum, optSection, validateFloors, validateSplitGeneration, assertUniqueIds, validatePairArray,
 } from "./validatePrimitives";
 import {
-  validateFloorFieldConfig, validatePostEdit, validatePresetEndpoint, validatePresetConnectionEntry, validateQcRule,
-  validateQcStage, validatePresetTeleportEntry, validatePresetVerticalPassageEntry, validatePresetElevatorEntry,
+  validateFloorFieldConfig, validatePostEdit, validatePresetEndpoint, validatePresetConnectionEntry, validateQuality,
+  validatePresetTeleportEntry, validatePresetVerticalPassageEntry, validatePresetElevatorEntry,
   validateNodeLockKind, validateSplitPoints,
 } from "./validateSections";
 import { validateImageExport } from "./validateImageExport";
@@ -55,8 +59,30 @@ function migrateToLatest(data: unknown, fromVersion: number): unknown {
 
 // ─── Top-level parse ─────────────────────────────────────────────────────────
 
+/** Rejects params the kind does not accept: every spec'd param must be an in-range integer or number or one of its options and no
+ * other key may appear. Core's tessellation factory enforces the same on build. */
+function validateTessellationParams(kind: TessellationKind, params: Record<string, unknown>): void {
+  const specs = TESSELLATION_UI[kind].paramSpecs;
+  const unsupported = Object.keys(params).find((key) => !specs.some((spec) => spec.name === key));
+  if (unsupported !== undefined) throw new Error(`tessellation.params: kind "${kind}" does not accept param "${unsupported}"`);
+  for (const spec of specs) {
+    const value = params[spec.name];
+    if (spec.type === "integer") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < spec.min || value > spec.max)
+        throw new Error(`tessellation.params.${spec.name}: expected an integer from ${spec.min} to ${spec.max}, got ${JSON.stringify(value)}`);
+    } else if (spec.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < spec.min || value > spec.max)
+        throw new Error(`tessellation.params.${spec.name}: expected a number from ${spec.min} to ${spec.max}, got ${JSON.stringify(value)}`);
+    } else if (typeof value !== "string" || !spec.options.includes(value)) {
+      throw new Error(`tessellation.params.${spec.name}: expected one of ${spec.options.join(", ")}, got ${JSON.stringify(value)}`);
+    }
+  }
+}
+
 export function parseAndValidate(raw: unknown): ProjectFile {
   const obj = assertObject(raw, "root");
+  if (obj.kind === VISUAL_PRESET_KIND) throw new FileKindMismatchError("project", "visual_preset");
+  if (obj.kind === QUALITY_PRESET_KIND) throw new FileKindMismatchError("project", "quality_preset");
 
   const version = assertNumber(obj.version, "version");
   if (version > CURRENT_VERSION)
@@ -64,9 +90,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   const migrated = assertObject(migrateToLatest(obj, version), "root (migrated)");
 
-  // tessellation (kind/orientation only — per-floor field shape is `floorFields`, GitHub issue #338)
+  // tessellation ({ kind, params } plus display orientation — per-floor field shape is
+  // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "triangle", "cairo"] as const, "square");
+  const tessellationKinds = ["square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal", "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "elongated_triangular", "snub_square", "curved_quadrilateral", "radial", "voronoi"] as const;
+  const rawKind = assertString(tessObj.kind, "tessellation.kind");
+  if (!(tessellationKinds as readonly string[]).includes(rawKind))
+    throw new Error(`Invalid tessellation kind at tessellation.kind: ${rawKind}`);
+  const kind = rawKind as typeof tessellationKinds[number];
+  const params = assertObject(tessObj.params, "tessellation.params");
+  validateTessellationParams(kind, params);
   const hexOrientation = optEnum(tessObj, "hexOrientation", ["flat_top", "pointy_top"] as const, "flat_top");
   const triOrientation = optEnum(tessObj, "triOrientation", ["r0", "r90", "r180", "r270"] as const, "r0");
 
@@ -96,58 +129,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     ? 0
     : Math.min(Math.max(optNumber(genObj, "seedHistoryIndex", seedHistory.length - 1), 0), seedHistory.length - 1);
 
-  // quality
-  const qualObj = assertObject(migrated.quality, "quality");
-  // Rules with no kind (e.g. corrupted or saved before rules carried a kind) can never accept a
-  // check via "add check to rule" again (the candidate filter matches by kind) — drop them on load
-  // rather than keep them around as permanently inert cards.
-  const rules = assertArray(qualObj.rules, "quality.rules")
-    .map((v, i) => validateQcRule(v, `quality.rules[${i}]`))
-    .filter((r) => r.kind !== "");
-  // See GitHub issue #65 and Specs/quality-feature.md's "Project file persistence" section.
-  // Two cases: the key is absent entirely (file saved before this feature — recovery synthesizes
-  // one stage covering every rule, not a registered migration, same pattern as
-  // repairMaxIterations/ruleDisabled below) vs. the key is present (validated for full
-  // consistency against `rules` — any violation is a hard parse error, not a silent recovery,
-  // since a present-but-inconsistent key means the file is corrupted, not merely old).
-  const ruleIds = new Set(rules.map((r) => r.id));
-  let stages: ProjectFileStage[];
-  if (!("stages" in qualObj)) {
-    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false, collapsed: false }];
-  } else {
-    const parsedStages = assertArray(qualObj.stages, "quality.stages").map((v, i) => validateQcStage(v, `quality.stages[${i}]`));
-    // A `ruleId` in a stage that doesn't resolve to a surviving rule is only ever a rule dropped
-    // by the kind-drop recovery above (see "Rules with no kind" comment) — that rule never
-    // reaches `rules`/`ruleIds`, so a strict "unknown rule id" error here would fire on every
-    // legacy file exercising that same recovery path. Scrub it silently instead; genuinely
-    // unknown ids (never present in the file's own `quality.rules` at all) are indistinguishable
-    // from this case at this point and get the same silent scrub — a stricter check would need to
-    // track "known but kind-dropped" separately, which isn't worth the complexity for a
-    // stale-reference cleanup that's a no-op either way.
-    stages = parsedStages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => ruleIds.has(id)) }));
-    const seenInStage = new Set<string>();
-    for (const stage of stages) {
-      for (const ruleId of stage.ruleIds) {
-        if (seenInStage.has(ruleId)) throw new Error(`quality.stages: rule id ${ruleId} appears in more than one stage`);
-        seenInStage.add(ruleId);
-      }
-    }
-    for (const r of rules) {
-      if (!seenInStage.has(r.id)) throw new Error(`quality.stages: rule id ${r.id} is not assigned to any stage`);
-    }
-  }
-  const strategyParams = assertStringRecordRecord(qualObj.strategyParams, "quality.strategyParams");
-  // Optional — files saved before this setting existed (key absent entirely) default to the same
-  // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
-  // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
-  // stay `null`, not fall back to the default — checked via `in`, not `typeof === "number"`,
-  // which would also catch the legitimate "disabled" case and silently re-enable it on load.
-  const repairMaxIterations = "repairMaxIterations" in qualObj
-    ? (typeof qualObj.repairMaxIterations === "number" ? qualObj.repairMaxIterations : null)
-    : 100;
-  const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
-    ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
-    : 10;
+  const quality = validateQuality(migrated.quality, "quality");
 
   // presets
   const presetsObj = assertObject(migrated.presets, "presets");
@@ -265,21 +247,21 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // entry (file saved before this issue, or hand-edited) falls back to the kind's bare default
   // shape, same convention `defaultFloorFieldConfig` (storeHelpers.ts) uses for a brand-new floor.
   const floorFieldsObj = migrated.floorFields != null ? assertObject(migrated.floorFields, "floorFields") : {};
-  const defaultConfig = buildPredefinedConfig(kind, kind === "hex" ? "hexagon" : "parallelogram", kind === "triangle" ? "triangle" : "rect", hexOrientation, triOrientation);
+  const defaultConfig = buildPredefinedConfig({ kind, params }, defaultShapeOf(kind), hexOrientation, triOrientation);
   const floorFields: Record<string, ProjectFileFloorField> = {};
   for (const floor of floors.floors) {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
-      ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`)
-      : { config: defaultConfig, savedConfigs: [defaultConfig], freeFieldPoints: { square: [], hex: [], triangle: [], cairo: [] }, fieldEditMode: "default" };
+      ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [], square_octagon: [], brick: [], trihexagonal: [], snub_hexagonal: [], rhombitrihexagonal: [], truncated_hexagonal: [], truncated_trihexagonal: [], elongated_triangular: [], snub_square: [], curved_quadrilateral: [], radial: [], voronoi: [] }, fieldEditMode: "default" };
   }
 
   return {
     version: CURRENT_VERSION,
-    tessellation: { kind, hexOrientation, triOrientation },
+    tessellation: { kind, params, hexOrientation, triOrientation },
     floorFields,
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
-    quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
+    quality,
     presets: {
       connections,
       lockedNodes,

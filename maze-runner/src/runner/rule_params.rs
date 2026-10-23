@@ -115,7 +115,7 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(
             "split_patterns".to_string(),
-            r#"[{"node_count":2,"faces":[[],[]],"weight":1.0}]"#.to_string(),
+            r#"[{"shape":"regular:4","node_count":2,"faces":[[],[]],"weight":1.0}]"#.to_string(),
         );
         let params = resolve_rule_params(&map).unwrap();
         assert_eq!(params.split_patterns.len(), 1);

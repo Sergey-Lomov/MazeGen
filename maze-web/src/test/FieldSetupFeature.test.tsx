@@ -6,7 +6,12 @@ import type { FieldConfig } from "../fieldConfig";
 import { useMazeStore } from "../store/mazeStore";
 import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
-import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
+import { getCartesian } from "../pixi/cartesianCache";
+import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipControlWithin } from "./tooltipTestUtils";
+import * as m from "~/paraglide/messages";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -17,6 +22,57 @@ beforeEach(() => {
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("applies the current field to every other floor after confirmation", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
+    expect(screen.getByText(m["floors.confirm_from_current"]())).toBeInTheDocument();
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+
+    fireEvent.click(screen.getByRole("button", { name: m["common.ok"]() }));
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+  });
+
+  it("keeps other floors unchanged when the confirmation is cancelled", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
+    fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
+
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+  });
+
+  it("explains an out-of-range field size on blur, even when it restores the stored value", () => {
+    render(<FieldSetupFeature />);
+    const width = screen.getByRole("spinbutton", { name: m["field.width"]() });
+    fireEvent.change(width, { target: { value: "999" } });
+    fireEvent.blur(width);
+    expect(width).toHaveValue(10);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.range_reverted"]({ min: "1", max: "200" }),
+    );
+  });
+
   it("disables field editing controls while an auto-fill preview is active", () => {
     useMazeStore.setState({
       floorFields: {
@@ -28,22 +84,82 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     expect(screen.getByRole("button", { name: "Standard" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Add (+)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
   });
 
+  it("centers a custom field's bounding box around the origin", () => {
+    const points = new Set([encodePoint(10, 5), encodePoint(11, 5), encodePoint(12, 5)]);
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[10, 5], [11, 5], [12, 5]] }),
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: points,
+          freeFieldPoints: { ...emptyFreePoints(), square: points },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Center field" }));
+
+    const moved = [...useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints].map(decodePoint);
+    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig;
+    const centers = moved.map(([x, y]) => getCartesian(x, y, cfg));
+    const centerX = (Math.min(...centers.map(([x]) => x)) + Math.max(...centers.map(([x]) => x))) / 2;
+    const centerY = (Math.min(...centers.map(([, y]) => y)) + Math.max(...centers.map(([, y]) => y))) / 2;
+    expect([centerX, centerY]).toEqual(getCartesian(0, 0, cfg));
+  });
+
+  it("does not move an already centered 11 by 11 square field", () => {
+    const cells = Array.from({ length: 11 }, (_, row) => Array.from(
+      { length: 11 },
+      (_, col) => [col - 5, row - 5] as [number, number],
+    )).flat();
+    const points = new Set(cells.map(([x, y]) => encodePoint(x, y)));
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: cells }),
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: points,
+          freeFieldPoints: { ...emptyFreePoints(), square: points },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Center field" }));
+
+    expect([...useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints]).toEqual([...points]);
+  });
+
+  it("disables centering for an empty custom field", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: "Center field" })).toBeDisabled();
+  });
+
   const descriptionCases: [FieldConfig, string][] = [
-    [{ type: "square", width: 20, height: 28 }, "Field size: 20 × 28 cells"],
-    [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],
-    [{ type: "hex_rectangle", cols: 10, rows: 8, orientation: "flat_top" }, "Field size: 10 × 8 cells"],
-    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
-    [{ type: "hex_triangle", side: 6, orientation: "flat_top" }, "Field side: 6 cells"],
-    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
-    [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
-    [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
-    [{ type: "cairo_circle", radius: 12 }, "Field radius: 12 cells"],
-    [{ type: "cairo_triangle", side: 20 }, "Field side: 20 cells"],
-    [{ type: "cairo_hexagon", radius: 12 }, "Field radius: 12 cells"],
+    [fieldOf("square", { shape: "rect", cols: 20, rows: 28 }), "Field size: 20 × 28 cells"],
+    [fieldOf("square", { shape: "circle", radius: 5 }), "Field radius: 5 cells"],
+    [fieldOf("hex", { shape: "rect", cols: 10, rows: 8 }, "flat_top"), "Field size: 10 × 8 cells"],
+    [fieldOf("hex", { shape: "circle", radius: 5 }, "flat_top"), "Field radius: 5 cells"],
+    [fieldOf("hex", { shape: "triangle", side: 6 }, "flat_top"), "Field side: 6 cells"],
+    [fieldOf("tri", { shape: "circle", radius: 4 }, "r0"), "Field radius: 4 cells"],
+    [fieldOf("hex", { shape: "hexagon", radius: 5 }, "flat_top"), "Field radius: 5 cells"],
+    [fieldOf("tri", { shape: "triangle", side: 5 }, "r0"), "Field side: 5 cells"],
+    [fieldOf("cairo", { shape: "circle", radius: 12 }), "Field radius: 12 cells"],
+    [fieldOf("cairo", { shape: "triangle", side: 20 }), "Field side: 20 cells"],
+    [fieldOf("cairo", { shape: "hexagon", radius: 12 }), "Field radius: 12 cells"],
   ];
 
   it.each(descriptionCases)("describes calculated field dimensions clearly", (config, expected) => {
@@ -59,14 +175,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const dialogQueries = within(dialog!);
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
     fireEvent.change(inputs[4], { target: { value: "10" } });
-    fireEvent.click(dialogQueries.getByTitle("Portrait"));
+    fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({
-      type: "square",
-      width: 20,
-      height: 28,
-    });
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
     expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({
       paperSize: "a4",
       orientation: "portrait",
@@ -157,17 +269,18 @@ describe("FieldSetupFeature — Copy floor button", () => {
     useMazeStore.setState({
       tessellationKind: "hex",
       mazeDirty: true,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ hexShape: "parallelogram" }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ selectedShape: "parallelogram", fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") }) },
     });
     render(<FieldSetupFeature />);
     fireEvent.change(screen.getByDisplayValue("Parallelogram"), { target: { value: "hexagon" } });
     expect(screen.getByText("Changing the field resets the current generation and post-edit results. Continue?")).toBeInTheDocument();
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].hexShape).toBe("parallelogram");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].selectedShape).toBe("parallelogram");
   });
 
   it("is hidden with a single floor", () => {
     render(<FieldSetupFeature />);
     expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();
+    expect(screen.queryByText(m["floors.from_current"]())).not.toBeInTheDocument();
   });
 
   it("is shown once more than one floor exists", () => {
@@ -180,9 +293,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
     expect(screen.getByText("Copy floor")).toBeInTheDocument();
+    expect(screen.getByText(m["floors.from_current"]())).toBeInTheDocument();
   });
 
-  it("describes primitive smoothing and its always-on isolated-cell cleanup", () => {
+  it("describes smoothing", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
@@ -192,8 +306,17 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     expect(screen.getByText("Smoothing")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    expect(screen.getByText(/works only with primitives/)).toBeInTheDocument();
-    expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
+    expect(screen.getByText(/removes cells that touch the rest of the selected shape by only one side/)).toBeInTheDocument();
+  });
+
+  it("shows and updates primitive smoothing for a standard field", () => {
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    const smoothing = screen.getByRole("checkbox");
+    expect(smoothing).toBeChecked();
+    fireEvent.click(smoothing);
+    expect(useMazeStore.getState().smoothPrimitives).toBe(false);
   });
 
   it("offers one polygon tool whose operation follows the active mode", () => {
@@ -205,11 +328,46 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const polygonTool = screen.getByRole("button", { name: /Polygon/ });
-    expect(polygonTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
-    fireEvent.click(screen.getByRole("button", { name: "Remove (-)" }));
+    const description = document.getElementById(polygonTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Polygon8Move vertices freely.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
-    expect(screen.getByRole("button", { name: /Symmetry/ })).toBeDisabled();
+    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
+    expect(symmetryTool).toBeDisabled();
+    const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
+  });
+
+  it("keeps the symmetry tool visible but disabled where core offers no reflection", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldConfig: fieldOf("snub_hexagonal", { shape: "rect", cols: 3, rows: 3 }),
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
+    expect(symmetryTool).toBeDisabled();
+    const description = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Unavailable in this tessellation.");
+  });
+
+  it("offers the parallelogram tool for a square field", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const tool = screen.getByRole("button", { name: /Parallelogram/ });
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Parallelogram7");
   });
 
   it("labels the connected-area tool and explains its effect", () => {
@@ -221,7 +379,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const tool = screen.getByRole("button", { name: /Connected Area/ });
-    expect(tool).toHaveAttribute("title", "Connected Area\nAffects all connected cells.");
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Connected AreaAAffects all connected cells.");
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {
@@ -233,19 +392,19 @@ describe("FieldSetupFeature — Copy floor button", () => {
       ],
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig(),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square_triangle", side: 4 } }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "triangle", side: 4 }) }),
         floor_3: baseFloorFieldConfig({
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
         print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, paperSize: "a4", orientation: "portrait", marginHMm: 5, marginVMm: 5 },
       },
-      activeTessellationConfig: { type: "square", width: 10, height: 10 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
       mazeDirty: false,
       postEditDirty: false,
       fieldEditConfirmation: null,
@@ -258,15 +417,15 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const cellInput = dialogQueries.getAllByRole("spinbutton")[4] as HTMLInputElement;
     fireEvent.change(cellInput, { target: { value: "10" } });
     expect(cellInput.value).toBe("10");
-    fireEvent.click(dialogQueries.getByTitle("Portrait"));
+    fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     expect(dialogQueries.getByRole("checkbox")).toBeChecked();
     expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled();
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({ type: "square", width: 20, height: 28 });
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig.type).toBe("square_triangle");
-    expect((useMazeStore.getState().floorFields.floor_2.tessellationConfig as { side: number }).side).toBeGreaterThan(0);
-    expect(useMazeStore.getState().floorFields.floor_3.tessellationConfig).toEqual({ type: "square_custom", points: [[0, 0]] });
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig.shape.shape).toBe("triangle");
+    expect((useMazeStore.getState().floorFields.floor_2.fieldConfig.shape as { side: number }).side).toBeGreaterThan(0);
+    expect(useMazeStore.getState().floorFields.floor_3.fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[0, 0]] }));
   });
 
   it("recalculates every standard floor when print parameters change", async () => {
@@ -277,15 +436,15 @@ describe("FieldSetupFeature — Copy floor button", () => {
         { id: "floor_3", title: "Custom floor" },
       ],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 11, height: 11 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 11, rows: 11 }) }),
         floor_2: baseFloorFieldConfig({
-          tessellationConfig: { type: "square_triangle", side: 5 },
+          fieldConfig: fieldOf("square", { shape: "triangle", side: 5 }),
         }),
         floor_3: baseFloorFieldConfig({
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
     });
@@ -327,7 +486,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
     });
@@ -356,31 +515,31 @@ describe("FieldSetupFeature — Copy floor button", () => {
 describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", () => {
   it("sums cell counts across floors, not just the first floor's", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 2 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("13");
   });
 
   it("shows the shared shape label when all floors match", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Rect");
   });
 
   it("labels a Cairo rectangle with its fundamental-square dimensions", () => {
     const floors = [
-      baseFloorFieldConfig({ cairoShape: "rect", tessellationConfig: { type: "cairo", cols: 2, rows: 3 } }),
+      baseFloorFieldConfig({ selectedShape: "rect", fieldConfig: fieldOf("cairo", { shape: "rect", cols: 2, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("cairo", floors)).toContain("2×3");
   });
 
   it("shows 'Different floor shapes' when floors' shapes/sizes differ", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 5, height: 5 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
   });
@@ -396,7 +555,7 @@ describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", (
   it("treats a custom floor and a default floor as different shapes", () => {
     const floors = [
       baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set([1]) }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
   });

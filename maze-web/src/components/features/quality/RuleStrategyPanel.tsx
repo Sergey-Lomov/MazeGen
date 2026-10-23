@@ -3,6 +3,7 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
+import { Tooltip } from "../../Tooltip";
 import { WarningIcon } from "../../WarningIcon";
 import { EditIconButton } from "../../EditIconButton";
 import * as m from "~/paraglide/messages";
@@ -10,19 +11,17 @@ import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { NestedStrategyPanel } from "./NestedStrategyPanel";
 import { entriesForSlot } from "../../../store/storeTypes";
 import { addVerticalPassageOverrides } from "./addVerticalPassageOverrides";
-import { splitPatternsToWeb } from "../../../pixi/tessellationGeometry";
-import { activeFloorTessellationOf } from "../../../store/storeHelpers";
 import type { StrategySlotVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
 // Mirrors `getPatterns` in `ParamFields.tsx` -- a malformed or missing `split_patterns` rule
 // param reads as "no patterns" (empty topology), same "invalid falls back to empty" contract
 // `parse_split_patterns_param` follows on the Rust side (GitHub issue #389).
-function parseRuleSplitPatterns(raw: string | undefined, tessellationConfig: ReturnType<typeof activeFloorTessellationOf>) {
+function parseRuleSplitPatterns(raw: string | undefined) {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, tessellationConfig) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -44,16 +43,16 @@ interface Props {
 // themselves (the checks still run; only the repair step is what gets toggled here).
 export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit }: Props) {
   const toggleStrategyDisabled = useMazeStore((s) => s.toggleStrategyDisabled);
-  const strategyParams = useMazeStore((s) => s.strategyParams);
+  const rules = useMazeStore((s) => s.rules);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
 
   const strategy = slot.strategy;
   const { values, onChange, flushRef } = useParamEditor({
     entityId: strategy?.id ?? "",
     params: strategy?.params ?? [],
-    storeValues: strategy ? (strategyParams[strategy.id] ?? {}) : {},
+    storeValues: strategy ? (rules.find((r) => r.id === slot.ruleId)?.strategyParams ?? {}) : {},
     onCommit: (paramId, value) => {
-      if (strategy) setStrategyParam(strategy.id, paramId, value);
+      if (strategy) setStrategyParam(slot.ruleId, paramId, value);
     },
   });
 
@@ -64,9 +63,8 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
     : null;
   const displayValues = passageOverrides ? { ...values, ...passageOverrides.values } : values;
 
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const addSplitPatternsOverride = strategy?.id === "add_split"
-    ? parseRuleSplitPatterns(slot.params.split_patterns, tessellationConfig)
+    ? parseRuleSplitPatterns(slot.params.split_patterns)
     : undefined;
 
   return (
@@ -92,12 +90,11 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
         </span>
         {strategy?.experimental && <WarningIcon />}
         {strategy && (
-          <div
+          <Tooltip content={slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}><div
             style={styles.toggleWrap}
-            title={slot.disabled ? m["quality.enable_strategy"]() : m["quality.disable_strategy"]()}
           >
             <Switch checked={!slot.disabled} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
-          </div>
+          </div></Tooltip>
         )}
         <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
       </div>

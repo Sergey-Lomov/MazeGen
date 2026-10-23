@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Container } from "pixi.js";
-
-// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
-// same square-tessellation mock as exportFit.test.ts/printFit.test.ts.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
+import { fieldOf } from "./fieldConfigFixtures";
 
 const { ExportFrameOverlay } = await import("../pixi/imageExport/ExportFrameOverlay");
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } = await import("../store/slices/imageExportSlice");
-const { baseStoreState } = await import("./storeTestHelpers");
+const { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } = await import("./storeTestHelpers");
+const { fieldOf } = await import("./fieldConfigFixtures");
 
 const SCREEN = { width: 1000, height: 1000 };
 
@@ -41,6 +37,54 @@ function makeOverlay(setViewportTransform = vi.fn()) {
 }
 
 describe("ExportFrameOverlay — print anchor guard", () => {
+  it("re-centers print placement after switching the active floor", () => {
+    const secondFloorId = "floor_2";
+    setBaseState({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: secondFloorId, title: "Floor 2" }],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }) }),
+        [secondFloorId]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 8, rows: 3 }) }),
+      },
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+        { id: 3, x: 7, y: 2, i: 0, level: 1 },
+      ],
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
+    });
+    const { overlay, setViewportTransform } = makeOverlay();
+    setViewportTransform.mockClear();
+
+    useMazeStore.getState().setActiveFloorId(secondFloorId);
+
+    expect(setViewportTransform).toHaveBeenCalledOnce();
+    overlay.destroy();
+  });
+
+  it("places the active floor by its own nodes only, ignoring other floors (GitHub issue #790)", () => {
+    const secondFloorId = "floor_2";
+    const floor0Nodes = [
+      { id: 0, x: 0, y: 0, i: 0, level: 0 },
+      { id: 1, x: 1, y: 0, i: 0, level: 0 },
+    ];
+    const state = (nodes: typeof floor0Nodes) => ({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: secondFloorId, title: "Floor 2" }],
+      nodes,
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" as const, print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" as const } },
+    });
+
+    setBaseState(state(floor0Nodes));
+    const alone = makeOverlay();
+    const expected = alone.setViewportTransform.mock.calls.at(-1)!;
+    alone.overlay.destroy();
+
+    setBaseState(state([...floor0Nodes, { id: 2, x: 40, y: 30, i: 0, level: 1 }]));
+    const withOther = makeOverlay();
+    expect(withOther.setViewportTransform.mock.calls.at(-1)).toEqual(expected);
+    withOther.overlay.destroy();
+  });
+
   it("does not overwrite a fixed anchor when onViewportChanged reports the same x/y/scale as before (resize echo, not a real pan/zoom)", () => {
     setBaseState({
       pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
@@ -116,7 +160,7 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
 
     // The frame's own screen centre (computeSheetScreenLayout of the current print fit).
     const s = useMazeStore.getState();
-    const fit = computePrintExportFit(s.activeTessellationConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
+    const fit = computePrintExportFit(s.activeFieldConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
     const layout = computeSheetScreenLayout(fit.sheetWidthPx, fit.sheetHeightPx, SCREEN.width, SCREEN.height);
     const cx = layout.x + layout.w / 2;
     const cy = layout.y + layout.h / 2;

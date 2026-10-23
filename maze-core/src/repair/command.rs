@@ -102,7 +102,7 @@ pub enum MutationCommand {
     /// Replaces every node currently at `at`'s point (all of them — slot-0 included, not just
     /// extra siblings) with a brand-new set of nodes, wiring each one's own edges in one atomic
     /// step — see GitHub issue #247, `AddSplitStrategy`. `at` only identifies which point is
-    /// affected (resolved via `field.point_of(at)`), not a node that survives the command — every
+    /// affected (resolved via `field.cell_of(at)`), not a node that survives the command — every
     /// node previously at that point is removed, and `nodes.len()` new nodes are minted in its
     /// place, `nodes[i]` describing the `i`th new node's own edges to already-existing neighbors
     /// elsewhere on the field.
@@ -113,7 +113,7 @@ pub enum MutationCommand {
     /// slot-0 by `Field`'s own convention." Every caller building `nodes` (e.g. `AddSplitStrategy`)
     /// is expected to put whichever resolved node it means to be the tile's slot-0 at index 0.
     ///
-    /// Declined outright (no removal, no mint) if `field.point_of(at)` is `None` at apply time —
+    /// Declined outright (no removal, no mint) if `field.cell_of(at)` is `None` at apply time —
     /// e.g. `at` itself was already removed by an earlier command in the same batch, or the point
     /// was otherwise invalidated since this command was proposed. Same "stale command, silently
     /// declined" contract every other variant already has.

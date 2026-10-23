@@ -94,7 +94,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                 .expect("remove_node_feasible confirmed this node exists");
             let point = maze
                 .field
-                .point_of(node)
+                .cell_of(node)
                 .expect("remove_node_feasible confirmed this node exists");
             any_removable = true;
 
@@ -215,6 +215,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -243,7 +244,7 @@ mod tests {
     fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -277,7 +278,7 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(extra).is_none(),
+            maze.field.cell_of(extra).is_none(),
             "extra node must be gone from the field"
         );
         assert!(
@@ -290,7 +291,7 @@ mod tests {
     fn apply_never_removes_slot0_when_it_is_the_last_node() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -314,7 +315,7 @@ mod tests {
         );
 
         assert!(
-            maze.field.point_of(slot0).is_some(),
+            maze.field.cell_of(slot0).is_some(),
             "a point's last remaining node must never be removed"
         );
     }
@@ -338,7 +339,7 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(slot0).is_none(),
+            maze.field.cell_of(slot0).is_none(),
             "slot0 must be removed since it isn't the point's last remaining node"
         );
     }
@@ -364,7 +365,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra).is_none());
+        assert!(maze.field.cell_of(extra).is_none());
         // Only sibling is slot0 (2-node split), so redistribution must land there deterministically.
         assert!(
             maze.graph.edge_between(slot0, right).is_some(),
@@ -380,7 +381,7 @@ mod tests {
     fn apply_with_redistribute_picks_among_multiple_siblings() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -408,7 +409,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
         // Exactly one of slot0/extra2 must have inherited the connection to `right`.
         let slot0_has = maze.graph.edge_between(slot0, right).is_some();
         let extra2_has = maze.graph.edge_between(extra2, right).is_some();
@@ -426,7 +427,7 @@ mod tests {
         // different remaining siblings instead of funneling them all onto one.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -458,7 +459,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
         let right1_target = if maze.graph.edge_between(slot0, right1).is_some() {
             Some(slot0)
         } else if maze.graph.edge_between(extra2, right1).is_some() {
@@ -498,7 +499,7 @@ mod tests {
         for seed in 0..50u64 {
             let mut ids = IdGenerator::new();
             let mut field: MultiLevelField<SquareTessellation> =
-                MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+                MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
             let level = field.single_level_id();
             let p = SquarePoint { x: 1, y: 0 };
             let slot0 = field.node_at(level, p).unwrap();
@@ -555,7 +556,7 @@ mod tests {
         // target is slot0, which survives the whole batch.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -583,8 +584,8 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra1).is_none());
-        assert!(maze.field.point_of(extra2).is_none());
+        assert!(maze.field.cell_of(extra1).is_none());
+        assert!(maze.field.cell_of(extra2).is_none());
         assert!(
             maze.graph.edge_between(slot0, right).is_some(),
             "slot0 is the only sibling that survives the whole batch, so it must inherit the connection"
@@ -617,11 +618,11 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(
-            maze.field.point_of(extra).is_none(),
+            maze.field.cell_of(extra).is_none(),
             "extra is processed first and actually removed"
         );
         assert!(
-            maze.field.point_of(slot0).is_some(),
+            maze.field.cell_of(slot0).is_some(),
             "slot0's own RemoveNode is declined once it becomes the point's last remaining node"
         );
     }
@@ -639,7 +640,7 @@ mod tests {
     fn apply_with_redistribute_skips_the_sibling_edge_to_the_target_itself() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -667,7 +668,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra).is_none());
+        assert!(maze.field.cell_of(extra).is_none());
         assert!(
             maze.graph.edge_between(slot0, slot0).is_none(),
             "must never create a self-loop on the target"
@@ -678,7 +679,7 @@ mod tests {
     fn apply_with_redistribute_preserves_teleport_kind() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -735,7 +736,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Failed));
         assert!(
-            maze.field.point_of(extra).is_some(),
+            maze.field.cell_of(extra).is_some(),
             "preset-protected node must survive"
         );
         let _ = slot0;

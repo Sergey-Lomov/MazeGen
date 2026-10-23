@@ -1,5 +1,5 @@
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { Pos } from "../tessellationGeometry";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
@@ -10,7 +10,16 @@ export interface RegionGeometry {
   /** Shared-wall pixel segments on this region's boundary, for perimeter rendering. Tagged with
    *  the edge-connected component (GitHub issue #618) so contour tracing never crosses between
    *  cells that only touch at a corner point, not a shared edge. */
-  perimeterSegments: { v0: Pos; v1: Pos; component: number }[];
+  perimeterSegments: PerimeterSegment[];
+}
+
+/** One exposed side of a region, oriented with the region on its left. `polyline` is the side's
+ *  whole flattened geometry from `v0` to `v1` (a straight side is just those two points). */
+export interface PerimeterSegment {
+  v0: Pos;
+  v1: Pos;
+  polyline: Pos[];
+  component: number;
 }
 
 /** Resolves one region's maze node ids to its cell coordinates and boundary segments — same
@@ -21,7 +30,7 @@ export interface RegionGeometry {
 export function buildRegionGeometry(
   regionNodeIds: number[],
   nodes: NodeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): RegionGeometry {
   const nodeById = new Map<number, NodeDto>();
   for (const node of nodes) nodeById.set(node.id, node);
@@ -93,7 +102,10 @@ export function buildRegionGeometry(
         // tracing deterministic at pinch points where an inner opening touches the outer boundary.
         const center = getCellCenter(x, y, cfg);
         const cross = (seg.v1.x - seg.v0.x) * (center.y - seg.v0.y) - (seg.v1.y - seg.v0.y) * (center.x - seg.v0.x);
-        perimeterSegments.push({ ...(cross >= 0 ? seg : { v0: seg.v1, v1: seg.v0 }), component });
+        const polyline = seg.polyline.map(([px, py]) => ({ x: px, y: py }));
+        perimeterSegments.push(cross >= 0
+          ? { v0: seg.v0, v1: seg.v1, polyline, component }
+          : { v0: seg.v1, v1: seg.v0, polyline: polyline.reverse(), component });
       }
     }
   }

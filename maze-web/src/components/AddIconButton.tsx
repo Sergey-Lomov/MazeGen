@@ -1,6 +1,7 @@
 import type React from "react";
 import { Plus } from "lucide-react";
 import { ui, radius } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 /** Shared "add a new entry" icon button — the flat `Plus` glyph convention used throughout the
  *  quality panels (`RulesColumn`'s own `stageToolbarBtn`) rather than a bordered/filled button, so
@@ -8,9 +9,11 @@ import { ui, radius } from "../styles/theme";
  *  hand-rolling its own button+`Plus` copy. */
 export function AddIconButton({ onClick, title }: { onClick: (e: React.MouseEvent) => void; title: string }) {
   return (
-    <button type="button" className="hoverable" style={styles.addBtn} title={title} onClick={onClick}>
-      <Plus size={16} color={ui.text.tertiary} strokeWidth={2.5} />
-    </button>
+    <Tooltip content={title}>
+      <button type="button" className="hoverable" style={styles.addBtn} onClick={onClick}>
+        <Plus size={16} color={ui.text.tertiary} strokeWidth={2.5} />
+      </button>
+    </Tooltip>
   );
 }
 

@@ -4,10 +4,10 @@ import { ElevatorFloorPicker, type ElevatorFloorRow, type ElevatorFloorStatus } 
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitPointShapeName } from "../../pixi/splitNodeNames";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -21,6 +21,8 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const tessellationParams = useMazeStore((s) => s.tessellationParams);
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const nodes = useMazeStore((s) => s.nodes);
@@ -32,8 +34,8 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
 
   const resolveFieldAt = useMemo(
-    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
-    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives }),
+    [floors, floorFields, tessellationKind, tessellationParams, hexOrientation, triOrientation, smoothPrimitives],
   );
 
   const origin = pending?.origin;
@@ -51,12 +53,11 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
     for (let index = 0; index < floors.length; index++) {
       // Each row's own floor config (GitHub issue #611's bug class) — a shared active-floor config
       // would mis-resolve face topology for every floor row other than the currently active one.
-      const rowCfg = floorFields[floors[index].id].tessellationConfig;
+      const rowCfg = floorFields[floors[index].id].fieldConfig;
       const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, rowCfg);
       if (!geometry) continue;
       const kind = detectSplitSpecialShapeKind(
-        geometry.faceKindsByNode,
-        rowCfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+        geometry.faceKindsByNode, splitShapeBinding(rowCfg, point[0], point[1]),
       );
       result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
     }

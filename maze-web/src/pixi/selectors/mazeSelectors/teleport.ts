@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { TeleportEdge, WallEdge, VerticalConnectionMarker, SplitPassage } from "../../renderers/types";
 import { getCellCenter, buildNodePositions, nearestCellCoord, getCellNeighborOffsets } from "../../tessellationGeometry";
 import { selectNodeLevelResolver } from "./state";
@@ -24,6 +24,7 @@ export type TeleportFloorContext = {
   unscopedNodeById: Map<number, NodeDto>;
   unscopedEdges: EdgeDto[];
   activeFloorIndex: number;
+  floorCount?: number;
 };
 
 // Collapses opposite-direction teleport-edge pairs into one entity so a two-way teleport never
@@ -202,7 +203,7 @@ export function buildTeleportAvoidanceWaypoints(sources: {
   markers?: { pos: [number, number] }[];
   verticalMarkers?: VerticalConnectionMarker[];
   oneWayWallEdges?: WallEdge[];
-  cfg?: TessellationConfig;
+  cfg?: FieldConfig;
   oneWayCorridorSegments?: CorridorSegment[];
   splitPassages?: SplitPassage[];
 }): [number, number][] {
@@ -222,7 +223,7 @@ export function buildTeleportAvoidanceWaypoints(sources: {
 export function buildTeleportEdges(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   floorContext?: TeleportFloorContext,
   spread?: TeleportBadgeSpreadOptions,
 ): TeleportEdge[] {
@@ -399,7 +400,7 @@ export type CrossFloorBadgePair = {
  *  together across a floor switch. */
 export function resolveCrossFloorBadgeCells(
   pairs: CrossFloorBadgePair[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   blockedCellsByFloor: Map<number, [number, number][]> | undefined,
   allowOutOfField: boolean,
   fieldCells: [number, number][] | undefined,
@@ -483,7 +484,7 @@ export function resolveCrossFloorBadgeCells(
  *  behavior). `edge.from`/`edge.to` is rewritten in place; the connector re-routes to follow it. */
 function spreadCrossFloorBadges(
   edges: TeleportEdge[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   floorContext: TeleportFloorContext | undefined,
   blockedCellsByFloor: Map<number, [number, number][]> | undefined,
   allowOutOfField: boolean,
@@ -545,7 +546,7 @@ function pairSortKey(e: TeleportEdge): string {
  *  distance back toward the desired cell as tie-break), or `null` if none is free within
  *  `BADGE_SEARCH_MAX_RINGS`. The desired cell itself is checked first (ring 0). */
 function findBadgeCell(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   desiredX: number,
   desiredY: number,
   lineA: { x: number; y: number },

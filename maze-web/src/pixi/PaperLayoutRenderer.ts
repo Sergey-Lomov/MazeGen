@@ -19,7 +19,7 @@ export class PaperLayoutRenderer {
     container.addChild(this.graphics);
   }
 
-  render(show: boolean, config: Pick<FieldConfig, "type">, settings: PrintExportSettings, viewport?: { x: number; y: number; w: number; h: number; scale: number }): void {
+  render(show: boolean, config: Pick<FieldConfig, "tessellation">, settings: PrintExportSettings, viewport?: { x: number; y: number; w: number; h: number; scale: number }): void {
     this.graphics.clear();
     if (!show) return;
     const geometry = paperLayoutWorldGeometry(config, settings);

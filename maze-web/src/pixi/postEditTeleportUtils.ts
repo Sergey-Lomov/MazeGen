@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditTeleportEntry, PostEditTeleportEndpointHit } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint } from "./postEditEndpoint";
 import { formatPostEditId } from "./postEditIdFormat";
 import { pickNearestPointerHit } from "./pointerInteraction";
@@ -127,7 +127,7 @@ export function movePostEditTeleportEndpoint(
 export function pickPostEditTeleportEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   teleports: PostEditTeleportEntry[],
   nodeById: Map<number, NodeDto>,
   resolveSplit: (point: [number, number], slotId: number) => number | undefined,

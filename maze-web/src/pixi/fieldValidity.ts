@@ -19,7 +19,7 @@ function fieldSetCache(resolveFieldAt: ResolveFieldAt): (level: number | undefin
         cache.set(key, undefined);
       } else {
         const set = new Set<number>();
-        for (const [x, y] of resolveCells(field.cfg, field.customPoints)) set.add(encodePoint(x, y));
+        for (const [x, y] of resolveCells(field.cfg, field.customPoints, field.smooth)) set.add(encodePoint(x, y));
         cache.set(key, set);
       }
     }
@@ -40,7 +40,7 @@ export function cellExistsAt(resolveFieldAt: ResolveFieldAt, point: [number, num
   const field = resolveFieldAt(level);
   if (!field) return false;
   const set = new Set<number>();
-  for (const [x, y] of resolveCells(field.cfg, field.customPoints)) set.add(encodePoint(x, y));
+  for (const [x, y] of resolveCells(field.cfg, field.customPoints, field.smooth)) set.add(encodePoint(x, y));
   return set.has(encodePoint(point[0], point[1]));
 }
 

@@ -3,8 +3,9 @@ import type { NodeDto } from "../wasm/types";
 import type { PostEditElevatorEntry, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/postEditTypes";
 import { pickPostEditTeleportEndpointAt } from "../pixi/postEditTeleportUtils";
 import { pickPostEditElevatorEndpointAt, pickPostEditVerticalPassageEndpointAt } from "../pixi/postEditVerticalUtils";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg = { type: "square", width: 4, height: 4 } as const;
+const cfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 const node = (id: number, x: number, y: number, level = 0): NodeDto => ({ id, x, y, i: 0, level });
 const nodeEndpoint = (id: number) => ({ kind: "node" as const, id });
 const resolveSplit = () => undefined;

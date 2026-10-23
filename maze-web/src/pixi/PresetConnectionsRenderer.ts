@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "./fieldEditUtils";
 import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
@@ -205,7 +205,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.floorFields[state.activeFloorId].tessellationConfig;
+    return state.floorFields[state.activeFloorId].fieldConfig;
   }
 
   protected setRootVisible(visible: boolean): void {
@@ -330,14 +330,21 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const presetConnections = presetConnectionsOnLevel(state.presetConnections, level);
     const presetSplitPoints = recordOnLevel(state.presetSplitPoints, level);
     const presetActiveSplitNode = recordOnLevel(state.presetActiveSplitNode, level);
-    const lockedNodes = mapOnLevel(state.lockedNodes, level);
+    // A live lock drag (GitHub issue #748) shows the lock at the cursor's cell instead of its node.
+    const lockOverride = state.presetDragOverride?.kind === "lock" ? state.presetDragOverride : null;
+    const lockedNodes = mapOnLevel(lockOverride ? lockedNodesWithMovedLock(state.lockedNodes, lockOverride) : state.lockedNodes, level);
     const autoLockedNodes = setOnLevel(state.autoLockedNodes, level);
-    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
-    // Live drag override (GitHub issue #566) — while a vertical-passage/elevator endpoint drag is
-    // live, nothing is committed to `state.presetVerticalPassages`/`presetElevators` yet (see
-    // `presetDragOverride`'s own doc comment), so the dragged marker's on-screen position is
-    // substituted here rather than read from the committed entry.
+    // Live drag override (GitHub issue #566) — while a vertical-passage/elevator/teleport endpoint
+    // drag is live, nothing is committed to the entry yet (see `presetDragOverride`'s own doc
+    // comment), so the dragged marker's on-screen position is substituted here rather than read
+    // from the committed entry.
     const override = state.presetDragOverride;
+    const presetTeleports = state.presetTeleports
+      .filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0))
+      .map((t) => {
+        if (override?.kind !== "teleportEndpoint" || override.id !== t.id) return t;
+        return { ...t, [override.end]: presetEndpoint(override.point, undefined, t[override.end].level) };
+      });
     const presetVerticalPassages = state.presetVerticalPassages
       .filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0))
       .map((p) => {
@@ -362,7 +369,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       ? withoutLevel(presetEndpoint(override.point))
       : (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0))
         ? withoutLevel(state.presetFinish) : null;
-    const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
+    const presetGenSource = override?.kind === "marker" && override.marker === "gen_source"
+      ? presetEndpoint(override.point, undefined, level)
+      : (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
 
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);

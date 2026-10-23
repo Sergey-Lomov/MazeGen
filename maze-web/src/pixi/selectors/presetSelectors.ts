@@ -1,5 +1,5 @@
 import type { NodeLockKind } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
@@ -17,7 +17,7 @@ import { canvas } from "../colorTokens";
 export function buildPresetWallGroups(
   cells: [number, number][],
   connections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]> = {},
 ): { undecided: WallEdge[]; preset: WallEdge[]; invalidPassages: WallEdge[]; invalidKeys: Set<string> } {
   const cellSet = buildCellSet(cells);
@@ -31,12 +31,13 @@ export function buildPresetWallGroups(
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
     const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) {
+      const neighborless = dx === 0 && dy === 0;
+      if (neighborless || !cellSet.has(`${nx},${ny}`)) {
         // boundary wall — always solid
-        preset.push({ a: [x, y], b: [nx, ny], kind: "none", style: "solid" });
+        preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
         continue;
       }
       if (splitPointKeys.has(`${nx},${ny}`)) continue; // rendered by buildPresetSplitPassages instead
@@ -85,11 +86,12 @@ export function buildPresetWallGroups(
   for (const [x, y] of cells) {
     if (!splitPointKeys.has(`${x},${y}`)) continue;
     const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
-      if (cellSet.has(`${nx},${ny}`)) continue;
-      preset.push({ a: [x, y], b: [nx, ny], kind: "none", style: "solid" });
+      const neighborless = dx === 0 && dy === 0;
+      if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
+      preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
   }
 
@@ -139,7 +141,7 @@ export function buildPresetWallGroups(
 export function buildPresetSplitPassages(
   presetSplitPoints: Record<string, number[]>,
   connections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetActiveSplitNode: Record<string, PresetEndpoint> = {},
   cells: [number, number][] = [],
 ): SplitPassagesResult {
@@ -219,7 +221,7 @@ export function buildPresetSplitPassages(
  *  the same place across start/finish markers, teleports and vertical passages (GitHub issue #474
  *  follow-up). */
 export function buildPresetNodePositions(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]> = {},
   connections: Map<string, PresetConnectionEntry> = new Map(),
 ): Map<string, { x: number; y: number }> {
@@ -263,7 +265,7 @@ export function buildPresetNodePositions(
  *  unsplit point → its plain tile center. */
 export function presetEndpointScreenPos(
   endpoint: PresetEndpoint,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodePositions: Map<string, { x: number; y: number }>,
 ): [number, number] {
   const anchored = nodePositions.get(presetEndpointKey(endpoint));
@@ -293,7 +295,7 @@ export function buildPresetSplitHostKeys(
 export function buildPresetMarkers(
   start: PresetEndpoint | null,
   finish: PresetEndpoint | null,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]> = {},
   connections: Map<string, PresetConnectionEntry> = new Map(),
   /** Prebuilt `buildPresetNodePositions` map — pass it when the caller already has one for the
@@ -438,7 +440,7 @@ export function buildOrphanSplitCellHighlights(
 export function buildInvalidEdgeHighlights(
   invalidKeys: Set<string>,
   connections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): EdgeHL[] {
   const result: EdgeHL[] = [];
   for (const key of invalidKeys) {
@@ -449,6 +451,7 @@ export function buildInvalidEdgeHighlights(
       result.push({
         from: [seg.v0.x, seg.v0.y] as [number, number],
         to: [seg.v1.x, seg.v1.y] as [number, number],
+        path: seg.path,
         color: canvas.preset.invalid,
         alpha: 0.9,
         width: WALL_THICKNESS * 2.5,
@@ -470,7 +473,7 @@ export function buildInvalidEdgeHighlights(
 
 export function buildHoverEdgeHighlight(
   edge: FieldEdge | null,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number = canvas.fieldEditor.hover,
 ): EdgeHL[] {
   if (!edge) return [];
@@ -479,6 +482,7 @@ export function buildHoverEdgeHighlight(
   return [{
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
+    path: seg.path,
     color,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
@@ -493,7 +497,7 @@ export function buildHoverEdgeHighlight(
  *  "these two cells", not distinguish which of a split point's several nodes). */
 export function buildLinkHoverHighlight(
   link: { from: PresetEndpoint; to: PresetEndpoint } | null,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): NodeEdgeHighlight[] {
   if (!link) return [];
   return [{

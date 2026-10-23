@@ -1,16 +1,26 @@
 use maze_core::IdGenerator;
 use maze_core::space::{
-    CairoFace, CairoPoint, CairoTessellation, CairoTileKind, Field, Tessellation,
+    CairoFace, CairoPoint, CairoTessellation, CairoTileKind, Field, Tessellation, face_index_toward,
 };
+use std::sync::Arc;
 
 fn node(field: &Field<CairoTessellation>, point: CairoPoint) -> u64 {
     field.nodes_at(point)[0]
 }
 
+/// Every `(face, destination)` transition from `point`, in `faces_of` order.
+fn direct_neighbors(point: CairoPoint) -> Vec<(CairoFace, CairoPoint)> {
+    CairoTessellation
+        .faces_of(point)
+        .iter()
+        .map(|&face| (face, CairoTessellation.neighbor(point, face).unwrap().0))
+        .collect()
+}
+
 fn broad_points() -> Vec<CairoPoint> {
     (-32..=32)
         .flat_map(|y| (-32..=32).map(move |x| CairoPoint::new(x, y)))
-        .filter(|&point| CairoTessellation::is_valid_point(point))
+        .filter(|&point| CairoTessellation::is_valid_cell(point))
         .collect()
 }
 
@@ -20,21 +30,17 @@ fn negative_coordinates_use_the_same_four_orientation_classes() {
     assert_eq!(CairoPoint::new(-1, 2).kind(), Some(CairoTileKind::R));
     assert_eq!(CairoPoint::new(-6, -5).kind(), Some(CairoTileKind::U));
     assert_eq!(CairoPoint::new(-6, -7).kind(), Some(CairoTileKind::D));
-    assert!(!CairoTessellation::is_valid_point(CairoPoint::new(0, 0)));
+    assert!(!CairoTessellation::is_valid_cell(CairoPoint::new(0, 0)));
 }
 
 #[test]
 fn invalid_points_are_not_neighbors_and_rect_is_deterministic() {
     let point = CairoPoint::new(-1, 2);
     let destination = CairoPoint::new(-2, -1);
-    assert!(CairoTessellation::is_valid_point(destination));
-    assert!(CairoTessellation::face_between(point, destination).is_some());
+    assert!(CairoTessellation::is_valid_cell(destination));
+    assert!(face_index_toward(&CairoTessellation, point, destination).is_some());
     assert_eq!(
-        CairoTessellation::face_between(point, CairoPoint::new(-2, 0)),
-        None
-    );
-    assert_eq!(
-        CairoTessellation::face_neighbors(CairoPoint::new(0, 0)),
+        face_index_toward(&CairoTessellation, point, CairoPoint::new(-2, 0)),
         None
     );
 
@@ -43,25 +49,16 @@ fn invalid_points_are_not_neighbors_and_rect_is_deterministic() {
     assert_eq!(rect.len(), 12);
     assert!(
         rect.iter()
-            .all(|&point| CairoTessellation::is_valid_point(point))
-    );
-}
-
-#[test]
-fn cartesian_projection_preserves_integer_coordinates() {
-    assert_eq!(
-        CairoTessellation::cartesian(CairoPoint::new(-6, -5)),
-        (-6.0, -5.0)
+            .all(|&point| CairoTessellation::is_valid_cell(point))
     );
 }
 
 #[test]
 fn every_valid_point_has_five_deterministic_direct_neighbors() {
     for point in broad_points() {
-        let first = CairoTessellation::face_neighbors(point).unwrap();
-        let second = CairoTessellation::face_neighbors(point).unwrap();
-        assert_eq!(first, second);
-        assert_eq!(first.len(), CairoTessellation::faces().len());
+        let first = direct_neighbors(point);
+        assert_eq!(first, direct_neighbors(point));
+        assert_eq!(first.len(), 5);
 
         let mut destinations: Vec<_> = first.iter().map(|(_, destination)| *destination).collect();
         destinations.sort_by_key(|point| (point.x, point.y));
@@ -69,33 +66,26 @@ fn every_valid_point_has_five_deterministic_direct_neighbors() {
         assert_eq!(destinations.len(), 5);
 
         for (face, destination) in first {
-            assert!(CairoTessellation::is_valid_point(destination));
-            assert_eq!(CairoTessellation::step(point, face), Some(destination));
+            assert!(CairoTessellation::is_valid_cell(destination));
             assert_eq!(
-                CairoTessellation::face_between(point, destination),
+                face_index_toward(&CairoTessellation, point, destination)
+                    .map(|i| CairoTessellation.faces_of(point)[i]),
                 Some(face)
             );
-            assert!(CairoTessellation::face_between(destination, point).is_some());
         }
     }
 }
 
 #[test]
-fn step_returns_none_for_unused_coordinate_pairs() {
-    assert_eq!(
-        CairoTessellation::step(CairoPoint::new(0, 0), CairoFace::Twin),
-        None
-    );
-}
-
-#[test]
 fn coordinate_overflow_returns_none_instead_of_panicking() {
     let point = CairoPoint::new(i32::MAX, 2);
-    assert!(CairoTessellation::is_valid_point(point));
-    assert_eq!(CairoTessellation::step(point, CairoFace::NorthEast), None);
-    assert_eq!(CairoTessellation::face_neighbors(point), None);
+    assert!(CairoTessellation::is_valid_cell(point));
     assert_eq!(
-        CairoTessellation::face_between(point, CairoPoint::new(i32::MIN, 2)),
+        CairoTessellation.neighbor(point, CairoFace::NorthEast),
+        None
+    );
+    assert_eq!(
+        face_index_toward(&CairoTessellation, point, CairoPoint::new(i32::MIN, 2)),
         None
     );
 }
@@ -105,24 +95,23 @@ fn field_constructors_reject_invalid_cairo_points() {
     let invalid = CairoPoint::new(0, 0);
     let mut ids = IdGenerator::new();
 
-    let result = Field::<CairoTessellation>::new([invalid], &mut ids);
-    assert!(matches!(result, Err("field contains an invalid point")));
+    let result = Field::<CairoTessellation>::new(Arc::default(), [invalid], &mut ids);
+    assert!(matches!(result, Err("field contains an invalid cell")));
 
-    let result = Field::<CairoTessellation>::from_id_points([(1, invalid)]);
-    assert!(matches!(result, Err("field contains an invalid point")));
+    let result = Field::<CairoTessellation>::from_id_cells(Arc::default(), [(1, invalid)]);
+    assert!(matches!(result, Err("field contains an invalid cell")));
 }
 
 #[test]
 fn field_neighbors_are_symmetric_and_ordered_by_faces() {
     let mut ids = IdGenerator::new();
-    let field = Field::<CairoTessellation>::new(broad_points(), &mut ids).unwrap();
+    let field = Field::<CairoTessellation>::new(Arc::default(), broad_points(), &mut ids).unwrap();
     let point = CairoPoint::new(-1, 2);
     let point_node = node(&field, point);
     let neighbors = field.neighbors(point_node);
     assert_eq!(neighbors.len(), 5);
 
-    let expected: Vec<_> = CairoTessellation::face_neighbors(point)
-        .unwrap()
+    let expected: Vec<_> = direct_neighbors(point)
         .into_iter()
         .map(|(_, destination)| node(&field, destination))
         .collect();
@@ -134,31 +123,31 @@ fn field_neighbors_are_symmetric_and_ordered_by_faces() {
 }
 
 #[test]
-fn explicit_symmetry_tables_have_the_expected_shape() {
-    assert_eq!(
-        CairoTessellation::rotation_symmetries(),
-        &[&[0, 1, 2, 3, 4][..]]
-    );
-    assert_eq!(
-        CairoTessellation::mirror_symmetries(),
-        &[&[0, 4, 3, 2, 1][..]]
-    );
+fn every_cell_has_the_cairo_pentagon_template_over_all_five_faces() {
+    for cell in broad_points() {
+        let shape = CairoTessellation.shape_of(cell).unwrap();
+        assert_eq!(shape.descriptor().key(), "cairo_pentagon");
+        assert_eq!(shape.descriptor().group().len(), 2);
 
-    let mut faces = CairoTessellation::faces().to_vec();
-    faces.sort_by_key(|face| match face {
-        CairoFace::Twin => 0,
-        CairoFace::NorthWest => 1,
-        CairoFace::NorthEast => 2,
-        CairoFace::SouthEast => 3,
-        CairoFace::SouthWest => 4,
-    });
-    assert_eq!(faces, CairoTessellation::faces());
+        let mut faces = CairoTessellation.faces_of(cell).to_vec();
+        faces.sort_by_key(|face| *face as usize);
+        assert_eq!(
+            faces,
+            [
+                CairoFace::Twin,
+                CairoFace::NorthWest,
+                CairoFace::NorthEast,
+                CairoFace::SouthEast,
+                CairoFace::SouthWest,
+            ]
+        );
+    }
 }
 
 #[test]
 fn local_dual_graph_has_three_and_four_valent_vertex_cycles() {
     let mut ids = IdGenerator::new();
-    let field = Field::<CairoTessellation>::new(broad_points(), &mut ids).unwrap();
+    let field = Field::<CairoTessellation>::new(Arc::default(), broad_points(), &mut ids).unwrap();
     let center = node(&field, CairoPoint::new(-1, 2));
     let neighbors = field.neighbors(center);
 

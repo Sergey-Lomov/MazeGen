@@ -1,12 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
-
-// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
-// same square-tessellation mock as hexGeometry.test.ts / exportFit.test.ts.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
 
 const { PngExportSettingsPanel } = await import("../components/features/PngExportSettingsPanel");
 const { useMazeStore } = await import("../store/mazeStore");
@@ -61,6 +55,22 @@ describe("PngExportSettingsPanel", () => {
     fireEvent.change(select, { target: { value: "fixed_size" } });
     expect(screen.getByText(m["image_export.format.png.digital.width"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.format.png.digital.height"]())).toBeInTheDocument();
+  });
+
+  it("keeps empty digital fields out of the store and clamps negative values on blur", () => {
+    render(<PngExportSettingsPanel />);
+    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "margin_px" } });
+    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(20);
+    fireEvent.change(input, { target: { value: "-5" } });
+    fireEvent.blur(input);
+    expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(0);
+    expect(screen.getByTestId("field-hint")).toHaveTextContent(
+      m["input_hint.clamped_min"]({ min: "0", max: "∞" }),
+    );
   });
 
   it("shows a digital overflow warning bubble with a fill percentage when content exceeds a fixed canvas", () => {

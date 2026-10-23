@@ -4,11 +4,18 @@ import { baseStoreState } from "./storeTestHelpers";
 import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
 import { buildPresetPointEntities } from "../pixi/pointEntities";
 import * as m from "~/paraglide/messages";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes, noticeParams } from "./notificationTestHelpers";
+import {
+  ELEVATOR_DRAG_FAILED, SPLIT_ROTATION_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED, VERTICAL_PASSAGE_NO_ADJACENT_CELL,
+} from "../notifications/editRefusalNotifications";
+import { formatTargetLabel } from "../pixi/targetLabel";
 
-/** Patches the active floor's own field config — presetConnectionsSlice reads tessellationConfig/
+/** Patches the active floor's own field config — presetConnectionsSlice reads fieldConfig/
  * fieldPoints/isEditingField through floorFields[activeFloorId] (GitHub issue #338). */
-function setActiveFieldConfig(patch: { tessellationConfig?: TessellationConfig; isEditingField?: boolean; fieldPoints?: Set<number> }) {
+function setActiveFieldConfig(patch: { fieldConfig?: FieldConfig; isEditingField?: boolean; fieldPoints?: Set<number> }) {
   const state = useMazeStore.getState();
   useMazeStore.setState({
     floorFields: {
@@ -18,17 +25,26 @@ function setActiveFieldConfig(patch: { tessellationConfig?: TessellationConfig; 
   });
 }
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     tessellationKind: "square",
@@ -38,10 +54,25 @@ beforeEach(() => {
     autoLock: true,
     defaultEdgeState: "undefined",
   });
-  setActiveFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, isEditingField: false, fieldPoints: new Set<number>() });
+  setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }), isEditingField: false, fieldPoints: new Set<number>() });
 });
 
 describe("mazeStore preset connections", () => {
+  it("a boundary-refused split rotation emits one notice and preserves connections", () => {
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
+    const from = presetEndpoint([-1, -1]);
+    const to = presetEndpoint([-1, 0]);
+    const key = "-1,-1--1,0";
+    useMazeStore.setState({
+      presetConnections: new Map([[key, { from, to, state: "passage", source: "user" }]]),
+    });
+
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+
+    expect(useMazeStore.getState().presetConnections.get(key)?.state).toBe("passage");
+    expect(noticeCodes()).toEqual([`preset_connections/${SPLIT_ROTATION_OUTSIDE_FIELD}`]);
+  });
   it("setPresetConnectionsTool updates tool", () => {
     useMazeStore.getState().setPresetConnectionsTool("passage");
     expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
@@ -87,7 +118,7 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsTool recomputes autoLockedNodes when fully surrounding a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({ presetConnectionsTool: "wall" });
     useMazeStore.getState().applyPresetConnectionsTool("-1,0-0,0", [-1, 0], [0, 0]);
     const s = useMazeStore.getState();
@@ -114,7 +145,7 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsToolAt('reset', ...) restores the default and recomputes auto-locks", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       defaultEdgeState: "wall",
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "undefined", source: "user" }]]),
@@ -147,7 +178,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections removes entries outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["5,5-6,5", { from: presetEndpoint([5, 5]), to: presetEndpoint([6, 5]), state: "wall", source: "user" }]]),
     });
@@ -156,7 +187,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections clears start/finish markers that fall outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetStart: presetEndpoint([5, 5]),
       presetFinish: presetEndpoint([0, 0]),
@@ -168,21 +199,21 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections clears a generation source outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({ presetGenSource: presetEndpoint([5, 5]) });
     useMazeStore.getState().clearInvalidPresetConnections();
     expect(useMazeStore.getState().presetGenSource).toBeNull();
   });
 
   it("clearInvalidPresetConnections clears locks outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({ lockedNodes: new Map([["5,5", "both"]]) });
     useMazeStore.getState().clearInvalidPresetConnections();
     expect(useMazeStore.getState().lockedNodes.size).toBe(0);
   });
 
   it("clearInvalidPresetConnections removes list metadata for invalid entities", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetSplitPoints: { "99,99": [0] },
       presetSplitPointIds: { "99,99": "s1" },
@@ -235,7 +266,7 @@ describe("mazeStore preset connections", () => {
 
   it("setDefaultEdgeState('wall') fills all interior edges as walls", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.getState().setDefaultEdgeState("wall");
     const s = useMazeStore.getState();
     expect(s.defaultEdgeState).toBe("wall");
@@ -244,7 +275,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("setDefaultEdgeState('undefined') removes default-sourced entries", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "default" }]]),
     });
@@ -254,15 +285,15 @@ describe("mazeStore preset connections", () => {
 
   it("setDefaultEdgeState('wall') fills interior edges on every floor, not just the active one (GitHub issue #434)", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
     const state = useMazeStore.getState();
     useMazeStore.setState({
       floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
       activeFloorId: "f0",
       floorFields: {
         ...state.floorFields,
-        f0: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
-        f1: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
+        f0: { ...state.floorFields[state.activeFloorId], fieldConfig: cfg },
+        f1: { ...state.floorFields[state.activeFloorId], fieldConfig: cfg },
       },
     });
     useMazeStore.getState().setDefaultEdgeState("wall");
@@ -341,7 +372,7 @@ describe("mazeStore preset connections", () => {
 
   it("setAutoLock(true) recomputes autoLockedNodes", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "user" }]]),
       autoLock: false,
@@ -391,6 +422,7 @@ describe("mazeStore preset connections", () => {
       });
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       expect(useMazeStore.getState().presetActiveSplitNode["0,0"]).toBeUndefined();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("removePresetSplitNode leaves an unrelated connection untouched", () => {
@@ -411,7 +443,7 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
-      expect(s.error).toContain("start/finish/gen-source");
+      expect(noticeCodes()).toEqual(["preset_connections/preset_connections.remove_endpoint_node_rejected"]);
     });
 
     it("removePresetSplitNode is rejected when the slot is assigned as presetFinish", () => {
@@ -559,18 +591,18 @@ describe("mazeStore preset connections", () => {
 
     it("is a no-op (still recomputes, no error) when nothing at the point", () => {
       useMazeStore.getState().resetPresetPoint([9, 9]);
-      expect(useMazeStore.getState().error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
   });
 
   describe("applyPresetSplitBlueprint (GitHub issue #235)", () => {
     // Square field is centered on the origin (`ox = floor(width/2)`, see `configAllCells`) —
     // width 9 covers x,y in [-4, 4], wide enough for the origin plus every one of its neighbors.
-    const wideField = { type: "square" as const, width: 9, height: 9 };
+    const wideField = fieldOf("square", { shape: "rect", cols: 9, rows: 9 });
     const square = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
 
     it("mints one slot per extra blueprint node and wires passage connections to in-field neighbors", () => {
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
@@ -594,7 +626,7 @@ describe("mazeStore preset connections", () => {
 
     it("replaces an existing split point entirely, dropping stale slots/connections", () => {
       const staleTarget = presetEndpoint([0, 0], 5);
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [5] },
         presetConnections: new Map([["0,0:5-5,5", { from: staleTarget, to: presetEndpoint([5, 5]), state: "passage" as const, source: "user" as const }]]),
@@ -606,7 +638,7 @@ describe("mazeStore preset connections", () => {
     });
 
     it("preserves a preset start marker assigned to a slot while applying a blueprint", () => {
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
         presetStart: presetEndpoint([0, 0], 0),
@@ -615,13 +647,13 @@ describe("mazeStore preset connections", () => {
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
       expect(s.presetStart).toEqual(presetEndpoint([0, 0], 0));
-      expect(s.error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("moves occupied preset elements from a dropped slot onto the original node", () => {
       const oldSlot = presetEndpoint([0, 0], 5);
       const singleNode = { id: 1, degree: 4, nodeFaces: [[0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [5] },
         presetStart: oldSlot,
@@ -648,7 +680,7 @@ describe("mazeStore preset connections", () => {
       // Square tiles have 4 faces (offsets.length === 4) — a hex blueprint's face index 5 has
       // nothing to destructure from `offsets[5]` on a square tile.
       const oversized = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       expect(() => useMazeStore.getState().applyPresetSplitBlueprint([0, 0], oversized)).not.toThrow();
       // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
@@ -658,8 +690,8 @@ describe("mazeStore preset connections", () => {
     it("skips a face pointing outside the field instead of writing a connection to it", () => {
       // width=3 centers cells at x,y in [-1, 1] — the origin's east neighbor (1,0) is in-field,
       // but its own east neighbor (2,0) (face 0 of a shifted point) would be out of field.
-      const narrowField = { type: "square" as const, width: 1, height: 1 };
-      setActiveFieldConfig({ tessellationConfig: narrowField });
+      const narrowField = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+      setActiveFieldConfig({ fieldConfig: narrowField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
@@ -669,7 +701,7 @@ describe("mazeStore preset connections", () => {
 
     it("clears presetSplitPoints for a single-node blueprint (no extra slots to mint)", () => {
       const singleNode = { id: 0, degree: 4, nodeFaces: [[0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0, 1] },
         presetActiveSplitNode: {},
@@ -686,7 +718,7 @@ describe("mazeStore preset connections", () => {
       // node0(original): S,N faces. node1(slot0): E,W faces — slot0 is the node that actually
       // faces the neighboring cell on either side.
       const eastWestBlueprint = { id: 0, degree: 4, nodeFaces: [[1, 3], [0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
 
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], eastWestBlueprint);
@@ -731,7 +763,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
     }
@@ -766,11 +798,12 @@ describe("mazeStore preset connections", () => {
       expect(s.presetVerticalPassages).toHaveLength(0);
     });
 
-    it("startPresetVerticalPassagePlacement is a no-op when neither direction has a cell", () => {
+    it("startPresetVerticalPassagePlacement explains when neither direction has a cell", () => {
       // Single floor -> no floor above, and origin is already floor 0 -> no floor below either.
       useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_two_way");
       const s = useMazeStore.getState();
       expect(s.presetVerticalPassagePending).toBeNull();
+      expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_NO_ADJACENT_CELL}`]);
       expect(s.presetVerticalPassages).toHaveLength(0);
     });
 
@@ -793,7 +826,7 @@ describe("mazeStore preset connections", () => {
       expect(s.presetVerticalPassages[0].to).toEqual(presetEndpoint([0, 0]));
     });
 
-    it("re-clicking a cell with an existing one-way passage cycles it instead of adding a duplicate (GitHub issue #495)", () => {
+    it("re-clicking a cell with an existing passage adds another passage (GitHub issue #748)", () => {
       setTwoFloors();
       useMazeStore.setState({
         presetVerticalPassages: [{ id: 7, from: presetEndpoint([0, 0]), to: presetEndpoint([0, 0], undefined, 1), direction: "forward" }],
@@ -801,11 +834,12 @@ describe("mazeStore preset connections", () => {
       });
       useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_one_way");
       const s = useMazeStore.getState();
-      expect(s.presetVerticalPassages).toHaveLength(1);
-      expect(s.presetVerticalPassages[0]).toMatchObject({ id: 7, direction: "backward" });
+      expect(s.presetVerticalPassages).toHaveLength(2);
+      expect(s.presetVerticalPassages[0]).toMatchObject({ id: 7, direction: "forward" });
+      expect(s.presetVerticalPassages[1]).toMatchObject({ id: 8, direction: "forward" });
     });
 
-    it("filters an already occupied direction before committing a new adjacent-floor passage (GitHub issue #495)", () => {
+    it("offers every available direction even when a passage already occupies one (GitHub issue #748)", () => {
       setTwoFloors();
       useMazeStore.setState({
         floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
@@ -815,26 +849,8 @@ describe("mazeStore preset connections", () => {
       });
       useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_two_way");
       const s = useMazeStore.getState();
-      expect(s.presetVerticalPassagePending).toBeNull();
-      expect(s.presetVerticalPassages).toHaveLength(2);
-      expect(s.presetVerticalPassages[1]).toMatchObject({ from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0]), direction: "two_way" });
-    });
-
-    it("does not add a duplicate when both adjacent floors already have independent passages (GitHub issue #495)", () => {
-      setTwoFloors();
-      useMazeStore.setState({
-        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
-        floorFields: { ...useMazeStore.getState().floorFields, floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] } },
-        presetVerticalPassages: [
-          { id: 1, from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0]), direction: "forward" },
-          { id: 2, from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0], undefined, 2), direction: "forward" },
-        ],
-        _nextPresetVerticalPassageId: 3,
-      });
-      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_one_way");
-      const s = useMazeStore.getState();
-      expect(s.presetVerticalPassages).toHaveLength(2);
-      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassagePending?.availableDirections.sort()).toEqual(["down", "up"]);
+      expect(s.presetVerticalPassages).toHaveLength(1);
     });
 
     it("cancelPresetVerticalPassagePlacement clears the pending dialog without creating a passage", () => {
@@ -975,7 +991,8 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetVerticalPassages[0].from).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
+        expect(noticeParams(VERTICAL_PASSAGE_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([9, 9], 1, true, undefined) });
       });
 
       it("picking a slot for the deferred vertical-passage drag commits with the split endpoint", () => {
@@ -1006,12 +1023,12 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().movePresetVerticalPassageEndpoint(1, "from", [1, 0]);
         // Shrink floor 1's field so [1, 0] no longer exists there, between the defer and the pick.
         useMazeStore.setState((state) => ({
-          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], tessellationConfig: { type: "square", width: 1, height: 1 } } },
+          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) } },
         }));
         useMazeStore.getState().applyPresetSplitTargetPick(9);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
         expect(presetEndpointsEqual(s.presetVerticalPassages[0].from, presetEndpoint([0, 0]))).toBe(true);
       });
 
@@ -1055,12 +1072,12 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().movePresetElevatorEndpoint(1, 0, [1, 0]);
         // Shrink floor 1's field so [1, 0] no longer exists there, between the defer and the pick.
         useMazeStore.setState((state) => ({
-          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], tessellationConfig: { type: "square", width: 1, height: 1 } } },
+          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) } },
         }));
         useMazeStore.getState().applyPresetSplitTargetPick(4);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
       });
 
@@ -1081,7 +1098,7 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
       });
 
       it("elevator with two split target floors ends up created after both picks", () => {
@@ -1174,7 +1191,7 @@ describe("mazeStore preset connections", () => {
       expect(presetEndpointsEqual(useMazeStore.getState().presetFinish!, presetEndpoint([0, 0]))).toBe(true);
     });
 
-    it("lock pick toggles the exact split node and replaces a different lock kind", () => {
+    it("lock pick sets its own kind on the exact split node, never toggling it off (GitHub issue #748)", () => {
       openPrompt({ tool: "lock_in" });
       useMazeStore.getState().applyPresetSplitTargetPick(0);
       expect(useMazeStore.getState().lockedNodes.get("0,0:0")).toBe("in");
@@ -1185,7 +1202,7 @@ describe("mazeStore preset connections", () => {
 
       openPrompt({ tool: "lock_out" });
       useMazeStore.getState().applyPresetSplitTargetPick(0);
-      expect(useMazeStore.getState().lockedNodes.has("0,0:0")).toBe(false);
+      expect(useMazeStore.getState().lockedNodes.get("0,0:0")).toBe("out");
     });
 
     it("gen_source dispatches setPresetGenSourceEndpoint to the picked slot and clears the prompt (GitHub issue #494)", () => {
@@ -1240,7 +1257,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
       openPrompt({ tool: "elevator" });
@@ -1255,7 +1272,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
       openPrompt({ tool: "vertical_passage_one_way" });
@@ -1755,5 +1772,158 @@ describe("mazeStore preset connections", () => {
       expect(s.presetSplitPoints["0,0"]).toBeUndefined();
       expect(presetEndpointsEqual(s.presetStart!, presetEndpoint([0, 0]))).toBe(true);
     });
+  });
+});
+
+describe("preset move and settings tools (GitHub issue #748)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      presetStart: null, presetFinish: null, presetGenSource: null,
+      presetTeleports: [], presetVerticalPassages: [], presetElevators: [],
+      presetSplitPoints: {}, presetSplitTargetPrompt: null, presetEntityDeletePrompt: null,
+      presetEntityPickPrompt: null, presetMoveRequest: null,
+      presetConnectionSettingsPrompt: null, presetLockSettingsPrompt: null,
+      presetElevatorPending: null, presetDragOverride: null,
+    });
+  });
+
+  it("requestPresetEntityPick ignores a cell with nothing relevant to the purpose", () => {
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "move");
+    const s = useMazeStore.getState();
+    expect(s.presetEntityPickPrompt).toBeNull();
+    expect(s.presetMoveRequest).toBeNull();
+  });
+
+  it("requestPresetEntityPick hands a single movable element straight to the move request", () => {
+    useMazeStore.setState({ presetStart: presetEndpoint([1, 1]) });
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "move");
+    const s = useMazeStore.getState();
+    expect(s.presetEntityPickPrompt).toBeNull();
+    expect(s.presetMoveRequest).toMatchObject({ kind: "start" });
+    expect(useMazeStore.getState().takePresetMoveRequest()).toMatchObject({ kind: "start" });
+    expect(useMazeStore.getState().presetMoveRequest).toBeNull();
+  });
+
+  it("requestPresetEntityPick opens the picker for several elements, and the pick becomes the move request", () => {
+    useMazeStore.setState({ presetStart: presetEndpoint([1, 1]), presetFinish: presetEndpoint([1, 1]) });
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "move");
+    expect(useMazeStore.getState().presetEntityPickPrompt).toEqual({ point: [1, 1], level: undefined, purpose: "move" });
+    const finish = buildPresetPointEntities([1, 1], undefined, 0, { kind: "point_all" }, {
+      ...useMazeStore.getState(),
+    }).find((e) => e.kind === "finish")!;
+    useMazeStore.getState().choosePresetEntityPick(finish);
+    const s = useMazeStore.getState();
+    expect(s.presetEntityPickPrompt).toBeNull();
+    expect(s.presetMoveRequest).toMatchObject({ kind: "finish" });
+  });
+
+  it("the settings purpose skips elements without settings", () => {
+    useMazeStore.setState({
+      presetStart: presetEndpoint([1, 1]),
+      presetTeleports: [{ id: 3, from: presetEndpoint([1, 1]), to: presetEndpoint([2, 2]), direction: "forward" }],
+    });
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "settings");
+    const s = useMazeStore.getState();
+    expect(s.presetEntityPickPrompt).toBeNull();
+    expect(s.presetConnectionSettingsPrompt).toEqual({ kind: "teleport", id: 3 });
+  });
+
+  it("settings on a lock opens the lock dialog, and setPresetLockKind changes the kind", () => {
+    useMazeStore.getState().setLockedNode(1, 1, "in");
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "settings");
+    expect(useMazeStore.getState().presetLockSettingsPrompt).toEqual({ endpoint: presetEndpoint([1, 1]) });
+    useMazeStore.getState().setPresetLockKind(presetEndpoint([1, 1]), "both");
+    expect(useMazeStore.getState().lockedNodes.get("1,1")).toBe("both");
+  });
+
+  it("settings on a split tile opens the split-node panel for that point", () => {
+    useMazeStore.setState({ presetSplitPoints: { "1,1": [0] } });
+    useMazeStore.getState().requestPresetEntityPick([1, 1], undefined, "settings");
+    const s = useMazeStore.getState();
+    expect(s.presetConnectionsTool).toBe("manage_split_nodes");
+    expect(s.presetFocusedPoint).toEqual([1, 1]);
+  });
+
+  it("setPresetTeleportDirection and setPresetVerticalPassageDirection switch type and direction", () => {
+    useMazeStore.setState({
+      presetTeleports: [{ id: 3, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2]), direction: "two_way" }],
+      presetVerticalPassages: [{ id: 4, from: presetEndpoint([0, 0]), to: presetEndpoint([0, 0], undefined, 1), direction: "forward" }],
+    });
+    useMazeStore.getState().setPresetTeleportDirection(3, "backward");
+    useMazeStore.getState().setPresetVerticalPassageDirection(4, "two_way");
+    const s = useMazeStore.getState();
+    expect(s.presetTeleports[0].direction).toBe("backward");
+    expect(s.presetVerticalPassages[0].direction).toBe("two_way");
+  });
+
+  it("startPresetElevatorPlacement starts a new elevator on a point that already has one", () => {
+    useMazeStore.setState({
+      presetElevators: [{ id: 5, floors: [presetEndpoint([0, 0]), presetEndpoint([0, 0], undefined, 1)] }],
+    });
+    useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0]));
+    expect(useMazeStore.getState().presetElevatorPending).toEqual({ origin: presetEndpoint([0, 0]), floors: new Set([0]) });
+    useMazeStore.getState().editPresetElevator(5, presetEndpoint([0, 0]));
+    expect(useMazeStore.getState().presetElevatorPending).toEqual({ origin: presetEndpoint([0, 0]), floors: new Set([0, 1]), editingId: 5 });
+  });
+
+  it("movePresetMarker places the marker directly on an unsplit point and asks for the node on a split one", () => {
+    useMazeStore.getState().movePresetMarker("gen_source", [2, 2]);
+    expect(useMazeStore.getState().presetGenSource).toEqual(presetEndpoint([2, 2]));
+
+    useMazeStore.setState({ presetSplitPoints: { "1,1": [0] } });
+    useMazeStore.getState().movePresetMarker("start", [1, 1]);
+    expect(useMazeStore.getState().presetSplitTargetPrompt).toMatchObject({ point: [1, 1], slotIds: [0], action: { tool: "set_start" } });
+    useMazeStore.getState().applyPresetSplitTargetPick(0);
+    expect(useMazeStore.getState().presetStart).toEqual(presetEndpoint([1, 1], 0));
+  });
+
+  it("movePresetTeleportEndpointTo keeps the endpoint's floor and asks for the node on a split point", () => {
+    useMazeStore.setState({
+      presetTeleports: [{ id: 3, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2]), direction: "forward" }],
+      presetSplitPoints: { "1,1": [0] },
+    });
+    useMazeStore.getState().movePresetTeleportEndpointTo(3, "to", [2, 1]);
+    expect(useMazeStore.getState().presetTeleports[0].to).toEqual(presetEndpoint([2, 1]));
+    useMazeStore.getState().movePresetTeleportEndpointTo(3, "to", [1, 1]);
+    expect(useMazeStore.getState().presetSplitTargetPrompt?.action).toEqual({ tool: "move_teleport_endpoint", id: 3, end: "to" });
+    useMazeStore.getState().applyPresetSplitTargetPick(0);
+    expect(useMazeStore.getState().presetTeleports[0].to).toEqual(presetEndpoint([1, 1], 0));
+  });
+
+  it("movePresetLockTo keeps the kind, replaces a lock on the target, and asks for the node on a split point (GitHub issue #748)", () => {
+    useMazeStore.setState({
+      lockedNodes: new Map([["0,0", "in"], ["2,0", "out"]]),
+      presetEntityOrder: ["lock:0,0", "lock:2,0"],
+      presetSplitPoints: { "1,1": [0] },
+    });
+    useMazeStore.getState().movePresetLockTo(presetEndpoint([0, 0]), [2, 0]);
+    expect(useMazeStore.getState().lockedNodes).toEqual(new Map([["2,0", "in"]]));
+    expect(useMazeStore.getState().presetEntityOrder).toEqual(["lock:2,0"]);
+
+    useMazeStore.getState().movePresetLockTo(presetEndpoint([2, 0]), [1, 1]);
+    expect(useMazeStore.getState().presetSplitTargetPrompt?.action).toEqual({ tool: "move_lock", from: presetEndpoint([2, 0]) });
+    useMazeStore.getState().applyPresetSplitTargetPick(0);
+    expect(useMazeStore.getState().lockedNodes).toEqual(new Map([["1,1:0", "in"]]));
+  });
+
+  it("movePresetTeleportEndpointTo onto the other endpoint's split tile skips that endpoint's node (GitHub issue #748)", () => {
+    useMazeStore.setState({
+      presetTeleports: [{ id: 3, from: presetEndpoint([1, 1], 0), to: presetEndpoint([2, 2]), direction: "forward" }],
+      presetSplitPoints: { "1,1": [0] },
+    });
+    // Two nodes, one taken by `from`: the original node is used without a prompt.
+    useMazeStore.getState().movePresetTeleportEndpointTo(3, "to", [1, 1]);
+    expect(useMazeStore.getState().presetSplitTargetPrompt).toBeNull();
+    expect(useMazeStore.getState().presetTeleports[0].to).toEqual(presetEndpoint([1, 1]));
+
+    // Three nodes: the prompt leaves out the other endpoint's node.
+    useMazeStore.setState({
+      presetTeleports: [{ id: 3, from: presetEndpoint([1, 1], 0), to: presetEndpoint([2, 2]), direction: "forward" }],
+      presetSplitPoints: { "1,1": [0, 1] },
+    });
+    useMazeStore.getState().movePresetTeleportEndpointTo(3, "to", [1, 1]);
+    expect(useMazeStore.getState().presetSplitTargetPrompt?.excluded).toEqual({ slotId: 0 });
+    useMazeStore.getState().applyPresetSplitTargetPick(1);
+    expect(useMazeStore.getState().presetTeleports[0].to).toEqual(presetEndpoint([1, 1], 1));
   });
 });

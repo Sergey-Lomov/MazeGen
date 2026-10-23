@@ -241,7 +241,10 @@ route — `Specs/repair.md`'s "Score formula" section).
 ### `SplitTopology` and `canonical_split_topology`
 
 ```rust
-pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
+pub struct SplitTopology {
+    pub shape: String,                          // shape template key of the tile's cell
+    pub nodes: Vec<Vec<SplitFaceRequirement>>,  // per node, per canonical face; sorted
+}
 
 pub fn canonical_split_topology<T: Tessellation>(
     graph: &Graph,
@@ -254,18 +257,18 @@ A split tile's shape, independent of:
 - **which physical node happens to be listed first** — `nodes_at` order is creation order, not
   geometry; the canonical form's outer `Vec` is sorted, so node identity never matters, only the
   multiset of per-node face-requirement shapes.
-- **the tile's rotation/mirror orientation on the field** — every rotation/mirror the tessellation
-  supports (`Tessellation::rotation_symmetries`/`mirror_symmetries`, via `transform_face_index`) is
-  tried, and the lexicographically smallest resulting (sorted) candidate is kept as the one fixed
-  representative.
+- **the tile's orientation on the field** — the tile is read into canonical template faces
+  (`CellShape::canonical_of_transformed_local`) under every allowed transform of its cell's shape
+  template (GitHub issue #758), and the lexicographically smallest resulting (sorted) candidate is
+  kept as the one fixed representative. Tiles of different templates never compare equal (`shape`
+  is part of the value).
 
 Built on `reconstruct_tile_faces` (`quality_control::split_pattern_match`, made `pub(crate)` for
 this reuse) — the same per-node, per-face-position `Passage`/`OneWay`/`Wall` reconstruction
 `split_tile_matches_any` uses to check a tile against a configured `SplitPattern` list. Unlike that
 function, `canonical_split_topology` needs no candidate pattern list at all — it reduces a tile to
 one canonical value that can be grouped/compared with plain equality, no rotation search needed by
-the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-(`T::faces()` empty).
+the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a cell without a shape template.
 
 ### `split_totals`
 
@@ -284,8 +287,8 @@ Returns `(split_tile_count, split_node_count, groups)`:
   share it. A tile whose topology can't be canonicalized (degenerate tessellation) is still counted
   in the two totals above but has no group entry.
 
-Iterates via `Field::all_points`, deduped per point (a split point appears once per its own node
-count in `all_points`'s NodeId-domain iteration) — same dedup shape as `build_analytics_snapshot`'s
+Iterates via `Field::all_cells`, deduped per point (a split point appears once per its own node
+count in `all_cells`'s NodeId-domain iteration) — same dedup shape as `build_analytics_snapshot`'s
 node listing (GitHub issue #223). Not cached in `MazeAnalysis` — same precedent as
 `compute_node_stats`/`compute_spatial_edge_stats`, which are also recomputed on every analytics
 snapshot rather than going through `MazeAnalysis`'s `RefCell`-backed cache slots.
@@ -298,7 +301,8 @@ separate `SplitAnalyticsDto`/`MazeSnapshot.split_analytics` field:
 
 ```rust
 pub struct SplitGroupDto {
-    pub topology: Vec<Vec<SplitFaceRequirementDto>>,
+    pub shape: String,                               // SplitTopology::shape
+    pub topology: Vec<Vec<SplitFaceRequirementDto>>, // SplitTopology::nodes, canonical face order
     pub count: usize,
 }
 
@@ -315,7 +319,7 @@ pub struct ElementsStatsDto {
 `SplitFaceRequirementDto`/`OneWayDirectionDto` mirror `maze_core::generation::SplitFaceRequirement`/
 `OneWayDirection` (tagged via `#[serde(tag = "kind", rename_all = "snake_case")]`, same convention
 as `IssuePayloadDto`). `topology[i]` is one node's per-face-position requirement list, indexed by
-`maze-core`'s `Tessellation::faces()` position directly (**not** the web `TileFaceEditor` authoring
+`maze-core`'s `Tessellation::faces_of` position directly (**not** the web `TileFaceEditor` authoring
 order — see `nav-graph.md`/GitHub issue #273's face-index distinction).
 
 `ElementsStatsDto`, like the rest of `MazeStatisticsDto`, is `FloorScoped` (`.total` + `.by_floor`)
@@ -412,7 +416,7 @@ pub struct SpatialEdgeStatsDto { pub bidirectional: usize, pub walls: usize, pub
 pub struct FloorScoped<T> { pub total: T, pub by_floor: HashMap<String, T> } // key = floor index, as string (json_compatible())
 ```
 
-`cell_count: FloorScoped<usize>` is the real geometric cell count per floor (`Field::all_points()`,
+`cell_count: FloorScoped<usize>` is the real geometric cell count per floor (`Field::all_cells()`,
 deduped by point) — derived straight from field shape, not reconstructed by summing `cell_stats`'
 own counts (which would double-count a split point's every extra node).
 
@@ -483,9 +487,10 @@ the outer `Vec` and each group's node iteration is unspecified.
 Public on `Graph` (not `stats.rs`-private) because both the Rust analytics side
 (`compute_vertical_stats`) and the web post-edit store need the same "what does this elevator
 actually connect" answer — the web side has its own connected-component BFS,
-`elevatorComponent` (`maze-web/src/pixi/postEditUtils.ts`), used by `postEditSlice.ts` for two
-things: un-suppressing a generation-time elevator's *entire* mesh on point reset, and seeding the
-elevator-edit dialog's current floor set when clicking an existing elevator marker. `elevatorComponent`
+`elevatorComponent` (`maze-web/src/pixi/postEditVerticalUtils.ts`, re-exported via
+`postEditUtils.ts`), used by `extractPostEditElevators` to turn generation's `elevator` edges into
+baseline elevator entries (one per connected component, GitHub issue #564) and by `markerIndex.ts`
+for image-export elevator numbering. `elevatorComponent`
 takes every BFS start id at once (not one call per id) so a multi-node point (a split point with
 several nodes on the same floor) builds the adjacency map only once.
 

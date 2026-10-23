@@ -8,6 +8,7 @@ use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use region_merge_core::{MODE_LARGEST, MODE_PREFER_NEEDY, MODE_SMALLEST};
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn params_with(
     mode: &str,
@@ -53,7 +54,7 @@ fn default_params() -> StrategyParams {
 }
 
 /// Builds a `w`x`h` square field replicated across `levels` floors, no edges at all, and
-/// returns the nodes of each level in `all_points` order (row-major). Every point exists on
+/// returns the nodes of each level in `all_cells` order (row-major). Every point exists on
 /// every floor (same shape), so `resolve_vertical_target` always finds a same-point node one
 /// floor up/down.
 fn build_multi_level(
@@ -63,9 +64,9 @@ fn build_multi_level(
 ) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..levels)
-        .map(|_| crate::space::Field::new(square_rect(w, h), &mut ids).unwrap())
+        .map(|_| crate::space::Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -77,7 +78,7 @@ fn build_multi_level(
             field
                 .field_of(lvl)
                 .unwrap()
-                .all_points()
+                .all_cells()
                 .map(|p| field.node_at(lvl, p).unwrap())
                 .collect()
         })
@@ -171,8 +172,12 @@ fn apply_completes_an_existing_one_way_vertical_edge_into_a_full_passage() {
 #[test]
 fn apply_fails_when_field_is_single_level() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(1, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);

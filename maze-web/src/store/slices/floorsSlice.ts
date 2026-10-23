@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, FloorsState, FloorsActions, FloorState, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
-import { defaultFloorFieldConfig, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock, buildResetDownstreamState } from "../storeHelpers";
+import { defaultFloorFieldConfig, defaultTessellationOf, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock, buildResetDownstreamState } from "../storeHelpers";
 
 export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
@@ -15,7 +15,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   activeFloorId: initialFloor.id,
   // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
   // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
-  floorFields: { [initialFloor.id]: defaultFloorFieldConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
+  floorFields: { [initialFloor.id]: defaultFloorFieldConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
 
   addFloor: () => set((state) => {
     const floor = newFloor(state.nextFloorNumber);
@@ -65,7 +65,8 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const trimmed = title.trim();
     if (!trimmed) return;
     set((state) => ({
-      floors: state.floors.map((f) => f.id === id ? { ...f, title: trimmed } : f),
+      // An unchanged commit (rename opened and confirmed as-is) must not mark the title custom.
+      floors: state.floors.map((f) => f.id === id && f.title !== trimmed ? { ...f, title: trimmed, titleCustomized: true } : f),
     }));
   },
 

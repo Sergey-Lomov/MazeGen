@@ -1,11 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-
-// `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
-// — same mock `tessellationGeometry.test.ts` uses, canonical (unit-tile-scale) square formula.
-vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number): [number, number] => [x, y],
-}));
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("pixi.js", () => {
   class FakeGraphics {
@@ -340,7 +335,7 @@ describe("drawDirectionArrow", () => {
 });
 
 describe("drawOneWayWallHighlight", () => {
-  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
 
   it("returns true and strokes the shared wall plus a gapless triangle for tessellation-adjacent cells", () => {
     const g = newG();
@@ -380,7 +375,7 @@ describe("drawCellBoundaryHighlight", () => {
     expect(cellBoundaryKey([1, 2], [3, 4])).toBe(cellBoundaryKey([3, 4], [1, 2]));
   });
 
-  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
 
   it("draws a rounded, stroked quad spanning the shared edge and both cell halves", () => {
     const g = newG();
@@ -403,13 +398,21 @@ describe("drawCellBoundaryHighlight", () => {
     const inset = newG();
     drawCellBoundaryHighlight(inset, [0, 0], [1, 0], cfg, 0xff0000, 1, 0, undefined, 0.3);
 
-    const startOf = (g: FakeG) => g.calls.find((call) => call.fn === "moveTo")!.args as [number, number];
-    const [plainX, plainY] = startOf(plain);
-    const [insetX, insetY] = startOf(inset);
+    // Extent of the drawn quad along each axis; endpoint order of the shared edge is not part of
+    // the contract, so compare spans rather than the first point.
+    const spans = (g: FakeG) => {
+      const pts = g.calls
+        .filter((call) => call.fn === "arcTo")
+        .map((call) => [call.args[0], call.args[1]] as [number, number]);
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      return { x: Math.max(...xs) - Math.min(...xs), y: Math.max(...ys) - Math.min(...ys) };
+    };
+    const plainSpan = spans(plain);
+    const insetSpan = spans(inset);
     // The shared edge for two horizontally adjacent square cells is vertical, so the tangent
     // shift is along y; the perpendicular (x) span must stay untouched.
-    expect(insetX).toBeCloseTo(plainX, 5);
-    expect(Math.abs(insetY)).toBeLessThan(Math.abs(plainY));
+    expect(insetSpan.x).toBeCloseTo(plainSpan.x, 5);
+    expect(insetSpan.y).toBeLessThan(plainSpan.y);
   });
 
 });

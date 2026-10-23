@@ -4,7 +4,7 @@ use crate::generation::split_pattern::{
 };
 use crate::generation::test_utils::make_field_graph_ids;
 use crate::generation::{ElementsConfig, GenerationParams, PresetState};
-use crate::space::{SquarePoint, Tessellation};
+use crate::space::SquarePoint;
 
 fn no_split_elements() -> ElementsConfig {
     ElementsConfig {
@@ -32,32 +32,6 @@ fn empty_presets() -> PresetState {
 
 fn no_split_config() -> SplitGenerationConfig {
     SplitGenerationConfig::default()
-}
-
-// ─── face_index / face_at round-trip ────────────────────────────────────
-
-#[test]
-fn face_index_face_at_round_trip_square() {
-    for f in crate::space::SquareTessellation::faces() {
-        let idx = crate::space::SquareTessellation::face_index(*f).unwrap();
-        assert!(crate::space::SquareTessellation::face_at(idx) == Some(*f));
-    }
-}
-
-#[test]
-fn face_index_face_at_round_trip_hex() {
-    for f in crate::space::HexTessellation::faces() {
-        let idx = crate::space::HexTessellation::face_index(*f).unwrap();
-        assert!(crate::space::HexTessellation::face_at(idx) == Some(*f));
-    }
-}
-
-#[test]
-fn face_index_face_at_round_trip_tri() {
-    for f in crate::space::TriTessellation::faces() {
-        let idx = crate::space::TriTessellation::face_index(*f).unwrap();
-        assert!(crate::space::TriTessellation::face_at(idx) == Some(*f));
-    }
 }
 
 // ─── RNG parity at split_chance == 0.0 ──────────────────────────────────
@@ -202,7 +176,7 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
         None,
     );
     let mut checked_a_split = false;
-    for point in field.field_of(field_level).unwrap().all_points() {
+    for point in field.field_of(field_level).unwrap().all_cells() {
         let nodes = field.nodes_at(field_level, point);
         if nodes.len() <= 1 {
             continue;
@@ -260,7 +234,7 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
         None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
-    let point = field.point_of(start).unwrap();
+    let point = field.cell_of(start).unwrap();
     for &n in field.nodes_at(field_level, point) {
         let degree = graph.outgoing_neighbors(n).count() + graph.incoming_neighbors(n).count();
         assert!(
@@ -414,14 +388,15 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         .node_at(field_level, SquarePoint { x: 0, y: 0 })
         .unwrap();
 
-    // SquareFace order [N, S, E, W] (indices 0-3). At (0,0) on a 3x3 grid: S (index 1) points
-    // off-field, E (index 2) has a real neighbor at (1,0).
+    // `regular:4` canonical order [E, N, W, S] (indices 0-3). At (0,0) on a 3x3 grid: S (index 3)
+    // points off-field, E (index 0) has a real neighbor at (1,0).
     let impossible_pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 1,
+                face_index: 3,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -429,11 +404,12 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         weight: 1000.0,
     };
     let possible_pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 2,
+                face_index: 0,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -472,7 +448,9 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
 }
 
 #[test]
-fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
+fn try_split_src_is_ineligible_when_no_pattern_is_declared_for_the_cell_shape() {
+    // Pattern mode never splits a cell whose shape template has no pattern — a pattern for
+    // another template (here a hexagon on a square cell) does not count.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
     let field_level = field.single_level_id();
     let start = field
@@ -481,7 +459,12 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let split_config = SplitGenerationConfig {
         pattern_mode: true,
         max_split_nodes: 2,
-        patterns: vec![],
+        patterns: vec![SplitPattern {
+            shape: "regular:6".to_string(),
+            node_count: 1,
+            faces: vec![vec![]],
+            weight: 1.0,
+        }],
     };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -502,7 +485,7 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
         None,
         None,
     );
-    assert_eq!(outcome, SplitOutcome::NoAdaptation);
+    assert_eq!(outcome, SplitOutcome::Ineligible);
 }
 
 #[test]

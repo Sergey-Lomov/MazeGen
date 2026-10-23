@@ -248,10 +248,10 @@ mod tests {
             None,
         );
 
-        let src_point = field.point_of(src);
+        let src_point = field.cell_of(src);
         let split_nodes: Vec<NodeId> = field
             .all_node_ids()
-            .filter(|n| field.point_of(*n) == src_point)
+            .filter(|n| field.cell_of(*n) == src_point)
             .collect();
         assert_eq!(
             split_nodes.len(),

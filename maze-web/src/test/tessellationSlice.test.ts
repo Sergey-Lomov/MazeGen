@@ -1,18 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
+import { resolveFieldConfig } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, freeFieldEditState, hexPredefinedState, trianglePredefinedState, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  // Cartesian coordinates aren't asserted on in this suite -- any deterministic per-point
-  // stand-in is fine, as long as its shape matches `getCartesianCoords`'s real return type.
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -38,6 +47,65 @@ function setActiveField(patch: Partial<ReturnType<typeof baseFloorFieldConfig>>)
 }
 
 describe("mazeStore setters", () => {
+  it("updates the resolved standard field when smoothing changes", () => {
+    const config = fieldOf("hex", { shape: "triangle", side: 4 }, "pointy_top");
+    setActiveField({ fieldConfig: config, fieldEditMode: "default" });
+    useMazeStore.setState({ activeFieldConfig: resolveFieldConfig(config, true), mazeDirty: true });
+
+    useMazeStore.getState().setSmoothPrimitives(false);
+
+    const state = useMazeStore.getState();
+    expect(state.activeFieldConfig).toEqual(resolveFieldConfig(config, false));
+    expect(state.generationStatus).toBe("idle");
+    expect(state.mazeDirty).toBe(false);
+  });
+
+  it("keeps a completed symmetry polygon when resetting the axis", () => {
+    const polygon = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }];
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryPolygon: polygon,
+      symmetryPolygonFinished: true,
+      fieldOpError: { kind: "not_a_symmetry" },
+    });
+
+    useMazeStore.getState().resetSymmetryAxis();
+
+    const state = useMazeStore.getState();
+    expect(state.symmetryAxisPoints).toEqual([]);
+    expect(state.symmetryPolygon).toEqual(polygon);
+    expect(state.symmetryPolygonFinished).toBe(true);
+    expect(state.fieldOpError).toBeNull();
+  });
+
+  it("validates a completed replacement axis before requesting polygon processing", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+      fieldPoints: new Set([encodePoint(1, 0)]),
+    });
+    useMazeStore.setState({ symmetryScope: "polygon" });
+
+    useMazeStore.getState().setSymmetryAxisPoints([{ x: -100, y: -100 }, { x: 100, y: -60 }]);
+
+    expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
+  });
+
+  it("clears a previous symmetry error for a valid replacement axis", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+      fieldPoints: new Set([encodePoint(1, 0)]),
+    });
+    useMazeStore.setState({ fieldOpError: { kind: "not_a_symmetry" } });
+
+    useMazeStore.getState().setSymmetryAxisPoints([{ x: 20, y: -100 }, { x: 20, y: 100 }]);
+
+    expect(useMazeStore.getState().fieldOpError).toBeNull();
+  });
+
   it("clears unfinished symmetry geometry when switching to another field primitive", () => {
     setActiveField({ fieldPrimitive: "symmetry" });
     useMazeStore.setState({
@@ -120,47 +188,46 @@ describe("mazeStore setters", () => {
   });
 
   it("setSeed updates seed and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
     useMazeStore.getState().setSeed(99);
     expect(useMazeStore.getState().seed).toBe(99);
     expect(useMazeStore.getState().error).toBeNull();
   });
 
-  it("setTessellationConfig updates config and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
-    useMazeStore.getState().setTessellationConfig({ type: "hex_parallelogram", cols: 5, rows: 7, orientation: "pointy_top" });
-    const cfg = activeField().tessellationConfig;
-    expect(cfg).toMatchObject({ type: "hex_parallelogram", cols: 5, rows: 7, orientation: "pointy_top" });
+  it("setFieldConfig updates config and clears error", () => {
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
+    useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 7 }, "pointy_top"));
+    const cfg = activeField().fieldConfig;
+    expect(cfg).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "parallelogram", cols: 5, rows: 7 } });
     expect(useMazeStore.getState().error).toBeNull();
   });
 
-  it("setTessellationConfig syncs tessellationKind and hexShape", () => {
-    useMazeStore.getState().setTessellationConfig({ type: "hex_hexagon", radius: 3, orientation: "flat_top" });
+  it("setFieldConfig syncs tessellationKind and hexShape", () => {
+    useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"));
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("hex");
-    expect(activeField().hexShape).toBe("hexagon");
+    expect(activeField().selectedShape).toBe("hexagon");
   });
 
-  it("setTessellationConfig syncs tessellationKind and triangleShape", () => {
-    useMazeStore.getState().setTessellationConfig({ type: "triangle_triangle", side: 5, orientation: "r90" });
+  it("setFieldConfig syncs tessellationKind and triangleShape", () => {
+    useMazeStore.getState().setFieldConfig(fieldOf("tri", { shape: "triangle", side: 5 }, "r90"));
     const s = useMazeStore.getState();
-    expect(s.tessellationKind).toBe("triangle");
-    expect(activeField().triangleShape).toBe("triangle");
+    expect(s.tessellationKind).toBe("tri");
+    expect(activeField().selectedShape).toBe("triangle");
   });
 
-  it("setTessellationConfig with square_custom sets isEditingField and syncs freeFieldPoints", () => {
-    useMazeStore.getState().setTessellationConfig({ type: "square_custom", points: [[1, 2], [3, 4]] });
+  it("setFieldConfig with square_custom sets isEditingField and syncs freeFieldPoints", () => {
+    useMazeStore.getState().setFieldConfig(fieldOf("square", { shape: "custom", points: [[1, 2], [3, 4]] }));
     const s = useMazeStore.getState();
     const field = activeField();
     expect(s.tessellationKind).toBe("square");
-    expect(field.squareShape).toBe("free");
     expect(field.isEditingField).toBe(true);
     expect(field.fieldPoints.size).toBe(2);
     expect(field.freeFieldPoints.square.size).toBe(2);
   });
 
-  it("setTessellationConfig with hex_custom syncs freeFieldPoints.hex", () => {
-    useMazeStore.getState().setTessellationConfig({ type: "hex_custom", points: [[0, 0], [1, 0], [0, 1]], orientation: "pointy_top" });
+  it("setFieldConfig with hex_custom syncs freeFieldPoints.hex", () => {
+    useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "custom", points: [[0, 0], [1, 0], [0, 1]] }, "pointy_top"));
     const s = useMazeStore.getState();
     const field = activeField();
     expect(field.freeFieldPoints.hex.size).toBe(3);
@@ -174,52 +241,50 @@ describe("mazeStore tessellation kind/shape actions", () => {
     useMazeStore.getState().setTessellationKind("hex");
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("hex");
-    expect(activeField().tessellationConfig.type).toBe("hex_hexagon");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["hex", "hexagon"]);
   });
 
   it("setTessellationKind to triangle sets tessellationKind and triangle config type", () => {
-    useMazeStore.getState().setTessellationKind("triangle");
+    useMazeStore.getState().setTessellationKind("tri");
     const s = useMazeStore.getState();
-    expect(s.tessellationKind).toBe("triangle");
-    expect(activeField().tessellationConfig.type).toBe("triangle_triangle");
+    expect(s.tessellationKind).toBe("tri");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["tri", "triangle"]);
   });
 
   it("setTessellationKind to Cairo uses the standard rectangular field", () => {
     useMazeStore.getState().setTessellationKind("cairo");
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("cairo");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo", cols: 10, rows: 10 });
-    expect(activeField().cairoShape).toBe("rect");
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "rect", cols: 10, rows: 10 }));
+    expect(activeField().selectedShape).toBe("rect");
   });
 
   it("uses the standard Cairo sizes when selecting each predefined form", () => {
     useMazeStore.getState().setTessellationKind("cairo");
 
-    useMazeStore.getState().setCairoShape("circle");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo_circle", radius: 12 });
+    useMazeStore.getState().setSelectedShape("circle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "circle", radius: 12 }));
 
-    useMazeStore.getState().setCairoShape("triangle");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo_triangle", side: 20 });
+    useMazeStore.getState().setSelectedShape("triangle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "triangle", side: 20 }));
 
-    useMazeStore.getState().setCairoShape("hexagon");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo_hexagon", radius: 12 });
+    useMazeStore.getState().setSelectedShape("hexagon");
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "hexagon", radius: 12 }));
   });
 
-  it("switches Cairo between standard and free fields without losing custom points", () => {
-    useMazeStore.getState().setTessellationKind("cairo");
-    const points = new Set([encodePoint(-3, 2), encodePoint(2, 1)]);
-    setActiveField({ freeFieldPoints: { ...emptyFreePoints(), cairo: points } });
-    useMazeStore.getState().setCairoShape("free");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo_custom", points: [[-3, 2], [2, 1]] });
-    useMazeStore.getState().setCairoShape("rect");
-    useMazeStore.getState().setCairoShape("free");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo_custom", points: [[-3, 2], [2, 1]] });
+  it("keeps Cairo custom points when returning to the standard field", () => {
+    useMazeStore.getState().setFieldConfig(fieldOf("cairo", { shape: "custom", points: [[-3, 2], [2, 1]] }));
+    const points = activeField().freeFieldPoints.cairo;
+    useMazeStore.getState().setFieldEditMode("default");
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "rect", cols: 10, rows: 10 }));
+    expect(activeField().freeFieldPoints.cairo).toBe(points);
+    expect(points.size).toBe(2);
   });
 
   it("returns from a loaded Cairo custom field to the standard field in default mode", () => {
-    useMazeStore.getState().setTessellationConfig({ type: "cairo_custom", points: [[1, 2], [2, 1]] });
+    useMazeStore.getState().setFieldConfig(fieldOf("cairo", { shape: "custom", points: [[1, 2], [2, 1]] }));
     useMazeStore.getState().setFieldEditMode("default");
-    expect(activeField().tessellationConfig).toEqual({ type: "cairo", cols: 10, rows: 10 });
+    expect(activeField().fieldConfig).toEqual(fieldOf("cairo", { shape: "rect", cols: 10, rows: 10 }));
     expect(activeField().isEditingField).toBe(false);
   });
 
@@ -228,7 +293,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
     useMazeStore.getState().setTessellationKind("square");
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("square");
-    expect(activeField().tessellationConfig.type).toBe("square");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["square", "rect"]);
   });
 
   it("setTessellationKind clears all incompatible presets", () => {
@@ -247,7 +312,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
   it("setTessellationKind resets freeFieldPoints for target kind", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), triangle: new Set(), cairo: new Set() } });
+    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), tri: new Set(), cairo: new Set(), square_octagon: new Set(), brick: new Set(), trihexagonal: new Set(), snub_hexagonal: new Set(), rhombitrihexagonal: new Set(), truncated_hexagonal: new Set(), truncated_trihexagonal: new Set(), elongated_triangular: new Set(), snub_square: new Set(), curved_quadrilateral: new Set(), radial: new Set(), voronoi: new Set() } });
     useMazeStore.getState().setTessellationKind("square");
     const field = activeField();
     // setTessellationKind resets every floor's FloorFieldConfig to a fresh default (GitHub issue
@@ -259,7 +324,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
   it("setTessellationKind resets isEditingField", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ squareShape: "free", isEditingField: true });
+    setActiveField({ isEditingField: true });
     useMazeStore.getState().setTessellationKind("square");
     expect(activeField().isEditingField).toBe(false);
   });
@@ -271,14 +336,14 @@ describe("mazeStore tessellation kind/shape actions", () => {
       tessellationKind: "hex",
       floorFields: {
         ...s0.floorFields,
-        [otherFloorId]: baseFloorFieldConfig({ squareShape: "free", isEditingField: true, fieldPoints: new Set([1, 2, 3]) }),
+        [otherFloorId]: baseFloorFieldConfig({ isEditingField: true, fieldPoints: new Set([1, 2, 3]) }),
       },
     });
     useMazeStore.getState().setTessellationKind("square");
     const s = useMazeStore.getState();
     expect(s.floorFields[TEST_FLOOR_ID].isEditingField).toBe(false);
     expect(s.floorFields[otherFloorId].isEditingField).toBe(false);
-    expect(s.floorFields[otherFloorId].tessellationConfig.type).toBe("square");
+    expect([s.floorFields[otherFloorId].fieldConfig.tessellation.kind, s.floorFields[otherFloorId].fieldConfig.shape.shape]).toEqual(["square", "rect"]);
   });
 
   it("resets the print cell size after changing tessellation kind", () => {
@@ -295,135 +360,135 @@ describe("mazeStore tessellation kind/shape actions", () => {
   });
 
   it("setHexShape to hexagon sets hexShape and hex_hexagon config type", () => {
-    useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ hexShape: "parallelogram", tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" } });
-    useMazeStore.getState().setHexShape("hexagon");
+    useMazeStore.setState(hexPredefinedState({ hexOrientation: "pointy_top", floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "pointy_top") } }));
+    useMazeStore.getState().setSelectedShape("hexagon");
     const field = activeField();
-    expect(field.hexShape).toBe("hexagon");
-    expect(field.tessellationConfig.type).toBe("hex_hexagon");
+    expect(field.selectedShape).toBe("hexagon");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["hex", "hexagon"]);
   });
 
   it("supports the new hex rectangle and circle shapes", () => {
-    useMazeStore.setState({ tessellationKind: "hex" });
-    useMazeStore.getState().setHexShape("rectangle");
-    expect(activeField().tessellationConfig.type).toBe("hex_rectangle");
-    useMazeStore.getState().setHexShape("circle");
-    expect(activeField().tessellationConfig.type).toBe("hex_circle");
+    useMazeStore.setState(hexPredefinedState());
+    useMazeStore.getState().setSelectedShape("rect");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["hex", "rect"]);
+    useMazeStore.getState().setSelectedShape("circle");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["hex", "circle"]);
   });
 
   it("setHexShape preserves hex orientation", () => {
-    useMazeStore.setState({ tessellationKind: "hex", hexOrientation: "pointy_top" });
-    setActiveField({ hexShape: "parallelogram", tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" } });
-    useMazeStore.getState().setHexShape("hexagon");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "hex_hexagon", orientation: "pointy_top" });
+    useMazeStore.setState(hexPredefinedState({ hexOrientation: "pointy_top", floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "pointy_top") } }));
+    useMazeStore.getState().setSelectedShape("hexagon");
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "hexagon" } });
   });
 
-  it("setHexShape to free sets isEditingField and empty fieldPoints (first time)", () => {
-    useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ hexShape: "parallelogram", freeFieldPoints: emptyFreePoints() });
-    useMazeStore.getState().setHexShape("free");
+  it("custom edit mode starts from the cells of the selected shape", () => {
+    useMazeStore.setState(hexPredefinedState({ floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 2 }, "flat_top") } }));
+    useMazeStore.getState().setFieldEditMode("custom");
     const field = activeField();
-    expect(field.hexShape).toBe("free");
     expect(field.isEditingField).toBe(true);
-    expect(field.fieldPoints.size).toBe(0);
-    expect(field.tessellationConfig.type).toBe("hex_custom");
+    expect(field.fieldPoints.size).toBe(6);
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["hex", "custom"]);
   });
 
-  it("setHexShape to free restores previously saved points", () => {
+  it("custom edit mode keeps the points of a field already custom", () => {
     const pts = new Set([encodePoint(1, 0), encodePoint(0, 1)]);
-    useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ hexShape: "parallelogram", freeFieldPoints: { ...emptyFreePoints(), hex: pts } });
-    useMazeStore.getState().setHexShape("free");
-    const field = activeField();
-    expect(field.fieldPoints.size).toBe(2);
-    expect(field.fieldPoints).toBe(pts);
+    useMazeStore.setState(freeFieldEditState("hex", pts));
+    setActiveField({ fieldConfig: fieldOf("hex", { shape: "custom", points: [[1, 0], [0, 1]] }, "flat_top") });
+    useMazeStore.getState().setFieldEditMode("custom");
+    expect(activeField().fieldPoints).toBe(pts);
   });
 
-  it("setHexShape from free to parallelogram clears isEditingField", () => {
-    useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ hexShape: "free", isEditingField: true, fieldPoints: new Set([1]) });
-    useMazeStore.getState().setHexShape("parallelogram");
+  it("selecting a shape while editing a custom field only remembers the selection", () => {
+    useMazeStore.setState(freeFieldEditState("hex", new Set([1])));
+    useMazeStore.getState().setSelectedShape("parallelogram");
+    const field = activeField();
+    expect(field.isEditingField).toBe(true);
+    expect(field.selectedShape).toBe("parallelogram");
+  });
+
+  it("default edit mode returns to the selected shape", () => {
+    useMazeStore.setState(freeFieldEditState("hex", new Set([1])));
+    useMazeStore.getState().setSelectedShape("parallelogram");
+    useMazeStore.getState().setFieldEditMode("default");
     const field = activeField();
     expect(field.isEditingField).toBe(false);
-    expect(field.tessellationConfig.type).toBe("hex_parallelogram");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["hex", "parallelogram"]);
   });
 
   it("setSquareShape to free sets isEditingField", () => {
     useMazeStore.setState({ tessellationKind: "square" });
-    setActiveField({ squareShape: "rect", freeFieldPoints: emptyFreePoints() });
-    useMazeStore.getState().setSquareShape("free");
+    setActiveField({ selectedShape: "rect", freeFieldPoints: emptyFreePoints() });
+    useMazeStore.getState().setFieldEditMode("custom");
     const field = activeField();
-    expect(field.squareShape).toBe("free");
     expect(field.isEditingField).toBe(true);
-    expect(field.tessellationConfig.type).toBe("square_custom");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["square", "custom"]);
   });
 
   it("supports the new square circle shape", () => {
     useMazeStore.setState({ tessellationKind: "square" });
-    useMazeStore.getState().setSquareShape("circle");
-    expect(activeField().tessellationConfig).toEqual({ type: "square_circle", radius: 10 });
+    useMazeStore.getState().setSelectedShape("circle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("square", { shape: "circle", radius: 10 }));
   });
 
   it("supports the new square triangle shape", () => {
     useMazeStore.setState({ tessellationKind: "square" });
-    useMazeStore.getState().setSquareShape("triangle");
-    expect(activeField().tessellationConfig).toEqual({ type: "square_triangle", side: 20 });
+    useMazeStore.getState().setSelectedShape("triangle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("square", { shape: "triangle", side: 20 }));
   });
 
   it("supports the new hex triangle shape", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    useMazeStore.getState().setHexShape("triangle");
-    expect(activeField().tessellationConfig).toEqual({ type: "hex_triangle", side: 20, orientation: "flat_top" });
+    useMazeStore.getState().setSelectedShape("triangle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("hex", { shape: "triangle", side: 20 }, "flat_top"));
   });
 
   it("supports the new triangle circle shape", () => {
-    useMazeStore.setState({ tessellationKind: "triangle" });
-    useMazeStore.getState().setTriangleShape("circle");
-    expect(activeField().tessellationConfig).toEqual({ type: "triangle_circle", radius: 10, orientation: "r0" });
+    useMazeStore.setState({ tessellationKind: "tri" });
+    useMazeStore.getState().setSelectedShape("circle");
+    expect(activeField().fieldConfig).toEqual(fieldOf("tri", { shape: "circle", radius: 10 }, "r0"));
   });
 
   it("setTriangleShape to free sets isEditingField", () => {
-    useMazeStore.setState({ tessellationKind: "triangle" });
-    setActiveField({ triangleShape: "rect", freeFieldPoints: emptyFreePoints() });
-    useMazeStore.getState().setTriangleShape("free");
+    useMazeStore.setState({ tessellationKind: "tri" });
+    setActiveField({ selectedShape: "rect", freeFieldPoints: emptyFreePoints() });
+    useMazeStore.getState().setFieldEditMode("custom");
     const field = activeField();
-    expect(field.triangleShape).toBe("free");
     expect(field.isEditingField).toBe(true);
-    expect(field.tessellationConfig.type).toBe("tri_custom");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["tri", "custom"]);
   });
 
   it("setTriangleShape to triangle sets triangleShape and triangle_triangle config type", () => {
-    useMazeStore.setState({ tessellationKind: "triangle" });
-    setActiveField({ triangleShape: "rect", tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r90" } });
-    useMazeStore.getState().setTriangleShape("triangle");
+    useMazeStore.setState({ tessellationKind: "tri" });
+    setActiveField({ selectedShape: "rect", fieldConfig: fieldOf("tri", { shape: "rect", cols: 10, rows: 10 }, "r90") });
+    useMazeStore.getState().setSelectedShape("triangle");
     const field = activeField();
-    expect(field.triangleShape).toBe("triangle");
-    expect(field.tessellationConfig.type).toBe("triangle_triangle");
+    expect(field.selectedShape).toBe("triangle");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["tri", "triangle"]);
   });
 
   it("setTriangleShape preserves triangle orientation", () => {
-    useMazeStore.setState({ tessellationKind: "triangle", triOrientation: "r180" });
-    setActiveField({ triangleShape: "rect", tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r180" } });
-    useMazeStore.getState().setTriangleShape("hexagon");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "triangle_hexagon", orientation: "r180" });
+    useMazeStore.setState({ tessellationKind: "tri", triOrientation: "r180" });
+    setActiveField({ selectedShape: "rect", fieldConfig: fieldOf("tri", { shape: "rect", cols: 10, rows: 10 }, "r180") });
+    useMazeStore.getState().setSelectedShape("hexagon");
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "tri" }, orientation: "r180", shape: { shape: "hexagon" } });
   });
 
   it("setTessellationKind hex→triangle preserves triangle orientation default when coming from non-triangle", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" } });
-    useMazeStore.getState().setTessellationKind("triangle");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "triangle_triangle", orientation: "r0" });
+    setActiveField({ fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") });
+    useMazeStore.getState().setTessellationKind("tri");
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "tri" }, orientation: "r0", shape: { shape: "triangle" } });
   });
 });
 
 describe("mazeStore free field actions", () => {
-  it("addFieldPoint adds encoded point and updates tessellationConfig", () => {
+  it("addFieldPoint adds encoded point and updates fieldConfig", () => {
     useMazeStore.setState(freeFieldEditState("square", new Set<number>()));
     useMazeStore.getState().addFieldPoint(3, 5);
     const field = activeField();
     expect(field.fieldPoints.size).toBe(1);
     expect(field.freeFieldPoints.square.size).toBe(1);
-    expect(field.tessellationConfig.type).toBe("square_custom");
+    expect([field.fieldConfig.tessellation.kind, field.fieldConfig.shape.shape]).toEqual(["square", "custom"]);
   });
 
   it("addFieldPoint is idempotent for same coord", () => {
@@ -433,7 +498,7 @@ describe("mazeStore free field actions", () => {
     expect(activeField().fieldPoints.size).toBe(1);
   });
 
-  it("removeFieldPoint removes point and updates tessellationConfig", () => {
+  it("removeFieldPoint removes point and updates fieldConfig", () => {
     const pts = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
     useMazeStore.setState(freeFieldEditState("square", pts));
     useMazeStore.getState().removeFieldPoint(0, 0);
@@ -449,91 +514,84 @@ describe("mazeStore free field actions", () => {
     expect(activeField().fieldPoints.size).toBe(1);
   });
 
-  it("freeFieldPoints persists per-kind when switching shapes", () => {
+  it("freeFieldPoints persists per-kind when leaving custom mode", () => {
     const hexPts = new Set([encodePoint(1, 0), encodePoint(0, 1)]);
     useMazeStore.setState(freeFieldEditState("hex", hexPts));
-    useMazeStore.getState().setHexShape("parallelogram");
+    setActiveField({ fieldConfig: fieldOf("hex", { shape: "custom", points: [[1, 0], [0, 1]] }, "flat_top") });
+    useMazeStore.getState().setFieldEditMode("default");
     const field1 = activeField();
     expect(field1.isEditingField).toBe(false);
-    expect(field1.freeFieldPoints.hex.size).toBe(2);
-
-    useMazeStore.getState().setHexShape("free");
-    const field2 = activeField();
-    expect(field2.isEditingField).toBe(true);
-    expect(field2.fieldPoints.size).toBe(2);
-    expect(field2.fieldPoints).toBe(hexPts);
+    expect(field1.freeFieldPoints.hex).toBe(hexPts);
   });
 });
 
 describe("mazeStore.setHexOrientation", () => {
   it("updates hexOrientation only when tessellationKind is not hex", () => {
     useMazeStore.setState({ tessellationKind: "square", hexOrientation: "flat_top" });
-    setActiveField({ tessellationConfig: { type: "square", width: 10, height: 10 } });
+    setActiveField({ fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }) });
     useMazeStore.getState().setHexOrientation("pointy_top");
     const s = useMazeStore.getState();
     expect(s.hexOrientation).toBe("pointy_top");
-    expect(activeField().tessellationConfig.type).toBe("square");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["square", "rect"]);
   });
 
   it("is no-op when orientation unchanged", () => {
     useMazeStore.setState({ tessellationKind: "hex", hexOrientation: "flat_top" });
-    const before = activeField().tessellationConfig;
+    const before = activeField().fieldConfig;
     useMazeStore.getState().setHexOrientation("flat_top");
-    expect(activeField().tessellationConfig).toBe(before);
+    expect(activeField().fieldConfig).toBe(before);
   });
 
-  it("updates tessellationConfig orientation in predefined mode", () => {
+  it("updates fieldConfig orientation in predefined mode", () => {
     useMazeStore.setState(hexPredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" } },
+      floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") },
     }));
     useMazeStore.getState().setHexOrientation("pointy_top");
     const s = useMazeStore.getState();
     expect(s.hexOrientation).toBe("pointy_top");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "hex_parallelogram", orientation: "pointy_top", cols: 8, rows: 6 });
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "parallelogram", cols: 8, rows: 6 } });
   });
 
-  it("rebuilds tessellationConfig via buildFreeConfig in free mode", () => {
+  it("rebuilds fieldConfig via buildFreeConfig in free mode", () => {
     const pts = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
     useMazeStore.setState({ tessellationKind: "hex", hexOrientation: "flat_top" });
     setActiveField({
-      hexShape: "free",
-      squareShape: "rect",
-      triangleShape: "rect",
+      selectedShape: "rect",
       isEditingField: true,
       fieldPoints: pts,
       freeFieldPoints: { ...emptyFreePoints(), hex: pts },
-      tessellationConfig: { type: "hex_custom", points: [[0, 0], [1, 0]], orientation: "flat_top" },
+      fieldConfig: fieldOf("hex", { shape: "custom", points: [[0, 0], [1, 0]] }, "flat_top"),
     });
     useMazeStore.getState().setHexOrientation("pointy_top");
     const s = useMazeStore.getState();
     expect(s.hexOrientation).toBe("pointy_top");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "hex_custom", orientation: "pointy_top" });
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "custom" } });
   });
 
-  it("updates activeTessellationConfig orientation when nodes exist", () => {
+  it("updates activeFieldConfig orientation when nodes exist", () => {
     useMazeStore.setState(hexPredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" } },
-      activeTessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
+      floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") },
+      activeFieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top"),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
     }));
     useMazeStore.getState().setHexOrientation("pointy_top");
-    expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "hex_parallelogram", orientation: "pointy_top", cols: 8 });
+    expect(useMazeStore.getState().activeFieldConfig).toMatchObject({ tessellation: { kind: "hex" }, orientation: "pointy_top", shape: { shape: "parallelogram", cols: 8 } });
   });
 
-  it("does not update activeTessellationConfig when no nodes", () => {
+  it("does not update activeFieldConfig when no nodes", () => {
     useMazeStore.setState(hexPredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" } },
-      activeTessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" },
+      floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 5 }, "flat_top") },
+      activeFieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 5 }, "flat_top"),
       nodes: [],
     }));
-    const activeBefore = useMazeStore.getState().activeTessellationConfig;
+    const activeBefore = useMazeStore.getState().activeFieldConfig;
     useMazeStore.getState().setHexOrientation("pointy_top");
-    expect(useMazeStore.getState().activeTessellationConfig).toBe(activeBefore);
+    expect(useMazeStore.getState().activeFieldConfig).toBe(activeBefore);
   });
 
   it("closes an open split-node panel (GitHub issue #235 follow-up) — its face indices meant something else under the old orientation", () => {
     useMazeStore.setState(hexPredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" } },
+      floorFieldOverrides: { fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 8, rows: 6 }, "flat_top") },
       presetFocusedPoint: [1, 1],
       postEditFocusedPoint: [2, 2],
     }));
@@ -547,55 +605,53 @@ describe("mazeStore.setHexOrientation", () => {
 describe("mazeStore.setTriOrientation", () => {
   it("updates triOrientation only when tessellationKind is not triangle", () => {
     useMazeStore.setState({ tessellationKind: "square", triOrientation: "r0" });
-    setActiveField({ tessellationConfig: { type: "square", width: 10, height: 10 } });
+    setActiveField({ fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }) });
     useMazeStore.getState().setTriOrientation("r90");
     const s = useMazeStore.getState();
     expect(s.triOrientation).toBe("r90");
-    expect(activeField().tessellationConfig.type).toBe("square");
+    expect([activeField().fieldConfig.tessellation.kind, activeField().fieldConfig.shape.shape]).toEqual(["square", "rect"]);
   });
 
   it("is no-op when orientation unchanged", () => {
-    useMazeStore.setState({ tessellationKind: "triangle", triOrientation: "r0" });
-    const before = activeField().tessellationConfig;
+    useMazeStore.setState({ tessellationKind: "tri", triOrientation: "r0" });
+    const before = activeField().fieldConfig;
     useMazeStore.getState().setTriOrientation("r0");
-    expect(activeField().tessellationConfig).toBe(before);
+    expect(activeField().fieldConfig).toBe(before);
   });
 
-  it("updates tessellationConfig orientation in predefined mode", () => {
+  it("updates fieldConfig orientation in predefined mode", () => {
     useMazeStore.setState(trianglePredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r0" } },
+      floorFieldOverrides: { fieldConfig: fieldOf("tri", { shape: "rect", cols: 10, rows: 10 }, "r0") },
     }));
     useMazeStore.getState().setTriOrientation("r180");
     const s = useMazeStore.getState();
     expect(s.triOrientation).toBe("r180");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r180", cols: 10 });
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "tri" }, orientation: "r180", shape: { shape: "rect", cols: 10 } });
   });
 
-  it("rebuilds tessellationConfig via buildFreeConfig in free mode", () => {
+  it("rebuilds fieldConfig via buildFreeConfig in free mode", () => {
     const pts = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
-    useMazeStore.setState({ tessellationKind: "triangle", triOrientation: "r0", hexOrientation: "flat_top" });
+    useMazeStore.setState({ tessellationKind: "tri", triOrientation: "r0", hexOrientation: "flat_top" });
     setActiveField({
-      triangleShape: "free",
-      hexShape: "parallelogram",
-      squareShape: "rect",
+      selectedShape: "rect",
       isEditingField: true,
       fieldPoints: pts,
-      freeFieldPoints: { ...emptyFreePoints(), triangle: pts },
-      tessellationConfig: { type: "tri_custom", points: [[0, 0], [1, 0]], orientation: "r0" },
+      freeFieldPoints: { ...emptyFreePoints(), tri: pts },
+      fieldConfig: fieldOf("tri", { shape: "custom", points: [[0, 0], [1, 0]] }, "r0"),
     });
     useMazeStore.getState().setTriOrientation("r270");
     const s = useMazeStore.getState();
     expect(s.triOrientation).toBe("r270");
-    expect(activeField().tessellationConfig).toMatchObject({ type: "tri_custom", orientation: "r270" });
+    expect(activeField().fieldConfig).toMatchObject({ tessellation: { kind: "tri" }, orientation: "r270", shape: { shape: "custom" } });
   });
 
-  it("updates activeTessellationConfig orientation when nodes exist", () => {
+  it("updates activeFieldConfig orientation when nodes exist", () => {
     useMazeStore.setState(trianglePredefinedState({
-      floorFieldOverrides: { tessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" } },
-      activeTessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" },
+      floorFieldOverrides: { fieldConfig: fieldOf("tri", { shape: "rect", cols: 6, rows: 4 }, "r0") },
+      activeFieldConfig: fieldOf("tri", { shape: "rect", cols: 6, rows: 4 }, "r0"),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
     }));
     useMazeStore.getState().setTriOrientation("r90");
-    expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r90", cols: 6 });
+    expect(useMazeStore.getState().activeFieldConfig).toMatchObject({ tessellation: { kind: "tri" }, orientation: "r90", shape: { shape: "rect", cols: 6 } });
   });
 });

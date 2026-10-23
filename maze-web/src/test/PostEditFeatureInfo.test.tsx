@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { PostEditFeature } from "../components/features/PostEditFeature";
+import { useMazeStore } from "../store/mazeStore";
+import * as m from "~/paraglide/messages";
 
 // Tool pictograms are drawn through a real pixi.js off-screen canvas (toolGlyphs.ts) — irrelevant
 // to this test and unsupported in jsdom, so stub the glyph component out, same rationale as the
@@ -28,5 +30,21 @@ describe("PostEditFeature auto-confirm/auto-compact info icons", () => {
     const label = screen.getByText("Auto-compact");
     fireEvent.click(label.parentElement!.querySelector('[role="button"]')!);
     expect(screen.getByText(/Auto-compact shrinks the log after every edit/)).toBeInTheDocument();
+  });
+});
+
+describe("PostEditFeature refresh error status line (GitHub issue #769)", () => {
+  afterEach(() => act(() => useMazeStore.setState({ postEditRefreshError: null })));
+
+  it("shows the last refresh failure", () => {
+    act(() => useMazeStore.setState({ postEditRefreshError: "analytics failed" }));
+    render(<PostEditFeature />);
+    expect(screen.getByText(m["post_edit.refresh_error"]({ message: "analytics failed" }))).toBeInTheDocument();
+  });
+
+  it("shows no status line without a refresh failure", () => {
+    useMazeStore.setState({ postEditRefreshError: null });
+    render(<PostEditFeature />);
+    expect(screen.queryByText(m["post_edit.refresh_error"]({ message: "analytics failed" }))).toBeNull();
   });
 });

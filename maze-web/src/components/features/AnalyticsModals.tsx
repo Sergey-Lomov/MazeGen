@@ -11,10 +11,10 @@ import { buildValues } from "./useParamEditor";
 import { StatRow, SubsectionTitle, formatMs } from "./AnalyticsSections";
 import { styles, messageFor } from "./analyticsStyles";
 import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
+import { originCellOf } from "../../pixi/splitPatternTile";
 import { useLocale } from "../../i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
-const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
 const NOOP_FACE = () => {};
 const NOOP_ROTATE = () => {};
 
@@ -25,7 +25,7 @@ function SplitGroupPreviewTile({ topology, cfg }: { topology: SplitGroupDto["top
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
-        point={SPLIT_PREVIEW_ANCHOR} cfg={cfg} nodes={tileNodesForTopology(topology, cfg)} activeIndex={null}
+        point={originCellOf(cfg)} cfg={cfg} nodes={tileNodesForTopology(topology, cfg)} activeIndex={null}
         onFaceClick={NOOP_FACE} onFaceRightClick={NOOP_FACE} onRotate={NOOP_ROTATE} showRotateControls={false}
       />
     </div>
@@ -112,9 +112,22 @@ const SCORED_ENDPOINTS_STRATEGY_ID = "scored_endpoints";
  *  `score_weights_from_stages`), so no empty-state branch is needed here. */
 export function ScoreInfoModal({ onClose }: { onClose: () => void }) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const strategyParams = useMazeStore((s) => s.strategyParams);
+  const rules = useMazeStore((s) => s.rules);
+  const stages = useMazeStore((s) => s.stages);
   const descriptor = availableStrategies.find((s) => s.id === SCORED_ENDPOINTS_STRATEGY_ID);
-  const values = descriptor ? buildValues(descriptor.params, strategyParams[SCORED_ENDPOINTS_STRATEGY_ID] ?? {}) : {};
+  // Match `buildGenerateConfig` and `score_weights_from_stages`: stage order decides which active
+  // scored-endpoints rule supplies route-score weights when several rules configure it.
+  const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+  const scoreRule = stages
+    .filter((stage) => !stage.disabled)
+    .flatMap((stage) => stage.ruleIds)
+    .map((id) => ruleById.get(id))
+    .find((rule) => rule !== undefined
+      && !rule.ruleDisabled
+      && !rule.disabled
+      && rule.checks.some((check) => !check.disabled)
+      && rule.strategyId === SCORED_ENDPOINTS_STRATEGY_ID);
+  const values = descriptor ? buildValues(descriptor.params, scoreRule?.strategyParams ?? {}) : {};
   return (
     <Modal title={m["analytics.score"]()} onClose={onClose}>
       <div style={styles.legendDesc}>{m["analytics.score_info_desc"]()}</div>

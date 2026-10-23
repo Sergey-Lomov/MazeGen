@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellVertices, getCellCenter, buildNodePositions } from "../../pixi/tessellationGeometry";
 import { buildSplitPassages } from "../../pixi/selectors/mazeSelectors";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../../pixi/renderers/SplitJunctionRenderer";
@@ -13,7 +13,7 @@ import { ui } from "../../styles/theme";
 
 interface Props {
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** The point's own nodes on the active floor, in snapshot order (index 0 = original) — drives
    *  the marker-dot colours/positions and nothing else. */
   pointNodes: NodeDto[];

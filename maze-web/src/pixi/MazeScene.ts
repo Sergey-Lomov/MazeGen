@@ -21,24 +21,27 @@ import { backgroundImageEditMode } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
+import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
+import { RenderScheduler } from "./renderScheduler";
+import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
 import type { FieldPrimitive } from "../store/tessellationTypes";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 
-type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => TessellationConfig;
+type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldConfig;
 
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
-  basic_config: (st) => st.previewTessellationConfig,
-  floors: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
-  field_setup: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
-  preset_connections: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
-  quality: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
-  generation: (st) => st.activeTessellationConfig,
-  post_edit: (st) => st.activeTessellationConfig,
-  analytics: (st) => st.activeTessellationConfig,
-  image_export: (st) => st.activeTessellationConfig,
+  basic_config: (st) => st.previewFieldConfig,
+  floors: (st) => st.floorFields[st.activeFloorId].fieldConfig,
+  field_setup: (st) => st.floorFields[st.activeFloorId].fieldConfig,
+  preset_connections: (st) => st.floorFields[st.activeFloorId].fieldConfig,
+  quality: (st) => st.floorFields[st.activeFloorId].fieldConfig,
+  generation: (st) => st.activeFieldConfig,
+  post_edit: (st) => st.activeFieldConfig,
+  analytics: (st) => st.activeFieldConfig,
+  image_export: (st) => st.activeFieldConfig,
 };
 
 export function shouldCancelFieldEditGesture(args: {
@@ -65,6 +68,7 @@ export function shouldCancelFieldEditGesture(args: {
 
 export class MazeScene {
   private app: Application;
+  private renderScheduler: RenderScheduler;
   private viewport: Container;
   private generationRenderer: GenerationRenderer;
   private tessellationRenderer: TessellationRenderer;
@@ -89,16 +93,19 @@ export class MazeScene {
   private pngExporter: PngExporter;
   private interaction: SceneInteraction;
   private backgroundImageController: BackgroundImageController;
+  private floorLabelDragController: FloorLabelDragController;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
-  private cachedProjection: { cfg: TessellationConfig; projection: TessellationProjection } | null = null;
+  private cachedProjection: { cfg: FieldConfig; projection: TessellationProjection } | null = null;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
   // All renderers/overlays that must be notified when the viewport changes.
   private viewportListeners: ViewportListener[] = [];
 
+  private unsubscribeRender: (() => void) | null = null;
+  private unwatchDevicePixelRatio: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
   private unsubscribeQualityOpen: (() => void) | null = null;
@@ -107,6 +114,7 @@ export class MazeScene {
 
   constructor(app: Application) {
     this.app = app;
+    this.renderScheduler = new RenderScheduler(app);
 
     this.viewport = new Container();
 
@@ -160,6 +168,7 @@ export class MazeScene {
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
+    this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
 
     this.viewportListeners = [
       this.generationRenderer,
@@ -186,7 +195,7 @@ export class MazeScene {
 
     this.hoverProvider = new DefaultHoverProvider(
       () => this.viewport,
-      () => this.getProjectionFor(this.getActiveTessellationConfig(useMazeStore.getState())),
+      () => this.getProjectionFor(this.getActiveFieldConfig(useMazeStore.getState())),
     );
 
     this.interaction = new SceneInteraction({
@@ -206,7 +215,7 @@ export class MazeScene {
       app.canvas,
       () => {
         const state = useMazeStore.getState();
-        const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+        const cfg = state.floorFields[state.activeFloorId].fieldConfig;
         return makeProjection(cfg);
       },
       () => this.viewport,
@@ -216,8 +225,8 @@ export class MazeScene {
         endPan: () => this.interaction.defaultPan.end(),
       },
       {
-        onPreviewUpdate: (cells, btn, kind, cfg, geometry) => {
-          this.primitivePreviewOverlay.update(cells, btn, kind, cfg, geometry);
+        onPreviewUpdate: (cells, btn, _kind, cfg, geometry) => {
+          this.primitivePreviewOverlay.update(cells, btn, cfg, geometry);
         },
         onPreviewClear: () => {
           this.primitivePreviewOverlay.clear();
@@ -230,10 +239,10 @@ export class MazeScene {
           if (_btn === 2) store.removeFieldPoints(cells);
           else if (_btn === 0) store.addFieldPoints(cells);
         },
-        onSelectionMove: (cells, dx, dy) => {
+        onSelectionMove: (cells, vector) => {
           const beforeState = useMazeStore.getState();
           const before = beforeState.floorFields[beforeState.activeFloorId].fieldPoints;
-          beforeState.moveFieldPoints(cells, dx, dy);
+          beforeState.moveFieldPoints(cells, vector);
           const afterState = useMazeStore.getState();
           const fieldPointsChanged = afterState.floorFields[afterState.activeFloorId].fieldPoints !== before;
           const moveQueuedForConfirmation = afterState.fieldEditConfirmation !== null
@@ -241,20 +250,25 @@ export class MazeScene {
           return fieldPointsChanged || moveQueuedForConfirmation;
         },
         onSymmetryPreviewUpdate: (axis, polygon) => {
-          this.fieldEditorOverlay.updateSymmetryPreview(axis, polygon);
+          this.fieldEditorOverlay.scheduleSymmetryPreview(axis, polygon);
         },
       },
     );
 
+    // Renderers react to store updates by editing Pixi objects, which the scheduler's render-group
+    // hooks already pick up; this explicit request is the safety net for any update path they miss.
+    this.unsubscribeRender = useMazeStore.subscribe(() => this.renderScheduler.requestRender());
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToQualityOpen();
     this.subscribeToQualityRulesReconfirm();
+    this.unwatchDevicePixelRatio = watchDevicePixelRatio((dpr) => this.applyDevicePixelRatio(dpr));
     this.syncLayersToViewport();
   }
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
+    if (st.floorLabelDrag !== null) return this.floorLabelDragController;
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }
@@ -264,14 +278,14 @@ export class MazeScene {
     return null;
   }
 
-  /** Which TessellationConfig represents "the current field" for hover purposes, per open card.
+  /** Which FieldConfig represents "the current field" for hover purposes, per open card.
    * NOT reused by refit() — refit()'s fieldCfg answers a different question (what to fit when the
    * maze view is NOT shown), which only partially overlaps with this table. */
-  private getActiveTessellationConfig(st: ReturnType<typeof useMazeStore.getState>): TessellationConfig {
+  private getActiveFieldConfig(st: ReturnType<typeof useMazeStore.getState>): FieldConfig {
     return TESSELLATION_CONFIG_BY_CARD[st.openCard](st);
   }
 
-  private getProjectionFor(cfg: TessellationConfig): TessellationProjection {
+  private getProjectionFor(cfg: FieldConfig): TessellationProjection {
     if (this.cachedProjection?.cfg !== cfg) {
       this.cachedProjection = { cfg, projection: makeProjection(cfg) };
     }
@@ -320,12 +334,12 @@ export class MazeScene {
   }
 
   private subscribeToPreview(): void {
-    let prevPreview = useMazeStore.getState().previewTessellationConfig;
+    let prevPreview = useMazeStore.getState().previewFieldConfig;
     let prevCard = useMazeStore.getState().openCard;
     this.unsubscribePreview = useMazeStore.subscribe((state) => {
-      const previewChanged = state.previewTessellationConfig !== prevPreview;
+      const previewChanged = state.previewFieldConfig !== prevPreview;
       const openChanged = state.openCard !== prevCard;
-      prevPreview = state.previewTessellationConfig;
+      prevPreview = state.previewFieldConfig;
       prevCard = state.openCard;
       if (previewChanged || openChanged) {
         this.syncLayersToViewport();
@@ -340,8 +354,8 @@ export class MazeScene {
         const wasQuality = prevCard === "quality";
         const isQuality = state.openCard === "quality";
         prevCard = state.openCard;
-        if (isQuality) this.app.ticker.stop();
-        else if (wasQuality) this.app.ticker.start();
+        if (isQuality) this.renderScheduler.setSuspended(true);
+        else if (wasQuality) this.renderScheduler.setSuspended(false);
       }
     });
   }
@@ -393,7 +407,7 @@ export class MazeScene {
     let prevPrimitive = initial.floorFields[initial.activeFloorId].fieldPrimitive;
     let prevOperation = initial.floorFields[initial.activeFloorId].fieldOperation;
     let prevFieldPoints = initial.floorFields[initial.activeFloorId].fieldPoints;
-    let prevConfig = initial.floorFields[initial.activeFloorId].tessellationConfig;
+    let prevConfig = initial.floorFields[initial.activeFloorId].fieldConfig;
     let prevFrameVisible = initial.showPrimitiveFrame;
     this.primitivePreviewOverlay.setFrameVisible(initial.showPrimitiveFrame);
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
@@ -405,7 +419,7 @@ export class MazeScene {
       const primitiveChanged = field.fieldPrimitive !== prevPrimitive;
       const operationChanged = field.fieldOperation !== prevOperation;
       const fieldPointsChanged = field.fieldPoints !== prevFieldPoints;
-      const configChanged = field.tessellationConfig !== prevConfig;
+      const configChanged = field.fieldConfig !== prevConfig;
       const frameVisibilityChanged = state.showPrimitiveFrame !== prevFrameVisible;
       prevCard = state.openCard;
       prevFloorId = state.activeFloorId;
@@ -413,7 +427,7 @@ export class MazeScene {
       prevPrimitive = field.fieldPrimitive;
       prevOperation = field.fieldOperation;
       prevFieldPoints = field.fieldPoints;
-      prevConfig = field.tessellationConfig;
+      prevConfig = field.fieldConfig;
       prevFrameVisible = state.showPrimitiveFrame;
       if (frameVisibilityChanged) this.primitivePreviewOverlay.setFrameVisible(state.showPrimitiveFrame);
       let selectionMoveCommitted = false;
@@ -433,7 +447,7 @@ export class MazeScene {
       })) {
         this.fieldEditController.cancelPointerGesture();
         this.primitivePreviewOverlay.clear();
-        this.fieldEditorOverlay.updateHover(null, field.tessellationConfig);
+        this.fieldEditorOverlay.updateHover(null, field.fieldConfig);
       }
       if (!isFieldSetup) {
         return;
@@ -459,6 +473,7 @@ export class MazeScene {
       );
     }
     this.viewportScaleCallback?.(this.viewport.scale.x);
+    this.renderScheduler.requestRender();
   }
 
   exportPng(settings: PngExportSettings): Promise<Blob | null> {
@@ -543,6 +558,17 @@ export class MazeScene {
     this.exportFrameOverlay.applyViewportScaleAroundFrameCentre(targetScale);
   }
 
+  /** Re-renders at the new display density after the window moves to a monitor with a different
+   * device pixel ratio (or browser zoom changes) — `resolution` is otherwise fixed at app init, so
+   * moving onto a Retina display would leave the canvas blurry, and moving off it would keep
+   * rendering at 2x for nothing. The screen size in CSS pixels is unchanged; only the backing
+   * buffer is resized. MSAA (`antialias`) is a WebGL context attribute and stays as chosen at init. */
+  private applyDevicePixelRatio(dpr: number): void {
+    if (dpr === this.app.renderer.resolution) return;
+    this.app.renderer.resize(this.app.screen.width, this.app.screen.height, dpr);
+    this.renderScheduler.requestRender();
+  }
+
   /** Re-notifies every `viewportListeners` entry (and `ExportFrameOverlay`'s screen-space frame,
    * via `syncLayersToViewport`'s fresh `app.screen.width/height` read) with the current viewport
    * transform, without changing it — for a real canvas-size change (the DOM element itself
@@ -570,20 +596,20 @@ export class MazeScene {
 
   refit(): void {
     this.app.resize();
-    const { nodes, previewTessellationConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
+    const { nodes, previewFieldConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
     const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
     const { x, y, scale } = showsMaze
       ? fitMazeViewport(
-        floors.map((f) => floorFields[f.id].tessellationConfig),
+        floors.map((f) => floorFields[f.id].fieldConfig),
         nodes,
         activeFloorIndex,
         this.app.screen.width,
         this.app.screen.height,
       )
       : fitFieldViewport(
-        openCard === "basic_config" ? previewTessellationConfig : floorFields[activeFloorId].tessellationConfig,
-        openCard === "basic_config" ? [previewTessellationConfig] : floors.map((f) => floorFields[f.id].tessellationConfig),
+        openCard === "basic_config" ? previewFieldConfig : floorFields[activeFloorId].fieldConfig,
+        openCard === "basic_config" ? [previewFieldConfig] : floors.map((f) => floorFields[f.id].fieldConfig),
         this.app.screen.width,
         this.app.screen.height,
       );
@@ -595,6 +621,8 @@ export class MazeScene {
 
   destroy(): void {
     this.hoverCallback?.(null);
+    this.unsubscribeRender?.();
+    this.unwatchDevicePixelRatio?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribeQualityOpen?.();
@@ -613,6 +641,7 @@ export class MazeScene {
     this.postEditController.destroy();
     this.fieldEditController.destroy();
     this.interaction.destroy();
+    this.renderScheduler.destroy();
     this.app.destroy();
   }
 }

@@ -21,8 +21,15 @@ src/
   components/
     ControlPanel    — seed/width/height inputs, Generate/Reset buttons
     DebugPanel      — node ID / coords toggles, selected node info
+    Tooltip         — accessible tooltip for disabled controls — see notifications.md
+    FieldHint       — `useFieldHint()` field-anchored hint — see notifications.md
+    floating/       — shared floating-ui positioning for Tooltip / FieldHint
   store/
     mazeStore       — Zustand store: maze state + actions
+  notifications/
+    notificationRegistry — toast codes (category, message, dedupParams) — see notifications.md
+    notificationStore    — notify(), notice/error zones, timers
+    announcer            — screen-reader announcement queue for `Announcer`
   wasm/
     types           — TypeScript interfaces matching WASM DTOs
     wasmLoader      — lazy WASM init, singleton module ref
@@ -48,6 +55,10 @@ User input → ControlPanel → mazeStore.generate()
 2. `MazeRenderer` subscribes to `mazeStore` via Zustand
 3. WASM lazy-loaded on first `generate()` call via `initWasm()` in `wasmLoader`
 4. Subsequent calls skip init (singleton promise guards)
+
+Before React mounts, `main.tsx` installs PixiJS's `unsafe-eval` compatibility module. It replaces
+Pixi's dynamic `new Function()` synchronization paths with static implementations, so the canvas
+renderer works under a strict CSP without adding `unsafe-eval` to `script-src`.
 
 ## Rendering
 

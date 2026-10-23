@@ -1,10 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("../wasm/wasmLoader", () => ({
-  getWasm: () => ({
-    cartesian_coords: (config: { points: [number, number][] }) => config.points,
-  }),
-}));
 
 import { render, screen } from "@testing-library/react";
 import { PresetSplitNodesDialog } from "../components/features/PresetSplitNodesDialog";

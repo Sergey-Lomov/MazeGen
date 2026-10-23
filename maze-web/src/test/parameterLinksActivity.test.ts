@@ -25,7 +25,8 @@ type P =
   | "elevatorBadges.fillColor"
   | "markerIndex.enabled"
   | "markerIndex.fillColor"
-  | "backgroundColor";
+  | "backgroundColor"
+  | "floorLabel.labelType";
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
@@ -35,7 +36,7 @@ const registry: Record<P, ParamDescriptor> = Object.fromEntries(
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
-    "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor",
+    "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor", "floorLabel.labelType",
   ].map((p) => [p, { type: "color", equals: Object.is, label: p, group: [], format: String }]),
 ) as unknown as Record<P, ParamDescriptor>;
 
@@ -55,6 +56,12 @@ function active(path: P, ctx: Partial<ParamActivityContext> = {}, settings: Para
 }
 
 describe("isPathActive", () => {
+  it("marks the floor-label index style inactive in title mode", () => {
+    const floorLabel = { enabled: true, backgroundShape: "rectangle" as const };
+    expect(active("floorLabel.labelType", { hasMultipleFloors: true }, { floorLabel: { ...floorLabel, labelMode: "index" } })).toBe(true);
+    expect(active("floorLabel.labelType", { hasMultipleFloors: true }, { floorLabel: { ...floorLabel, labelMode: "title" } })).toBe(false);
+  });
+
   it("hides teleport fields when the maze has no teleports", () => {
     expect(active("teleportMarker.fillColor", { hasTeleports: false })).toBe(false);
   });
@@ -165,6 +172,21 @@ describe("computeActivePaths", () => {
     expect(result.has("oneWayColor")).toBe(true);
     expect(result.has("gridColor")).toBe(false);
     expect(result.has("backgroundColor")).toBe(true);
+  });
+});
+
+describe("isPathActive: size adaptation (GitHub issue #819)", () => {
+  const check = (path: string, hasAreaSpread?: boolean) => isPathActive(path, {} as never, { ...baseCtx, hasAreaSpread }, {});
+
+  it("deactivates every adaptation path when the cell areas have no spread", () => {
+    for (const path of ["startMarker.sizeAdaptation", "teleportFloorBadge.sizeAdaptation", "markerSizeAdaptation", "verticalSizeAdaptation"]) {
+      expect(check(path, false)).toBe(false);
+    }
+  });
+
+  it("keeps an adaptation path active when the spread exists or is unknown", () => {
+    expect(check("startMarker.sizeAdaptation", true)).toBe(true);
+    expect(check("startMarker.sizeAdaptation", undefined)).toBe(true);
   });
 });
 

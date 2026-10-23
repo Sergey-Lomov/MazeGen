@@ -4,6 +4,9 @@ import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { fieldOf } from "./fieldConfigFixtures";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
+import { AUTO_FILL_PREVIEW_ACTIVE } from "../notifications/fieldSetupNotifications";
 
 const activeControllers: FieldEditController[] = [];
 
@@ -13,7 +16,7 @@ function makeController() {
   const symmetryUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
   const selectionMovePreviews: { source: [number, number][]; temporary: [number, number][] }[] = [];
-  const selectionMoves: { cells: [number, number][]; dx: number; dy: number }[] = [];
+  const selectionMoves: { cells: [number, number][]; vector: [number, number] }[] = [];
   const previewClear = vi.fn();
   const canvas = {
     addEventListener: vi.fn(),
@@ -22,7 +25,7 @@ function makeController() {
   const viewport = { x: 0, y: 0, scale: { x: 1, y: 1 } } as never;
   const controller = new FieldEditController(
     canvas,
-    () => makeProjection({ type: "square", width: 10, height: 10 }),
+    () => makeProjection(fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
     () => viewport,
     { startPan: vi.fn(), movePan: vi.fn(), endPan: vi.fn() },
     {
@@ -33,8 +36,8 @@ function makeController() {
       onPreviewClear: previewClear,
       onPrimitiveCommit: (cells, button) => commits.push({ cells, button }),
       onSelectionMovePreview: (source, temporary) => selectionMovePreviews.push({ source, temporary }),
-      onSelectionMove: (cells, dx, dy) => {
-        selectionMoves.push({ cells, dx, dy });
+      onSelectionMove: (cells, vector) => {
+        selectionMoves.push({ cells, vector });
         return true;
       },
       onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
@@ -56,6 +59,7 @@ function lastPolygon(updates: PrimitiveWorldGeometry[]): Extract<PrimitiveWorldG
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState({
     ...baseStoreState(),
     backgroundAutoFillPreview: null,
@@ -64,7 +68,7 @@ beforeEach(() => {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
         fieldEditMode: "custom",
         fieldPrimitive: "polygon",
-        tessellationConfig: { type: "square", width: 10, height: 10 },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
       }),
     },
   });
@@ -75,11 +79,64 @@ afterEach(() => {
   activeControllers.length = 0;
 });
 
+describe("FieldEditController primitive shortcuts", () => {
+  it("selects field figures in list order and assigns mnemonic keys to special tools", () => {
+    makeController();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("parallelogram");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit8" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("magic_wand");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
+  });
+
+  it("does not select the disabled symmetry tool in select mode", () => {
+    makeController();
+    useMazeStore.getState().setFieldOperation("select");
+    useMazeStore.getState().setFieldPrimitive("point");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("does not select a tool while field editing is locked", () => {
+    makeController();
+    useMazeStore.getState().setFieldPrimitive("point");
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set() });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit7" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("clears the feature-card focus after a keyboard tool selection", () => {
+    makeController();
+    const header = document.createElement("button");
+    document.body.append(header);
+    header.focus();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1" }));
+
+    expect(document.activeElement).not.toBe(header);
+    header.remove();
+  });
+});
+
 describe("FieldEditController polygon interaction", () => {
   it("updates the preview on pointer movement and marks the closing segment dashed", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
     controller.onPointerMove(120, -120);
 
     const geometry = lastPolygon(updates);
@@ -111,9 +168,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("snaps a dragged vertex to the cell center by default", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
 
     controller.onPointerDown(140, -60, 0);
     controller.onPointerMove(165, -165);
@@ -125,9 +182,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("allows a dragged vertex to move freely while Shift is held", () => {
     const { controller, updates } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
     controller.onPointerDown(140, -60, 0);
@@ -140,20 +197,20 @@ describe("FieldEditController polygon interaction", () => {
 
   it("commits when a new vertex is double-clicked", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
-    click(controller, 200, -120);
-    controller.onDoubleClick(200, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
+    click(controller, 205, -125);
+    controller.onDoubleClick(205, -125);
 
     expect(commits).toHaveLength(1);
   });
 
   it("commits when the last installed vertex is double-clicked", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     controller.onDoubleClick(140, -140);
 
     expect(commits).toHaveLength(1);
@@ -166,14 +223,14 @@ describe("FieldEditController polygon interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "polygon",
           fieldOperation: "remove",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
         }),
       },
     });
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
     expect(commits).toHaveLength(1);
@@ -182,9 +239,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("does not commit a stale polygon after the tool changes", () => {
     const { controller, commits } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "point" },
@@ -197,9 +254,9 @@ describe("FieldEditController polygon interaction", () => {
 
   it("cancels an in-progress polygon with Escape", () => {
     const { controller, commits, previewClear } = makeController();
-    click(controller, 40, -40);
-    click(controller, 120, -40);
-    click(controller, 120, -120);
+    click(controller, 45, -45);
+    click(controller, 125, -45);
+    click(controller, 125, -125);
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
 
     expect(commits).toHaveLength(0);
@@ -208,14 +265,14 @@ describe("FieldEditController polygon interaction", () => {
 });
 
 describe("FieldEditController select interaction", () => {
-  it("keeps the existing cells selected and draws their dashed boundary on polygon release", () => {
+  it("keeps the existing cells selected and draws their boundary contour on polygon release", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
           fieldEditMode: "custom",
           fieldPrimitive: "polygon",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([
             encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(1, 1), encodePoint(2, 0),
           ]),
@@ -225,25 +282,28 @@ describe("FieldEditController select interaction", () => {
     const { controller, updates, previewCells, commits, selectionMoves } = makeController();
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
-    click(controller, 0, -10);
-    click(controller, 80, -10);
-    click(controller, 80, -90);
-    click(controller, 0, -90);
+    click(controller, 5, -10);
+    click(controller, 85, -10);
+    click(controller, 85, -90);
+    click(controller, 5, -90);
     expect(previewCells.at(-1)).toEqual(expect.arrayContaining([[0, 0], [1, 0], [0, 1], [1, 1]]));
     expect(previewCells.at(-1)).toHaveLength(4);
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
     expect(updates.at(-1)).toMatchObject({ kind: "boundary" });
+    const released = updates.at(-1);
+    if (released?.kind !== "boundary") throw new Error("expected boundary geometry");
+    expect(released.components).toHaveLength(released.segments.length);
     expect(previewCells.at(-1)).toEqual([]);
     expect(commits).toHaveLength(0);
 
-    controller.onPointerDown(0, -10, 0);
-    controller.onPointerMove(80, -10, 0);
+    controller.onPointerDown(5, -10, 0);
+    controller.onPointerMove(85, -10, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
     expect(selectionMoves).toHaveLength(1);
-    expect(selectionMoves[0]).toMatchObject({ dx: 2, dy: 0 });
+    expect(selectionMoves[0]).toMatchObject({ vector: [2, 0] });
     expect(selectionMoves[0].cells).toEqual(expect.arrayContaining([[0, 0], [1, 0], [0, 1], [1, 1]]));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
   });
@@ -255,7 +315,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
         }),
       },
@@ -280,7 +340,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
         }),
       },
@@ -307,7 +367,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
     expect(controller.isGestureActive()).toBe(false);
   });
@@ -337,7 +397,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          fieldPoints: new Set([encodePoint(0, 0), encodePoint(2, 0)]),
+          fieldPoints: new Set([[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([x, y]) => encodePoint(x, y))),
         }),
       },
     });
@@ -345,16 +405,16 @@ describe("FieldEditController select interaction", () => {
 
     click(controller, 20, -20);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
-    controller.onPointerDown(100, -20, 0);
+    controller.onPointerDown(60, -20, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
 
     controller.onPointerDown(20, -20, 0);
-    controller.onPointerMove(60, -20, 0);
+    controller.onPointerMove(20, -60, 0);
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [2, 0]], dx: 1, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [0, 1] }]);
   });
 
   it("does nothing for RMB in select mode", () => {
@@ -398,7 +458,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
   });
 
@@ -423,7 +483,7 @@ describe("FieldEditController select interaction", () => {
     controller.onPointerUp();
     controller.onPointerDown(200, -200, 0);
 
-    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], dx: 2, dy: 0 }]);
+    expect(selectionMoves).toEqual([{ cells: [[0, 0], [1, 0]], vector: [2, 0] }]);
     expect(controller.hasSelectionPreview()).toBe(false);
   });
 
@@ -434,7 +494,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0)]),
         }),
       },
@@ -547,6 +607,36 @@ describe("FieldEditController point interaction", () => {
     expect(controller.getHoverCell(20, -20)).toBeNull();
   });
 
+  it("explains ignored canvas clicks during an auto-fill preview with a notice", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+
+    const notices = useNotificationStore.getState().notices;
+    expect(notices.map((n) => n.code)).toEqual([AUTO_FILL_PREVIEW_ACTIVE]);
+  });
+
+  it("does not show the auto-fill notice for pan gestures during a preview", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 1);
+    controller.onPointerUp();
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
+  });
+
+  it("does not show the auto-fill notice for clicks without a preview", () => {
+    const { controller } = makeController();
+    click(controller, 20, -20);
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
+  });
+
   it("inverts add/remove with RMB", () => {
     useMazeStore.setState({
       floorFields: {
@@ -576,7 +666,7 @@ describe("FieldEditController point interaction", () => {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
           fieldEditMode: "custom",
           fieldPrimitive: "point",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
         }),
       },
     });

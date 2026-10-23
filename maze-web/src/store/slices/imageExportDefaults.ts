@@ -11,6 +11,9 @@ import type {
   MarkerSettings,
   MarkerIndexSettings,
   MarkerLayoutSettingsFields,
+  FloorLabelSettings,
+  FloorLabelMode,
+  FloorState,
 } from "../storeTypes";
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
@@ -29,6 +32,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
     borderWidth: style.borderWidth,
     gapWidth: style.gapWidth,
     size: style.size,
+    sizeAdaptation: style.sizeAdaptation,
     ...(text !== undefined
       ? {
           text,
@@ -57,6 +61,7 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerShape: DEFAULT_MAZE_RENDER_STYLE.startMarker.shape,
   cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
+  markerSizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.startMarker.sizeAdaptation,
   markerFillColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.fillColor,
   markerBorderColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderColor,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
@@ -64,7 +69,40 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
   markerTextMargin: DEFAULT_TEXT_MARGIN,
   markerTextFontWeight: "bold",
+  floorLabelType: "letters",
 };
+
+export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
+  enabled: false,
+  labelMode: "index",
+  prefix: "Floor ",
+  labelType: "letters",
+  textColor: canvas.floor.default,
+  textFontWeight: "bold",
+  textAlignment: "center",
+  textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
+  textMargin: DEFAULT_TEXT_MARGIN,
+  backgroundShape: "rectangle",
+  width: 72,
+  height: 28,
+  cornerRadius: 3,
+  gap: 8,
+  borderWidth: 2,
+  fillColor: 0xf0c900,
+  borderColor: canvas.vertical.default,
+  positionsByFloorId: {},
+};
+
+/** Floor-label mode picked on the first Image Export open or on "Reset all" (GitHub issue #747):
+ * floor titles once the user has renamed any floor, the generated index label otherwise. A later
+ * rename never switches an existing setting. */
+export function defaultFloorLabelMode(floors: readonly Pick<FloorState, "titleCustomized">[]): FloorLabelMode {
+  return floors.some((floor) => floor.titleCustomized) ? "title" : "index";
+}
+
+export function withFloorLabelMode<S extends { floorLabel: FloorLabelSettings }>(settings: S, labelMode: FloorLabelMode): S {
+  return { ...settings, floorLabel: { ...settings.floorLabel, labelMode } };
+}
 
 /** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub
  *  issue #668) — every link out of these starts disabled (`parameterLinksDefaults.ts`), so these
@@ -76,6 +114,7 @@ export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
   verticalCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.cornerStyle,
   verticalShape: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.shape,
   verticalSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.size,
+  verticalSizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.sizeAdaptation,
   verticalBorderWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.borderWidth,
   verticalGapWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.gapWidth,
   verticalFillColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.fillColor,
@@ -100,10 +139,13 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
     borderWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth,
     gapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeGapWidth,
     size: DEFAULT_MAZE_RENDER_STYLE.teleport.size,
+    sizeAdaptation: DEFAULT_MAZE_RENDER_STYLE.teleport.sizeAdaptation,
   },
   teleportConnectorColor: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorColor,
   teleportConnectorWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorWidth,
   teleportConnectorStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorStyle,
+  teleportCurveDirection: DEFAULT_MAZE_RENDER_STYLE.teleport.curveDirection,
+  teleportCurveStrength: DEFAULT_MAZE_RENDER_STYLE.teleport.curveStrength,
   teleportAvoidFieldExit: false,
   teleportArrowMode: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowMode,
   teleportArrowPeriod: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowPeriod,
@@ -149,15 +191,16 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   elevatorArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowSize,
   elevatorArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowStyle,
   elevatorArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowCornerStyle,
-  // "Floor-number badges" (GitHub issue #430) — enabled by default, Arabic numerals, a small
-  // fraction of the elevator marker's own radius, laid out above/below the marker
+  // "Floor-number badges" (GitHub issue #430) — enabled by default, using the shared floor-label
+  // style (letters by default), with a small fraction of the elevator marker's own radius, laid
+  // out above/below the marker
   // (`placement: "top_bottom"`). `fillColor`/`textColor` are an independently visible fill+text
   // pair (not a knockout/cutout like `drawFloorBadge`'s off-floor navigation stand-in), with
   // `fillColor` a dedicated accent yellow rather than `canvas.vertical.default`, so a badge ring
   // reads clearly against the marker it surrounds.
   elevatorBadges: {
     enabled: true,
-    labelType: "arabic",
+    labelType: "letters",
     size: 12,
     placement: "top_bottom",
     distance: 4,
@@ -222,9 +265,9 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   // until changed" rationale as every other section's own defaults.
   // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
   // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
   // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
   // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
   // one-way arrow still uses its own dedicated color (`decorativeStairsOneWayArrowColor`) below,
@@ -270,10 +313,12 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
     splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: canvas.vertical.default,
     verticalDecorativeLineWidth: 2,
     verticalDecorativeSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay.size,
+    verticalDecorativeSizeAdaptation: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay.sizeAdaptation,
     verticalDecorativeArrowSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
@@ -281,10 +326,10 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-    "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
+    "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
   ],
 ) as unknown as VectorByWallsSettings;
 
@@ -318,6 +363,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     gridColor: canvas.grid.line,
     color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
+    junctionRadius: 4,
     join: "round",
     renderStyle: "contour",
     startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
@@ -332,6 +378,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     splitGapWidth: 0,
     splitDiagonalBowAmount: 0.5,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
@@ -339,8 +386,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],
 ) as unknown as VectorByCorridorsSettings;
@@ -349,6 +396,6 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
 export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
   outputMode: "digital",
-  digital: { scale: 1, canvasMode: "edge_to_edge", marginValue: 20, fixedWidth: 1920, fixedHeight: 1080 },
+  digital: { scale: 4, canvasMode: "edge_to_edge", marginValue: 20, fixedWidth: 1920, fixedHeight: 1080 },
   print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: true, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
 };

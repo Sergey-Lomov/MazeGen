@@ -5,6 +5,7 @@ import type { HoverInfo } from "../pixi/hoverTypes";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveCellInspection } from "../pixi/cellInspectionResolver";
 import { ui, typography, muted, inset, spacing } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 interface HoverInfoPanelProps {
   scene: MazeScene | null;
@@ -48,7 +49,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   useMazeStore((s) => s.debugStep);
   useMazeStore((s) => s.presetSplitPoints);
   useMazeStore((s) => s.presetConnections);
-  useMazeStore((s) => s.activeTessellationConfig);
+  useMazeStore((s) => s.activeFieldConfig);
   useMazeStore((s) => s.floorFields);
   useMazeStore((s) => s.presetStart);
   useMazeStore((s) => s.presetFinish);
@@ -77,10 +78,9 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   return (
     <div style={styles.bar}>
       {scene && (
-        <span
+        <Tooltip content="Reset zoom to 100% (Shift+1)"><span
           role="button"
           tabIndex={0}
-          title="Reset zoom to 100% (Shift+1)"
           aria-label="Reset zoom to 100%"
           onClick={resetZoom}
           onKeyDown={(e) => {
@@ -93,7 +93,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
         >
           <Search size={13} />
           {Math.round(scale * 100)}%
-        </span>
+        </span></Tooltip>
       )}
       {hoverText && <span style={styles.label}>{hoverText}</span>}
     </div>

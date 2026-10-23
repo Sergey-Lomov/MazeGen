@@ -10,16 +10,7 @@
  * live here once. */
 
 import type { SplitSpecialShapeKind } from "./renderers/types";
-
-/** Reorders a dense face-kind matrix from the tessellation's native face slots into a supplied
- * canonical perimeter order. Non-Cairo callers omit the order and keep their existing indices. */
-export function canonicalizeFaceKinds(
-  faceKindsByNode: SplitFaceKind[][],
-  canonicalFaceOrder?: readonly number[],
-): SplitFaceKind[][] {
-  if (!canonicalFaceOrder) return faceKindsByNode;
-  return faceKindsByNode.map((kinds) => canonicalFaceOrder.map((rawIndex) => kinds[rawIndex] ?? "wall"));
-}
+import { canonicalFaceKinds, type SplitShapeBinding } from "./splitShape";
 
 /** `"none"` deliberately doesn't exist here — every face always has a real decided-or-default
  *  kind (`wall` for post-edit, `undefined`/optional for presets); "no decision yet" is represented
@@ -67,6 +58,13 @@ export function hasCompleteOppositePair(decidedFaces: ReadonlySet<number>, degre
   return circularDist(a, b, degree) === degree / 2;
 }
 
+/** True if a node holding `decidedFaces` is a finished bridge/diagonal that must not gain a face:
+ * a complete opposite pair on a point with more than one node. A plain point's only node has no
+ * recognized shape to protect, so a straight corridor through it can always be extended. */
+export function isFinishedSplitPair(decidedFaces: ReadonlySet<number>, degree: number, nodeCount: number): boolean {
+  return nodeCount > 1 && hasCompleteOppositePair(decidedFaces, degree);
+}
+
 /** The two outer faces of three consecutive faces on a circular tile, excluding the middle. */
 export function adjacentTripleOuterFaces(faces: number[], degree: number): [number, number] | null {
   if (faces.length !== 3) return null;
@@ -79,13 +77,16 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
   return null;
 }
 
-/** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
- *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294 — or
+/** Recognizes a split point's topology by its cell's shape template (`binding`; a cell without one
+ *  is never recognized). `localFaceKindsByNode` is in the cell's `faces_of` order; recognition runs
+ *  on the template's canonical faces, so it holds for every cell of the template. The `regular:4`
+ *  template: a two-node topology as `"bridge"` (each node an opposite-face pair) or `"diagonal"` (each node an
+ *  adjacent-face pair) — GitHub issue #294 — or
  *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
  *  `"hex_bridge"` (two nodes, each an opposite-face pair), `"hex_triple_bridge"` (three nodes, all
  *  opposite-face pairs), `"hex_diagonal"` (two nodes, neither an opposite-face pair — adjacent
  *  and/or skip-face pairs), `"hex_triple_corridor"` (three nodes: one opposite-face pair plus two
- *  adjacent-face pairs). `faceKindsByNode[nodeIndex]` is that node's kind on every one of the
+ *  adjacent-face pairs). `localFaceKindsByNode[nodeIndex]` is that node's kind on every one of the
  *  point's faces, in the same order as `offsets`/`faceInputs`; a node only counts as "connected" on
  *  a face for `passage`/`one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null`
  *  for anything else (wrong degree/node count, not exactly 2 connected faces per node, or a
@@ -98,14 +99,15 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
  *  so a recognized shape would hide the directionality. Falling back to `null` makes the caller
  *  render the ordinary per-node hub connectors, which draw the one-way arrow. */
 export function detectSplitSpecialShapeKind(
-  rawFaceKindsByNode: SplitFaceKind[][],
-  canonicalFaceOrder?: readonly number[],
+  localFaceKindsByNode: SplitFaceKind[][],
+  binding: SplitShapeBinding | null,
 ): SplitSpecialShapeKind | null {
-  const faceKindsByNode = canonicalizeFaceKinds(rawFaceKindsByNode, canonicalFaceOrder);
+  if (binding === null) return null;
+  const faceKindsByNode = localFaceKindsByNode.map((kinds) => canonicalFaceKinds(binding, kinds));
   const degree = faceKindsByNode[0]?.length ?? 0;
   const nodeCount = faceKindsByNode.length;
   if (faceKindsByNode.some((kinds) => kinds.some((k) => k === "one_way_out" || k === "one_way_in"))) return null;
-  if (degree === 5) {
+  if (binding.shape === "cairo_pentagon") {
     if (nodeCount !== 2) return null;
     const connectedIndices = faceKindsByNode.map((kinds) => connectedIndicesOf(kinds));
     const hasPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
@@ -122,7 +124,7 @@ export function detectSplitSpecialShapeKind(
       (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
       ? "cairo_adjacent_divider" : null;
   }
-  if (degree !== 4 && degree !== 6) return null;
+  if (binding.shape !== "regular:4" && binding.shape !== "regular:6") return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 
@@ -187,9 +189,55 @@ export function connectedFaceIndices(kinds: SplitFaceKind[]): number[] {
  *  forbidden, whether by an explicit decision or by post-edit's default). */
 const NO_OWN_SEGMENT_KINDS = new Set<SplitFaceKind>(["wall"]);
 
+type Pt = { x: number; y: number };
+
 export interface SplitFaceInput {
-  v0: { x: number; y: number };
-  v1: { x: number; y: number };
+  v0: Pt;
+  v1: Pt;
+  /** The face's flattened boundary from `v0` to `v1` (both included). Absent for a straight face,
+   *  which is the chord `v0 -> v1`; present for a curved one, so a node's share follows the arc. */
+  polyline?: readonly Pt[];
+}
+
+/** `face`'s boundary as a point list from `v0` to `v1`. */
+export function facePolyline(face: SplitFaceInput): readonly Pt[] {
+  return face.polyline && face.polyline.length >= 2 ? face.polyline : [face.v0, face.v1];
+}
+
+/** The point at fraction `t` (0..1) of `polyline`'s length. */
+export function pointAlongPolyline(polyline: readonly Pt[], t: number): Pt {
+  return subPolyline(polyline, t, t)[0];
+}
+
+/** The part of `polyline` between the fractions `t0 <= t1` of its length, end points exact. */
+export function subPolyline(polyline: readonly Pt[], t0: number, t1: number): Pt[] {
+  if (polyline.length === 2) {
+    const [a, b] = polyline;
+    const lerp = (t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    return [lerp(t0), lerp(t1)];
+  }
+  const lengths: number[] = [0];
+  for (let i = 1; i < polyline.length; i++) {
+    lengths.push(lengths[i - 1] + Math.hypot(polyline[i].x - polyline[i - 1].x, polyline[i].y - polyline[i - 1].y));
+  }
+  const total = lengths[lengths.length - 1];
+  if (total === 0) return [polyline[0], polyline[polyline.length - 1]];
+  const at = (distance: number): Pt => {
+    let i = 1;
+    while (i < polyline.length - 1 && lengths[i] < distance) i++;
+    const span = lengths[i] - lengths[i - 1];
+    const f = span === 0 ? 0 : (distance - lengths[i - 1]) / span;
+    return {
+      x: polyline[i - 1].x + (polyline[i].x - polyline[i - 1].x) * f,
+      y: polyline[i - 1].y + (polyline[i].y - polyline[i - 1].y) * f,
+    };
+  };
+  const d0 = t0 * total, d1 = t1 * total;
+  const inner: Pt[] = [];
+  for (let i = 1; i < polyline.length - 1; i++) {
+    if (lengths[i] > d0 && lengths[i] < d1) inner.push(polyline[i]);
+  }
+  return [t0 <= 0 ? polyline[0] : at(d0), ...inner, t1 >= 1 ? polyline[polyline.length - 1] : at(d1)];
 }
 
 /** One node's kind on one face, alongside the node's own index (its position in the node list —
@@ -204,6 +252,11 @@ export interface SplitFaceSegment {
   kind: SplitFaceKind;
   v0: { x: number; y: number };
   v1: { x: number; y: number };
+  /** The share's boundary from `v0` to `v1` — two points for a straight face, the flattened arc
+   *  for a curved one. */
+  polyline: Pt[];
+  /** The middle of the share along `polyline`, where its connector ends. */
+  mid: Pt;
   /** `true` when `v0`/`v1` lands exactly on the face's own real endpoint (`face.v0`/`face.v1`, the
    *  boundary shared with a neighboring tile/wall) rather than an internal division point between
    *  two nodes sharing this face (GitHub issue #317) — a shape sharing this face with another node
@@ -268,13 +321,16 @@ export function computeSplitFaceLayouts(
     // fixed, so switching the active node only changes z-order, not layout.
     const byNodeIndex = [...connected].sort((a, b) => a.nodeIndex - b.nodeIndex);
     const n = byNodeIndex.length;
+    const boundary = facePolyline(face);
     const segmentsByNodeIndex = byNodeIndex.map((entry, i) => {
-      const t0 = i / n, t1 = (i + 1) / n;
+      const polyline = subPolyline(boundary, i / n, (i + 1) / n);
       return {
         nodeIndex: entry.nodeIndex,
         kind: entry.kind,
-        v0: { x: face.v0.x + (face.v1.x - face.v0.x) * t0, y: face.v0.y + (face.v1.y - face.v0.y) * t0 },
-        v1: { x: face.v0.x + (face.v1.x - face.v0.x) * t1, y: face.v0.y + (face.v1.y - face.v0.y) * t1 },
+        v0: polyline[0],
+        v1: polyline[polyline.length - 1],
+        polyline,
+        mid: pointAlongPolyline(boundary, (i + 0.5) / n),
         atFaceStart: i === 0,
         atFaceEnd: i === n - 1,
       };
@@ -291,10 +347,32 @@ export function computeSplitFaceLayouts(
   });
 }
 
+/** Minimum angle (degrees) between a face and the straight line leading to the other face's share.
+ *  A smaller angle means the straight connector hugs the face (e.g. a half face of a brick
+ *  tessellation), so the node falls back to its hub point instead. Must stay below the smallest
+ *  angle of an existing tessellation (22.5° between adjacent octagon faces in 4.8.8). */
+export const MIN_STRAIGHT_CONNECTOR_ANGLE_DEG = 20;
+
+type ConnectorShare = { point: { x: number; y: number }; face: { dx: number; dy: number } };
+
+/** True if the straight line between two shares runs closer than `MIN_STRAIGHT_CONNECTOR_ANGLE_DEG`
+ *  to either share's own face. */
+function straightLineDegenerates(a: ConnectorShare, b: ConnectorShare): boolean {
+  const lx = b.point.x - a.point.x, ly = b.point.y - a.point.y;
+  const lineLen = Math.hypot(lx, ly);
+  const sinMin = Math.sin((MIN_STRAIGHT_CONNECTOR_ANGLE_DEG * Math.PI) / 180);
+  return [a, b].some((s) => {
+    const faceLen = Math.hypot(s.face.dx, s.face.dy);
+    if (lineLen === 0 || faceLen === 0) return false;
+    return Math.abs(s.face.dx * ly - s.face.dy * lx) / (faceLen * lineLen) < sinMin;
+  });
+}
+
 /** Computes every node's connector lines from its own face segments (built by
  *  `computeSplitFaceLayouts`, filtered to one node via `nodeIndex`) — a node with exactly 2
  *  connected faces, both ordinary two-way passages, draws one straight line directly between the
- *  two share centers (no hub point, reads as one continuous corridor); any other case (0, 1, or
+ *  two share centers (no hub point, reads as one continuous corridor) unless that line makes an
+ *  angle below `MIN_STRAIGHT_CONNECTOR_ANGLE_DEG` with either face; any other case (0, 1, or
  *  3+ shares, or exactly 2 but not both plain passages) fans out from a hub point on a small
  *  circle around `hubCenter`, one node per slot, evenly spaced starting at `rotationRad`. Returns
  *  nodes in `nodeCount` order with the active one moved last (drawn on top).
@@ -320,11 +398,13 @@ export function computeSplitConnectors(
     const shares = faceLayouts
       .flatMap((layout) => layout.segments.filter((s) => s.nodeIndex === nodeIndex))
       .map((s) => ({
-        point: { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 },
+        point: s.mid,
         kind: s.kind,
+        face: { dx: s.v1.x - s.v0.x, dy: s.v1.y - s.v0.y },
       }));
 
-    const bothPassages = shares.length === 2 && shares.every((s) => s.kind === "passage") && !forceHub?.(nodeIndex);
+    const bothPassages = shares.length === 2 && shares.every((s) => s.kind === "passage") && !forceHub?.(nodeIndex)
+      && !straightLineDegenerates(shares[0], shares[1]);
     if (bothPassages) {
       return { nodeIndex, lines: [{ from: shares[0].point, to: shares[1].point, isUndefined: false }] };
     }

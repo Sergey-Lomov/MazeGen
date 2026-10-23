@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { WallEdge, PassageKind } from "../../renderers/types";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
@@ -58,7 +58,7 @@ export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[], allEdges?: 
 export function buildMazeWalls(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): WallEdge[] {
   const nodeById = new Map<number, NodeDto>();
   for (const n of nodes) nodeById.set(n.id, n);
@@ -131,16 +131,17 @@ export function buildMazeWalls(
   const boundaryDrawn = new Set<string>();
   for (const n of nodes) {
     const { offsets } = getNeighborData(cfg, n.x, n.y);
-    for (const [dx, dy] of offsets) {
+    for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = n.x + dx;
       const ny = n.y + dy;
-      if (cellSet.has(`${nx},${ny}`)) continue;
+      const neighborless = dx === 0 && dy === 0;
+      if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
       // A split point has several nodes at the same (x,y) — dedupe so its boundary side isn't
       // pushed once per node.
-      const boundaryKey = `${n.x},${n.y}->${nx},${ny}`;
+      const boundaryKey = `${n.x},${n.y}->${nx},${ny}#${neighborless ? face : ""}`;
       if (boundaryDrawn.has(boundaryKey)) continue;
       boundaryDrawn.add(boundaryKey);
-      result.push({ a: [n.x, n.y], b: [nx, ny], kind: "none", style: "solid" });
+      result.push({ a: [n.x, n.y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
   }
 
@@ -155,14 +156,14 @@ export function buildMazeWalls(
  *  duplicating it, so the position matches exactly where the indicator is actually drawn. */
 export function buildOneWayWallIndicatorPositions(
   edges: WallEdge[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): [number, number][] {
   const result: [number, number][] = [];
   for (const edge of edges) {
     if (!edge.oneWayDir) continue;
     const seg = getSharedEdgeSegment(edge.a, edge.b, cfg);
     if (!seg) continue;
-    result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
+    result.push([seg.contact.x, seg.contact.y]);
   }
   return result;
 }

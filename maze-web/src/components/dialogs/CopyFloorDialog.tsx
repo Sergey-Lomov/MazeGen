@@ -46,9 +46,10 @@ export function CopyFloorDialog({ onClose }: Props) {
         })}
       </div>
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="secondary" dialogAction layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
         <Button
           variant="primary"
+          dialogAction
           layoutStyle={styles.btnOk}
           disabled={!selectedId}
           onClick={handleConfirm}

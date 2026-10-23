@@ -10,10 +10,13 @@ import type { NodeDto } from "../wasm/types";
 // fixed-width layout (see DebugPanel.tsx's `stepLabelHalf`) — RTL's default `getByText` won't match
 // the wrapper because the target text isn't a single text node, so match on `textContent` directly.
 function getByStepText(text: RegExp) {
-  return screen.getByText(
+  const matches = screen.getAllByText(
     (_, element) => !!element && element.tagName === "SPAN" && text.test(element.textContent ?? ""),
     { selector: "span" },
   );
+  const label = matches.find((element) => element.classList.contains("hoverable"));
+  if (!label) throw new Error(`Step label not found: ${text}`);
+  return label;
 }
 
 // --- Fixture encoder — same shape as DebugEventTree.test.tsx's buildTwoStepTape (this component
@@ -259,7 +262,7 @@ describe("DebugPanel", () => {
     const checkbox = screen.getByText("Recursion stack").closest("div")!.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
 
-    checkbox.click();
+    fireEvent.click(checkbox);
     expect(useMazeStore.getState().debugValueToggles.has("recursion_stack")).toBe(true);
   });
 
@@ -281,7 +284,7 @@ describe("DebugPanel", () => {
     const checkbox = screen.getByText("Auto-switch floors").closest("div")!.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
 
-    checkbox.click();
+    fireEvent.click(checkbox);
     expect(useMazeStore.getState().debugAutoSwitchFloor).toBe(false);
   });
 

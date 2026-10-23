@@ -4,18 +4,27 @@ import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
 import { splitSlotColor } from "../pixi/colorUtils";
-import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
-import { TRI_TILE_SIZE } from "../pixi/triGeometry";
+import { TILE_SIZE } from "../pixi/constants";
+import { fieldOf } from "./fieldConfigFixtures";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -43,9 +52,9 @@ beforeEach(() => {
       oneWayThickness: 4,
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
+      startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -54,7 +63,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -62,11 +71,12 @@ beforeEach(() => {
       ...DEFAULT_VERTICAL_SHARED_STYLE,
       verticalDecorativeLineColor: 0x123456,
       verticalDecorativeLineWidth: 2,
-      verticalDecorativeSize: 0.22,
+      verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
       verticalDecorativeArrowSize: 0.75,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+      floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
       ...DEFAULT_SHARED_STYLE_SOURCE,
       links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     },
@@ -90,9 +100,9 @@ describe("mazeStore image export", () => {
       cellSizeMm: 10,
       marginHMm: 5,
       marginVMm: 5,
-    }, { type: "triangle_rect" });
+    }, fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }));
 
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TRI_TILE_SIZE * 2) / Math.sqrt(3)));
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TILE_SIZE * 2 * 2) / Math.sqrt(3)));
   });
 
   it("keeps the physical cell size stable when manually scaled print density changes", () => {
@@ -103,13 +113,13 @@ describe("mazeStore image export", () => {
         print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, density: "print_300", scale, scaleAutoFit: false },
       },
     });
-    const beforeMm = printCellMeasureMm({ type: "square" }, scale, DPI_BY_DENSITY.print_300);
+    const beforeMm = printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), scale, DPI_BY_DENSITY.print_300);
 
     useMazeStore.getState().setPrintDensity("high_600");
 
     const print = useMazeStore.getState().pngExportSettings.print;
     expect(print.scale).toBeCloseTo(scale * DPI_BY_DENSITY.high_600 / DPI_BY_DENSITY.print_300);
-    expect(printCellMeasureMm({ type: "square" }, print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
+    expect(printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
   });
 
   it("does not rescale the auto-fit print scale when density changes", () => {
@@ -178,9 +188,9 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWayThickness: 4,
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
+      startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -189,7 +199,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -197,11 +207,12 @@ describe("mazeStore vectorByWallsSettings", () => {
       ...DEFAULT_VERTICAL_SHARED_STYLE,
       verticalDecorativeLineColor: 0x123456,
       verticalDecorativeLineWidth: 2,
-      verticalDecorativeSize: 0.22,
+      verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
       verticalDecorativeArrowSize: 0.75,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+      floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
       ...DEFAULT_SHARED_STYLE_SOURCE,
       links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     });
@@ -265,6 +276,23 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(canvas.stage.background);
   });
 
+  it("a per-type size adaptation setter overrides the value inherited from the shared style (GitHub issue #819)", () => {
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSizeAdaptation: 0.5 });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.sizeAdaptation).toBe(0.5);
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { sizeAdaptation: 0.2 });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.sizeAdaptation).toBe(0.2);
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSizeAdaptation: 0.9 });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.sizeAdaptation).toBe(0.2);
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.sizeAdaptation).toBe(0.9);
+  });
+
+  it("patchVectorByWallsSharedStyle updates only the shared marker adaptation field", () => {
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSizeAdaptation: 0.6 });
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.markerSizeAdaptation).toBe(0.6);
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
   it("setVectorByWallsOneWayPattern updates only the one-way pattern field", () => {
     useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
     const settings = useMazeStore.getState().vectorByWallsSettings;
@@ -287,48 +315,48 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(canvas.stage.background);
   });
 
-  it("setVectorByWallsStartMarkerShape updates only the start marker's shape", () => {
-    useMazeStore.getState().setVectorByWallsStartMarkerShape("diamond");
+  it("patchVectorByWallsMarker('Start') updates only the start marker's shape", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { shape: "diamond" });
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.startMarker.shape).toBe("diamond");
     expect(settings.finishMarker.shape).toBe("circle");
   });
 
-  it("setVectorByWallsStartMarkerFillColor/BorderColor/BorderWidth/GapWidth/Size/CornerStyle update only the start marker", () => {
-    useMazeStore.getState().setVectorByWallsStartMarkerFillColor(0x111111);
-    useMazeStore.getState().setVectorByWallsStartMarkerBorderColor(0x222222);
-    useMazeStore.getState().setVectorByWallsStartMarkerBorderWidth(3);
-    useMazeStore.getState().setVectorByWallsStartMarkerGapWidth(2);
-    useMazeStore.getState().setVectorByWallsStartMarkerSize(0.5);
-    useMazeStore.getState().setVectorByWallsStartMarkerCornerStyle("round");
+  it("patchVectorByWallsMarker('Start') updates only the start marker", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { fillColor: 0x111111 });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { borderColor: 0x222222 });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { borderWidth: 3 });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { gapWidth: 2 });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { size: 0.5 });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { cornerStyle: "round" });
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.startMarker).toEqual({ shape: "circle", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3, gapWidth: 2, size: 0.5, text: "S" });
+    expect(settings.startMarker).toEqual({ sizeAdaptation: 0, shape: "circle", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3, gapWidth: 2, size: 0.5, text: "S" });
     expect(settings.finishMarker.fillColor).toBe(canvas.node.finish);
   });
 
-  it("setVectorByWallsFinishMarkerShape/FillColor/BorderColor/BorderWidth/GapWidth/Size/CornerStyle update only the finish marker", () => {
-    useMazeStore.getState().setVectorByWallsFinishMarkerShape("star");
-    useMazeStore.getState().setVectorByWallsFinishMarkerFillColor(0x333333);
-    useMazeStore.getState().setVectorByWallsFinishMarkerBorderColor(0x444444);
-    useMazeStore.getState().setVectorByWallsFinishMarkerBorderWidth(5);
-    useMazeStore.getState().setVectorByWallsFinishMarkerGapWidth(4);
-    useMazeStore.getState().setVectorByWallsFinishMarkerSize(0.6);
-    useMazeStore.getState().setVectorByWallsFinishMarkerCornerStyle("round");
+  it("patchVectorByWallsMarker('Finish') updates only the finish marker", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { shape: "star" });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { fillColor: 0x333333 });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { borderColor: 0x444444 });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { borderWidth: 5 });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { gapWidth: 4 });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { size: 0.6 });
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { cornerStyle: "round" });
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.finishMarker).toEqual({ shape: "star", cornerStyle: "round", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5, gapWidth: 4, size: 0.6, text: "F" });
+    expect(settings.finishMarker).toEqual({ sizeAdaptation: 0, shape: "star", cornerStyle: "round", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5, gapWidth: 4, size: 0.6, text: "F" });
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 
-  it("setVectorByWallsTwoWayPassageMarker* setters update only the two-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'twoWayPassage'", () => {
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerShape("diamond");
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerFillColor(0x111111);
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerBorderColor(0x222222);
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerCornerStyle("miter");
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerBorderWidth(7);
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerGapWidth(6);
-    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerSize(0.5);
+  it("patchVectorByWallsMarker('TwoWayPassage') updates only the two-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'twoWayPassage'", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { shape: "diamond" });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { fillColor: 0x111111 });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { borderColor: 0x222222 });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { cornerStyle: "miter" });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { borderWidth: 7 });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { gapWidth: 6 });
+    useMazeStore.getState().patchVectorByWallsMarker("twoWayPassageMarker", { size: 0.5 });
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.twoWayPassageMarker).toEqual({ shape: "diamond", cornerStyle: "miter", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, gapWidth: 6, size: 0.5 });
+    expect(settings.twoWayPassageMarker).toEqual({ shape: "diamond", cornerStyle: "miter", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, gapWidth: 6, size: 0.5, sizeAdaptation: 0 });
     // Untouched sibling marker groups stay at their own defaults (elevator defaults to "diamond"
     // itself, so only oneWayPassage — default "circle" — is a safe non-collision check here).
     expect(settings.oneWayPassageMarker.shape).not.toBe("diamond");
@@ -340,16 +368,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     }
   });
 
-  it("setVectorByWallsOneWayPassageMarker* setters update only the one-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'oneWayPassage'", () => {
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerShape("square");
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerFillColor(0x333333);
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerBorderColor(0x444444);
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerCornerStyle("miter");
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerBorderWidth(8);
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerGapWidth(1);
-    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerSize(0.4);
+  it("patchVectorByWallsMarker('OneWayPassage') updates only the one-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'oneWayPassage'", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { shape: "square" });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { fillColor: 0x333333 });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { borderColor: 0x444444 });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { cornerStyle: "miter" });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { borderWidth: 8 });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { gapWidth: 1 });
+    useMazeStore.getState().patchVectorByWallsMarker("oneWayPassageMarker", { size: 0.4 });
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.oneWayPassageMarker).toEqual({ shape: "square", cornerStyle: "miter", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 8, gapWidth: 1, size: 0.4 });
+    expect(settings.oneWayPassageMarker).toEqual({ shape: "square", cornerStyle: "miter", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 8, gapWidth: 1, size: 0.4, sizeAdaptation: 0 });
     expect(settings.twoWayPassageMarker.shape).not.toBe("square");
     expect(settings.elevatorMarker.shape).not.toBe("square");
     const oneWayTargets = ["oneWayPassageMarker.cornerStyle", "oneWayPassageMarker.borderWidth", "oneWayPassageMarker.gapWidth", "oneWayPassageMarker.size"];
@@ -358,16 +386,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     }
   });
 
-  it("setVectorByWallsElevatorMarker* setters update only the elevator marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'elevator'", () => {
-    useMazeStore.getState().setVectorByWallsElevatorMarkerShape("star");
-    useMazeStore.getState().setVectorByWallsElevatorMarkerFillColor(0x555555);
-    useMazeStore.getState().setVectorByWallsElevatorMarkerBorderColor(0x666666);
-    useMazeStore.getState().setVectorByWallsElevatorMarkerCornerStyle("miter");
-    useMazeStore.getState().setVectorByWallsElevatorMarkerBorderWidth(9);
-    useMazeStore.getState().setVectorByWallsElevatorMarkerGapWidth(2);
-    useMazeStore.getState().setVectorByWallsElevatorMarkerSize(0.6);
+  it("patchVectorByWallsMarker('Elevator') updates only the elevator marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'elevator'", () => {
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { shape: "star" });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { fillColor: 0x555555 });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { borderColor: 0x666666 });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { cornerStyle: "miter" });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { borderWidth: 9 });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { gapWidth: 2 });
+    useMazeStore.getState().patchVectorByWallsMarker("elevatorMarker", { size: 0.6 });
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.elevatorMarker).toEqual({ shape: "star", cornerStyle: "miter", fillColor: 0x555555, borderColor: 0x666666, borderWidth: 9, gapWidth: 2, size: 0.6 });
+    expect(settings.elevatorMarker).toEqual({ shape: "star", cornerStyle: "miter", fillColor: 0x555555, borderColor: 0x666666, borderWidth: 9, gapWidth: 2, size: 0.6, sizeAdaptation: 0 });
     expect(settings.twoWayPassageMarker.shape).not.toBe("star");
     expect(settings.oneWayPassageMarker.shape).not.toBe("star");
     const elevatorTargets = ["elevatorMarker.cornerStyle", "elevatorMarker.borderWidth", "elevatorMarker.gapWidth", "elevatorMarker.size"];
@@ -470,8 +498,8 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
   it("a linked startMarker.textColor/textSize keeps following startMarker after the link is created (GitHub issue #697 second follow-up)", () => {
     useMazeStore.getState().addVectorByWallsLink("startMarker.textColor", "finishMarker.textColor");
     useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
-    useMazeStore.getState().setVectorByWallsStartMarkerTextColor(0xabcdef);
-    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(0.42);
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { textColor: 0xabcdef });
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { textSize: 0.42 });
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.finishMarker.textColor).toBe(0xabcdef);
     expect(settings.finishMarker.textSize).toBe(0.42);
@@ -486,7 +514,7 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
   });
 
   it("setVectorByWallsLinkEnabled toggles enabled without re-propagating on disable", () => {
-    useMazeStore.getState().setVectorByWallsStartMarkerSize(0.77);
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { size: 0.77 });
     useMazeStore.getState().setVectorByWallsLinkEnabled("startMarker.size", true);
     expect(useMazeStore.getState().vectorByWallsSettings.links.find((l) => l.target === "startMarker.size")?.enabled).toBe(true);
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.size).toBe(useMazeStore.getState().vectorByWallsSettings.markerSize);
@@ -499,6 +527,22 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
     const settings = useMazeStore.getState().vectorByCorridorsSettings;
     expect(settings.elevatorMarker.size).toBe(0.21);
     expect(settings.links.find((l) => l.target === "elevatorMarker.size")).toMatchObject({ source: "markerSize", enabled: true });
+  });
+
+  it("derives the corridor junction radius from half its thickness by default and allows an override", () => {
+    useMazeStore.getState().setVectorByCorridorsThickness(14);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.junctionRadius).toBe(7);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.links.find((l) => l.target === "junctionRadius")).toMatchObject({
+      source: "thickness",
+      enabled: true,
+      modifiers: [{ op: "div", value: 2 }],
+    });
+
+    useMazeStore.getState().setVectorByCorridorsJunctionRadius(3);
+    useMazeStore.getState().setVectorByCorridorsThickness(20);
+    const settings = useMazeStore.getState().vectorByCorridorsSettings;
+    expect(settings.junctionRadius).toBe(3);
+    expect(settings.links.find((l) => l.target === "junctionRadius")?.enabled).toBe(false);
   });
 
   it("removeVectorByCorridorsLink drops the link targeting the given path without touching its value", () => {
@@ -527,15 +571,15 @@ describe("mazeStore vectorByWallsSectionsExpanded", () => {
 describe("mazeStore linked-field setters follow the registry (GitHub issue #704)", () => {
   it("startMarker.shape setter propagates to a field linked from it", () => {
     useMazeStore.getState().addVectorByWallsLink("startMarker.shape", "finishMarker.shape");
-    useMazeStore.getState().setVectorByWallsStartMarkerShape("star");
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { shape: "star" });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star");
   });
 
   it("startMarker.textSize setter propagates and detaches its own incoming link", () => {
     useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
-    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(33);
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { textSize: 33 });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.textSize).toBe(33);
-    useMazeStore.getState().setVectorByWallsFinishMarkerTextSize(7);
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { textSize: 7 });
     const s = useMazeStore.getState().vectorByWallsSettings;
     expect(s.finishMarker.textSize).toBe(7);
     expect(s.links.find((l) => l.target === "finishMarker.textSize")?.enabled).toBe(false);
@@ -546,15 +590,15 @@ describe("mazeStore linked-field setters follow the registry (GitHub issue #704)
 describe("mazeStore linked-field setters follow the registry (GitHub issue #704)", () => {
   it("startMarker.shape setter propagates to a field linked from it", () => {
     useMazeStore.getState().addVectorByWallsLink("startMarker.shape", "finishMarker.shape");
-    useMazeStore.getState().setVectorByWallsStartMarkerShape("star");
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { shape: "star" });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star");
   });
 
   it("startMarker.textSize setter propagates and detaches its own incoming link", () => {
     useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
-    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(33);
+    useMazeStore.getState().patchVectorByWallsMarker("startMarker", { textSize: 33 });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.textSize).toBe(33);
-    useMazeStore.getState().setVectorByWallsFinishMarkerTextSize(7);
+    useMazeStore.getState().patchVectorByWallsMarker("finishMarker", { textSize: 7 });
     const s = useMazeStore.getState().vectorByWallsSettings;
     expect(s.finishMarker.textSize).toBe(7);
     expect(s.links.find((l) => l.target === "finishMarker.textSize")?.enabled).toBe(false);

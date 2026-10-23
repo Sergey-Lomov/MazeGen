@@ -96,8 +96,8 @@ fn count_splits<T: Tessellation>(field: &MultiLevelField<T>, path: &[NodeId]) ->
         .filter(|&&node_id| {
             field
                 .level_of(node_id)
-                .zip(field.point_of(node_id))
-                .is_some_and(|(level, point)| field.is_split_point(level, point))
+                .zip(field.cell_of(node_id))
+                .is_some_and(|(level, point)| field.is_split_cell(level, point))
         })
         .count()
 }
@@ -203,6 +203,7 @@ mod tests {
     use crate::graph::{EdgeKind, Graph};
     use crate::space::{SquarePoint, SquareTessellation, square_rect};
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     fn bidir(g: &mut Graph, a: NodeId, b: NodeId) {
         g.add_edge(a, b, EdgeKind::Basic);
@@ -218,7 +219,8 @@ mod tests {
     fn field_with_nodes(n: usize) -> (MultiLevelField<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(n.max(1), 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(n.max(1), 1), &mut ids)
+                .unwrap();
         let level = field.single_level_id();
         let nodes = (0..n)
             .map(|x| {
@@ -463,7 +465,7 @@ mod tests {
         // also not double-counted for the tile's other (off-route) node.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let extra = field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
         let n0 = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
@@ -494,7 +496,7 @@ mod tests {
         // 2 -- even though no single NodeId repeats (shortest-path routes never revisit a node).
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let extra = field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
         let n0 = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();

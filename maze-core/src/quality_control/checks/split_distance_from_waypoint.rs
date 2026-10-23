@@ -61,7 +61,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
 
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .split_points()
+            .split_cells()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
                 let point_distance = nodes
@@ -98,6 +98,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_distance_from_waypoint";
 
@@ -110,7 +111,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = split_distance + 1;
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint {
             x: split_distance as i32,
@@ -195,7 +196,7 @@ mod tests {
     fn never_flags_a_point_with_no_extra_split_node() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -230,7 +231,7 @@ mod tests {
         // missing) must silently skip rather than measuring against start by mistake.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
         let slot0 = field.node_at(level, split_point).unwrap();
@@ -272,7 +273,7 @@ mod tests {
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
         let slot0 = field.node_at(level, split_point).unwrap();

@@ -1,10 +1,12 @@
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { symmetryStatus } from "../../pixi/symmetry";
+import { fieldOpErrorMessage } from "../../pixi/fieldOps";
 import { Button } from "../Button";
 import { SidePanel } from "../SidePanel";
+import { WarningBubble } from "../WarningBubble";
 import { Inline, Stack } from "../Layout";
-import { indent, muted, spacing, typography } from "../../styles/theme";
+import { indent, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import * as m from "~/paraglide/messages";
 
@@ -23,6 +25,7 @@ export function SymmetryPanel() {
   const resetSymmetryPolygon = useMazeStore((s) => s.resetSymmetryPolygon);
   const resetSymmetryAxis = useMazeStore((s) => s.resetSymmetryAxis);
   const applySymmetry = useMazeStore((s) => s.applySymmetry);
+  const fieldOpError = useMazeStore((s) => s.fieldOpError);
 
   const status = symmetryStatus({
     axisPoints: symmetryAxisPoints,
@@ -36,13 +39,14 @@ export function SymmetryPanel() {
     setFieldPrimitive("point");
   }
 
-  const statusMessage = status === "axis"
+  const hint = status === "axis"
     ? m["field.symmetry.status.axis"]()
     : status === "polygon"
       ? symmetryPolygon.length >= 3 && !symmetryPolygonFinished
         ? m["field.symmetry.status.finish_polygon"]()
         : m["field.symmetry.status.polygon"]()
-      : m["field.symmetry.status.ready"]();
+      : null;
+  const canApply = status === "ready" && fieldOpError === null;
 
   return (
     <SidePanel title={m["field.symmetry.tool"]()} onClose={closePanel}>
@@ -124,19 +128,14 @@ export function SymmetryPanel() {
               </Button>
             </>
           )}
-        </Stack>
-
-        <div>
-          <div style={styles.infoText}>{statusMessage}</div>
-          <Button
-            variant="primary"
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            disabled={status !== "ready"}
-            onClick={applySymmetry}
-          >
+          <Button variant="primary" disabled={!canApply} onClick={applySymmetry}>
             {m["field.symmetry.apply"]()}
           </Button>
-        </div>
+        </Stack>
+
+        {fieldOpError !== null
+          ? <WarningBubble severity="warning" message={fieldOpErrorMessage(fieldOpError)} />
+          : hint !== null && <WarningBubble severity="info" message={hint} />}
       </Stack>
     </SidePanel>
   );
@@ -146,5 +145,4 @@ const styles: Record<string, React.CSSProperties> = {
   body: { padding: spacing.groupGap },
   sectionLabel: sharedStyles.sectionHeader,
   nestedContent: { paddingLeft: indent.tree, minWidth: 0, boxSizing: "border-box", width: "100%" },
-  infoText: { ...typography.body, ...muted(typography.body) },
 };

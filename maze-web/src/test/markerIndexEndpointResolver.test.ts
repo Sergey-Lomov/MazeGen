@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildMarkerIndexEndpointResolver } from "../pixi/imageExport/exportStyleBuilders";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
 
 const teleportStyle = (patch: Partial<TeleportLineStyle> = {}): TeleportLineStyle => ({
   shape: "circle", cornerStyle: "round", size: 0.2,
@@ -12,7 +12,7 @@ const teleportStyle = (patch: Partial<TeleportLineStyle> = {}): TeleportLineStyl
 
 const marker = (patch: Partial<VerticalMarkerStyle> = {}): VerticalMarkerStyle => ({
   shape: "circle", cornerStyle: "round", fillColor: 0xaa0000, borderColor: 0xbb0000,
-  borderWidth: 0, gapWidth: 0, gapColor: 0x000000, size: 0.25, ...patch,
+  borderWidth: 0, gapWidth: 0, gapColor: 0x000000, size: 0.25, sizeAdaptation: 0, ...patch,
 });
 
 const verticalStyle = (patch: Partial<VerticalConnectionStyle> = {}): VerticalConnectionStyle => ({
@@ -53,12 +53,12 @@ describe("buildMarkerIndexEndpointResolver", () => {
       teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
       verticalStyle: verticalStyle({
         style: "decorative",
-        decorativeStairsTwoWay: { lineColor: 0x123456, lineWidth: 5, size: 0.31 },
-        decorativeElevator: { lineColor: 0x654321, lineWidth: 6, size: 0.27 },
+        decorativeStairsTwoWay: { sizeAdaptation: 0, lineColor: 0x123456, lineWidth: 5, size: 0.31 },
+        decorativeElevator: { sizeAdaptation: 0, lineColor: 0x654321, lineWidth: 6, size: 0.27 },
       }),
     });
-    expect(resolve(1, "vertical")).toEqual({ outerRadius: 0.31 / 2, borderWidth: 5, borderMatchColor: 0x123456 });
-    expect(resolve(2, "elevator")).toEqual({ outerRadius: 0.27 / 2, borderWidth: 6, borderMatchColor: 0x654321 });
+    expect(resolve(1, "vertical")).toEqual({ outerRadius: 0.31 / 2, fillRadius: 0.31 / 2, sizeAdaptation: 0, scalesAsWhole: true, borderWidth: 5, borderMatchColor: 0x123456 });
+    expect(resolve(2, "elevator")).toEqual({ outerRadius: 0.27 / 2, fillRadius: 0.27 / 2, sizeAdaptation: 0, scalesAsWhole: true, borderWidth: 6, borderMatchColor: 0x654321 });
   });
 
   it("uses the one-way decorative line color for one-way vertical indices", () => {
@@ -66,11 +66,11 @@ describe("buildMarkerIndexEndpointResolver", () => {
       teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
       verticalStyle: verticalStyle({
         style: "decorative",
-        decorativeStairsTwoWay: { lineColor: 0x123456, lineWidth: 5, size: 0.31 },
-        decorativeStairsOneWay: { lineColor: 0xabcdef, lineWidth: 5, size: 0.29 },
+        decorativeStairsTwoWay: { sizeAdaptation: 0, lineColor: 0x123456, lineWidth: 5, size: 0.31 },
+        decorativeStairsOneWay: { sizeAdaptation: 0, lineColor: 0xabcdef, lineWidth: 5, size: 0.29 },
       }),
     });
-    expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 / 2, borderWidth: 5, borderMatchColor: 0xabcdef });
+    expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 / 2, fillRadius: 0.29 / 2, sizeAdaptation: 0, scalesAsWhole: true, borderWidth: 5, borderMatchColor: 0xabcdef });
   });
 
   it("uses the one-way passage marker's own border color for abstract vertical indices", () => {

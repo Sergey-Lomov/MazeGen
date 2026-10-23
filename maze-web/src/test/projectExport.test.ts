@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseAndValidate, serializeProject } from "../store/projectExport";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { downloadProjectFile, parseAndValidate, serializeProject, projectFileAccept, PROJECT_FILE_EXTENSION } from "../store/projectExport";
 import type { MazeState } from "../store/mazeStore";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -8,12 +8,14 @@ import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _legacyId?: string): PostEditEdgeState => ({ kind, from, to });
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
     tessellationKind: "square",
+    tessellationParams: {},
     hexOrientation: "flat_top",
     triOrientation: "r0",
     floorFields: {
@@ -21,9 +23,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
         squareShape: "rect",
         hexShape: "parallelogram",
         triangleShape: "rect",
-        tessellationConfig: { type: "square", width: 5, height: 5 },
-        savedConfigs: {},
-        freeFieldPoints: { square: new Set<number>(), hex: new Set<number>(), triangle: new Set<number>() },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }),
+        savedShapes: {},
+        freeFieldPoints: { square: new Set<number>(), hex: new Set<number>(), tri: new Set<number>() },
         isEditingField: false,
         fieldPoints: new Set<number>(),
         fieldEditMode: "default",
@@ -42,9 +44,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     splitPatterns: [],
     qcExperiment: false,
     vertexSettingsPanelOpen: false,
-    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", strategyParams: { param_b: "2" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
-    strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 100,
     repairTimeBudgetSecs: 10,
     presetConnections: new Map(),
@@ -109,6 +110,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
     vectorByCorridorsSectionsExpanded: {},
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+    floorLabelModeChosen: true,
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
@@ -126,18 +128,51 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed).toEqual(serialized);
   });
 
+  it("rejects an unknown tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.tessellation.kind = "octagonal";
+
+    expect(() => parseAndValidate(raw)).toThrow("Invalid tessellation kind at tessellation.kind: octagonal");
+  });
+
+  it("rejects a missing tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.tessellation.kind;
+
+    expect(() => parseAndValidate(raw)).toThrow("Expected string at tessellation.kind, got undefined");
+  });
+
+  it("rejects a non-string tessellation kind", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.tessellation.kind = 42;
+
+    expect(() => parseAndValidate(raw)).toThrow("Expected string at tessellation.kind, got number");
+  });
+
   it("round-trips Cairo kind and floor-specific custom coordinates", () => {
     const state = makeState();
     state.tessellationKind = "cairo";
     state.floorFields.floor_1 = {
       ...state.floorFields.floor_1,
-      cairoShape: "free",
-      tessellationConfig: { type: "cairo_custom", points: [[-3, 2], [2, 1]] },
+      selectedShape: "rect",
+      fieldConfig: fieldOf("cairo", { shape: "custom", points: [[-3, 2], [2, 1]] }),
       freeFieldPoints: {
         square: new Set(),
         hex: new Set(),
-        triangle: new Set(),
+        tri: new Set(),
         cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
       },
       isEditingField: true,
       fieldPoints: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
@@ -147,6 +182,342 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.tessellation.kind).toBe("cairo");
     expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the square-octagon kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "square_octagon";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("square_octagon", { shape: "custom", points: [[-2, 0], [-1, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-2 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("square_octagon");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the brick kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "brick";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("brick", { shape: "custom", points: [[-2, 0], [-1, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+        brick: new Set([(-2 << 16) | 0, (-1 << 16) | (-1 & 0xffff), 0]),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-2 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("brick");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the trihexagonal kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "trihexagonal";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("trihexagonal", { shape: "custom", points: [[-3, 0], [-2, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-3 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("trihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the snub hexagonal kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "snub_hexagonal";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("snub_hexagonal", { shape: "custom", points: [[-9, 0], [-2, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set([(-9 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-9 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("snub_hexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the rhombitrihexagonal kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "rhombitrihexagonal";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("rhombitrihexagonal", { shape: "custom", points: [[-6, 0], [-2, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        truncated_hexagonal: new Set([(-6 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-6 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("rhombitrihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the truncated_trihexagonal kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "truncated_trihexagonal";
+    // Wire cells are `[6q + kind, r]`: a dodecagon, a square and a hexagon at negative `q`.
+    const points: [number, number][] = [[-12, 0], [-7, -1], [-2, 1], [0, 0]];
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("truncated_trihexagonal", { shape: "custom", points }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set([(-12 << 16) | 0, (-7 << 16) | (-1 & 0xffff), (-2 << 16) | 1, 0]),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-12 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const json = JSON.parse(JSON.stringify(serialized));
+    expect(json.tessellation.kind).toBe("truncated_trihexagonal");
+    expect(json.floorFields.floor_1.freeFieldPoints.truncated_trihexagonal).toHaveLength(4);
+    const reparsed = parseAndValidate(json);
+    expect(reparsed.tessellation.kind).toBe("truncated_trihexagonal");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the snub_square kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "snub_square";
+    // Wire cells are `[6q + kind, r]`: a square, a tilted square and a triangle at negative `q`.
+    const points: [number, number][] = [[-12, 0], [-11, -1], [-2, 1], [0, 0]];
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("snub_square", { shape: "custom", points }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set([(-12 << 16) | 0, (-11 << 16) | (-1 & 0xffff), (-2 << 16) | 1, 0]),
+        curved_quadrilateral: new Set(),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-12 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const json = JSON.parse(JSON.stringify(serialized));
+    expect(json.tessellation.kind).toBe("snub_square");
+    expect(json.floorFields.floor_1.freeFieldPoints.snub_square).toHaveLength(4);
+    const reparsed = parseAndValidate(json);
+    expect(reparsed.tessellation.kind).toBe("snub_square");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the curved_quadrilateral kind and its negative custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "curved_quadrilateral";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "rect",
+      fieldConfig: fieldOf("curved_quadrilateral", { shape: "custom", points: [[-3, 0], [-2, -1], [0, 0]] }),
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        tri: new Set(),
+        cairo: new Set(),
+        square_octagon: new Set(),
+        brick: new Set(),
+        trihexagonal: new Set(),
+        snub_hexagonal: new Set(),
+        rhombitrihexagonal: new Set(),
+        truncated_hexagonal: new Set(),
+        truncated_trihexagonal: new Set(),
+        elongated_triangular: new Set(),
+        snub_square: new Set(),
+        curved_quadrilateral: new Set([(-3 << 16) | 0, (-2 << 16) | (-1 & 0xffff), 0]),
+        radial: new Set(),
+        voronoi: new Set(),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-3 << 16) | 0, 0]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("curved_quadrilateral");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("round-trips the radial kind with its size param", () => {
+    const state = makeState();
+    state.tessellationKind = "radial";
+    state.tessellationParams = { first_ring_cells: 12, ring_layout: "smooth", max_cells: 3000 };
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      selectedShape: "circle",
+      fieldConfig: { tessellation: { kind: "radial", params: state.tessellationParams }, shape: { shape: "circle", radius: 4 } },
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.params).toEqual(state.tessellationParams);
+    expect(reparsed).toEqual(serialized);
+  });
+
+  it("rejects radial params that are missing, fractional or out of range", () => {
+    const raw = () => {
+      const state = makeState();
+      state.tessellationKind = "radial";
+      state.tessellationParams = { first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 };
+      state.floorFields.floor_1 = {
+        ...state.floorFields.floor_1,
+        selectedShape: "circle",
+        fieldConfig: { tessellation: { kind: "radial", params: state.tessellationParams }, shape: { shape: "circle", radius: 4 } },
+      };
+      return JSON.parse(JSON.stringify(serializeProject(state)));
+    };
+    for (const [patch, message] of [
+      [{ first_ring_cells: 5 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: 25 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: 7.5 }, /params\.first_ring_cells/],
+      [{ first_ring_cells: undefined }, /params\.first_ring_cells/],
+      [{ ring_layout: "spiral" }, /params\.ring_layout/],
+      [{ ring_layout: undefined }, /params\.ring_layout/],
+      [{ max_cells: 99 }, /params\.max_cells/],
+      [{ max_cells: 10001 }, /params\.max_cells/],
+      [{ max_cells: undefined }, /params\.max_cells/],
+      [{ growth_factor: 2 }, /does not accept param "growth_factor"/],
+      [{ extra: 1 }, /does not accept param "extra"/],
+    ] as const) {
+      const data = raw();
+      data.tessellation.params = { ...data.tessellation.params, ...patch };
+      expect(() => parseAndValidate(data)).toThrow(message);
+    }
   });
 
   it("loads legacy floor fields that do not have Cairo free points", () => {
@@ -338,6 +709,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
       splitMaxNodes: 3,
       splitPatterns: [
         {
+          shape: "regular:4",
           node_count: 2,
           faces: [
             [
@@ -371,7 +743,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("drops a malformed split pattern without failing the whole file", () => {
     const state = makeState({ splitPatternMode: true, splitMaxNodes: 2, splitPatterns: [] });
     const raw = JSON.parse(JSON.stringify(serializeProject(state)));
-    raw.generation.splitGeneration.patterns = [{ node_count: "not a number" }, { garbage: true }];
+    raw.generation.splitGeneration.patterns = [{ shape: "regular:4", node_count: "not a number" }, { garbage: true }];
     const reparsed = parseAndValidate(raw);
     expect(reparsed.generation.splitGeneration.patterns).toEqual([]);
   });
@@ -533,16 +905,26 @@ describe("parseAndValidate — malformed input", () => {
     expect(() => parseAndValidate(data)).toThrow(/newer than supported/);
   });
 
-  it("throws on unknown tessellation type", () => {
+  it("throws on unknown field shape", () => {
     const data = valid();
-    data.floorFields.floor_1.config.type = "not_a_real_type";
-    expect(() => parseAndValidate(data)).toThrow(/Unknown tessellation config type/);
+    data.floorFields.floor_1.shape.shape = "not_a_real_shape";
+    expect(() => parseAndValidate(data)).toThrow(/Unknown field shape/);
   });
 
-  it("throws on invalid hex orientation", () => {
+  it("throws on a field shape or saved shape the kind does not offer", () => {
     const data = valid();
-    data.floorFields.floor_1.config = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "sideways" };
-    expect(() => parseAndValidate(data)).toThrow(/Invalid hex orientation/);
+    data.floorFields.floor_1.shape = { shape: "parallelogram", cols: 3, rows: 3 };
+    expect(() => parseAndValidate(data)).toThrow(/floorFields\.floor_1\.shape: kind "square" does not offer shape "parallelogram"/);
+
+    const saved = valid();
+    saved.floorFields.floor_1.savedShapes = [{ shape: "hexagon", radius: 2 }];
+    expect(() => parseAndValidate(saved)).toThrow(/savedShapes\[0\]: kind "square" does not offer shape "hexagon"/);
+  });
+
+  it("throws on tessellation params the kind does not accept", () => {
+    const data = valid();
+    data.tessellation.params = { rings: 3 };
+    expect(() => parseAndValidate(data)).toThrow(/does not accept param "rings"/);
   });
 
   it("throws on invalid postEditEdge kind", () => {
@@ -580,7 +962,6 @@ describe("parseAndValidate — malformed input", () => {
     expect(() => parseAndValidate(data)).toThrow(/Invalid.*[Dd]irection/);
   });
 
-
   it("throws when root is not an object", () => {
     expect(() => parseAndValidate("not an object")).toThrow(/Expected object/);
   });
@@ -611,10 +992,10 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     });
   });
 
-  it("defaults floorFields.<floorId>.savedConfigs to empty array when absent", () => {
+  it("defaults floorFields.<floorId>.savedShapes to empty array when absent", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.floorFields.floor_1.savedConfigs).toEqual([]);
+    expect(result.floorFields.floor_1.savedShapes).toEqual([]);
   });
 
   it("falls back to basic_config when ui.openCard is not a valid FeatureId", () => {
@@ -627,7 +1008,24 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }]);
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", strategyParams: { param_b: "2" }, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }]);
+  });
+
+  it("copies legacy shared strategy params to every matching rule", () => {
+    const data = valid_without_optional_sections();
+    const quality = data.quality as { rules: Record<string, unknown>[]; stages?: unknown; strategyParams?: unknown };
+    const firstRule = quality.rules[0];
+    delete firstRule.strategyParams;
+    quality.rules.push({ ...firstRule, id: "rule_2" });
+    delete quality.stages;
+    quality.strategyParams = { strategy_a: { param_b: "2" } };
+
+    const result = parseAndValidate(data);
+
+    expect(result.quality.rules.map((rule) => rule.strategyParams)).toEqual([
+      { param_b: "2" },
+      { param_b: "2" },
+    ]);
   });
 
   it("defaults check disabled to false when absent (pre-toggle project files)", () => {
@@ -731,6 +1129,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2, activeFloorId: "floor_1" });
   });
 
+  it("round-trips a customized floor title", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [{ id: "floor_1", title: "Ground", titleCustomized: true }];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toEqual([{ id: "floor_1", title: "Ground", titleCustomized: true }]);
+  });
+
   it("drops a malformed floor entry (missing title) and keeps the rest", () => {
     const data = valid_without_optional_sections();
     (data.floors as { floors: unknown[] }).floors = [
@@ -782,7 +1187,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete data.dirtyFlags;
     delete data.debug;
     delete data.ui;
-    delete data.floorFields.floor_1.savedConfigs;
+    delete data.floorFields.floor_1.savedShapes;
     return data;
   }
 });
@@ -802,6 +1207,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });
@@ -858,11 +1264,42 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     const state = makeState({
       activeRenderMode: "vector_by_walls",
       openRenderModeSettings: "vector_by_walls",
-      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, floorColor: 0x123456, wallThickness: 7, teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } } },
+      vectorByWallsSettings: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+        floorColor: 0x123456,
+        wallThickness: 7,
+        teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } },
+        floorLabel: {
+          ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+          positionsByFloorId: {
+            floor_1: { mode: "cell", cell: [2, 3] },
+            floor_2: { mode: "free", x: -12.5, y: 40 },
+          },
+        },
+      },
     });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.imageExport).toEqual(serialized.imageExport);
+  });
+
+  it("keeps valid floor-label positions and discards malformed entries", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId = {
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+      bad_anchor: { mode: "anchored", anchor: "outside" },
+      fractional_cell: { mode: "cell", cell: [1.5, 2] },
+      incomplete_free: { mode: "free", x: 1 },
+      unknown: { mode: "future" },
+    };
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId).toEqual({
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+    });
   });
 
   it("omits vectorByWallsLinks/vectorByCorridorsLinks when links are untouched (GitHub issue #651)", () => {
@@ -966,6 +1403,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });
@@ -977,5 +1415,44 @@ describe("parseAndValidate — migrations", () => {
     const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
     data.version = 0;
     expect(() => parseAndValidate(data)).toThrow(/No migration for version/);
+  });
+});
+
+describe("downloadProjectFile", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("saves under the project extension with a MIME type browsers won't re-extension", () => {
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:mock-url");
+    // jsdom implements neither object URLs nor navigation — same stubs as `pngExport.test.ts`.
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    downloadProjectFile(makeState());
+
+    expect(PROJECT_FILE_EXTENSION).toBe(".maze");
+    expect(downloadName).toBe(`maze-project${PROJECT_FILE_EXTENSION}`);
+    // `application/json` would make Safari/mobile save `maze-project.maze.json`, which the load
+    // dialog's `accept` filter then hides.
+    expect(createObjectURL.mock.calls[0][0].type).toBe("application/octet-stream");
+  });
+});
+
+describe("projectFileAccept", () => {
+  const nav = (userAgent: string, platform: string, maxTouchPoints: number) => ({ userAgent, platform, maxTouchPoints });
+
+  it("filters by the project extension on desktop", () => {
+    expect(projectFileAccept(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 0))).toBe(PROJECT_FILE_EXTENSION);
+    expect(projectFileAccept(nav("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 0))).toBe(PROJECT_FILE_EXTENSION);
+  });
+
+  it("drops the filter on iPhone and on iPadOS (which reports a desktop Mac user agent)", () => {
+    expect(projectFileAccept(nav("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", "iPhone", 5))).toBeUndefined();
+    expect(projectFileAccept(nav("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5))).toBeUndefined();
   });
 });

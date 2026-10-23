@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../pixi/tessellationGeometry", () => ({
   getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
-  getCellVertices: () => null,
+  getCellVertices: () => [],
+  getCellPath: () => [],
   getNeighborData: () => ({ offsets: [] }),
 }));
 

@@ -5,25 +5,36 @@ import { fieldConfigToWasm, resolveAlgorithmKind } from "../store/slices/generat
 import { configAllCells } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import type { DebugArenaHandle } from "../store/storeTypes";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getAvailableRuleParams: vi.fn(() => []),
-  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
 import { generateMaze, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
+import { fieldOf } from "./fieldConfigFixtures";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  resetNotifications();
 });
 
 function source(kind: DebugArenaHandle["algorithmKind"]): DebugArenaHandle["sources"][number] {
@@ -54,24 +65,20 @@ describe("resolveAlgorithmKind", () => {
 
 describe("mazeStore.generate", () => {
   it("maps Cairo generation config and standard cells to the WASM contract", () => {
-    const config = { type: "cairo", cols: 2, rows: 2 } as const;
-    expect(fieldConfigToWasm(config)).toEqual({ tessellation_type: "cairo" });
+    const config = fieldOf("cairo", { shape: "rect", cols: 2, rows: 2 });
+    expect(fieldConfigToWasm(config)).toEqual({ kind: "cairo" as const, params: {} });
+    // Core returns preset cells sorted by cell id (x, then y).
     expect(configAllCells(config)).toEqual([
-      [-2, -3], [-2, -1],
-      [1, -2], [3, -2],
-      [-3, 2], [-1, 2],
-      [2, 1], [2, 3],
+      [-3, 2], [-2, -3], [-2, -1], [-1, 2],
+      [1, -2], [2, 1], [2, 3], [3, -2],
     ]);
   });
 
   it("keeps Cairo rectangle cells in their canonical fundamental-square blocks", () => {
-    expect(configAllCells({ type: "cairo", cols: 3, rows: 2 })).toEqual([
-      [-2, -3], [-2, -1],
-      [1, -2], [3, -2],
-      [6, -3], [6, -1],
-      [-3, 2], [-1, 2],
-      [2, 1], [2, 3],
-      [5, 2], [7, 2],
+    expect(configAllCells(fieldOf("cairo", { shape: "rect", cols: 3, rows: 2 }))).toEqual([
+      [-3, 2], [-2, -3], [-2, -1], [-1, 2],
+      [1, -2], [2, 1], [2, 3], [3, -2],
+      [5, 2], [6, -3], [6, -1], [7, 2],
     ]);
   });
 
@@ -87,24 +94,28 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
+  it("clears a stale post-edit refresh error on a new generation (GitHub issue #769)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    useMazeStore.getState().generate();
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+  });
+
   it("normalizes the generated field for runtime consumers", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
-    const config = { type: "hex_triangle" as const, side: 4, orientation: "pointy_top" as const };
+    const config = fieldOf("hex", { shape: "triangle", side: 4 }, "pointy_top");
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: config }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: config }) },
       rules: [],
     });
 
     useMazeStore.getState().generate();
 
-    expect(useMazeStore.getState().activeTessellationConfig).toEqual({
-      type: "hex_parallelogram",
-      cols: 0,
-      rows: 0,
-      kind: "hex",
-      orientation: "pointy_top",
-      cells: configAllCells(config),
-    });
+    expect(generateMaze).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ level_fields: [configAllCells(config, true)] }),
+    );
+    expect(useMazeStore.getState().activeFieldConfig).toEqual(fieldOf("hex", { shape: "custom", points: configAllCells(config, true) }, "pointy_top"));
   });
 
   it("derives postEditDraftSplitPoints from a snapshot with an auto-split point (GitHub issue #222)", () => {
@@ -120,17 +131,17 @@ describe("mazeStore.generate", () => {
     expect(s.postEditDraftSplitPoints).toEqual({ "1,0": [0] });
   });
 
-  it("calls generateMaze with current seed and tessellationConfig", () => {
+  it("calls generateMaze with current seed and fieldConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: fieldConfigToWasm({ type: "square", width: 3, height: 4 }),
-      level_fields: [configAllCells({ type: "square", width: 3, height: 4 })],
+      tessellation: fieldConfigToWasm(fieldOf("square", { shape: "rect", cols: 3, rows: 4 })),
+      level_fields: [configAllCells(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }))],
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -150,13 +161,13 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       rules: [],
-      lockedNodes: new Map([["1,2", "both"]]),
+      lockedNodes: new Map([["0,0", "both"]]),
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
-      locked_nodes: [{ point: { point: [1, 2] }, kind: "both" }],
+      locked_nodes: [{ point: { point: [0, 0] }, kind: "both" }],
     }));
     useMazeStore.setState({ lockedNodes: new Map() });
   });
@@ -165,28 +176,43 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       rules: [],
-      lockedNodes: new Map([["1,2:3", "out"]]),
+      lockedNodes: new Map([["0,0:3", "out"]]),
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
-      locked_nodes: [{ point: { point: [1, 2], slot: 3 }, kind: "out" }],
+      locked_nodes: [{ point: { point: [0, 0], slot: 3 }, kind: "out" }],
     }));
     useMazeStore.setState({ lockedNodes: new Map() });
   });
 
-  it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
+  it("omits a locked node outside its floor's field from the payload", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
+      rules: [],
+      lockedNodes: new Map([["0,0", "both"], ["99,99", "both"]]),
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
+      locked_nodes: [{ point: { point: [0, 0] }, kind: "both" }],
+    }));
+    useMazeStore.setState({ lockedNodes: new Map() });
+  });
+
+  it("calls generateMaze with hex_parallelogram fieldConfig", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      seed: 7,
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 6 }, "flat_top") }) },
       rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: fieldConfigToWasm({ type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" }),
-      level_fields: [configAllCells({ type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" })],
+      tessellation: fieldConfigToWasm(fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 6 }, "flat_top")),
+      level_fields: [configAllCells(fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 6 }, "flat_top"))],
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -202,17 +228,17 @@ describe("mazeStore.generate", () => {
     });
   });
 
-  it("calls generateMaze with hex_hexagon tessellationConfig", () => {
+  it("calls generateMaze with hex_hexagon fieldConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top") }) },
       rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: fieldConfigToWasm({ type: "hex_hexagon", radius: 3, orientation: "pointy_top" }),
-      level_fields: [configAllCells({ type: "hex_hexagon", radius: 3, orientation: "pointy_top" })],
+      tessellation: fieldConfigToWasm(fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top")),
+      level_fields: [configAllCells(fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top"))],
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -237,14 +263,13 @@ describe("mazeStore.generate", () => {
       hexOrientation: "flat_top",
       triOrientation: "r0",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts },
       }) },
       rules: [],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].tessellation.tessellation_type).toBe("square");
+    expect(call[1].tessellation).toEqual({ kind: "square", params: {} });
     expect(call[1].level_fields[0]).toHaveLength(3);
   });
 
@@ -252,21 +277,21 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       tessellationKind: "square",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: new Set([encodePoint(0, 0)]),
         freeFieldPoints: { ...emptyFreePoints(), square: new Set([encodePoint(0, 0)]) },
       }) },
     });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBeTruthy();
+    expect(useMazeStore.getState().error).toEqual({ kind: "free_field_too_small" });
+    expect(useMazeStore.getState().generationStatus).toBe("error");
     expect(generateMaze).not.toHaveBeenCalled();
+    expect(errorCards()).toEqual(["generation/generation.free_field_too_small"]);
   });
 
   it("sets error when isEditingField and fieldPoints.size === 0", () => {
     useMazeStore.setState({
       tessellationKind: "square",
       floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        squareShape: "free", hexShape: "parallelogram", triangleShape: "rect",
         isEditingField: true, fieldPoints: new Set<number>(), freeFieldPoints: emptyFreePoints(),
       }) },
     });
@@ -278,13 +303,15 @@ describe("mazeStore.generate", () => {
   it("stores error string on Error throw", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw new Error("bad wasm"); });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("bad wasm");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "bad wasm" });
+    expect(errorCards()).toEqual(["generation/generation.run_failed"]);
+    expect(errorDetails("generation.run_failed")).toBe("bad wasm");
   });
 
   it("stores string error when non-Error thrown", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw "raw error"; });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("raw error");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "raw error" });
   });
 
   it("clears selectedNode on generate", () => {
@@ -297,10 +324,9 @@ describe("mazeStore.generate", () => {
   it("passes strategyParams overrides to generateMaze", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 10, height: 10 } }) },
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints" })],
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }) }) },
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints", strategyParams: { path_weight: "2", junction_weight: "6" } })],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
-      strategyParams: { scored_endpoints: { path_weight: "2", junction_weight: "6" } },
       availableStrategies: [{
         id: "scored_endpoints",
         handles: "missing_endpoints",
@@ -314,8 +340,8 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(42, {
-      tessellation: fieldConfigToWasm({ type: "square", width: 10, height: 10 }),
-      level_fields: [configAllCells({ type: "square", width: 10, height: 10 })],
+      tessellation: fieldConfigToWasm(fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
+      level_fields: [configAllCells(fieldOf("square", { shape: "rect", cols: 10, rows: 10 }))],
       stages: [{
         id: "stage_1",
         name: "Stage 1",
@@ -343,9 +369,8 @@ describe("mazeStore.generate", () => {
   it("omits strategyParams not in descriptor from generateMaze call", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints", strategyParams: { unknown_param: "99" } })],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
-      strategyParams: { scored_endpoints: { unknown_param: "99" } },
       availableStrategies: [{
         id: "scored_endpoints",
         handles: "missing_endpoints",

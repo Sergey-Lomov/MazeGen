@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 import { NODE_RADIUS } from "./renderConstants";
 import type { RouteInfoDto, NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { buildNodePositions } from "./tessellationGeometry";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
@@ -19,7 +19,7 @@ export interface RouteData {
    *  issue #318), see `buildNodePositions`'s own doc comment. `[]` falls back to the generic hub
    *  position. */
   edges: EdgeDto[];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a route hop whose other endpoint crosses to another floor (GitHub
    *  issue #339). Omitted callers draw no cross-floor badges. */

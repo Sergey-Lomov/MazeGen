@@ -2,7 +2,7 @@ import { useColorVisibility } from "../ColorVisibilityContext";
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
+import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
@@ -14,6 +14,7 @@ import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useLinkContext } from "./LinkContext";
+import { useLocale } from "../../i18n/useLocale";
 import { buildGroupLinks, groupRolePath, isGroupRoleLinked, resolveGroupOverrides } from "../../store/teleportGroupLinks";
 import { LinkStatusIcon } from "../LinkStatusIcon";
 import type { ParamDescriptor, ParamLink } from "../../store/parameterLinks";
@@ -23,9 +24,10 @@ import { endpointBubble } from "../../pixi/postEditCommandLabels";
 import { nodeEndpoint } from "../../pixi/postEditEndpoint";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
 import { distributeOklchHues } from "../../store/colorMath";
+import { Tooltip } from "../Tooltip";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -50,7 +52,7 @@ import * as m from "~/paraglide/messages";
 export function useTeleportGroupsAndCollisions(
   rawNodes: NodeDto[],
   rawEdges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   floors: { id: string }[],
   settings: TeleportSettingsFields & { links: ParamLink<string>[] },
   start: number | null,
@@ -134,6 +136,7 @@ function TeleportGroupCell({
   const fillColor = effective?.fillColor ?? defaultFillColor;
   const borderColor = effective?.borderColor ?? defaultBorderColor;
   const { registry } = useLinkContext<string>();
+  const { locale } = useLocale();
   const groupLinks = useMemo(() => buildGroupLinks(links, override), [links, override]);
   // Virtual registry: the group's own role parameters, labelled after the common marker's ones, so the
   // icon's tooltip names "Group N / <parameter>" for a rebound source.
@@ -148,7 +151,8 @@ function TeleportGroupCell({
       reg[groupRolePath(role)] = { ...common, group: [groupName], ...(role === "borderColor" ? { label: m["image_export.vector_by_walls.teleport_group_secondary_color_label"]() } : {}) };
     }
     return reg;
-  }, [registry, index]);
+    // `locale`: the copied labels/groups are resolved at spread time (GitHub issue #742).
+  }, [registry, index, locale]);
   const noop = () => {};
   const activePaths = useMemo(() => new Set<string>(), []);
   const linkToggle = (role: TeleportGroupRole, currentValue: number | MarkerShape | undefined) => (
@@ -201,16 +205,15 @@ function TeleportGroupCell({
           ))}
         </div>
         <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
-          <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
+          <Tooltip content={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}><span style={styles.warningIcon}>
             {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
-          </span>
+          </span></Tooltip>
           <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
         </div>
       </div>
       <div style={styles.groupCellControls} onMouseEnter={() => setHovered(allNodeIds)}>
-        <select
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_shape"]()}><select
           name={`teleport-group-${index}-shape`}
-          title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
           style={sharedStyles.selectSm}
           value={effective?.shape ?? defaultShape}
           onChange={(e) => onChange({ shape: e.target.value as MarkerShape })}
@@ -218,25 +221,25 @@ function TeleportGroupCell({
           {MARKER_SHAPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label()}</option>
           ))}
-        </select>
+        </select></Tooltip>
         {linkToggle("shape", effective?.shape ?? defaultShape)}
-        <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()}>
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_color"]()}><span>
           <ColorSwatch
             color={fillColor}
             onChange={(c) => onChange({ fillColor: c })}
             priorityColors={[PC.teleportGroup(index, "border").at(borderColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "fill")}
           />
-        </span>
+        </span></Tooltip>
         {linkToggle("fillColor", fillColor)}
-        <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}>
+        <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}><span>
           <ColorSwatch
             color={borderColor}
             onChange={(c) => onChange({ borderColor: c })}
             priorityColors={[PC.teleportGroup(index, "fill").at(fillColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "border")}
           />
-        </span>
+        </span></Tooltip>
         {linkToggle("borderColor", borderColor)}
       </div>
     </div>
@@ -296,6 +299,7 @@ export function TeleportSettingsSection<P extends string>({
     lineCornerStyle: P | null;
     lineShape: P | null;
     lineSize: P | null;
+    lineSizeAdaptation: P | null;
     edgeColor: P | null;
     edgeBorderColor: P | null;
     edgeBorderWidth: P | null;
@@ -311,6 +315,7 @@ export function TeleportSettingsSection<P extends string>({
     floorBadgeShape: P | null;
     floorBadgeLabelType: P | null;
     floorBadgeSize: P | null;
+    floorBadgeSizeAdaptation: P | null;
     floorBadgeFillColor: P | null;
     floorBadgeBorderColor: P | null;
     floorBadgeTextColor: P | null;
@@ -385,6 +390,7 @@ export function TeleportSettingsSection<P extends string>({
             shape: linkTargets.lineShape,
             cornerStyle: linkTargets.lineCornerStyle,
             size: linkTargets.lineSize,
+            sizeAdaptation: linkTargets.lineSizeAdaptation,
             fillColor: linkTargets.edgeColor,
             borderColor: linkTargets.edgeBorderColor,
             borderWidth: linkTargets.edgeBorderWidth,
@@ -405,6 +411,7 @@ export function TeleportSettingsSection<P extends string>({
             { value: "none" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_none"]() },
             { value: "straight" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_straight"]() },
             { value: "orthogonal" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_orthogonal"]() },
+            { value: "curved" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_curved"]() },
           ]}
           onChange={(v) => onChange({ teleportConnectorStyle: v })}
           linkTarget={linkTargets.connectorStyle}
@@ -417,6 +424,28 @@ export function TeleportSettingsSection<P extends string>({
             linkTarget={linkTargets.avoidFieldExit}
           />
         )}
+        {settings.teleportConnectorStyle === "curved" && (<>
+          <LinkedSelectRow
+            label={m["image_export.vector_by_walls.teleport_curve_direction"]()}
+            value={settings.teleportCurveDirection ?? "inward"}
+            options={[
+              { value: "inward" as TeleportCurveDirection, label: m["image_export.vector_by_walls.teleport_curve_direction_inward"]() },
+              { value: "outward" as TeleportCurveDirection, label: m["image_export.vector_by_walls.teleport_curve_direction_outward"]() },
+            ]}
+            onChange={(v) => onChange({ teleportCurveDirection: v })}
+            linkTarget={null}
+          />
+          <LinkedSliderRow
+            label={m["image_export.vector_by_walls.teleport_curve_strength"]()}
+            value={settings.teleportCurveStrength ?? 0.25}
+            onChange={(v) => onChange({ teleportCurveStrength: v })}
+            min={0}
+            max={1}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            linkTarget={null}
+          />
+        </>)}
 
         {connectorShown && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
@@ -506,6 +535,7 @@ export function TeleportSettingsSection<P extends string>({
                 shape: linkTargets.floorBadgeShape,
                 cornerStyle: linkTargets.floorBadgeCornerStyle,
                 size: linkTargets.floorBadgeSize,
+                sizeAdaptation: linkTargets.floorBadgeSizeAdaptation,
                 fillColor: linkTargets.floorBadgeFillColor,
                 borderColor: linkTargets.floorBadgeBorderColor,
                 borderWidth: linkTargets.floorBadgeBorderWidth,

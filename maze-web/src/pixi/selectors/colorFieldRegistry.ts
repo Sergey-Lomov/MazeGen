@@ -57,6 +57,9 @@ export interface ColorVisibilityContext {
   markerIndex: boolean;
   /** `markerIndex.borderColor` — hidden when the plate border color follows the marker. */
   markerIndexBorder: boolean;
+  floorLabel: boolean;
+  floorLabelBackground: boolean;
+  floorLabelBorder: boolean;
 }
 
 function hasDirectionalBasicEdge(edges: EdgeDto[]): boolean {
@@ -109,6 +112,9 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     markerIndexAvailable,
     markerIndex: markerIndexAvailable && s.markerIndex.enabled,
     markerIndexBorder: !s.markerIndex.borderColorFromMarker,
+    floorLabel: maze.floors.length > 1 && s.floorLabel.enabled,
+    floorLabelBackground: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none",
+    floorLabelBorder: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none" && s.floorLabel.borderWidth > 0,
   };
 }
 
@@ -280,6 +286,9 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
     get: (s) => s.markerIndex.borderColor,
     set: (s, v) => { s.markerIndex.borderColor = v; },
   },
+  floorLabelFill: { visible: (c) => c.floorLabelBackground, get: (s) => s.floorLabel.fillColor, set: (s, v) => { s.floorLabel.fillColor = v; } },
+  floorLabelBorder: { visible: (c) => c.floorLabelBorder, get: (s) => s.floorLabel.borderColor, set: (s, v) => { s.floorLabel.borderColor = v; } },
+  floorLabelText: { visible: (c) => c.floorLabel, get: (s) => s.floorLabel.textColor, set: (s, v) => { s.floorLabel.textColor = v; } },
 };
 
 /** Display order of the "Project colors" list, split around the two dynamic groups (per-group
@@ -301,7 +310,7 @@ export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
     "decorLineTwoWay", "decorArrowTwoWay", "decorLineOneWay", "decorArrowOneWay", "decorLineElevator",
     "elevatorBadgeFill", "elevatorBadgeBorder", "elevatorBadgeText",
   ],
-  ["markerIndexFill", "markerIndexText", "markerIndexBorder"],
+  ["floorLabelFill", "floorLabelBorder", "floorLabelText", "markerIndexFill", "markerIndexText", "markerIndexBorder"],
 ];
 
 declare const visibleColorBrand: unique symbol;

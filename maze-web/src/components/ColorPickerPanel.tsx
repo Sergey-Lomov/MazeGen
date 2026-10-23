@@ -11,6 +11,7 @@ import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
 import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
+import { Tooltip } from "./Tooltip";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
@@ -103,7 +104,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const edges = useMazeStore((s: MazeState) => s.edges);
   const floors = useMazeStore((s: MazeState) => s.floors);
   const showColorWarnings = useMazeStore((s: MazeState) => s.showColorWarnings);
-  const cfg = useMazeStore((s: MazeState) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s: MazeState) => s.activeFieldConfig);
   const start = useMazeStore((s: MazeState) => s.start);
   const finish = useMazeStore((s: MazeState) => s.finish);
   const projectColorGroups = useMemo(() => {
@@ -131,7 +132,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
 
   const colorWarnings = useMemo(() => {
     if (!showColorWarnings || !field || !openMode) return [];
-    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeTessellationConfig: cfg, start, finish } as MazeState;
+    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeFieldConfig: cfg, start, finish } as MazeState;
     const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
     const warnings = openMode === "vector_by_walls"
@@ -252,10 +253,9 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
             isValid={(raw) => HEX_COLOR_RE.test(raw)}
             onChange={handleHexChange}
             resetButton={
-              <button
+              <Tooltip content={m["color_picker.eyedropper"]()}><button
                 type="button"
                 className="hoverable"
-                title={m["color_picker.eyedropper"]()}
                 aria-label={m["color_picker.eyedropper"]()}
                 aria-pressed={sampling}
                 style={{ ...styles.eyedropperBtn, ...(sampling ? styles.eyedropperBtnActive : {}) }}
@@ -263,7 +263,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
                 data-testid="color-picker-eyedropper"
               >
                 <Pipette size={14} />
-              </button>
+              </button></Tooltip>
             }
           />
           <div style={styles.modelSwitcher}>
@@ -287,14 +287,12 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
                 <span style={styles.recentColorsLabel}>{m["color_picker.recent_colors"]()}</span>
                 <div style={styles.swatchRow} data-testid="color-picker-recent-colors">
                   {recentColors.map((color, i) => (
-                    <button
-                      key={i}
+                    <Tooltip key={i} content={colorToHex(color)}><button
                       type="button"
                       className="hoverable"
-                      title={colorToHex(color)}
                       style={{ ...styles.recentSwatch, background: colorToHex(color) }}
                       onClick={() => pickProjectColor(color)}
-                    />
+                    /></Tooltip>
                   ))}
                 </div>
               </div>

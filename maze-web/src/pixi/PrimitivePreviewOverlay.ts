@@ -1,11 +1,12 @@
 import { Container, Graphics } from "pixi.js";
 import { TILE_SIZE } from "./constants";
-import { hexCenter, hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
 import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { PrimitiveWorldGeometry, TessellationKind } from "./primitiveGeometry";
+import type { FieldConfig } from "../fieldConfig";
+import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
+import { controlLineWidth } from "./controlLineWidth";
+import { buildRegionContours, renderRegionContours } from "./renderers/regionContours";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 
 const ADD_COLOR = canvas.fieldEditor.previewAdd;
 const REMOVE_COLOR = canvas.fieldEditor.previewRemove;
@@ -14,6 +15,7 @@ const PREVIEW_ALPHA = 0.5;
 const FRAME_ALPHA = 0.9;
 const FRAME_WIDTH = 1.25;
 const NODE_RADIUS = TILE_SIZE * 0.16;
+const SELECTION_FILL_ALPHA = 0.25;
 const DASH_LENGTH = TILE_SIZE * 0.35;
 const GAP_LENGTH = TILE_SIZE * 0.22;
 
@@ -23,10 +25,10 @@ export class PrimitivePreviewOverlay {
   private rafPending = false;
   private pendingCells: [number, number][] | null = null;
   private pendingButton = 0;
-  private pendingKind: TessellationKind = "square";
-  private pendingCfg: TessellationConfig | null = null;
+  private pendingCfg: FieldConfig | null = null;
   private pendingGeometry: PrimitiveWorldGeometry | null = null;
   private frameVisible = true;
+  private viewportScale = 1;
 
   constructor(container: Container) {
     this.root = container;
@@ -34,17 +36,16 @@ export class PrimitivePreviewOverlay {
     this.root.addChild(this.layer);
   }
 
-  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
+  update(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     this.pendingCells = cells;
     this.pendingButton = button;
-    this.pendingKind = kind;
     this.pendingCfg = cfg;
     this.pendingGeometry = geometry;
     if (!this.rafPending) {
       this.rafPending = true;
       requestAnimationFrame(() => {
         this.rafPending = false;
-        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
       });
     }
   }
@@ -52,11 +53,11 @@ export class PrimitivePreviewOverlay {
   setFrameVisible(visible: boolean): void {
     this.frameVisible = visible;
     if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
-      this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
     }
   }
 
-  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
+  private redraw(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
     const color = geometry.kind === "polygon" && geometry.cellColor !== undefined
@@ -66,7 +67,7 @@ export class PrimitivePreviewOverlay {
         : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
     const alpha = geometry.kind !== "ellipse" ? geometry.cellAlpha ?? PREVIEW_ALPHA : PREVIEW_ALPHA;
     for (const [x, y] of cells) {
-      const verts = getCellVertices(x, y, kind, cfg);
+      const verts = geometryCellVertices(x, y, cfg);
       if (!verts) continue;
       g.poly(verts.flatMap(v => [v.x, v.y]));
       g.fill({ color, alpha });
@@ -78,14 +79,22 @@ export class PrimitivePreviewOverlay {
           ? geometry.frameColor
           : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
       if (geometry.kind === "ellipse") {
-        if (geometry.dashed) drawDashedEllipse(g, geometry.center, geometry.width / 2, geometry.height / 2, frameColor);
+        if (geometry.dashed) drawDashedEllipse(g, geometry.center, geometry.width / 2, geometry.height / 2, frameColor, this.strokeWidth(FRAME_WIDTH));
         else {
           g.ellipse(geometry.center.x, -geometry.center.y, geometry.width / 2, geometry.height / 2);
-          g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+          g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
         }
       } else if (geometry.kind === "boundary") {
-        for (const [start, end] of geometry.segments) {
-          drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor);
+        // Contour is inset from the cell edges (like region highlights) so it stays visible
+        // when a selected edge coincides with the solid maze boundary.
+        const sides = geometry.segments.map(([start, end], i) => {
+          const v0 = { x: start.x, y: -start.y };
+          const v1 = { x: end.x, y: -end.y };
+          return { v0, v1, polyline: [v0, v1], component: geometry.components?.[i] ?? 0 };
+        });
+        const contours = buildRegionContours(sides);
+        if (contours.length > 0) {
+          renderRegionContours(g, contours, frameColor, SELECTION_FILL_ALPHA, getCellHighlightInset(), "round", this.strokeWidth(FRAME_WIDTH), { dash: DASH_LENGTH, gap: GAP_LENGTH });
         }
       } else {
         const points = geometry.points;
@@ -98,24 +107,24 @@ export class PrimitivePreviewOverlay {
             : (confirmedVertexCount >= 3 ? points.length : 0);
           if (geometry.dashedAll && pointCount >= 2) {
             for (let i = 1; i < pointCount; i++) {
-              drawDashedSegment(g, { x: points[i - 1].x, y: -points[i - 1].y }, { x: points[i].x, y: -points[i].y }, frameColor);
+              drawDashedSegment(g, { x: points[i - 1].x, y: -points[i - 1].y }, { x: points[i].x, y: -points[i].y }, frameColor, this.strokeWidth(FRAME_WIDTH));
             }
           } else if (pointCount >= 2) {
             g.moveTo(points[0].x, -points[0].y);
             for (let i = 1; i < pointCount; i++) g.lineTo(points[i].x, -points[i].y);
-            g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+            g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
           }
           if (geometry.dashedClosing && points.length >= 2) {
             const first = points[0];
             const last = points[points.length - 1];
-            drawDashedSegment(g, { x: last.x, y: -last.y }, { x: first.x, y: -first.y }, frameColor);
+            drawDashedSegment(g, { x: last.x, y: -last.y }, { x: first.x, y: -first.y }, frameColor, this.strokeWidth(FRAME_WIDTH));
           }
           const vertexCount = Math.min(geometry.vertexCount ?? points.length, points.length);
           for (let i = 0; i < vertexCount; i++) {
             const point = points[i];
             g.circle(point.x, -point.y, NODE_RADIUS);
             g.fill({ color: frameColor, alpha: 0.95 });
-            g.stroke({ color: SELECT_COLOR, alpha: 0.95, width: FRAME_WIDTH });
+            g.stroke({ color: SELECT_COLOR, alpha: 0.95, width: this.strokeWidth(FRAME_WIDTH) });
           }
         } else {
           if (points.length === 2) {
@@ -125,13 +134,13 @@ export class PrimitivePreviewOverlay {
             for (let i = 0; i < points.length; i++) {
               const start = points[i];
               const end = points[(i + 1) % points.length];
-              drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor);
+              drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor, this.strokeWidth(FRAME_WIDTH));
             }
             return;
           } else {
             g.poly(points.flatMap((point) => [point.x, -point.y]));
           }
-          g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+          g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
         }
       }
     }
@@ -143,7 +152,16 @@ export class PrimitivePreviewOverlay {
     this.layer.clear();
   }
 
-  onViewportChanged(_x: number, _y: number, _w: number, _h: number, _scale: number): void {}
+  onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
+    this.viewportScale = scale;
+    if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
+      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
+    }
+  }
+
+  private strokeWidth(width: number): number {
+    return controlLineWidth(width, this.viewportScale);
+  }
 
   destroy(): void {
     this.layer.destroy();
@@ -155,6 +173,7 @@ function drawDashedSegment(
   start: { x: number; y: number },
   end: { x: number; y: number },
   color: number,
+  width: number,
 ): void {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -167,7 +186,7 @@ function drawDashedSegment(
     const dashEnd = Math.min(travelled + DASH_LENGTH, length);
     g.moveTo(start.x + ux * travelled, start.y + uy * travelled);
     g.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
-    g.stroke({ color, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+    g.stroke({ color, alpha: FRAME_ALPHA, width });
   }
 }
 
@@ -177,6 +196,7 @@ function drawDashedEllipse(
   radiusX: number,
   radiusY: number,
   color: number,
+  width: number,
 ): void {
   const segments = 64;
   const cx = center.x;
@@ -189,33 +209,7 @@ function drawDashedEllipse(
       const angle = startAngle + (endAngle - startAngle) * j / 4;
       g.lineTo(cx + Math.cos(angle) * radiusX, cy + Math.sin(angle) * radiusY);
     }
-    g.stroke({ color, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+    g.stroke({ color, alpha: FRAME_ALPHA, width });
   }
 }
 
-function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: TessellationConfig) {
-  switch (kind) {
-    case "square": {
-      const h = TILE_SIZE / 2;
-      const cx = x * TILE_SIZE + TILE_SIZE / 2;
-      const cy = -y * TILE_SIZE - TILE_SIZE / 2;
-      return [
-        { x: cx - h, y: cy - h },
-        { x: cx + h, y: cy - h },
-        { x: cx + h, y: cy + h },
-        { x: cx - h, y: cy + h },
-      ];
-    }
-    case "hex": {
-      const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      const center = hexCenter(x, y, orientation, cfg);
-      return hexVertices(center.x, center.y, orientation);
-    }
-    case "triangle": {
-      const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
-      return triVertices(x, y, orientation);
-    }
-    case "cairo":
-      return geometryCellVertices(x, y, cfg) ?? [];
-  }
-}

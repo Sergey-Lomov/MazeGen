@@ -184,12 +184,9 @@ export interface StageConfig {
   rules: QcRuleConfig[];
 }
 
-/** Wire tessellation kind. */
-export type TessellationKindWasm = "square" | "hex" | "tri" | "cairo";
-
-export interface WasmTessellationConfig {
-  tessellation_type: TessellationKindWasm;
-}
+/** Wire tessellation instance config, `{ kind, params }` — mirrors `maze-runner`'s
+ * `TessellationConfig`. */
+export type WasmTessellationConfig = import("../fieldConfig").TessellationConfig;
 
 export interface GenerationParams {
   depth_first?: number;
@@ -227,11 +224,8 @@ export interface ElementsConfig {
   allow_non_consecutive_elevator_floors?: boolean;
 }
 
-/** Mirrors Rust's `SplitPatternFaceDto` in shape, but NOT in `face_index` ordering while held in
- * `MazeStore`/the project file: here it's a position into `tessellationGeometry.ts`'s
- * `getNeighborData` offsets (`TileFaceEditor`'s authoring order), not `Tessellation::faces()`'s
- * order — the two differ for square/hex (GitHub issue #273). Converted to core's ordering only at
- * the wasm-config-serialization boundary (`generateConfigBuilder.ts`'s `splitPatternsToCore`). */
+/** Mirrors Rust's `SplitPatternFaceDto`; `face_index` is a canonical index of the pattern's shape
+ * template. */
 export interface SplitPatternFace {
   face_index: number;
   requirement: SplitFaceRequirement;
@@ -239,8 +233,11 @@ export interface SplitPatternFace {
   sibling_target?: number;
 }
 
-/** Mirrors Rust's `SplitPatternDto` — an abstract, tessellation-relative split template. */
+/** Mirrors Rust's `SplitPatternDto` — an abstract split template bound to a shape template. */
 export interface SplitPattern {
+  /** Key of the core `ShapeDescriptor` the pattern is authored for (`regular:4`, `cairo_pentagon`,
+   *  …) — see `shapeTemplates.ts`'s `patternShapeOf`. */
+  shape: string;
   node_count: number;
   /** `faces[i]` is pattern-local node `i`'s face list; node 0 is the tile's pre-existing node. */
   faces: SplitPatternFace[][];

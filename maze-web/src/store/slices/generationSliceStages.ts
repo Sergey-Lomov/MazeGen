@@ -60,11 +60,8 @@ export const createGenerationStagesSlice: StateCreator<MazeStore, [], [], Pick<G
     stages: state.stages.map((s) => s.id === stageId ? { ...s, collapsed: !s.collapsed } : s),
   })),
 
-  setStrategyParam: (strategyId, paramId, value) => set((state) => ({
-    strategyParams: {
-      ...state.strategyParams,
-      [strategyId]: { ...(state.strategyParams[strategyId] ?? {}), [paramId]: value },
-    },
+  setStrategyParam: (ruleId, paramId, value) => set((state) => ({
+    rules: state.rules.map((r) => r.id === ruleId ? { ...r, strategyParams: { ...r.strategyParams, [paramId]: value } } : r),
     debugStale: debugStaleOf(state),
   })),
 

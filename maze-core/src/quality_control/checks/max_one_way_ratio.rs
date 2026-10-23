@@ -14,7 +14,7 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 /// Flags an excess against the share of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) relative to the field's size — see GitHub issue #202, part of the one-way
 /// management epic (#92). Symmetric counterpart to `MinOneWayRatioCheck` (issue #201): same
-/// "one-ways per 100 field cells" normalization (via `maze.field.point_count()`, not a share of
+/// "one-ways per 100 field cells" normalization (via `maze.field.cell_count()`, not a share of
 /// the total edge count), just the excess side of the threshold rather than the deficit side.
 /// Mirrors `MaxOneWayCountCheck`'s "single group, whole one-way edge set" reporting shape:
 /// `to_remove` (GitHub issue #202 follow-up) is `count - target_count`, where `target_count` is
@@ -59,7 +59,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
         // counts toward every floor it touches (GitHub issue #369).
         let (group, to_remove) = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count() as u64;
+                let field_cells = maze.field.cell_count() as u64;
                 if field_cells == 0 {
                     return;
                 }

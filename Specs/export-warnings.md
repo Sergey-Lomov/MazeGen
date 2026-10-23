@@ -73,6 +73,9 @@ network.
   the corridor or exceeds the corridor width; only drawable one-way segments are included.
 - `split_gap_may_shrink` — corridor thickness plus both sides of the split gap exceeds the safe
   split width, so the split gap may be reduced by the renderer.
+- `marker_extension_hits_corridor` — a corridor-colored extension beneath a start or finish marker
+  overlaps a rendered corridor that is not incident to that marker's node. The warning highlights
+  only the marker cell.
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance
@@ -148,6 +151,17 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `marker_index_text_overflow` (GitHub issue #725) — a marker-index label does not fit its fixed
   `width` x `height` plate (same ink-outline rule and `textMargin` as the other text overflow
   warnings, against the rectangle). Only when `markerIndex.enabled`; hover highlights the plate cells.
+- `marker_index_covers_stop_line` (GitHub issue #744) — a marker-index plate, border included,
+  overlaps the stop line (wall tick) of a one-way vertical passage marker on the same floor. The
+  plate body draws above the markers, so the overlap hides part of the line and that end of the
+  passage becomes hard to tell apart from a two-way one. Checked against every plate on the floor,
+  not only the passage's own. The plate's floor-colored gap ring is excluded (it draws under the
+  markers). Abstract style: the tick's filled rounded rect; decorative stairs: the tick stroke with
+  its round caps; no stop line exists for the `"sign"` arrow style. Rounded plate corners count
+  exactly; shapes that only touch do not overlap. Geometry is shared with the renderers
+  (`oneWayStopLineShape` in `renderers/verticalConnectionGeometry.ts`, `markerIndexPlateBox` in
+  `selectors/mazeSelectors/markerIndex.ts`). Only when `markerIndex.enabled`; hover highlights the
+  affected passage markers.
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
 
@@ -237,7 +251,8 @@ actually rendered.
 - `teleport_marker_invisible`;
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
-- `elevator_indistinguishable`.
+- `elevator_indistinguishable`;
+- `marker_index_covers_stop_line`.
 
 `elevator_badges_overlap` and `elevator_badges_too_many` remain Vector-by-walls-only because the
 corridor renderer does not use the corresponding elevator badge layout warning path today.

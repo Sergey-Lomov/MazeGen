@@ -410,7 +410,7 @@ export function postEditCommandLabel(
       return withEntityId(verticalPassageRow(
         m["post_edit.changes_action_set_vertical_passage_direction"](),
         verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
-        flippedVerticalPassageArrow(command.direction),
+        command.absolute ? verticalPassageArrow(command.direction) : flippedVerticalPassageArrow(command.direction),
       ));
     case "moveVerticalPassageEndpoint":
       // `from`/`to`/`direction` are this command's own denormalized fields (GitHub issue #564

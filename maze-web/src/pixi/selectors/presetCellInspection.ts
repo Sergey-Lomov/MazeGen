@@ -5,11 +5,11 @@ import {
 } from "../fieldEditUtils";
 import { presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
+import { splitShapeBinding } from "../splitShape";
 import type { PresetSplitLabelContext } from "../presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
-import { cairoCanonicalFaceOrder } from "../cairoGeometry";
 
 function formatLockKind(kind: NodeLockKind): string {
   switch (kind) {
@@ -73,7 +73,7 @@ export function buildPresetCellInspection(
   presetElevators: PresetElevatorEntry[],
   lockedNodes: Map<string, NodeLockKind>,
   autoLockedNodes: Set<string>,
-  cfg: TessellationConfig | null = null,
+  cfg: FieldConfig | null = null,
   inFieldCells: Set<string> = new Set(),
   presetConnections: Map<string, PresetConnectionEntry> = new Map(),
   splitCtx: PresetSplitLabelContext | null = null,
@@ -101,8 +101,7 @@ export function buildPresetCellInspection(
       endpoint, point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
     ));
     semanticNames = splitNodeSemanticNamesFromKinds(
-      faceKindsByNode,
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(x, y) : undefined,
+      faceKindsByNode, splitShapeBinding(cfg, point[0], point[1]),
     );
   }
 

@@ -10,106 +10,77 @@ import type {
   ProjectFileQcRule,
   ProjectFileStage,
   ProjectFileNestedStrategy,
+  ProjectFileFloorField,
+  ProjectFileQuality,
 } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { availablePresetKeys } from "../../pixi/fieldOps";
+import { tessellationConfigOf, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
-  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertHexOrientation, assertTriOrientation,
-  assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
+  assertObject, assertString, assertNumber, assertBoolean, assertArray,
+  assertStringRecord, assertStringRecordRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
 
-export function validateTessellationConfig(v: unknown, path = "tessellation.config"): TessellationConfig {
+/** Optional `absolute: true` marker of a settings-dialog direction command (GitHub issue #748). */
+function validateAbsoluteFlag(v: unknown, path: string): { absolute?: true } {
+  if (v === undefined) return {};
+  if (assertBoolean(v, path) !== true) throw new Error(`${path}: expected true when present`);
+  return { absolute: true };
+}
+
+/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`). */
+export function validatePresetFieldShape(v: unknown, path: string): PresetFieldShape {
+  const shape = validateFieldShape(v, path);
+  if (shape.shape === "custom") throw new Error(`${path}.shape: expected a preset shape`);
+  return shape;
+}
+
+export function validateFieldShape(v: unknown, path: string): FieldShape {
   const obj = assertObject(v, path);
-  const type = assertString(obj.type, `${path}.type`);
-  switch (type) {
-    case "square":
-      assertNumber(obj.width, `${path}.width`);
-      assertNumber(obj.height, `${path}.height`);
-      return obj as unknown as TessellationConfig;
-    case "square_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      return obj as unknown as TessellationConfig;
-    case "square_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      return obj as unknown as TessellationConfig;
-    case "hex_parallelogram":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_rectangle":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_rect":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "square_custom":
-      assertArray(obj.points, `${path}.points`);
-      return obj as unknown as TessellationConfig;
-    case "hex_custom":
-      assertArray(obj.points, `${path}.points`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "tri_custom":
-      assertArray(obj.points, `${path}.points`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "cairo":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_circle":
-    case "cairo_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_custom":
-      assertArray(obj.points, `${path}.points`);
-      return obj as unknown as TessellationConfig;
+  const shape = assertString(obj.shape, `${path}.shape`);
+  switch (shape) {
+    case "rect":
+    case "parallelogram":
+      return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`) };
+    case "circle":
+    case "hexagon":
+      return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };
+    case "triangle":
+      return { shape, side: assertNumber(obj.side, `${path}.side`) };
+    case "custom":
+      return {
+        shape,
+        points: assertArray(obj.points, `${path}.points`).map((pt, i) => {
+          const pair = assertArray(pt, `${path}.points[${i}]`);
+          return [assertNumber(pair[0], `${path}.points[${i}][0]`), assertNumber(pair[1], `${path}.points[${i}][1]`)] as [number, number];
+        }),
+      };
     default:
-      throw new Error(`Unknown tessellation config type: ${type}`);
+      throw new Error(`Unknown field shape: ${shape}`);
   }
 }
 
-/** Validates one floor's own field-shape state (GitHub issue #338) — `config`/`savedConfigs` reuse
- * `validateTessellationConfig`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
+/** Validates one floor's own field-shape state (GitHub issue #338) — `shape`/`savedShapes` reuse
+ * `validateFieldShape`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
  * itself is re-derived on load, same as the pre-#338 shape always did). */
-export function validateFloorFieldConfig(v: unknown, path: string): { config: TessellationConfig; savedConfigs: TessellationConfig[]; freeFieldPoints: Record<"square" | "hex" | "triangle" | "cairo", [number, number][]>; fieldEditMode: "default" | "custom" } {
+/** Rejects a preset shape the maze-wide tessellation kind does not offer (`field_capabilities`). */
+function assertShapeOfKind(shape: FieldShape, kind: TessellationKind, path: string): void {
+  if (shape.shape !== "custom" && !availablePresetKeys(tessellationConfigOf(kind)).includes(shape.shape)) {
+    throw new Error(`${path}: kind "${kind}" does not offer shape "${shape.shape}"`);
+  }
+}
+
+export function validateFloorFieldConfig(v: unknown, path: string, kind: TessellationKind): ProjectFileFloorField {
   const obj = assertObject(v, path);
-  const config = validateTessellationConfig(obj.config, `${path}.config`);
-  const savedConfigs: TessellationConfig[] = obj.savedConfigs != null
-    ? assertArray(obj.savedConfigs, `${path}.savedConfigs`).map((sv, i) => validateTessellationConfig(sv, `${path}.savedConfigs[${i}]`))
+  const shape = validateFieldShape(obj.shape, `${path}.shape`);
+  assertShapeOfKind(shape, kind, `${path}.shape`);
+  const savedShapes: PresetFieldShape[] = obj.savedShapes != null
+    ? assertArray(obj.savedShapes, `${path}.savedShapes`).map((sv, i) => {
+      const saved = validatePresetFieldShape(sv, `${path}.savedShapes[${i}]`);
+      assertShapeOfKind(saved, kind, `${path}.savedShapes[${i}]`);
+      return saved;
+    })
     : [];
   const validatePoints = (raw: unknown, kindPath: string): [number, number][] => {
     if (raw == null) return [];
@@ -122,11 +93,23 @@ export function validateFloorFieldConfig(v: unknown, path: string): { config: Te
   const freeFieldPoints = {
     square: validatePoints(freeObj.square, `${path}.freeFieldPoints.square`),
     hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
-    triangle: validatePoints(freeObj.triangle, `${path}.freeFieldPoints.triangle`),
+    tri: validatePoints(freeObj.tri, `${path}.freeFieldPoints.tri`),
     cairo: validatePoints(freeObj.cairo, `${path}.freeFieldPoints.cairo`),
+    square_octagon: validatePoints(freeObj.square_octagon, `${path}.freeFieldPoints.square_octagon`),
+    brick: validatePoints(freeObj.brick, `${path}.freeFieldPoints.brick`),
+    trihexagonal: validatePoints(freeObj.trihexagonal, `${path}.freeFieldPoints.trihexagonal`),
+    snub_hexagonal: validatePoints(freeObj.snub_hexagonal, `${path}.freeFieldPoints.snub_hexagonal`),
+    rhombitrihexagonal: validatePoints(freeObj.rhombitrihexagonal, `${path}.freeFieldPoints.rhombitrihexagonal`),
+    truncated_hexagonal: validatePoints(freeObj.truncated_hexagonal, `${path}.freeFieldPoints.truncated_hexagonal`),
+    truncated_trihexagonal: validatePoints(freeObj.truncated_trihexagonal, `${path}.freeFieldPoints.truncated_trihexagonal`),
+    elongated_triangular: validatePoints(freeObj.elongated_triangular, `${path}.freeFieldPoints.elongated_triangular`),
+    snub_square: validatePoints(freeObj.snub_square, `${path}.freeFieldPoints.snub_square`),
+    curved_quadrilateral: validatePoints(freeObj.curved_quadrilateral, `${path}.freeFieldPoints.curved_quadrilateral`),
+    radial: validatePoints(freeObj.radial, `${path}.freeFieldPoints.radial`),
+    voronoi: validatePoints(freeObj.voronoi, `${path}.freeFieldPoints.voronoi`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
-  return { config, savedConfigs, freeFieldPoints, fieldEditMode };
+  return { shape, savedShapes, freeFieldPoints, fieldEditMode };
 }
 
 /** Validates a `PostEditEndpoint` tagged union (GitHub issue #221) — `kind: "node"` (a plain
@@ -259,6 +242,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, id: assertString(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        ...validateAbsoluteFlag(obj.absolute, `${path}.absolute`),
       };
     case "moveTeleportEndpoint":
       return {
@@ -325,6 +309,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, id: assertString(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        ...validateAbsoluteFlag(obj.absolute, `${path}.absolute`),
       };
     case "moveVerticalPassageEndpoint":
       return {
@@ -508,10 +493,11 @@ export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   // Absent entirely for project files saved before rule-level params existed (GitHub issue
   // #253) — same recovery pattern `nestedStrategies` above uses.
   const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
+  const strategyParams = assertStringRecord(obj.strategyParams ?? {}, `${path}.strategyParams`);
   // `collapsed` defaults to `false` for files saved before rule collapsing existed (GitHub issue
   // #320) — same recovery pattern `ruleDisabled` above uses.
   const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params, collapsed };
+  return { id, name, kind, checks, strategyId, strategyParams, disabled, ruleDisabled, nestedStrategies, params, collapsed };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id
@@ -565,4 +551,74 @@ export function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
   if (kind !== "in" && kind !== "out" && kind !== "both")
     throw new Error(`Invalid NodeLockKind at ${path}: ${kind}`);
   return kind;
+}
+
+/** The quality control section — the project file's `quality` and a quality preset's whole
+ *  payload (GitHub issue #751). Shape problems in a present key throw; keys absent in older files
+ *  fall back to their defaults. */
+export function validateQuality(v: unknown, path: string): ProjectFileQuality {
+  const qualObj = assertObject(v, path);
+  // Rules with no kind (e.g. corrupted or saved before rules carried a kind) can never accept a
+  // check via "add check to rule" again (the candidate filter matches by kind) — drop them on load
+  // rather than keep them around as permanently inert cards.
+  const rules = assertArray(qualObj.rules, `${path}.rules`)
+    .map((v, i) => validateQcRule(v, `${path}.rules[${i}]`))
+    .filter((r) => r.kind !== "");
+  assertUniqueIds(rules, (r) => r.id, "rule id", `${path}.rules`);
+  // See GitHub issue #65 and Specs/quality-feature.md's "Project file persistence" section.
+  // Two cases: the key is absent entirely (file saved before this feature — recovery synthesizes
+  // one stage covering every rule, not a registered migration, same pattern as
+  // repairMaxIterations/ruleDisabled below) vs. the key is present (validated for full
+  // consistency against `rules` — any violation is a hard parse error, not a silent recovery,
+  // since a present-but-inconsistent key means the file is corrupted, not merely old).
+  const ruleIds = new Set(rules.map((r) => r.id));
+  let stages: ProjectFileStage[];
+  if (!("stages" in qualObj)) {
+    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false, collapsed: false }];
+  } else {
+    const parsedStages = assertArray(qualObj.stages, `${path}.stages`).map((v, i) => validateQcStage(v, `${path}.stages[${i}]`));
+    assertUniqueIds(parsedStages, (s) => s.id, "stage id", `${path}.stages`);
+    // A `ruleId` in a stage that doesn't resolve to a surviving rule is only ever a rule dropped
+    // by the kind-drop recovery above (see "Rules with no kind" comment) — that rule never
+    // reaches `rules`/`ruleIds`, so a strict "unknown rule id" error here would fire on every
+    // legacy file exercising that same recovery path. Scrub it silently instead; genuinely
+    // unknown ids (never present in the file's own `quality.rules` at all) are indistinguishable
+    // from this case at this point and get the same silent scrub — a stricter check would need to
+    // track "known but kind-dropped" separately, which isn't worth the complexity for a
+    // stale-reference cleanup that's a no-op either way.
+    stages = parsedStages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => ruleIds.has(id)) }));
+    const seenInStage = new Set<string>();
+    for (const stage of stages) {
+      for (const ruleId of stage.ruleIds) {
+        if (seenInStage.has(ruleId)) throw new Error(`${path}.stages: rule id ${ruleId} appears in more than one stage`);
+        seenInStage.add(ruleId);
+      }
+    }
+    for (const r of rules) {
+      if (!seenInStage.has(r.id)) throw new Error(`${path}.stages: rule id ${r.id} is not assigned to any stage`);
+    }
+  }
+  // Project files written before #774 kept top-level strategy params keyed by strategy id.
+  // Copy each legacy value to every rule using that strategy on load; subsequent saves use the
+  // rule-local field and no longer retain this ambiguous shared map.
+  const legacyStrategyParams = "strategyParams" in qualObj
+    ? assertStringRecordRecord(qualObj.strategyParams, `${path}.strategyParams`)
+    : {};
+  const normalizedRules = rules.map((rule) => (
+    Object.keys(rule.strategyParams).length > 0 || rule.strategyId === null
+      ? rule
+      : { ...rule, strategyParams: legacyStrategyParams[rule.strategyId] ?? {} }
+  ));
+  // Optional — files saved before this setting existed (key absent entirely) default to the same
+  // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
+  // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
+  // stay `null`, not fall back to the default — checked via `in`, not `typeof === "number"`,
+  // which would also catch the legitimate "disabled" case and silently re-enable it on load.
+  const repairMaxIterations = "repairMaxIterations" in qualObj
+    ? (typeof qualObj.repairMaxIterations === "number" ? qualObj.repairMaxIterations : null)
+    : 100;
+  const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
+    ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
+    : 10;
+  return { rules: normalizedRules, stages, repairMaxIterations, repairTimeBudgetSecs };
 }

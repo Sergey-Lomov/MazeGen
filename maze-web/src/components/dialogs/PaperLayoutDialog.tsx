@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
@@ -13,7 +14,7 @@ import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
 
 interface Props {
-  config: Pick<FieldConfig, "type">;
+  config: Pick<FieldConfig, "tessellation">;
   onApply: (input: PrintFieldSizingInput) => void;
   onClose: () => void;
 }
@@ -71,12 +72,12 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
           marginLabel={m["field.print_sizing.margin"]()}
           inputNamePrefix="field-paper-layout"
         />
-        <NumberInputRow label={config.type === "square" || config.type === "square_custom" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()} value={cellSize} onChange={setCellSize} />
+        <NumberInputRow label={TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()} value={cellSize} onChange={setCellSize} />
         {!valid && <span style={styles.error}>{m["field.paper_layout.invalid"]()}</span>}
       </Stack>
       <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" layoutStyle={styles.footerButton} disabled={!valid} onClick={confirm}>{m["common.confirm"]()}</Button>
+        <Button variant="secondary" dialogAction layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" dialogAction layoutStyle={styles.footerButton} disabled={!valid} onClick={confirm}>{m["common.confirm"]()}</Button>
       </div>
     </Modal>
   );

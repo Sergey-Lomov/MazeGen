@@ -190,12 +190,12 @@ fn discover_target_candidates<T: Tessellation>(
     scc: &ConnectedComponents,
     planned_union: &mut PlannedUnion,
     maze: &Maze<T>,
-) -> HashMap<ComponentId, HashSet<T::Point>> {
+) -> HashMap<ComponentId, HashSet<T::CellId>> {
     let levels: Vec<_> = maze.field.levels_ordered().collect();
-    let mut by_component: HashMap<ComponentId, HashSet<T::Point>> = HashMap::new();
+    let mut by_component: HashMap<ComponentId, HashSet<T::CellId>> = HashMap::new();
 
     for &node in region {
-        let Some(point) = maze.field.point_of(node) else {
+        let Some(point) = maze.field.cell_of(node) else {
             continue;
         };
         let Some(own_level) = maze.field.level_of(node) else {
@@ -259,7 +259,7 @@ fn try_merge_via_elevator<T: Tessellation>(
     maze: &Maze<T>,
     region: &[NodeId],
     target_region: &[NodeId],
-    target_points: &HashSet<T::Point>,
+    target_points: &HashSet<T::CellId>,
     use_existing: PriorityLevel,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
@@ -344,7 +344,7 @@ fn try_reuse_existing_elevator<T: Tessellation>(
     maze: &Maze<T>,
     region_set: &HashSet<NodeId>,
     target_set: &HashSet<NodeId>,
-    target_points: &HashSet<T::Point>,
+    target_points: &HashSet<T::CellId>,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
     planned: &[(NodeId, NodeId)],
@@ -378,7 +378,7 @@ fn try_reuse_existing_elevator<T: Tessellation>(
 
         // An elevator is a single vertical shaft at one fixed field point -- every stop must sit
         // at that same point (`elevator_point`), never merely somewhere in `target_points`.
-        let Some(elevator_point) = elevator.stops.first().and_then(|&s| maze.field.point_of(s))
+        let Some(elevator_point) = elevator.stops.first().and_then(|&s| maze.field.cell_of(s))
         else {
             continue;
         };
@@ -466,22 +466,22 @@ fn try_build_new_elevator<T: Tessellation>(
     maze: &Maze<T>,
     region_set: &HashSet<NodeId>,
     target_set: &HashSet<NodeId>,
-    target_points: &HashSet<T::Point>,
+    target_points: &HashSet<T::CellId>,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
     commands: &mut Vec<MutationCommand>,
 ) -> bool {
     // Resolved to `(region_node, point)` pairs and sorted by `region_node` (an `Ord` `NodeId`,
-    // unlike `T::Point` which has no such bound) before shuffling -- `target_points` is a
+    // unlike `T::CellId` which has no such bound) before shuffling -- `target_points` is a
     // `HashSet`, whose iteration order isn't stable across runs/hasher states, so sorting first
     // keeps `apply()` deterministic for a fixed seed regardless of that (see the matching fix in
     // `try_reuse_existing_elevator` for the full GitHub issue #431 follow-up rationale).
-    let mut region_points: Vec<(NodeId, T::Point)> = target_points
+    let mut region_points: Vec<(NodeId, T::CellId)> = target_points
         .iter()
         .filter_map(|&point| {
             region_set
                 .iter()
-                .find(|&&n| maze.field.point_of(n) == Some(point))
+                .find(|&&n| maze.field.cell_of(n) == Some(point))
                 .map(|&n| (n, point))
         })
         .collect();

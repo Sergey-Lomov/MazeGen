@@ -1,84 +1,17 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, MarkerShape, CornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
+import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
+import {
+  arrowThickness, arrowMidpointFraction, oneWayTickCenteringFraction, oneWayWallTickRect, stairsArrowGeometry, stairsTickSegment,
+} from "./verticalConnectionGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
+import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
 
-/** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
- *  own type since this lower-level renderer module must not depend on the store layer, same
- *  rationale as `mazeSelectors.ts`'s own `MarkerStyle`. `gapColor` mirrors the caller's own floor
- *  color, same convention every other marker's gap ring in this codebase uses (never the marker's
- *  own `fillColor`). */
-export type VerticalMarkerStyle = {
-  shape: MarkerShape;
-  cornerStyle: CornerStyle;
-  fillColor: number;
-  borderColor: number;
-  borderWidth: number;
-  gapWidth: number;
-  gapColor: number;
-  size: number;
-};
-
-/** Same field shape as `DecorativeLineStyle` (`imageExportTypes.ts`), kept as its own type for the
- *  same "no store-layer dependency" reason as `VerticalMarkerStyle` (GitHub issue #428). A
- *  decorative pictogram's stroke — no fill/border/gap/shape concept, unlike a marker. */
-export type VerticalDecorativeLineStyle = {
-  lineColor: number;
-  lineWidth: number;
-  size: number;
-};
-
-/** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc
- *  comment (`storeTypes.ts`, GitHub issue #347) for the settings this is built from. Three
- *  independent marker/arrow styles (GitHub issue #347 three-section follow-up), by how a marker
- *  actually reads on the map: `twoWayPassageMarker` for a two-way `VerticalPassage`
- *  (`marker.filled === true`), `oneWayPassageMarker` for a one-way `VerticalPassage`
- *  (`marker.filled === false`, both ends), `elevatorMarker` for every `Elevator` (always two-way by
- *  construction, but its own separate section/look). `"decorative"` (GitHub issue #428) draws
- *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator` instead — a separate,
- *  line-only style surface (see `VerticalDecorativeLineStyle`), replacing the marker-shaped fields
- *  above for that style only. */
-export type VerticalConnectionStyle = {
-  style: "abstract" | "decorative";
-  twoWayPassageMarker: VerticalMarkerStyle;
-  oneWayPassageMarker: VerticalMarkerStyle;
-  elevatorMarker: VerticalMarkerStyle;
-  twoWayArrowColor: number;
-  /** Direction-arrow size, as a fraction of the marker's own radius (0-1). */
-  twoWayArrowSize: number;
-  twoWayArrowStyle: VerticalArrowStyle;
-  twoWayArrowCornerStyle: CornerStyle;
-  oneWayArrowColor: number;
-  oneWayArrowSize: number;
-  oneWayArrowStyle: VerticalArrowStyle;
-  oneWayArrowCornerStyle: CornerStyle;
-  elevatorArrowColor: number;
-  elevatorArrowSize: number;
-  elevatorArrowStyle: VerticalArrowStyle;
-  elevatorArrowCornerStyle: CornerStyle;
-  decorativeStairsTwoWay: VerticalDecorativeLineStyle;
-  decorativeStairsOneWay: VerticalDecorativeLineStyle;
-  decorativeElevator: VerticalDecorativeLineStyle;
-  decorativeStairsArrowColor: number;
-  /** Direction-arrow size, as a fraction of the stairs icon's own half-width (0-1) — same
-   *  convention as `twoWayArrowSize`. */
-  decorativeStairsArrowSize: number;
-  /** One-way stairs arrow color, both ends — same color for the departure and arrival end (there's
-   *  no fill on a line icon to split into a per-end accent, unlike the abstract marker's own
-   *  wall-tick indicator, GitHub issue #693). */
-  decorativeStairsOneWayArrowColor: number;
-  /** One-way stairs arrow size, independent of `decorativeStairsArrowSize` (GitHub issue #583) —
-   *  same fraction-of-half-width convention. */
-  decorativeStairsOneWayArrowSize: number;
-  /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
-   *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
-  elevatorBadges: ElevatorBadgeSettings;
-};
 
 /** Fixed live-canvas `VerticalConnectionStyle` shared by every read-only/tool-driven view with no
  *  settings panel of its own for this (`GenerationRenderer`, `AnalyticsRenderer`, `PostEditRenderer`,
@@ -112,27 +45,6 @@ function patternTipFraction(pattern: OneWayPattern): number {
   if (pattern === "chevron") return (0.5 * WINGSPAN_FRACTION) / 1.4;
   // `arrow`'s own tip sits at `+half`, `half = drawnSize * 0.5 * WINGSPAN_FRACTION`.
   return 0.5 * WINGSPAN_FRACTION;
-}
-
-/** `chevron`/`arrow`'s own stroke thickness range (GitHub issue #347 fifth follow-up) — the arrow
- *  size slider's own extremes, `ARROW_SIZE_MIN`/`ARROW_SIZE_MAX` (matching the panel's own
- *  `SliderRow` `min`/`max` for `<kind>ArrowSize`, `VectorByWallsSettingsPanel.tsx`). Interpolated
- *  linearly against `arrowSizeFraction` in `arrowThickness` below so a thin arrow at the slider's
- *  own minimum doesn't draw with the same fixed 4px stroke a full-size arrow does — `triangle` has
- *  no stroke of its own (a filled shape) and ignores this entirely. */
-const ARROW_SIZE_MIN = 0.2;
-const ARROW_SIZE_MAX = 1;
-const ARROW_THICKNESS_MIN = 2;
-const ARROW_THICKNESS_MAX = 4;
-
-/** Linearly interpolates `chevron`/`arrow`'s own stroke thickness between `ARROW_THICKNESS_MIN`/
- *  `MAX` as `arrowSizeFraction` moves across its own slider range (GitHub issue #347 fifth
- *  follow-up: "shrinking the arrow/chevron size should shrink its line thickness too, linearly
- *  between min and max"). `triangle` has no stroke of its own — dispatched separately in
- *  `drawArrowPattern` below, which just ignores this for that pattern. */
-export function arrowThickness(arrowSizeFraction: number): number {
-  const t = (arrowSizeFraction - ARROW_SIZE_MIN) / (ARROW_SIZE_MAX - ARROW_SIZE_MIN);
-  return ARROW_THICKNESS_MIN + t * (ARROW_THICKNESS_MAX - ARROW_THICKNESS_MIN);
 }
 
 /** Dispatches to the shared one-way-indicator drawing primitive matching `pattern`, or draws the
@@ -176,41 +88,6 @@ function drawDirectionSign(g: Graphics, cx: number, cy: number, direction: numbe
   g.stroke({ color, width: thickness, join, cap });
 }
 
-/** Fraction of `size` (the arrow's own tip reach, see `drawArrowFilled`) at which a one-way
- *  passage's wall tick sits when placed past the arrowhead's own tip (`atTip: true`, GitHub issue
- *  #693, gap follow-up). Past `1` (the tip's own normalized reach, same for every pattern) so the
- *  tick clears the arrowhead instead of cutting across it. */
-export const ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION = 1.3;
-
-/** Fraction of `size` at which the tick sits past the arrow's own back/base (`atTip: false`).
- *  `triangle`'s own base sits at roughly `-0.54 * size` from the origin (`drawOneWayTriangle`'s
- *  `-0.35 * length` after `drawArrowPattern`'s tip-fraction rescale), closer to the origin than
- *  the tip's `+1 * size` — using the same magnitude as the tip side here would leave a visibly
- *  wider gap on this side than on the tip side, breaking the symmetric-gap read the issue asks
- *  for. Chosen a bit past the triangle's base beyond the matching-gap value (`0.84`) — the shape's
- *  own base reads as flush against the tick at that distance, so nudged outward slightly for a
- *  visible but still tight gap. */
-export const ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION = 1.05;
-
-/** Half-length of a one-way passage's wall tick, as a fraction of `size` — matches the triangle's
- *  own base half-width (GitHub issue #693, rounded-rect follow-up: the tick reads as "the wall
- *  this end runs into," so its own width should match the triangle's base rather than read as an
- *  arbitrarily short mark). For `size = 1` (this function's own `size` unit, same convention as
- *  `ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION` below), the triangle's circumradius is `radius =
- *  (1 / 0.4875) * 0.5` (`patternTipFraction("triangle")` rescale), and an equilateral triangle's
- *  base spans `radius * sqrt(3)` between its two non-tip vertices — half of that is this
- *  fraction. */
-const ONE_WAY_WALL_TICK_LENGTH_FRACTION = (1 / 0.4875) * 0.5 * Math.sqrt(3) * 0.5;
-
-/** Corner radius of the wall tick's rounded rect, as a fraction of `size` — matches
- *  `drawOneWayTriangle`'s own `roundPoly` corner radius (GitHub issue #693, rounded-rect
- *  follow-up), so both shapes in the composite read with the same corner style. Derived the same
- *  way as `patternVisualTipFraction`'s inset: for `size = 1` (this function's own `size` unit,
- *  the tick's positioning scale, same convention as `drawOneWayWallTick`'s `size` param), the
- *  triangle is drawn with `drawnSize = size / patternTipFraction("triangle")` (`0.4875`), giving
- *  `radius = drawnSize/2`, `length = 1.5*radius`, and `corner = (length*0.5)*0.3` — `≈0.2308`. */
-const ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION = 0.3 * 0.5 * 1.5 * (1 / 0.4875) * 0.5;
-
 /** Draws a one-way `VerticalPassage`'s wall-tick indicator (GitHub issue #693) — a short stroke
  *  perpendicular to the direction arrow, replacing the old accent-color fill/border distinction
  *  between the departure and arrival ends. Both ends draw the *same* mark (same color, same
@@ -225,88 +102,14 @@ const ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION = 0.3 * 0.5 * 1.5 * (1 / 0.4875) 
  *  arrow's axis; the tick itself is drawn as a fixed horizontal rect (see below), not rotated to
  *  match `(dx, dy)`. */
 export function drawOneWayWallTick(g: Graphics, ox: number, oy: number, dx: number, dy: number, size: number, atTip: boolean, color: number, thickness: number): void {
-  const along = atTip ? 1 : -1;
-  const distanceFraction = atTip ? ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION : ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION;
-  const tickCx = ox + dx * size * distanceFraction * along;
-  const tickCy = oy + dy * size * distanceFraction * along;
-  const tickHalf = size * ONE_WAY_WALL_TICK_LENGTH_FRACTION;
   // Drawn as a filled rounded rect, not a stroked line (GitHub issue #693, rounded-rect
   // follow-up) — a stroke's `cap: "round"` rounds its ends by bulging the full stroke width
   // outward in a half-circle, which doesn't match the triangle's own corner style; a rounded
   // rect's corner radius reads the same as `drawOneWayTriangle`'s `roundPoly` corners instead.
-  // `ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION` matches that triangle's own corner radius, scaled
-  // to this function's `size` units (see that constant's own doc comment for the derivation).
-  // Vertical passages only ever pass `(dx, dy) = (0, ±1)` (`VerticalConnectionMarker`'s own
-  // direction), so the tick (perpendicular to the arrow) is always axis-aligned horizontal —
-  // `roundRect` (axis-aligned only) is used directly, width/height fixed to that orientation
-  // rather than rotating or branching on `dx`/`dy`.
-  const corner = size * ONE_WAY_WALL_TICK_CORNER_RADIUS_FRACTION;
-  // 25% thinner than the arrow's own stroke thickness — a rounded rect reads visually heavier
-  // than the old stroked line at the same thickness value, so thinned down to match (GitHub issue
-  // #693, rounded-rect follow-up).
-  const halfThickness = (thickness * 0.75) / 2;
-  const width = tickHalf * 2;
-  const height = halfThickness * 2;
-  g.roundRect(tickCx - width / 2, tickCy - height / 2, width, height, Math.min(corner, width / 2, height / 2));
+  // See `oneWayWallTickRect` for the geometry.
+  const rect = oneWayWallTickRect(ox, oy, dx, dy, size, atTip, thickness);
+  g.roundRect(rect.x, rect.y, rect.w, rect.h, rect.radius);
   g.fill(color);
-}
-
-/** Each pattern's own tip/base visual midpoint, as a fraction of `size` — the tip-reach `size`
- *  `drawArrowPattern` itself is called with (GitHub issue #347 fourth follow-up) — ahead of the
- *  `(cx, cy)` origin. None of the three shared primitives is actually centered on its own input
- *  origin: `drawOneWayChevron`'s tip sits at `+length`, back at `-0.6*length` (`wallUtils.ts`) —
- *  since `patternTipFraction` always normalizes the drawn tip to exactly `+size` (i.e. `length =
- *  size` here), the midpoint `(tip + back) / 2 = 0.2*length` is `+0.2*size`, independent of
- *  `WINGSPAN_FRACTION`; `drawOneWayTriangle` *does* recenter internally (its own `centroidOffset`,
- *  GitHub issue #681 third follow-up: `centroidOffset = 0.65*length - radius = -radius/40`, since
- *  the primitive's internal `radius = drawnSize/2`, `length = 1.5*radius` — and here `drawnSize =
- *  size/0.4875` (`patternTipFraction` for `triangle`), so `radius = size/0.975` and as a fraction
- *  of `size` the offset is `-(1/40)/0.975 = -1/39`); `drawOneWayArrow`'s tail/tip are symmetric
- *  (`-size`/`+size`, offset `0`). Used to compensate a bidirectional pair's own `oy` so both
- *  arrows' visual centers land on the same on-screen row instead of straddling it (mirrors the
- *  old hand-built `drawDirectionArrow`'s own `size*0.25` constant, replaced when this dispatch was
- *  introduced). */
-function patternMidpointOffset(pattern: VerticalArrowStyle): number {
-  if (pattern === "triangle") return -1 / 39;
-  if (pattern === "chevron") return 0.2;
-  return 0;
-}
-
-/** Fraction of `size` at which `pattern`'s own tip actually reads visually, used as the "far"
- *  extreme instead of the nominal `+1` when centering a one-way marker's departure-end
- *  arrow+wall-tick pair (GitHub issue #693, round-corner follow-up). `drawOneWayTriangle` rounds
- *  its `roundPoly` corners by `corner = (length*0.5)*0.3` (`wallUtils.ts`) — for an equilateral
- *  triangle every vertex has a 60° interior angle, and rounding a vertex of interior angle `theta`
- *  with radius `r` cuts it back along its own bisector by `r / tan(theta/2)`. At the tip, that
- *  bisector IS the arrow's axis, so the cut shortens the tip's axial reach by a non-negligible
- *  `≈0.4 * size` (`tan(30°) = 1/sqrt(3)`, `insetTip = corner/tan(30°)`, worked out in `size`-
- *  fraction units below) — unlike the two base corners, whose bisectors point off-axis, so
- *  rounding shrinks the base edge's *width* without moving its *axial* position. `chevron`/`arrow`
- *  are plain stroked paths (no `roundPoly`), so their tip is a stroke endpoint (`cap: "round"`
- *  rounds outward, not inward) — their nominal `+1` tip stays exact. */
-export function patternVisualTipFraction(pattern: OneWayPattern): number {
-  if (pattern === "triangle") {
-    const styleSize = 1 / 0.4875; // patternTipFraction("triangle") = 0.4875, for size (pairArrowSize) = 1
-    const radius = styleSize * 0.5;
-    const length = 1.5 * radius;
-    const corner = (length * 0.5) * 0.3;
-    const insetTip = corner / Math.tan(Math.PI / 6);
-    return 1 - insetTip; // insetTip is already a fraction of size (= 1 here)
-  }
-  return 1;
-}
-
-/** Fraction of `size` (the pattern's own normalized tip reach, see `patternTipFraction`) at which
- *  `pattern`'s own back/base sits, relative to the arrow's origin — used to center a one-way
- *  marker's triangle/chevron/arrow-plus-wall-tick pair in the marker itself (GitHub issue #693,
- *  centering follow-up), the same way `drawVerticalArrows`'s glyph copy already does. `triangle`'s
- *  own base sits at `-0.35 * length` relative to its centroid-offset drawing (`drawOneWayTriangle`,
- *  `length = size / patternTipFraction("triangle")`) — i.e. `-(0.35 / 0.65) * size` once rescaled
- *  to this function's normalized `size` convention; `chevron`/`arrow` both draw their own back
- *  exactly at the origin (offset `0`, see `patternMidpointOffset`'s own doc comment). */
-export function patternBaseFraction(pattern: OneWayPattern): number {
-  if (pattern === "triangle") return -(0.35 / 0.65);
-  return 0;
 }
 
 /** Number of ascending steps a decorative stairs pictogram draws — shared by the icon itself and
@@ -388,37 +191,9 @@ function drawElevatorIcon(g: Graphics, cx: number, cy: number, r: number, lineWi
  *  both reading as the same physical wall seen from each end, mirroring the abstract marker's own
  *  departure/arrival tick pair. */
 function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: number, color: number, lineWidth: number, crossedOut: boolean, tailTick: boolean, pointsUp: boolean): void {
-  // Offset large enough to clear the stairs icon's own top-most riser (not just nudge past its
-  // centerline) — GitHub issue #428 fourth follow-up: "arrow currently runs right over the steps,
-  // needs to sit clearly above them".
-  const offset = r * 1.1;
-  const halfLen = r * size;
-  // The stairs' own diagonal runs bottom-left to top-right at 45°-equivalent slope `dy/dx = -1`
-  // over its own bounding box (`stairsZigzagPoints`'s first/last points) — normalized here since
-  // the box itself may be non-square in principle (r is shared for both axes today, kept general).
-  const dx = 1 / Math.SQRT2;
-  const dy = -1 / Math.SQRT2;
-  // Perpendicular unit vector pointing screen-up (negative Y): of the two unit vectors
-  // perpendicular to `(dx, dy)` — `(-dy, dx)` and `(dy, -dx)` — only `(dy, -dx)` has a negative Y
-  // component here (evaluates to `(-0.707, -0.707)`, up-and-left); the previous `(-dy, dx)` pointed
-  // down-right instead, which combined with too-small `offset` was why the arrow used to run right
-  // through the steps instead of clearing them (GitHub issue #428 fourth follow-up fix).
-  const px = dy;
-  const py = -dx;
-  const ox = cx + px * offset;
-  const oy = cy + py * offset;
-  const x0 = ox - dx * halfLen;
-  const y0 = oy - dy * halfLen;
-  const x1 = ox + dx * halfLen;
-  const y1 = oy + dy * halfLen;
+  const arrow = stairsArrowGeometry(cx, cy, r, size, pointsUp);
+  const { x0, y0, x1, y1, hx, hy, hdx, hdy, halfLen } = arrow;
   g.moveTo(x0, y0).lineTo(x1, y1);
-  // The head sits at the diagonal's "up" end (`x1, y1`) when `pointsUp`, at its "down" end (`x0, y0`)
-  // otherwise — `hx, hy` the tip, `hdx, hdy` the direction pointing away from the line's own body
-  // toward that tip, so the back-vector math below reads correctly for either end.
-  const hx = pointsUp ? x1 : x0;
-  const hy = pointsUp ? y1 : y0;
-  const hdx = pointsUp ? dx : -dx;
-  const hdy = pointsUp ? dy : -dy;
   const headLen = halfLen * 0.7;
   const headAngle = Math.PI / 6;
   const back1x = hx - (hdx * Math.cos(headAngle) - hdy * Math.sin(headAngle)) * headLen;
@@ -427,29 +202,12 @@ function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: n
   const back2y = hy - (hdy * Math.cos(headAngle) - hdx * Math.sin(headAngle)) * headLen;
   g.moveTo(hx, hy).lineTo(back1x, back1y);
   g.moveTo(hx, hy).lineTo(back2x, back2y);
-  if (crossedOut) {
-    // Sits just past the tip, in the direction the arrowhead itself points (GitHub issue #428
-    // seventh follow-up: "->|" — the tick is what the arrow runs *into*, not a mark back at the
-    // head's own base) — a small step forward from `hx, hy` along the shaft direction. Same gap
-    // as `tailTick`'s own (GitHub issue #693, tick gap follow-up — both ends read with a matching
-    // visible gap before their tick).
-    const tickGap = halfLen * 0.5;
-    const tickCx = hx + hdx * tickGap;
-    const tickCy = hy + hdy * tickGap;
-    const tickLen = halfLen * 0.5;
-    g.moveTo(tickCx - px * tickLen, tickCy - py * tickLen).lineTo(tickCx + px * tickLen, tickCy + py * tickLen);
-  }
-  if (tailTick) {
-    // Departure-end counterpart to `crossedOut`'s tip tick (GitHub issue #693, decorative
-    // follow-up) — the same perpendicular wall-tick mark and the same gap, placed past the
-    // shaft's own tail (`tx, ty`) instead of past the head.
-    const tx = pointsUp ? x0 : x1;
-    const ty = pointsUp ? y0 : y1;
-    const tickGap = halfLen * 0.5;
-    const tickCx = tx - hdx * tickGap;
-    const tickCy = ty - hdy * tickGap;
-    const tickLen = halfLen * 0.5;
-    g.moveTo(tickCx - px * tickLen, tickCy - py * tickLen).lineTo(tickCx + px * tickLen, tickCy + py * tickLen);
+  // `crossedOut` ticks just past the tip ("->|", GitHub issue #428 seventh follow-up — the tick
+  // is what the arrow runs *into*); `tailTick` is its departure-end counterpart past the shaft's
+  // own tail (GitHub issue #693, decorative follow-up), same gap — see `stairsTickSegment`.
+  const ticks = [crossedOut ? stairsTickSegment(arrow, true) : null, tailTick ? stairsTickSegment(arrow, false) : null];
+  for (const tick of ticks) {
+    if (tick) g.moveTo(tick.x0, tick.y0).lineTo(tick.x1, tick.y1);
   }
   g.stroke({ color, width: lineWidth, join: "round", cap: "round" });
 }
@@ -578,6 +336,21 @@ function drawElevatorBadges(
   }
 }
 
+/** `settings` with every pixel dimension multiplied by `factor` — elevator badges follow the size
+ *  adaptation of the elevator marker they belong to (GitHub issue #819). */
+function scaleElevatorBadges(settings: ElevatorBadgeSettings, factor: number): ElevatorBadgeSettings {
+  if (factor === 1) return settings;
+  return {
+    ...settings,
+    size: settings.size * factor,
+    borderWidth: settings.borderWidth * factor,
+    gapWidth: settings.gapWidth * factor,
+    textSize: settings.textSize * factor,
+    distance: settings.distance * factor,
+    gap: settings.gap * factor,
+  };
+}
+
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
  *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
  *  `GenerationRenderer` can own its own instance the same way it already does for those (per
@@ -595,7 +368,7 @@ function drawElevatorBadges(
  *  instead, and `VerticalConnectionMarker`'s own doc comment for the `arrowFilled` field that tells
  *  the two ends apart. */
 export class VerticalConnectionRenderer {
-  private g: Graphics;
+  private readonly g: Graphics;
   /** Interactive hit-area `Graphics` (`wireInteractivity`) and elevator floor-number badges
    *  (`drawElevatorBadges`, its own `gapGraphics`/`g`/`text` children) must live in an actual
    *  `Container`, not on `this.g` (a `Graphics` instance) — PixiJS v8 deprecates `addChild` on
@@ -603,15 +376,8 @@ export class VerticalConnectionRenderer {
    *  separate sibling layers above `this.g` (badges must draw on top of every marker, hit-areas on
    *  top of everything so they never miss a click), both cleared/rebuilt every `render()` call the
    *  same way `this.g` itself is. */
-  private badgeLayer: Container;
-  private hitLayer: Container;
-  private readonly baseG: Graphics;
-  private readonly baseBadgeLayer: Container;
-  private readonly baseHitLayer: Container;
-  /** Holds one scaled sub-tree per marker shrunk by the marker layout (GitHub issue #735) — every
-   *  component (shape, border, gap, arrows, badges, hit area) scales together about the marker's own
-   *  position. Drawn above the unscaled layers. */
-  private readonly scaledLayer: Container;
+  private readonly badgeLayer: Container;
+  private readonly hitLayer: Container;
 
   constructor(container: Container) {
     this.g = new Graphics();
@@ -620,38 +386,6 @@ export class VerticalConnectionRenderer {
     container.addChild(this.badgeLayer);
     this.hitLayer = new Container();
     container.addChild(this.hitLayer);
-    this.scaledLayer = new Container();
-    container.addChild(this.scaledLayer);
-    this.baseG = this.g;
-    this.baseBadgeLayer = this.badgeLayer;
-    this.baseHitLayer = this.hitLayer;
-  }
-
-  /** Runs `draw` with the draw targets redirected into a fresh holder scaled by `scale` about
-   *  `pos` when `scale < 1` (GitHub issue #735); otherwise draws straight into the shared layers. */
-  private drawScaled(pos: [number, number], scale: number | undefined, draw: () => void): void {
-    if (scale === undefined || scale >= 1) { draw(); return; }
-    const holder = new Container();
-    holder.pivot.set(pos[0], pos[1]);
-    holder.position.set(pos[0], pos[1]);
-    holder.scale.set(Math.max(scale, 0.001));
-    const g = new Graphics();
-    const badges = new Container();
-    const hits = new Container();
-    holder.addChild(g);
-    holder.addChild(badges);
-    holder.addChild(hits);
-    this.scaledLayer.addChild(holder);
-    this.g = g;
-    this.badgeLayer = badges;
-    this.hitLayer = hits;
-    try {
-      draw();
-    } finally {
-      this.g = this.baseG;
-      this.badgeLayer = this.baseBadgeLayer;
-      this.hitLayer = this.baseHitLayer;
-    }
   }
 
   /** `interactive` (GitHub issue #337 follow-up) wires click-to-switch-floor on every marker whose
@@ -673,153 +407,143 @@ export class VerticalConnectionRenderer {
      *  vertical-passage tool's own direction-cycle click on a one-way marker, `marker.filled ===
      *  false`) — see GitHub issue #341's follow-up. */
     interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean);
+    /** Marker size adaptation (GitHub issue #819) — scales each marker's radius by its cell's factor. */
+    scaler?: MarkerScaler;
   }): void {
+    const scaler = data.scaler ?? NO_MARKER_SCALING;
     this.g.clear();
     this.g.removeChildren().forEach((c) => c.destroy());
     this.badgeLayer.removeChildren().forEach((c) => c.destroy());
     this.hitLayer.removeChildren().forEach((c) => c.destroy());
-    this.scaledLayer.removeChildren().forEach((c) => c.destroy({ children: true }));
 
     const decorative = data.style.style === "decorative";
 
     for (const marker of data.markers) {
-      this.drawScaled(marker.pos, marker.scale, () => this.renderMarker(marker, data, decorative));
-    }
-  }
+      if (decorative) {
+        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler);
+        continue;
+      }
 
-  private renderMarker(
-    marker: VerticalConnectionMarker,
-    data: { style: VerticalConnectionStyle; interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean) },
-    decorative: boolean,
-  ): void {
-    if (decorative) {
-      this.renderDecorativeMarker(marker, data.style, data.interactive);
-      return;
-    }
+      const settings =
+        marker.kind === "elevator" ? data.style.elevatorMarker : marker.filled ? data.style.twoWayPassageMarker : data.style.oneWayPassageMarker;
+      const [arrowColor, arrowSizeFraction, arrowStyle, arrowCornerStyle] =
+        marker.kind === "elevator"
+          ? [data.style.elevatorArrowColor, data.style.elevatorArrowSize, data.style.elevatorArrowStyle, data.style.elevatorArrowCornerStyle] as const
+          : marker.filled
+            ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
+            : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
+      // The whole marker scales (GitHub issue #819): fill radius, border, gap ring, arrow strokes
+      // and elevator badges alike.
+      const factor = scaler.factorAt(marker.pos, settings.sizeAdaptation) * (marker.scale ?? 1);
+      const radius = (settings.size / 2) * factor;
+      const cx = marker.pos[0];
+      const cy = marker.pos[1];
+      const rounded = settings.cornerStyle === "round";
+      const borderWidth = (settings.borderWidth ?? 0) * factor;
+      const gapWidth = (settings.gapWidth ?? 0) * factor;
 
-    const settings =
-      marker.kind === "elevator" ? data.style.elevatorMarker : marker.filled ? data.style.twoWayPassageMarker : data.style.oneWayPassageMarker;
-    const [arrowColor, arrowSizeFraction, arrowStyle, arrowCornerStyle] =
-      marker.kind === "elevator"
-        ? [data.style.elevatorArrowColor, data.style.elevatorArrowSize, data.style.elevatorArrowStyle, data.style.elevatorArrowCornerStyle] as const
-        : marker.filled
-          ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
-          : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
-    const radius = settings.size / 2;
-    const cx = marker.pos[0];
-    const cy = marker.pos[1];
-    const rounded = settings.cornerStyle === "round";
-    const borderWidth = settings.borderWidth ?? 0;
-    const gapWidth = settings.gapWidth ?? 0;
+      // A one-way `VerticalPassage`'s two ends (`filled: false`) now draw the ordinary marker look —
+      // same fill/border on both ends, no accent tint (GitHub issue #693 replaced the old
+      // accent-color fill/border distinction with a wall-tick indicator on the direction arrow
+      // itself, see `drawOneWayWallTick` below).
+      const oneWay = marker.kind === "vertical_passage" && !marker.filled;
+      const fillColor = settings.fillColor;
+      const borderColor = settings.borderColor ?? settings.fillColor;
 
-    // A one-way `VerticalPassage`'s two ends (`filled: false`) now draw the ordinary marker look —
-    // same fill/border on both ends, no accent tint (GitHub issue #693 replaced the old
-    // accent-color fill/border distinction with a wall-tick indicator on the direction arrow
-    // itself, see `drawOneWayWallTick` below).
-    const oneWay = marker.kind === "vertical_passage" && !marker.filled;
-    const fillColor = settings.fillColor;
-    const borderColor = settings.borderColor ?? settings.fillColor;
+      // Single true outward offset of the fill path (`radius`) by `borderWidth + gapWidth` — see
+      // `drawMarkerUnderlay`'s own doc comment (GitHub issue #552 ninth follow-up). The marker's own
+      // border below covers the ring's inner `borderWidth`-wide band, leaving only the outer
+      // `gapWidth`-wide band visible.
+      if (gapWidth > 0) {
+        drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor, borderWidth);
+      }
+      drawMarkerWithBorder(this.g, settings.shape, cx, cy, radius, rounded, fillColor, borderColor, borderWidth);
 
-    // Single true outward offset of the fill path (`radius`) by `borderWidth + gapWidth` — see
-    // `drawMarkerUnderlay`'s own doc comment (GitHub issue #552 ninth follow-up). The marker's own
-    // border below covers the ring's inner `borderWidth`-wide band, leaving only the outer
-    // `gapWidth`-wide band visible.
-    if (gapWidth > 0) {
-      drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor, borderWidth);
-    }
-    drawMarkerWithBorder(this.g, settings.shape, cx, cy, radius, rounded, fillColor, borderColor, borderWidth);
-
-    if (marker.direction) {
-      // `"both"` (Elevator fan reaching floors on both sides of the active one, GitHub issue
-      // #337/#347 design follow-up) draws one arrow each way instead of picking a side.
-      const dys = marker.direction === "both" ? [-1, 1] : [marker.direction === "up" ? -1 : 1];
-      // "both" draws one up-arrow and one down-arrow (GitHub issue #337 follow-up) — each arrow's
-      // own tip/base isn't centered on its own origin (see `patternMidpointOffset`), so two
-      // opposite-facing arrows sharing the marker center would overlap. Spreading the pair along
-      // the axis each pattern reads best on keeps both fully visible without one overlapping the
-      // other: `chevron`/`triangle` spread vertically (stacked one above the other, each still
-      // pointing its own up/down — matches how these two patterns used to be positioned before
-      // the pattern dispatch existed, restored in GitHub issue #347's seventh follow-up after the
-      // sixth follow-up briefly moved `triangle` to a sideways spread) while `arrow` spreads
-      // sideways, since a vertical spread would shorten how far apart the shaft/head of two
-      // abutting up/down arrows read (GitHub issue #347 fourth follow-up). `originOffset` is
-      // fixed to the marker's own `radius`, not `arrowSize` — otherwise shrinking `arrowSize` (the
-      // arrow-size slider) would also shrink the gap between the two arrows, making them converge
-      // on the marker center instead of shrinking in place (GitHub issue #347 third follow-up
-      // regression). `oy` also compensates each pattern's own tip/base midpoint offset so both
-      // arrows' visual centers land on the same row/column as each other, not just as `cy`/`cx`.
-      const arrowSize = radius * arrowSizeFraction;
-      // `originOffset` multiplier tightened `0.55` -> `0.4` (GitHub issue #347 fifth follow-up:
-      // "move the elevator's two arrows a bit closer together"), then widened again to `0.5` for
-      // `chevron` alone (GitHub issue #347 sixth follow-up: "spread the elevator's two chevrons a
-      // bit further apart vertically") — still fixed to `radius`, not `arrowSize`, per the
-      // regression fix above.
-      const originOffset = dys.length > 1
-        ? radius * (arrowStyle === "sign" ? 0.5 : arrowStyle === "chevron" ? 0.5 : 0.4)
-        : 0;
-      const vertical = dys.length > 1 && arrowStyle !== "arrow";
-      // A vertically-stacked `triangle` pair draws each triangle at `0.75` of the ordinary
-      // `arrowSize` (GitHub issue #347 seventh follow-up) — the two triangles read as too large
-      // stacked at full size; single triangles and every other pattern/pair combination are
-      // unaffected.
-      const pairArrowSizeFraction = dys.length > 1 && (arrowStyle === "triangle" || arrowStyle === "sign") ? 0.75 : 1;
-      const pairArrowSize = arrowSize * pairArrowSizeFraction;
-      // Single chevron (not a spread pair) reads visually off-center toward its own back/base
-      // with the pair's own `0.2` compensation (GitHub issue #347 sixth follow-up) — a lone
-      // chevron needs a stronger pull toward its tip to look centered on the marker.
-      const singleChevronMidpointFraction = 0.3;
-      const midpointFraction = dys.length === 1 && arrowStyle === "chevron"
-        ? singleChevronMidpointFraction
-        : patternMidpointOffset(arrowStyle);
-      const midpointOffset = midpointFraction * pairArrowSize;
-      const thickness = arrowThickness(arrowSizeFraction);
-      // One-way marker only: centers the arrow+wall-tick *pair* on the marker, instead of
-      // leaving the arrow alone centered and the tick sitting off to one side of that (GitHub
-      // issue #693, centering follow-up) — mirrors `toolGlyphs.ts`'s own glyph copy of this same
-      // centering math. The pair's own extent along the arrow axis runs between its two
-      // outermost points: the tick's own far edge on one side (past the tip for the arrival end,
-      // past the base for the departure end), and whichever of the arrow's own visual tip
-      // (`patternVisualTipFraction` — NOT the nominal `+1`: `triangle`'s `roundPoly` corner
-      // rounding cuts its sharp tip back along the axis by a non-negligible amount, see that
-      // function's own doc comment) or base (`patternBaseFraction`) ends up furthest from the
-      // tick on the other side — for the arrival end the tick sits past the tip, so the arrow's
-      // own base (the nearer, not the further, point) is the other extreme; for the departure
-      // end the tick sits past the base, so the arrow's own (visual) tip is the other extreme.
-      // Shifting `oy` by half that extent's own offset from `0` centers the pair instead of the
-      // arrow alone. Only applies for a single (non-paired) one-way arrow — the same condition
-      // the tick itself is drawn under below.
-      const oneWayTickCentering = oneWay && arrowStyle !== "sign" && dys.length === 1
-        ? (marker.arrowFilled
-          ? (patternVisualTipFraction(arrowStyle) - ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION) / 2
-          : (patternBaseFraction(arrowStyle) + ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION) / 2)
-        : 0;
-      for (const [i, dy] of dys.entries()) {
-        const side = i === 0 ? -1 : 1;
-        const ox = cx + (vertical ? 0 : side * originOffset);
-        const signPairCentering = arrowStyle === "sign" && dys.length > 1 ? pairArrowSize * 0.5 : 0;
-        const oy = cy - dy * midpointOffset - dy * oneWayTickCentering * pairArrowSize + (vertical ? side * originOffset : 0) + signPairCentering;
-        // Both ends of a one-way passage draw a solid arrow (GitHub issue #347 fourth follow-up
-        // redesign) — the old outline-only arrival arrow is redundant with the fill/border
-        // distinction that redesign introduced, since replaced by the wall-tick indicator below
-        // (GitHub issue #693).
-        if (arrowStyle === "sign") {
-          drawDirectionSign(this.g, ox, oy, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
-        } else {
-          drawArrowFilled(this.g, arrowStyle, ox, oy, 0, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
-        }
-        // One-way wall tick (GitHub issue #693): departure end (`arrowFilled: true`) ticks near
-        // the arrow's own tail, arrival end near its tip — see `drawOneWayWallTick`'s own doc
-        // comment. Never drawn for `"sign"` (a plain +/- glyph has no directional axis a
-        // perpendicular tick could read against) or for the elevator's "both" pair (no single
-        // departure/arrival end to place it on).
-        if (oneWay && arrowStyle !== "sign" && dys.length === 1) {
-          drawOneWayWallTick(this.g, ox, oy, 0, dy, pairArrowSize, !marker.arrowFilled, arrowColor, thickness);
+      if (marker.direction) {
+        // `"both"` (Elevator fan reaching floors on both sides of the active one, GitHub issue
+        // #337/#347 design follow-up) draws one arrow each way instead of picking a side.
+        const dys = marker.direction === "both" ? [-1, 1] : [marker.direction === "up" ? -1 : 1];
+        // "both" draws one up-arrow and one down-arrow (GitHub issue #337 follow-up) — each arrow's
+        // own tip/base isn't centered on its own origin (see `patternMidpointOffset`), so two
+        // opposite-facing arrows sharing the marker center would overlap. Spreading the pair along
+        // the axis each pattern reads best on keeps both fully visible without one overlapping the
+        // other: `chevron`/`triangle` spread vertically (stacked one above the other, each still
+        // pointing its own up/down — matches how these two patterns used to be positioned before
+        // the pattern dispatch existed, restored in GitHub issue #347's seventh follow-up after the
+        // sixth follow-up briefly moved `triangle` to a sideways spread) while `arrow` spreads
+        // sideways, since a vertical spread would shorten how far apart the shaft/head of two
+        // abutting up/down arrows read (GitHub issue #347 fourth follow-up). `originOffset` is
+        // fixed to the marker's own `radius`, not `arrowSize` — otherwise shrinking `arrowSize` (the
+        // arrow-size slider) would also shrink the gap between the two arrows, making them converge
+        // on the marker center instead of shrinking in place (GitHub issue #347 third follow-up
+        // regression). `oy` also compensates each pattern's own tip/base midpoint offset so both
+        // arrows' visual centers land on the same row/column as each other, not just as `cy`/`cx`.
+        const arrowSize = radius * arrowSizeFraction;
+        // `originOffset` multiplier tightened `0.55` -> `0.4` (GitHub issue #347 fifth follow-up:
+        // "move the elevator's two arrows a bit closer together"), then widened again to `0.5` for
+        // `chevron` alone (GitHub issue #347 sixth follow-up: "spread the elevator's two chevrons a
+        // bit further apart vertically") — still fixed to `radius`, not `arrowSize`, per the
+        // regression fix above.
+        const originOffset = dys.length > 1
+          ? radius * (arrowStyle === "sign" ? 0.5 : arrowStyle === "chevron" ? 0.5 : 0.4)
+          : 0;
+        const vertical = dys.length > 1 && arrowStyle !== "arrow";
+        // A vertically-stacked `triangle` pair draws each triangle at `0.75` of the ordinary
+        // `arrowSize` (GitHub issue #347 seventh follow-up) — the two triangles read as too large
+        // stacked at full size; single triangles and every other pattern/pair combination are
+        // unaffected.
+        const pairArrowSizeFraction = dys.length > 1 && (arrowStyle === "triangle" || arrowStyle === "sign") ? 0.75 : 1;
+        const pairArrowSize = arrowSize * pairArrowSizeFraction;
+        // A single chevron gets a stronger pull toward its tip than a pair (`arrowMidpointFraction`).
+        const midpointFraction = arrowMidpointFraction(arrowStyle, dys.length > 1);
+        const midpointOffset = midpointFraction * pairArrowSize;
+        const thickness = arrowThickness(arrowSizeFraction) * factor;
+        // One-way marker only: centers the arrow+wall-tick *pair* on the marker, instead of
+        // leaving the arrow alone centered and the tick sitting off to one side of that (GitHub
+        // issue #693, centering follow-up) — mirrors `toolGlyphs.ts`'s own glyph copy of this same
+        // centering math. The pair's own extent along the arrow axis runs between its two
+        // outermost points: the tick's own far edge on one side (past the tip for the arrival end,
+        // past the base for the departure end), and whichever of the arrow's own visual tip
+        // (`patternVisualTipFraction` — NOT the nominal `+1`: `triangle`'s `roundPoly` corner
+        // rounding cuts its sharp tip back along the axis by a non-negligible amount, see that
+        // function's own doc comment) or base (`patternBaseFraction`) ends up furthest from the
+        // tick on the other side — for the arrival end the tick sits past the tip, so the arrow's
+        // own base (the nearer, not the further, point) is the other extreme; for the departure
+        // end the tick sits past the base, so the arrow's own (visual) tip is the other extreme.
+        // Shifting `oy` by half that extent's own offset from `0` centers the pair instead of the
+        // arrow alone. Only applies for a single (non-paired) one-way arrow — the same condition
+        // the tick itself is drawn under below.
+        const oneWayTickCentering = oneWay && arrowStyle !== "sign" && dys.length === 1
+          ? oneWayTickCenteringFraction(arrowStyle, marker.arrowFilled)
+          : 0;
+        for (const [i, dy] of dys.entries()) {
+          const side = i === 0 ? -1 : 1;
+          const ox = cx + (vertical ? 0 : side * originOffset);
+          const signPairCentering = arrowStyle === "sign" && dys.length > 1 ? pairArrowSize * 0.5 : 0;
+          const oy = cy - dy * midpointOffset - dy * oneWayTickCentering * pairArrowSize + (vertical ? side * originOffset : 0) + signPairCentering;
+          // Both ends of a one-way passage draw a solid arrow (GitHub issue #347 fourth follow-up
+          // redesign) — the old outline-only arrival arrow is redundant with the fill/border
+          // distinction that redesign introduced, since replaced by the wall-tick indicator below
+          // (GitHub issue #693).
+          if (arrowStyle === "sign") {
+            drawDirectionSign(this.g, ox, oy, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
+          } else {
+            drawArrowFilled(this.g, arrowStyle, ox, oy, 0, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
+          }
+          // One-way wall tick (GitHub issue #693): departure end (`arrowFilled: true`) ticks near
+          // the arrow's own tail, arrival end near its tip — see `drawOneWayWallTick`'s own doc
+          // comment. Never drawn for `"sign"` (a plain +/- glyph has no directional axis a
+          // perpendicular tick could read against) or for the elevator's "both" pair (no single
+          // departure/arrival end to place it on).
+          if (oneWay && arrowStyle !== "sign" && dys.length === 1) {
+            drawOneWayWallTick(this.g, ox, oy, 0, dy, pairArrowSize, !marker.arrowFilled, arrowColor, thickness);
+          }
         }
       }
-    }
 
-    this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-    drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+      this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+    }
   }
 
   /** Wires the same click-to-switch-floor hit area both the marker-shape and decorative branches of
@@ -858,21 +582,24 @@ export class VerticalConnectionRenderer {
     marker: VerticalConnectionMarker,
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+    scaler: MarkerScaler,
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
-    const radius = lineStyle.size / 2;
+    const factor = scaler.factorAt(marker.pos, lineStyle.sizeAdaptation) * (marker.scale ?? 1);
+    const radius = (lineStyle.size / 2) * factor;
+    const lineWidth = lineStyle.lineWidth * factor;
     const cx = marker.pos[0];
     const cy = marker.pos[1];
 
     if (marker.kind === "elevator") {
-      drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+      drawElevatorIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
       return;
     }
 
-    drawStairsIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+    drawStairsIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
 
     if (marker.direction) {
       const oneWay = !marker.filled;
@@ -886,7 +613,7 @@ export class VerticalConnectionRenderer {
       // "down" end. `"both"` never reaches a `VerticalPassage` marker (only `Elevator`, which draws
       // no decorative arrow at all — see this method's own doc comment), so it's not handled here.
       const pointsUp = marker.direction === "up";
-      drawStairsArrow(this.g, cx, cy, radius, arrowSize, arrowColor, lineStyle.lineWidth, crossedOut, tailTick, pointsUp);
+      drawStairsArrow(this.g, cx, cy, radius, arrowSize, arrowColor, lineWidth, crossedOut, tailTick, pointsUp);
     }
 
     this.wireInteractivity(marker, interactive, cx, cy, radius);
@@ -896,7 +623,6 @@ export class VerticalConnectionRenderer {
     this.g.destroy();
     this.badgeLayer.destroy({ children: true });
     this.hitLayer.destroy({ children: true });
-    this.scaledLayer.destroy({ children: true });
   }
 }
 

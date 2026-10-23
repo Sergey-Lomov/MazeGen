@@ -4,18 +4,25 @@ import { ColorPickerPanel } from "../components/ColorPickerPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { PC } from "../pixi/selectors/projectColorsSelector";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // GitHub issue #584: ColorPickerPanel had no test file at all. Covers the colorWarnings memo's full
 // pipeline (field key -> overrideActiveProfileColor -> warnings attached to that field, GitHub issue
 // #717) and buildProjectColorGroups' de-dup/priority logic.
 
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 beforeEach(() => {
@@ -30,23 +37,24 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
-    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-    teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
+    startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+    finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
     teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+    teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: 0x123456,
     verticalDecorativeLineWidth: 2,
-    verticalDecorativeSize: 0.22,
+    verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
     verticalDecorativeArrowSize: 0.75,
     splitNodeColors: [], splitSpecialShapes: false,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
@@ -61,7 +69,7 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
       ...baseStoreState(),
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_walls",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" as const }],
       // Grid color equal to background -> zero contrast distance -> grid_low_contrast_background
@@ -172,7 +180,7 @@ describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)
       ...baseStoreState(),
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_walls",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" as const }],
       start: 0,
@@ -181,7 +189,7 @@ describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)
       vectorByWallsSettings: baseWallsSettings({
         gridColor: 0x808080, background: 0xffffff,
         markerLayout: "auto", markerScale: 1,
-        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 20, text: "S", textColor: 0x00ff00 },
+        startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 20, text: "S", textColor: 0x00ff00 },
       }),
     });
   });

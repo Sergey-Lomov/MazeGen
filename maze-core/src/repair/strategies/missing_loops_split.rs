@@ -159,14 +159,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
                     // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
                     // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
                     // this same `apply()` call, that node no longer exists by the time commands are
-                    // applied (`replace_point_nodes_feasible` requires `field.point_of(edge.target)`
+                    // applied (`replace_point_nodes_feasible` requires `field.cell_of(edge.target)`
                     // to still resolve) — the whole command would be silently declined. Skip any `dst`
                     // whose point is already split-committed this call, rather than propose a command
                     // guaranteed to be rejected.
                     let dst_already_split = maze
                         .field
                         .level_of(dst)
-                        .zip(maze.field.point_of(dst))
+                        .zip(maze.field.cell_of(dst))
                         .is_some_and(|(l, p)| {
                             maze.field
                                 .nodes_at(l, p)
@@ -255,6 +255,7 @@ mod tests {
     use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), None)
@@ -272,7 +273,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -387,7 +390,7 @@ mod tests {
                 maze.graph
                     .outgoing_neighbors(n)
                     .chain(maze.graph.incoming_neighbors(n))
-                    .any(|nb| maze.field.point_of(nb) != Some(split_point))
+                    .any(|nb| maze.field.cell_of(nb) != Some(split_point))
             })
             .expect("one node must carry the outside bridge");
         let degree = maze
@@ -514,17 +517,18 @@ mod tests {
         // every candidate outright.
         use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         let pattern = SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![],
                 vec![
                     SplitPatternFace {
-                        face_index: 2,
+                        face_index: 0,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },
                     SplitPatternFace {
-                        face_index: 0,
+                        face_index: 1,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },
@@ -601,9 +605,12 @@ mod tests {
     #[test]
     fn apply_restricts_candidates_to_the_named_level() {
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a]);
         let level_b = mf.add_level(field_b);
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
@@ -641,7 +648,7 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 1);
-        let split_points: std::collections::HashSet<_> = maze.field.split_points().collect();
+        let split_points: std::collections::HashSet<_> = maze.field.split_cells().collect();
         assert_eq!(split_points.len(), 1);
         assert_eq!(
             split_points.iter().next().unwrap().0,
@@ -657,10 +664,14 @@ mod tests {
         // measured differently, not independent on top. 1 per floor on 3 floors + 3 whole-maze
         // must add 3 split tiles total, not 6.
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_c =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a]);
         let level_b = mf.add_level(field_b);
         let level_c = mf.add_level(field_c);
         let level_a = mf.levels_ordered().next().unwrap();

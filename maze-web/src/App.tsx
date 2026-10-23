@@ -9,6 +9,8 @@ import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
+import { NotificationHost } from "./components/notifications/NotificationHost";
+import { Announcer } from "./components/Announcer";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
@@ -69,7 +71,19 @@ export function App() {
     const app = new Application();
 
     app
-      .init({ resizeTo: canvasRef.current, background: canvas.stage.background, antialias: true })
+      // Render at the display's physical pixel density (e.g. 2 on Retina); at the default
+      // resolution of 1 the browser upscales the canvas and the maze looks blurry. At density 2+
+      // edges are already smooth, so MSAA (which multiplies framebuffer memory and bandwidth) is
+      // only enabled below it. `autoStart: false`: `MazeScene`'s `RenderScheduler` renders on
+      // demand instead of every ticker frame (GitHub issue #738).
+      .init({
+        resizeTo: canvasRef.current,
+        background: canvas.stage.background,
+        antialias: (window.devicePixelRatio || 1) < 2,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+        autoStart: false,
+      })
       // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
       // later page load free. Blocking `setReady` on it avoids a flash of missing labels.
@@ -125,6 +139,10 @@ export function App() {
        * features panel. */}
       <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
       {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
+      {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
+       * anchored to the canvas column's top-left corner. */}
+      <NotificationHost canvasLeft={PANEL_WIDTH} />
+      <Announcer />
     </div>
   );
 }

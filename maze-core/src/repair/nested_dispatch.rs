@@ -190,6 +190,7 @@ mod tests {
     use rand::SeedableRng;
     use std::cell::Cell;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     static DUMMY_SLOT: NestedSlot = NestedSlot {
         slot_id: "dummy",
@@ -275,7 +276,8 @@ mod tests {
 
     fn maze_2_nodes() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

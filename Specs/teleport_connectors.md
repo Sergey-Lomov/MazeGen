@@ -13,6 +13,22 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
 - `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below).
+- `"curved"` — a sampled quadratic Bézier center-to-center connector. `teleportCurveDirection`
+  selects `"inward"` or `"outward"` relative to the field origin and
+  `teleportCurveStrength` (0..1) sets the control-point offset as a fraction of the endpoint
+  span. These settings are shared by the live canvas and both vector export modes.
+
+For the `radial` tessellation, the `"orthogonal"` style follows its own rings and spokes with one
+corner. It considers two candidates: source spoke then target-ring arc, or source-ring arc then
+target spoke. The route picks the candidate that avoids other teleport/start/finish markers, then
+the shorter one. A connector touching the center remains a direct radial line. The `"straight"`
+style and every other tessellation keep their existing behavior.
+
+For a radial `"curved"` connector, the control point lies on the midpoint polar ray of the
+endpoints' shortest angular arc.
+The router considers inward and outward radii, rejects paths that pass through other rendered
+teleport or waypoint markers when possible, then uses `teleportCurveDirection` to break a tie.
+If either endpoint is the center, it falls back to a direct radial line.
 
 ## Bend axes
 
@@ -21,6 +37,7 @@ An orthogonal connector's single bend must run along an axis *perpendicular* to 
 - **Square** — 2 axes, 0°/90° (horizontal/vertical).
 - **Hex** — 3 axes, 60° apart. Axis set depends on `orientation`: `flat_top` faces run along {0°,60°,120°} so their normals are {30°,90°,150°}; `pointy_top` is `flat_top` rotated 30°, so its faces run along {30°,90°,150°} and its normals land back on {0°,60°,120°}. The two orientations do **not** share one axis set.
 - **Triangle** — 3 axes, {0°,60°,120°}, the same set for every orientation (`r0`/`r90`/`r180`/`r270`).
+- **Other kinds** — see `CONNECTOR_AXES` in `teleportConnectorAxes.ts`. Every set must satisfy one rule: no axis line through a cell center may run along a cell edge (a connector would then lie on a wall). Truncated hexagonal (3.12.12) therefore uses only {0°,60°,120°}, the lattice directions; 30°/90°/150° would lie on the shared walls of lattice-neighbor dodecagons. A web test checks this rule for that kind. Truncated trihexagonal (4.6.12) uses {0°,60°,120°} too, checked by a web test. Snub square (3.3.4.3.4) has edges along every multiple of 30°, so it uses the six odd multiples of 15° (15°, 45°, …, 165°), checked by a web test. Elongated triangular (3.3.3.4.4) uses {0°,30°,150°}: the vertical direction runs along the vertical walls of the half-shifted neighboring band; a web test checks this too.
 
 0°/90° use exact `{1,0}`/`{0,1}` vectors rather than `Math.cos`/`Math.sin` (which land on e.g. `6.123e-17` instead of `0`) — square's offset math relies on an exactly-zero component to keep coordinates exact integers for axis-aligned input.
 

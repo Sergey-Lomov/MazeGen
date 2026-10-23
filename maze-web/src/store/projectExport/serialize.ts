@@ -1,7 +1,6 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
-import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
+import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport, type ProjectFileQuality } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -23,12 +22,24 @@ export function serializeProject(state: MazeState): ProjectFile {
     const freeFieldPoints: ProjectFileFloorField["freeFieldPoints"] = {
       square: Array.from(f.freeFieldPoints.square).map((k) => decodePoint(k) as [number, number]),
       hex: Array.from(f.freeFieldPoints.hex).map((k) => decodePoint(k) as [number, number]),
-      triangle: Array.from(f.freeFieldPoints.triangle).map((k) => decodePoint(k) as [number, number]),
+      tri: Array.from(f.freeFieldPoints.tri).map((k) => decodePoint(k) as [number, number]),
       cairo: Array.from(f.freeFieldPoints.cairo ?? []).map((k) => decodePoint(k) as [number, number]),
+      square_octagon: Array.from(f.freeFieldPoints.square_octagon ?? []).map((k) => decodePoint(k) as [number, number]),
+      brick: Array.from(f.freeFieldPoints.brick ?? []).map((k) => decodePoint(k) as [number, number]),
+      trihexagonal: Array.from(f.freeFieldPoints.trihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      snub_hexagonal: Array.from(f.freeFieldPoints.snub_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      rhombitrihexagonal: Array.from(f.freeFieldPoints.rhombitrihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      truncated_hexagonal: Array.from(f.freeFieldPoints.truncated_hexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      truncated_trihexagonal: Array.from(f.freeFieldPoints.truncated_trihexagonal ?? []).map((k) => decodePoint(k) as [number, number]),
+      elongated_triangular: Array.from(f.freeFieldPoints.elongated_triangular ?? []).map((k) => decodePoint(k) as [number, number]),
+      snub_square: Array.from(f.freeFieldPoints.snub_square ?? []).map((k) => decodePoint(k) as [number, number]),
+      curved_quadrilateral: Array.from(f.freeFieldPoints.curved_quadrilateral ?? []).map((k) => decodePoint(k) as [number, number]),
+      radial: Array.from(f.freeFieldPoints.radial ?? []).map((k) => decodePoint(k) as [number, number]),
+      voronoi: Array.from(f.freeFieldPoints.voronoi ?? []).map((k) => decodePoint(k) as [number, number]),
     };
     floorFields[floorId] = {
-      config: f.tessellationConfig,
-      savedConfigs: Object.values(f.savedConfigs) as TessellationConfig[],
+      shape: f.fieldConfig.shape,
+      savedShapes: Object.values(f.savedShapes),
       freeFieldPoints,
       fieldEditMode: f.fieldEditMode,
     };
@@ -38,6 +49,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: {
       kind: state.tessellationKind,
+      params: state.tessellationParams,
       hexOrientation: state.hexOrientation,
       triOrientation: state.triOrientation,
     },
@@ -57,15 +69,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       seedHistory: state.seedHistory,
       seedHistoryIndex: state.seedHistoryIndex,
     },
-    quality: {
-      // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc
-      // comment in storeTypes.ts.
-      rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
-      stages: state.stages,
-      strategyParams: state.strategyParams,
-      repairMaxIterations: state.repairMaxIterations,
-      repairTimeBudgetSecs: state.repairTimeBudgetSecs,
-    },
+    quality: serializeQuality(state),
     presets: {
       connections: Array.from(state.presetConnections.entries()),
       lockedNodes: Array.from(state.lockedNodes.entries()),
@@ -125,19 +129,7 @@ export function serializeProject(state: MazeState): ProjectFile {
         },
     backgroundImageManualPositioning: state.backgroundImageManualPositioning ?? false,
     backgroundImageCropping: state.backgroundImageCropping ?? false,
-    imageExport: {
-      activeRenderMode: state.activeRenderMode,
-      openRenderModeSettings: state.openRenderModeSettings,
-      vectorByWallsSettings: state.vectorByWallsSettings,
-      vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
-      showColorWarnings: state.showColorWarnings,
-      linkIconVisibility: state.linkIconVisibility,
-      vectorByCorridorsSettings: state.vectorByCorridorsSettings,
-      vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
-      pngExportSettings: state.pngExportSettings,
-      vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
-      vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
-    },
+    imageExport: serializeImageExport(state),
     floors: {
       floors: state.floors,
       nextFloorNumber: state.nextFloorNumber,
@@ -146,15 +138,49 @@ export function serializeProject(state: MazeState): ProjectFile {
   };
 }
 
-export function downloadProjectFile(state: MazeState): void {
-  const data = serializeProject(state);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+export function serializeQuality(state: MazeState): ProjectFileQuality {
+  return {
+    // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc
+    // comment in storeTypes.ts.
+    rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
+    stages: state.stages,
+    repairMaxIterations: state.repairMaxIterations,
+    repairTimeBudgetSecs: state.repairTimeBudgetSecs,
+  };
+}
+
+export function serializeImageExport(state: MazeState): ProjectFileImageExport {
+  return {
+    activeRenderMode: state.activeRenderMode,
+    openRenderModeSettings: state.openRenderModeSettings,
+    vectorByWallsSettings: state.vectorByWallsSettings,
+    vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
+    showColorWarnings: state.showColorWarnings,
+    linkIconVisibility: state.linkIconVisibility,
+    vectorByCorridorsSettings: state.vectorByCorridorsSettings,
+    vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
+    pngExportSettings: state.pngExportSettings,
+    floorLabelModeChosen: state.floorLabelModeChosen,
+    vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
+    vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
+  };
+}
+
+/** Downloads `data` as pretty-printed JSON under `fileName`. Neutral MIME type: with
+ *  `application/json` some browsers (Safari, mobile) append `.json` to the name, and the resulting
+ *  `.maze.json`/`.mazestyle.json`/`.mazequality.json` file no longer passes the load dialog's extension filter. */
+export function downloadJsonFile(data: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "maze-project.json";
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export function downloadProjectFile(state: MazeState): void {
+  downloadJsonFile(serializeProject(state), `maze-project${PROJECT_FILE_EXTENSION}`);
 }

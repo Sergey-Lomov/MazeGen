@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { buildPalette } from "./colorUtils";
 
@@ -12,7 +12,7 @@ export interface KruskalDsuHighlightData {
   /** Node id (joined `number`) -> current DSU root, reconstructed at the current debug step —
    *  see `DebugMazeView.dsuGroups`. `null`/empty clears the overlay. */
   dsuGroups: Map<number, number> | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
 }
 
 // Palette large enough that a color is rarely reused across simultaneously-visible groups even on

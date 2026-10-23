@@ -128,7 +128,7 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
 
   if (st.openCard === "preset_connections") {
     const field = st.floorFields[st.activeFloorId];
-    const cfg = field.tessellationConfig;
+    const cfg = field.fieldConfig;
     const level = activeFloorIndex === 0 ? undefined : activeFloorIndex;
     const inFieldCells = buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, cfg));
     const presetConnections = presetConnectionsOnLevel(st.presetConnections, level);
@@ -139,11 +139,11 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
       splitPoints: st.presetSplitPoints,
       presetConnections: st.presetConnections,
       activeSplitNode: st.presetActiveSplitNode,
-      cfgAt: (targetLevel) => st.floorFields[st.floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+      cfgAt: (targetLevel) => st.floorFields[st.floors[targetLevel]?.id ?? ""]?.fieldConfig ?? cfg,
       inFieldCellsAt: (targetLevel) => {
         const targetFloor = st.floorFields[st.floors[targetLevel]?.id ?? ""];
         return targetFloor
-          ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+          ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.fieldConfig))
           : inFieldCells;
       },
     };
@@ -159,5 +159,5 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
   if (!CARDS_WITH_MAZE.has(st.openCard)) return `x:${x}, y:${y}`;
   const source = resolveMazeSource(st);
   if (!source) return `x:${x}, y:${y}`;
-  return buildCellInspection(source.nodeById, source.edges, x, y, activeFloorIndex, source.start, source.finish, st.activeTessellationConfig);
+  return buildCellInspection(source.nodeById, source.edges, x, y, activeFloorIndex, source.start, source.finish, st.activeFieldConfig);
 }

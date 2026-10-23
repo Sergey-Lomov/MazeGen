@@ -221,6 +221,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -236,7 +237,8 @@ mod tests {
     /// adjacent in a chain: 0-1-2-3. Same fixture shape as `reduce_scc_count.rs`'s tests.
     fn maze_4_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -397,9 +399,9 @@ mod tests {
     fn maze_two_floor_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let fields: Vec<_> = (0..2)
-            .map(|_| crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap())
+            .map(|_| crate::space::Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap())
             .collect();
-        let field = MultiLevelField::<SquareTessellation>::new(fields);
+        let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -502,7 +504,7 @@ mod tests {
             .field
             .field_of(maze.field.single_level_id())
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
             .collect();
         let mut preset_state = PresetState::empty();

@@ -116,7 +116,8 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         let own_hop_pairs = |&(_, own_from, own_to): &(EdgeId, NodeId, NodeId)| {
             HashSet::from([(own_from, own_to), (own_to, own_from)])
         };
-        let own_hop_kind_guard = |_: &(EdgeId, NodeId, NodeId), edge: &crate::graph::nav::NavEdge| edge.is_teleport;
+        let own_hop_kind_guard =
+            |_: &(EdgeId, NodeId, NodeId), edge: &crate::graph::nav::NavEdge| edge.is_teleport;
 
         let groups = pairwise_graph_proximity_scan(
             &nav,

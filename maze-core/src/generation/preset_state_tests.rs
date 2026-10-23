@@ -4,6 +4,7 @@ use super::*;
 use crate::IdGenerator;
 use crate::event_log::EventLog;
 use crate::space::SquarePoint;
+use std::sync::Arc;
 
 fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
     let level = field.single_level_id();
@@ -273,7 +274,7 @@ fn build_preset_state_one_way_backward_emits_one_way_established_from_b_to_a() {
 }
 
 #[test]
-fn build_preset_state_skips_out_of_bounds_points() {
+fn build_preset_state_rejects_out_of_bounds_points() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
@@ -293,9 +294,11 @@ fn build_preset_state_skips_out_of_bounds_points() {
         |x, y| SquarePoint { x, y },
         None,
         None,
-    )
-    .unwrap();
-    assert!(state.preset_connected.is_empty());
+    );
+    assert_eq!(
+        state.err(),
+        Some("preset endpoint references unknown point [99, 99] on level 0".to_string())
+    );
 }
 
 #[test]
@@ -806,10 +809,10 @@ fn preset_connection_addressing_a_declared_slot_connects_only_that_node() {
     assert!(!state.preset_connected.contains(&original_id));
 }
 
-/// A preset addressing a slot that was never declared in `split_points` resolves to nothing and
-/// is silently skipped — same "unresolvable endpoint" handling as an out-of-bounds point.
+/// A preset addressing a slot that was never declared in `split_points` is an error naming the
+/// endpoint — same "unresolvable endpoint" handling as an out-of-bounds point.
 #[test]
-fn preset_connection_addressing_an_undeclared_slot_is_skipped() {
+fn preset_connection_addressing_an_undeclared_slot_is_an_error() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
 
@@ -830,9 +833,11 @@ fn preset_connection_addressing_an_undeclared_slot_is_skipped() {
         |x, y| SquarePoint { x, y },
         None,
         None,
-    )
-    .unwrap();
-    assert!(state.preset_connected.is_empty());
+    );
+    assert_eq!(
+        state.err(),
+        Some("preset endpoint references undeclared slot 0 at [0, 0] on level 0".to_string())
+    );
 }
 
 /// GitHub issue #231 — `split_points` is applied via `add_node_at` in `(point, slot)`-sorted
@@ -940,7 +945,7 @@ fn resolve_endpoint_with_no_slot_resolves_to_the_original_node() {
     let original_id = node_at(&field, 0, 0);
 
     let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(0, 0));
-    assert_eq!(resolved, Some(original_id));
+    assert_eq!(resolved, Ok(original_id));
 }
 
 #[test]
@@ -968,13 +973,13 @@ fn resolve_endpoint_with_a_declared_slot_resolves_to_that_specific_node() {
 
     let resolved_original =
         state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(0, 0));
-    assert_eq!(resolved_original, Some(original_id));
+    assert_eq!(resolved_original, Ok(original_id));
     let resolved_slot = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
-    assert_eq!(resolved_slot, Some(added_id));
+    assert_eq!(resolved_slot, Ok(added_id));
 }
 
 #[test]
-fn resolve_endpoint_with_an_undeclared_slot_returns_none() {
+fn resolve_endpoint_with_an_undeclared_slot_is_an_error() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     // No split_points declared at all -- point (0,0) has only its original node.
@@ -994,11 +999,14 @@ fn resolve_endpoint_with_an_undeclared_slot_returns_none() {
     .unwrap();
 
     let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
-    assert_eq!(resolved, None);
+    assert_eq!(
+        resolved,
+        Err("preset endpoint references undeclared slot 0 at [0, 0] on level 0".to_string())
+    );
 }
 
 #[test]
-fn resolve_endpoint_for_an_unknown_point_returns_none() {
+fn resolve_endpoint_for_an_unknown_point_is_an_error() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     let state = build_preset_state(
@@ -1017,7 +1025,10 @@ fn resolve_endpoint_for_an_unknown_point_returns_none() {
     .unwrap();
 
     let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(99, 99));
-    assert_eq!(resolved, None);
+    assert_eq!(
+        resolved,
+        Err("preset endpoint references unknown point [99, 99] on level 0".to_string())
+    );
 }
 
 /// Two different declared slots at the same point resolve to two different `NodeId`s, in
@@ -1048,8 +1059,8 @@ fn resolve_endpoint_distinguishes_between_two_declared_slots_at_the_same_point()
 
     let resolved0 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
     let resolved1 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 1));
-    assert_eq!(resolved0, Some(slot0_id));
-    assert_eq!(resolved1, Some(slot1_id));
+    assert_eq!(resolved0, Ok(slot0_id));
+    assert_eq!(resolved1, Ok(slot1_id));
     assert_ne!(resolved0, resolved1);
 }
 
@@ -1193,9 +1204,9 @@ fn multi_floor_field(
     use crate::space::Field;
     let mut ids = IdGenerator::new();
     let fields: Vec<Field<crate::space::SquareTessellation>> = (0..floors)
-        .map(|_| Field::new(crate::space::square_rect(w, h), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), crate::space::square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let mf = MultiLevelField::new(fields);
+    let mf = MultiLevelField::new(Arc::default(), fields);
     let mut graph = Graph::new();
     for node in mf.all_node_ids() {
         graph.add_node(node);
@@ -1376,7 +1387,7 @@ fn build_preset_state_one_way_backward_vertical_passage_blocks_forward() {
 }
 
 #[test]
-fn build_preset_state_vertical_passage_with_unresolvable_endpoint_is_silently_skipped() {
+fn build_preset_state_vertical_passage_with_unresolvable_endpoint_is_an_error() {
     let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
     let passages = vec![PresetVerticalPassage {
         from: original(0, 0),
@@ -1395,11 +1406,63 @@ fn build_preset_state_vertical_passage_with_unresolvable_endpoint_is_silently_sk
         |x, y| SquarePoint { x, y },
         None,
         None,
-    )
-    .unwrap();
-    let a = node_at_level(&field, 0, 0, 0);
-    assert!(!state.preset_connected.contains(&a));
-    assert!(graph.edges().next().is_none());
+    );
+    assert_eq!(
+        state.err(),
+        Some("preset endpoint references unknown point [99, 99] on level 1".to_string())
+    );
+}
+
+#[test]
+fn build_preset_state_elevator_with_unresolvable_floor_is_an_error() {
+    let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
+    let elevator = PresetElevator {
+        floors: vec![original(0, 0), at_level(0, 0, 5)],
+    };
+    let state = build_preset_state(
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &[],
+        &[],
+        &[elevator],
+        &[],
+        &[],
+        |x, y| SquarePoint { x, y },
+        None,
+        None,
+    );
+    assert_eq!(
+        state.err(),
+        Some("preset endpoint references unknown level 5".to_string())
+    );
+}
+
+#[test]
+fn build_preset_state_locked_node_with_unresolvable_point_is_an_error() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locked = vec![LockedNode {
+        point: original(99, 99),
+        kind: NodeLockKind::Both,
+    }];
+    let state = build_preset_state(
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &[],
+        &[],
+        &[],
+        &locked,
+        &[],
+        |x, y| SquarePoint { x, y },
+        None,
+        None,
+    );
+    assert_eq!(
+        state.err(),
+        Some("preset endpoint references unknown point [99, 99] on level 0".to_string())
+    );
 }
 
 #[test]
@@ -1468,10 +1531,10 @@ fn build_preset_state_elevator_emits_one_event_with_every_node() {
 }
 
 #[test]
-fn build_preset_state_elevator_with_fewer_than_two_resolved_endpoints_connects_nothing() {
+fn build_preset_state_elevator_with_a_single_floor_connects_nothing() {
     let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
     let elevator = PresetElevator {
-        floors: vec![original(0, 0), at_level(99, 99, 1)],
+        floors: vec![original(0, 0)],
     };
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
     build_preset_state(
@@ -1490,4 +1553,15 @@ fn build_preset_state_elevator_with_fewer_than_two_resolved_endpoints_connects_n
     .unwrap();
     assert!(graph.edges().next().is_none());
     assert!(log.finish().iter().next().is_none());
+}
+
+/// A pinned start/finish is the user's explicit choice — repair must never remove its node.
+#[test]
+fn pinned_endpoints_are_locked_for_removal() {
+    let mut state = PresetState::empty();
+    state.preset_start = Some(3);
+    state.preset_finish = Some(5);
+    assert!(state.is_node_locked_for_removal(3));
+    assert!(state.is_node_locked_for_removal(5));
+    assert!(!state.is_node_locked_for_removal(4));
 }

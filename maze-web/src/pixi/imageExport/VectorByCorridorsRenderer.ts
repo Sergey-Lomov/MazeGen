@@ -1,14 +1,16 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
 import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
-import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
+import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { buildMarkerScaler } from "../markerScale";
+import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
-import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
+import { drawOneWayChevronRow } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
@@ -16,15 +18,17 @@ import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, bu
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
-import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
-import { buildCorridorContour, traceCorridorContour } from "./vectorByCorridorsContour";
+import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
+import { buildCorridorContour, buildCorridorContourInstances, traceCorridorContour, type CorridorShapeCache } from "./vectorByCorridorsContour";
+import { buildCorridorLineTiles, traceCorridorLineTile } from "./vectorByCorridorsLineTiles";
+import { CorridorTileLayer } from "./corridorTileLayer";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
-import { cellCenterBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
+import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
 
 type SplitPoint = { x: number; y: number };
 type SplitClipViews = { clipView: Graphics; gapView: Graphics };
@@ -54,6 +58,8 @@ type SplitOneWayStyle = { color: number; thickness: number; width: number; join:
 export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly backgroundGrid: BackgroundGridLayer<VectorByCorridorsSettings>;
   private readonly corridorsContainer: Container;
+  /** Corridor network tiles, below `corridors` (see `updateCorridorTiles`). */
+  private readonly corridorTiles = new CorridorTileLayer();
   private readonly corridors: Graphics;
   /** One permanent top-level layer (sibling of `corridorsContainer`) holding every special split
    *  shape's (bridge/diagonal) own throwaway per-tile `Graphics` for this frame, in draw order —
@@ -93,6 +99,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
   private readonly markerIndex: MarkerIndexRenderer;
+  private readonly floorLabelContainer: Container;
+  private readonly floorLabel: FloorLabelRenderer;
   private readonly warningHighlightContainer: Container;
   /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
    *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
@@ -108,7 +116,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     rawNodes: NodeDto[];
     rawEdges: EdgeDto[];
     activeFloorId: string;
-    cfg: TessellationConfig;
+    cfg: FieldConfig;
     start: number | null;
     finish: number | null;
     splitNodeColors: readonly number[];
@@ -122,12 +130,35 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
+  /** Shortest passage face over all floors, memoized on the maze data alone: the thickness slider
+   *  must not rebuild every floor's segments. Contour widths never exceed it. */
+  private faceLimitCache: { nodes: NodeDto[]; edges: EdgeDto[]; floors: unknown; cfg: FieldConfig; limit: number } | null = null;
+
+  private corridorFaceLimit(state: { nodes: NodeDto[]; edges: EdgeDto[]; floors: { id: string }[] }, cfg: FieldConfig): number {
+    const cache = this.faceLimitCache;
+    if (cache && cache.nodes === state.nodes && cache.edges === state.edges && cache.floors === state.floors && cache.cfg === cfg) return cache.limit;
+    const limit = shortestCorridorFaceAcrossFloors(state.nodes, state.edges, state.floors, cfg);
+    this.faceLimitCache = { nodes: state.nodes, edges: state.edges, floors: state.floors, cfg, limit };
+    return limit;
+  }
+
+  /** Corridor width for contour shapes: one width on every floor, however short a face is elsewhere. */
+  private contourWidth(settings: VectorByCorridorsSettings): number {
+    return Math.min(settings.thickness, this.faceLimitCache?.limit ?? Infinity);
+  }
+
+  /** Inputs `corridorTiles` was last built from — see `updateCorridorTiles`. */
+  private corridorTileInputs: { segments: CorridorSegment[]; kind: "contour" | "miter" | "round_line"; width: number; junctionRadius: number } | null = null;
+  /** Contour tile shapes by key, kept across rebuilds so an edit only builds shapes it hasn't seen. */
+  private readonly contourShapeCache: CorridorShapeCache = new Map();
+
   constructor(container: Container) {
     this.backgroundGrid = new BackgroundGridLayer(container);
 
     this.corridorsContainer = new Container();
     container.addChild(this.corridorsContainer);
 
+    this.corridorsContainer.addChild(this.corridorTiles.container);
     this.corridors = new Graphics();
     this.corridorsContainer.addChild(this.corridors);
 
@@ -158,6 +189,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     container.addChild(this.markerIndexBodyContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
 
+    this.floorLabelContainer = new Container();
+    container.addChild(this.floorLabelContainer);
+    this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
+
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByCorridorsWarnings);
@@ -179,7 +214,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         state.finish !== prev.finish ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFieldConfig !== prev.activeFieldConfig ||
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
@@ -204,6 +239,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
@@ -213,7 +249,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.backgroundGrid.onViewportChanged(this.viewport);
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
-      this.backgroundGrid.render(state.vectorByCorridorsSettings, state.activeTessellationConfig);
+      this.backgroundGrid.render(state.vectorByCorridorsSettings, state.activeFieldConfig);
     }
   }
 
@@ -241,9 +277,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Floor-scoped (GitHub issue #348), same reason `renderAll` scopes its own `nodes` — the
     // *drawn* content is only ever one floor's worth, so the bounds basis must match.
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
-    const cellBounds = cellCenterBounds(floorNodes, state.activeTessellationConfig);
+    const cellBounds = cellCenterBounds(floorNodes, state.activeFieldConfig);
     return measureContentMargin(
-      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
+      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
   }
@@ -254,7 +290,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state.activeTessellationConfig;
+    const cfg = state.activeFieldConfig;
 
     this.backgroundGrid.render(state.vectorByCorridorsSettings, cfg);
 
@@ -326,102 +362,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       };
     }
 
-    const strokeOpts = {
-      width: settings.thickness,
-      color: settings.color,
-      join: settings.join,
-      cap: settings.join === "miter" ? ("square" as const) : ("round" as const),
-    };
-
-    // Points where a plain segment's own `v1` lands on a split point's shared-face midpoint (GitHub
-    // issue #314 follow-up) — built straight from `this.geometryCache.segments`'s own `v1TouchesSplit`
-    // flag (set by `buildCorridorSegments` itself, not re-derived from `SplitPassage` connector
-    // geometry, which can sit at a different point along the same face when the face is divided
-    // among several split nodes). A chained path's own free end lands exactly on one of these points
-    // whenever that segment's `v1` was its endpoint (chaining never reorders `v0`/`v1` within a
-    // segment, only which segment comes next), so a plain key/coordinate match here is exact by
-    // construction — unlike matching against `SplitPassage` connector points.
-    const splitTouchKey = (p: { x: number; y: number }) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
-    const splitTouchPoints = new Set<string>();
-    for (const seg of this.geometryCache.segments) {
-      if (seg.v1TouchesSplit) splitTouchPoints.add(splitTouchKey(seg.v1));
-    }
-    const touchesSplit = (p: { x: number; y: number }): boolean => splitTouchPoints.has(splitTouchKey(p));
-
-    const chainedCorridorPaths = chainSegmentsAtSharedVertices(this.geometryCache.segments);
-
-    // A chained path's own two ends can meet other chained paths' own ends at the same point only
-    // where `chainSegmentsAtSharedVertices` itself declined to extend through it — a degree != 2
-    // vertex, i.e. an ordinary 3+-corridor T-junction (never a split hub — a split-touching end is
-    // handled separately below via `touchesSplit`, `drawSplitPassages` owns that point's own
-    // geometry entirely). Collected up front (GitHub issue #443 follow-up) so every such T-junction
-    // gets a single `computeMiterJunctionPatch` polygon instead of each path's own end drawing an
-    // independent cap that pokes across its neighbors at non-perpendicular angles.
-    const junctionEnds = new Map<string, { path: { x: number; y: number }[]; end: 0 | 1 }[]>();
-    for (const path of chainedCorridorPaths) {
-      for (const end of [0, 1] as const) {
-        const p = end === 0 ? path[0] : path[path.length - 1];
-        if (touchesSplit(p)) continue;
-        const k = splitTouchKey(p);
-        const list = junctionEnds.get(k);
-        if (list) list.push({ path, end });
-        else junctionEnds.set(k, [{ path, end }]);
-      }
-    }
-
-    // Two fully independent corridor-drawing algorithms (GitHub issue #510), picked by
-    // `settings.renderStyle` — neither calls into the other's helpers, so a bug in one can't leak
-    // into the other. See `VectorByCorridorsSettings.renderStyle`'s own doc comment.
+    // Corridor network (GitHub issue #736): one tile per cell, shared per tile shape — see
+    // `updateCorridorTiles`. Everything drawn into `corridors` below sits on top of the tiles.
     this.corridors.clear();
-    if (settings.renderStyle === "contour") {
-      // Round style (GitHub issue #493 rework): the corridor network is drawn as one filled shape
-      // per tile (`buildCorridorContour`), each tile shaped only from its own passages. A turn tile
-      // is a pair of concentric arcs (constant `thickness` width right through the bend — both
-      // elbows rounded, the fix for #493); a straight-through tile a rectangle; a dead end a border
-      // plus a semicircle; a junction (3+ passages) joins each border to the next with an arc.
-      // Adjacent tiles draw mirror borders on the shared face, so the fills meet edge-to-edge with
-      // no seam. Angle-based → square / hex / triangle / any future tessellation, no per-grid
-      // constant.
-      //
-      // Miter style keeps the straight-line stroke below: a `"square"` cap protrudes as a flat-edged
-      // rectangle aligned to *that line's own* direction, so two lines meeting at a non-perpendicular
-      // T-junction each protrude past the other instead of reconciling into a clean corner. So for
-      // miter only: every path draws `butt` unconditionally first (never protrudes), then each of
-      // its own two non-split ends gets its own cap patched back in separately. A genuine free end
-      // (`junctionEnds` has exactly one entry there) gets a plain square cap; a T-junction where
-      // several chained paths' own ends meet (`junctionEnds` has 2+ entries) gets one shared
-      // miter-style patch instead (GitHub issue #443 follow-up).
-      if (strokeOpts.cap === "round") {
-        const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, true, "shallowThreeWay");
-        if (contour.length > 0) {
-          traceCorridorContour(this.corridors, contour);
-          this.corridors.fill(strokeOpts.color);
-        }
-      } else {
-        this.strokeChainedPathsWithPatchedCaps(chainedCorridorPaths, junctionEnds, touchesSplit, splitTouchKey, strokeOpts);
-      }
-    } else {
-      // Legacy line style (GitHub issue #510) — the corridor renderer as it stood before the #493
-      // contour rework (git `ac2e998~1`), restored verbatim. Round style draws each chained path as a `butt`-capped stroke with a
-      // plain filled circle patched at every genuine free end (a T-junction needs no patch here —
-      // several round-capped discs sharing the same center safely coincide). Miter style is
-      // identical to the `"contour"` mode's own miter path above (that path predates #493 and was
-      // never touched by the contour rework), so it's shared as `strokeChainedPathsWithPatchedCaps`.
-      if (strokeOpts.cap === "round") {
-        for (const path of chainedCorridorPaths) {
-          this.corridors.moveTo(path[0].x, path[0].y);
-          for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
-          this.corridors.stroke({ ...strokeOpts, cap: "butt" });
-          for (const end of [path[0], path[path.length - 1]]) {
-            if (!touchesSplit(end)) {
-              this.corridors.circle(end.x, end.y, strokeOpts.width / 2).fill(strokeOpts.color);
-            }
-          }
-        }
-      } else {
-        this.strokeChainedPathsWithPatchedCaps(chainedCorridorPaths, junctionEnds, touchesSplit, splitTouchKey, strokeOpts);
-      }
-    }
+    this.corridorFaceLimit(state, cfg);
+    this.updateCorridorTiles(settings, this.geometryCache.segments);
 
     // One-way passage indicator (GitHub issue #312) — a row of chevrons drawn at each one-way
     // segment's midpoint, on top of the plain stroke just drawn above. `oneWayColor` defaults to
@@ -470,16 +415,25 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
     const markerData = layout.markers;
 
+    // Marker size adaptation (GitHub issue #819): one scaler for every marker kind on this floor,
+    // fitted against the laid-out positions (GitHub issue #735).
+    const teleportStyle = buildTeleportLineStyle(settings, settings.color);
+    const scaler = buildMarkerScaler(cfg, [
+      ...footprintsOfMarkers(markerData),
+      ...footprintsOfVertical(layout.verticalMarkers, verticalStyle),
+      ...footprintsOfTeleports(layout.teleportEdges, teleportStyle),
+    ]);
+
     this.markerWiden.clear();
     // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide
     // with the passage line (GitHub issue #311). This has its own layer, above split-gap geometry:
     // a split gap is background-colored and must not be able to cut a hairline through the marker's
     // corridor-colored expansion (GitHub issue #561). The layer remains below the marker containers.
     const squareCornerStyle = settings.join;
-    drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
+    drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle, scaler);
     // Bridge patches between neighboring markers of one host (GitHub issue #735) — keep the widened
     // corridor one continuous band through the whole group instead of separate bulges.
-    drawMarkerWidenPatches(this.markerWiden, buildGroupBridgeMarkers(layout.groups), settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
+    drawMarkerWidenPatches(this.markerWiden, buildGroupBridgeMarkers(layout.groups), settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle, scaler);
 
     // Teleport markers get the same widen patch, reusing the one `markerWidenPadding`/
     // `markerWidenShape` settings (GitHub issue #313 follow-up) — no separate teleport-only setting.
@@ -502,6 +456,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       settings.markerWidenPadding,
       settings.markerWidenShape,
       squareCornerStyle,
+      scaler,
     );
 
     // Vertical-connection markers get the same widen patch (GitHub issue #348, parity follow-up to
@@ -515,6 +470,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       settings.markerWidenPadding,
       settings.markerWidenShape,
       squareCornerStyle,
+      scaler,
     );
 
     // Split points (GitHub issue #314) — drawn after the plain corridor stroke and marker widen
@@ -533,11 +489,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
     this.teleports.render({
       edges: layout.teleportEdges,
+      scaler,
       // `floorColor` occludes an outline (exit-only) teleport point's own line pass-through and
       // fills its gap rings — on this canvas that's the corridor's own color, not the canvas
       // background, since a teleport point sits directly on the passage line, not on an empty
       // floor tile the way "Vector by walls"' floor does.
-      lineStyle: buildTeleportLineStyle(settings, settings.color),
+      lineStyle: teleportStyle,
       groupCustomization: settings.teleportGroupCustomization,
       groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
@@ -550,11 +507,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: markerData, scaler });
 
     this.verticalConnections.render({
       markers: layout.verticalMarkers,
       style: verticalStyle,
+      scaler,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
       interactive: true,
@@ -563,16 +521,25 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     if (settings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
-        teleportStyle: buildTeleportLineStyle(settings, settings.color),
+        teleportStyle,
         groupCustomization: settings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual);
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler);
       this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: settings.markerIndex, floorColor: settings.color });
     } else {
       this.markerIndex.clear();
     }
+
+    this.floorLabel.render(
+      settings.floorLabel,
+      floorLabelPosition(settings.floorLabel, state.activeFloorId, exactCellBounds(nodes, cfg), cfg),
+      activeFloorIndex,
+      state.floors.length,
+      settings.color,
+      state.floors[activeFloorIndex]?.title,
+    );
 
     this.renderWarningHighlight(state);
   }
@@ -614,63 +581,47 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     return [...passages.filter((passage) => passage !== top), top];
   }
 
-  /** Strokes every chained corridor path with a `butt` cap, then patches each of its own two
-   *  non-split ends back in separately — a genuine free end gets a plain square cap, a T-junction
-   *  where several chained paths' own ends meet gets one shared `computeMiterJunctionPatch` wedge
-   *  instead (GitHub issue #443 follow-up). This is the pre-#493 miter/sharp corridor stroke path,
-   *  never touched by the #493 contour rework, so it's shared verbatim by both `"contour"` mode's
-   *  own miter style and `"legacy_line"` mode's own miter style (GitHub issue #510) — not a new
-   *  coupling between the two render styles, just the one path that was always identical either way. */
-  private strokeChainedPathsWithPatchedCaps(
-    chainedCorridorPaths: { x: number; y: number }[][],
-    junctionEnds: Map<string, { path: { x: number; y: number }[]; end: 0 | 1 }[]>,
-    touchesSplit: (p: { x: number; y: number }) => boolean,
-    splitTouchKey: (p: { x: number; y: number }) => string,
-    strokeOpts: { width: number; color: number; join: "round" | "miter"; cap: "round" | "square" },
-  ): void {
-    for (const path of chainedCorridorPaths) {
-      this.corridors.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
-      this.corridors.stroke({ ...strokeOpts, cap: "butt" });
-    }
-    const patchedJunctions = new Set<string>();
-    for (const path of chainedCorridorPaths) {
-      for (const [end, neighbor] of [[path[0], path[1]], [path[path.length - 1], path[path.length - 2]]] as const) {
-        if (touchesSplit(end)) continue;
-        const k = splitTouchKey(end);
-        const atVertex = junctionEnds.get(k)!;
-        if (atVertex.length === 1) {
-          const [p0, p1, p2, p3] = computeSquareCapPatch(end, neighbor, strokeOpts.width);
-          this.corridors
-            .moveTo(p0.x, p0.y)
-            .lineTo(p1.x, p1.y)
-            .lineTo(p2.x, p2.y)
-            .lineTo(p3.x, p3.y)
-            .closePath()
-            .fill(strokeOpts.color);
-        } else if (!patchedJunctions.has(k)) {
-          patchedJunctions.add(k);
-          const rays: JunctionRay[] = atVertex.map(({ path: p, end: e }) => {
-            // `end` (the junction point itself) minus `neighbor` (the next point in along the
-            // path) points *outward* from the junction along that path — the direction
-            // `computeMiterJunctionPatch`'s own `JunctionRay.dir` expects.
-            const neighbor = e === 0 ? p[1] : p[p.length - 2];
-            return { dir: { x: end.x - neighbor.x, y: end.y - neighbor.y }, width: strokeOpts.width };
-          });
-          const wedges = computeMiterJunctionPatch(rays);
-          for (const wedge of wedges) {
-            this.corridors.moveTo(end.x + wedge.points[0].x, end.y + wedge.points[0].y);
-            for (let i = 1; i < wedge.points.length; i++) {
-              this.corridors.lineTo(end.x + wedge.points[i].x, end.y + wedge.points[i].y);
-            }
-            this.corridors.closePath().fill(strokeOpts.color);
-          }
-        }
+  /** Draws the corridor network as per-cell tiles (GitHub issue #736) via `corridorTiles`, picking
+   *  one of three tile shapes:
+   *  - **Contour, round join** (GitHub issues #493, #726): one filled shape per tile
+   *    (`buildCorridorContourInstances`), each shaped only from its own passages — a ribbon from every
+   *    passage's face to a shared target point, joined around it with corners rounded to
+   *    `settings.junctionRadius`. Adjacent tiles draw mirror borders on the shared face.
+   *  - **Miter join, either rendering mode**: straight `butt` lines from the cell centre with a
+   *    miter join, a square cap at a dead end and `computeMiterJunctionPatch` wedges at a junction of
+   *    3+ lines (GitHub issue #443 follow-up) — a `"square"` cap would protrude past neighbors at a
+   *    non-perpendicular junction (`traceCorridorLineTile`).
+   *  - **Legacy line, round join** (GitHub issue #510): straight `butt` lines plus a centre disc.
+   *  Line tiles split every centre-to-centre segment at its midpoint, so they draw exactly what the
+   *  former chained-path stroke drew. Tiles are rebuilt only when the segments or shape settings
+   *  change, and then only the cells whose shape changed (`CorridorTileLayer.update`); the color
+   *  is a tint. */
+  private updateCorridorTiles(settings: VectorByCorridorsSettings, segments: CorridorSegment[]): void {
+    const kind = settings.join === "miter" ? "miter" : settings.renderStyle === "contour" ? "contour" : "round_line";
+    const width = kind === "contour" ? this.contourWidth(settings) : settings.thickness;
+    const junctionRadius = settings.junctionRadius;
+    const inputs = this.corridorTileInputs;
+    if (!inputs || inputs.segments !== segments || inputs.kind !== kind || inputs.width !== width || (kind === "contour" && inputs.junctionRadius !== junctionRadius)) {
+      if (kind === "contour") {
+        // Keys carry the half-width and radius, so the cache stays valid across settings; it only
+        // needs a bound against unbounded growth while a slider is dragged.
+        if (this.contourShapeCache.size > 4096) this.contourShapeCache.clear();
+        const instances = buildCorridorContourInstances(segments, width, junctionRadius, this.contourShapeCache);
+        this.corridorTiles.update(instances, (instance, context) => {
+          traceCorridorContour(context, [instance.shape]);
+          context.fill(0xffffff);
+        });
+      } else {
+        const join = kind === "miter" ? "miter" : "round";
+        const tiles = buildCorridorLineTiles(segments, width, join);
+        this.corridorTiles.update(tiles, (tile, context) => traceCorridorLineTile(context, tile.ports, width, join));
       }
+      this.corridorTileInputs = { segments, kind, width, junctionRadius };
     }
+    this.corridorTiles.setTint(settings.color);
   }
 
-  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     if (settings.renderStyle === "legacy_line") {
       this.drawSplitPassagesLegacy(settings, passages, specialShapes, cfg);
       return;
@@ -802,9 +753,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  contour input used by a normal corridor junction. The resulting tile is drawn on the shared
    *  corridor layer; the bridge's own dedicated layer is appended afterwards and therefore sits
    *  above it. */
-  private bridgeUnderlaySegments(passage: SplitPassage, cfg: TessellationConfig): CorridorSegment[] {
-    const [x, y] = passage.pointKey.split(",").map(Number);
-    const cellVertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
+  private bridgeUnderlaySegments(passage: SplitPassage, cfg: FieldConfig): CorridorSegment[] {
+    const cellVertices = this.splitCellVertices(passage.pointKey, cfg);
     return passage.wallSegments.map((segment) => {
       const dx = segment.v1.x - segment.v0.x;
       const dy = segment.v1.y - segment.v0.y;
@@ -828,14 +778,27 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
   }
 
-  private drawBridgeUnderlayContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], cfg: TessellationConfig): void {
+  private drawBridgeUnderlayContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], cfg: FieldConfig): void {
     for (const passage of passages) {
       const segments = this.bridgeUnderlaySegments(passage, cfg);
       if (segments.length === 0) continue;
-      const contour = buildCorridorContour(segments, settings.thickness, true, "shallowThreeWay");
+      const contour = buildCorridorContour(segments, this.contourWidth(settings), settings.junctionRadius);
       if (contour.length === 0) continue;
       traceCorridorContour(this.corridors, contour);
       this.corridors.fill(settings.color);
+    }
+  }
+
+  private drawBridgeUnderlayLines(
+    settings: VectorByCorridorsSettings,
+    passages: SplitPassage[],
+    drawConnectorLine: ReturnType<VectorByCorridorsRenderer["setupSplitPassageDraw"]>["drawConnectorLine"],
+  ): void {
+    for (const passage of passages) {
+      for (const segment of passage.wallSegments) {
+        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
+        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
+      }
     }
   }
 
@@ -844,7 +807,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private drawBridgeSpecialShape(
     settings: VectorByCorridorsSettings,
     shape: Extract<SplitSpecialShape, { kind: "bridge" }>,
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     clipViewAt: () => SplitClipViews,
     drawConnectorLine: SplitConnectorLine,
     throughDrawnForPoint: Set<string>,
@@ -903,7 +866,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  GitHub issue #510's own "no shared logic between render styles" requirement (the shared
    *  `setupSplitPassageDraw` above is boilerplate + the plain-connector pass, not special-shape
    *  geometry). */
-  private splitCellVertices(pointKey: string, cfg: TessellationConfig, referencePoints: { x: number; y: number }[] = []): { x: number; y: number }[] | undefined {
+  private splitCellVertices(pointKey: string, cfg: FieldConfig, referencePoints: { x: number; y: number }[] = []): { x: number; y: number }[] | undefined {
     const [x, y] = pointKey.split(",").map(Number);
     const vertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
     if (!vertices || referencePoints.length === 0) return vertices;
@@ -937,11 +900,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     return best ? { x: best.v1.x - best.v0.x, y: best.v1.y - best.v0.y } : { x: 1, y: 0 };
   }
 
-  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
-    this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    // The universal contour engine draws only the round join; miter keeps plain connector lines.
+    if (settings.join === "round") this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    else this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     // A point recognized as `"hex_triple_bridge"`/`"hex_triple_corridor"` (GitHub issue #319)
     // emits 2 special-shape entries sharing the same `pointKey` (the third node's own "through"
@@ -959,6 +924,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const shape of specialShapes) {
       if (shape.kind === "diagonal" && shape.dividerJunctions) {
         const nodePassages = passages.filter((passage) => passage.pointKey === shape.pointKey);
+        const cellVertices = settings.join === "round" ? this.splitCellVertices(shape.pointKey, cfg) : undefined;
         nodePassages.forEach((passage, nodeIndex) => {
           const junction = shape.dividerJunctions?.[nodeIndex];
           if (!junction) return;
@@ -967,6 +933,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               const outerContourSegments = passage.wallSegments.map((other) => ({
                 v0: passage.center,
                 v1: other.center,
+                cellVertices0: cellVertices,
                 v1TouchesSplit: true,
               }));
               const orderedOuter = outerContourSegments
@@ -995,28 +962,24 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               if (settings.splitGapWidth > 0 && outerTurn.length === 2) {
                 const gridInset = 0.5 / (this.viewport.scale || 1);
                 const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, settings.junctionRadius));
                 this.corridors.fill(settings.background);
               }
-              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, true, "shallowThreeWay"));
+              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, this.contourWidth(settings), settings.junctionRadius));
               this.corridors.fill(settings.color);
               if (outerTurn.length === 2) {
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, this.contourWidth(settings), settings.junctionRadius));
                 this.corridors.fill(settings.color);
               }
               break;
             }
-            drawConnectorLine(
-              junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors,
-              settings.join === "miter" ? "butt" : "round",
-            );
+            // Miter join from here on: the round join drew the whole node above and broke out.
+            drawConnectorLine(junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors, "butt");
 
             // Patch the seam between this angled split ray and the ordinary corridor continuing
             // beyond the hex face. Both strokes are butt-cut at `segment.center`; the two-ray
             // miter patch closes the resulting corner without adding anything at the split's own
             // internal convergence point.
-            if (settings.join !== "miter") continue;
-
             const faceDx = segment.v1.x - segment.v0.x, faceDy = segment.v1.y - segment.v0.y;
             let outward = { x: -faceDy, y: faceDx };
             const fromTileCenter = {
@@ -1198,19 +1161,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  contour fill, regardless of `join`. Independent of `drawSplitPassagesContour`'s special-shape
    *  block — no shared drawing logic beyond geometry helpers that already predate #493
    *  (`vectorByCorridorsGeometry.ts`) and the mode-agnostic `setupSplitPassageDraw` boilerplate. */
-  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
 
     // Legacy line mode has no filled contour pass, so keep the same ordinary-corridor width and
     // line treatment for the fork while preserving the mode's existing split rendering below.
-    for (const passage of bridgeUnderlayPassages) {
-      for (const segment of passage.wallSegments) {
-        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
-        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
-      }
-    }
+    this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     const throughDrawnForPoint = new Set<string>();
     const diagonalRibbonDrawnForPoint = new Set<string>();
@@ -1354,11 +1312,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
         );
         this.warningHighlight.renderNodes(
-          hoveredTeleportNodeIds, nodes, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+          hoveredTeleportNodeIds, nodes, state.activeFieldConfig, state.vectorByCorridorsSettings,
           2 / (this.viewport.scale || 1),
         );
       } else {
-        this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByCorridorsSettings, null, null);
+        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByCorridorsSettings, null, null);
       }
       return;
     }
@@ -1370,16 +1328,17 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     const warnings = computeVectorByCorridorsWarningsAcrossFloors(
-      state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+      state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish,
     );
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }
 
   destroy(): void {
     this.unsubscribe?.();
     this.backgroundGrid.destroy();
+    this.corridorTiles.destroy();
     this.corridors.destroy();
     this.corridorsContainer.destroy();
     for (const g of this.splitClipScratch) g.destroy();
@@ -1393,8 +1352,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalConnections.destroy();
     this.verticalContainer.destroy();
     this.markerIndex.destroy();
+    this.floorLabel.destroy();
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
+    this.floorLabelContainer.destroy();
     this.warningHighlight.destroy();
     this.warningHighlightContainer.destroy();
   }

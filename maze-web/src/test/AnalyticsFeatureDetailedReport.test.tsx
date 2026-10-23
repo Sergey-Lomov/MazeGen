@@ -111,10 +111,10 @@ describe("ElementsSection", () => {
       split_tile_count: 11,
       split_node_count: 25,
       split_groups: [
-        { topology: tripleCorridor, count: 3 },
-        { topology: diagonalDivider, count: 4 },
-        { topology: bridge, count: 7 },
-        { topology: doubleBridge, count: 5 },
+        { shape: "regular:6", topology: tripleCorridor, count: 3 },
+        { shape: "regular:6", topology: diagonalDivider, count: 4 },
+        { shape: "regular:6", topology: bridge, count: 7 },
+        { shape: "regular:6", topology: doubleBridge, count: 5 },
       ],
     }} />);
     const labels = Array.from(container.querySelectorAll("span")).map((span) => span.textContent);

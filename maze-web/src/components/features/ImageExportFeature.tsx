@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
@@ -9,7 +10,22 @@ import { HoverIconButton } from "../HoverIconButton";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
 import { downloadPngExport } from "./pngExport";
+import { readJsonFile } from "../jsonFile";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
+import { downloadVisualPresetFile, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError } from "../../store/projectExport";
 import * as m from "~/paraglide/messages";
+
+const VISUAL_PRESET_LOAD_SOURCE = "visual_preset_load";
+
+const VISUAL_PRESET_LOAD_CODES = {
+  invalid: "image_export.visual_preset.load_error",
+  projectFile: "image_export.visual_preset.load_error_project_file",
+  qualityPreset: "image_export.visual_preset.load_error_quality_preset",
+} as const;
+for (const code of Object.values(VISUAL_PRESET_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
 
 export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: PngExportSettings) => Promise<Blob | null> }) {
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
@@ -20,6 +36,8 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const setOpenExportFormatSettings = useMazeStore((s) => s.setOpenExportFormatSettings);
   const setExportFormatSettingsCovered = useMazeStore((s) => s.setExportFormatSettingsCovered);
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
+  const loadVisualPreset = useMazeStore((s) => s.loadVisualPreset);
+  const presetInputRef = useRef<HTMLInputElement>(null);
 
   function handleClick(mode: RenderModeId) {
     if (mode === activeRenderMode) {
@@ -39,6 +57,30 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       const blob = await onExportPng(pngExportSettings);
       if (blob) downloadPngExport(blob);
     }
+  }
+
+  function handlePresetFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    readJsonFile(file, VISUAL_PRESET_LOAD_SOURCE, (json) => {
+      // Parsed before `loadVisualPreset`, so a rejected file leaves the store untouched.
+      let preset: ReturnType<typeof parseVisualPreset>;
+      try {
+        preset = parseVisualPreset(json);
+      } catch (err) {
+        if (err instanceof FileKindMismatchError) {
+          notify({
+            source: VISUAL_PRESET_LOAD_SOURCE,
+            code: err.found === "quality_preset" ? VISUAL_PRESET_LOAD_CODES.qualityPreset : VISUAL_PRESET_LOAD_CODES.projectFile,
+          });
+          return;
+        }
+        notify({ source: VISUAL_PRESET_LOAD_SOURCE, code: VISUAL_PRESET_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+      loadVisualPreset(preset);
+    });
   }
 
   const openMode = openRenderModeSettings ? resolveRenderMode(openRenderModeSettings) : null;
@@ -72,6 +114,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
             {format.label()}
           </Button>
           <HoverIconButton
+            stretch
             onClick={() => handleFormatGearClick(format.id)}
             title={m["image_export.format.settings_tooltip"]({ format: format.label() })}
           >
@@ -79,6 +122,25 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
           </HoverIconButton>
         </Inline>
       ))}
+
+      <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
+
+      <Inline gap="itemGap">
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadVisualPresetFile(useMazeStore.getState())}>
+          {m["image_export.visual_preset.save"]()}
+        </Button>
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
+          {m["image_export.visual_preset.load"]()}
+        </Button>
+      </Inline>
+      <input
+        ref={presetInputRef}
+        type="file"
+        name="visual-preset-file"
+        accept={visualPresetFileAccept(navigator)}
+        style={{ display: "none" }}
+        onChange={handlePresetFileChange}
+      />
 
       {openMode && (
         <SidePanel title={openMode.label()} onClose={() => setOpenRenderModeSettings(null)}>

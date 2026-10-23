@@ -1,7 +1,8 @@
 import React from "react";
 import { ui, typography, controlRowHeight } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
-export function HoverIconButton({ onClick, title, children, fixedHeight }: {
+export function HoverIconButton({ onClick, title, children, fixedHeight, stretch }: {
   onClick: () => void;
   title: string;
   children: React.ReactNode;
@@ -9,17 +10,20 @@ export function HoverIconButton({ onClick, title, children, fixedHeight }: {
    *  — for standalone rows (e.g. the panel footer's Save/Load/Fit buttons) where no sibling sets a
    *  taller natural height to stretch to, so the button would otherwise collapse to its icon size. */
   fixedHeight?: boolean;
+  /** Stretch the tooltip wrapper and button to a sibling text button's height. */
+  stretch?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
-      title={title}
-      onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
-      onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
-    >
-      {children}
-    </button>
+    <Tooltip content={title} stretch={stretch}>
+      <button
+        onClick={onClick}
+        style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
+        onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
+        onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

@@ -53,6 +53,7 @@ impl IssueMerge for MissingLoopsIssue {
 mod tests {
     use super::*;
     use crate::quality_control::issue::Issue;
+    use std::sync::Arc;
 
     #[test]
     fn merge_takes_the_larger_missing_value_for_the_same_area() {
@@ -72,11 +73,16 @@ mod tests {
     fn merge_keeps_different_areas_as_separate_entries() {
         let mut ids = crate::IdGenerator::new();
         let mut field: crate::space::MultiLevelField<crate::space::SquareTessellation> =
-            crate::space::MultiLevelField::single_level(crate::space::square_rect(1, 1), &mut ids)
-                .unwrap();
+            crate::space::MultiLevelField::single_level(
+                Arc::default(),
+                crate::space::square_rect(1, 1),
+                &mut ids,
+            )
+            .unwrap();
         let level_a = field.single_level_id();
         let level_b = field.add_level(
-            crate::space::Field::new(crate::space::square_rect(1, 1), &mut ids).unwrap(),
+            crate::space::Field::new(Arc::default(), crate::space::square_rect(1, 1), &mut ids)
+                .unwrap(),
         );
 
         let mut a = MissingLoopsIssue::new_from_check(

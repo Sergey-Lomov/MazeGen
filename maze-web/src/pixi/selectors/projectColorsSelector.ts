@@ -37,6 +37,7 @@ type SectionKey =
   | "elevator"
   | "splits"
   | "marker_index"
+  | "floors"
   | "vertical"
   | "shared_style";
 
@@ -76,6 +77,7 @@ const sectionLabel: Record<SectionKey, () => string> = {
   elevator: m["color_picker.entry.section.elevator"],
   splits: m["image_export.vector_by_walls.section_splits"],
   marker_index: m["color_picker.entry.section.marker_index"],
+  floors: m["image_export.floors.section"],
   vertical: m["color_picker.entry.section.vertical_shared_style"],
   shared_style: m["color_picker.entry.section.shared_style"],
 };
@@ -208,6 +210,9 @@ const STATIC_FIELDS = defineFields({
   markerIndexFill: [["marker_index"], "fill"],
   markerIndexText: [["marker_index"], "text"],
   markerIndexBorder: [["marker_index"], "border"],
+  floorLabelFill: [["floors"], "fill"],
+  floorLabelBorder: [["floors"], "border"],
+  floorLabelText: [["floors"], "text"],
 });
 
 /** The registry of every project-color field (GitHub issue #503). Static fields are keyed by their

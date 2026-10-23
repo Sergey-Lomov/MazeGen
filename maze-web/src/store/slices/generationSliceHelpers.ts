@@ -1,6 +1,7 @@
 import type { CheckDescriptor, StrategyDescriptor } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
 import type { QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
+import type { ProjectFileQcRule } from "../projectExport/types";
 import * as m from "~/paraglide/messages";
 
 // Rule-kind matching across the store (addCheck/newRule below, RulesColumn's candidate filter,
@@ -84,6 +85,16 @@ export function defaultRuleName(kind: string): string {
   return fn?.() ?? kind;
 }
 
+/** Store rules from a saved `quality.rules` list (project file or quality preset).
+ *  `nextLocalCheckId` is not saved, so it is recomputed here — see CheckInstance's doc comment in
+ *  storeTypes.ts. */
+export function rulesFromFile(rules: ProjectFileQcRule[]): QcRuleState[] {
+  return rules.map((rule) => ({
+    ...rule,
+    nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
+  }));
+}
+
 // `name: null` means no custom name; the view model resolves the issue kind's current-locale
 // label. `renameRule` stores a string only when the user enters a custom name. `id` is a UUID,
 // not a counter-derived string — a module-level counter resets
@@ -91,7 +102,7 @@ export function defaultRuleName(kind: string): string {
 // (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
 // collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
 // not already in use among the member checks passed in at creation).
-export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
+export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[], strategyParams?: Record<string, string>): QcRuleState {
   return {
     id: `rule_${crypto.randomUUID()}`,
     name: null,
@@ -99,6 +110,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
     checks,
     nextLocalCheckId: checks.length,
     strategyId,
+    strategyParams: strategyId ? (strategyParams ?? defaultParamsFor({ params: availableStrategies.find((s) => s.id === strategyId)?.params ?? [] })) : {},
     disabled,
     ruleDisabled: false,
     nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],

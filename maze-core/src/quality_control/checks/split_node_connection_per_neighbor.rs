@@ -18,7 +18,7 @@ pub const SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT: u32 = 1;
 ///
 /// **Outside only**: a connection to another node of the *same* split (a sibling edge) is never
 /// counted — this check is about a tile over-connecting to the external world, not internal
-/// split-node wiring. A neighbor's own point (`Field::point_of`) must differ from the split
+/// split-node wiring. A neighbor's own point (`Field::cell_of`) must differ from the split
 /// tile's point for the connection to count.
 ///
 /// **Outgoing only**: counts edges *from* a split node *to* the neighbor (`edge.from` at the
@@ -44,8 +44,8 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let split_points: Vec<(crate::space::LevelId, T::Point)> =
-            maze.field.split_points().collect();
+        let split_points: Vec<(crate::space::LevelId, T::CellId)> =
+            maze.field.split_cells().collect();
         if split_points.is_empty() {
             return;
         }
@@ -62,7 +62,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
                 if !nodes.contains(&edge.from) {
                     continue;
                 }
-                let Some(neighbor_point) = maze.field.point_of(edge.to) else {
+                let Some(neighbor_point) = maze.field.cell_of(edge.to) else {
                     continue;
                 };
                 if neighbor_point == point {

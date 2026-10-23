@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { drawEdge, type RenderEdge } from "../BaseGraphRenderer";
 import { NODE_RADIUS } from "../renderConstants";
@@ -12,7 +12,7 @@ export interface SequenceHighlightData {
    *  edge is drawn from the last id back to the first. */
   sequence: number[];
   color: number;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
 }
 
 /** Draws a `DebugValueKind.Sequence` debug value (GitHub issue #131's follow-up, e.g.
@@ -34,7 +34,7 @@ export class SequenceHighlightRenderer {
   // it on every `render()` call (once per debug-step tick during scrubbing/autoplay) would be
   // O(total node count) wasted work regardless of how small `sequence` itself is.
   private cachedNodes: NodeDto[] | null = null;
-  private cachedCfg: TessellationConfig | null = null;
+  private cachedCfg: FieldConfig | null = null;
   private nodePos: Map<number, { x: number; y: number }> = new Map();
 
   constructor(container: Container) {

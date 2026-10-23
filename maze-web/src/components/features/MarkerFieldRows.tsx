@@ -1,6 +1,6 @@
 import type * as React from "react";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
-import type { MarkerAppearance, TextStyleFields } from "../../store/storeTypes";
+import type { MarkerAppearance, SizeAdaptationField, TextStyleFields } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
@@ -8,6 +8,7 @@ import { TILE_SIZE } from "../../pixi/constants";
 import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import { AutoFitButton } from "./TextFitContext";
+import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import * as m from "~/paraglide/messages";
 
 /** Shared shape option list (GitHub issue #293 follow-up unified `MarkerShape` for both start/
@@ -37,9 +38,11 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
 export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
-  settings: MarkerAppearance;
-  onChange: (patch: Partial<MarkerAppearance>) => void;
-  linkTargets: { [K in keyof MarkerAppearance]: P | null };
+  settings: MarkerAppearance & Partial<SizeAdaptationField>;
+  onChange: (patch: Partial<MarkerAppearance & SizeAdaptationField>) => void;
+  /** `sizeAdaptation` (GitHub issue #819) is opt-in: the "Size adaptation" row is rendered only by
+   *  callers whose marker kind scales with its cell (omitted for the elevator floor badges). */
+  linkTargets: { [K in keyof MarkerAppearance]: P | null } & { sizeAdaptation?: P | null };
   /** "Priority" project colors (GitHub issue #503) for the fill / border color rows. */
   priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
   /** Factory defaults (GitHub issue #503) — pinned as each color row's first "Default" project color. */
@@ -79,6 +82,9 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
         format={(v) => String(Math.round(v))}
         linkTarget={linkTargets.size}
       />
+      {linkTargets.sizeAdaptation !== undefined && (
+        <SizeAdaptationRow value={settings.sizeAdaptation ?? 0} onChange={(sizeAdaptation) => onChange({ sizeAdaptation })} linkTarget={linkTargets.sizeAdaptation} />
+      )}
       <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} field={fields.fillColor} linkTarget={linkTargets.fillColor} disabled={colorsDisabledHint !== undefined} disabledHint={colorsDisabledHint} />
       <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} field={fields.borderColor} linkTarget={linkTargets.borderColor} disabled={colorsDisabledHint !== undefined} disabledHint={colorsDisabledHint} />
       <LinkedSliderRow
@@ -107,11 +113,12 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
 
 /** Shared text-style rows (GitHub issue #701) — font weight, absolute font size, margin and text color
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
- *  captions, elevator badges and teleport floor badges. Bare rows, like `MarkerAppearanceRows`. */
+ *  captions, elevator badges and teleport floor badges. Horizontal alignment stays centered for
+ *  these consumers and is exposed separately only by `FloorLabelSection`. */
 export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
-  linkTargets: { [K in keyof TextStyleFields]: P | null };
+  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
   field: ColorField;

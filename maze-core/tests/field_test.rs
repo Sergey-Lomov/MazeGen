@@ -1,9 +1,10 @@
 use maze_core::IdGenerator;
 use maze_core::space::{Field, SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 fn make_field(width: usize, height: usize) -> Field<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(square_rect(width, height), &mut ids).unwrap()
+    Field::new(Arc::default(), square_rect(width, height), &mut ids).unwrap()
 }
 
 #[test]
@@ -56,7 +57,7 @@ fn point_of_round_trip() {
     let field = make_field(4, 4);
     let point = SquarePoint { x: 2, y: 3 };
     let node = field.nodes_at(point).first().copied().unwrap();
-    assert_eq!(field.point_of(node), Some(point));
+    assert_eq!(field.cell_of(node), Some(point));
 }
 
 #[test]

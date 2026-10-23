@@ -1,6 +1,9 @@
 import type React from "react";
 import type { PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import { useMazeStore } from "../../store/mazeStore";
 import { muted, radius, spacing, typography, ui } from "../../styles/theme";
+import { Tooltip } from "../Tooltip";
+import * as m from "~/paraglide/messages";
 
 /** One row of hoverable/clickable entity bubbles (monospace `Lf x:y` chips) with an optional text
  *  arrow between exactly two of them — the shared presentation of the post-edit "Changes" panel
@@ -18,21 +21,28 @@ export function EntityBubbleRow({ bubbles, arrow, onBubbleEnter, onBubbleLeave, 
   onArrowEnter?: () => void;
   onArrowLeave?: () => void;
 }) {
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  const activeFloorIndex = floors.findIndex((floor) => floor.id === activeFloorId);
   return (
     <div style={arrow ? styles.bubblesTight : styles.bubbles}>
-      {bubbles.map((bubble, j) => (
-        <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
-          {j > 0 && arrow && <span style={styles.arrowZone} onMouseEnter={onArrowEnter} onMouseLeave={onArrowLeave}>{arrow}</span>}
-          <span
-            style={bubble.highlight?.kind === "point" ? { ...styles.bubble, cursor: "pointer" } : styles.bubble}
-            onMouseEnter={bubble.highlight ? () => onBubbleEnter(bubble, j) : undefined}
-            onMouseLeave={onBubbleLeave ? () => onBubbleLeave(bubble, j) : undefined}
-            onClick={() => onBubbleClick(bubble, j)}
-          >
-            {bubble.text}
+      {bubbles.map((bubble, j) => {
+        const targetFloor = bubble.highlight?.kind === "point" ? bubble.highlight.level ?? 0 : undefined;
+        const canNavigate = targetFloor !== undefined && floors.length > 1 && targetFloor !== activeFloorIndex;
+        return (
+          <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
+            {j > 0 && arrow && <span style={styles.arrowZone} onMouseEnter={onArrowEnter} onMouseLeave={onArrowLeave}>{arrow}</span>}
+            <Tooltip content={canNavigate ? m["common.go_to_floor"]() : undefined}><span
+              style={canNavigate ? { ...styles.bubble, cursor: "pointer" } : styles.bubble}
+              onMouseEnter={bubble.highlight ? () => onBubbleEnter(bubble, j) : undefined}
+              onMouseLeave={onBubbleLeave ? () => onBubbleLeave(bubble, j) : undefined}
+              onClick={() => onBubbleClick(bubble, j)}
+            >
+              {bubble.text}
+            </span></Tooltip>
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }

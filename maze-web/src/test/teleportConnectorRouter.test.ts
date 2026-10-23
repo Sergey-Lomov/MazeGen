@@ -3,12 +3,19 @@ import { TeleportConnectorRouter, axisIntersection, pointToSegmentDistance } fro
 import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
 import type { TeleportEdge } from "../pixi/renderers/types";
 import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // `getCellVertices` (square) delegates to wasm for cartesian coords via `getCartesian` — mocked with
 // the identity mapping square uses (see `maze-core/src/space/square.rs`'s `cartesian`), same
 // rationale as `VectorByWallsSettingsPanel.test.tsx`.
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
@@ -78,7 +85,7 @@ describe("TeleportConnectorRouter.route", () => {
       [edge([60, -92.37604307034012], [-20, 46.18802153517006])],
       4,
       Infinity,
-      { type: "hex_parallelogram", cols: 1, rows: 1, orientation: "pointy_top" },
+      fieldOf("hex", { shape: "parallelogram", cols: 1, rows: 1 }, "pointy_top"),
     );
     const [startX, startY, bendX, bendY] = routed.points;
     // The degenerate leg's bend must snap exactly onto `from` — not just close to it — since any
@@ -126,7 +133,7 @@ describe("TeleportConnectorRouter.route", () => {
   });
 
   it("bends along the tessellation's own face axes, not a fixed 90°, for hex/triangle configs (GitHub issue #297)", () => {
-    const hexCfg: FieldConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const [routed] = new TeleportConnectorRouter().route([edge([0, 0], [10, 4])], 4, Infinity, hexCfg);
     const [, , bendX, bendY] = routed.points;
     // A square (h/v) bend would land the corner exactly on (10, 0) or (0, 4) — neither axis-aligned
@@ -137,14 +144,14 @@ describe("TeleportConnectorRouter.route", () => {
 
   it("falls back to square (h/v) axes when no tessellation config is given", () => {
     const [withoutCfg] = new TeleportConnectorRouter().route([edge([0, 0], [10, 20])], 4);
-    const [withSquareCfg] = new TeleportConnectorRouter().route([edge([0, 0], [10, 20])], 4, Infinity, { type: "square", width: 10, height: 10 });
+    const [withSquareCfg] = new TeleportConnectorRouter().route([edge([0, 0], [10, 20])], 4, Infinity, fieldOf("square", { shape: "rect", cols: 10, rows: 10 }));
     expect(withoutCfg.points).toEqual(withSquareCfg.points);
   });
 
   it("with 3+ axes and no collisions to break the tie, picks the shortest of the equally-uncontested candidate paths", () => {
     // A lone connector never collides with anything, so every one of hex's 6 candidate paths ties
     // at 0 collisions — the length tie-break must then pick the geometrically shortest bend.
-    const hexCfg: FieldConfig = { type: "hex_hexagon", radius: 3, orientation: "pointy_top" };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top");
     const [routed] = new TeleportConnectorRouter().route([edge([0, 0], [7, 3])], 4, Infinity, hexCfg);
     const [sx, sy, bx, by, ex, ey] = routed.points;
     const length = Math.hypot(bx - sx, by - sy) + Math.hypot(ex - bx, ey - by);
@@ -154,7 +161,7 @@ describe("TeleportConnectorRouter.route", () => {
   });
 
   it("with 3+ axes, a larger interacting cluster still routes every connector to a valid non-degenerate path (refinement passes don't crash, drop connectors, or produce malformed polylines)", () => {
-    const hexCfg: FieldConfig = { type: "hex_hexagon", radius: 3, orientation: "pointy_top" };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top");
     const edges = [
       edge([0, 0], [8, 0]),
       edge([1, 0], [9, 0]),
@@ -183,7 +190,7 @@ describe("TeleportConnectorRouter.route", () => {
     expect(differentGap).not.toBe(base);
     const differentEdges = router.route([edge([0, 0], [10, 21])], 4);
     expect(differentEdges).not.toBe(base);
-    const differentCfg = router.route([edge([0, 0], [10, 20])], 4, Infinity, { type: "hex_hexagon", radius: 3 });
+    const differentCfg = router.route([edge([0, 0], [10, 20])], 4, Infinity, fieldOf("hex", { shape: "hexagon", radius: 3 }));
     expect(differentCfg).not.toBe(base);
   });
 
@@ -252,7 +259,7 @@ describe("TeleportConnectorRouter.route", () => {
     // (to.x, from.y) = (20,-20) — cell (0,0)'s own center: both legs stay inside the L throughout.
     // v-then-h bend = (from.x, to.y) = (60,-60) — the field's missing corner (1,1): its own v-leg
     // (x=60, y:-20->-60) exits the field once y<-40.
-    const cfg: FieldConfig = { type: "square", width: 2, height: 2 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
     const e = edge([60, -20], [20, -60]);
     const fieldCells: [number, number][] = [[0, 0], [1, 0], [0, 1]];
 
@@ -294,7 +301,7 @@ describe("TeleportConnectorRouter.route", () => {
 
   it("cache invalidates when waypoints or avoidFieldExit/fieldCells change", () => {
     const router = new TeleportConnectorRouter();
-    const cfg: FieldConfig = { type: "square", width: 3, height: 1 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 1 });
     const e = edge([0, 0], [2, 1]);
     const base = router.route([e], 1, Infinity, cfg);
     const withWaypoints = router.route([e], 1, Infinity, cfg, undefined, [[5, 5]]);
@@ -309,7 +316,7 @@ describe("TeleportConnectorRouter.route", () => {
     // a y inside cell (0,1) — the centerline itself never crosses outside the field (x never exceeds
     // 40), but a connector drawn with real width bulges `connectorWidth / 2 + connectorGapWidth`
     // past its centerline, which here pushes past x=40 and outside the field.
-    const cfg: FieldConfig = { type: "square", width: 1, height: 2 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 1, rows: 2 });
     const e = edge([20, -20], [40, -60]);
     const fieldCells: [number, number][] = [[0, 0], [0, 1]];
     // halfWidth = connectorWidth/2 + connectorGapWidth = 2 + 1 = 3.
@@ -328,13 +335,13 @@ describe("TeleportConnectorRouter.route", () => {
 
 describe("getConnectorAxes", () => {
   it("square has 2 perpendicular axes (horizontal/vertical)", () => {
-    const axes = getConnectorAxes({ type: "square", width: 1, height: 1 });
+    const axes = getConnectorAxes(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }));
     expect(axes).toEqual([{ ux: 1, uy: 0 }, { ux: 0, uy: 1 }]);
   });
 
   it("hex has 3 axes, 60° apart, perpendicular to that orientation's own face directions", () => {
-    const flat = getConnectorAxes({ type: "hex_hexagon", radius: 1, orientation: "flat_top" });
-    const pointy = getConnectorAxes({ type: "hex_hexagon", radius: 1, orientation: "pointy_top" });
+    const flat = getConnectorAxes(fieldOf("hex", { shape: "hexagon", radius: 1 }, "flat_top"));
+    const pointy = getConnectorAxes(fieldOf("hex", { shape: "hexagon", radius: 1 }, "pointy_top"));
     expect(flat).toHaveLength(3);
     // pointy_top is flat_top rotated 30° — its faces (and thus its normals) land on a different
     // 3-axis set, not the same one (GitHub issue #297 follow-up: axes must be face *normals*, and
@@ -343,10 +350,10 @@ describe("getConnectorAxes", () => {
   });
 
   it("triangle uses the same axis set regardless of orientation", () => {
-    const r0 = getConnectorAxes({ type: "triangle_rect", cols: 1, rows: 1, orientation: "r0" });
-    const r90 = getConnectorAxes({ type: "triangle_rect", cols: 1, rows: 1, orientation: "r90" });
-    const r180 = getConnectorAxes({ type: "triangle_rect", cols: 1, rows: 1, orientation: "r180" });
-    const r270 = getConnectorAxes({ type: "triangle_rect", cols: 1, rows: 1, orientation: "r270" });
+    const r0 = getConnectorAxes(fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }, "r0"));
+    const r90 = getConnectorAxes(fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }, "r90"));
+    const r180 = getConnectorAxes(fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }, "r180"));
+    const r270 = getConnectorAxes(fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }, "r270"));
     expect(r0).toHaveLength(3);
     expect(r0).toEqual(r90);
     expect(r0).toEqual(r180);
@@ -355,7 +362,7 @@ describe("getConnectorAxes", () => {
 
   it("Cairo uses only oblique axes so routes do not sit on horizontal/vertical edges", async () => {
     const { getCellVertices } = await import("../pixi/tessellationGeometry");
-    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const axes = getConnectorAxes(cairoCfg);
     expect(axes).toHaveLength(4);
     expect(axes.every(({ ux, uy }) => Math.abs(ux) > 1e-10 && Math.abs(uy) > 1e-10)).toBe(true);

@@ -83,7 +83,7 @@ pub struct ComputeAnalyticsConfig {
     /// (no `#[serde(default)]`) — every caller as of this issue sends it, one entry per floor.
     pub level_fields: Vec<Vec<[i32; 2]>>,
     /// The client's authoritative node list (real ids from the previous generation/confirm) —
-    /// `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_points`) instead of
+    /// `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_cells`) instead of
     /// re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a
     /// rebuild reproduce the exact same ids the client already holds, including auto-split nodes
     /// created by the generator (whose ids come from traversal order, not coordinate order). Each

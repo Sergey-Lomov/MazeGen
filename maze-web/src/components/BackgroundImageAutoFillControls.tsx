@@ -20,7 +20,7 @@ interface Props {
 
 export function BackgroundImageAutoFillControls({ enabled }: Props) {
   const backgroundImage = useMazeStore((s) => s.backgroundImage);
-  const autoFillTessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const autoFillFieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const backgroundAutoFillPreview = useMazeStore((s) => s.backgroundAutoFillPreview);
   const setBackgroundAutoFillPreview = useMazeStore((s) => s.setBackgroundAutoFillPreview);
   const applyBackgroundAutoFill = useMazeStore((s) => s.applyBackgroundAutoFill);
@@ -75,7 +75,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
     if (!image || state.openCard !== "field_setup" || state.floorFields[state.activeFloorId].fieldEditMode !== "custom") return null;
     return buildBackgroundFieldPreviewFromImage(
       image,
-      state.floorFields[state.activeFloorId].tessellationConfig,
+      state.floorFields[state.activeFloorId].fieldConfig,
       autoFillMode,
       autoFillColor,
       autoFillThreshold,
@@ -115,7 +115,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
     const timeout = window.setTimeout(() => {
       void buildBackgroundFieldPreviewFromImage(
         backgroundImage,
-        autoFillTessellationConfig,
+        autoFillFieldConfig,
         autoFillMode,
         autoFillColor,
         autoFillThreshold,
@@ -133,7 +133,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
       window.clearTimeout(timeout);
       autoFillRequest.current++;
     };
-  }, [enabled, autoFillPreviewActive, backgroundImage, autoFillTessellationConfig, autoFillMode, autoFillColor, autoFillThreshold, setBackgroundAutoFillPreview]);
+  }, [enabled, autoFillPreviewActive, backgroundImage, autoFillFieldConfig, autoFillMode, autoFillColor, autoFillThreshold, setBackgroundAutoFillPreview]);
 
   useEffect(() => {
     if (!enabled && (autoFillPreviewActive || backgroundAutoFillPreview !== null || autoFillConfirmOpen)) {

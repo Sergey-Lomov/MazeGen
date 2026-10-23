@@ -37,7 +37,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeGroupIssue> for MaxSplitTileNodeC
     ) {
         let mut groups: Vec<(Vec<NodeId>, u32)> = Vec::new();
 
-        for (level, point) in maze.field.split_points() {
+        for (level, point) in maze.field.split_cells() {
             let nodes = maze.field.nodes_at(level, point);
             let node_count = nodes.len() as u32;
             if node_count <= self.max {
@@ -64,6 +64,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_split_tile_node_count";
 
@@ -71,7 +72,7 @@ mod tests {
     fn silent_when_no_split_points() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -92,7 +93,7 @@ mod tests {
     fn fires_when_tile_exceeds_the_limit() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -127,7 +128,7 @@ mod tests {
     fn does_not_fire_when_tile_is_at_the_limit() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         field.node_at(level, p).unwrap();
@@ -152,7 +153,7 @@ mod tests {
     fn flags_every_exceeding_tile_in_one_call() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p1 = SquarePoint { x: 1, y: 0 };
         field.node_at(level, p1).unwrap();

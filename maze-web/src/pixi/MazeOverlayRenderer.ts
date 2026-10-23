@@ -7,7 +7,7 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJ
 import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, buildTeleportAvoidanceWaypoints, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { canvas } from "./colorTokens";
 
 export interface MazeOverlayData {
@@ -15,7 +15,7 @@ export interface MazeOverlayData {
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Cross-floor teleport badge resolution (GitHub issue #337) — omitted by a caller with no
    *  unscoped node/edge list in hand, same as `buildTeleportEdges`'s own optional param. */
   teleportFloorContext?: TeleportFloorContext;

@@ -13,6 +13,8 @@ import { sharedStyles } from "../../styles/shared";
 import { typography, muted, spacing, ui, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import { ToolTooltip } from "../ToolIconButton";
+import { Tooltip } from "../Tooltip";
 
 /** Which row-level confirm dialog is pending (GitHub issue #547) — `commandIndex` is the log's own
  *  oldest-to-newest index (not the panel's reversed display order); `cascade` (only meaningful for
@@ -130,16 +132,15 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
           style={styles.filterInput}
         />
         {entityFilter !== null && (
-          <button
+          <Tooltip content={m["post_edit.changes_filter_clear"]()}><button
             type="button"
             className="hoverable"
             onClick={() => setEntityFilter(null)}
-            title={m["post_edit.changes_filter_clear"]()}
             aria-label={m["post_edit.changes_filter_clear"]()}
             style={{ ...sharedStyles.closeBtn, ...styles.filterClear }}
           >
             <X size={CLEAR_ICON_SIZE} />
-          </button>
+          </button></Tooltip>
         )}
       </div>
       {entityFilter !== null && rows.length === 0 ? (
@@ -165,19 +166,20 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                 onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
                 onMouseLeave={clearHover}
               >
-                {row.entityId !== undefined && (
-                  <span
-                    className="hoverable"
-                    style={styles.idBubble}
-                    title={m["post_edit.changes_id_bubble_title"]()}
-                    onMouseEnter={() => setHoveredEntityId(row.entityId!)}
-                    onMouseLeave={() => setHoveredEntityId(null)}
-                    onClick={() => setEntityFilter(row.entityId!)}
-                  >
-                    id: {row.entityId}
-                  </span>
-                )}
-                <span style={styles.action}>{row.action}</span>
+                <div style={styles.titleRow}>
+                  <span style={styles.action}>{row.action}</span>
+                  {row.entityId !== undefined && (
+                    <ToolTooltip title={m["post_edit.changes_id_bubble_primary"]()}><span
+                      className="hoverable"
+                      style={styles.idBubble}
+                      onMouseEnter={() => setHoveredEntityId(row.entityId!)}
+                      onMouseLeave={() => setHoveredEntityId(null)}
+                      onClick={() => setEntityFilter(row.entityId!)}
+                    >
+                      id: {row.entityId}
+                    </span></ToolTooltip>
+                  )}
+                </div>
                 <div style={styles.bubblesRow}>
                   <EntityBubbleRow
                     bubbles={row.bubbles}
@@ -187,30 +189,28 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                     onBubbleClick={clickBubble}
                   />
                   <div style={styles.rowActions}>
-                    <button
+                    <Tooltip content={m["post_edit.changes_reset_title"]()}><button
                       type="button"
                       className="hoverable"
                       onClick={() => setPendingRowAction({ kind: "reset", commandIndex: row.commandIndex })}
                       onMouseEnter={() => setHoveredPreview({ kind: "reset", commandIndex: row.commandIndex })}
                       onMouseLeave={() => setHoveredPreview(null)}
-                      title={m["post_edit.changes_reset_title"]()}
                       aria-label={m["post_edit.changes_reset_title"]()}
                       style={sharedStyles.closeBtn}
                     >
                       <RotateCcw size={ROW_ACTION_ICON_SIZE} />
-                    </button>
-                    <button
+                    </button></Tooltip>
+                    <Tooltip content={m["post_edit.changes_delete_title"]()}><button
                       type="button"
                       className="hoverable"
                       onClick={() => setPendingRowAction({ kind: "delete", commandIndex: row.commandIndex, cascade: row.cascade })}
                       onMouseEnter={() => setHoveredPreview({ kind: "delete", commandIndex: row.commandIndex })}
                       onMouseLeave={() => setHoveredPreview(null)}
-                      title={m["post_edit.changes_delete_title"]()}
                       aria-label={m["post_edit.changes_delete_title"]()}
                       style={{ ...sharedStyles.closeBtn, color: ui.text.error }}
                     >
                       <Trash2 size={ROW_ACTION_ICON_SIZE} />
-                    </button>
+                    </button></Tooltip>
                   </div>
                 </div>
               </div>
@@ -220,14 +220,11 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
       )}
       {commands.length > 0 && (
         <div style={styles.footer}>
-          <Button
-            variant="secondary"
-            layoutStyle={{ width: "100%" }}
-            title={m["post_edit.changes_compact_title"]()}
-            onClick={() => setPendingRowAction({ kind: "compact" })}
-          >
-            {m["post_edit.changes_compact_button"]()}
-          </Button>
+          <Tooltip block content={m["post_edit.changes_compact_title"]()}>
+            <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={() => setPendingRowAction({ kind: "compact" })}>
+              {m["post_edit.changes_compact_button"]()}
+            </Button>
+          </Tooltip>
         </div>
       )}
       {pendingRowAction && (
@@ -278,6 +275,8 @@ const styles: Record<string, React.CSSProperties> = {
   filterClear: {
     position: "absolute",
     right: spacing.rowGap + 2,
+    top: "calc(50% + 1px)",
+    transform: "translateY(-50%)",
   },
   list: {
     display: "flex",
@@ -334,16 +333,23 @@ const styles: Record<string, React.CSSProperties> = {
   rowDeletePreview: {
     background: ui.bg.error,
   },
-  // Reserves room on the right so a wrapped/long action text never runs under the pinned `idBubble`.
+  // Same title-row layout as `PresetCell`: the badge stays in normal flow and therefore cannot
+  // overlap the action controls on the details row.
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+    minWidth: 0,
+  },
   action: {
     ...typography.body,
-    paddingRight: 56,
+    flex: "1 1 auto",
+    minWidth: 0,
   },
   // The entity id bubble (GitHub issue #573) — split out of `action`'s own text (previously
-  // `"Action (#id)"`) into its own hoverable/clickable chip, pinned to the row's own top-right
-  // corner (`position: absolute` against `row`'s `position: relative`) rather than flowing inline
-  // with the action text, so it reads as a row-level tag rather than part of the action's own
-  // sentence. Green (`ui.bg.success`/`ui.text.success` — same pairing convention
+  // `"Action (#id)"`) into its own hoverable/clickable chip in the title row, so it reads as a
+  // row-level tag rather than part of the action's own sentence. Green (`ui.bg.success`/
+  // `ui.text.success` — same pairing convention
   // `debug.refHighlight`/`debug.issueHighlight` use, a dedicated bg+text pair rather than a computed
   // alpha) rather than the point bubbles' cyan (`debug.refHighlight`) so it reads as a distinct kind
   // of reference at a glance. Hovering highlights every other row sharing this id (`hoveredEntityId`,
@@ -351,9 +357,6 @@ const styles: Record<string, React.CSSProperties> = {
   // `setPostEditChangesEntityFilter`) to narrow the log down to just this entity.
   idBubble: {
     ...typography.caption,
-    position: "absolute",
-    top: spacing.itemGap,
-    right: spacing.groupGap,
     fontFamily: "Consolas, Menlo, Monaco, monospace",
     display: "inline-flex",
     alignItems: "center",

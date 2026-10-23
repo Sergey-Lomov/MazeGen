@@ -36,10 +36,22 @@ pub use graph::stats::{
 pub use ids::{IdGenerator, NodeId};
 pub use meta::MazeMeta;
 pub use space::{
-    CairoFace, CairoPoint, CairoTessellation, CairoTileKind, Field, HexFace, HexPoint,
-    HexTessellation, LevelId, MultiLevelField, SquareFace, SquarePoint, SquareTessellation,
-    Tessellation, TriFace, TriPoint, TriTessellation, cairo_rect, geometric_distance, hex_hexagon,
-    hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
+    BrickFace, BrickPoint, BrickTessellation, CairoFace, CairoPoint, CairoTessellation,
+    CairoTileKind, CurvedQuadrilateralFace, CurvedQuadrilateralPoint,
+    CurvedQuadrilateralTessellation, ElongatedTriangularFace, ElongatedTriangularKind,
+    ElongatedTriangularPoint, ElongatedTriangularTessellation, Field, HexFace, HexPoint,
+    HexTessellation, LevelId, MultiLevelField, RadialFace, RadialLayout, RadialParams, RadialPoint,
+    RadialTessellation, RhombitrihexagonalFace, RhombitrihexagonalKind, RhombitrihexagonalPoint,
+    RhombitrihexagonalTessellation, SnubHexagonalFace, SnubHexagonalKind, SnubHexagonalPoint,
+    SnubHexagonalTessellation, SnubSquareFace, SnubSquareKind, SnubSquarePoint,
+    SnubSquareTessellation, SquareFace, SquareOctagonFace, SquareOctagonPoint,
+    SquareOctagonTessellation, SquarePoint, SquareTessellation, Tessellation, TriFace, TriPoint,
+    TriTessellation, TrihexagonalFace, TrihexagonalKind, TrihexagonalPoint,
+    TrihexagonalTessellation, TruncatedHexagonalFace, TruncatedHexagonalKind,
+    TruncatedHexagonalPoint, TruncatedHexagonalTessellation, TruncatedTrihexagonalFace,
+    TruncatedTrihexagonalKind, TruncatedTrihexagonalPoint, TruncatedTrihexagonalTessellation,
+    VoronoiFace, VoronoiParams, VoronoiPoint, VoronoiTessellation, cairo_rect, geometric_distance,
+    hex_hexagon, hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
 };
 
 pub struct Maze<T: Tessellation> {
@@ -76,34 +88,20 @@ impl<T: Tessellation> Maze<T> {
     pub fn add_node_at_on_level(
         &mut self,
         level: crate::space::LevelId,
-        point: T::Point,
+        point: T::CellId,
     ) -> NodeId {
         let node = self.field.add_node_at(level, point, &mut self.ids);
         self.graph.add_node(node);
         node
     }
 
-    /// Removes `node`, clearing every edge incident to it (both directions) first — the atomic
-    /// graph+field counterpart of `add_node_at` (GitHub issue #221). No caller in this codebase
-    /// yet — see `MultiLevelField::remove_node_at`'s doc comment for why (groundwork for a
-    /// future repair `MutationCommand::RemoveNode`, not used by the WASM/PostEdit flow).
-    ///
-    /// `Graph` itself gains no `remove_node` here — whether a "dead" `Node` entry should linger
-    /// in `graph.nodes` after its edges are gone, or whether `Graph` needs a real removal API
-    /// mirroring its existing `Vec<Option<Edge>>` tombstone pattern, is a real question but one
-    /// deliberately left open for whichever issue introduces the first actual caller of this
-    /// method (`MutationCommand::RemoveNode` or similar) to decide with a concrete use case in
-    /// hand.
+    /// Removes `node` from both the graph (with every edge incident to it, both directions) and
+    /// the field — the atomic graph+field counterpart of `add_node_at` (GitHub issue #221). No
+    /// caller in this codebase yet — repair goes through the preset-aware
+    /// `generation::try_remove_node`, which removes the node from `Graph` the same way, so no
+    /// dead `Node` entry lingers in `graph.nodes` (it would otherwise count as its own SCC).
     pub fn remove_node_at(&mut self, node: NodeId) {
-        let incident: Vec<ids::EdgeId> = self
-            .graph
-            .outgoing_edges(node)
-            .map(|e| e.id)
-            .chain(self.graph.edges().filter(|e| e.to == node).map(|e| e.id))
-            .collect();
-        for id in incident {
-            self.graph.remove_initial_edge(id);
-        }
+        self.graph.remove_node(node);
         self.field.remove_node_at(node);
     }
 

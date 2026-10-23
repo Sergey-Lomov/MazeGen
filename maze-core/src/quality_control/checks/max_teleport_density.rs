@@ -57,7 +57,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for MaxTeleportDensity
     ) {
         let groups: Vec<(Vec<EdgeId>, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
-                let field_cells = maze.field.point_count();
+                let field_cells = maze.field.cell_count();
                 if field_cells == 0 {
                     return;
                 }
@@ -152,6 +152,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_teleport_density";
 
@@ -162,7 +163,8 @@ mod tests {
     /// 10 field cells total, `count` of them carrying a teleport.
     fn maze_with_teleports(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -239,7 +241,8 @@ mod tests {
     #[test]
     fn a_bidirectional_teleport_pair_counts_as_one() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -270,7 +273,8 @@ mod tests {
     /// 1000 field cells total, 300 of them carrying a teleport -- 30% density.
     fn maze_with_300_of_1000_teleports() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(1000, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -329,11 +333,14 @@ mod tests {
         top_count: usize,
     ) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);

@@ -4,10 +4,15 @@ import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
 import { ConfirmModal } from "../ConfirmModal";
+import { hasOpenModal } from "../Modal";
+import { isFeatureCardConfirmShortcut } from "../keyboardShortcuts";
+import { blurActiveElement } from "../../pixi/toolShortcuts";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
+import { ToolTooltip } from "../ToolIconButton";
+import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
@@ -27,9 +32,8 @@ export function GenerationFeature({ canGenerate }: Props) {
   const randomSeed = useMazeStore((s) => s.randomSeed);
   const seedHistory = useMazeStore((s) => s.seedHistory);
   const seedHistoryIndex = useMazeStore((s) => s.seedHistoryIndex);
-  const generationStatus = useMazeStore((s) => s.generationStatus);
   const debugMode = useMazeStore((s) => s.debugMode);
-  const error = useMazeStore((s) => s.error);
+  const registryError = useMazeStore((s) => s.registryError);
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const qcExperiment = useMazeStore((s) => s.qcExperiment);
   const vertexSettingsPanelOpen = useMazeStore((s) => s.vertexSettingsPanelOpen);
@@ -158,8 +162,35 @@ export function GenerationFeature({ canGenerate }: Props) {
     setPendingAction(null);
   }
 
+  const generateBlocked = !canGenerate || registryError !== null;
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        useMazeStore.getState().openCard !== "generation"
+        || generateBlocked
+        || generationInProgress
+        || algorithmDialogOpen
+        || historyDialogOpen
+        || pendingAction !== null
+        || hasOpenModal()
+        || !isFeatureCardConfirmShortcut(event)
+      ) return;
+      event.preventDefault();
+      blurActiveElement();
+      handleGenerate();
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [algorithmDialogOpen, generateBlocked, generationInProgress, handleGenerate, historyDialogOpen, pendingAction]);
   const canSeedBack = seedHistory.length > 0 && seedHistoryIndex > 0;
   const canSeedForward = seedHistoryIndex < seedHistory.length - 1;
+  const seedBackDescription = canSeedBack
+    ? m["generation.seed_history_seed"]({ seed: seedHistory[seedHistoryIndex - 1] })
+    : m["generation.seed_history_prev_unavailable_tooltip"]();
+  const seedForwardDescription = canSeedForward
+    ? m["generation.seed_history_seed"]({ seed: seedHistory[seedHistoryIndex + 1] })
+    : m["generation.seed_history_next_unavailable_tooltip"]();
 
   return (
     <div style={styles.root}>
@@ -180,32 +211,35 @@ export function GenerationFeature({ canGenerate }: Props) {
               if (Number.isSafeInteger(parsed)) setSeed(parsed);
             }}
           />
-          <button
-            className={canSeedBack ? "hoverable" : undefined}
-            style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
-            disabled={!canSeedBack}
-            onClick={seedHistoryBack}
-            title={m["generation.seed_history_prev_tooltip"]()}
-          >
-            <ChevronLeft size={16} color={ui.text.tertiary} />
-          </button>
-          <button
-            className={canSeedForward ? "hoverable" : undefined}
-            style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
-            disabled={!canSeedForward}
-            onClick={seedHistoryForward}
-            title={m["generation.seed_history_next_tooltip"]()}
-          >
-            <ChevronRight size={16} color={ui.text.tertiary} />
-          </button>
-          <button
+          <ToolTooltip title={m["generation.seed_history_prev_tooltip"]()} description={seedBackDescription}>
+            <button
+              className={canSeedBack ? "hoverable" : undefined}
+              style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
+              disabled={!canSeedBack}
+              onClick={seedHistoryBack}
+              aria-label={m["generation.seed_history_prev_tooltip"]()}
+            >
+              <ChevronLeft size={16} color={ui.text.tertiary} />
+            </button>
+          </ToolTooltip>
+          <ToolTooltip title={m["generation.seed_history_next_tooltip"]()} description={seedForwardDescription}>
+            <button
+              className={canSeedForward ? "hoverable" : undefined}
+              style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
+              disabled={!canSeedForward}
+              onClick={seedHistoryForward}
+              aria-label={m["generation.seed_history_next_tooltip"]()}
+            >
+              <ChevronRight size={16} color={ui.text.tertiary} />
+            </button>
+          </ToolTooltip>
+          <Tooltip content={m["generation.seed_history_open_tooltip"]()}><button
             className="hoverable"
             style={styles.seedToolbarBtn}
             onClick={() => setHistoryDialogOpen(true)}
-            title={m["generation.seed_history_open_tooltip"]()}
           >
             <History size={16} color={ui.text.tertiary} />
-          </button>
+          </button></Tooltip>
         </div>
         <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{m["generation.random"]()}</span>
@@ -224,17 +258,12 @@ export function GenerationFeature({ canGenerate }: Props) {
           {isVertexBased && (
             <SettingsIconButton title={m["generation.vertex_settings"]()} onClick={() => setVertexSettingsPanelOpen(true)} />
           )}
-          <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
+          <Tooltip content={m["generation.edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)}>✎</button></Tooltip>
         </div>
       </div>
 
       {isVertexBased && vertexSettingsPanelOpen && (
         <VertexBasedSettingsPanel onClose={() => setVertexSettingsPanelOpen(false)} />
-      )}
-
-      {/* Status line */}
-      {generationStatus === "error" && error && (
-        <div style={styles.statusError}>{error}</div>
       )}
 
       {/* Debug toggle */}
@@ -247,18 +276,15 @@ export function GenerationFeature({ canGenerate }: Props) {
       </div>
 
       {/* QC Only toggle */}
-      <div style={styles.row} title={m["generation.qc_experiment_tooltip"]()}>
+      <Tooltip block content={m["generation.qc_experiment_tooltip"]()}><div style={styles.row}>
         <span style={styles.switchLabel}>{m["generation.qc_experiment"]()}</span>
         <div style={styles.switchRight}>
           <Switch checked={qcExperiment} onChange={setQcExperiment} />
         </div>
-      </div>
+      </div></Tooltip>
 
       {/* Random generation source toggle */}
-      <div
-        style={styles.row}
-        title={presetGenSource ? m["generation.random_source_disabled_tooltip"]() : undefined}
-      >
+      <Tooltip block content={<><span style={{ color: ui.text.primary }}>{m["generation.random_source_tooltip"]()}</span>{presetGenSource && <span style={{ display: "block", marginTop: 2, color: ui.text.tertiary }}>{m["generation.random_source_disabled_tooltip"]()}</span>}</>}><div style={styles.row}>
         <span style={{ ...styles.switchLabel, ...(presetGenSource ? styles.disabledLabel : {}) }}>
           {m["generation.random_source"]()}
         </span>
@@ -269,21 +295,21 @@ export function GenerationFeature({ canGenerate }: Props) {
             onChange={(checked) => setGenerationSourceMode(checked ? "random" : "default")}
           />
         </div>
-      </div>
+      </div></Tooltip>
 
       {/* Action buttons */}
       <div style={styles.btnRow}>
-        <Button
-          variant="primary"
-          layoutStyle={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
-          disabled={!canGenerate || generationInProgress}
-          aria-busy={generationInProgress}
-          onClick={handleGenerate}
-        >
-          {spinnerVisible
-            ? <span className="generation-spinner" aria-hidden="true" />
-            : m["generation.generate"]()}
-        </Button>
+          <Button
+            variant="primary"
+            layoutStyle={{ ...styles.btnGenerate, ...(generateBlocked ? styles.btnDisabled : {}) }}
+            disabled={generateBlocked || generationInProgress}
+            aria-busy={generationInProgress}
+            onClick={handleGenerate}
+          >
+            {spinnerVisible
+              ? <span className="generation-spinner" aria-hidden="true" />
+              : m["generation.generate"]()}
+          </Button>
       </div>
 
       {algorithmDialogOpen && (
@@ -374,10 +400,6 @@ const styles: Record<string, React.CSSProperties> = {
   divider: {
     borderTop: `1px solid ${ui.border.default}`,
     margin: `${spacing.elementsGap}px 0`,
-  },
-  statusError: {
-    ...typography.body,
-    color: ui.text.error,
   },
   btnRow: {
     display: "flex",

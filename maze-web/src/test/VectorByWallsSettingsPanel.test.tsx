@@ -4,23 +4,31 @@ import { VectorByWallsSettingsPanel } from "../components/features/VectorByWalls
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { distributeOklchHues } from "../store/colorMath";
+import { getTooltipAnchor, getTooltipAnchors } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
 
-// getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
+// getCellCenter (via cartesianCache's getCartesian, used by buildTeleportEdges for the Teleports
 // section's group list) delegates to wasm, unavailable in this unit-test environment — mocked with
 // the canonical square formula (see `maze-core/src/space/square.rs`'s `cartesian`), same as
 // `issueHighlightSelectors.test.ts`.
-vi.mock("../wasm/mazeService", () => ({
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
-vi.mock("../wasm/wasmLoader", () => ({
+vi.mock("../wasm/wasmLoader", async (importActual) => ({
+  ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
@@ -62,9 +70,9 @@ beforeEach(() => {
       oneWayThickness: 4,
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
+      startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -73,7 +81,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -81,11 +89,12 @@ beforeEach(() => {
       ...DEFAULT_VERTICAL_SHARED_STYLE,
       verticalDecorativeLineColor: 0x123456,
       verticalDecorativeLineWidth: 2,
-      verticalDecorativeSize: 0.22,
+      verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
       verticalDecorativeArrowSize: 0.75,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+      floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
       ...DEFAULT_SHARED_STYLE_SOURCE,
       links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     },
@@ -180,22 +189,23 @@ describe("VectorByWallsSettingsPanel", () => {
         background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         markerLayout: "auto", markerScale: 1,
-        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
-        finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-        teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
+        startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+        finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+        teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
-        teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+        teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
         ...DEFAULT_VERTICAL_SHARED_STYLE,
         verticalDecorativeLineColor: 0,
         verticalDecorativeLineWidth: 2,
-        verticalDecorativeSize: 0.22,
+        verticalDecorativeSize: 0.22, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
         verticalDecorativeArrowSize: 0.75,
         splitNodeColors: [], splitSpecialShapes: false,
         markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+        floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
         ...DEFAULT_SHARED_STYLE_SOURCE,
         links: DEFAULT_VECTOR_BY_WALLS_LINKS,
       },
@@ -455,6 +465,28 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]())).toBeInTheDocument();
     });
 
+    it("shows curved connector controls and writes their values to the store", () => {
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const connectorStyle = screen.getByText(m["image_export.vector_by_walls.teleport_connector_style"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorStyle, { target: { value: "curved" } });
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_curve_direction"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_curve_strength"]())).toBeInTheDocument();
+
+      const direction = screen.getByText(m["image_export.vector_by_walls.teleport_curve_direction"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(direction, { target: { value: "outward" } });
+      const strength = screen.getByText(m["image_export.vector_by_walls.teleport_curve_strength"]())
+        .parentElement!.querySelector('input[type="range"]')!;
+      fireEvent.change(strength, { target: { value: "0.6" } });
+
+      const settings = useMazeStore.getState().vectorByWallsSettings;
+      expect(settings.teleportConnectorStyle).toBe("curved");
+      expect(settings.teleportCurveDirection).toBe("outward");
+      expect(settings.teleportCurveStrength).toBe(0.6);
+    });
+
     it("changing the corner style updates the store", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
@@ -519,10 +551,8 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
 
-      // The group row's fill-color swatch is wrapped in a `<span title=...>` (no visible label).
-      const fillWrap = document.querySelector(
-        `[title="${m["image_export.vector_by_walls.teleport_group_override_color"]()}"]`,
-      )!;
+      // The group row's fill-color swatch has no visible label, so its custom tooltip identifies it.
+      const fillWrap = getTooltipAnchor(m["image_export.vector_by_walls.teleport_group_override_color"]());
       pickColor(fillWrap.querySelector('[role="button"]')!, "#abcdef");
       const groupKey = Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)[0];
       expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides[groupKey].fillColor).toBe(0xabcdef);
@@ -572,13 +602,15 @@ describe("VectorByWallsSettingsPanel", () => {
       useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: true } });
       const { unmount } = render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(document.querySelectorAll(`[title="${hint}"]`).length).toBeGreaterThan(0);
+      const describedByHint = () => Array.from(document.querySelectorAll("[aria-describedby]"))
+        .filter((el) => document.getElementById(el.getAttribute("aria-describedby")!)?.textContent === hint);
+      expect(describedByHint().length).toBeGreaterThan(0);
       unmount();
 
       useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: false } });
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(document.querySelectorAll(`[title="${hint}"]`)).toHaveLength(0);
+      expect(describedByHint()).toHaveLength(0);
     });
 
     it("hides the auto buttons while group customization is off", () => {
@@ -674,7 +706,7 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(2);
+      expect(getTooltipAnchors(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(2);
     });
 
     it("does not show a collision warning when a connector line is drawn (groups already distinguishable)", () => {
@@ -877,7 +909,7 @@ describe("VectorByWallsSettingsPanel", () => {
       it("changing the label type updates the store", () => {
         setElevatorState({ elevatorBadgesEnabled: true });
         render(<VectorByWallsSettingsPanel />);
-        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]());
+        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_letters"]());
         fireEvent.change(select, { target: { value: "roman" } });
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.labelType).toBe("roman");
       });
@@ -1042,7 +1074,7 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
       // One `TeleportGroupRow` — its shape dropdown carries the "override shape" title.
-      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+      expect(document.querySelectorAll('select[name^="teleport-group-"]')).toHaveLength(1);
     });
   });
 

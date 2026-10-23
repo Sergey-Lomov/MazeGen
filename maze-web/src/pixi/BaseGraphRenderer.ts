@@ -6,7 +6,7 @@ import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 import { computeCrossFloorBadgePos, drawCrossFloorBadge, drawCrossFloorStub, isCrossFloorBadgeCrowded, CROWDED_BADGE_RADIUS_FACTOR } from "./renderers/floorBadge";
 import type { Pos } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 
 export type { Pos };
 
@@ -134,7 +134,7 @@ export function buildCrossFloorMarkers(
   resolveNodeLevel: (id: number) => number | undefined,
   resolveNodeCell: NodeCellResolver,
   activeFloorIndex: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   badgeRadius: number,
 ): CrossFloorMarker[] {
   const seen = new Set<string>();

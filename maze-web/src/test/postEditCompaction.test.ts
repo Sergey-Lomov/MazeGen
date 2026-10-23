@@ -426,3 +426,30 @@ describe("compactPostEditCommands - waypoint lifecycle", () => {
     expect(replayPostEditCommands(baseline, compacted).meta.finish).toEqual(n(6));
   });
 });
+
+describe("compactPostEditCommands — absolute direction commands (GitHub issue #748)", () => {
+  it("an absolute direction command supersedes every earlier direction command of its entity", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "setTeleportDirection", id: "t1", direction: "two_way", from: n(0), to: n(1), absolute: true },
+    ];
+    const compacted = compactPostEditCommands(baseline, commands);
+    expect(compacted).toEqual([commands[0], commands[2]]);
+    expect(replayPostEditCommands(baseline, compacted)).toEqual(replayPostEditCommands(baseline, commands));
+  });
+
+  it("flips after the latest absolute command still pair up among themselves", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "two_way" },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "forward", from: n(0), to: n(1), absolute: true },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "forward", from: n(0), to: n(1) },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "backward", from: n(0), to: n(1) },
+    ];
+    const compacted = compactPostEditCommands(baseline, commands);
+    expect(compacted).toEqual([commands[0], commands[1]]);
+    expect(replayPostEditCommands(baseline, compacted)).toEqual(replayPostEditCommands(baseline, commands));
+  });
+});

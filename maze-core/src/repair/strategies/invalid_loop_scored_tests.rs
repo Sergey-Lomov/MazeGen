@@ -10,6 +10,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     build_params(
@@ -109,14 +110,14 @@ fn shared_edge_triangle_nodes(field: &MultiLevelField<SquareTessellation>) -> Ve
     field
         .field_of(level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(level, p).unwrap())
         .collect()
 }
 
 fn maze_with_shared_edge_triangles() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -208,7 +209,7 @@ fn prefers_cutting_the_edge_shared_between_two_short_cycles() {
 /// isolate the mechanism under test from unrelated basis/composite behavior.
 fn opposite_direction_shared_triangles() -> (Maze<SquareTessellation>, InvalidLoopIssue) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -349,7 +350,8 @@ fn apply_succeeds_on_empty_cycle_list() {
 /// involved at all — this isolates the penalty term from the bonus term tested above.
 fn maze_with_plain_edge_and_penalized_edge() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+    let field =
+        MultiLevelField::single_level(Arc::default(), square_rect(11, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -358,7 +360,7 @@ fn maze_with_plain_edge_and_penalized_edge() -> Maze<SquareTessellation> {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (plain)
@@ -405,7 +407,7 @@ fn avoids_cutting_an_edge_shared_with_a_long_valid_loop_in_favor_of_a_plain_edge
         .field
         .field_of(maze.field.single_level_id())
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
         .collect();
     let (a, c) = (nodes[0], nodes[2]);
@@ -485,7 +487,8 @@ fn does_not_cut_a_preset_protected_edge() {
 fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
     fn maze_with_single_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -494,7 +497,7 @@ fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -570,7 +573,7 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 /// arbitrary tie-break) is `Basic`, and a different edge is `VerticalPassage`.
 fn maze_with_triangle_one_vertical() -> (Maze<SquareTessellation>, EdgeId) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -579,7 +582,7 @@ fn maze_with_triangle_one_vertical() -> (Maze<SquareTessellation>, EdgeId) {
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
@@ -672,7 +675,7 @@ fn vertical_priority_protected_never_cuts_the_vertical_edge() {
 fn vertical_priority_protected_reports_failed_when_the_whole_cycle_is_vertical() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -681,7 +684,7 @@ fn vertical_priority_protected_reports_failed_when_the_whole_cycle_is_vertical()
     let nodes: Vec<_> = field
         .field_of(field_level)
         .unwrap()
-        .all_points()
+        .all_cells()
         .map(|p| field.node_at(field_level, p).unwrap())
         .collect();
     g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
@@ -786,7 +789,7 @@ fn vertical_priority_prioritized_picks_among_several_vertical_candidates_by_seed
     fn maze_with_two_vertical() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -795,7 +798,7 @@ fn vertical_priority_prioritized_picks_among_several_vertical_candidates_by_seed
         let nodes: Vec<_> = field
             .field_of(field_level)
             .unwrap()
-            .all_points()
+            .all_cells()
             .map(|p| field.node_at(field_level, p).unwrap())
             .collect();
         let v1 = g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);

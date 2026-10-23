@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useState } from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { ColorSwatch } from "../components/ColorSwatch";
 import { setColorSampler } from "../pixi/colorSampleBridge";
 import { colorAtCenter } from "../components/ColorEyedropperOverlay";
@@ -8,9 +8,22 @@ import { useMazeStore } from "../store/mazeStore";
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipControl, getTooltipControls } from "./tooltipTestUtils";
 
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+function swatchHex(swatch: HTMLButtonElement): string {
+  const anchor = swatch.closest<HTMLElement>("[data-testid='tooltip-anchor']");
+  return document.getElementById(anchor?.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+}
+
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 // `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to
@@ -61,17 +74,17 @@ describe("ColorSwatch", () => {
     expect(screen.getByText(title)).toBeInTheDocument();
     fireEvent.click(screen.getByText(title));
     expect(screen.getByText(m["color_picker.no_export_warnings"]())).toBeInTheDocument();
-    useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode });
+    act(() => useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode }));
   });
 
   it("hides the export-warnings section when color warnings are disabled", () => {
     const previous = useMazeStore.getState().showColorWarnings;
     const previousOpenMode = useMazeStore.getState().openRenderModeSettings;
-    useMazeStore.setState({ showColorWarnings: false, openRenderModeSettings: null });
+    act(() => useMazeStore.setState({ showColorWarnings: false, openRenderModeSettings: null }));
     render(<ColorSwatch color={0x336699} onChange={() => {}} />);
     openPicker();
     expect(screen.queryByTestId("color-picker-export-warnings")).toBeNull();
-    useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode });
+    act(() => useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode }));
   });
 
   it("shows split-color warnings for the color currently edited in the picker", () => {
@@ -79,7 +92,7 @@ describe("ColorSwatch", () => {
     useMazeStore.setState({
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_corridors",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       floors: [{ id: "floor_1", title: "Floor 1" }],
       nodes: [
         { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 1 },
@@ -96,7 +109,7 @@ describe("ColorSwatch", () => {
     expect(screen.getByTestId("color-picker-export-warnings")).toBeInTheDocument();
     const title = m["image_export.vector_by_walls.section_warnings"]({ count: "2" });
     expect(screen.getByText(title)).toBeInTheDocument();
-    useMazeStore.setState(previous);
+    act(() => useMazeStore.setState(previous));
   });
 
   it("Enter on a focused swatch opens the picker (keyboard accessible)", () => {
@@ -741,7 +754,7 @@ describe("ColorSwatch", () => {
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
     expandHarmony();
     const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
-    expect((swatches[0] as HTMLButtonElement).title).toBe("#00ff00");
+    expect(swatchHex(swatches[0] as HTMLButtonElement)).toBe("#00ff00");
   });
 
   it("Harmony defaults to Complementary: base + one derived swatch (hue +180)", () => {
@@ -752,7 +765,7 @@ describe("ColorSwatch", () => {
     expect(swatches.length).toBe(2);
     expect((swatches[0] as HTMLButtonElement).style.background).toContain("rgb(255, 0, 0)");
     // Complementary of pure red (H=0) is H=180 -> cyan-ish.
-    expect((swatches[1] as HTMLButtonElement).title).not.toBe("#ff0000");
+    expect(swatchHex(swatches[1] as HTMLButtonElement)).not.toBe("#ff0000");
   });
 
   it("clicking a Harmony swatch sets the working color but does not rebuild the row", () => {
@@ -761,13 +774,13 @@ describe("ColorSwatch", () => {
     openPicker();
     expandHarmony();
     const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
-    const derivedHex = (swatches[1] as HTMLButtonElement).title;
+    const derivedHex = swatchHex(swatches[1] as HTMLButtonElement);
     fireEvent.click(swatches[1]);
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(derivedHex);
     // Row unchanged — still base (red) + same derived swatch.
     const after = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
-    expect((after[0] as HTMLButtonElement).title).toBe("#ff0000");
-    expect((after[1] as HTMLButtonElement).title).toBe(derivedHex);
+    expect(swatchHex(after[0] as HTMLButtonElement)).toBe("#ff0000");
+    expect(swatchHex(after[1] as HTMLButtonElement)).toBe(derivedHex);
     fireEvent.click(screen.getByText(applyLabel()));
     expect(onChange).toHaveBeenCalledWith(hexToColorNum(derivedHex));
   });
@@ -777,10 +790,10 @@ describe("ColorSwatch", () => {
     openPicker();
     expandHarmony();
     const before = Array.from(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button"))
-      .map((b) => (b as HTMLButtonElement).title);
+      .map((b) => swatchHex(b as HTMLButtonElement));
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
     const after = Array.from(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button"))
-      .map((b) => (b as HTMLButtonElement).title);
+      .map((b) => swatchHex(b as HTMLButtonElement));
     expect(after).toEqual(before);
   });
 
@@ -791,7 +804,7 @@ describe("ColorSwatch", () => {
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
     fireEvent.click(screen.getByText(m["color_picker.tools.rebuild_from_current"]()));
     const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
-    expect((swatches[0] as HTMLButtonElement).title).toBe("#00ff00");
+    expect(swatchHex(swatches[0] as HTMLButtonElement)).toBe("#00ff00");
   });
 
   function typeSelect() {
@@ -817,7 +830,7 @@ describe("ColorSwatch", () => {
       screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
     ) as HTMLButtonElement[];
     expect(swatches.length).toBe(8);
-    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
+    expect(swatches.some((b) => swatchHex(b) === "#ff0000")).toBe(false);
   });
 
   it("Triadic / Tetradic have fixed derived counts (no count/step controls)", () => {
@@ -845,7 +858,7 @@ describe("ColorSwatch", () => {
       screen.getByTestId("color-picker-divergence-swatches").parentElement!.querySelectorAll('input[type="range"]'),
     ) as HTMLInputElement[];
     fireEvent.change(countSlider, { target: { value: "6" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    fireEvent.click(getTooltipControl(m["color_picker.tools.auto_step"]()));
     expect(stepSlider.value).toBe("30"); // 180 / 6
   });
 
@@ -859,7 +872,7 @@ describe("ColorSwatch", () => {
     ) as HTMLInputElement[];
     // 180 / 1 = 180, which would exceed the step slider's max=60 (Hue scale) if uncapped.
     fireEvent.change(countSlider, { target: { value: "1" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    fireEvent.click(getTooltipControl(m["color_picker.tools.auto_step"]()));
     expect(stepSlider.value).toBe("60");
     expect(Number(stepSlider.max)).toBe(60);
   });
@@ -883,7 +896,7 @@ describe("ColorSwatch", () => {
       screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
     ) as HTMLButtonElement[];
     expect(swatches.length).toBe(8);
-    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
+    expect(swatches.some((b) => swatchHex(b) === "#ff0000")).toBe(false);
   });
 
   it("tool type and Divergence count/step persist across picker close/reopen", () => {
@@ -942,7 +955,7 @@ describe("ColorSwatch", () => {
     ) as HTMLButtonElement[];
     expect(swatches.length).toBe(20);
     for (const swatch of swatches) {
-      expect(swatch.title).toMatch(/^#[0-9a-f]{6}$/);
+      expect(swatchHex(swatch)).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
@@ -975,10 +988,10 @@ describe("ColorSwatch", () => {
     fireEvent.change(typeSelect(), { target: { value: "split_complementary" } });
     const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
     expect(swatches.length).toBe(3); // base + two derived
-    expect((swatches[0] as HTMLButtonElement).title).toBe("#ff0000");
-    expect((swatches[1] as HTMLButtonElement).title).not.toBe("#ff0000");
-    expect((swatches[2] as HTMLButtonElement).title).not.toBe("#ff0000");
-    expect((swatches[1] as HTMLButtonElement).title).not.toBe((swatches[2] as HTMLButtonElement).title);
+    expect(swatchHex(swatches[0] as HTMLButtonElement)).toBe("#ff0000");
+    expect(swatchHex(swatches[1] as HTMLButtonElement)).not.toBe("#ff0000");
+    expect(swatchHex(swatches[2] as HTMLButtonElement)).not.toBe("#ff0000");
+    expect(swatchHex(swatches[1] as HTMLButtonElement)).not.toBe(swatchHex(swatches[2] as HTMLButtonElement));
   });
 
   it("clicking a Divergence swatch sets the working color", () => {
@@ -988,7 +1001,7 @@ describe("ColorSwatch", () => {
     expandHarmony();
     fireEvent.change(typeSelect(), { target: { value: "divergence" } });
     const swatch = screen.getByTestId("color-picker-divergence-swatches").querySelector("button") as HTMLButtonElement;
-    const hex = swatch.title;
+    const hex = swatchHex(swatch);
     fireEvent.click(swatch);
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(hex);
     fireEvent.click(screen.getByText(applyLabel()));
@@ -1002,7 +1015,7 @@ describe("ColorSwatch", () => {
     expandHarmony();
     fireEvent.change(typeSelect(), { target: { value: "range_split" } });
     const swatch = screen.getByTestId("color-picker-range-split-swatches").querySelector("button") as HTMLButtonElement;
-    const hex = swatch.title;
+    const hex = swatchHex(swatch);
     fireEvent.click(swatch);
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(hex);
     fireEvent.click(screen.getByText(applyLabel()));
@@ -1020,7 +1033,7 @@ describe("ColorSwatch", () => {
     ) as HTMLButtonElement[];
     expect(swatches.length).toBeGreaterThan(0);
     for (const swatch of swatches) {
-      expect(swatch.title).toMatch(/^#[0-9a-f]{6}$/);
+      expect(swatchHex(swatch)).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
@@ -1064,7 +1077,7 @@ describe("ColorSwatch", () => {
     fireEvent.change(maxSlider, { target: { value: "60" } });
     expect(minSlider.value).toBe("30");
     expect(maxSlider.value).toBe("60");
-    const resetButtons = screen.getAllByTitle(m["color_picker.tools.reset_auto"]());
+    const resetButtons = getTooltipControls(m["color_picker.tools.reset_auto"]());
     fireEvent.click(resetButtons[0]);
     fireEvent.click(resetButtons[1]);
     expect(minSlider.value).toBe(String(RANGE_SPLIT_AUTO_MIN_L));

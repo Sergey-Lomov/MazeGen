@@ -16,8 +16,8 @@ export function ConfirmModal({ title = m["common.confirm"](), message, onConfirm
     <Modal title={title} size="approve" onClose={onCancel} onConfirm={onConfirm}>
       {message && <div style={styles.message}>{message}</div>}
       <div style={{ ...styles.footer, ...(message ? styles.footerWithMessage : {}) }}>
-        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" layoutStyle={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</Button>
+        <Button variant="secondary" dialogAction layoutStyle={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" dialogAction layoutStyle={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</Button>
       </div>
     </Modal>
   );

@@ -2,26 +2,33 @@ import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
+import { fieldOf } from "./fieldConfigFixtures";
 
-vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+vi.mock("../wasm/mazeService", async (importActual) => ({
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
+  getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
+  translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
+  reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
+  getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
+  getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
+  getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
 }));
 
 const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
-const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,
-  borderWidth: 0, gapWidth: 0, size: 12, text: "",
+  borderWidth: 0, gapWidth: 0, size: 12, sizeAdaptation: 0, text: "",
 };
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
@@ -30,21 +37,22 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
-    teleportMarker: { cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
+    teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: 0,
     verticalDecorativeLineWidth: 2,
-    verticalDecorativeSize: 8.8,
+    verticalDecorativeSize: 8.8, verticalDecorativeSizeAdaptation: 0, verticalSizeAdaptation: 0,
     verticalDecorativeArrowSize: 0.75,
     splitNodeColors: [], splitSpecialShapes: true,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...overrides,
   };
 }
@@ -52,21 +60,22 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
     background: 0, showGrid: true, gridColor: 0x808080,
-    color: 0, thickness: 4, join: "round", renderStyle: "contour",
+    color: 0, thickness: 4, junctionRadius: 4, join: "round", renderStyle: "contour",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
-    teleportMarker: { cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
+    teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...overrides,
   };
 }
@@ -593,6 +602,42 @@ describe("computeVectorByCorridorsWarnings", () => {
       const settings = baseCorridorsSettings({ teleportMarker: { ...baseCorridorsSettings().teleportMarker, size: 32 } });
       const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null);
       expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(1);
+    });
+  });
+
+  describe("marker extension warnings (GitHub issue #802)", () => {
+    it("flags a start marker extension that reaches another corridor", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+      const warning = warnings.find((item) => item.id === "marker_extension_hits_corridor");
+
+      expect(warning?.nodes).toEqual([0]);
+      expect(warning?.edges).toEqual([]);
+    });
+
+    it("uses the rendered contour instead of the requested corridor thickness", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ thickness: 10, markerWidenPadding: 28 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
+    });
+
+    it("uses the rendered stroke width in legacy-line mode", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ renderStyle: "legacy_line", thickness: 10, markerWidenPadding: 29 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(true);
+    });
+
+    it("does not flag the corridor attached to the marker itself", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(0, 1), e(1, 0)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
     });
   });
 

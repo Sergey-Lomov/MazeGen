@@ -9,6 +9,7 @@ import {
   resetPointerHover,
   toViewportCoordinates,
 } from "../pixi/pointerInteraction";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("pointer interaction primitives", () => {
   it("converts canvas coordinates through viewport position and scale", () => {
@@ -16,7 +17,7 @@ describe("pointer interaction primitives", () => {
   });
 
   it("looks up a cell through the tessellation projection", () => {
-    expect(pointerCellAtConfig({ type: "square", width: 4, height: 4 }, 70, -90)).toEqual([1, 2]);
+    expect(pointerCellAtConfig(fieldOf("square", { shape: "rect", cols: 4, rows: 4 }), 70, -90)).toEqual([1, 2]);
     expect(pointerCellAt({ screenToGrid: () => ({ x: -2, y: 3 }) } as never, 0, 0)).toEqual([-2, 3]);
   });
 

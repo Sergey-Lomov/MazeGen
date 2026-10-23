@@ -63,7 +63,10 @@ export const MSDF_FONT_FAMILY = MSDF_FONT_FAMILY_BY_WEIGHT.regular;
  *  Returns `0` if the font isn't installed (shouldn't happen after `loadMsdfFont`) or carries no
  *  metrics for any glyph in `text`. */
 function inkCentreOffset(text: string, fontFamily: string, fontSize: number): number {
-  const font = Cache.get<AbstractBitmapFont<unknown>>(`${fontFamily}-bitmap`);
+  const cacheKey = `${fontFamily}-bitmap`;
+  const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
+    ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
+    : undefined;
   if (!font) return 0;
 
   let minTop = Infinity;
