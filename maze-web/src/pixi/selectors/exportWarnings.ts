@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, MarkerLayoutSettingsFields } from "../../store/storeTypes";
 import {
   buildTeleportEdges,
   buildSplitPassages,
@@ -24,6 +24,7 @@ import { nearestCellCoord } from "../tessellationGeometry";
 import { textOverflows, type TextFitItem } from "../textFit";
 import { formatIndexLabel } from "../renderers/indexLabel";
 import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
+import { applyMarkerLayout, MARKER_LAYOUT_SPACING, buildSplitHostKeys } from "./mazeSelectors/markerLayout";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
   buildColorVisibility, visibleColor, unownedColor,
@@ -233,7 +234,7 @@ function filterNodesOnSpecialSplit(
  *  directly (not a whole mode-specific settings object) so it stays mode-agnostic. */
 function computeTeleportWarnings(
   teleportEdges: TeleportEdge[],
-  settings: TeleportSettingsFields,
+  settings: TeleportSettingsFields & MarkerLayoutSettingsFields,
   startMarker: { id: number | null; size: number; borderWidth: number },
   finishMarker: { id: number | null; size: number; borderWidth: number },
   allNodes: NodeDto[],
@@ -308,22 +309,42 @@ function computeTeleportWarnings(
   // marker's footprint. One warning total, covering every overlapping pair. ---
   const teleportRadius = markerWorldRadius(settings.teleportMarker.size, settings.teleportMarker.borderWidth);
   const overlappingNodeIds = new Set<number>();
-  for (const waypoint of [startMarker, finishMarker]) {
-    if (waypoint.id === null) continue;
-    const waypointPos = getSplitAwareNodePosition(allNodes, waypoint.id, cfg, edges);
-    if (!waypointPos) continue;
-    const waypointRadius = markerWorldRadius(waypoint.size, waypoint.borderWidth);
-    for (const e of teleportEdges) {
-      for (const [pos, nodeId] of [[e.from, e.fromNode], [e.to, e.toNode]] as const) {
+  // The marker positioning layer (GitHub issue #735) already separates markers sharing one host, so
+  // measure overlap on the laid-out positions — a start/finish stacked on a teleport point only counts
+  // when the layout couldn't pull them apart (e.g. a split node's tight bounds). Vertical markers are
+  // not part of this warning's inputs and so take no slot here.
+  const waypoints = [startMarker, finishMarker].filter((w) => w.id !== null);
+  const waypointPositions = waypoints.map((w) => getSplitAwareNodePosition(allNodes, w.id!, cfg, edges));
+  const placed = waypoints.flatMap((w, i) => {
+    const p = waypointPositions[i];
+    return p ? [{ w, data: { pos: [p.x, p.y] as [number, number], radius: w.size / 2, borderWidth: w.borderWidth, color: 0 } }] : [];
+  });
+  const laidOut = applyMarkerLayout(
+    {
+      markers: placed.map((x) => x.data),
+      teleportEdges,
+      verticalMarkers: [],
+      // Same slot size the renderers use (incl. gap), so the layout here matches the drawn one.
+      teleportRadius: teleportRadius + (settings.teleportMarker.gapWidth ?? 0),
+      verticalRadius: () => 0,
+      splitHostKeys: buildSplitHostKeys(new Map(allNodes.map((n) => [n.id, n])), edges, cfg),
+    },
+    { mode: settings.markerLayout, spacing: MARKER_LAYOUT_SPACING, scale: settings.markerScale },
+  );
+  placed.forEach(({ w }, i) => {
+    const waypointPos = laidOut.markers[i].pos;
+    const waypointRadius = markerWorldRadius(w.size, w.borderWidth) * (w.size > 0 ? laidOut.markers[i].radius / (w.size / 2) : 1);
+    for (const e of laidOut.teleportEdges) {
+      for (const [pos, nodeId, sc] of [[e.from, e.fromNode, e.fromScale], [e.to, e.toNode, e.toScale]] as const) {
         if (nodeId === undefined) continue;
-        const dist = Math.hypot(pos[0] - waypointPos.x, pos[1] - waypointPos.y);
-        if (dist < teleportRadius + waypointRadius) {
+        const dist = Math.hypot(pos[0] - waypointPos[0], pos[1] - waypointPos[1]);
+        if (dist < teleportRadius * (sc ?? 1) + waypointRadius) {
           overlappingNodeIds.add(nodeId);
-          overlappingNodeIds.add(waypoint.id);
+          overlappingNodeIds.add(w.id!);
         }
       }
     }
-  }
+  });
   if (overlappingNodeIds.size > 0) {
     warnings.push({
       id: "teleport_waypoint_overlap",

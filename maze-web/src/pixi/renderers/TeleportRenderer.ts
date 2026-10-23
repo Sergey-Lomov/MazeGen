@@ -35,6 +35,7 @@ export class TeleportRenderer {
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
   private selectionGroupCustomization = false;
   private selectionEdges: TeleportEdge[] = [];
+  private selectionPointScales: Map<string, number> = new Map();
   // Cross-floor points (GitHub issue #337) — a point present here draws a floor-number badge
   // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
   // `resolvePointFillState`, recomputed alongside it in `renderLine`.
@@ -130,6 +131,11 @@ export class TeleportRenderer {
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionGroupCustomization = groupCustomization;
     this.selectionEdges = edges;
+    this.selectionPointScales = new Map();
+    for (const e of edges) {
+      if (e.fromScale !== undefined) this.selectionPointScales.set(coordKey(e.from[0], e.from[1]), e.fromScale);
+      if (e.toScale !== undefined) this.selectionPointScales.set(coordKey(e.to[0], e.to[1]), e.toScale);
+    }
     this.selectionFloorBadges = computeFloorBadges(edges);
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
@@ -202,6 +208,12 @@ export class TeleportRenderer {
     return result;
   }
 
+  /** Marker-layout shrink factor (GitHub issue #735) of the point at (`px`, `py`) — 1 when the point
+   *  isn't in a multi-marker host. */
+  private pointScale(px: number, py: number): number {
+    return this.selectionPointScales.get(coordKey(px, py)) ?? 1;
+  }
+
   /** Draws every point of one group's floor-colored gap ring (`style.edgeGapWidth`, GitHub issue
    *  #302) into `g` — a separate pass from `drawGroupPoints` itself, called before any connector so
    *  that every connector (this point's own or another's) draws on top of it (see
@@ -219,9 +231,10 @@ export class TeleportRenderer {
     // rationale; the marker's own border (drawn on top, also `alignment: 0` from the same `r`, see
     // `drawMarker`) covers the ring's inner `borderWidth`-wide band, leaving only the outer
     // `edgeGapWidth`-wide band visible.
-    const markerR = style.size / 2;
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
+      const sc = this.pointScale(px, py);
+      const markerR = style.size / 2 * sc;
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
         // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
         // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
@@ -237,7 +250,7 @@ export class TeleportRenderer {
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
-      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, style.borderWidth + style.edgeGapWidth, style.floorColor, style.borderWidth);
+      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, (style.borderWidth + style.edgeGapWidth) * sc, style.floorColor, style.borderWidth * sc);
     }
   }
 
@@ -255,7 +268,6 @@ export class TeleportRenderer {
     edges: TeleportEdge[],
     style: TeleportLineStyle,
   ): void {
-    const r = style.size / 2;
     const shape = override?.shape ?? style.shape;
     const color = override?.fillColor ?? style.edgeColor;
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
@@ -291,9 +303,10 @@ export class TeleportRenderer {
         continue;
       }
       const fillState = resolvePointFillState(edges, px, py);
+      const sc = this.pointScale(px, py);
       this.drawMarker(
-        g, overlay, shape, style.cornerStyle, r, px, py,
-        color, borderColor, style.borderWidth, style.floorColor,
+        g, overlay, shape, style.cornerStyle, style.size / 2 * sc, px, py,
+        color, borderColor, style.borderWidth * sc, style.floorColor,
         fillState === "filled", fillState === "mixed",
       );
     }

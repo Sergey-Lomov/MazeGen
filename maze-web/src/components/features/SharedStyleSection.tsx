@@ -13,7 +13,9 @@ import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelect
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
-import type { LinkIconVisibility, SharedStyleSourceFields } from "../../store/imageExportTypes";
+import { MarkerLayoutRows } from "./MarkerLayoutRows";
+import type { MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
+import type { LinkIconVisibility, MarkerLayoutSettingsFields, SharedStyleSourceFields } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
 
@@ -120,10 +122,14 @@ export function SettingsSection<P extends string>({
 export function SharedStyleSection<P extends string>({
   settings,
   onChange,
+  onLayoutChange,
+  onScaleChange,
   priorityColors,
 }: {
-  settings: SharedStyleSourceFields;
+  settings: SharedStyleSourceFields & MarkerLayoutSettingsFields;
   onChange: (patch: Partial<SharedStyleSourceFields>) => void;
+  onLayoutChange: (mode: MarkerLayoutMode) => void;
+  onScaleChange: (v: number) => void;
   /** "Priority" project colors (GitHub issue #503) for the fill / border color rows. */
   priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
 }) {
@@ -164,6 +170,10 @@ export function SharedStyleSection<P extends string>({
           priorityColors={priorityColors}
           fields={{ fillColor: PC.sharedMarkerFill, borderColor: PC.sharedMarkerBorder }}
         />
+      </div>
+      <div style={typography.body}>{m["image_export.marker_layout.section"]()}</div>
+      <div style={styles.group}>
+        <MarkerLayoutRows layout={settings.markerLayout} onLayoutChange={onLayoutChange} scale={settings.markerScale} onScaleChange={onScaleChange} />
       </div>
       <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
       <div style={styles.group}>

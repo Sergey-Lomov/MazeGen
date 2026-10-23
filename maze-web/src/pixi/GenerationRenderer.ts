@@ -6,6 +6,7 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
+import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
@@ -291,19 +292,25 @@ export class GenerationRenderer {
       wallFaces: this.geometryCache.splitWallFaces,
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
-    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
+    const layout = layoutEditorMarkers({
+      markers: buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges),
+      teleportEdges: this.geometryCache.teleportEdges,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      nodeById, edges: view.edges, cfg,
+    });
+    const markerData = layout.markers;
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
       markers: markerData,
-      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayWallEdges: this.geometryCache.wallEdges,
       cfg,
       splitPassages: this.geometryCache.splitPassages,
     });
-    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg, floorNavigable: true, waypoints: teleportWaypoints });
-    this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
+    this.teleports.render({ edges: layout.teleportEdges, cfg, floorNavigable: true, waypoints: teleportWaypoints });
+    this.verticalConnections.render({ markers: layout.verticalMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
 
     this.markers.render({ markers: markerData });
 

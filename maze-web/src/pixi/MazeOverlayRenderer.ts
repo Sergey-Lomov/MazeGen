@@ -4,6 +4,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
+import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, buildTeleportAvoidanceWaypoints, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -86,8 +87,13 @@ export class MazeOverlayRenderer {
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
-    const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread);
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges);
+    const layout = layoutEditorMarkers({
+      markers: buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges),
+      teleportEdges: buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread),
+      nodeById, edges, cfg,
+    });
+    const teleportEdges = layout.teleportEdges;
+    const markerData = layout.markers;
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
     // Also avoid one-way wall indicators (GitHub issue #518) — this overlay has no vertical

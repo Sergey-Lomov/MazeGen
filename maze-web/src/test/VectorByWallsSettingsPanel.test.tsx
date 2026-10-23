@@ -61,6 +61,7 @@ beforeEach(() => {
       oneWaySize: 0.18,
       oneWayThickness: 4,
       oneWayJoin: "round",
+      markerLayout: "auto", markerScale: 1,
       startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
       teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
@@ -178,6 +179,7 @@ describe("VectorByWallsSettingsPanel", () => {
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+        markerLayout: "auto", markerScale: 1,
         startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
         finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
         teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
@@ -1105,6 +1107,7 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     useMazeStore.setState({
       vectorByWallsSettings: {
         ...st.vectorByWallsSettings,
+        markerLayout: "auto", markerScale: 1,
         startMarker: { ...startMarker, textEnabled, textColor: 0x112233 },
         finishMarker: { ...finishMarker, textEnabled, textColor: 0x112233 },
       },

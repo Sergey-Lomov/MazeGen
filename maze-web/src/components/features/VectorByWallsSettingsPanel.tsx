@@ -63,6 +63,8 @@ export function VectorByWallsSettingsPanel() {
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
   const setWallColor = useMazeStore((s) => s.setVectorByWallsWallColor);
   const setRandomWallColorMode = useMazeStore((s) => s.setVectorByWallsRandomWallColorMode);
+  const setMarkerLayout = useMazeStore((s) => s.setVectorByWallsMarkerLayout);
+  const setMarkerScale = useMazeStore((s) => s.setVectorByWallsMarkerScale);
   const setWallJoin = useMazeStore((s) => s.setVectorByWallsWallJoin);
   const setWallThickness = useMazeStore((s) => s.setVectorByWallsWallThickness);
   const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
@@ -316,6 +318,8 @@ export function VectorByWallsSettingsPanel() {
         <SharedStyleSection
           settings={settings}
           onChange={patchSharedStyle}
+          onLayoutChange={setMarkerLayout}
+          onScaleChange={setMarkerScale}
           priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), floor, background], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), floor, background] }}
         />
       )}

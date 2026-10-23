@@ -282,7 +282,9 @@ export type MarkerData = {
  * in `to` (so the arrow, which always points `from`→`to`, still reads departure→arrival) while the
  * departure end's badge occupies `from`. At most one of `toFloor`/`fromFloor` is ever set on a given
  * edge. */
-export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number; fromFloor?: number };
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number; fromFloor?: number;
+  /** Marker-layout shrink factor (GitHub issue #735) of the `from`/`to` point — `undefined` = 1. */
+  fromScale?: number; toScale?: number };
 
 /** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
  *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn
@@ -324,6 +326,8 @@ export type VerticalConnectionMarker = {
   targetFloorIndices?: number[];
   filled: boolean;
   arrowFilled: boolean;
+  /** Marker-layout shrink factor (GitHub issue #735) applied to every component — `undefined` = 1. */
+  scale?: number;
 };
 
 /** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) —

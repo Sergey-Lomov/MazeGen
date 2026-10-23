@@ -14,6 +14,7 @@ import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from
 import type { ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel, ParamDescriptor } from "../parameterLinks";
 import { validateLinkGraph, linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, type VectorByWallsParamPath, type VectorByCorridorsParamPath } from "../parameterLinksRegistry";
+import { MARKER_LAYOUT_MODES, type MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
 
 // ─── Image Export (GitHub issue #295) ────────────────────────────────────────
@@ -27,6 +28,11 @@ export function optMarkerShape(obj: Record<string, unknown> | null, key: string,
 export function optMarkerWidenShape(obj: Record<string, unknown> | null, key: string, fallback: MarkerWidenShape): MarkerWidenShape {
   const v = obj?.[key];
   return v === "circle" || v === "square" || v === "match_marker" ? v : fallback;
+}
+
+export function optMarkerLayout(obj: Record<string, unknown> | null, key: string, fallback: MarkerLayoutMode): MarkerLayoutMode {
+  const v = obj?.[key];
+  return typeof v === "string" && (MARKER_LAYOUT_MODES as readonly string[]).includes(v) ? (v as MarkerLayoutMode) : fallback;
 }
 
 export function optCornerStyle(obj: Record<string, unknown> | null, key: string, fallback: CornerStyle): CornerStyle {
@@ -475,6 +481,8 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     verticalDecorativeArrowSize: optNumber(obj, "verticalDecorativeArrowSize", d.verticalDecorativeArrowSize),
     links,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
+    markerLayout: optMarkerLayout(obj, "markerLayout", d.markerLayout),
+    markerScale: optNumber(obj, "markerScale", d.markerScale),
   };
 }
 
@@ -628,6 +636,8 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     verticalArrowCornerStyle: optCornerStyle(obj, "verticalArrowCornerStyle", d.verticalArrowCornerStyle),
     links,
     markerIndex: validateMarkerIndexSettings(obj?.markerIndex, `${path}.markerIndex`, d.markerIndex),
+    markerLayout: optMarkerLayout(obj, "markerLayout", d.markerLayout),
+    markerScale: optNumber(obj, "markerScale", d.markerScale),
   };
 }
 

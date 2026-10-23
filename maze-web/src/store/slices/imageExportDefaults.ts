@@ -10,7 +10,9 @@ import type {
   PngExportSettings,
   MarkerSettings,
   MarkerIndexSettings,
+  MarkerLayoutSettingsFields,
 } from "../storeTypes";
+import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
@@ -233,6 +235,9 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   decorativeStairsOneWayArrowSize: 0.75,
 };
 
+/** Marker positioning layer defaults (GitHub issue #735) — shared by both vector renderers. */
+export const DEFAULT_MARKER_LAYOUT: MarkerLayoutSettingsFields = { markerLayout: DEFAULT_MARKER_LAYOUT_MODE, markerScale: DEFAULT_MARKER_SCALE };
+
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files
  * (GitHub issue #295) — kept as a single exported const so the two never drift apart.
  * `startMarker`/`finishMarker`/`wallJoin`/`oneWayJoin`/every `teleportMarker.*`/
@@ -272,6 +277,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     verticalDecorativeArrowSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    ...DEFAULT_MARKER_LAYOUT,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
@@ -329,6 +335,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    ...DEFAULT_MARKER_LAYOUT,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [

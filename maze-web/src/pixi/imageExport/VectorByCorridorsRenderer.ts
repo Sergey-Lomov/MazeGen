@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -11,7 +12,7 @@ import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUt
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
-import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
+import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
@@ -451,12 +452,23 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     }
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    const markerData = buildMazeMarkers(
-      nodeById, effStart, effFinish, cfg,
-      buildMarkerStyle(settings.startMarker, settings.color),
-      buildMarkerStyle(settings.finishMarker, settings.color),
-      edges,
-    );
+    // Marker positioning layer (GitHub issue #735) — several markers on one host get distinct slots;
+    // everything below (widen patches, teleports, markers, index labels) uses the laid-out copies.
+    const verticalStyle = buildVerticalConnectionStyle(settings, settings.color);
+    const layout = layoutExportMarkers({
+      markers: buildMazeMarkers(
+        nodeById, effStart, effFinish, cfg,
+        buildMarkerStyle(settings.startMarker, settings.color),
+        buildMarkerStyle(settings.finishMarker, settings.color),
+        edges,
+      ),
+      teleportEdges: this.geometryCache.teleportEdges,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      settings,
+      verticalStyle,
+      splitHostKeys: buildSplitHostKeys(nodeById, edges, cfg),
+    });
+    const markerData = layout.markers;
 
     this.markerWiden.clear();
     // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide
@@ -465,13 +477,16 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // corridor-colored expansion (GitHub issue #561). The layer remains below the marker containers.
     const squareCornerStyle = settings.join;
     drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
+    // Bridge patches between neighboring markers of one host (GitHub issue #735) — keep the widened
+    // corridor one continuous band through the whole group instead of separate bulges.
+    drawMarkerWidenPatches(this.markerWiden, buildGroupBridgeMarkers(layout.groups), settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
 
     // Teleport markers get the same widen patch, reusing the one `markerWidenPadding`/
     // `markerWidenShape` settings (GitHub issue #313 follow-up) — no separate teleport-only setting.
     // Groups computed once here and handed to `buildTeleportWidenMarkers`, rather than it calling
     // `buildTeleportGroups` again itself — `TeleportRenderer.render` below already recomputes the
     // same grouping internally for the same `teleportEdges`, so this avoids a third redundant pass.
-    const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(this.geometryCache.teleportEdges) : [];
+    const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(layout.teleportEdges) : [];
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = settings.teleportGroupCustomization
       ? resolveRendererGroupOverrides(teleportGroups, withResolvedGroupOverrides(settings).teleportGroupOverrides, {
@@ -481,7 +496,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       : settings.teleportGroupOverrides;
     drawMarkerWidenPatches(
       this.markerWiden,
-      buildTeleportWidenMarkers(this.geometryCache.teleportEdges, { ...settings, teleportGroupOverrides }, teleportGroups),
+      buildTeleportWidenMarkers(layout.teleportEdges, { ...settings, teleportGroupOverrides }, teleportGroups),
       settings.color,
       settings.thickness,
       settings.markerWidenPadding,
@@ -494,7 +509,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // separate vertical-only setting.
     drawMarkerWidenPatches(
       this.markerWiden,
-      buildVerticalWidenMarkers(this.geometryCache.verticalConnectionMarkers, settings),
+      buildVerticalWidenMarkers(layout.verticalMarkers, settings),
       settings.color,
       settings.thickness,
       settings.markerWidenPadding,
@@ -512,12 +527,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Also avoid vertical passage/elevator markers and one-way corridor chevrons (GitHub issue #518).
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
       markers: markerData,
-      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayCorridorSegments: this.geometryCache.segments,
       splitPassages: this.geometryCache.splitPassages,
     });
     this.teleports.render({
-      edges: this.geometryCache.teleportEdges,
+      edges: layout.teleportEdges,
       // `floorColor` occludes an outline (exit-only) teleport point's own line pass-through and
       // fills its gap rings — on this canvas that's the corridor's own color, not the canvas
       // background, since a teleport point sits directly on the passage line, not on an empty
@@ -537,9 +552,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     this.markers.render({ markers: markerData });
 
-    const verticalStyle = buildVerticalConnectionStyle(settings, settings.color);
     this.verticalConnections.render({
-      markers: this.geometryCache.verticalConnectionMarkers,
+      markers: layout.verticalMarkers,
       style: verticalStyle,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
@@ -548,14 +562,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     if (settings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
-        teleportEdges: this.geometryCache.teleportEdges,
+        teleportEdges: layout.teleportEdges,
         teleportStyle: buildTeleportLineStyle(settings, settings.color),
         groupCustomization: settings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual);
-      this.markerIndex.render({ ...indexLabels, style: settings.markerIndex, floorColor: settings.color });
+      this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: settings.markerIndex, floorColor: settings.color });
     } else {
       this.markerIndex.clear();
     }

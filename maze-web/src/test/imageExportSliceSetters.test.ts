@@ -96,6 +96,7 @@ describe("flat vector setters write their settings path", () => {
     ["OneWaySize", "oneWaySize", 0.4],
     ["OneWayThickness", "oneWayThickness", 6],
     ["OneWayJoin", "oneWayJoin", "miter"],
+    ["MarkerLayout", "markerLayout", "grid"],
     ["SplitSpecialShapes", "splitSpecialShapes", false],
   ];
   const corridors: [string, string, unknown][] = [
@@ -104,6 +105,7 @@ describe("flat vector setters write their settings path", () => {
     ["Thickness", "thickness", 9],
     ["Join", "join", "miter"],
     ["RenderStyle", "renderStyle", "segments"],
+    ["MarkerLayout", "markerLayout", "radial"],
     ["MarkerWidenPadding", "markerWidenPadding", 3],
     ["MarkerWidenShape", "markerWidenShape", "round"],
     ["SplitSpecialShapes", "splitSpecialShapes", false],

@@ -1,8 +1,9 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
-import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
+import type { Viewport, MarkerData, VerticalConnectionMarker, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
+import { verticalMarkerFootprint, type VerticalConnectionStyle, type VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
+import type { MarkerSettings, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
+import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } from "../selectors/mazeSelectors/markerLayout";
 import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
 import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
@@ -258,4 +259,29 @@ export function buildMarkerIndexEndpointResolver(args: {
     const m = kind === "elevator" ? verticalStyle.elevatorMarker : kind === "vertical" && oneWay ? verticalStyle.oneWayPassageMarker : verticalStyle.twoWayPassageMarker;
     return markerEndpointVisual(m, m.fillColor, m.borderColor, m.borderWidth ?? 0);
   };
+}
+
+/** Runs the marker positioning layer (GitHub issue #735) for an export renderer — arranges start/
+ *  finish, teleport and vertical-connection markers sharing one host (see `applyMarkerLayout`). */
+export function layoutExportMarkers(args: {
+  markers: MarkerData[];
+  teleportEdges: TeleportEdge[];
+  verticalMarkers: VerticalConnectionMarker[];
+  settings: MarkerLayoutSettingsFields & Pick<TeleportSettingsFields, "teleportMarker">;
+  verticalStyle: VerticalConnectionStyle;
+  splitHostKeys: Set<string>;
+}): MarkerLayoutResult {
+  const { settings, verticalStyle } = args;
+  const tm = settings.teleportMarker;
+  return applyMarkerLayout(
+    {
+      markers: args.markers,
+      teleportEdges: args.teleportEdges,
+      verticalMarkers: args.verticalMarkers,
+      teleportRadius: tm.size / 2 + (tm.borderWidth ?? 0) + (tm.gapWidth ?? 0),
+      verticalRadius: (m) => verticalMarkerFootprint(verticalStyle, m),
+      splitHostKeys: args.splitHostKeys,
+    },
+    { mode: settings.markerLayout, spacing: MARKER_LAYOUT_SPACING, scale: settings.markerScale },
+  );
 }

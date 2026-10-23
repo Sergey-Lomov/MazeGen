@@ -21,7 +21,7 @@ function renderSection(onChange = vi.fn()) {
         activePaths: new Set<VectorByWallsParamPath>(Object.keys(VECTOR_BY_WALLS_PARAM_REGISTRY) as VectorByWallsParamPath[]),
       }}
     >
-      <SharedStyleSection<VectorByWallsParamPath> settings={DEFAULT_SHARED_STYLE_SOURCE} onChange={onChange} />
+      <SharedStyleSection<VectorByWallsParamPath> settings={{ ...DEFAULT_SHARED_STYLE_SOURCE, markerLayout: "radial", markerScale: 0.6 }} onChange={onChange} onLayoutChange={vi.fn()} onScaleChange={vi.fn()} />
     </LinkContextProvider>,
   );
   return { ...result, onChange };

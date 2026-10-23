@@ -93,6 +93,8 @@ export function VectorByCorridorsSettingsPanel() {
   const setFinishMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerBorderWidth);
   const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerGapWidth);
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerSize);
+  const setMarkerLayout = useMazeStore((s) => s.setVectorByCorridorsMarkerLayout);
+  const setMarkerScale = useMazeStore((s) => s.setVectorByCorridorsMarkerScale);
   const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
   const setMarkerWidenShape = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenShape);
   const patchOneWaySettings = useMazeStore((s) => s.patchVectorByCorridorsOneWaySettings);
@@ -302,6 +304,8 @@ export function VectorByCorridorsSettingsPanel() {
         <SharedStyleSection
           settings={settings}
           onChange={patchSharedStyle}
+          onLayoutChange={setMarkerLayout}
+          onScaleChange={setMarkerScale}
           priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), corridor, bg], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), corridor, bg] }}
         />
       )}

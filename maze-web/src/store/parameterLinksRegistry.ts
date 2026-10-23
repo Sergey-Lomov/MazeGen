@@ -137,6 +137,7 @@ function formatBoolean(value: unknown): string {
 // dialog's own tree lines up with where a field actually lives in the panel.
 const G = {
   sharedStyle: () => [m["image_export.vector_by_walls.section_shared_style"]()],
+  markerLayout: () => [m["image_export.vector_by_walls.section_shared_style"](), m["image_export.marker_layout.section"]()],
   markersStart: () => [m["image_export.vector_by_walls.section_markers"](), m["image_export.vector_by_walls.markers_start"](), m["image_export.vector_by_walls.markers_marker_subsection"]()],
   markersFinish: () => [m["image_export.vector_by_walls.section_markers"](), m["image_export.vector_by_walls.markers_finish"](), m["image_export.vector_by_walls.markers_marker_subsection"]()],
   markersStartSymbol: () => [m["image_export.vector_by_walls.section_markers"](), m["image_export.vector_by_walls.markers_start"](), m["image_export.vector_by_walls.markers_text_subsection"]()],
@@ -222,6 +223,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
 
   wallJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.wall_join"](), [m["image_export.vector_by_walls.section_tiles"]()]),
   oneWayJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.one_way_join"](), [m["image_export.vector_by_walls.section_one_ways"]()]),
+  markerScale: descriptor("number", m["image_export.marker_layout.scale"](), G.markerLayout()),
   "startMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersStart()),
   "startMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersStart()),
   "startMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersStart()),
@@ -399,6 +401,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
 
   join: descriptor("cornerStyle", m["image_export.vector_by_corridors.join"](), [m["image_export.vector_by_corridors.section_cells"]()]),
   oneWayJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.one_way_join"](), [m["image_export.vector_by_walls.section_one_ways"]()]),
+  markerScale: descriptor("number", m["image_export.marker_layout.scale"](), G.markerLayout()),
   "startMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersStart()),
   "startMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersStart()),
   "startMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersStart()),

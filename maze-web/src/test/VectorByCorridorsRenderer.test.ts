@@ -151,8 +151,8 @@ const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitS
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
 const sharedStyleSource = { markerShape: "circle" as const, markerFillColor: 0, markerBorderColor: 0, cornerStyle: "round" as const, markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold" as const };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", renderStyle: "contour", markerLayout: "auto", markerScale: 1, startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", renderStyle: "contour", markerLayout: "auto", markerScale: 1, startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -323,10 +323,27 @@ describe("selectInwardJunctionWedge", () => {
   });
 });
 
+describe("buildTeleportWidenMarkers scale", () => {
+  it("scales each point by its own fromScale/toScale", () => {
+    const edges = [{ from: [0, 0] as [number, number], to: [100, 0] as [number, number], oneWay: false, fromNode: 1, toNode: 2, fromScale: 0.5 }];
+    const [a, b] = buildTeleportWidenMarkers(edges, settingsA, buildTeleportGroups(edges));
+    expect(a.radius).toBe(settingsA.teleportMarker.size / 2 * 0.5);
+    expect(a.borderWidth).toBe(settingsA.teleportMarker.borderWidth * 0.5);
+    expect(b.radius).toBe(settingsA.teleportMarker.size / 2);
+  });
+});
+
 describe("buildVerticalWidenMarkers", () => {
   function makeMarker(overrides: Partial<VerticalConnectionMarker>): VerticalConnectionMarker {
     return { pos: [0, 0], fromNode: 0, kind: "vertical_passage", filled: true, arrowFilled: true, ...overrides };
   }
+
+  it("scales radius, border and gap by the layout scale", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator", scale: 0.5 })], settingsA);
+    expect(marker.radius).toBe(settingsA.elevatorMarker.size / 2 * 0.5);
+    expect(marker.borderWidth).toBe(settingsA.elevatorMarker.borderWidth * 0.5);
+    expect(marker.gapWidth).toBe(settingsA.elevatorMarker.gapWidth * 0.5);
+  });
 
   it("uses elevatorMarker's size/shape/cornerStyle for an elevator marker", () => {
     const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator" })], settingsA);

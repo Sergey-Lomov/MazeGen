@@ -28,6 +28,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
   return {
     background: 0, showGrid: true, gridColor: 0x808080, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
+    markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
     teleportMarker: { cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
@@ -52,6 +53,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
   return {
     background: 0, showGrid: true, gridColor: 0x808080,
     color: 0, thickness: 4, join: "round", renderStyle: "contour",
+    markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
@@ -209,8 +211,9 @@ describe("computeVectorByWallsWarnings", () => {
     it("flags when a teleport marker's footprint overlaps the start marker", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      // start sits at node 0's own position -> distance 0, definitely overlapping.
-      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      // start sits at node 0's own position; the markers are so big the layout can't fit them in the cell,
+      // so they stay stacked (distance 0) and definitely overlap.
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 200, borderWidth: 2 } });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, null);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
       expect(matches).toHaveLength(1);
@@ -220,12 +223,20 @@ describe("computeVectorByWallsWarnings", () => {
     it("collapses overlaps with both start and finish into one warning", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 200, borderWidth: 2 } });
       // Both start and finish sit exactly on the teleport's two endpoints -> two overlaps, one warning.
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, 1);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes.sort()).toEqual([0, 1]);
+    });
+
+    it("does not flag when the marker layout separates a start stacked on a teleport point (GitHub issue #735)", () => {
+      const nodes = [n(0, 0, 0), n(1, 5, 5)];
+      const edges = [teleport(0, 1)];
+      const settings = baseSettings({ teleportMarker: { ...baseSettings().teleportMarker, size: 12, borderWidth: 2 } });
+      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, null);
+      expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(0);
     });
 
     it("does not flag when start/finish are far from any teleport endpoint", () => {
@@ -664,6 +675,7 @@ describe("computeVectorByCorridorsWarnings", () => {
       const marker = { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 };
       const settings = baseCorridorsSettings({
         color: 0,
+        markerLayout: "auto", markerScale: 1,
         startMarker: marker,
         elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, enabled: true, fillColor: 0, textColor: 0 },
       });
@@ -696,6 +708,7 @@ describe("computeVectorByCorridorsWarnings", () => {
     it("keeps separate alerts for different color pairs of one warning kind", () => {
       const settings = baseCorridorsSettings({
         color: 0,
+        markerLayout: "auto", markerScale: 1,
         startMarker: { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 },
         finishMarker: { ...defaultMarker, fillColor: 0x000001, borderColor: 0x000001, borderWidth: 0 },
       });
@@ -832,6 +845,7 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
   it("attaches the label warning to the caption color and the marker fill it sits on", () => {
     const settings = baseSettings({
       background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff,
+      markerLayout: "auto", markerScale: 1,
       startMarker: { ...defaultMarker, fillColor: 0x00ff00, borderColor: 0x00ff00, textColor: 0x00ff00, text: "S" },
     });
     const warning = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, 0, null).find((w) => w.id === "label_low_contrast");

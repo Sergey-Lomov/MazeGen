@@ -54,8 +54,8 @@ type GuardedSet = (partial: GuardedUpdate | ((s: MazeStore) => GuardedUpdate)) =
 /** Settings paths that are deliberately NOT linkable (not in the param registry) and so need no
  *  detach/propagate on write. Listing a registry path here is a compile error (`wallsPlain`/
  *  `corridorsPlain` constrain `path` to these) and a test failure (`imageExportLinkedSetters`). */
-export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "oneWayPattern", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
-export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "oneWayPattern", "markerLayout", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "markerLayout", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
 
 const wallsPlain = (path: (typeof WALLS_PLAIN_PATHS)[number], value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: markLinked(setParamValue(s.vectorByWallsSettings, path, value)),
@@ -243,6 +243,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsMarkerWidenPadding: (v) => set(corridorsParam("markerWidenPadding", v)),
   setVectorByCorridorsMarkerWidenShape: (shape) =>
     set(corridorsPlain("markerWidenShape", shape)),
+  setVectorByCorridorsMarkerLayout: (mode) => set(corridorsPlain("markerLayout", mode)),
+  setVectorByCorridorsMarkerScale: (v) => set(corridorsParam("markerScale", v)),
   patchVectorByCorridorsOneWaySettings: (patch) =>
     set(corridorsPatch(patch, ["oneWayJoin"], (c) => ({ ...c, ...patch }))),
   patchVectorByCorridorsTeleportSettings: (patch) =>
@@ -345,6 +347,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsWallColor: (color) => set(wallsParam("wallColor", color)),
   setVectorByWallsRandomWallColorMode: (mode) =>
     set(wallsPlain("randomWallColorMode", mode)),
+  setVectorByWallsMarkerLayout: (mode) => set(wallsPlain("markerLayout", mode)),
+  setVectorByWallsMarkerScale: (v) => set(wallsParam("markerScale", v)),
   setVectorByWallsWallJoin: (join) => set(wallsParam("wallJoin", join)),
   setVectorByWallsWallThickness: (v) => set(wallsParam("wallThickness", v)),
   setVectorByWallsOneWayPattern: (pattern) =>

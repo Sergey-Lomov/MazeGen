@@ -12,6 +12,7 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
+import { layoutEditorMarkers } from "./editorMarkerLayout";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildHoveredEntityHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
@@ -579,28 +580,32 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
+    const layout = layoutEditorMarkers({
+      markers: markerData, teleportEdges, verticalMarkers: verticalConnectionMarkers,
+      nodeById, edges: allMarkerEdges, cfg,
+    });
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
-      markers: markerData,
-      verticalMarkers: verticalConnectionMarkers,
+      markers: layout.markers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayWallEdges: wallEdges,
       cfg,
       splitPassages,
     });
-    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset", waypoints: teleportWaypoints });
+    this.teleports.render({ edges: layout.teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset", waypoints: teleportWaypoints });
 
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the reset tool is
     // active (its own click means "delete this connection", not "navigate") and, for a one-way
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticalConnections.render({
-      markers: verticalConnectionMarkers,
+      markers: layout.verticalMarkers,
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.postEditTool !== "reset" &&
         !(marker.filled === false && state.postEditTool === "vertical_passage_one_way"),
     });
 
-    this.markers.render({ markers: markerData });
+    this.markers.render({ markers: layout.markers });
 
     this.hover.render({
       highlights: buildHoverEdgeHighlight(

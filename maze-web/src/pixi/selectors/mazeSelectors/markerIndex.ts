@@ -36,10 +36,14 @@ export type ResolveMarkerEndpointVisual = (
  *  `style.offset` below it); `borderMatchColor` feeds `borderColorFromMarker`. */
 export interface MarkerIndexLabel {
   pos: [number, number];
+  /** Which link kind this label annotates — lets the marker layout (GitHub issue #735) move it with its marker. */
+  kind: MarkerIndexLinkKind;
   label: string;
   markerOuterRadius: number;
   markerBorderWidth: number;
   borderMatchColor: number;
+  /** Marker-layout shrink factor (GitHub issue #735) — the plate (size, offset, border, gap, text) shrinks with its marker. `undefined` = 1. */
+  scale?: number;
 }
 
 export interface MarkerIndexLabelSet {
@@ -185,6 +189,7 @@ export function buildMarkerIndexLabels(
       const visual = resolveEndpointVisual(id, link.kind, link.oneWay);
       labels.push({
         pos: [center.x, center.y],
+        kind: link.kind,
         label,
         markerOuterRadius: visual.outerRadius,
         markerBorderWidth: visual.borderWidth,

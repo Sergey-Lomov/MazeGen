@@ -9,6 +9,7 @@ import { buildCellSet } from "./sharedSelectors";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
+import { hostKey } from "./mazeSelectors/markerLayout";
 import { splitSlotColor } from "../colorUtils";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -269,6 +270,24 @@ export function presetEndpointScreenPos(
   if (anchored) return [anchored.x, anchored.y];
   const center = getCellCenter(endpoint.point[0], endpoint.point[1], cfg);
   return [center.x, center.y];
+}
+
+/** Marker-layout host keys (GitHub issue #735) of every preset split node — the hub and each slot
+ *  of a split point own only part of their cell, so the layout bounds their group more tightly. */
+export function buildPresetSplitHostKeys(
+  presetSplitPoints: Record<string, number[]>,
+  nodePositions: Map<string, { x: number; y: number }>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [pointKey, slotIds] of Object.entries(presetSplitPoints)) {
+    if (slotIds.length === 0) continue;
+    const [x, y] = pointKey.split(",").map(Number);
+    for (const slotId of [undefined, ...slotIds]) {
+      const p = nodePositions.get(presetEndpointKey(presetEndpoint([x, y], slotId)));
+      if (p) out.add(hostKey([p.x, p.y]));
+    }
+  }
+  return out;
 }
 
 export function buildPresetMarkers(

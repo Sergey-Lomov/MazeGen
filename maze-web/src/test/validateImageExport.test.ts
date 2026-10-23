@@ -328,3 +328,19 @@ describe("validateMarkerIndexSettings", () => {
     expect(validateMarkerIndexSettings({ textMargin: 1.5 }, "path", fb).textMargin).toBe(1.5);
   });
 });
+
+describe("marker layout settings validation (GitHub issue #735)", () => {
+  it("keeps valid markerLayout for both modes", () => {
+    const walls = validateVectorByWallsSettings({ markerLayout: "radial" }, "path", []);
+    expect(walls.markerLayout).toBe("radial");
+    const corridors = validateVectorByCorridorsSettings({ markerLayout: "grid" }, "path", []);
+    expect(corridors.markerLayout).toBe("grid");
+  });
+
+  it("recovers an unknown / missing layout to the defaults", () => {
+    const walls = validateVectorByWallsSettings({ markerLayout: "spiral" }, "path", []);
+    expect(walls.markerLayout).toBe("radial");
+    const corridors = validateVectorByCorridorsSettings({}, "path", []);
+    expect(corridors.markerLayout).toBe("radial");
+  });
+});

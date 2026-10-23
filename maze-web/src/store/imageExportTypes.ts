@@ -1,4 +1,5 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
+import type { MarkerLayoutMode } from "../pixi/selectors/mazeSelectors/markerLayout";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
@@ -510,7 +511,18 @@ export interface MarkerIndexCoverage {
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+/** Marker positioning layer (GitHub issue #735) shared by both vector renderers — arranges several
+ *  markers (start/finish, teleport points, vertical-connection markers) hosted by one cell or one
+ *  split-tile node. `markerLayout`: `"auto"` picks by count (2 row, 3-4 radial, 5+ grid), `"overlap"` skips the layer (markers stack, no
+ *  shrink), the others force that arrangement; the gap between markers is fixed (`MARKER_LAYOUT_SPACING`). A host with a single marker is unaffected. See `Specs/marker-layout.md`. */
+export interface MarkerLayoutSettingsFields {
+  markerLayout: MarkerLayoutMode;
+  /** Shrink factor in (0, 1] for every marker in a host with 2+ markers; all marker components
+   *  (shape, border, gap, arrows, text) scale together. `1` = no shrink. */
+  markerScale: number;
+}
+
+export interface VectorByWallsSettings extends MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
    *  "Vector by corridors" has no decorative treatment (see `VerticalDecorativeFields`), so these
@@ -631,7 +643,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
    *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
@@ -834,6 +846,8 @@ export interface ImageExportActions {
   setVectorByCorridorsFinishMarkerSize: (v: number) => void;
   setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
   setVectorByCorridorsMarkerWidenShape: (shape: MarkerWidenShape) => void;
+  setVectorByCorridorsMarkerLayout: (mode: MarkerLayoutMode) => void;
+  setVectorByCorridorsMarkerScale: (v: number) => void;
   patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
   patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
@@ -934,6 +948,8 @@ export interface ImageExportActions {
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;
+  setVectorByWallsMarkerLayout: (mode: MarkerLayoutMode) => void;
+  setVectorByWallsMarkerScale: (v: number) => void;
   setVectorByWallsWallJoin: (join: CornerStyle) => void;
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;

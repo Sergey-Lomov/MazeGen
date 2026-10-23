@@ -21,6 +21,7 @@ interface PlateBox {
   cornerRadius: number;
   borderColor: number;
   borderWidth: number;
+  scale: number;
 }
 
 /** "Marker indices" layer (GitHub issue #471) — draws a rectangular framed plate carrying a
@@ -59,26 +60,26 @@ export class MarkerIndexRenderer {
     const { labels, style, floorColor } = data;
     if (!style.enabled || labels.length === 0) return;
 
-    const plateW = style.width;
-    const plateH = style.height;
-    const cornerRadius = style.cornerRadius;
     const gap = Math.max(0, style.gap);
-    const fontSize = style.textSize;
     const fontFamily = msdfFontFamily(style.textFontWeight);
 
     const boxes: PlateBox[] = labels.map((item) => {
       const [cx, cy] = item.pos;
+      const s = item.scale ?? 1;
+      const plateW = style.width * s;
+      const plateH = style.height * s;
       // `offset` is the distance from the marker's outer edge to the plate's *center*.
-      const plateCenterY = cy + item.markerOuterRadius + style.offset;
+      const plateCenterY = cy + item.markerOuterRadius * s + style.offset * s;
       const borderColor = style.borderColorFromMarker ? item.borderMatchColor : style.borderColor;
       return {
         x: cx - plateW / 2,
         y: plateCenterY - plateH / 2,
         w: plateW,
         h: plateH,
-        cornerRadius,
+        cornerRadius: style.cornerRadius * s,
         borderColor,
-        borderWidth: Math.max(0, Math.round(style.borderWidthFromMarker ? item.markerBorderWidth : style.borderWidth)),
+        scale: s,
+        borderWidth: Math.max(0, Math.round((style.borderWidthFromMarker ? item.markerBorderWidth : style.borderWidth) * s)),
       };
     });
 
@@ -88,7 +89,7 @@ export class MarkerIndexRenderer {
     // so the plate uses the same full-width offset convention.
     if (gap > 0) {
       for (const b of boxes) {
-        const outset = gap + b.borderWidth;
+        const outset = gap * b.scale + b.borderWidth;
         const g = new Graphics();
         drawRoundedRect(g, b.x - outset, b.y - outset, b.w + 2 * outset, b.h + 2 * outset, b.cornerRadius + outset);
         g.fill(floorColor);
@@ -108,7 +109,7 @@ export class MarkerIndexRenderer {
       g.fill(style.fillColor);
       this.bodyLayer.addChild(g);
 
-      const text = makeCenteredLabel(labels[i].label, fontFamily, fontSize, style.textColor);
+      const text = makeCenteredLabel(labels[i].label, fontFamily, style.textSize * b.scale, style.textColor);
       text.x = b.x + b.w / 2;
       text.y = b.y + b.h / 2;
       this.bodyLayer.addChild(text);

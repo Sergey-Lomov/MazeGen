@@ -9,6 +9,7 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/Split
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
+import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
@@ -25,7 +26,7 @@ import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
-  buildMarkerIndexEndpointResolver,
+  buildMarkerIndexEndpointResolver, layoutExportMarkers,
 } from "./exportStyleBuilders";
 
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
@@ -604,24 +605,35 @@ export class VectorByWallsRenderer {
       splitStyle,
     );
     const { startMarker, finishMarker, floorColor } = state.vectorByWallsSettings;
-    const markerData = buildMazeMarkers(
-      nodeById, start, finish, cfg,
-      buildMarkerStyle(startMarker, floorColor),
-      buildMarkerStyle(finishMarker, floorColor),
-      edges,
-    );
+    const verticalStyle = buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings);
+    // Marker positioning layer (GitHub issue #735) — several markers on one host get distinct slots;
+    // everything below draws from the laid-out copies, never the raw geometry-cache arrays.
+    const layout = layoutExportMarkers({
+      markers: buildMazeMarkers(
+        nodeById, start, finish, cfg,
+        buildMarkerStyle(startMarker, floorColor),
+        buildMarkerStyle(finishMarker, floorColor),
+        edges,
+      ),
+      teleportEdges: this.geometryCache.teleportEdges,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      settings: state.vectorByWallsSettings,
+      verticalStyle,
+      splitHostKeys: buildSplitHostKeys(nodeById, edges, cfg),
+    });
+    const markerData = layout.markers;
     // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
     const teleportWaypoints = buildTeleportAvoidanceWaypoints({
       markers: markerData,
-      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      verticalMarkers: layout.verticalMarkers,
       oneWayWallEdges: this.geometryCache.wallEdges,
       cfg,
       splitPassages: this.geometryCache.splitPassages,
     });
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
-    const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, this.geometryCache.teleportEdges);
+    const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, layout.teleportEdges);
     this.teleports.render({
-      edges: this.geometryCache.teleportEdges,
+      edges: layout.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
       groupOverrides: teleportGroupOverrides,
@@ -637,9 +649,8 @@ export class VectorByWallsRenderer {
 
     this.markers.render({ markers: markerData });
 
-    const verticalStyle = buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings);
     this.verticalConnections.render({
-      markers: this.geometryCache.verticalConnectionMarkers,
+      markers: layout.verticalMarkers,
       style: verticalStyle,
       // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
       // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
@@ -648,14 +659,14 @@ export class VectorByWallsRenderer {
 
     if (state.vectorByWallsSettings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
-        teleportEdges: this.geometryCache.teleportEdges,
+        teleportEdges: layout.teleportEdges,
         teleportStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
         groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual);
-      this.markerIndex.render({ ...indexLabels, style: state.vectorByWallsSettings.markerIndex, floorColor });
+      this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: state.vectorByWallsSettings.markerIndex, floorColor });
     } else {
       this.markerIndex.clear();
     }
@@ -728,5 +739,5 @@ export class VectorByWallsRenderer {
 export {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
-  buildMarkerIndexEndpointResolver,
+  buildMarkerIndexEndpointResolver, layoutExportMarkers,
 } from "./exportStyleBuilders";

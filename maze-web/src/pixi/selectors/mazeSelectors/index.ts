@@ -8,3 +8,4 @@ export * from "./postEdit";
 export * from "./markers";
 export * from "./markerIndex";
 export * from "./cellInspection";
+export * from "./markerLayout";

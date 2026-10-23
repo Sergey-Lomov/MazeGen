@@ -14,7 +14,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights, buildPresetNodePositions, buildPresetSplitHostKeys } = await import("../pixi/selectors/presetSelectors");
 const { getCellCenter } = await import("../pixi/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
@@ -382,5 +382,22 @@ describe("buildLinkHoverHighlight", () => {
     const original = buildLinkHoverHighlight({ from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]) }, cfg);
     const slotted = buildLinkHoverHighlight({ from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]) }, cfg);
     expect(slotted[0].from).toEqual(original[0].from);
+  });
+});
+
+describe("buildPresetSplitHostKeys", () => {
+  it("is empty without split points", () => {
+    expect(buildPresetSplitHostKeys({}, buildPresetNodePositions(cfg, {})).size).toBe(0);
+    expect(buildPresetSplitHostKeys({ "0,0": [] }, buildPresetNodePositions(cfg, {})).size).toBe(0);
+  });
+
+  it("contains the hub and every slot position of a split point, but not plain cells", () => {
+    const split = { "0,0": [1, 2] };
+    const positions = buildPresetNodePositions(cfg, split);
+    const keys = buildPresetSplitHostKeys(split, positions);
+    expect(keys.size).toBeGreaterThanOrEqual(1);
+    for (const key of keys) expect(key).toMatch(/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/);
+    const plain = getCellCenter(-1, 0, cfg);
+    expect(keys.has(`${plain.x.toFixed(2)},${plain.y.toFixed(2)}`)).toBe(false);
   });
 });

@@ -23,6 +23,7 @@ import {
   buildPresetWallGroups,
   buildPresetMarkers,
   buildPresetNodePositions,
+  buildPresetSplitHostKeys,
   buildLocks,
   buildIsolatedCellHighlights,
   computeOrphanSplitPoints,
@@ -34,6 +35,7 @@ import {
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
 import { presetEndpoint, withoutLevel, type PresetEndpoint } from "./presetEndpoint";
+import { layoutEditorMarkersOnHosts } from "./editorMarkerLayout";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
@@ -384,8 +386,6 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       : [];
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);
-    this.markers.render({ markers: markerData });
 
     // Cross-floor teleport badge collision relocation (GitHub issue #480) — the same shared core the
     // generation/post-edit views use, fed the *maze-wide* (not active-floor-filtered) preset lists so
@@ -417,17 +417,27 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       };
     }
     const presetVerticalMarkers = buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level, nodePositions);
+    // Marker positioning layer (GitHub issue #735) — a split node (hub or slot) owns only part of its
+    // cell, so its position is a split host.
+    const layout = layoutEditorMarkersOnHosts({
+      markers: buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions),
+      teleportEdges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
+      verticalMarkers: presetVerticalMarkers,
+      splitHostKeys: buildPresetSplitHostKeys(presetSplitPoints, nodePositions),
+    });
+    const markerData = layout.markers;
+    this.markers.render({ markers: markerData });
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
     // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
     // Also avoid vertical passage/elevator markers (GitHub issue #518) — preset connections have no
     // one-way wall indicator concept, unlike a generated maze's own walls.
     this.teleports.render({
-      edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
+      edges: layout.teleportEdges,
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
       waypoints: buildTeleportAvoidanceWaypoints({
         markers: markerData,
-        verticalMarkers: presetVerticalMarkers,
+        verticalMarkers: layout.verticalMarkers,
         splitPassages,
       }),
     });
@@ -436,7 +446,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticals.render({
-      markers: presetVerticalMarkers,
+      markers: layout.verticalMarkers,
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.presetConnectionsTool !== "clear" &&
