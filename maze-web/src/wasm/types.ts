@@ -196,6 +196,13 @@ export interface GenerationParams {
   cyclicity?: number;
 }
 
+/** Stable keys used by the generated-element cell-type placement matrix. */
+export type GeneratedElementKind = "start" | "finish" | "one_way" | "teleport" | "split" | "vertical_passage" | "elevator";
+
+/** Explicit `false` forbids one generated element kind on one tessellation cell type; omitted
+ * entries remain allowed so legacy projects keep their previous generation behaviour. */
+export type ElementCellTypeRestrictions = Partial<Record<GeneratedElementKind, Record<string, boolean>>>;
+
 export interface ElementsConfig {
   one_way_chance?: number;
   teleport_chance?: number;
@@ -222,6 +229,7 @@ export interface ElementsConfig {
   elevator_branching?: number;
   /** Allow an elevator to skip floors instead of only connecting a contiguous run. */
   allow_non_consecutive_elevator_floors?: boolean;
+  cell_type_restrictions?: ElementCellTypeRestrictions;
 }
 
 /** Mirrors Rust's `SplitPatternFaceDto`; `face_index` is a canonical index of the pattern's shape

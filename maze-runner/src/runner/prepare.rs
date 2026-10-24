@@ -101,12 +101,20 @@ fn prepare<T: Tessellation>(
         field.add_level(level);
     }
 
+    let mut gen_config = build_generation_config(config);
+    gen_config.element_placement_rules = Some(
+        maze_core::generation::ElementPlacementRules::from_overrides(
+            tessellation.as_ref(),
+            &config.elements.cell_type_restrictions,
+        )?,
+    );
+
     Ok(Prepared {
         seed,
         field,
         ids,
         start,
-        gen_config: build_generation_config(config),
+        gen_config,
         cell_from_xy,
         cell_to_xy,
     })

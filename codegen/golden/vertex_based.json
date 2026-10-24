@@ -42,5 +42,6 @@
   { "variant": "ElevatorSlotsFailed", "value": {"kind":"ElevatorSlotsFailed","src":7,"fallback_allowed":true}, "bytes": [7,0,0,0,0,0,0,0,1] },
   { "variant": "ElevatorFloorCountChosen", "value": {"kind":"ElevatorFloorCountChosen","src":7,"floor_count":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0] },
   { "variant": "ElevatorAdded", "value": {"kind":"ElevatorAdded","nodes":[3,5],"edges_added":7}, "bytes": [2,0,0,0,3,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,7,0,0,0] },
-  { "variant": "CrossFloorTeleportRolled", "value": {"kind":"CrossFloorTeleportRolled","roll":1.5,"balance":1.5,"other_floor_preferred":true}, "bytes": [0,0,0,0,0,0,248,63,0,0,0,0,0,0,248,63,1] }
+  { "variant": "CrossFloorTeleportRolled", "value": {"kind":"CrossFloorTeleportRolled","roll":1.5,"balance":1.5,"other_floor_preferred":true}, "bytes": [0,0,0,0,0,0,248,63,0,0,0,0,0,0,248,63,1] },
+  { "variant": "ElementRollSkipped", "value": {"kind":"ElementRollSkipped","src":7,"element":"x","cell_type":"x"}, "bytes": [7,0,0,0,0,0,0,0,1,0,0,0,120,1,0,0,0,120] }
 ]

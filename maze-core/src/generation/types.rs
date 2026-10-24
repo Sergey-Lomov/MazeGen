@@ -203,10 +203,96 @@ pub struct LockedNode {
     pub kind: NodeLockKind,
 }
 
+/// Automatic-generation element kinds that may be restricted by a cell type.  These deliberately
+/// name generated features rather than graph edge kinds: `OneWay` is the one-way outcome of an
+/// ordinary passage roll, while `Split` is a node transformation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GeneratedElementKind {
+    Start,
+    Finish,
+    OneWay,
+    Teleport,
+    Split,
+    VerticalPassage,
+    Elevator,
+}
+
+impl GeneratedElementKind {
+    pub const ALL: [Self; 7] = [
+        Self::Start,
+        Self::Finish,
+        Self::OneWay,
+        Self::Teleport,
+        Self::Split,
+        Self::VerticalPassage,
+        Self::Elevator,
+    ];
+
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Finish => "finish",
+            Self::OneWay => "one_way",
+            Self::Teleport => "teleport",
+            Self::Split => "split",
+            Self::VerticalPassage => "vertical_passage",
+            Self::Elevator => "elevator",
+        }
+    }
+}
+
+/// Per-element, per-cell-type permissions resolved once for a concrete tessellation.  The raw
+/// config uses type keys; this table uses `CellTypeId`, so generation never re-parses keys.
+#[derive(Debug, Clone)]
+pub struct ElementPlacementRules {
+    allowed: std::collections::BTreeMap<GeneratedElementKind, crate::space::CellTypeTable<bool>>,
+}
+
+impl ElementPlacementRules {
+    pub fn from_overrides<T: crate::space::Tessellation>(
+        tessellation: &T,
+        overrides: &std::collections::BTreeMap<String, std::collections::BTreeMap<String, bool>>,
+    ) -> Result<Self, String> {
+        let mut allowed = std::collections::BTreeMap::new();
+        for kind in GeneratedElementKind::ALL {
+            let type_overrides = overrides.get(kind.key()).cloned().unwrap_or_default();
+            allowed.insert(
+                kind,
+                crate::space::CellTypeTable::from_overrides(
+                    tessellation.cell_types(),
+                    &type_overrides,
+                    true,
+                )?,
+            );
+        }
+        for key in overrides.keys() {
+            if !GeneratedElementKind::ALL
+                .iter()
+                .any(|kind| kind.key() == key)
+            {
+                return Err(format!("unknown generated element kind `{key}`"));
+            }
+        }
+        Ok(Self { allowed })
+    }
+
+    pub fn allows<T: crate::space::Tessellation>(
+        &self,
+        tessellation: &T,
+        kind: GeneratedElementKind,
+        cell: T::CellId,
+    ) -> bool {
+        *self.allowed[&kind].get(tessellation.cell_type_of(cell))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GenerationConfig {
     pub algorithm: GenerationAlgorithm,
     pub elements: ElementsConfig,
+    /// Cell-type permissions for automatically generated elements. `None` preserves the legacy
+    /// all-allowed behavior for direct core callers that do not have a wire config to resolve.
+    pub element_placement_rules: Option<ElementPlacementRules>,
     pub preset_connections: Vec<PresetConnection>,
     /// User-placed `VerticalPassage` presets (GitHub issue #357) — see `PresetVerticalPassage`'s
     /// own doc comment for why these live in their own field rather than `preset_connections`.
@@ -231,6 +317,7 @@ impl Default for GenerationConfig {
         GenerationConfig {
             algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
             elements: ElementsConfig::default(),
+            element_placement_rules: None,
             preset_connections: vec![],
             preset_vertical_passages: vec![],
             preset_elevators: vec![],
@@ -238,5 +325,62 @@ impl Default for GenerationConfig {
             split_points: vec![],
             split_generation: crate::generation::split_pattern::SplitGenerationConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ElementPlacementRules, GeneratedElementKind};
+    use crate::space::{SquareOctagonPoint, SquareOctagonTessellation};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn element_placement_rules_default_to_allowed_and_apply_type_override() {
+        let overrides = BTreeMap::from([(
+            "teleport".to_string(),
+            BTreeMap::from([("square".to_string(), false)]),
+        )]);
+        let rules = ElementPlacementRules::from_overrides(&SquareOctagonTessellation, &overrides)
+            .expect("known element and cell-type keys must resolve");
+
+        assert!(!rules.allows(
+            &SquareOctagonTessellation,
+            GeneratedElementKind::Teleport,
+            SquareOctagonPoint { x: 1, y: 1 },
+        ));
+        assert!(rules.allows(
+            &SquareOctagonTessellation,
+            GeneratedElementKind::Teleport,
+            SquareOctagonPoint { x: 0, y: 0 },
+        ));
+        assert!(rules.allows(
+            &SquareOctagonTessellation,
+            GeneratedElementKind::Split,
+            SquareOctagonPoint { x: 1, y: 1 },
+        ));
+    }
+
+    #[test]
+    fn element_placement_rules_reject_unknown_element_kind() {
+        let overrides = BTreeMap::from([("not_an_element".to_string(), BTreeMap::new())]);
+        let error = ElementPlacementRules::from_overrides(&SquareOctagonTessellation, &overrides)
+            .expect_err("typoed element keys must not be ignored");
+        assert!(error.contains("not_an_element"));
+    }
+
+    #[test]
+    fn element_placement_rules_accept_finish() {
+        let overrides = BTreeMap::from([(
+            "finish".to_string(),
+            BTreeMap::from([("square".to_string(), false)]),
+        )]);
+        let rules = ElementPlacementRules::from_overrides(&SquareOctagonTessellation, &overrides)
+            .expect("finish must be a supported generated element kind");
+
+        assert!(!rules.allows(
+            &SquareOctagonTessellation,
+            GeneratedElementKind::Finish,
+            SquareOctagonPoint { x: 1, y: 1 },
+        ));
     }
 }

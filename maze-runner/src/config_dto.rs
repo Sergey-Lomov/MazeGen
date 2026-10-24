@@ -117,6 +117,12 @@ pub struct ElementsConfigDto {
     pub elevator_span_max: Option<usize>,
     pub elevator_branching: Option<f64>,
     pub allow_non_consecutive_elevator_floors: Option<bool>,
+    /// Per generated-element kind (`start`, `finish`, `one_way`, `teleport`, `split`,
+    /// `vertical_passage`, `elevator`), the cell-type keys explicitly allowed/forbidden. Omitted
+    /// keys default to allowed, preserving configurations saved before GitHub issue #825.
+    #[serde(default)]
+    pub cell_type_restrictions:
+        std::collections::BTreeMap<String, std::collections::BTreeMap<String, bool>>,
 }
 
 /// Wire shape for `maze_core::generation::SplitFaceRequirement` (GitHub issue #222).

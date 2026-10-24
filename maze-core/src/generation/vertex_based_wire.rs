@@ -50,6 +50,7 @@ mod wire_tags {
     pub const ELEVATOR_FLOOR_COUNT_CHOSEN: u16 = 40;
     pub const ELEVATOR_ADDED: u16 = 41;
     pub const CROSS_FLOOR_TELEPORT_ROLLED: u16 = 42;
+    pub const ELEMENT_ROLL_SKIPPED: u16 = 45;
 }
 
 impl EncodeEventPayload for VertexBasedEvent {
@@ -123,6 +124,7 @@ impl EncodeEventPayload for VertexBasedEvent {
             VertexBasedEvent::CrossFloorTeleportRolled { .. } => {
                 wire_tags::CROSS_FLOOR_TELEPORT_ROLLED
             }
+            VertexBasedEvent::ElementRollSkipped { .. } => wire_tags::ELEMENT_ROLL_SKIPPED,
         }
     }
 
@@ -476,6 +478,15 @@ impl EncodeEventPayload for VertexBasedEvent {
                 write_f64(out, *roll);
                 write_f64(out, *balance);
                 write_bool(out, *other_floor_preferred);
+            }
+            VertexBasedEvent::ElementRollSkipped {
+                src,
+                element,
+                cell_type,
+            } => {
+                write_node_id(out, *src);
+                write_str(out, element);
+                write_str(out, cell_type);
             }
         }
     }
@@ -1122,6 +1133,21 @@ mod golden_tests {
         assert_eq!(
             bytes,
             vec![0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]
+        );
+    }
+
+    #[test]
+    fn golden_round_trip_element_roll_skipped() {
+        let event = VertexBasedEvent::ElementRollSkipped {
+            src: 7,
+            element: "x".to_string(),
+            cell_type: "x".to_string(),
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(
+            bytes,
+            vec![7, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 120, 1, 0, 0, 0, 120]
         );
     }
 }

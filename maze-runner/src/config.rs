@@ -229,6 +229,7 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
     GenerationConfig {
         algorithm,
         elements,
+        element_placement_rules: None,
         preset_connections,
         preset_vertical_passages,
         preset_elevators,

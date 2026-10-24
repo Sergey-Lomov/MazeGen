@@ -1,5 +1,5 @@
 use crate::Maze;
-use crate::generation::PresetState;
+use crate::generation::{GeneratedElementKind, PresetState};
 use crate::quality_control::MissingEndpointsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::params::StrategyParams;
@@ -21,7 +21,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RandomEndpoin
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
         _params: &StrategyParams,
-        _preset_state: &PresetState,
+        preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
         if !issue.missing_start && !issue.missing_finish {
@@ -33,7 +33,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RandomEndpoin
             maze.meta.start.expect("missing_start is false")
         } else {
             let candidates = if issue.missing_finish {
-                let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
+                let mut nodes: Vec<_> = maze
+                    .graph
+                    .nodes()
+                    .map(|n| n.id)
+                    .filter(|&node| {
+                        preset_state.allows_generated_endpoint(
+                            &maze.field,
+                            GeneratedElementKind::Start,
+                            node,
+                        )
+                    })
+                    .collect();
                 if nodes.is_empty() {
                     return (RepairResult::Failed, vec![]);
                 }
@@ -43,6 +54,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RandomEndpoin
                 let finish = maze.meta.finish.expect("missing_finish is false");
                 let mut nodes = maze.graph.reachable_to(finish);
                 nodes.retain(|&id| id != finish);
+                nodes.retain(|&node| {
+                    preset_state.allows_generated_endpoint(
+                        &maze.field,
+                        GeneratedElementKind::Start,
+                        node,
+                    )
+                });
                 if nodes.is_empty() {
                     return (RepairResult::Failed, vec![]);
                 }
@@ -57,6 +75,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RandomEndpoin
         if issue.missing_finish {
             let mut candidates = maze.graph.reachable_from(start);
             candidates.retain(|&id| id != start);
+            candidates.retain(|&node| {
+                preset_state.allows_generated_endpoint(
+                    &maze.field,
+                    GeneratedElementKind::Finish,
+                    node,
+                )
+            });
             if candidates.is_empty() {
                 return (RepairResult::Failed, vec![]);
             }
@@ -74,11 +99,13 @@ crate::impl_erased_repair_strategy!(RandomEndpointsStrategy, MissingEndpointsIss
 mod tests {
     use super::*;
     use crate::IdGenerator;
+    use crate::generation::ElementPlacementRules;
     use crate::graph::{EdgeKind, Graph};
     use crate::random::MazeRng;
     use crate::repair::strategies::test_utils::apply_and_commit_default as apply_and_commit;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     fn make_connected_maze(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
@@ -104,6 +131,21 @@ mod tests {
 
     fn issue(missing_start: bool, missing_finish: bool) -> MissingEndpointsIssue {
         MissingEndpointsIssue::new_from_check("test", missing_start, missing_finish)
+    }
+
+    fn placement_rules_forbidden_on_all_cells(kind: GeneratedElementKind) -> PresetState {
+        let mut state = PresetState::empty();
+        state.element_placement_rules = Some(
+            ElementPlacementRules::from_overrides(
+                &SquareTessellation,
+                &BTreeMap::from([(
+                    kind.key().to_string(),
+                    BTreeMap::from([("cell".to_string(), false)]),
+                )]),
+            )
+            .expect("a known element and cell type must resolve"),
+        );
+        state
     }
 
     #[test]
@@ -142,6 +184,23 @@ mod tests {
         );
         assert!(nodes.contains(&maze.meta.start.unwrap()));
         assert!(nodes.contains(&maze.meta.finish.unwrap()));
+    }
+
+    #[test]
+    fn generated_start_respects_cell_type_placement_rules() {
+        let (mut maze, _) = make_connected_maze(3);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(
+            &RandomEndpointsStrategy,
+            &issue(true, true),
+            &mut maze,
+            &mut rng,
+            &placement_rules_forbidden_on_all_cells(GeneratedElementKind::Start),
+        );
+
+        assert!(matches!(result, RepairResult::Failed));
+        assert_eq!(maze.meta.start, None);
+        assert_eq!(maze.meta.finish, None);
     }
 
     #[test]
