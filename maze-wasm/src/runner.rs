@@ -155,7 +155,14 @@ pub fn run_generate<T: Tessellation + 'static>(
         graph.add_node(node);
     }
 
-    let gen_config = build_generation_config(config);
+    let mut gen_config = build_generation_config(config);
+    gen_config.element_placement_rules = Some(
+        maze_core::generation::ElementPlacementRules::from_overrides(
+            field.tessellation(),
+            &config.elements.cell_type_restrictions,
+        )
+        .map_err(|e| JsValue::from_str(&e))?,
+    );
 
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
@@ -199,6 +206,9 @@ pub fn run_generate<T: Tessellation + 'static>(
         debug_node_ledger.as_mut(),
     )
     .map_err(|e| JsValue::from_str(&e))?;
+    // MissingEndpoints runs during repair; preserve the resolved generation rules so its
+    // automatic start/finish choices obey the same cell-type matrix.
+    preset_state.element_placement_rules = gen_config.element_placement_rules.clone();
     let preset_setup_source = preset_setup_log.filter(|log| !log.is_empty()).map(|log| {
         maze_core::event_log::TapeSource {
             scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME,

@@ -1,7 +1,8 @@
 use super::preset_setup_event::{PresetSetupEvent, emit};
 use super::{
-    LockedNode, NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator,
-    PresetEndpoint, PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
+    ElementPlacementRules, GeneratedElementKind, LockedNode, NodeLockKind, PresetConnection,
+    PresetConnectionState, PresetElevator, PresetEndpoint, PresetVerticalPassage,
+    TeleportDirection, VerticalPassageDirection,
 };
 use crate::event_log::EventLog;
 use crate::graph::{EdgeKind, Graph};
@@ -16,6 +17,10 @@ type PresetTeleportBuild = (HashMap<(u32, i32, i32), Vec<u32>>, HashSet<NodeId>)
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
 #[derive(Debug)]
 pub struct PresetState {
+    /// Placement rules for endpoints selected automatically by a repair strategy. They live here
+    /// because endpoint selection is part of quality-control repair, after initial generation.
+    /// Explicit preset endpoints remain an intentional user choice and are never filtered.
+    pub element_placement_rules: Option<ElementPlacementRules>,
     /// Edges the algorithm must not add (Wall presets).
     pub blocked: HashSet<(NodeId, NodeId)>,
     /// Nodes the algorithm must not add outgoing edges from.
@@ -66,6 +71,21 @@ pub struct PresetState {
 }
 
 impl PresetState {
+    /// Whether an automatically selected endpoint may occupy `node`. Unknown nodes are never
+    /// candidates, so treating them as disallowed avoids a silent fallback outside the field.
+    pub fn allows_generated_endpoint<T: Tessellation>(
+        &self,
+        field: &MultiLevelField<T>,
+        kind: GeneratedElementKind,
+        node: NodeId,
+    ) -> bool {
+        self.element_placement_rules.as_ref().is_none_or(|rules| {
+            field
+                .cell_of(node)
+                .is_some_and(|cell| rules.allows(field.tessellation(), kind, cell))
+        })
+    }
+
     /// Whether the directed edge `from -> to` is a preset Passage/OneWay connection — the exact
     /// predicate `preset_edges` is keyed by, no sorting/canonicalization: a one-way preset only
     /// ever occupies one direction, and its reverse direction (`blocked`, not `preset_edges`) must
@@ -124,6 +144,7 @@ impl PresetState {
 
     pub fn empty() -> Self {
         Self {
+            element_placement_rules: None,
             blocked: HashSet::new(),
             locked_out: HashSet::new(),
             locked_in: HashSet::new(),
@@ -143,7 +164,16 @@ impl PresetState {
     /// setup; only the repair-time constraints are dropped), a normal run keeps `self` as-is.
     /// Shared by `maze-wasm` and `maze-runner` so both stay in sync — see `Specs/generation.md`.
     pub fn for_repair(self, qc_experiment: bool) -> Self {
-        if qc_experiment { Self::empty() } else { self }
+        if qc_experiment {
+            // QC experiment mode deliberately drops preset protections, but endpoint placement
+            // remains a generator setting and must still constrain automatic endpoint repair.
+            Self {
+                element_placement_rules: self.element_placement_rules,
+                ..Self::empty()
+            }
+        } else {
+            self
+        }
     }
 
     /// Resolves a `PresetEndpoint` (e.g. `preset_start`/`preset_finish`/`preset_gen_source`) to a
@@ -562,6 +592,7 @@ pub fn build_preset_state<T: Tessellation>(
     }
 
     Ok(PresetState {
+        element_placement_rules: None,
         blocked,
         locked_out,
         locked_in,

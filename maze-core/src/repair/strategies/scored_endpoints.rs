@@ -1,5 +1,5 @@
 use crate::Maze;
-use crate::generation::PresetState;
+use crate::generation::{GeneratedElementKind, PresetState};
 use crate::graph::nav::{NavEdge, NavGraph, NavNodeId};
 use crate::graph::pathfinding::{
     DijkstraScratch, OutgoingIndex, dijkstra_with_prev_into, route_aware_junction_flags,
@@ -126,7 +126,8 @@ pub fn score_for_route<T: Tessellation>(
     let start_nav = nav.nav_node_for(start)?;
     let finish_nav = nav.nav_node_for(finish)?;
     let ctx = ScoredPathContext::build(nav, field, graph, weights.path_weight);
-    let (_, _, score) = ctx.best_pair(nav, Some(start_nav), Some(finish_nav), weights)?;
+    let (_, _, score) =
+        ctx.best_pair(nav, Some(start_nav), Some(finish_nav), weights, None, None)?;
     Some(score)
 }
 
@@ -152,7 +153,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
         maze: &Maze<T>,
         _rng: &mut dyn RngCore,
         params: &StrategyParams,
-        _preset_state: &PresetState,
+        preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
         if !issue.missing_start && !issue.missing_finish {
@@ -189,8 +190,41 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             }
         };
 
-        let Some((s, f, achieved_score)) = ctx.best_pair(nav, fixed_start, fixed_finish, &weights)
-        else {
+        let allowed_starts = issue.missing_start.then(|| {
+            ctx.search_candidates
+                .iter()
+                .copied()
+                .filter(|&id| {
+                    preset_state.allows_generated_endpoint(
+                        &maze.field,
+                        GeneratedElementKind::Start,
+                        nav.nodes[id].node_id,
+                    )
+                })
+                .collect::<Vec<_>>()
+        });
+        let allowed_finishes = issue.missing_finish.then(|| {
+            ctx.search_candidates
+                .iter()
+                .copied()
+                .filter(|&id| {
+                    preset_state.allows_generated_endpoint(
+                        &maze.field,
+                        GeneratedElementKind::Finish,
+                        nav.nodes[id].node_id,
+                    )
+                })
+                .collect::<Vec<_>>()
+        });
+
+        let Some((s, f, achieved_score)) = ctx.best_pair(
+            nav,
+            fixed_start,
+            fixed_finish,
+            &weights,
+            allowed_starts.as_deref(),
+            allowed_finishes.as_deref(),
+        ) else {
             return (RepairResult::Failed, vec![]);
         };
 
@@ -367,6 +401,8 @@ impl<'a> ScoredPathContext<'a> {
         fixed_start: Option<NavNodeId>,
         fixed_finish: Option<NavNodeId>,
         weights: &ScoreWeights,
+        allowed_starts: Option<&[NavNodeId]>,
+        allowed_finishes: Option<&[NavNodeId]>,
     ) -> Option<(NavNodeId, NavNodeId, f64)> {
         let n = nav.nodes.len();
 
@@ -376,7 +412,9 @@ impl<'a> ScoredPathContext<'a> {
         // never searched over, only ever used as-is.
         let starts: Vec<NavNodeId> = match fixed_start {
             Some(s) => vec![s],
-            None => self.search_candidates.clone(),
+            None => allowed_starts
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| self.search_candidates.clone()),
         };
 
         let mut best_score: Option<f64> = None;
@@ -390,7 +428,9 @@ impl<'a> ScoredPathContext<'a> {
         // so re-collecting on every outer iteration was pure O(n) waste repeated n times.
         let finishes: Vec<NavNodeId> = match fixed_finish {
             Some(f) => vec![f],
-            None => self.search_candidates.clone(),
+            None => allowed_finishes
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| self.search_candidates.clone()),
         };
 
         // Reused across every candidate pair below instead of allocating a fresh `Vec` per pair --

@@ -1,9 +1,13 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
+import { configAllCells } from "../../pixi/tessellationCells";
+import { getTessellationCellTypes } from "../../wasm/mazeService";
 import { SidePanel } from "../SidePanel";
 import { CategoryInfoModal } from "../CategoryInfoModal";
 import { InfoIconButton } from "../InfoIconButton";
 import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
+import { ElementPlacementSettingsDialog } from "../dialogs/ElementPlacementSettingsDialog";
 import { ToggleRow } from "../ToggleRow";
 import { ElevatorSpanRow } from "../ElevatorSpanRow";
 import { SliderRow } from "../SliderRow";
@@ -27,6 +31,8 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const multiFloor = useMazeStore((s) => s.floors.length > 1);
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
 
   const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
   const setElementsParam = useMazeStore((s) => s.setElementsParam);
@@ -34,12 +40,36 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
 
   const [openInfoCategory, setOpenInfoCategory] = useState<Category | null>(null);
   const [splitSettingsDialogOpen, setSplitSettingsDialogOpen] = useState(false);
+  const [elementPlacementDialogOpen, setElementPlacementDialogOpen] = useState(false);
+
+  // Cell-type keys are supplied by the active core tessellation, not inferred from web geometry.
+  // This also lets new tessellations expose placement controls without a UI-side key registry.
+  const cellTypes = useMemo(() => {
+    try {
+      return getTessellationCellTypes({
+        tessellation: fieldConfig.tessellation,
+        points: configAllCells(fieldConfig, smoothPrimitives),
+      }).keys;
+    } catch {
+      // The settings panel can mount while WASM is still loading; hide the optional menu until
+      // its authoritative type list is available rather than showing an incomplete matrix.
+      return [];
+    }
+  }, [fieldConfig, smoothPrimitives]);
 
   const vertexParams = initialConfig as { method: string } & GenerationParams;
 
   return (
     <SidePanel title={m["generation.vertex_settings_title"]()} onClose={onClose}>
     <div style={styles.panelBody}>
+      {cellTypes.length > 1 && (
+        <Inline gap="groupGap" style={styles.placementRow}>
+          <span style={styles.paramLabel}>{m["generation.element_placement"]()}</span>
+          <Button variant="secondary" layoutStyle={styles.paramButton} onClick={() => setElementPlacementDialogOpen(true)}>
+            {m["generation.element_placement_settings"]()}
+          </Button>
+        </Inline>
+      )}
       {/* Growth */}
       <div style={styles.category}>
         <div style={styles.categoryHeader}>
@@ -119,6 +149,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
 
       {splitSettingsDialogOpen && (
         <SplitSettingsDialog onClose={() => setSplitSettingsDialogOpen(false)} />
+      )}
+      {elementPlacementDialogOpen && (
+        <ElementPlacementSettingsDialog cellTypes={cellTypes} multiFloor={multiFloor} onClose={() => setElementPlacementDialogOpen(false)} />
       )}
 
       {openInfoCategory === "growth" && (
@@ -208,6 +241,10 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.body),
   },
   paramRow: {
+    minHeight: controlRowHeight,
+    boxSizing: "border-box",
+  },
+  placementRow: {
     minHeight: controlRowHeight,
     boxSizing: "border-box",
   },

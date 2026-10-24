@@ -1,6 +1,8 @@
 use crate::graph::Graph;
 use crate::graph::nav::NavGraph;
-use crate::graph::pathfinding::{dijkstra_forward, dijkstra_reverse};
+use crate::graph::pathfinding::dijkstra_forward;
+#[cfg(test)]
+use crate::graph::pathfinding::dijkstra_reverse;
 use crate::ids::NodeId;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use std::collections::{HashMap, VecDeque};
@@ -54,6 +56,7 @@ pub(crate) fn farthest_from(nav: &NavGraph, source: usize) -> NodeId {
 
 /// Farthest node that can forward-reach `target` (reverse BFS/Dijkstra) — same tie-break and
 /// fallback rules as `farthest_from`, mirrored for the incoming direction.
+#[cfg(test)]
 pub(crate) fn farthest_to(nav: &NavGraph, target: usize) -> NodeId {
     let dist = dijkstra_reverse(nav, target);
     dist.iter()
@@ -73,6 +76,7 @@ pub(crate) fn farthest_from_exhaustive(graph: &Graph, source: NodeId) -> NodeId 
 
 /// `SEARCH_MODE_EXHAUSTIVE` counterpart to `farthest_to`: plain reverse BFS (incoming edges) over
 /// every raw-graph node. Same tie-break/fallback rules.
+#[cfg(test)]
 pub(crate) fn farthest_to_exhaustive(graph: &Graph, target: NodeId) -> NodeId {
     let dist = bfs_distances(graph, target, false);
     farthest_from_distances(&dist, target)

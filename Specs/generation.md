@@ -260,6 +260,16 @@ Whether the panel is open is a persistent part of generation config, following t
 
 Every `SliderRow` in this panel also has a bounded numeric density editor. It accepts any finite value from `0` through `1`, preserving precision beyond the slider's `0.01` increment. This applies consistently to growth, one-way, teleport, split, and vertical controls; the existing Rust/WASM range clamp remains the final validation boundary. Each editor has an accessible name; where a short row label is reused, that name includes its category.
 
+### Element placement by cell type
+
+`ElementsConfig.cell_type_restrictions` is an optional matrix keyed by generated element kind (`start`, `finish`, `one_way`, `teleport`, `split`, `vertical_passage`, `elevator`) and a tessellation cell-type key. An explicit `false` forbids the combination; omitted entries, including the entire field in older project files, remain allowed. The matrix is resolved against the active tessellation before generation so unknown element or cell-type keys fail the request instead of being ignored.
+
+The CustomVertexBased settings panel shows the placement dialog only when the active tessellation has more than one cell type. The dialog contains switches for each element/type pair; vertical-passage and elevator rows appear only for multiple floors. Its width grows with the number of type columns, up to the viewport width. Changes are a local draft until **Confirm**; **Cancel** and closing the dialog discard them. The two per-column bulk-action buttons share the natural width of their longer localized label.
+
+Generation checks the matrix at every relevant source and destination. A teleport requires both its source and target cell type to allow `teleport`; an elevator and vertical passage require every participating cell to allow their respective type. A regular or vertical passage is allowed to remain bidirectional if either endpoint forbids `one_way`; it is never made one-way in that case. Split placement is checked at its source cell. Automatically selected start and finish endpoints are filtered by their own matrix rows during repair; explicit preset endpoints remain an intentional user choice and are not moved. In QC-only mode the matrix is still retained while preset locks are removed, because it is a generation setting rather than preset protection.
+
+When a placement rule prevents a chance-driven roll, the vertex-based debug tape emits `ElementRollSkipped` with stable element and cell-type keys. The web debug narration translates both values, lowercases them, and places them in quotes.
+
 ## Seed-history navigation
 
 The seed field's previous/next history buttons use the shared tool-tooltip layout: the primary line identifies the action (for example, "Previous seed") and a tertiary second line identifies the destination seed (for example, "Seed: 42"). At a history boundary, each disabled button instead gives a tertiary explanation that there is no earlier or later seed. This makes the current position clear without opening the Seed History dialog (GitHub issue #780).

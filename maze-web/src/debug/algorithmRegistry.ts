@@ -28,6 +28,7 @@ import type { EventedEventKind } from "../wasm/mazeService";
 import { resolveCheckLabel, resolveStrategyLabel } from "../components/features/qualityI18n";
 import { resolveIssueSourceLabel } from "../components/issueRegistry";
 import { resolveIssueHighlight, type NormalizedIssuePayload } from "../components/issueHighlight";
+import { cellTypeLabel, generatedElementLabel } from "../i18n/cellTypeLabel";
 import * as m from "~/paraglide/messages";
 
 /** One piece of a tokenized narration line — mirrors the `Token` union in `DebugEventTree.tsx`
@@ -629,6 +630,17 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
           ? m["debug.tree.cross_floor_teleport_rolled_other"]({ param: fmt(event.balance), roll: fmt(event.roll) })
           : m["debug.tree.cross_floor_teleport_rolled_same"]({ param: fmt(event.balance), roll: fmt(event.roll) }),
       }];
+    case "ElementRollSkipped":
+      return [
+        {
+          kind: "text",
+          text: m["debug.tree.element_roll_skipped"]({
+            element: generatedElementLabel(event.element).toLocaleLowerCase(),
+            cellType: cellTypeLabel(event.cellType).toLocaleLowerCase(),
+          }) + " ",
+        },
+        { kind: "node", id: event.src },
+      ];
   }
 }
 

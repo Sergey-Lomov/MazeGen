@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, ElementCellTypeRestrictions, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
@@ -296,6 +296,7 @@ export interface GenerationActions {
   /** Boolean-valued `ElementsConfig` fields (currently only `allow_non_consecutive_elevator_floors`,
    * GitHub issue #337) — kept separate from `setElementsParam` since that one is typed to `number`. */
   setElementsBoolParam: (key: "allow_non_consecutive_elevator_floors", value: boolean) => void;
+  setElementCellTypeRestrictions: (restrictions: ElementCellTypeRestrictions | undefined) => void;
   setRandomSeed: (v: boolean) => void;
   setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;

@@ -2,6 +2,7 @@ use super::*;
 use crate::generation::split_pattern::SplitGenerationConfig;
 use crate::generation::test_utils::{default_elements, make_field_graph_ids};
 use rand::SeedableRng;
+use std::collections::BTreeMap;
 
 pub(super) fn rng(seed: u64) -> MazeRng {
     MazeRng::seed_from_u64(seed)
@@ -48,6 +49,56 @@ pub(super) fn generate_default_split<T: Tessellation>(
 
 pub(super) fn empty_presets() -> super::PresetState {
     super::PresetState::empty()
+}
+
+#[test]
+fn one_way_forbidden_by_placement_rules_produces_a_bidirectional_passage() {
+    let (field, mut graph, _ids) = make_field_graph_ids(2, 1);
+    let level = field.levels_ordered().next().unwrap();
+    let src = field
+        .node_at(level, crate::space::SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let dst = field
+        .node_at(level, crate::space::SquarePoint { x: 1, y: 0 })
+        .unwrap();
+    let rules = ElementPlacementRules::from_overrides(
+        field.tessellation(),
+        &BTreeMap::from([(
+            "one_way".to_string(),
+            BTreeMap::from([("cell".to_string(), false)]),
+        )]),
+    )
+    .expect("known element and cell type must resolve");
+    let mut state = GenState::new_with_rules(&graph, 1, src, Some(rules));
+    let elements = ElementsConfig {
+        one_way_chance: 1.0,
+        ..default_elements()
+    };
+
+    let mut log = EventLog::new();
+    let added = {
+        let mut scope = log.enter("step");
+        try_add_regular_edge(
+            &mut graph,
+            &field,
+            src,
+            dst,
+            &elements,
+            &empty_presets(),
+            &mut state,
+            Some(&mut scope),
+        )
+    };
+
+    assert_eq!(added, Some((src, dst, true)));
+    assert!(graph.edge_between(src, dst).is_some());
+    assert!(graph.edge_between(dst, src).is_some());
+    let skipped: Vec<_> = log
+        .finish()
+        .iter()
+        .filter(|event| matches!(event, VertexBasedEvent::ElementRollSkipped { element, cell_type, .. } if element == "one_way" && cell_type == "cell"))
+        .collect();
+    assert_eq!(skipped.len(), 2);
 }
 
 // ─── handle_empty_frontier / reserve scan (GitHub issue #356 regression) ───────────────

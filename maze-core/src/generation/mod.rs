@@ -59,9 +59,10 @@ pub use split_pattern::{
 };
 pub use split_pattern_logic::{ResolvedFace, split_adaptation_candidates};
 pub use types::{
-    ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
-    NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,
-    PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
+    ElementPlacementRules, ElementsConfig, GeneratedElementKind, GenerationAlgorithm,
+    GenerationConfig, GenerationParams, LockedNode, NodeLockKind, PresetConnection,
+    PresetConnectionState, PresetElevator, PresetEndpoint, PresetVerticalPassage,
+    TeleportDirection, VerticalPassageDirection,
 };
 pub use vertex_based::{
     VertexBasedEvent, debug_value_names as vertex_based_debug_value_names,
@@ -96,7 +97,7 @@ fn dispatch<T: Tessellation>(
     match config.algorithm {
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut start_reassignment = None;
-            vertex_based::generate(
+            vertex_based::generate_with_rules(
                 graph,
                 field,
                 ids,
@@ -104,6 +105,7 @@ fn dispatch<T: Tessellation>(
                 start,
                 &params,
                 &config.elements,
+                config.element_placement_rules.clone(),
                 &config.split_generation,
                 preset_state,
                 &mut start_reassignment,
@@ -267,7 +269,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();
-            vertex_based::generate(
+            vertex_based::generate_with_rules(
                 graph,
                 field,
                 ids,
@@ -275,6 +277,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
                 start,
                 &params,
                 &config.elements,
+                config.element_placement_rules.clone(),
                 &config.split_generation,
                 preset_state,
                 &mut start_reassignment,

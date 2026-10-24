@@ -16,8 +16,8 @@ use super::debug_state::DebugGenerationState;
 use super::split_logic::{SplitOutcome, StartReassignment, try_split_src};
 use super::split_pattern::{PatternVariantCache, SplitGenerationConfig};
 use super::{
-    ElementsConfig, GenerationParams, PresetState, can_connect, gaussian_weighted_index,
-    try_add_edge, try_add_edge_kind,
+    ElementPlacementRules, ElementsConfig, GeneratedElementKind, GenerationParams, PresetState,
+    can_connect, gaussian_weighted_index, try_add_edge, try_add_edge_kind,
 };
 use crate::event_log::{EventLog, ScopeGuard};
 use crate::graph::{EdgeKind, Graph};
@@ -27,6 +27,79 @@ use crate::space::{MultiLevelField, Tessellation};
 use rand::{Rng, SeedableRng};
 use std::collections::HashSet;
 pub use vertex_based_event::{VertexBasedEvent, debug_value_names};
+
+/// Emits the explicit no-roll diagnostic required when a cell-type placement rule blocks a
+/// chance-driven generator element. Kept next to `GenState` so every vertex-based path shares
+/// the same policy and narration payload.
+pub(super) fn element_roll_allowed<T: Tessellation>(
+    state: &GenState,
+    field: &MultiLevelField<T>,
+    src: NodeId,
+    kind: GeneratedElementKind,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> bool {
+    if state.allows(field, kind, src) {
+        return true;
+    }
+    if let Some(log) = scope.as_deref_mut()
+        && let Some(cell) = field.cell_of(src)
+    {
+        log.emit(VertexBasedEvent::ElementRollSkipped {
+            src,
+            element: kind.key().to_string(),
+            cell_type: field.tessellation().cell_type_key_of(cell).to_string(),
+        });
+    }
+    false
+}
+
+/// Adds a regular passage while suppressing its one-way-direction roll when either endpoint
+/// forbids one-way elements. A regular passage remains valid: only its optional directionality
+/// is constrained by the placement matrix.
+pub(super) fn try_add_regular_edge<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    src: NodeId,
+    dst: NodeId,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> Option<(NodeId, NodeId, bool)> {
+    let one_way_allowed = state.allows(field, GeneratedElementKind::OneWay, src)
+        && state.allows(field, GeneratedElementKind::OneWay, dst);
+    if !one_way_allowed && elements.one_way_chance > 0.0 {
+        let _ = element_roll_allowed(
+            state,
+            field,
+            src,
+            GeneratedElementKind::OneWay,
+            scope.as_deref_mut(),
+        );
+        let _ = element_roll_allowed(
+            state,
+            field,
+            dst,
+            GeneratedElementKind::OneWay,
+            scope.as_deref_mut(),
+        );
+    }
+    add_edge_and_detect_direction(graph, src, dst, |g| {
+        if one_way_allowed {
+            try_add_edge(g, src, dst, elements, preset_state, &mut state.rng)
+        } else {
+            try_add_edge_kind(
+                g,
+                src,
+                dst,
+                EdgeKind::Basic,
+                0.0,
+                preset_state,
+                &mut state.rng,
+            )
+        }
+    })
+}
 
 pub(super) struct FrontierEntry {
     node: NodeId,
@@ -45,12 +118,23 @@ pub(super) struct GenState {
     pub(super) in_reserve: HashSet<NodeId>,
     pub(super) rng: MazeRng,
     pub(super) all_nodes: Vec<NodeId>,
+    pub(super) element_placement_rules: Option<ElementPlacementRules>,
     /// Split-pattern variants per (pattern, cell binding), computed once per run.
     pub(super) pattern_variants: PatternVariantCache,
 }
 
 impl GenState {
+    #[cfg(test)]
     pub(super) fn new(graph: &Graph, seed: u64, start: NodeId) -> Self {
+        Self::new_with_rules(graph, seed, start, None)
+    }
+
+    pub(super) fn new_with_rules(
+        graph: &Graph,
+        seed: u64,
+        start: NodeId,
+        element_placement_rules: Option<ElementPlacementRules>,
+    ) -> Self {
         let mut all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
         all_nodes.sort_unstable();
         let mut state = GenState {
@@ -61,6 +145,7 @@ impl GenState {
             in_reserve: HashSet::new(),
             rng: MazeRng::seed_from_u64(seed),
             all_nodes,
+            element_placement_rules,
             pattern_variants: PatternVariantCache::default(),
         };
         // preset_connected nodes are NOT added to visited upfront — this keeps them visible
@@ -69,6 +154,19 @@ impl GenState {
         state.visited.insert(start);
         add_to_frontier(start, None, &mut state.frontier, &mut state.in_frontier);
         state
+    }
+
+    pub(super) fn allows<T: Tessellation>(
+        &self,
+        field: &MultiLevelField<T>,
+        kind: GeneratedElementKind,
+        node: NodeId,
+    ) -> bool {
+        self.element_placement_rules.as_ref().is_none_or(|rules| {
+            field
+                .cell_of(node)
+                .is_some_and(|cell| rules.allows(field.tessellation(), kind, cell))
+        })
     }
 }
 
@@ -84,10 +182,43 @@ pub fn generate<T: Tessellation>(
     split_config: &SplitGenerationConfig,
     preset_state: &PresetState,
     start_reassignment: &mut Option<StartReassignment>,
+    event_log: Option<&mut EventLog<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
+) {
+    generate_with_rules(
+        graph,
+        field,
+        ids,
+        seed,
+        start,
+        params,
+        elements,
+        None,
+        split_config,
+        preset_state,
+        start_reassignment,
+        event_log,
+        debug_state,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn generate_with_rules<T: Tessellation>(
+    graph: &mut Graph,
+    field: &mut MultiLevelField<T>,
+    ids: &mut IdGenerator,
+    seed: u64,
+    start: NodeId,
+    params: &GenerationParams,
+    elements: &ElementsConfig,
+    element_placement_rules: Option<ElementPlacementRules>,
+    split_config: &SplitGenerationConfig,
+    preset_state: &PresetState,
+    start_reassignment: &mut Option<StartReassignment>,
     mut event_log: Option<&mut EventLog<VertexBasedEvent>>,
     mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
-    let mut state = GenState::new(graph, seed, start);
+    let mut state = GenState::new_with_rules(graph, seed, start, element_placement_rules);
     if let Some(log) = event_log.as_deref_mut() {
         log.emit(VertexBasedEvent::StartVisited { node: start });
     }
@@ -161,21 +292,46 @@ fn handle_empty_frontier<T: Tessellation>(
 ) -> bool {
     // Teleport roll happens before any reserve lookup — a hit replaces this step's
     // entire mechanism (bridges via a teleport instead of a geometric-adjacency bridge).
-    let teleport_roll = state.rng.random::<f64>();
-    let teleport_fired = teleport_roll < elements.teleport_chance;
-    if let Some(log) = scope.as_deref_mut() {
+    let teleport_eligible = state.all_nodes.iter().any(|node| {
+        state.visited.contains(node) && state.allows(field, GeneratedElementKind::Teleport, *node)
+    }) && state.all_nodes.iter().any(|node| {
+        !state.visited.contains(node) && state.allows(field, GeneratedElementKind::Teleport, *node)
+    });
+    let teleport_roll = teleport_eligible.then(|| state.rng.random::<f64>());
+    let teleport_fired = teleport_roll.is_some_and(|roll| roll < elements.teleport_chance);
+    if let Some(log) = scope.as_deref_mut()
+        && let Some(roll) = teleport_roll
+    {
         log.emit(VertexBasedEvent::TeleportBridgeRolled {
-            roll: teleport_roll,
+            roll,
             teleport_chance: elements.teleport_chance,
             fired: teleport_fired,
         });
+    }
+    if !teleport_eligible && elements.teleport_chance > 0.0 {
+        if let Some(&blocked) = state
+            .all_nodes
+            .iter()
+            .find(|node| !state.allows(field, GeneratedElementKind::Teleport, **node))
+        {
+            let _ = element_roll_allowed(
+                state,
+                field,
+                blocked,
+                GeneratedElementKind::Teleport,
+                scope.as_deref_mut(),
+            );
+        }
     }
     if teleport_fired {
         let unvisited: Vec<NodeId> = state
             .all_nodes
             .iter()
             .copied()
-            .filter(|n| !state.visited.contains(n))
+            .filter(|n| {
+                !state.visited.contains(n)
+                    && state.allows(field, GeneratedElementKind::Teleport, *n)
+            })
             .collect();
         if unvisited.is_empty() {
             // Nothing left to bring in via teleport either — generation is done.
@@ -188,7 +344,9 @@ fn handle_empty_frontier<T: Tessellation>(
             .all_nodes
             .iter()
             .copied()
-            .filter(|n| state.visited.contains(n))
+            .filter(|n| {
+                state.visited.contains(n) && state.allows(field, GeneratedElementKind::Teleport, *n)
+            })
             .collect();
         let bridge = visited_nodes[state.rng.random_range(0..visited_nodes.len())];
 
@@ -288,6 +446,18 @@ fn handle_empty_frontier<T: Tessellation>(
         let mut search_scope = scope.as_deref_mut().map(|log| log.enter("reserve_search"));
         let mut kept: Vec<NodeId> = Vec::with_capacity(state.reserve.len());
         let mut reachable: Vec<NodeId> = Vec::new();
+        let placement_rules = state.element_placement_rules.clone();
+        let allows_vertical_passage = |node: NodeId| {
+            placement_rules.as_ref().is_none_or(|rules| {
+                field.cell_of(node).is_some_and(|cell| {
+                    rules.allows(
+                        field.tessellation(),
+                        GeneratedElementKind::VerticalPassage,
+                        cell,
+                    )
+                })
+            })
+        };
         for candidate in state.reserve.drain(..) {
             state.in_reserve.remove(&candidate);
             if state.visited.contains(&candidate) {
@@ -304,9 +474,11 @@ fn handle_empty_frontier<T: Tessellation>(
                 .into_iter()
                 .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state))
                 || (elements.vertical_chance > 0.0
+                    && allows_vertical_passage(candidate)
                     && field.vertical_neighbors(candidate).into_iter().any(|n| {
                         state.visited.contains(&n)
                             && can_connect(n, candidate, preset_state)
+                            && allows_vertical_passage(n)
                             && graph.edge_between(n, candidate).is_none()
                             && graph.edge_between(candidate, n).is_none()
                     }));
@@ -391,13 +563,25 @@ fn handle_empty_frontier<T: Tessellation>(
         .filter(|&n| {
             state.visited.contains(&n)
                 && can_connect(n, src, preset_state)
+                && state.allows(field, GeneratedElementKind::VerticalPassage, n)
                 && graph.edge_between(n, src).is_none()
                 && graph.edge_between(src, n).is_none()
         })
         .collect();
 
-    let vertical_roll = state.rng.random::<f64>();
-    let vertical_hit = vertical_roll < elements.vertical_chance;
+    let vertical_eligible = state.allows(field, GeneratedElementKind::VerticalPassage, src)
+        && !vertical_neighbors.is_empty();
+    if !vertical_eligible && elements.vertical_chance > 0.0 {
+        let _ = element_roll_allowed(
+            state,
+            field,
+            src,
+            GeneratedElementKind::VerticalPassage,
+            scope.as_deref_mut(),
+        );
+    }
+    let vertical_roll = vertical_eligible.then(|| state.rng.random::<f64>());
+    let vertical_hit = vertical_roll.is_some_and(|roll| roll < elements.vertical_chance);
     let use_vertical = if vertical_hit {
         !vertical_neighbors.is_empty()
     } else {
@@ -434,13 +618,28 @@ fn handle_empty_frontier<T: Tessellation>(
 
     let bridge = if use_vertical {
         let bridge = vertical_neighbors[state.rng.random_range(0..vertical_neighbors.len())];
-        add_vertical_passage_edge(graph, elements, state, bridge, src, scope.as_deref_mut());
+        add_vertical_passage_edge(
+            graph,
+            field,
+            elements,
+            state,
+            bridge,
+            src,
+            scope.as_deref_mut(),
+        );
         bridge
     } else {
         let bridge = geometric_bridge.expect("geometric bridge picked above when !use_vertical");
-        let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
-            try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng)
-        });
+        let added = try_add_regular_edge(
+            graph,
+            field,
+            bridge,
+            src,
+            elements,
+            preset_state,
+            state,
+            scope.as_deref_mut(),
+        );
         if let Some((from, to, bidirectional)) = added
             && let Some(log) = scope.as_deref_mut()
         {
@@ -575,7 +774,14 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     // Teleport roll happens immediately after cyclic, before any geometric-neighbor pool is
     // built — a hit affects the cyclic candidate pool (below) and adds one extra teleport
     // connection alongside whatever the corridor/junction roll produces.
-    let teleport_hit = if roll_teleport {
+    let teleport_hit = if roll_teleport
+        && element_roll_allowed(
+            state,
+            field,
+            src,
+            GeneratedElementKind::Teleport,
+            scope.as_deref_mut(),
+        ) {
         let teleport_roll = state.rng.random::<f64>();
         let hit = teleport_roll < elements.teleport_chance;
         if let Some(log) = scope.as_deref_mut() {
@@ -596,7 +802,9 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     // byte-identical to before this feature existed (floor_count is a static config property,
     // not per-step branching, so skipping it here doesn't violate the "always consumed" rule
     // that governs `teleport_chance`/`cyclicity`/`split_chance`).
-    let vertical_hit = if roll_teleport && field.level_count() > 1 {
+    let vertical_eligible = state.allows(field, GeneratedElementKind::VerticalPassage, src)
+        || state.allows(field, GeneratedElementKind::Elevator, src);
+    let vertical_hit = if roll_teleport && field.level_count() > 1 && vertical_eligible {
         let vertical_roll = state.rng.random::<f64>();
         let hit = vertical_roll < elements.vertical_chance;
         if let Some(log) = scope.as_deref_mut() {
@@ -609,6 +817,22 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
         }
         hit
     } else {
+        if roll_teleport && field.level_count() > 1 && !vertical_eligible {
+            let _ = element_roll_allowed(
+                state,
+                field,
+                src,
+                GeneratedElementKind::VerticalPassage,
+                scope.as_deref_mut(),
+            );
+            let _ = element_roll_allowed(
+                state,
+                field,
+                src,
+                GeneratedElementKind::Elevator,
+                scope.as_deref_mut(),
+            );
+        }
         false
     };
 
@@ -719,9 +943,16 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
                 )
             })
         } else {
-            add_edge_and_detect_direction(graph, src, cyclic, |g| {
-                try_add_edge(g, src, cyclic, elements, preset_state, &mut state.rng)
-            })
+            try_add_regular_edge(
+                graph,
+                field,
+                src,
+                cyclic,
+                elements,
+                preset_state,
+                state,
+                scope.as_deref_mut(),
+            )
         };
         if let Some((from, to, bidirectional)) = added
             && let Some(log) = scope.as_deref_mut()
@@ -765,9 +996,16 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
 
     let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
     for &dst in &connected {
-        let added = add_edge_and_detect_direction(graph, src, dst, |g| {
-            try_add_edge(g, src, dst, elements, preset_state, &mut state.rng)
-        });
+        let added = try_add_regular_edge(
+            graph,
+            field,
+            src,
+            dst,
+            elements,
+            preset_state,
+            state,
+            scope.as_deref_mut(),
+        );
         if let Some((from, to, bidirectional)) = added
             && let Some(log) = scope.as_deref_mut()
         {
@@ -797,7 +1035,10 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
             .all_nodes
             .iter()
             .copied()
-            .filter(|n| !state.visited.contains(n))
+            .filter(|n| {
+                !state.visited.contains(n)
+                    && state.allows(field, GeneratedElementKind::Teleport, *n)
+            })
             .collect();
         let unvisited = if field.level_count() > 1 {
             filter_teleport_pool_by_floor(
@@ -931,6 +1172,7 @@ fn roll_cyclic_edge<T: Tessellation>(
             .filter(|&n| {
                 n != src
                     && state.visited.contains(&n)
+                    && state.allows(field, GeneratedElementKind::Teleport, n)
                     && can_connect(src, n, preset_state)
                     && graph.edge_between(src, n).is_none()
                     && graph.edge_between(n, src).is_none()
