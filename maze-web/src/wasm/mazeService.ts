@@ -294,6 +294,38 @@ export interface FaceGeometry {
   canonical_face: number | null;
   contact_point: WorldPoint;
   segments: SegmentDto[];
+  /// Present when an active fold is glued to this face; the face is then unpaired (its own
+  /// `segments` and `contact_point`). Core resolves all of it; never derive it from coordinates.
+  fold?: FoldFace | null;
+}
+
+/// An active fold seen from one of its faces (`runner::geometry::FoldFaceDto`).
+export interface FoldFace {
+  /// The fold's index in the request's `topology.folds`.
+  fold: number;
+  partner_cell: [number, number];
+  /// The partner's glued face, as a position in its `faces_of`.
+  partner_face_idx: number;
+  twist: boolean;
+  /// Which end of the partner's face chain this face's chain start meets.
+  start_meets: "start" | "end";
+  /// `false` for a topological-only fold (not passed to a distance algorithm).
+  isometric: boolean;
+  /// Affine `[a, b, c, d, e, f]` (`x' = a*x + c*y + e`, `y' = b*x + d*y + f`) mapping the partner's
+  /// face geometry into this cell's coordinates; `null` unless `isometric`.
+  transform: [number, number, number, number, number, number] | null;
+}
+
+export interface FoldEndRequest {
+  cell: [number, number];
+  face_idx: number;
+}
+
+/// The folds of one floor plus the floor's whole cell set (which decides fold activity).
+export interface TopologyRequest {
+  field_cells: [number, number][];
+  folds: { a: FoldEndRequest; b: FoldEndRequest; twist: boolean; group: number }[];
+  groups: { id: number; folds: number[] }[];
 }
 
 /// The boundary representation of a snapshot: exactly one per request, never both.
@@ -328,6 +360,9 @@ export type PathCellGeometry = CellGeometry<PathBoundary>;
 export interface GeometrySnapshot<B extends PathBoundary | PolylineBoundary = PathBoundary | PolylineBoundary> {
   instance: string;
   field_version: number;
+  /// Echo of the request's `topologyVersion`; the snapshot is valid for this field and topology
+  /// version pair.
+  topology_version: number;
   cells: CellGeometry<B>[];
 }
 
@@ -340,24 +375,32 @@ export function getGeometrySnapshot(config: {
   cells: [number, number][];
   boundary: { kind: "polyline"; tolerance: number };
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
 }): GeometrySnapshot<PolylineBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
   cells: [number, number][];
   boundary: { kind: "path" };
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
 }): GeometrySnapshot<PathBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
   cells: [number, number][];
   boundary: BoundaryRequest;
   fieldVersion: number;
+  topologyVersion?: number;
+  topology?: TopologyRequest;
 }): GeometrySnapshot {
   return getWasm().geometry_snapshot({
     tessellation: config.tessellation,
     cells: config.cells,
     boundary: config.boundary,
     field_version: config.fieldVersion,
+    topology_version: config.topologyVersion ?? 0,
+    topology: config.topology ?? null,
   }) as GeometrySnapshot;
 }
 

@@ -1,6 +1,6 @@
 # Topology: folds and fold groups
 
-Data model and structural validation of per-floor topology (GitHub issue #831, part of the topology epic). A **fold** glues one face of a cell to one face of another cell (or of the same cell), turning a flat field into a cylinder, torus or twisted surface. This layer is pure data plus validation; structural validation knows nothing about the field's cell set. Activity and neighbor lookup against a field are described below (GitHub issue #832); rendering is out of scope.
+Data model and structural validation of per-floor topology (GitHub issue #831, part of the topology epic). A **fold** glues one face of a cell to one face of another cell (or of the same cell), turning a flat field into a cylinder, torus or twisted surface. This layer is pure data plus validation; structural validation knows nothing about the field's cell set. Activity and neighbor lookup against a field are described below (GitHub issue #832), and seam geometry in "Fold geometry" (GitHub issue #833); rendering is out of scope.
 
 Module: `maze-core/src/space/topology.rs`.
 
@@ -56,6 +56,16 @@ Inactive folds are ignored by adjacency.
 ## Crossing orientation
 
 `Orientation { flips, entry }` separates chirality change from direction correspondence. `flips` is `false` for ordinary neighbours and untwisted folds, `true` for a twisted fold (`Fold::twist`). `entry` is the face the crossing leaves through. Contract: with equal face counts, the face at circular offset `k` from the entry face maps to the face at offset `-k` from the exit face (`flips == false`, the ordinary mirror across a shared side) or `+k` (`flips == true`). `Crossing::transfer(tessellation, from, face)` applies it and returns `None` when the face counts differ. Adapting algorithms to use `transfer` is deferred; the contract is fixed.
+
+## Fold geometry
+
+GitHub issue #833. Module: `maze-core/src/space/geometry/fold.rs`. Seam geometry for active folds; inactive folds change nothing.
+
+- **Unpaired folded faces.** A face glued by an *active* fold has no ordinary partner. `Field::edge_owner`, `Field::edge_segments` and `Field::contact_point` (fold-aware counterparts of the `TessellationGeometry` methods of the same names) treat it as unpaired: the face owns itself, its segments are its own `face_segments` (counter-clockwise along its cell, never reversed from a neighbor) and its contact point is the arc-length midpoint of those segments. Each side of a fold therefore computes its own. This holds even when the base `Tessellation::neighbor` of the face is a cell outside the field. Other faces go through the tessellation unchanged. `Field::folded_face(cell, face) -> Option<FoldedFace>` returns the fold, the side and the partner end.
+- **Classification.** `Field::fold_class(fold) -> Option<FoldClass>` (`None` for an unknown or inactive fold) is `Isometric { transform }` or `TopologicalOnly`. A fold is isometric iff one rigid transform `T` maps the **whole** chain of side `b` onto the chain of side `a` within `FOLD_ISOMETRY_EPS` (`1e-7`): same segment count, same segment kinds, same positions and curvature (compared by sampling at `t = 0, ¼, ½, ¾, 1`, with arc radii compared too). A length match alone is not enough, so a line against two collinear halves, a bent chain against a straight one and arcs of equal length but different radius are all `TopologicalOnly`, as are two arcs with the same chord that bulge opposite ways. A topological-only fold glues adjacency but is not passed to the distance algorithm.
+- **Deriving `T` with `twist`.** Chains run counter-clockwise along their own cells. Untwisted, `a`'s start meets `b`'s end (the ordinary match): `b`'s chain is taken reversed and `T` is orientation-preserving (the glued cells end up on opposite sides). Twisted, the starts meet: `b`'s chain is taken as is and `T` is a reflection across the x axis followed by a rotation and translation (`RigidTransform { reflects: true, .. }`), because chirality flips. `T` is fixed by the endpoint correspondence and then verified against the whole chain. Consequently two congruent outer arcs of one ring never match (they curve the same way around their cells), while an outer arc and an inner arc of the same radius and span match under either twist.
+- **`edge_position`.** `space::edge_position(field, from, to)` takes the `Field` (callers on a multi-level field use the field of `from`'s level) and resolves the face through `Field::face_index_toward` and the contact point through `Field::contact_point`. Across an active fold it is `from`'s own contact point on the folded face, not the midpoint of the two centers (the fallback for cells that share no face and no fold). Across a fold `edge_position(a, b) != edge_position(b, a)`: each side has its own point. Without folds the result is unchanged.
+- **Snapshot.** See `Specs/space.md`, "Geometry snapshot lifecycle".
 
 ## v1 constraint
 

@@ -4,9 +4,11 @@
 
 use super::tessellation_factory::{CellCodec, TessellationVisitor, build_tessellation};
 use crate::config::TessellationConfig;
+use maze_core::ids::IdGenerator;
 use maze_core::space::{
-    BoundaryPath, CellScope, PathCommand, Point, RegionMode, Segment, Tessellation,
-    TessellationGeometry, chain_midpoint,
+    BoundaryPath, CellScope, Field, Fold, FoldClass, FoldEnd, FoldGroup, FoldGroupId, FoldId,
+    FoldSide, PathCommand, Point, RegionMode, Segment, Tessellation, TessellationFingerprint,
+    TessellationGeometry, Topology, chain_midpoint,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -21,6 +23,42 @@ pub struct GeometrySnapshotRequest {
     /// Which representation of each cell's boundary to return.
     pub boundary: BoundaryRequest,
     pub field_version: u64,
+    /// The caller's topology version counter, echoed back like `field_version`. Meaningful only
+    /// together with `topology`.
+    #[serde(default)]
+    pub topology_version: u64,
+    /// The floor's folds. Without it (or without active folds) the snapshot is the plain one.
+    #[serde(default)]
+    pub topology: Option<TopologyRequest>,
+}
+
+/// The folds of one floor plus the floor's whole cell set, which decides which folds are active
+/// (`Specs/topology.md`, "Activity"): `cells` of the request may be only a region of it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TopologyRequest {
+    pub field_cells: Vec<[i32; 2]>,
+    pub folds: Vec<FoldRequest>,
+    pub groups: Vec<FoldGroupRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FoldEndRequest {
+    pub cell: [i32; 2],
+    pub face_idx: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FoldRequest {
+    pub a: FoldEndRequest,
+    pub b: FoldEndRequest,
+    pub twist: bool,
+    pub group: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FoldGroupRequest {
+    pub id: u32,
+    pub folds: Vec<usize>,
 }
 
 /// The boundary representation a snapshot carries: one per request, never both.
@@ -39,6 +77,8 @@ pub enum BoundaryRequest {
 pub struct GeometrySnapshot {
     pub instance: String,
     pub field_version: u64,
+    /// Echo of the request's `topology_version`.
+    pub topology_version: u64,
     pub cells: Vec<CellGeometry>,
 }
 
@@ -88,6 +128,39 @@ pub struct FaceGeometry {
     pub contact_point: [f64; 2],
     /// The face's segments, counter-clockwise along this cell's boundary.
     pub segments: Vec<SegmentDto>,
+    /// Present when an active fold is glued to this face. A folded face is unpaired: its
+    /// `segments` and `contact_point` are its own, not shared with a neighbor.
+    pub fold: Option<FoldFaceDto>,
+}
+
+/// An active fold seen from one of its faces. The web reads all of this from here and never
+/// derives it from coordinates.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct FoldFaceDto {
+    /// The fold's index in the request's `topology.folds`.
+    pub fold: usize,
+    /// The partner cell and the position of its glued face in its `faces_of`.
+    pub partner_cell: [i32; 2],
+    pub partner_face_idx: usize,
+    pub twist: bool,
+    /// Which end of the partner's face chain (each running counter-clockwise along its own
+    /// cell) this face's chain start meets: the partner's end when untwisted, its start when
+    /// twisted.
+    pub start_meets: PartnerEnd,
+    /// `true` when the two faces coincide after a rigid transform; `false` for a
+    /// topological-only fold, which is not passed to a distance algorithm.
+    pub isometric: bool,
+    /// For an isometric fold, the affine matrix `[a, b, c, d, e, f]`
+    /// (`x' = a*x + c*y + e`, `y' = b*x + d*y + f`) mapping the partner's face geometry into
+    /// this cell's coordinates; reflecting when `twist`.
+    pub transform: Option<[f64; 6]>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PartnerEnd {
+    Start,
+    End,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -161,6 +234,7 @@ pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySn
     Ok(GeometrySnapshot {
         instance: instance_key(&request.tessellation),
         field_version: request.field_version,
+        topology_version: request.topology_version,
         cells,
     })
 }
@@ -192,6 +266,12 @@ impl TessellationVisitor for Snapshot<'_> {
     type Output = Result<Vec<CellGeometry>, String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        let field = match &self.request.topology {
+            Some(topology) => Some(build_field(&tessellation, codec, topology)?),
+            None => None,
+        };
+        // A fold's class is computed once, not once per face of each of its sides.
+        let mut fold_classes: HashMap<FoldId, Option<FoldClass>> = HashMap::new();
         // Edge geometry is computed once per canonical edge key, and only for the requested cells.
         let mut edges: HashMap<EdgeKey<T>, (Vec<Segment>, Point)> = HashMap::new();
         let mut out = Vec::with_capacity(self.request.cells.len());
@@ -200,7 +280,10 @@ impl TessellationVisitor for Snapshot<'_> {
             let mut face_segments = Vec::new();
             let shape = tessellation.shape_of(cell);
             for (local, &face) in tessellation.faces_of(cell).iter().enumerate() {
-                let key = tessellation.edge_owner(cell, face);
+                let key = match &field {
+                    Some(field) => field.edge_owner(cell, face),
+                    None => tessellation.edge_owner(cell, face),
+                };
                 let (owner_segments, contact) = edges.entry(key).or_insert_with(|| {
                     let segments = tessellation.face_segments(key.0, key.1);
                     let contact = chain_midpoint(&segments);
@@ -218,6 +301,9 @@ impl TessellationVisitor for Snapshot<'_> {
                     canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
                     contact_point: xy(*contact),
                     segments: segments.iter().map(segment_dto).collect(),
+                    fold: field.as_ref().and_then(|field| {
+                        fold_face_dto(field, &mut fold_classes, cell, face, codec)
+                    }),
                 });
                 face_segments.push(segments);
             }
@@ -235,6 +321,88 @@ impl TessellationVisitor for Snapshot<'_> {
         }
         Ok(out)
     }
+}
+
+/// The field of the request's topology: the floor's cells with the folds installed and resolved.
+fn build_field<T: Tessellation>(
+    tessellation: &Arc<T>,
+    codec: CellCodec<T>,
+    request: &TopologyRequest,
+) -> Result<Field<T>, String> {
+    let cells = codec.decode_valid(&**tessellation, &request.field_cells)?;
+    let mut field = Field::new(Arc::clone(tessellation), cells, &mut IdGenerator::new())
+        .map_err(str::to_string)?;
+    let end = |end: &FoldEndRequest| -> Result<FoldEnd<T::CellId>, String> {
+        let cells = codec.decode_valid(&**tessellation, &[end.cell])?;
+        Ok(FoldEnd {
+            cell: cells[0],
+            face_idx: end.face_idx,
+        })
+    };
+    let folds = request
+        .folds
+        .iter()
+        .map(|fold| {
+            Ok(Fold {
+                a: end(&fold.a)?,
+                b: end(&fold.b)?,
+                twist: fold.twist,
+                group: FoldGroupId(fold.group),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let groups = request
+        .groups
+        .iter()
+        .map(|group| FoldGroup {
+            id: FoldGroupId(group.id),
+            folds: group.folds.iter().map(|&fold| FoldId(fold)).collect(),
+        })
+        .collect();
+    // The topology is authored for exactly the requested tessellation, so any fixed fingerprint
+    // matches itself.
+    let fingerprint = TessellationFingerprint::new("snapshot");
+    field
+        .set_topology(
+            Topology::new(fingerprint.clone(), folds, groups),
+            &fingerprint,
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(field)
+}
+
+fn fold_face_dto<T: Tessellation>(
+    field: &Field<T>,
+    fold_classes: &mut HashMap<FoldId, Option<FoldClass>>,
+    cell: T::CellId,
+    face: T::Face,
+    codec: CellCodec<T>,
+) -> Option<FoldFaceDto> {
+    let folded = field.folded_face(cell, face)?;
+    let class = (*fold_classes
+        .entry(folded.fold)
+        .or_insert_with(|| field.fold_class(folded.fold)))?;
+    let transform = match class {
+        FoldClass::Isometric { transform } => Some(match folded.side {
+            // The class maps side b's geometry onto side a's.
+            FoldSide::A => transform,
+            FoldSide::B => transform.inverse(),
+        }),
+        FoldClass::TopologicalOnly => None,
+    };
+    Some(FoldFaceDto {
+        fold: folded.fold.0,
+        partner_cell: wire(folded.partner.cell, codec),
+        partner_face_idx: folded.partner.face_idx,
+        twist: folded.twist,
+        start_meets: if folded.twist {
+            PartnerEnd::Start
+        } else {
+            PartnerEnd::End
+        },
+        isometric: transform.is_some(),
+        transform: transform.map(|t| t.matrix()),
+    })
 }
 
 fn boundary_dto(path: &BoundaryPath, request: BoundaryRequest) -> BoundaryDto {
@@ -397,6 +565,8 @@ mod tests {
             cells,
             boundary,
             field_version: 7,
+            topology_version: 0,
+            topology: None,
         }
     }
 
@@ -429,6 +599,7 @@ mod tests {
                     from: [1.0, 0.0],
                     to: [1.0, 1.0]
                 }],
+                fold: None,
             }
         );
     }
@@ -465,6 +636,7 @@ mod tests {
                                 .iter()
                                 .map(segment_dto)
                                 .collect(),
+                            fold: None,
                         })
                         .collect();
                     cells.push(CellGeometry {
@@ -535,6 +707,175 @@ mod tests {
         let mut request = request(TessellationKind::Radial, cells);
         request.tessellation = cfg;
         assert_eq!(geometry_snapshot(&request).unwrap().cells, expected);
+    }
+
+    /// A 4x2 square field whose east edge is glued to its west edge (face 0 = east, 2 = west).
+    fn cylinder_request(twist: bool, cells: Vec<[i32; 2]>) -> GeometrySnapshotRequest {
+        let field_cells = (0..4).flat_map(|x| (0..2).map(move |y| [x, y])).collect();
+        let folds = (0..2)
+            .map(|y| FoldRequest {
+                a: FoldEndRequest {
+                    cell: [3, y],
+                    face_idx: 0,
+                },
+                b: FoldEndRequest {
+                    cell: [0, y],
+                    face_idx: 2,
+                },
+                twist,
+                group: 0,
+            })
+            .collect();
+        let mut request = request(TessellationKind::Square, cells);
+        request.topology_version = 5;
+        request.topology = Some(TopologyRequest {
+            field_cells,
+            folds,
+            groups: vec![FoldGroupRequest {
+                id: 0,
+                folds: vec![0, 1],
+            }],
+        });
+        request
+    }
+
+    fn assert_matrix(actual: Option<[f64; 6]>, expected: [f64; 6]) {
+        let actual = actual.expect("isometric fold carries a transform");
+        for (a, e) in actual.iter().zip(expected) {
+            assert!((a - e).abs() < 1e-9, "{actual:?} != {expected:?}");
+        }
+    }
+
+    #[test]
+    fn snapshot_carries_fold_partner_correspondence_and_transform() {
+        let snapshot =
+            geometry_snapshot(&cylinder_request(false, vec![[3, 1], [0, 1], [1, 1]])).unwrap();
+        assert_eq!(snapshot.topology_version, 5);
+        let east = snapshot.cells[0].faces[0].fold.as_ref().unwrap();
+        assert_eq!(east.fold, 1);
+        assert_eq!(east.partner_cell, [0, 1]);
+        assert_eq!(east.partner_face_idx, 2);
+        assert!(!east.twist);
+        assert_eq!(east.start_meets, PartnerEnd::End);
+        assert!(east.isometric);
+        assert_matrix(east.transform, [1.0, 0.0, 0.0, 1.0, 4.0, 0.0]);
+        // The same fold from the other side: partner (3,1), the inverse transform.
+        let west = snapshot.cells[1].faces[2].fold.as_ref().unwrap();
+        assert_eq!(west.partner_cell, [3, 1]);
+        assert_eq!(west.partner_face_idx, 0);
+        assert_matrix(west.transform, [1.0, 0.0, 0.0, 1.0, -4.0, 0.0]);
+        // The folded face is unpaired: its own segments and contact point.
+        assert_eq!(snapshot.cells[0].faces[0].contact_point, [4.0, 1.5]);
+        assert_eq!(snapshot.cells[1].faces[2].contact_point, [0.0, 1.5]);
+        // Ordinary faces carry no fold.
+        assert!(snapshot.cells[2].faces.iter().all(|f| f.fold.is_none()));
+    }
+
+    #[test]
+    fn twisted_fold_snapshot_reflects_and_starts_meet() {
+        let snapshot = geometry_snapshot(&cylinder_request(true, vec![[3, 0]])).unwrap();
+        let east = snapshot.cells[0].faces[0].fold.as_ref().unwrap();
+        assert!(east.twist);
+        assert_eq!(east.start_meets, PartnerEnd::Start);
+        assert!(east.isometric);
+        // Reflection across the horizontal axis, then onto the east face (x + 4).
+        assert_matrix(east.transform, [1.0, 0.0, 0.0, -1.0, 4.0, 1.0]);
+    }
+
+    #[test]
+    fn snapshot_is_bound_to_the_topology_version() {
+        let mut request = cylinder_request(false, vec![[3, 0]]);
+        let a = geometry_snapshot(&request).unwrap();
+        request.topology_version = 6;
+        let b = geometry_snapshot(&request).unwrap();
+        assert_eq!((a.topology_version, b.topology_version), (5, 6));
+        assert_eq!(a.field_version, b.field_version);
+        // Same folds, same geometry: only the binding differs.
+        assert_eq!(a.cells, b.cells);
+    }
+
+    #[test]
+    fn topological_only_fold_carries_no_transform() {
+        let mut cfg = config(TessellationKind::Radial);
+        cfg.params.insert("first_ring_cells".to_string(), 6.into());
+        cfg.params.insert("max_cells".to_string(), 200.into());
+        cfg.params
+            .insert("ring_layout".to_string(), "classic".into());
+        let mut request = request(TessellationKind::Radial, vec![[1, 0], [2, 6]]);
+        request.tessellation = cfg;
+        // The outer arcs of two different rings (face 0 is `Outer(0)`): different radii.
+        request.topology = Some(TopologyRequest {
+            field_cells: vec![[1, 0], [2, 6]],
+            folds: vec![FoldRequest {
+                a: FoldEndRequest {
+                    cell: [1, 0],
+                    face_idx: 0,
+                },
+                b: FoldEndRequest {
+                    cell: [2, 6],
+                    face_idx: 0,
+                },
+                twist: false,
+                group: 0,
+            }],
+            groups: vec![FoldGroupRequest {
+                id: 0,
+                folds: vec![0],
+            }],
+        });
+        let snapshot = geometry_snapshot(&request).unwrap();
+        let fold = snapshot.cells[0].faces[0].fold.as_ref().unwrap();
+        assert_eq!(fold.partner_cell, [2, 6]);
+        assert_eq!(fold.partner_face_idx, 0);
+        assert!(!fold.isometric);
+        assert_eq!(fold.transform, None);
+        // The folded face keeps its own arc rather than the paired one of its base neighbor.
+        assert!(matches!(
+            snapshot.cells[0].faces[0].segments[0],
+            SegmentDto::Arc { .. }
+        ));
+    }
+
+    #[test]
+    fn snapshot_without_active_folds_equals_the_plain_snapshot() {
+        let cells = vec![[0, 0], [1, 0], [3, 0]];
+        let plain = geometry_snapshot(&request(TessellationKind::Square, cells.clone())).unwrap();
+        // An empty topology and a fold whose second end is outside the field (inactive).
+        let mut empty = request(TessellationKind::Square, cells.clone());
+        empty.topology = Some(TopologyRequest {
+            field_cells: vec![[0, 0], [1, 0], [3, 0]],
+            folds: vec![],
+            groups: vec![],
+        });
+        assert_eq!(geometry_snapshot(&empty).unwrap().cells, plain.cells);
+        let mut inactive = request(TessellationKind::Square, cells);
+        inactive.topology = Some(TopologyRequest {
+            field_cells: vec![[0, 0], [1, 0], [3, 0]],
+            folds: vec![FoldRequest {
+                a: FoldEndRequest {
+                    cell: [3, 0],
+                    face_idx: 0,
+                },
+                b: FoldEndRequest {
+                    cell: [9, 0],
+                    face_idx: 2,
+                },
+                twist: false,
+                group: 0,
+            }],
+            groups: vec![FoldGroupRequest {
+                id: 0,
+                folds: vec![0],
+            }],
+        });
+        assert_eq!(geometry_snapshot(&inactive).unwrap().cells, plain.cells);
+    }
+
+    #[test]
+    fn snapshot_rejects_an_invalid_topology() {
+        let mut request = cylinder_request(false, vec![[3, 0]]);
+        request.topology.as_mut().unwrap().groups.clear();
+        assert!(geometry_snapshot(&request).is_err());
     }
 
     #[test]

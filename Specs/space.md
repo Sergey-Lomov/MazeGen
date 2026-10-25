@@ -43,7 +43,8 @@ instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` 
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
 (`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
 `floor_aware_distance`) take the instance as their first argument; consumers resolve it from
-the field (`maze.field.tessellation()`).
+the field (`maze.field.tessellation()`). `edge_position` takes the `Field` instead, since it must
+see folds.
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
 "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "snub_square" | "rhombitrihexagonal" | "truncated_hexagonal" | "truncated_trihexagonal" | "elongated_triangular" | "curved_quadrilateral" | "radial", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
@@ -86,7 +87,7 @@ operations reject invalid cells on their own.
   `neighbor_contract_tests` checks `Field::is_straight` against it for every tessellation.
 - **`face_index_toward(tessellation, cell, other)`** (free function) — position in
   `faces_of(cell)` of the face reaching `other`, or `None` when `other` is not a tessellation
-  neighbor. Base adjacency only (geometry, `edge_position`); maze algorithms use the fold-aware `Field::face_index_toward` / `MultiLevelField::face_index_toward`, e.g. the per-face split QC check. `edge_position` does not know folds yet: an edge across a fold falls back to the midpoint of the centers.
+  neighbor. Base adjacency only (geometry, `edge_position`); maze algorithms use the fold-aware `Field::face_index_toward` / `MultiLevelField::face_index_toward`, e.g. the per-face split QC check. `edge_position` takes the `Field` and is fold-aware (see "Folded faces" under "Geometry"); it falls back to the midpoint of the centers only for cells that share neither a face nor an active fold.
 - **`is_valid_cell`** identifies whether a coordinate represents an actual tile. `Field::new` and `Field::from_id_cells` reject invalid points before storing them.
 - **`shape_descriptors`/`shape_of`** — the cell's shape template and allowed transform group (see
   "Shape templates" below). They are the only source of split-pattern variants; the old
@@ -406,6 +407,7 @@ orientation or pixel scale (see "Display transform").
   area, never as a precomputed map of the whole (possibly infinite) space. Both cells get the
   same segments: the owner's run counter-clockwise along its boundary, and the other cell gets
   them reversed. Paired faces are therefore identical as segments and as flattened polylines.
+- **Folded faces.** A face glued by an active fold is unpaired: `Field::edge_owner`, `edge_segments` and `contact_point` give it its own segments and contact point, and `space::edge_position` takes a `Field` so that across a fold it resolves the folded face's own contact point. Folds are classified isometric or topological-only (`Field::fold_class`). See `Specs/topology.md`, "Fold geometry". Without folds nothing changes.
 - **Segments** (kinds: `Line`, `CircularArc`; more may be added) expose operations on a
   normalized parameter `t ∈ [0, 1]`, linear in arc length:
   - `point(t)` and `tangent(t)` (unit length).
@@ -546,7 +548,21 @@ runner, or `None` for the whole space); `maze-wasm`
 exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`. The snapshot's
 `instance` is the serialized tessellation config (equal configs build equal instances) and
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
-cell or a polyline request with a non-positive tolerance is an error. The benchmark measures the snapshot as its
+cell or a polyline request with a non-positive tolerance is an error.
+
+Status (GitHub issue #833): the request may carry `topology_version` and `topology`
+(`{ field_cells, folds: [{ a, b, twist, group }], groups }`, cells as `[x, y]` and `face_idx` a position in
+`faces_of`). `field_cells` is the floor's whole cell set, which decides fold activity (the requested `cells` may be a
+region of it); it must be non-empty and hold only valid cells, otherwise the request is an error. The topology is
+validated structurally and resolved like `Field::set_topology`, and an invalid one is an error. The snapshot echoes `topology_version` and is bound to the field version **and** the topology version: the web
+invalidates it when either changes. Every face of an active fold carries `fold`
+(`{ fold, partner_cell, partner_face_idx, twist, start_meets, isometric, transform }`): the partner `(cell, face)`, the endpoint
+correspondence (`start_meets`: which end of the partner's chain this face's chain start meets, `end` untwisted, `start`
+twisted; plus `twist`) and, for an isometric fold, the affine matrix `[a, b, c, d, e, f]` mapping the partner's face geometry
+into this cell's coordinates (the inverse of the class transform on side `b`). The face's `segments` and `contact_point` are
+its own, unpaired. The web never derives any of this from coordinates. Without `topology`, or with no active fold,
+the snapshot equals the plain one. A folded face's `neighbor` is still the base `Tessellation::neighbor` (possibly a cell
+outside the field); the glued partner is given by `fold` only. The snapshot rebuilds its `Field` on every call. The benchmark measures the snapshot as its
 `geometry` stage.
 
 Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is the web geometry

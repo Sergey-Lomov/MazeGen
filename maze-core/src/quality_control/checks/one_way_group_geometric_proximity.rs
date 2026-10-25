@@ -54,14 +54,14 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
         _requirement: (),
     ) {
         // Each edge's position is resolved once here, not once per compared pair.
-        let tessellation = maze.field.tessellation();
         let one_ways: Vec<_> = one_way_edges_with_endpoints(maze)
             .into_iter()
             .filter_map(|(id, e_from, e_to)| {
                 let level = maze.field.level_index_of(e_from)?;
                 let from = maze.field.cell_of(e_from)?;
                 let to = maze.field.cell_of(e_to)?;
-                Some((id, level, edge_position(tessellation, from, to)))
+                let level_field = maze.field.field_of(maze.field.level_of(e_from)?)?;
+                Some((id, level, edge_position(level_field, from, to)))
             })
             .collect();
         if one_ways.len() < 2 {

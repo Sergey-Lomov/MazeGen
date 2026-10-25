@@ -2,7 +2,10 @@ use super::*;
 use crate::graph::EdgeKind;
 use crate::ids::EdgeId;
 use crate::meta::MazeMeta;
-use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use crate::space::{
+    Fold, FoldEnd, FoldGroup, FoldGroupId, FoldId, MultiLevelField, SquarePoint,
+    SquareTessellation, TessellationFingerprint, Topology, square_rect,
+};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -98,6 +101,55 @@ fn measures_edge_position_not_node_endpoints() {
     expected.sort_unstable();
     assert_eq!(group, expected);
     assert_eq!(to_remove, 1);
+}
+
+#[test]
+fn measures_a_one_way_across_a_fold_from_the_folded_faces_contact_point() {
+    // Row of four squares with the east edge of x=3 glued to the west edge of x=0. The one-way
+    // 3->0 crosses the fold: its position is the contact point (4, 0.5) of the folded face, 2.0
+    // away from the position (2, 0.5) of the one-way 1->2. The midpoint of the two centers
+    // (2, 0.5) would put the two edges at distance 0.
+    let mut ids = IdGenerator::new();
+    let mut field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let fingerprint = TessellationFingerprint::new("square{}");
+    let end = |x: i32, face_idx: usize| FoldEnd {
+        cell: SquarePoint { x, y: 0 },
+        face_idx,
+    };
+    let fold = Fold {
+        a: end(3, 0),
+        b: end(0, 2),
+        twist: false,
+        group: FoldGroupId(0),
+    };
+    let group = FoldGroup {
+        id: FoldGroupId(0),
+        folds: vec![FoldId(0)],
+    };
+    field
+        .set_topology(
+            level,
+            Topology::new(fingerprint.clone(), vec![fold], vec![group]),
+            &fingerprint,
+        )
+        .unwrap();
+    let mut g = Graph::new();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
+    g.add_edge(p(3), p(0), EdgeKind::Basic);
+    g.add_edge(p(1), p(2), EdgeKind::Basic);
+    let maze = Maze::new(field, g);
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+
+    check(1.0, true).repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "the two edges are 2.0 apart");
+    check(2.5, true).repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(issues.len(), 1);
 }
 
 #[test]

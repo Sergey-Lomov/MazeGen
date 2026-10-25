@@ -12,7 +12,8 @@ use wasm_bindgen::prelude::*;
 
 /// Immutable geometry snapshot of a cell set (boundary as path commands or a flattened polyline,
 /// as requested; centers, `cell_scale`, per-face contact points and segments), bound to the tessellation
-/// instance and the caller's field version — see `maze_runner::runner::geometry`.
+/// instance and the caller's field and topology versions; faces glued by an active fold carry the
+/// partner, endpoint correspondence and rigid transform — see `maze_runner::runner::geometry`.
 #[wasm_bindgen]
 pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
     let request: GeometrySnapshotRequest = serde_wasm_bindgen::from_value(request)

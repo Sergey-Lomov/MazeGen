@@ -47,8 +47,9 @@ pub use field_ops::{
     is_connected, validate_preset,
 };
 pub use geometry::{
-    BoundaryPath, CellScope, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode,
-    RegionTooLarge, STRAIGHT_TOLERANCE, Segment, TessellationGeometry, chain_midpoint,
+    BoundaryPath, CellScope, FOLD_ISOMETRY_EPS, FoldClass, FoldedFace, GEOM_EPS,
+    MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode, RegionTooLarge, RigidTransform,
+    STRAIGHT_TOLERANCE, Segment, TessellationGeometry, chain_midpoint, classify_fold_faces,
     is_straight_geometric,
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
@@ -233,15 +234,18 @@ pub fn cell_position<T: Tessellation>(tessellation: &T, cell: T::CellId) -> Scal
 
 /// Position of the edge `from -> to`: the contact point of the face between the two cells (where
 /// a passage renders), measured in the mean `cell_scale` of both. Two cells that are not
-/// tessellation neighbors (no shared face) fall back to the midpoint of their centers.
+/// adjacent cells (no shared face, no active fold) fall back to the midpoint of their centers.
+/// Adjacency is the `field`'s effective one, so across an active fold the point is `from`'s own
+/// contact point on the folded face, not the midpoint of the two centers.
 pub fn edge_position<T: Tessellation>(
-    tessellation: &T,
+    field: &Field<T>,
     from: T::CellId,
     to: T::CellId,
 ) -> ScaledPoint {
+    let tessellation = field.tessellation();
     let scale = (tessellation.cell_scale(from) + tessellation.cell_scale(to)) / 2.0;
-    let point = match face_index_toward(tessellation, from, to) {
-        Some(index) => tessellation.contact_point(from, tessellation.faces_of(from)[index]),
+    let point = match field.face_index_toward(from, to) {
+        Some(index) => field.contact_point(from, tessellation.faces_of(from)[index]),
         None => (tessellation.center(from) + tessellation.center(to)) * 0.5,
     };
     ScaledPoint { point, scale }

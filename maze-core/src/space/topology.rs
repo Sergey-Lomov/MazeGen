@@ -273,8 +273,18 @@ impl<T: Tessellation> Topology<T> {
         cell: T::CellId,
         face_idx: usize,
     ) -> Option<(&Fold<T::CellId>, FoldSide)> {
+        let (_, fold, side) = self.fold_at(cell, face_idx)?;
+        Some((fold, side))
+    }
+
+    /// Like `fold_of`, also returning the fold's id.
+    pub fn fold_at(
+        &self,
+        cell: T::CellId,
+        face_idx: usize,
+    ) -> Option<(FoldId, &Fold<T::CellId>, FoldSide)> {
         let &(id, side) = self.by_end.get(&(cell, face_idx))?;
-        Some((&self.folds[id.0], side))
+        Some((id, &self.folds[id.0], side))
     }
 
     /// Errors when the topology was authored for a different tessellation config.
@@ -563,6 +573,18 @@ impl<T: Tessellation> ResolvedTopology<T> {
             activity,
             links,
         }
+    }
+
+    /// The active fold gluing face `face_idx` of `cell`, if any. Inactive folds glue nothing.
+    pub(crate) fn active_fold_at(
+        &self,
+        cell: T::CellId,
+        face_idx: usize,
+    ) -> Option<(FoldId, &Fold<T::CellId>, FoldSide)> {
+        if !self.links.contains_key(&(cell, face_idx)) {
+            return None;
+        }
+        self.topology.fold_at(cell, face_idx)
     }
 
     pub(crate) fn has_links(&self) -> bool {

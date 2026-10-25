@@ -246,7 +246,13 @@ pub fn cross_element_occurrences<T: Tessellation>(
             else {
                 continue;
             };
-            let edge_xy = edge_position(tessellation, from_point, to_point);
+            let Some(level) = maze.field.level_of(from) else {
+                continue;
+            };
+            let Some(level_field) = maze.field.field_of(level) else {
+                continue;
+            };
+            let edge_xy = edge_position(level_field, from_point, to_point);
             let before = out.len();
             push_at(&mut out, CrossElement::OneWay(id), from);
             push_at(&mut out, CrossElement::OneWay(id), to);

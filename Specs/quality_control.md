@@ -879,11 +879,11 @@ geometric — unrelated to graph/nav distance (`MazeAnalysis::distance_from_star
 `distance_from_finish`, used by `TeleportWaypointDistanceCheck` above), which counts tile-hops along
 actual edges instead of straight-line distance.
 
-`space::edge_position::<T>(from, to) -> ScaledPoint` (GitHub issue #199 follow-up) is the position of
+`space::edge_position::<T>(field, from, to) -> ScaledPoint` (`field`: the `Field` of the edge's level; fold-aware since GitHub issue #833) (GitHub issue #199 follow-up) is the position of
 the *edge* between two cells: the contact point of the face between them (`contact_point`, where a
 passage renders), measured in the mean `cell_scale` of both cells — needed because an edge like a
 one-way passage renders visually on the tile border it crosses, not at either endpoint node. Two
-cells that share no face fall back to the midpoint of their centers.
+cells that share no face and no active fold fall back to the midpoint of their centers.
 Edge-to-edge distance is `space::floor_aware_xy_distance` over two `edge_position`s, each resolved
 once per edge before any pair is compared (`OneWayGroupGeometricProximityCheck`, cross-element
 one-way occurrences) — never once per pair.
