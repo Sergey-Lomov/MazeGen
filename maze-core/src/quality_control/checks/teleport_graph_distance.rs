@@ -1,11 +1,11 @@
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::graph::EdgeKind;
 use crate::graph::distance_map::{DistanceDirection, compute_distance_map_filtered_bounded};
 use crate::graph::nav::NavEdge;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::quality_control::InvalidTeleportIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
 

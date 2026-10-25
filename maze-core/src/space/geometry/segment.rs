@@ -370,6 +370,77 @@ impl Segment {
     }
 }
 
+/// A crossing of a segment with a line segment `a`–`b`: `u` is the fraction along `a`–`b`,
+/// `tangent` the segment's direction of travel at the crossing (not normalized for a line).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LineCrossing {
+    pub u: f64,
+    pub tangent: Point,
+}
+
+impl Segment {
+    /// Transversal crossings with the line segment `a`–`b`, closed at both ends up to `tolerance`
+    /// (world units). A line parallel to the segment and a tangent line cross nowhere.
+    pub(crate) fn line_crossings(&self, a: Point, b: Point, tolerance: f64) -> Vec<LineCrossing> {
+        let d = b - a;
+        let d_len = d.length();
+        if d_len == 0.0 {
+            return Vec::new();
+        }
+        let tol_u = tolerance / d_len;
+        match *self {
+            Segment::Line { from, to } => {
+                let e = to - from;
+                let e_len = e.length();
+                let denom = d.cross(e);
+                if e_len == 0.0 || denom.abs() <= 1e-12 * d_len * e_len {
+                    return Vec::new();
+                }
+                let w = from - a;
+                let (u, v) = (w.cross(e) / denom, w.cross(d) / denom);
+                let tol_v = tolerance / e_len;
+                if (-tol_u..=1.0 + tol_u).contains(&u) && (-tol_v..=1.0 + tol_v).contains(&v) {
+                    vec![LineCrossing { u, tangent: e }]
+                } else {
+                    Vec::new()
+                }
+            }
+            Segment::CircularArc {
+                from,
+                to,
+                center,
+                radius,
+                start_angle,
+                sweep,
+            } => {
+                let f = a - center;
+                let (qa, qb, qc) = (d.dot(d), 2.0 * f.dot(d), f.dot(f) - radius * radius);
+                let discriminant = qb * qb - 4.0 * qa * qc;
+                if discriminant <= 0.0 {
+                    return Vec::new();
+                }
+                let root = discriminant.sqrt();
+                [(-qb - root) / (2.0 * qa), (-qb + root) / (2.0 * qa)]
+                    .into_iter()
+                    .filter(|u| (-tol_u..=1.0 + tol_u).contains(u))
+                    .filter_map(|u| {
+                        let q = a + d * u;
+                        let angle = (q - center).angle();
+                        let on_arc = angle_in_sweep(angle, start_angle, sweep)
+                            || q.distance(from) <= tolerance
+                            || q.distance(to) <= tolerance;
+                        let direction = Point::new(-angle.sin(), angle.cos());
+                        on_arc.then_some(LineCrossing {
+                            u,
+                            tangent: if sweep < 0.0 { -direction } else { direction },
+                        })
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
 /// Pieces an arc of `radius`/`sweep` is cut into so each chord's sagitta stays within `tolerance`.
 /// The tolerance is floored at `GEOM_EPS` — a finer one is below the geometry's own precision and
 /// would only multiply the piece count without bound.

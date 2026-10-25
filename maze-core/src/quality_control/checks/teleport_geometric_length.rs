@@ -1,7 +1,7 @@
 use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{GeometricFloorMode, InvalidTeleportIssue};
 use crate::space::Tessellation;
 use rand::RngCore;

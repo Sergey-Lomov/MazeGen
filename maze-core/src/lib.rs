@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod comparison;
 pub mod diag;
 pub mod dsu;
 pub mod event_log;

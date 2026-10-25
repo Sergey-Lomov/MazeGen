@@ -1,7 +1,6 @@
 pub mod apply_commands;
 pub mod check;
 pub mod checks;
-pub mod comparison;
 pub mod cross_element;
 pub mod cycle_kind;
 pub mod engine;
@@ -22,6 +21,7 @@ pub mod teleport_direction_filter;
 pub mod teleport_floor_kind_filter;
 pub mod vertical_passage_type;
 
+pub use crate::comparison::Comparison;
 pub use apply_commands::{ApplyOutcome, apply_commands};
 pub use check::Check;
 pub use checks::{
@@ -124,7 +124,6 @@ pub use checks::{
     VerticalPassageGroupGeometricProximityCheck, VerticalPassageGroupGraphProximityCheck,
     elevator_groups, elevator_stops_per_floor, stop_floors,
 };
-pub use comparison::Comparison;
 pub use cycle_kind::CycleKind;
 pub use engine::QualityControlEngine;
 pub use event::QcEvent;

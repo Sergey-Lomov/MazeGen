@@ -1,7 +1,7 @@
 use super::cycle_check_core::{build_issue, find_invalid_cycles, tile_length};
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{CycleKind, InvalidLoopIssue, InvalidLoopRequirement};
 use crate::space::Tessellation;
 use rand::RngCore;

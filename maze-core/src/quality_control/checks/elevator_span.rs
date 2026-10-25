@@ -1,8 +1,8 @@
 use super::elevator_core::{elevator_groups, stop_floors};
 use crate::Maze;
+use crate::comparison::Comparison;
 use crate::quality_control::InvalidElevatorIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::comparison::Comparison;
 use crate::quality_control::issue_kinds::ElevatorNodes;
 use crate::space::Tessellation;
 use rand::RngCore;

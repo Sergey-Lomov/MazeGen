@@ -15,6 +15,9 @@ mod fold_tests;
 mod point;
 mod query;
 mod segment;
+mod surface;
+#[cfg(test)]
+mod surface_tests;
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +26,7 @@ pub use fold::{FOLD_ISOMETRY_EPS, FoldClass, FoldedFace, RigidTransform, classif
 pub use point::Point;
 pub use query::{CellScope, MAX_REGION_CANDIDATES, RegionMode, RegionTooLarge};
 pub use segment::{PathCommand, Segment};
+pub use surface::{DistanceError, DistancePolicy, DistanceResult, SurfaceMetric, WithinLimit};
 
 use super::Tessellation;
 

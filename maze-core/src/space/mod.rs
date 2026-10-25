@@ -47,10 +47,10 @@ pub use field_ops::{
     is_connected, validate_preset,
 };
 pub use geometry::{
-    BoundaryPath, CellScope, FOLD_ISOMETRY_EPS, FoldClass, FoldedFace, GEOM_EPS,
-    MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode, RegionTooLarge, RigidTransform,
-    STRAIGHT_TOLERANCE, Segment, TessellationGeometry, chain_midpoint, classify_fold_faces,
-    is_straight_geometric,
+    BoundaryPath, CellScope, DistanceError, DistancePolicy, DistanceResult, FOLD_ISOMETRY_EPS,
+    FoldClass, FoldedFace, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode,
+    RegionTooLarge, RigidTransform, STRAIGHT_TOLERANCE, Segment, SurfaceMetric,
+    TessellationGeometry, WithinLimit, chain_midpoint, classify_fold_faces, is_straight_geometric,
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
@@ -256,13 +256,17 @@ pub fn edge_position<T: Tessellation>(
 /// unrelated to graph/nav distance (`MazeAnalysis::distance_from_start`/`distance_from_finish`),
 /// which counts tile-hops along actual edges instead.
 pub fn geometric_distance<T: Tessellation>(tessellation: &T, a: T::CellId, b: T::CellId) -> f64 {
-    floor_aware_xy_distance(
-        0,
+    planar_distance(
         cell_position(tessellation, a),
-        0,
         cell_position(tessellation, b),
-        false,
     )
+}
+
+/// Euclidean distance in the flat embedding, in the mean `cell_scale` of both positions. Ignores
+/// folds entirely (`Specs/topology.md`, "Distance contract"); `SurfaceMetric::surface_distance`
+/// is the fold-aware counterpart.
+pub fn planar_distance(a: ScaledPoint, b: ScaledPoint) -> f64 {
+    floor_aware_xy_distance(0, a, 0, b, false)
 }
 
 /// Distance between two nodes' cells, each on its own floor (`MultiLevelField::level_index_of`
