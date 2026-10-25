@@ -165,7 +165,7 @@ describe("mazeStore.addCheck", () => {
   it("mints an independent instance on each call, even for an already-active type", () => {
     useMazeStore.setState({
       availableChecks: [multiInstanceDescriptor],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "multi_instance_test_check", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "multi_instance_test_check", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().addCheck("multi_instance_test_check", "g1");
     const typeIds = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.map((c) => c.typeId);
@@ -175,7 +175,7 @@ describe("mazeStore.addCheck", () => {
   it("allows the same type to be added to another rule", () => {
     useMazeStore.setState({
       availableChecks: [descriptor],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().addCheck("min_loops");
     const rules = useMazeStore.getState().rules;
@@ -216,7 +216,7 @@ describe("mazeStore.addCheck", () => {
 describe("mazeStore.removeCheck", () => {
   it("removes the check instance from its rule", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheck("g1", 0);
     const typeIds = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.map((c) => c.typeId);
@@ -225,7 +225,7 @@ describe("mazeStore.removeCheck", () => {
 
   it("preserves the remaining check's params after removal", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { p: "5" }, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { p: "5" }, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheck("g1", 1);
     const checkA = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 0);
@@ -234,7 +234,7 @@ describe("mazeStore.removeCheck", () => {
 
   it("is no-op for a non-matching localId", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheck("g1", 99);
     const typeIds = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.map((c) => c.typeId);
@@ -243,25 +243,25 @@ describe("mazeStore.removeCheck", () => {
 
   it("removes the check from its rule, leaving an empty rule rather than dropping it", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheck("g1", 0);
-    expect(useMazeStore.getState().rules).toEqual([makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 1, strategyId: "s1" })]);
+    expect(useMazeStore.getState().rules).toEqual([makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })]);
   });
 
   it("removes only the check from a multi-check rule, keeping the rule", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheck("g1", 0);
-    expect(useMazeStore.getState().rules).toEqual([makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })]);
+    expect(useMazeStore.getState().rules).toEqual([makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })]);
   });
 });
 
 describe("mazeStore.setCheckParam", () => {
   it("stores param value on the targeted instance", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().setCheckParam("g1", 0, "min_loops", "5");
     const check = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 0);
@@ -270,7 +270,7 @@ describe("mazeStore.setCheckParam", () => {
 
   it("merges params for the same instance", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().setCheckParam("g1", 0, "param_a", "1");
     useMazeStore.getState().setCheckParam("g1", 0, "param_b", "2");
@@ -281,7 +281,7 @@ describe("mazeStore.setCheckParam", () => {
 
   it("overrides existing param value", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: { min_loops: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "min_loops", params: { min_loops: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().setCheckParam("g1", 0, "min_loops", "9");
     const check = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.find((c) => c.localId === 0);
@@ -290,7 +290,7 @@ describe("mazeStore.setCheckParam", () => {
 
   it("keeps params for different instances independent, even within the same rule", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().setCheckParam("g1", 0, "p", "1");
     useMazeStore.getState().setCheckParam("g1", 1, "p", "2");
@@ -319,18 +319,18 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
   it("addCheck with a ruleId activates the check directly into that rule, not a new one", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().addCheck("check_a", "g1");
     expect(useMazeStore.getState().rules).toEqual([
-      makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }, { localId: 1, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" }),
+      makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }, { localId: 1, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} }),
     ]);
   });
 
   it("addCheck with a ruleId whose kind differs from the check's kind falls back to a new singleton rule", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k2"], params: [] }],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().addCheck("check_a", "g1");
     const rules = useMazeStore.getState().rules;
@@ -344,7 +344,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
   it("addCheck with a stale/unknown ruleId falls back to creating a new singleton rule", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().addCheck("check_a", "does_not_exist");
     const rules = useMazeStore.getState().rules;
@@ -385,7 +385,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
         { id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] },
         { id: "check_b", label: "B", description: "", issue_kinds: ["k1"], params: [] },
       ],
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().createRule(["check_a", "check_b"], null);
     const rules = useMazeStore.getState().rules;
@@ -396,7 +396,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
 
   it("removeCheckFromRule moves the check into a fresh singleton rule", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().removeCheckFromRule("g1", 0);
     const rules = useMazeStore.getState().rules;
@@ -411,7 +411,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
 describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
   it("renameRule updates the rule's name", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().renameRule("g1", "My custom rule");
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.name).toBe("My custom rule");
@@ -422,7 +422,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
   // text as a permanent custom name.
   it("renameRule collapses to null when the input matches the current default label", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "My custom rule", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "My custom rule", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().renameRule("g1", "k1");
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.name).toBeNull();
@@ -431,22 +431,22 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
   it("removeRule removes the rule and its checks", () => {
     useMazeStore.setState({
       rules: [
-        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
+        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().removeRule("g1");
     expect(useMazeStore.getState().rules).toEqual([
-      makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+      makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
     ]);
   });
 
   it("removeRule scrubs the rule's id from whichever stage held it", () => {
     useMazeStore.setState({
       rules: [
-        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
+        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
@@ -456,7 +456,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
 
   it("removeRule is a no-op for an unknown rule id", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     useMazeStore.getState().removeRule("missing");
     expect(useMazeStore.getState().rules).toHaveLength(1);
@@ -464,7 +464,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
 
   it("toggleRuleDisabled flips ruleDisabled independent of disabled", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().toggleRuleDisabled("g1");
     const g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
@@ -474,7 +474,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
 
   it("toggleRuleCollapsed flips collapsed independent of disabled/ruleDisabled", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().toggleRuleCollapsed("g1");
     let g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
@@ -488,7 +488,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
 
   it("toggleCheckDisabled flips a single check's disabled, other checks and the rule untouched", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1" })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {} })],
     });
     useMazeStore.getState().toggleCheckDisabled("g1", 0);
     const g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
@@ -502,9 +502,9 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
 describe("mazeStore.moveRule", () => {
   function makeRules() {
     return [
-      makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-      makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-      makeRule({ id: "g3", name: "Rule 3", kind: "k1", checks: [{ localId: 0, typeId: "check_c", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+      makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
+      makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
+      makeRule({ id: "g3", name: "Rule 3", kind: "k1", checks: [{ localId: 0, typeId: "check_c", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
     ];
   }
 
@@ -637,7 +637,7 @@ describe("mazeStore stage actions", () => {
 
   it("removeStage cascades: removes a non-empty stage along with its member rules", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
       stages: [
         { id: "s1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false },
         { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
@@ -693,8 +693,8 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, params: {}, nestedStrategies: [], collapsed: false },
-        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: true, params: {}, nestedStrategies: [], collapsed: false },
+        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
@@ -707,7 +707,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null }),
+        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });
@@ -720,8 +720,8 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }], nextLocalCheckId: 1, strategyId: null }),
-        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
+        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
+        makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
@@ -734,7 +734,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null }),
+        makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null, strategyParams: {} }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });

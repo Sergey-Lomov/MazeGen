@@ -422,6 +422,7 @@ describe("mazeStore post-edit actions", () => {
         ],
         nextLocalCheckId: 2,
         strategyId: null,
+        strategyParams: {},
         disabled: false,
         ruleDisabled: false,
         params: {}, nestedStrategies: [], collapsed: false,
@@ -714,8 +715,8 @@ describe("mazeStore post-edit actions", () => {
   it("confirmPostEdit excludes rules belonging to a disabled stage from checks", async () => {
     useMazeStore.setState({
       rules: [
-        { id: "rule_1", name: "Rule 1", kind: "unreachable", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
-        { id: "rule_2", name: "Rule 2", kind: "unreachable", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
+        { id: "rule_1", name: "Rule 1", kind: "unreachable", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
+        { id: "rule_2", name: "Rule 2", kind: "unreachable", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
       ],
       stages: [
         { id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false },
@@ -738,6 +739,7 @@ describe("mazeStore post-edit actions", () => {
         checks: [{ localId: 0, typeId: "teleport_duplicates_connection", params: {}, disabled: false }],
         nextLocalCheckId: 1,
         strategyId: null,
+        strategyParams: {},
         disabled: false,
         ruleDisabled: false,
         params: { protect_route: "false" },

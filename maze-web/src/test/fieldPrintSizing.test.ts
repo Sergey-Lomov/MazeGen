@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { boundsInCellSides, calculatePrintFieldConfig, largestFitting, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
-import type { TessellationKind } from "../fieldConfig";
+import type { FieldConfig, TessellationKind } from "../fieldConfig";
+import type { PredefinedFieldConfig } from "../pixi/fieldPrintSizing";
 import * as mazeService from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
 
@@ -76,12 +77,12 @@ describe("field print sizing", () => {
   });
 
   describe("strategy contracts", () => {
-    const representatives = [
+    const representatives: readonly [string, PredefinedFieldConfig][] = [
       ["axis-aligned", fieldOf("square", { shape: "rect", cols: 1, rows: 1 })],
       ["Cairo", fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 })],
       ["rectangular", fieldOf("hex", { shape: "rect", cols: 1, rows: 1 }, "flat_top")],
       ["radial", fieldOf("hex", { shape: "circle", radius: 1 }, "flat_top")],
-    ] as const;
+    ];
 
     it.each(representatives)("%s returns a field inside the printable area", (_name, config) => {
       const result = calculatePrintFieldConfig(config, printInput);
@@ -226,9 +227,9 @@ describe("field print sizing", () => {
   });
 });
 
-function shapeCapacity(config: { shape: { shape: string } & Record<string, number | string> }): number {
+function shapeCapacity(config: Pick<FieldConfig, "shape">): number {
   const { shape } = config;
   if ("cols" in shape && "rows" in shape) return Number(shape.cols) * Number(shape.rows);
   if ("radius" in shape) return Number(shape.radius);
-  return Number(shape.side);
+  return "side" in shape ? Number(shape.side) : 0;
 }

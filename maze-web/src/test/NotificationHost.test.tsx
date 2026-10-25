@@ -148,7 +148,7 @@ describe("NotificationHost", () => {
     const details = screen.getByTestId("error-details");
     expect(details).toHaveStyle({ scrollbarColor: "#ff6b6b #2a1a1a" });
     expect(details).toHaveStyle({ maxHeight: "48px", overflowY: "auto" });
-    expect(screen.getByText("line 1")).toHaveStyle({ lineHeight: "16px" });
+    expect(details.querySelector("pre")!).toHaveStyle({ lineHeight: "16px" });
   });
 
   it("has no details toggle when there is nothing to add to the headline", () => {

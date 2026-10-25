@@ -186,7 +186,6 @@ describe("dropUnknownQualityIds", () => {
         rule("r_kind", [], null, { kind: "removed_kind" }),
       ].map(({ nextLocalCheckId: _n, ...r }) => r),
       stages: [stage("s1", ["r_mixed", "r_gone"]), stage("s2", ["r_empty", "r_kind"])],
-      strategyParams: { invalid_loop_random: { a: "1" }, removed_strategy: { b: "2" } },
       repairMaxIterations: 5,
       repairTimeBudgetSecs: null,
     };

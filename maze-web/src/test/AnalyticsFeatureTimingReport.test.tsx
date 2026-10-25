@@ -34,7 +34,7 @@ const timing: GenerationTimingDto = {
 beforeEach(() => {
   useMazeStore.setState({
     stages: [{ id: "stage_1", name: "Waypoints", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
-    rules: [{ id: "rule_1", name: "Fix endpoints", kind: "missing_endpoints", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+    rules: [{ id: "rule_1", name: "Fix endpoints", kind: "missing_endpoints", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     availableChecks: [{ id: "loop_length", label: "Loop length", description: "", issue_kinds: [], params: [] }],
   });
 });
@@ -52,7 +52,7 @@ describe("TimingDetailedReportModal", () => {
 
   it("resolves a rule with no custom name from its issue kind", () => {
     useMazeStore.setState({
-      rules: [{ id: "rule_1", name: null, kind: "missing_loops", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "rule_1", name: null, kind: "missing_loops", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     render(<TimingDetailedReportModal timing={timing} onClose={() => {}} />);
     expect(screen.getByText(/Add loops/)).toBeInTheDocument();

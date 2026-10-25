@@ -53,7 +53,7 @@ const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", la
 // check's params from `store.rules` by (ruleId, localId), so any `slots` fixture referencing
 // checkA needs a matching store rule present, even when the test only cares about props.
 function defaultRules() {
-  return [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }];
+  return [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }];
 }
 
 beforeEach(() => {
@@ -172,7 +172,7 @@ describe("RulesColumn dialogs and rule management", () => {
         { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
         { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [] },
       ],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     const slots: StrategySlotVM[] = [
       { ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false },
@@ -188,7 +188,7 @@ describe("RulesColumn dialogs and rule management", () => {
         { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
         { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [] },
       ],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     const slots: StrategySlotVM[] = [
       { ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false },
@@ -198,7 +198,7 @@ describe("RulesColumn dialogs and rule management", () => {
     fireEvent.click(screen.getByText("Check Two"));
     fireEvent.click(screen.getByText("Add"));
     expect(useMazeStore.getState().rules).toEqual([
-      { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
+      { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
     ]);
   });
 
@@ -208,7 +208,7 @@ describe("RulesColumn dialogs and rule management", () => {
         { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
         { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], visibility: { type: "multi_floor_only" } },
       ],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
       floors: [{ id: "f1", title: "Floor 1" }],
     });
     const slots: StrategySlotVM[] = [
@@ -220,7 +220,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("disables the add-check row with a tooltip instead of an alert when no candidate checks are available", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const row = screen.getByText("+ Add check");
@@ -232,7 +232,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("ignores keyboard activation of the disabled add-check row", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const row = screen.getByText("+ Add check");
@@ -244,7 +244,7 @@ describe("RulesColumn dialogs and rule management", () => {
   it("opens the picker from the keyboard on the enabled add-check row", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }, { id: "c3", label: "Check Three", description: "", issue_kinds: ["k1"], params: [] }],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
@@ -255,7 +255,7 @@ describe("RulesColumn dialogs and rule management", () => {
   it("keeps the add-check row enabled and tooltip-free when candidates exist", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }, { id: "c3", label: "Check Three", description: "", issue_kinds: ["k1"], params: [] }],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
@@ -267,7 +267,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("toggles ruleDisabled and visually dims the card title row", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
@@ -275,7 +275,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("renames a rule via the edit button's inline input, committed on Enter", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(getTooltipControl("Rename rule"));
@@ -286,7 +286,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("removes a rule via the X button after confirming, clearing strategy selection for it", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     // LiveSlots, see comment in "removing a check..." above — removing the whole rule needs the
@@ -299,7 +299,7 @@ describe("RulesColumn dialogs and rule management", () => {
   });
 
   it("cancelling the remove-rule confirmation leaves the rule intact", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(getTooltipControl("Remove rule"));

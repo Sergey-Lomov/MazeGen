@@ -30,6 +30,7 @@ export function BackgroundImageControls({
   function disable() {
     setBackgroundAutoFillPreview(null);
     setShowBackgroundImage(false);
+    setSettingsOpen(false);
   }
 
   function enable() {

@@ -16,13 +16,20 @@ function isValidLocale(tag: string): tag is Locale {
 
 function loadSaved(): Locale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  return saved && isValidLocale(saved) ? saved : DEFAULT_LOCALE;
+  try {
+    const saved = window.localStorage?.getItem(STORAGE_KEY);
+    return saved && isValidLocale(saved) ? saved : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
 }
 
 function persist(locale: Locale): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, locale);
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage?.setItem(STORAGE_KEY, locale);
+  } catch {
+    // Storage can be unavailable, for example in a privacy-restricted browser context.
   }
 }
 

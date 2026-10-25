@@ -249,7 +249,7 @@ describe("mazeStore.loadRegistry", () => {
     vi.mocked(getAvailableStrategies).mockReturnValue([]);
     await useMazeStore.getState().loadRegistry();
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "kind_b", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "kind_b", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
     });
     await useMazeStore.getState().loadRegistry();
     const selectedChecks = useMazeStore.getState().rules.flatMap((r) => r.checks.map((c) => c.typeId));
