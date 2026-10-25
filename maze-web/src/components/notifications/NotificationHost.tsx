@@ -16,7 +16,7 @@ import {
   type ErrorCard,
   type NoticeItem,
 } from "../../notifications/notificationStore";
-import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
+import { embeddedNotificationStyle, notificationPalette, type NotificationSeverity } from "../EmbeddedNotification";
 import { overlay, radius, spacing, typography } from "../../styles/theme";
 import { Tooltip } from "../Tooltip";
 import * as m from "~/paraglide/messages";
@@ -129,13 +129,13 @@ function ErrorZone({ cards }: { cards: ErrorCard[] }) {
             : m["notifications.more_errors_plural"]({ count: hiddenCount })}
         </button>
       )}
-      {shown.map((card) => <ErrorCardView key={card.key} card={card} />)}
+      {shown.map((card) => <ErrorCardView key={card.key} card={card} severity="critical" />)}
       {cards.length >= 2 && <CloseAllButton severity="critical" onClick={closeAllErrors} />}
     </section>
   );
 }
 
-function ErrorCardView({ card }: { card: ErrorCard }) {
+function ErrorCardView({ card, severity }: { card: ErrorCard; severity: NotificationSeverity }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const latest = card.occurrences[card.occurrences.length - 1];
   const count = card.occurrences.length;
@@ -146,9 +146,10 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
     const message = notificationMessage(card.code, o.params);
     return { id: o.id, message, ownMessage: message !== headline ? message : null, details: o.details };
   });
+  const copyText = entries.map((e) => e.details ? `${e.message}\n${e.details}` : e.message).join("\n\n");
   const expandable = entries.some((e) => e.details || e.ownMessage);
   return (
-    <div data-testid="error-card" style={{ ...styles.toast, ...paletteStyle("critical"), flexDirection: "column", alignItems: "stretch" }}>
+    <div data-testid="error-card" style={{ ...styles.toast, ...paletteStyle(severity), flexDirection: "column", alignItems: "stretch" }}>
       <div style={styles.cardHeader}>
         <span style={styles.message}>{headline}</span>
         {count > 1 && <span data-testid="error-count" style={styles.counter}>×{count}</span>}
@@ -158,31 +159,33 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
         <RegistryRetryButton cardKey={card.key} />
       )}
       {expandable && (
-        <div>
-          <button
-            type="button"
-            className="hoverable"
-            aria-expanded={detailsOpen}
-            style={styles.disclosureBtn}
-            onClick={() => setDetailsOpen((v) => !v)}
-          >
-            {detailsOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-            {m["notifications.details"]()}
-          </button>
+        <div style={styles.detailsSection}>
+          <div style={styles.detailsHeader}>
+            <button
+              type="button"
+              className="hoverable"
+              aria-expanded={detailsOpen}
+              style={styles.disclosureBtn}
+              onClick={() => setDetailsOpen((v) => !v)}
+            >
+              {detailsOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+              {m["notifications.details"]()}
+            </button>
+            {detailsOpen && <span style={styles.detailsCopy}><CopyButton text={copyText} /></span>}
+          </div>
+          {detailsOpen && (
+            <ul data-testid="error-details" style={{ ...styles.details, ...toastScrollbarStyle(severity) }}>
+              {entries.map((e, i) => (
+                <li key={e.id} style={i > 0 ? { ...styles.occurrence, ...styles.occurrenceSeparated } : styles.occurrence}>
+                  <div style={styles.occurrenceText}>
+                    {e.ownMessage && <span style={styles.message}>{e.ownMessage}</span>}
+                    {e.details && <pre style={styles.detailsText}>{e.details}</pre>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
-      {expandable && detailsOpen && (
-        <ul data-testid="error-details" style={styles.details}>
-          {entries.map((e, i) => (
-            <li key={e.id} style={i > 0 ? { ...styles.occurrence, ...styles.occurrenceSeparated } : styles.occurrence}>
-              <div style={styles.occurrenceText}>
-                {e.ownMessage && <span style={styles.message}>{e.ownMessage}</span>}
-                {e.details && <pre style={styles.detailsText}>{e.details}</pre>}
-              </div>
-              <CopyButton text={e.details ? `${e.message}\n${e.details}` : e.message} />
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   );
@@ -287,9 +290,16 @@ function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical
 
 /** Same pairing as `WarningBubble`: dark palette background, light palette text and border.
  *  Everything inside a toast inherits the text color — no colors of its own. */
-function paletteStyle(severity: "warning" | "critical"): React.CSSProperties {
+function paletteStyle(severity: NotificationSeverity): React.CSSProperties {
   const { bg, text } = notificationPalette(severity);
   return { background: bg, color: text, borderColor: text };
+}
+
+function toastScrollbarStyle(severity: NotificationSeverity): React.CSSProperties {
+  const { bg, text } = notificationPalette(severity);
+  return {
+    scrollbarColor: `${text} ${bg}`,
+  };
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -370,6 +380,20 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 2,
   },
+  detailsSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.elementsGap,
+  },
+  detailsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.elementsGap,
+  },
+  detailsCopy: {
+    marginLeft: "auto",
+    display: "flex",
+  },
   retryButton: {
     ...typography.caption,
     alignSelf: "flex-start",
@@ -396,7 +420,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.groupGap,
-    maxHeight: 240,
+    maxHeight: 48,
     overflowY: "auto",
   },
   occurrence: {
@@ -417,6 +441,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detailsText: {
     ...typography.caption,
+    lineHeight: "16px",
     color: "inherit",
     margin: 0,
     whiteSpace: "pre-wrap",

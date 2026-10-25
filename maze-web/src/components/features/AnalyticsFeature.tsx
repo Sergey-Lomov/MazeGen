@@ -7,7 +7,7 @@ import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
-import { SidePanel } from "../SidePanel";
+import { bringSidePanelToFront, SidePanel } from "../SidePanel";
 import { RegionClassLegendModal, ScoreInfoModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
 import { StatRow, formatMs, formatScore, GraphSection, CellsSection, SidesSection, SubsectionTitle, ElementsSection, VerticalSection, StatGroup } from "./AnalyticsSections";
 import { styles } from "./analyticsStyles";
@@ -36,7 +36,7 @@ export function DetailedReportPanel({ statistics, floors, cfg, nodes, onClose }:
   const floorsTopFirst = [...floorsWithStats].reverse();
 
   return (
-    <SidePanel title={m["analytics.stats_summary"]()} onClose={onClose}>
+    <SidePanel title={m["analytics.stats_summary"]()} stackKey="analytics-detailed-report" onClose={onClose}>
       <div style={styles.panelBody}>
         <SectionHeader label={m["analytics.general_stats"]()} expanded={isExpanded("report_general")} onToggle={() => toggleSection("report_general")} />
         {isExpanded("report_general") && (
@@ -269,7 +269,10 @@ export function AnalyticsFeature() {
               <StatRow label={m["analytics.graph_components"]()} count={statistics.graph_stats.component_count} />
               <StatRow label={m["analytics.graph_cycle_count"]()} count={statistics.graph_stats.cycle_count} />
               <StatRow label={m["analytics.graph_average_degree"]()} valueText={statistics.graph_stats.average_degree.toFixed(2)} />
-              <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={() => setDetailedReportOpen(true)}>
+              <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={() => {
+                bringSidePanelToFront("analytics-detailed-report");
+                setDetailedReportOpen(true);
+              }}>
                 {m["analytics.detailed_report_button"]()}
               </Button>
             </div>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { StrictMode, type MouseEvent } from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { SidePanel } from "../components/SidePanel";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { bringSidePanelToFront, SidePanel } from "../components/SidePanel";
 import { ConfirmModal } from "../components/ConfirmModal";
 
 // GitHub issue #629: independently-toggled features (e.g. `DebugPanel` and
@@ -48,6 +48,21 @@ describe("SidePanel mount-order stack (GitHub issue #629)", () => {
 
     expect(screen.getByText("First")).toBeVisible();
     expect(screen.queryByText("Second")).not.toBeInTheDocument();
+  });
+
+  it("brings an already-mounted panel to the front without remounting it", () => {
+    render(
+      <>
+        <SidePanel title="First" stackKey="first" onClose={vi.fn()}>first content</SidePanel>
+        <SidePanel title="Second" stackKey="second" onClose={vi.fn()}>second content</SidePanel>
+      </>,
+    );
+    expect(screen.getByText("Second")).toBeVisible();
+
+    act(() => bringSidePanelToFront("first"));
+
+    expect(screen.getByText("First")).toBeVisible();
+    expect(screen.getByText("second content")).not.toBeVisible();
   });
 
   // Regression: the stack used to register instances in a `useEffect`, so when two `SidePanel`s

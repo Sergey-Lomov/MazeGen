@@ -78,7 +78,7 @@ describe("mazeStore preview/confirm flow", () => {
       tessellationKind: "square",
       availableChecks: [{ id: "split_pattern_shape", label: "", description: "", issue_kinds: ["invalid_split_tile"], params: [{ id: "patterns", label: "", kind: { type: "pattern_list", with_weights: false } }] }],
       rules: [{
-        id: "r", name: null, kind: "invalid_split_tile", nextLocalCheckId: 1, strategyId: null, disabled: false,
+        id: "r", name: null, kind: "invalid_split_tile", nextLocalCheckId: 1, strategyId: null, strategyParams: {}, disabled: false,
         ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false,
         checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square, hex]) }, disabled: false }],
       }],

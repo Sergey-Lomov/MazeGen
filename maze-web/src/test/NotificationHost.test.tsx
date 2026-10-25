@@ -114,12 +114,14 @@ describe("NotificationHost", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Details" }));
     const items = within(screen.getByTestId("error-details")).getAllByRole("listitem");
     // The latest occurrence's message is the headline, so only its details are added; an older
-    // occurrence with a different message shows that message too. Copy buttons are separate
-    // controls, so assert the displayed occurrence content rather than each row's full text.
+    // occurrence with a different message shows that message too. The copy control lives beside
+    // the Details label, outside the scrollable list.
     expect(within(items[0]).getByText("trace 2")).toBeInTheDocument();
     expect(within(items[1]).getByText("Failed 1")).toBeInTheDocument();
     expect(within(items[1]).getByText("trace 1")).toBeInTheDocument();
-    expect(within(items[0]).getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    const copy = within(card).getByRole("button", { name: "Copy" });
+    expect(copy).toBeInTheDocument();
+    expect(screen.getByTestId("error-details")).not.toContainElement(copy);
     fireEvent.click(within(card).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByTestId("error-card")).toBeNull();
   });
@@ -137,6 +139,16 @@ describe("NotificationHost", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByTestId("error-details")).toBeNull();
+  });
+
+  it("shows up to three failure-detail lines before details scroll", () => {
+    renderHost();
+    act(() => notify({ source: "a", code: "host.error", params: { n: 1 }, details: "line 1\nline 2\nline 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const details = screen.getByTestId("error-details");
+    expect(details).toHaveStyle({ scrollbarColor: "#ff6b6b #2a1a1a" });
+    expect(details).toHaveStyle({ maxHeight: "48px", overflowY: "auto" });
+    expect(details.querySelector("pre")!).toHaveStyle({ lineHeight: "16px" });
   });
 
   it("has no details toggle when there is nothing to add to the headline", () => {
@@ -158,6 +170,19 @@ describe("NotificationHost", () => {
     expect(copy.textContent).toBe("");
     await act(async () => { fireEvent.click(copy); });
     expect(writeText).toHaveBeenCalledWith("Failed 7\nstack");
+  });
+
+  it("copies every occurrence from the details header", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderHost();
+    act(() => {
+      notify({ source: "a", code: "host.error", params: { n: 1 }, details: "trace 1" });
+      notify({ source: "a", code: "host.error", params: { n: 2 }, details: "trace 2" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy" })); });
+    expect(writeText).toHaveBeenCalledWith("Failed 2\ntrace 2\n\nFailed 1\ntrace 1");
   });
 
   it("shows a check mark after copying and restores the copy icon", async () => {

@@ -733,7 +733,7 @@ fn apply_pattern_adaptation<T: Tessellation>(
     // — the whole point's nodes are fully processed by this one event, so none of them is a
     // pending traversal step the way an ordinary frontier entry is. Only their outside neighbors
     // (already pushed above, by `mark_connected`) continue the traversal from here.
-    apply_split_teleport(graph, elements, preset_state, state, &nodes, scope);
+    apply_split_teleport(graph, field, elements, preset_state, state, &nodes, scope);
 }
 
 #[cfg(test)]

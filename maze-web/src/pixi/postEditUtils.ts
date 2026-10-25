@@ -166,7 +166,13 @@ function collectRotateMoves(
       const i = offsets.findIndex(([dx, dy]) => point[0] + dx === otherCoords[0] && point[1] + dy === otherCoords[1]);
       if (i === -1) continue; // not a geometric neighbor of `point` (shouldn't happen for a face edge)
 
-      const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
+      // Radial cells are not rotationally symmetric, but post-edit explicitly offers a separate
+      // face-reassignment operation for them: move each split-node connection to the next or
+      // previous face in the cell's own circular order. Other tessellations retain their stricter
+      // allowed-transform rotation semantics.
+      const j = cfg.tessellation.kind === "radial"
+        ? (i + direction + n) % n
+        : rotateFaceIndex(cfg, point[0], point[1], i, direction);
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
       // Refuse entirely — not just for a neighbor outside the field, but also for one inside it
       // with no node at all yet (a sparse/partially-populated field can have an empty cell in

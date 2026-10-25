@@ -38,7 +38,7 @@ export function BackgroundImageSettingsPanel({
 
   return (
     <>
-      <SidePanel title={m["background.settings_title"]()} onClose={onClose}>
+      <SidePanel title={m["background.settings_title"]()} stackKey="background-image-settings" onClose={onClose}>
         <div style={styles.panelBody}>
           {backgroundImage && (
             <>

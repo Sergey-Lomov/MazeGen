@@ -30,14 +30,14 @@ beforeEach(() => {
 
 describe("mazeStore generation strategy actions", () => {
   it("setStrategy sets a strategy for a rule", () => {
-    useMazeStore.setState({ rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })] });
+    useMazeStore.setState({ rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })] });
     useMazeStore.getState().setStrategy("g1", "scored_endpoints");
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.strategyId).toBe("scored_endpoints");
   });
 
   it("setStrategy auto-fills a mandatory nested slot with the first compatible candidate", () => {
     useMazeStore.setState({
-      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "excessive_scc_count", checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "excessive_scc_count", checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, strategyParams: {} })],
       availableStrategies: [
         {
           id: "reduce_scc_count",
@@ -63,7 +63,7 @@ describe("mazeStore generation strategy actions", () => {
   });
 
   it("clearStrategy removes a strategy for a rule", () => {
-    useMazeStore.setState({ rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints" })] });
+    useMazeStore.setState({ rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints", strategyParams: {} })] });
     useMazeStore.getState().clearStrategy("g1");
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.strategyId).toBeNull();
   });
@@ -96,7 +96,7 @@ describe("mazeStore generation strategy actions", () => {
     return {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "reduce_scc_count", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [{ slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] }],
       collapsed: false,
     };
@@ -145,7 +145,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "reduce_scc_count", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [{
         slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" },
         nested: [{ slotId: "inner_slot", strategyId: "other_expand_strategy", params: { foo: "bar" }, nested: [] }],
@@ -190,7 +190,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "reduce_scc_count", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -216,7 +216,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "priority_region_merge", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -236,7 +236,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "priority_region_merge", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -256,7 +256,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "priority_region_merge", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -280,7 +280,7 @@ describe("mazeStore generation strategy actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
+      strategyId: "priority_region_merge", strategyParams: {}, disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         {
           slotId: "merge_target", strategyId: "expand_region_passage", params: {},

@@ -78,7 +78,7 @@ describe("StrategySelectDialog", () => {
   describe("add_split's rule-level pattern override", () => {
     it("renders the plain node-count input when the rule has no split_patterns", () => {
       useMazeStore.setState({
-        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", strategyParams: {}, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
       });
       render(<StrategySelectDialog ruleId="g2" kind="isolated_node" onClose={vi.fn()} />);
       expect(screen.getByText("Nodes in tile")).toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("StrategySelectDialog", () => {
 
     it("renders the locked pattern-weights control when the rule has split_patterns", () => {
       useMazeStore.setState({
-        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", disabled: false, ruleDisabled: false, params: { split_patterns: JSON.stringify([{ node_count: 2, faces: [], weight: 1 }]) }, nestedStrategies: [], collapsed: false }],
+        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", strategyParams: {}, disabled: false, ruleDisabled: false, params: { split_patterns: JSON.stringify([{ node_count: 2, faces: [], weight: 1 }]) }, nestedStrategies: [], collapsed: false }],
       });
       render(<StrategySelectDialog ruleId="g2" kind="isolated_node" onClose={vi.fn()} />);
       expect(screen.getByText("Pattern weights")).toBeInTheDocument();

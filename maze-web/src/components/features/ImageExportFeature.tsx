@@ -5,7 +5,7 @@ import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../stor
 import { Button } from "../Button";
 import { ui } from "../../styles/theme";
 import { Stack, Inline } from "../Layout";
-import { SidePanel } from "../SidePanel";
+import { bringSidePanelToFront, SidePanel } from "../SidePanel";
 import { HoverIconButton } from "../HoverIconButton";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
@@ -40,16 +40,14 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const presetInputRef = useRef<HTMLInputElement>(null);
 
   function handleClick(mode: RenderModeId) {
-    if (mode === activeRenderMode) {
-      setOpenRenderModeSettings(openRenderModeSettings === mode ? null : mode);
-    } else {
-      setActiveRenderMode(mode);
-      setOpenRenderModeSettings(mode);
-    }
+    bringSidePanelToFront("image-export-render-mode");
+    if (mode !== activeRenderMode) setActiveRenderMode(mode);
+    setOpenRenderModeSettings(mode);
   }
 
   function handleFormatGearClick(format: ExportFormatId) {
-    setOpenExportFormatSettings(openExportFormatSettings === format ? null : format);
+    bringSidePanelToFront("image-export-format");
+    setOpenExportFormatSettings(format);
   }
 
   async function handleExportClick(format: ExportFormatId) {
@@ -125,7 +123,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
-      <Inline gap="itemGap">
+      <Inline gap="itemGap" align="stretch">
         <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadVisualPresetFile(useMazeStore.getState())}>
           {m["image_export.visual_preset.save"]()}
         </Button>
@@ -143,7 +141,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       />
 
       {openMode && (
-        <SidePanel title={openMode.label()} onClose={() => setOpenRenderModeSettings(null)}>
+        <SidePanel title={openMode.label()} stackKey="image-export-render-mode" onClose={() => setOpenRenderModeSettings(null)}>
           {openMode.SettingsPanel ? <openMode.SettingsPanel /> : (
             <span>{m["image_export.settings_empty"]()}</span>
           )}
@@ -153,6 +151,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       {openFormat && (
         <SidePanel
           title={openFormat.label()}
+          stackKey="image-export-format"
           onClose={() => setOpenExportFormatSettings(null)}
           onTopChange={(isTop) => setExportFormatSettingsCovered(!isTop)}
         >

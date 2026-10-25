@@ -76,7 +76,6 @@ export const CHECK_IDS = [
   "vertical_passage_group_geometric_proximity",
   "vertical_passage_group_graph_proximity",
 ] as const;
-
 export const STRATEGY_IDS = [
   "add_elevator",
   "add_elevator_height_stop",
@@ -129,7 +128,6 @@ export const STRATEGY_IDS = [
   "vertical_passage_region_merge",
   "weighted_region_merge",
 ] as const;
-
 export const RULE_PARAM_IDS = [
   "passage_type",
   "protect_route",
@@ -318,3 +316,4 @@ export const PARAM_IDS = [
   "vertical_passage_priority",
   "waypoint",
 ] as const;
+

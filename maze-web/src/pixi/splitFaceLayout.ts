@@ -80,8 +80,8 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
 /** Recognizes a split point's topology by its cell's shape template (`binding`; a cell without one
  *  is never recognized). `localFaceKindsByNode` is in the cell's `faces_of` order; recognition runs
  *  on the template's canonical faces, so it holds for every cell of the template. The `regular:4`
- *  template: a two-node topology as `"bridge"` (each node an opposite-face pair) or `"diagonal"` (each node an
- *  adjacent-face pair) — GitHub issue #294 — or
+ *  template and four-face radial ring template: a two-node topology as `"bridge"` (each node an
+ *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294/#845 — or
  *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
  *  `"hex_bridge"` (two nodes, each an opposite-face pair), `"hex_triple_bridge"` (three nodes, all
  *  opposite-face pairs), `"hex_diagonal"` (two nodes, neither an opposite-face pair — adjacent
@@ -124,7 +124,11 @@ export function detectSplitSpecialShapeKind(
       (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
       ? "cairo_adjacent_divider" : null;
   }
-  if (binding.shape !== "regular:4" && binding.shape !== "regular:6") return null;
+  // Radial ring cells with one inner and one outer neighbor have the same four-face topology as
+  // a square: outer/inner and previous/next form the two opposite pairs. Reuse the square bridge
+  // and diagonal-divider treatment while keeping every other registered template opt-in.
+  const isFourFaceTemplate = binding.shape === "regular:4" || binding.shape === "radial:ring_1_1";
+  if (!isFourFaceTemplate && binding.shape !== "regular:6") return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 

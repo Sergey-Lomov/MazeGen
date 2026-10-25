@@ -23,6 +23,8 @@ const MIN_PANEL_WIDTH = 360;
  *  all of them. */
 interface PanelStackEntry {
   id: symbol;
+  /** Stable name used by a control to bring an already-mounted panel back to the front. */
+  stackKey?: string;
   /** Mirrors this entry's own `overlay` prop — needed so a lower entry can tell whether it's fully
    *  occluded (an in-flow entry stacked on top of it) or merely visually covered (an absolutely
    *  positioned overlay on top of it, which takes no width of its own). */
@@ -36,13 +38,30 @@ function notifyPanelStackChange() {
   for (const listener of panelStackListeners) listener();
 }
 
-function pushPanel(id: symbol, overlay: boolean) {
-  panelStack = [...panelStack, { id, overlay }];
+function pushPanel(id: symbol, overlay: boolean, stackKey?: string) {
+  panelStack = [...panelStack, { id, overlay, stackKey }];
   notifyPanelStackChange();
 }
 
 function popPanel(id: symbol) {
   panelStack = panelStack.filter((p) => p.id !== id);
+  notifyPanelStackChange();
+}
+
+/** Moves the live panel identified by `stackKey` to the top of the shared stack. A control may
+ * call this before opening its panel: when it is not mounted yet this is deliberately a no-op and
+ * its normal mount will make it topmost. */
+export function bringSidePanelToFront(stackKey: string) {
+  let index = -1;
+  for (let i = panelStack.length - 1; i >= 0; i -= 1) {
+    if (panelStack[i].stackKey === stackKey) {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0 || index === panelStack.length - 1) return;
+  const entry = panelStack[index];
+  panelStack = [...panelStack.slice(0, index), ...panelStack.slice(index + 1), entry];
   notifyPanelStackChange();
 }
 
@@ -137,6 +156,9 @@ function pointFromEvent(event: Event): { x: number; y: number } | null {
 
 interface Props {
   title: string;
+  /** Stable control-facing identifier. When its control is pressed again while this panel remains
+   * mounted beneath another panel, `bringSidePanelToFront` uses it to reveal this same instance. */
+  stackKey?: string;
   subtitle?: string;
   onClose: () => void;
   /** Diagnostic hints/warnings for the panel's current content — shown in a dismissible strip
@@ -176,7 +198,7 @@ interface Props {
  *  mounted one is actually shown. Closing it unmounts that instance and pops it off the stack, so
  *  the next one down becomes visible again — restoring what was underneath rather than clearing
  *  the whole slot. */
-export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
+export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overlay, onTopChange, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
@@ -209,9 +231,9 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
   }
   const panelId = panelIdRef.current;
   useLayoutEffect(() => {
-    pushPanel(panelId, !!overlay);
+    pushPanel(panelId, !!overlay, stackKey);
     return () => popPanel(panelId);
-  }, [panelId, overlay]);
+  }, [panelId, overlay, stackKey]);
   const isTop = useIsTopPanel(panelId);
   // Whether this instance should stay in normal flow (contributing its box/width to the slot) even
   // when it isn't the topmost entry — see `useKeepsFlowWidth`. Irrelevant for an overlay instance

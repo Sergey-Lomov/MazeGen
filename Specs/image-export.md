@@ -16,9 +16,9 @@ Computed by `computeImageExportCard` (`FeaturesPanel.tsx`), covered by `features
 
 `activeRenderMode: RenderModeId | null` (`imageExportSlice.ts`) starts as `null` — the switcher has **no default selection**. The user must explicitly pick a mode; until then the card shows the `warning` status above.
 
-Clicking a switcher item (`ImageExportFeature.tsx`):
-- **Inactive item** → becomes the active mode (`setActiveRenderMode`) and its own settings `SidePanel` opens (`setOpenRenderModeSettings(mode)`) — one click both switches and shows that mode's settings.
-- **Active item** → toggles its own settings `SidePanel` open/closed (`setOpenRenderModeSettings`).
+Clicking a switcher item (`ImageExportFeature.tsx`) makes it the active mode when needed and shows
+its settings `SidePanel` (`setOpenRenderModeSettings(mode)`). If that panel is already mounted
+under another panel, the click brings the existing instance to the front; it never closes it.
 
 `openRenderModeSettings: RenderModeId | null` is independent of `openCard` — closing the whole Image Export card doesn't clear it, but the panel itself only renders while the card is open (rendered on the canvas's `SidePanel` slot, same interaction pattern as post-edit/preset split-node panels). It's also independent of `openExportFormatSettings` (below, GitHub issue #629) — opening one no longer clears the other; both may stay mounted at once, and `SidePanel`'s own mount-order stack (`maze-web/Specs/architecture.md`'s "Side panel stacking" section) decides which is actually shown, since both dock to the same slot.
 

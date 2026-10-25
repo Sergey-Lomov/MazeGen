@@ -40,6 +40,8 @@ function isNewlineTarget(target: EventTarget | null): boolean {
 interface Props {
   title: string;
   size?: DialogSizeKey;
+  /** Layout-only overrides for a dialog whose dimensions depend on its content. */
+  layoutStyle?: React.CSSProperties;
   /** Replaces the padded body with a raw full-bleed container. Use when the content manages its own layout (e.g. split-pane dialogs). */
   rawBody?: React.ReactNode;
   onClose: () => void;
@@ -49,7 +51,7 @@ interface Props {
   children?: React.ReactNode;
 }
 
-export function Modal({ title, size = "info", rawBody, onClose, onConfirm, children }: Props) {
+export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onConfirm, children }: Props) {
   const sizeTokens = dialogSize[size];
   const id = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -111,6 +113,7 @@ export function Modal({ title, size = "info", rawBody, onClose, onConfirm, child
           maxWidth: sizeTokens.maxWidth,
           ...("width" in sizeTokens ? { width: sizeTokens.width } : {}),
           ...("height" in sizeTokens ? { height: (sizeTokens as { height: string | number }).height } : {}),
+          ...layoutStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >

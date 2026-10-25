@@ -242,6 +242,11 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
+  setElementCellTypeRestrictions: (cell_type_restrictions) => set((state) => ({
+    elementsConfig: { ...state.elementsConfig, cell_type_restrictions },
+    debugStale: debugStaleOf(state),
+  })),
+
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   loadQualityPreset: (quality) => set((state) => ({
     rules: rulesFromFile(quality.rules),

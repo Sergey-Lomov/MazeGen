@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   computeLayoutOffsets, resolveLayoutMode, applyMarkerLayout, buildGroupBridgeMarkers, shiftMarkerIndexLabels,
-  HOST_EXTENT_SPLIT_NODE, hostKey, markerFootprint, buildSplitHostKeys, shiftKey,
+  HOST_EXTENT_CELL, HOST_EXTENT_SPLIT_NODE, hostKey, markerFootprint, buildSplitHostKeys, shiftKey,
 } from "../pixi/selectors/mazeSelectors/markerLayout";
 import { verticalMarkerFootprint } from "../pixi/renderers/VerticalConnectionRenderer";
 import { layoutExportMarkers } from "../pixi/imageExport/exportStyleBuilders";
@@ -225,6 +225,16 @@ describe("applyMarkerLayout scale", () => {
   it("leaves a lone marker unscaled", () => {
     const r = applyMarkerLayout({ ...input(), markers: [mk([0, 0], 8)], teleportEdges: [], verticalMarkers: [] }, { ...opts, scale: 0.5 });
     expect(r.markers[0].radius).toBe(8);
+  });
+
+  it("keeps an explicitly full-scale marker at its full size when the group needs fitting", () => {
+    const radius = HOST_EXTENT_CELL * 0.9;
+    const r = applyMarkerLayout(
+      { markers: [mk([0, 0], radius), mk([0, 0], radius)], teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 },
+      { mode: "row", spacing: 2, scale: 1 },
+    );
+    expect(r.markers.map((m) => m.radius)).toEqual([radius, radius]);
+    expect(r.markers[0].pos).not.toEqual(r.markers[1].pos);
   });
 });
 

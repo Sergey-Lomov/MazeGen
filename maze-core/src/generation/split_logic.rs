@@ -2,8 +2,8 @@ use super::debug_state::DebugGenerationState;
 use super::split_non_pattern::handle_non_pattern_split;
 use super::split_pattern::SplitGenerationConfig;
 use super::split_pattern_logic::{cell_has_pattern, handle_pattern_split};
-use super::vertex_based::{GenState, VertexBasedEvent};
-use super::{ElementsConfig, GenerationParams, PresetState};
+use super::vertex_based::{GenState, VertexBasedEvent, element_roll_allowed};
+use super::{ElementsConfig, GeneratedElementKind, GenerationParams, PresetState};
 use crate::event_log::ScopeGuard;
 use crate::graph::Graph;
 use crate::ids::{IdGenerator, NodeId};
@@ -93,6 +93,15 @@ pub(super) fn try_split_src<T: Tessellation>(
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
     debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> SplitOutcome {
+    if !element_roll_allowed(
+        state,
+        field,
+        src,
+        GeneratedElementKind::Split,
+        scope.as_deref_mut(),
+    ) {
+        return SplitOutcome::Miss;
+    }
     let roll = state.rng.random::<f64>();
     let fired = roll < elements.split_chance;
     let eligible = fired

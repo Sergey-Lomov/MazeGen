@@ -1,6 +1,6 @@
-use super::super::{ElementsConfig, PresetState, can_connect};
+use super::super::{ElementsConfig, GeneratedElementKind, PresetState, can_connect};
 use super::vertex_based_event::VertexBasedEvent;
-use super::{GenState, add_to_frontier};
+use super::{GenState, add_to_frontier, element_roll_allowed};
 use crate::event_log::ScopeGuard;
 use crate::graph::{EdgeKind, Graph};
 use crate::ids::NodeId;
@@ -86,17 +86,38 @@ pub(super) fn resolve_vertical_passage_target<T: Tessellation>(
 /// have only one possible `dst`).
 pub(super) fn add_vertical_passage_edge(
     graph: &mut Graph,
+    field: &MultiLevelField<impl Tessellation>,
     elements: &ElementsConfig,
     state: &mut GenState,
     src: NodeId,
     dst: NodeId,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
-    let one_way_roll = state.rng.random::<f64>();
-    let one_way = one_way_roll < elements.one_way_vertical_passage_chance;
-    if let Some(log) = scope.as_deref_mut() {
+    let one_way_allowed = state.allows(field, GeneratedElementKind::OneWay, src)
+        && state.allows(field, GeneratedElementKind::OneWay, dst);
+    if !one_way_allowed && elements.one_way_vertical_passage_chance > 0.0 {
+        let _ = element_roll_allowed(
+            state,
+            field,
+            src,
+            GeneratedElementKind::OneWay,
+            scope.as_deref_mut(),
+        );
+        let _ = element_roll_allowed(
+            state,
+            field,
+            dst,
+            GeneratedElementKind::OneWay,
+            scope.as_deref_mut(),
+        );
+    }
+    let one_way_roll = one_way_allowed.then(|| state.rng.random::<f64>());
+    let one_way = one_way_roll.is_some_and(|roll| roll < elements.one_way_vertical_passage_chance);
+    if let Some(log) = scope.as_deref_mut()
+        && let Some(roll) = one_way_roll
+    {
         log.emit(VertexBasedEvent::VerticalPassageOneWayRolled {
-            roll: one_way_roll,
+            roll,
             one_way_chance: elements.one_way_vertical_passage_chance,
             fired: one_way,
         });
@@ -204,12 +225,25 @@ pub(super) fn try_growth_vertical_passage<T: Tessellation>(
     src: NodeId,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
+    if !element_roll_allowed(
+        state,
+        field,
+        src,
+        GeneratedElementKind::VerticalPassage,
+        scope.as_deref_mut(),
+    ) {
+        return false;
+    }
     let candidates: Vec<(bool, NodeId)> = [true, false]
         .into_iter()
         .filter_map(|upward| {
             resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n))
         })
-        .filter(|&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
+        .filter(|&(_, n)| {
+            !state.visited.contains(&n)
+                && can_connect(src, n, preset_state)
+                && state.allows(field, GeneratedElementKind::VerticalPassage, n)
+        })
         .collect();
     let Some(&(_, dst)) = (if candidates.len() <= 1 {
         candidates.first()
@@ -219,7 +253,15 @@ pub(super) fn try_growth_vertical_passage<T: Tessellation>(
     }) else {
         return false;
     };
-    add_vertical_passage_edge(graph, elements, state, src, dst, scope.as_deref_mut());
+    add_vertical_passage_edge(
+        graph,
+        field,
+        elements,
+        state,
+        src,
+        dst,
+        scope.as_deref_mut(),
+    );
     state.visited.insert(dst);
     state.in_reserve.remove(&dst);
     add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
@@ -249,6 +291,15 @@ pub(super) fn try_vertical_cyclic_edge<T: Tessellation>(
     let kind = roll_vertical_balance(elements, state, src, scope.as_deref_mut());
     match kind {
         VerticalKind::Passage => {
+            if !element_roll_allowed(
+                state,
+                field,
+                src,
+                GeneratedElementKind::VerticalPassage,
+                scope.as_deref_mut(),
+            ) {
+                return false;
+            }
             let candidates: Vec<(bool, NodeId)> = [true, false]
                 .into_iter()
                 .filter_map(|upward| {
@@ -257,6 +308,7 @@ pub(super) fn try_vertical_cyclic_edge<T: Tessellation>(
                 .filter(|&(_, n)| {
                     state.visited.contains(&n)
                         && can_connect(src, n, preset_state)
+                        && state.allows(field, GeneratedElementKind::VerticalPassage, n)
                         && graph.edge_between(src, n).is_none()
                         && graph.edge_between(n, src).is_none()
                 })
@@ -268,7 +320,7 @@ pub(super) fn try_vertical_cyclic_edge<T: Tessellation>(
             }) else {
                 return false;
             };
-            add_vertical_passage_edge(graph, elements, state, src, dst, scope);
+            add_vertical_passage_edge(graph, field, elements, state, src, dst, scope);
             true
         }
         VerticalKind::Elevator => try_elevator(
@@ -356,10 +408,23 @@ pub(super) fn try_elevator<T: Tessellation>(
     from_cyclic: bool,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
+    if !element_roll_allowed(
+        state,
+        field,
+        src,
+        GeneratedElementKind::Elevator,
+        scope.as_deref_mut(),
+    ) {
+        return false;
+    }
     let all_candidates = elevator_floor_candidates(field, src);
     let unvisited_all: Vec<NodeId> = all_candidates
         .iter()
-        .filter(|&&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
+        .filter(|&&(_, n)| {
+            !state.visited.contains(&n)
+                && can_connect(src, n, preset_state)
+                && state.allows(field, GeneratedElementKind::Elevator, n)
+        })
         .map(|&(_, n)| n)
         .collect();
     let visited_all: Vec<NodeId> = all_candidates
@@ -367,6 +432,7 @@ pub(super) fn try_elevator<T: Tessellation>(
         .filter(|&&(_, n)| {
             state.visited.contains(&n)
                 && can_connect(src, n, preset_state)
+                && state.allows(field, GeneratedElementKind::Elevator, n)
                 && graph.edge_between(src, n).is_none()
                 && graph.edge_between(n, src).is_none()
         })

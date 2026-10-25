@@ -175,7 +175,7 @@ function buildBridgeShape(
   pointKey: string,
   throughFaces: [Seg, Seg] | null,
   crossFaces: [Seg, Seg],
-  taperFrac: number = SQUARE_BRIDGE_TAPER_FRAC,
+  taperFrac: number = DEFAULT_BRIDGE_TAPER_FRAC,
   deckWidthFrac: number = BRIDGE_DECK_WIDTH_FRAC,
 ): SplitSpecialShape {
   const throughLine = throughFaces ? [
