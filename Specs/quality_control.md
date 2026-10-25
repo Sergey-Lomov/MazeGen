@@ -865,6 +865,8 @@ Shared utility the geometric checks build on — see GitHub issue #74 and `Specs
 built-in tessellation, math Y-up, no display orientation): a cell's position is
 `space::cell_position(cell)` — its `Tessellation::center` together with its `cell_scale`.
 
+**Folds (GitHub issue #834).** The functions below are planar and ignore topology folds. The distance contract for folded floors (`surface_distance`, `DistanceResult`, `WithinLimit`, per-check policy for `Unknown`/`Unsupported`) is in `Specs/topology.md`, "Distance contract".
+
 **Distances are in `cell_scale` units.** Every geometric distance is the planar world distance
 divided by the mean `cell_scale` of the two positions (`space.md`'s "Scale between two
 positions"), so a threshold means the same number of

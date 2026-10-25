@@ -97,7 +97,8 @@ operations reject invalid cells on their own.
   "Geometry" below. `cell_position`/`edge_position` (free functions in `space::mod`) resolve a
   cell's center or an edge's contact point together with its scale; `geometric_distance`,
   `floor_aware_distance` and `floor_aware_xy_distance` measure between them in `cell_scale` units,
-  unrelated to graph/nav distance (tile-hop count along real edges).
+  unrelated to graph/nav distance (tile-hop count along real edges). They are planar and ignore
+  folds; the contract for fold-aware distance is in `Specs/topology.md`, "Distance contract".
 
 ## Field\<T\>
 

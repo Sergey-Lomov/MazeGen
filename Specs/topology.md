@@ -70,3 +70,74 @@ GitHub issue #833. Module: `maze-core/src/space/geometry/fold.rs`. Seam geometry
 ## v1 constraint
 
 A cell has **at most one face toward a given neighbour** (`Specs/space.md`, "Topology contract"; `Field::neighbors` relies on it). Folds must not break it in v1: gluing must not make a cell neighbour the same cell through two faces. Structural validation does not check it; activity resolution does (`DuplicateNeighbor`).
+
+## Distance contract
+
+GitHub issue #834 (audit; part of the topology epic, depends on #831). Fixes the contract that `surface_distance` and the algorithm audit implement. **No behaviour change**: until `surface_distance` exists every consumer below keeps its current planar behaviour.
+
+### Metrics
+
+- **`planar_distance`** — what `geometric_distance`, `floor_aware_distance` and `floor_aware_xy_distance` compute today: Euclidean distance in the tessellation's flat embedding, in `cell_scale` units, optionally with the floor difference as a third coordinate. It ignores folds entirely. The existing functions stay as thin wrappers (`geometric_distance` = `planar_distance` of two cell centers); they are not renamed in this ticket.
+- **`surface_distance`** — shortest path along the floor's surface, crossing active *isometric* folds (`Field::fold_class`). The only metric that is correct on a cylinder, torus or twisted surface.
+- **graph/nav distance** — tile-hop count over real edges (`MazeAnalysis::distance_from_start/finish`, `bfs_min_distance`, the nav distance cache). Already adjacency-based (folds are seen through `Field::neighbor_via`); independent of this contract.
+
+Without active folds on a floor `surface_distance == planar_distance` (exact). The floor difference is folded in as before (`GeometricFloorMode`) and is never part of the surface path.
+
+### Result types
+
+```rust
+pub struct DistanceResult { pub lower_bound: f64, pub upper_bound: f64, pub exact: bool }
+pub enum DistanceError { Unsupported }   // surface_distance(..) -> Result<DistanceResult, DistanceError>
+pub enum WithinLimit { Yes, No, Unknown }
+```
+
+- `lower_bound <= true distance <= upper_bound`. `exact == true` iff the value is computed exactly (then `lower_bound == upper_bound`). Planar distance with no active fold is always exact.
+- **`Unsupported`**: the pair touches a floor with an active fold whose class is `TopologicalOnly`, and the caller did not opt into approximation. A topological-only fold glues adjacency but is not passed to the distance algorithm, so no surface path through it can be measured. Folds are scoped per floor: floors without such folds are unaffected.
+- **`WithinLimit`** comes from `DistanceResult::compare(Comparison, limit)`: `Yes` when every value in `[lower_bound, upper_bound]` satisfies the comparison, `No` when none does, `Unknown` otherwise. An `exact` result is never `Unknown`. Strict/inclusive semantics stay those of the caller's current comparison (`<` for the proximity scans, `Comparison` for teleport length).
+
+### Approximation flag
+
+Approximation is **explicit opt-in, chosen by the caller**: never a global switch, never silent.
+
+```rust
+pub enum DistancePolicy { Strict, Approximate }   // default: Strict
+```
+
+- `Strict` (default): `Unsupported` and `Unknown` are returned to the caller.
+- `Approximate`: an unsupported pair yields `planar_distance` flagged `exact = false` (`lower_bound == upper_bound == planar`); the caller accepts that the answer may be wrong near the seam. Exposed as a per-check / per-strategy parameter (`approximate_topology: bool`, default `false`), so the choice is visible in the config JSON and in `maze-runner` fixtures.
+- `Approximate` replaces only `Unsupported`; it never makes an already exact result inexact.
+
+### Consumers
+
+Audit of every non-test caller of the three functions across `maze-core`, `maze-wasm`, `maze-web` and `maze-runner`. The wasm, web and runner crates call none of them, and `geometric_distance` itself has no production caller (only its `lib.rs` re-export and tests). "Threshold" = the result is compared against a configured limit.
+
+| # | Consumer | Function | Metric | Accuracy | Threshold | Active non-isometric fold |
+|---|----------|----------|--------|----------|-----------|---------------------------|
+| 1 | `TeleportGeometricLengthCheck` (`teleport_geometric_length_core.rs`), endpoint cell centers | `floor_aware_distance` | `surface_distance` | exact decision | yes, `Comparison` vs `length` | `Strict`: indeterminate (see policy). `Approximate`: planar |
+| 2 | `OneWayGroupGeometricProximityCheck`, edge contact points (`edge_position`) | `floor_aware_xy_distance` | `surface_distance` | exact decision | yes, `< distance` | as 1 |
+| 3 | `SplitGroupGeometricProximityCheck`, cell centers | `floor_aware_distance` | `surface_distance` | exact decision | yes, `< distance` | as 1 |
+| 4 | `VerticalPassageGroupGeometricProximityCheck`, cell centers | `floor_aware_distance` | `surface_distance` | exact decision | yes, `< distance` | as 1 |
+| 5 | `ElevatorStopGroupGeometricProximityCheck`, cell centers | `floor_aware_distance` | `surface_distance` | exact decision | yes, `< distance` | as 1 |
+| 6 | `CrossElementGeometricProximityCheck`, pre-resolved occurrence positions | `floor_aware_xy_distance` | `surface_distance` | exact decision | yes, `< distance` | as 1 |
+| 7 | `ExpandRegionPassageStrategy` `one_way` mode: `farthest_pair`, `farthest_pair_combination` rank candidate bridging pairs | `floor_aware_xy_distance` (floor 0, no height) | `surface_distance` | ordering only | no (argmax / max-min) | never fails: ranks by `upper_bound`; `Unsupported` falls back to planar. Migrating changes seeded output, see `Specs/baselines.md` |
+| 8 | `lib.rs` re-export of `geometric_distance` (public API) | `geometric_distance` | `planar_distance` | exact | n/a | unchanged: stays planar, documented as ignoring folds |
+
+Consumers 2 and 6 take `edge_position`s, which are fold-aware (a fold's two sides have distinct contact points, #833), so `surface_distance` must accept arbitrary surface points, not only cell centers. Consumers 2–6 share `pairwise_geometric_scan`, whose `distance` closure is their single integration point; consumer 1 is a plain filter.
+
+Not consumers of this contract:
+
+- **graph/nav distance** (unchanged): `waypoint_distance_core`, `loop_distance_from_start/finish`, `one_way_waypoint_distance`, `one_way_group_graph_proximity`, `analysis.rs`, `graph/nav/build.rs`, `teleport_region_merge`, repair's `bfs_min_distance`. They count hops over real edges and are already correct across folds via `neighbor_via`.
+- **planar by design**: `field_ops` symmetry tolerance and preset-radius selection, `voronoi` seed spacing, `geometry/*` segment and fold-isometry tolerances. They work on the flat embedding; folds do not apply.
+
+### Consumer policy for `Unknown` / `Unsupported`
+
+- **QC threshold checks (1–6)** must not silently treat an undecidable pair as pass or fail. Under `Strict`, an `Unsupported` pair or a `WithinLimit::Unknown` comparison is not flagged **and** is recorded as indeterminate: the check surfaces a non-repairable warning-level issue naming the pair/element and the reason (`unsupported_topology` / `distance_unknown`), so the user sees the check could not decide. Repair strategies ignore it. The concrete issue type is defined with `surface_distance`; this section fixes only the rule. `Yes` flags and `No` passes, as today.
+- **Under `Approximate`** the planar fallback decides (`exact = false`) and the check also records that the result was approximate (same warning channel, lower severity), so an approximate pass is visible too.
+- **Ranking consumers (7)** never fail and never raise issues: they use the bound that suits the ranking (`upper_bound` for "farthest") and fall back to planar for `Unsupported`.
+- **No consumer may fall back to `planar_distance` on its own.** A fallback happens only through `DistancePolicy::Approximate`, chosen by the caller and visible in config.
+
+### Follow-ups (not in this ticket)
+
+- `surface_distance` implements the result types and `compare`; consumers 1–7 migrate to it.
+- Algorithm audit: each `Strict` consumer gets the indeterminate-issue wiring and a `maze-runner` fixture with an active non-isometric fold.
+- `approximate_topology` is added to check/strategy params and the wasm/web config.
