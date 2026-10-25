@@ -25,6 +25,7 @@ pub mod square;
 pub mod square_octagon;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod topology;
 pub mod triangle;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
@@ -68,6 +69,10 @@ pub use snub_hexagonal::{
 pub use snub_square::{SnubSquareFace, SnubSquareKind, SnubSquarePoint, SnubSquareTessellation};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTessellation};
+pub use topology::{
+    Fold, FoldEnd, FoldGroup, FoldGroupId, FoldId, FoldSide, TessellationFingerprint, Topology,
+    TopologyError,
+};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 pub use trihexagonal::{
     TrihexagonalFace, TrihexagonalKind, TrihexagonalPoint, TrihexagonalTessellation,
