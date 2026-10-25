@@ -10,6 +10,7 @@ import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitF
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
+import { getNeighborData } from "../pixi/tessellationGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 
 const noSplits = () => undefined;
@@ -217,6 +218,39 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     );
     expect(result).toHaveLength(1);
     expect(result[0].faces[0].neighbor).toEqual(nodeEndpoint(2));
+  });
+
+  it("moves radial connections to the next face for every radial cell degree", () => {
+    const radialCfg = fieldOf("radial", { shape: "circle", radius: 4 });
+    const cases: Array<{ point: [number, number]; faceCount: number }> = [
+      { point: [2, 7], faceCount: 4 },
+      { point: [1, 0], faceCount: 5 },
+      { point: [0, 0], faceCount: 9 },
+    ];
+
+    for (const { point, faceCount } of cases) {
+      const { offsets } = getNeighborData(radialCfg, point[0], point[1]);
+      expect(offsets, `${point}`).toHaveLength(faceCount);
+
+      const nodes: NodeDto[] = [
+        { id: 1, x: point[0], y: point[1], i: 0 },
+        ...offsets.map(([dx, dy], index) => ({ id: index + 2, x: point[0] + dx, y: point[1] + dy, i: 0 })),
+      ];
+      const from = nodeEndpoint(1);
+      const oldNeighbor = nodeEndpoint(2);
+      const newNeighbor = nodeEndpoint(3);
+      const edges: Record<string, PostEditEdge> = {
+        [edgeKey(from, oldNeighbor)]: { from, to: oldNeighbor, kind: "one_way_forward" },
+      };
+      const cellSet = new Set(nodes.map((node) => `${node.x},${node.y}`));
+
+      const result = rotateSplitPointNodes(edges, point, [], 1, radialCfg, cellSet, nodes, {}, {});
+
+      expect(result, `${point}`).toEqual([{
+        slotId: undefined,
+        faces: [faceOf(newNeighbor, { kind: "one_way_forward", from, to: newNeighbor }, wallTo(newNeighbor, from))],
+      }]);
+    }
   });
 
   it("no split slots — a one-way edge from the point moves from its E neighbor to its N neighbor (direction 1)", () => {

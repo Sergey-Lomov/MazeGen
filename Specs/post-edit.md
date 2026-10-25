@@ -1023,6 +1023,12 @@ cell whose allowed group has no such element cannot rotate: Cairo's group is ide
 reflection, so its rotate buttons are hidden (`canRotateSplit`) and `rotateFaceIndex` leaves faces
 unchanged. Owner resolution otherwise uses the ordinary existing-owner and safe-fallback tiers.
 
+Radial post-edit split tiles are the explicit exception: their controls are shown for every radial
+cell with at least two faces, even though a radial cell has no rotational symmetry. A click moves
+each real split-node connection to the next or previous position in that cell's circular face order;
+it does not rotate the cell geometry or change the tessellation's allowed transform group. Pattern
+and preset editors retain their usual geometric-rotation rules.
+
 Rotating a split point's tile (the panel's rotate buttons) shifts **every one of the point's own nodes' face-wiring independently** by one adjacent physical face around the point — not a rigid-body rotation of the whole point as a unit. Each of the point's nodes (original + every slot) that currently has a decided face keeps that face's edge but re-keys it onto the new geometric face one step further in the rotation direction; a node with no decided face on the point is untouched.
 
 **Resolving who owns the newly-vacated/newly-occupied face on the far side.** When a rotated face lands on a *new* neighbor point, `resolveFaceOwner` picks which of that neighbor's own nodes (it may itself be split) the moved edge should now connect to, tried in this priority order:

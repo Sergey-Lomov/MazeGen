@@ -134,6 +134,7 @@ interface Props<E> {
   /** Rotates every node's connections by one geometric face, clockwise (`1`) or counter-clockwise
    * (`-1`) — see `rotatePostEditSplitPoint`/`rotatePresetSplitPoint`. */
   onRotate: (direction: 1 | -1) => void;
+  allowFaceReassignmentRotation?: boolean;
   /** Dry-runs a rotate and reports whether it would break a neighboring split point's currently
    *  recognized special shape (bridge/diagonal/etc. — GitHub issue #588), so `onRotate` can be
    *  gated behind a `ConfirmModal` instead of silently degrading the neighbor's rendering. Optional
@@ -194,7 +195,7 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape, notificationSource,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, allowFaceReassignmentRotation, wouldBreakNeighborShape, notificationSource,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
   onTopChange,
 }: Props<E>) {
@@ -302,6 +303,7 @@ export function SplitNodesDialogView<E>({
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
           onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
+          allowFaceReassignmentRotation={allowFaceReassignmentRotation}
           showFaceIndices notificationSource={notificationSource}
         />
       </div>

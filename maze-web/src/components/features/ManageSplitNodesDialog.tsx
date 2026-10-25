@@ -329,6 +329,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
+      allowFaceReassignmentRotation={cfg.tessellation.kind === "radial"}
       wouldBreakNeighborShape={(direction) => draftEdges !== null && rotateSplitPointBreaksNeighborShape(
         draftEdges, point, slots, direction, cfg, inFieldCells, nodes, activeSplitNode, splitPoints, level,
       )}
