@@ -67,6 +67,23 @@ GitHub issue #833. Module: `maze-core/src/space/geometry/fold.rs`. Seam geometry
 - **`edge_position`.** `space::edge_position(field, from, to)` takes the `Field` (callers on a multi-level field use the field of `from`'s level) and resolves the face through `Field::face_index_toward` and the contact point through `Field::contact_point`. Across an active fold it is `from`'s own contact point on the folded face, not the midpoint of the two centers (the fallback for cells that share no face and no fold). Across a fold `edge_position(a, b) != edge_position(b, a)`: each side has its own point. Without folds the result is unchanged.
 - **Snapshot.** See `Specs/space.md`, "Geometry snapshot lifecycle".
 
+## Wire form
+
+GitHub issue #836. Module: `maze-runner/src/topology_wire.rs`. One serialized shape serves the `maze-runner` fixture config, the `maze-wasm` dispatchers and the project file (TypeScript: `WireTopology` in `maze-web/src/wasm/types.ts`).
+
+```json
+{ "fingerprint": "square{}",
+  "folds":  [ { "a": { "cell": [4, 0], "face_idx": 0 }, "b": { "cell": [0, 0], "face_idx": 2 }, "twist": false, "group": 0 } ],
+  "groups": [ { "id": 0, "folds": [0] } ] }
+```
+
+- `cell` is the tessellation's wire point (`CellCodec`); `face_idx` is the position in `faces_of(cell)`; `twist` defaults to `false`; `groups[].folds` are indices into `folds`. `folds` and `groups` default to empty.
+- **Per floor.** `GenerateConfig.topology` and `ComputeAnalyticsConfig.topology` (post-edit confirm and analytics recompute) are arrays in `level_fields` order; a missing or `null` entry means no folds on that floor, more entries than floors is an error. Both are optional, so configs predating the key deserialize unchanged. Errors are prefixed `topology[<floor>]:`.
+- **Fingerprint.** `tessellation_fingerprint(config)` is the kind name followed by the params as JSON with sorted keys (`square{}`, `radial{"first_ring_cells":9,"max_cells":3000}`); a whole-valued number renders as an integer (`1` and `1.0` agree). The web client renders the same string (`tessellationFingerprint`, `maze-web/src/store/topologyWire.ts`). Decoding compares it with the current config first and fails with `topology was authored for tessellation `<found>`, current is `<expected>`` before any cell is read.
+- **Validation at the boundary.** `decode_topology` checks the fingerprint, decodes every end with the same rule as other wire points (undecodable or invalid cell: `folds[i].a|b: invalid cell [x, y]`) and runs `Topology::validate`, whose `Display` names the offending fold or group. `install_topologies` then calls `MultiLevelField::set_topology` per floor, so activity is resolved against each floor's own cell set. `encode_topology` is the inverse; decode followed by encode returns the same wire value.
+- **Project file.** The optional `floorTopology` section maps floor id to `WireTopology` (`Specs/project-file.md`). Loading rejects an entry whose fingerprint differs from the file's tessellation and any structural violation (`validateWireTopology`); cell validity and face ranges are checked by core when the topology is installed.
+- **Fixtures.** `maze-runner/tests/fixtures/topology-{cylinder,torus,mobius}.json` (a 6x5 square field) with `maze-runner/tests/topology.rs`; generation parameters come from the fixtures.
+
 ## v1 constraint
 
 A cell has **at most one face toward a given neighbour** (`Specs/space.md`, "Topology contract"; `Field::neighbors` relies on it). Folds must not break it in v1: gluing must not make a cell neighbour the same cell through two faces. Structural validation does not check it; activity resolution does (`DuplicateNeighbor`).

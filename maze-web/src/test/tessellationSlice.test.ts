@@ -202,6 +202,22 @@ describe("mazeStore setters", () => {
     expect(useMazeStore.getState().error).toBeNull();
   });
 
+  describe("floorTopology (GitHub issue #836)", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+
+    it("setFieldConfig keeps other floors' topology and drops the targeted floor's", () => {
+      useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology, other: topology } });
+      useMazeStore.getState().setFieldConfig(fieldOf("square", { shape: "custom", points: [[1, 2], [3, 4]] }));
+      expect(useMazeStore.getState().floorTopology).toEqual({ other: topology });
+    });
+
+    it("setFieldConfig clears every floor's topology when the tessellation config changes", () => {
+      useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology, other: topology } });
+      useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"));
+      expect(useMazeStore.getState().floorTopology).toEqual({});
+    });
+  });
+
   it("setFieldConfig syncs tessellationKind and hexShape", () => {
     useMazeStore.getState().setFieldConfig(fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"));
     const s = useMazeStore.getState();

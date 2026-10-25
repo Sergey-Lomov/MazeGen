@@ -51,6 +51,7 @@ import {
   SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD,
 } from "../../notifications/editRefusalNotifications";
 import * as m from "~/paraglide/messages";
+import { topologyKey } from "../topologyWire";
 
 const REFRESH_FAILED = "post_edit.refresh_failed";
 const REMOVE_ENDPOINT_NODE_REJECTED = "post_edit.remove_endpoint_node_rejected";
@@ -499,6 +500,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const config = {
       tessellation: fieldConfigToWasm(activeFieldConfig),
       level_fields,
+      ...topologyKey(state),
       nodes: prunedNodes,
       edges: wasmEdges,
       vertical_edges: verticalEdges,

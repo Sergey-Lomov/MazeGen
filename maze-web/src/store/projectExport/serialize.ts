@@ -54,6 +54,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       triOrientation: state.triOrientation,
     },
     floorFields,
+    floorTopology: state.floorTopology,
     generation: {
       seed: state.seed,
       randomSeed: state.randomSeed,

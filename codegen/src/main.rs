@@ -225,6 +225,7 @@ fn main() -> ExitCode {
                     ("RegionClass", "../types"),
                     ("CheckInstanceConfig", "../types"),
                     ("WasmTessellationConfig", "../types"),
+                    ("WireTopology", "../types"),
                     ("PresetConnection", "../types"),
                     ("StrategyConfig", "../types"),
                 ],

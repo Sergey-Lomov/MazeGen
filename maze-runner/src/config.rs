@@ -1,4 +1,5 @@
 use crate::config_dto::default_level_fields;
+use crate::topology_wire::TopologyDto;
 pub use crate::config_dto::{
     CheckInstanceConfig, ElementsConfigDto, GenerationParamsConfig, GenerationSourceModeDto,
     InitialGenerationConfig, LockedNodeDto, NodeLockKindDto, OneWayDirectionDto,
@@ -33,6 +34,11 @@ pub struct GenerateConfig {
     /// deserialize.
     #[serde(default = "default_level_fields")]
     pub level_fields: Vec<Vec<[i32; 2]>>,
+    /// Each floor's own topology (GitHub issue #836), in `level_fields` order; a missing or `null`
+    /// entry means no folds on that floor. At most `level_fields.len()` entries. `#[serde(default)]`
+    /// so configs predating this field still deserialize.
+    #[serde(default)]
+    pub topology: Vec<Option<TopologyDto>>,
     #[serde(default)]
     pub stages: Vec<StageConfig>,
     #[serde(default = "default_repair_max_iterations")]
@@ -91,6 +97,7 @@ impl Default for GenerateConfig {
         Self {
             tessellation: TessellationConfig::default(),
             level_fields: default_level_fields(),
+            topology: vec![],
             stages: vec![StageConfig {
                 id: "stage_1".to_string(),
                 name: "Stage 1".to_string(),

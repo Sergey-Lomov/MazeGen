@@ -7,6 +7,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { tessellationFingerprint } from "../topologyWire";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
@@ -67,7 +68,16 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
   }
 
   if (!derivedForActive) return {};
+  // A topology is authored for one tessellation config and one cell set (GitHub issue #836): a
+  // config change invalidates every floor's folds, a field change those of the targeted floors.
+  const configChanged =
+    tessellationFingerprint(derivedForActive.kind, derivedForActive.params) !==
+    tessellationFingerprint(state.tessellationKind, state.tessellationParams);
+  const floorTopology = configChanged
+    ? {}
+    : Object.fromEntries(Object.entries(state.floorTopology).filter(([id]) => !targetIdSet.has(id)));
   return {
+    floorTopology,
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,

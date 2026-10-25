@@ -126,6 +126,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       hexOrientation,
       triOrientation,
       floorFields,
+      floorTopology: file.floorTopology ?? {},
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,

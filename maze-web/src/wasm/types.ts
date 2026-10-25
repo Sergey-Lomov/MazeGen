@@ -188,6 +188,36 @@ export interface StageConfig {
  * `TessellationConfig`. */
 export type WasmTessellationConfig = import("../fieldConfig").TessellationConfig;
 
+/** One side of a fold on the wire (GitHub issue #836): a cell as a wire point and the position of
+ * the face in the cell's `faces_of`. Mirrors Rust's `FoldEndDto`. */
+export interface WireFoldEnd {
+  cell: [number, number];
+  face_idx: number;
+}
+
+/** Mirrors Rust's `FoldDto`. `twist` defaults to `false` when omitted. */
+export interface WireFold {
+  a: WireFoldEnd;
+  b: WireFoldEnd;
+  twist?: boolean;
+  group: number;
+}
+
+/** Mirrors Rust's `FoldGroupDto`; `folds` are indices into `WireTopology.folds`. */
+export interface WireFoldGroup {
+  id: number;
+  folds: number[];
+}
+
+/** One floor's topology on the wire and in the project file (GitHub issue #836, see
+ * `Specs/topology.md`). `fingerprint` is the canonical string of the tessellation config it was
+ * authored for (`tessellationFingerprint`). Mirrors Rust's `TopologyDto`. */
+export interface WireTopology {
+  fingerprint: string;
+  folds: WireFold[];
+  groups: WireFoldGroup[];
+}
+
 export interface GenerationParams {
   depth_first?: number;
   corridor_chance?: number;
@@ -318,6 +348,9 @@ export interface GenerateConfig {
    * The number of levels to generate across (GitHub issue #337) is `level_fields.length` — there
    * is no separate count field on the wire. */
   level_fields: [number, number][][];
+  /** Each floor's own topology, in `level_fields` order; a missing or `null` entry means no folds
+   * on that floor (GitHub issue #836). Mirrors Rust's `GenerateConfig.topology`. */
+  topology?: (WireTopology | null)[];
   stages: StageConfig[];
   repair_max_iterations?: number;
   repair_time_budget_secs?: number;

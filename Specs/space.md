@@ -62,7 +62,11 @@ decodes them with `CellCodec::decode_valid(&tessellation, points)`, which return
 `Err("invalid cell [x, y]")` for the first point that is not a cell. This covers the per-point
 queries (`tessellation_shapes`, `tessellation_cell_types`), the `scope` of the geometry point and
 region queries, and the geometry snapshot's cells. Field construction (`Field::new`) and the field
-operations reject invalid cells on their own.
+operations reject invalid cells on their own. The fold ends of a floor's `topology` are wire points
+too: `maze-runner::topology_wire::decode_topology` rejects an undecodable or invalid cell naming
+the fold and side (`folds[i].a: invalid cell [x, y]`), see `Specs/topology.md`, "Wire form". The
+canonical config string used as the topology fingerprint is produced by
+`topology_wire::tessellation_fingerprint` (kind plus sorted params).
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
