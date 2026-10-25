@@ -243,16 +243,19 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
   for (const [key, host] of hosts) {
     if (host.slots.length < 2 || opts.mode === "overlap") continue;
     const extent = input.splitHostKeys?.has(key) ? HOST_EXTENT_SPLIT_NODE : HOST_EXTENT_CELL;
-    // A group that doesn't fit its host shrinks its markers further (down to `MIN_FIT_FACTOR`) before
-    // `computeLayoutOffsets` has to squeeze the centers together, so markers don't pile up on a tight
-    // host such as a split-tile node.
+    // A group that doesn't fit its host normally shrinks its markers further (down to
+    // `MIN_FIT_FACTOR`) before `computeLayoutOffsets` has to squeeze the centers together. An
+    // explicit scale of 1 is the full-size setting, though: only squeeze its centers so a marker at
+    // that setting remains equivalent to its unscaled representation.
     let scale = baseScale;
     const reachAt = (sc: number) => {
       const radii = host.slots.map((s) => s.radius * sc);
       const raw = computeLayoutOffsets(radii, opts.mode, opts.spacing);
       return Math.max(...raw.map(([x, y], i) => Math.hypot(x, y) + radii[i]));
     };
-    while (scale > baseScale * MIN_FIT_FACTOR && reachAt(scale) > extent) scale = Math.max(scale * FIT_STEP, baseScale * MIN_FIT_FACTOR);
+    if (opts.scale !== 1) {
+      while (scale > baseScale * MIN_FIT_FACTOR && reachAt(scale) > extent) scale = Math.max(scale * FIT_STEP, baseScale * MIN_FIT_FACTOR);
+    }
     const offsets = computeLayoutOffsets(host.slots.map((s) => s.radius * scale), opts.mode, opts.spacing, extent);
     const items: { pos: [number, number]; radius: number }[] = [];
     host.slots.forEach((slot, i) => {

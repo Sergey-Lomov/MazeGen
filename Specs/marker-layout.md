@@ -61,6 +61,9 @@ A host bounds its group: `HOST_EXTENT_CELL` = 0.5 · tile, `HOST_EXTENT_SPLIT_NO
 host center to the outer edge of the farthest marker). A group that does not fit first shrinks its markers further
 (×0.9 steps, down to 0.3 of the requested scale), and only then are the centers squeezed together.
 
+An explicitly configured `markerScale` of `1` is an exception: it preserves the markers' full size and squeezes only
+their centers, so scale `1` matches the unscaled representation.
+
 ## Editor canvases
 
 `GenerationRenderer`, `PostEditRenderer` and `MazeOverlayRenderer` run the same layer through
