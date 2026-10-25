@@ -16,13 +16,13 @@ function isValidLocale(tag: string): tag is Locale {
 
 function loadSaved(): Locale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
-  const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = window.localStorage.getItem(STORAGE_KEY);
   return saved && isValidLocale(saved) ? saved : DEFAULT_LOCALE;
 }
 
 function persist(locale: Locale): void {
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, locale);
+    window.localStorage.setItem(STORAGE_KEY, locale);
   }
 }
 
