@@ -244,7 +244,7 @@ A node without `Passage`/`OneWay` faces stays allowed (GitHub issue #238).
    local face assignment are deduplicated. No other source of variants exists: the old
    rotation/mirror tables and `transform_face_index` are removed.
 2. **Topology (application level).** Each variant is checked face by face on application:
-   - `neighbor(c, local_face)` plus field membership resolves the outside neighbor (`Wall` is the
+   - `MultiLevelField::neighbor_via(level, c, local_face)` (effective adjacency, folds included) plus field membership resolves the outside neighbor (`Wall` is the
      only requirement satisfiable without one);
    - then the existing adaptation checks run: parent-edge direction/kind match, visited state and
      sibling targets.

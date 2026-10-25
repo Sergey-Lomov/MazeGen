@@ -376,3 +376,285 @@ fn clone_preserves_lookup() {
     assert_eq!(c.fingerprint(), t.fingerprint());
     assert!(c.fold_of(p(3, 0), E).is_some());
 }
+
+mod field_resolution {
+    use super::*;
+    use crate::ids::IdGenerator;
+    use crate::space::{Field, SquareFace, square_rect};
+    use std::sync::Arc;
+
+    fn field(w: i32, h: i32) -> Field<SquareTessellation> {
+        Field::new(
+            Arc::default(),
+            square_rect(w as usize, h as usize),
+            &mut IdGenerator::new(),
+        )
+        .unwrap()
+    }
+
+    fn with(
+        mut field: Field<SquareTessellation>,
+        topology: SqTopology,
+    ) -> Field<SquareTessellation> {
+        field.set_topology(topology, &fp()).unwrap();
+        field
+    }
+
+    fn activity(field: &Field<SquareTessellation>) -> Vec<FoldActivity> {
+        field.fold_activity().to_vec()
+    }
+
+    fn single(a: FoldEnd<SquarePoint>, b: FoldEnd<SquarePoint>, twist: bool) -> SqTopology {
+        Topology::new(fp(), vec![fold(a, b, twist, 0)], vec![group(0, &[0])])
+    }
+
+    #[test]
+    fn without_folds_neighbor_via_is_base_neighbor() {
+        let f = field(3, 3);
+        for cell in f.all_cells() {
+            for &face in SquareTessellation.faces_of(cell) {
+                let base = SquareTessellation.neighbor(cell, face);
+                let via = f.neighbor_via(cell, face);
+                assert_eq!(base, via.map(|c| (c.cell, c.face)));
+                assert!(via.is_none_or(|c| !c.orientation.flips));
+            }
+        }
+    }
+
+    #[test]
+    fn active_fold_is_reciprocal_and_changes_neighbors() {
+        let f = with(field(4, 3), cylinder(4, 3, false));
+        assert!(activity(&f).iter().all(|a| a.is_active()));
+        let c = f.neighbor_via(p(3, 1), SquareFace::E).unwrap();
+        assert_eq!((c.cell, c.face), (p(0, 1), SquareFace::W));
+        let back = f.neighbor_via(c.cell, c.face).unwrap();
+        assert_eq!((back.cell, back.face), (p(3, 1), SquareFace::E));
+        let node = f.node_at(p(3, 1)).unwrap();
+        assert!(f.neighbors(node).contains(&f.node_at(p(0, 1)).unwrap()));
+        assert_eq!(f.face_index_toward(p(3, 1), p(0, 1)), Some(E));
+    }
+
+    #[test]
+    fn twisted_fold_is_reciprocal() {
+        let f = with(field(4, 3), single(end(3, 0, E), end(0, 2, W), true));
+        let c = f.neighbor_via(p(3, 0), SquareFace::E).unwrap();
+        assert_eq!((c.cell, c.face), (p(0, 2), SquareFace::W));
+        assert!(c.orientation.flips);
+        let back = f.neighbor_via(c.cell, c.face).unwrap();
+        assert_eq!((back.cell, back.face), (p(3, 0), SquareFace::E));
+        assert!(back.orientation.flips);
+    }
+
+    #[test]
+    fn transfer_follows_offset_and_flip() {
+        // Untwisted seam behaves like an ordinary neighbour: north maps to north. Twisted: north
+        // maps to south.
+        for (twist, expected) in [(false, SquareFace::N), (true, SquareFace::S)] {
+            let f = with(field(4, 3), cylinder(4, 3, twist));
+            let c = f.neighbor_via(p(3, 1), SquareFace::E).unwrap();
+            assert_eq!(
+                c.transfer(&SquareTessellation, p(3, 1), SquareFace::N),
+                Some(expected)
+            );
+            assert_eq!(
+                c.transfer(&SquareTessellation, p(3, 1), SquareFace::E),
+                Some(SquareFace::W)
+            );
+        }
+    }
+
+    #[test]
+    fn transfer_is_none_for_different_face_counts() {
+        use crate::space::{SquareOctagonPoint, SquareOctagonTessellation};
+        let t = SquareOctagonTessellation;
+        let mut checked = false;
+        for x in 0..4 {
+            for y in 0..4 {
+                let cell = SquareOctagonPoint { x, y };
+                if !t.is_valid_cell(cell) {
+                    continue;
+                }
+                for &face in t.faces_of(cell) {
+                    let (other, back) = t.neighbor(cell, face).unwrap();
+                    let c = Crossing {
+                        cell: other,
+                        face: back,
+                        orientation: Orientation {
+                            flips: false,
+                            entry: face,
+                        },
+                    };
+                    let same = t.faces_of(cell).len() == t.faces_of(other).len();
+                    assert_eq!(c.transfer(&t, cell, face).is_some(), same);
+                    checked |= !same;
+                }
+            }
+        }
+        assert!(checked, "expected a square/octagon crossing");
+    }
+
+    #[test]
+    fn missing_cell_deactivates() {
+        let f = with(field(4, 3), single(end(3, 0, E), end(9, 9, W), false));
+        assert_eq!(
+            activity(&f),
+            vec![FoldActivity::Inactive(InactiveReason::MissingCell)]
+        );
+        assert_eq!(
+            f.neighbor_via(p(3, 0), SquareFace::E).unwrap().cell,
+            p(4, 0)
+        );
+    }
+
+    #[test]
+    fn interior_neighbor_deactivates() {
+        // (1,0) E faces the in-field cell (2,0).
+        let f = with(field(4, 3), single(end(1, 0, E), end(0, 2, W), false));
+        assert_eq!(
+            activity(&f),
+            vec![FoldActivity::Inactive(InactiveReason::InteriorNeighbor)]
+        );
+        assert_eq!(
+            f.neighbor_via(p(1, 0), SquareFace::E).unwrap().cell,
+            p(2, 0)
+        );
+    }
+
+    #[test]
+    fn duplicate_neighbor_deactivates() {
+        // In a 3x1 field, gluing N of (0,0) to S of (1,0) makes them neighbours twice.
+        let f = with(field(3, 1), single(end(0, 0, N), end(1, 0, S), false));
+        assert_eq!(
+            activity(&f),
+            vec![FoldActivity::Inactive(InactiveReason::DuplicateNeighbor)]
+        );
+    }
+
+    #[test]
+    fn activity_follows_field_cell_set() {
+        let t = cylinder(4, 3, false);
+        let narrow = with(field(3, 3), t.clone());
+        assert!(
+            activity(&narrow)
+                .iter()
+                .all(|a| *a == FoldActivity::Inactive(InactiveReason::MissingCell))
+        );
+        let wide = with(field(4, 3), t);
+        assert!(activity(&wide).iter().all(|a| a.is_active()));
+    }
+
+    #[test]
+    fn set_topology_rejects_fingerprint_mismatch() {
+        let mut f = field(4, 3);
+        let t = SqTopology::empty(TessellationFingerprint::new("hex{}"));
+        assert!(f.set_topology(t, &fp()).is_err());
+        assert!(f.topology().is_none());
+    }
+
+    #[test]
+    fn is_straight_uses_fold_adjacency() {
+        // Row of 4 cells glued into a ring: (2,0) -> (3,0) -> (0,0) is straight east-west.
+        let f = with(field(4, 1), cylinder(4, 1, false));
+        let n = |x| f.node_at(p(x, 0)).unwrap();
+        assert!(f.is_straight(n(3), n(0), n(1)));
+        assert!(f.is_straight(n(2), n(3), n(0)));
+    }
+
+    #[test]
+    fn clone_keeps_topology_and_clear_removes_it() {
+        let mut f = with(field(4, 3), cylinder(4, 3, false));
+        let copy = f.clone();
+        f.clear_topology();
+        assert!(f.topology().is_none());
+        assert!(f.fold_activity().is_empty());
+        assert_eq!(
+            f.neighbor_via(p(3, 1), SquareFace::E).unwrap().cell,
+            p(4, 1)
+        );
+        assert_eq!(
+            copy.neighbor_via(p(3, 1), SquareFace::E).unwrap().cell,
+            p(0, 1)
+        );
+    }
+
+    #[test]
+    fn multi_level_forwards_fold_adjacency() {
+        use crate::space::MultiLevelField;
+        let mut ml = MultiLevelField::<SquareTessellation>::single_level(
+            Arc::default(),
+            square_rect(4, 3),
+            &mut IdGenerator::new(),
+        )
+        .unwrap();
+        let level = ml.single_level_id();
+        ml.set_topology(level, cylinder(4, 3, false), &fp())
+            .unwrap();
+        let c = ml.neighbor_via(level, p(3, 1), SquareFace::E).unwrap();
+        assert_eq!((c.cell, c.face), (p(0, 1), SquareFace::W));
+        assert_eq!(ml.face_index_toward(level, p(3, 1), p(0, 1)), Some(E));
+        let node = ml.node_at(level, p(3, 1)).unwrap();
+        assert!(
+            ml.neighbors(node)
+                .contains(&ml.node_at(level, p(0, 1)).unwrap())
+        );
+    }
+
+    #[test]
+    fn self_glued_cell_faces_activate() {
+        // Two faces of one cell glued together: the cell neighbours itself once.
+        let f = with(field(3, 3), single(end(1, 1, E), end(1, 1, W), false));
+        // (1,1) has in-field ordinary neighbours on E and W, so the gluing is interior.
+        assert_eq!(
+            activity(&f),
+            vec![FoldActivity::Inactive(InactiveReason::InteriorNeighbor)]
+        );
+        let corner = with(field(1, 1), single(end(0, 0, E), end(0, 0, W), false));
+        assert_eq!(activity(&corner), vec![FoldActivity::Active]);
+        let c = corner.neighbor_via(p(0, 0), SquareFace::E).unwrap();
+        assert_eq!((c.cell, c.face), (p(0, 0), SquareFace::W));
+    }
+
+    #[test]
+    fn later_fold_losing_a_duplicate_is_inactive() {
+        // Both folds would make (0,0) and (3,0) neighbours; only the first wins.
+        let t = Topology::new(
+            fp(),
+            vec![
+                fold(end(3, 0, E), end(0, 0, W), false, 0),
+                fold(end(3, 0, N), end(0, 0, S), false, 0),
+            ],
+            vec![group(0, &[0, 1])],
+        );
+        let f = with(field(4, 1), t);
+        assert_eq!(
+            activity(&f),
+            vec![
+                FoldActivity::Active,
+                FoldActivity::Inactive(InactiveReason::DuplicateNeighbor)
+            ]
+        );
+    }
+
+    #[test]
+    fn ordinary_hex_crossing_transfer_mirrors_across_the_shared_side() {
+        use crate::space::{HexFace, HexPoint, HexTessellation};
+        let f = Field::new(
+            Arc::new(HexTessellation),
+            [HexPoint { q: 0, r: 0 }, HexPoint { q: 1, r: 0 }],
+            &mut IdGenerator::new(),
+        )
+        .unwrap();
+        let origin = HexPoint { q: 0, r: 0 };
+        let c = f.neighbor_via(origin, HexFace::E).unwrap();
+        assert_eq!(c.face, HexFace::W);
+        // The NE neighbour of the origin is the NW neighbour of the cell to its east.
+        assert_eq!(
+            c.transfer(&HexTessellation, origin, HexFace::NE),
+            Some(HexFace::NW)
+        );
+        assert_eq!(
+            HexTessellation.neighbor(origin, HexFace::NE).unwrap().0,
+            HexTessellation.neighbor(c.cell, HexFace::NW).unwrap().0
+        );
+    }
+}

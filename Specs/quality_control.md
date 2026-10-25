@@ -1488,7 +1488,7 @@ pub fn reconstruct_tile_faces<T: Tessellation>(graph: &Graph, field: &Field<T>, 
 pub fn split_tile_matches_any<T: Tessellation>(graph: &Graph, field: &Field<T>, nodes: &[NodeId], patterns: &[SplitPattern]) -> bool;
 ```
 
-`reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `Tessellation::neighbor` over `faces_of(point)`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape (indexed by local face) against every pattern declared for the cell's shape template (`SplitPattern::applies_to`), trying every variant of the cell's allowed transform group (`generation::pattern_variants`, the same variant source generation and repair use, GitHub issue #758) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
+`reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `MultiLevelField::neighbor_via` (fold-aware effective adjacency, `Specs/topology.md`) over `faces_of(point)`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape (indexed by local face) against every pattern declared for the cell's shape template (`SplitPattern::applies_to`), trying every variant of the cell's allowed transform group (`generation::pattern_variants`, the same variant source generation and repair use, GitHub issue #758) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
 
 ### SplitNodeConnectionCountCheck
 
@@ -1557,7 +1557,7 @@ matter, `Basic` and `Teleport` both count.
 `NodeId` — a bucket with more than `max` edges fires, with `to_remove = bucket.len() - max`.
 
 **`SplitNodeConnectionPerFaceCheck`** buckets by face-direction index instead
-(`space::face_index_toward(split_point, neighbor_point)`, the position in `faces_of(split_point)`) —
+(`MultiLevelField::face_index_toward(level, split_point, neighbor_point)`, the position in `faces_of(split_point)`) —
 edges toward *different* outside neighbors that happen to share the same face direction land in
 the same bucket, so this check's cap is independent of how many distinct neighbors receive the
 connections, unlike the per-neighbor check above.

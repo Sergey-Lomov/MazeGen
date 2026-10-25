@@ -70,8 +70,8 @@ pub use snub_square::{SnubSquareFace, SnubSquareKind, SnubSquarePoint, SnubSquar
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTessellation};
 pub use topology::{
-    Fold, FoldEnd, FoldGroup, FoldGroupId, FoldId, FoldSide, TessellationFingerprint, Topology,
-    TopologyError,
+    Crossing, Fold, FoldActivity, FoldEnd, FoldGroup, FoldGroupId, FoldId, FoldSide,
+    InactiveReason, Orientation, TessellationFingerprint, Topology, TopologyError,
 };
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 pub use trihexagonal::{
@@ -314,6 +314,8 @@ pub struct Field<T: Tessellation> {
     tessellation: Arc<T>,
     cell_to_nodes: HashMap<T::CellId, Vec<NodeId>>,
     node_to_cell: HashMap<NodeId, T::CellId>,
+    /// Folds resolved against this field's cell set (`Specs/topology.md`). `None` means no folds.
+    topology: Option<topology::ResolvedTopology<T>>,
 }
 
 /// Manual impl (not `#[derive(Clone)]`) — the derive would require `T: Clone`, but the
@@ -326,6 +328,7 @@ impl<T: Tessellation> Clone for Field<T> {
             tessellation: Arc::clone(&self.tessellation),
             cell_to_nodes: self.cell_to_nodes.clone(),
             node_to_cell: self.node_to_cell.clone(),
+            topology: self.topology.clone(),
         }
     }
 }
@@ -354,6 +357,7 @@ impl<T: Tessellation> Field<T> {
             tessellation,
             cell_to_nodes,
             node_to_cell,
+            topology: None,
         })
     }
 
@@ -426,6 +430,7 @@ impl<T: Tessellation> Field<T> {
             tessellation,
             cell_to_nodes,
             node_to_cell,
+            topology: None,
         })
     }
 
@@ -531,17 +536,84 @@ impl<T: Tessellation> Field<T> {
             Some(p) => *p,
             None => return Vec::new(),
         };
-        let tessellation = &*self.tessellation;
-        tessellation
+        self.tessellation
             .faces_of(cell)
             .iter()
             .flat_map(|&face| {
-                tessellation
-                    .neighbor(cell, face)
+                self.neighbor_via(cell, face)
                     .into_iter()
-                    .flat_map(|(neighbor_cell, _)| self.nodes_at(neighbor_cell).iter().copied())
+                    .flat_map(|crossing| self.nodes_at(crossing.cell).iter().copied())
             })
             .collect()
+    }
+
+    /// The effective adjacency every maze algorithm must use: leaving `cell` through `face`
+    /// reaches the cell of an active fold glued there, else the tessellation neighbor
+    /// (`Tessellation::neighbor`, the base adjacency). Not filtered by field membership. With no
+    /// active fold this is exactly `Tessellation::neighbor` plus an unflipped orientation.
+    pub fn neighbor_via(
+        &self,
+        cell: T::CellId,
+        face: T::Face,
+    ) -> Option<Crossing<T::CellId, T::Face>> {
+        if let Some(resolved) = self.topology.as_ref().filter(|r| r.has_links())
+            && let Some(idx) = self
+                .tessellation
+                .faces_of(cell)
+                .iter()
+                .position(|&f| f == face)
+            && let Some(crossing) = resolved.link(cell, idx)
+        {
+            return Some(crossing);
+        }
+        let (neighbor, back) = self.tessellation.neighbor(cell, face)?;
+        Some(Crossing {
+            cell: neighbor,
+            face: back,
+            orientation: Orientation {
+                flips: false,
+                entry: face,
+            },
+        })
+    }
+
+    /// Position in `faces_of(cell)` of the face through which `cell` reaches `other` (fold-aware
+    /// counterpart of the free `face_index_toward`), or `None` when `other` is not adjacent.
+    pub fn face_index_toward(&self, cell: T::CellId, other: T::CellId) -> Option<usize> {
+        self.tessellation.faces_of(cell).iter().position(|&face| {
+            self.neighbor_via(cell, face)
+                .is_some_and(|crossing| crossing.cell == other)
+        })
+    }
+
+    /// Installs `topology` for this field after validating it structurally against
+    /// `current_fingerprint`, and resolves fold activity against the field's cell set. The cell
+    /// set is fixed at construction, so activity never needs recomputing afterwards.
+    pub fn set_topology(
+        &mut self,
+        topology: Topology<T>,
+        current_fingerprint: &TessellationFingerprint,
+    ) -> Result<(), TopologyError<T::CellId>> {
+        topology.validate(&self.tessellation, current_fingerprint)?;
+        self.topology = Some(topology::ResolvedTopology::resolve(
+            topology,
+            &self.tessellation,
+            |cell| self.cell_to_nodes.contains_key(&cell),
+        ));
+        Ok(())
+    }
+
+    pub fn clear_topology(&mut self) {
+        self.topology = None;
+    }
+
+    pub fn topology(&self) -> Option<&Topology<T>> {
+        self.topology.as_ref().map(|r| &r.topology)
+    }
+
+    /// Activity of every fold of the installed topology, indexed by `FoldId`; empty without one.
+    pub fn fold_activity(&self) -> &[FoldActivity] {
+        self.topology.as_ref().map_or(&[], |r| &r.activity)
     }
 
     pub fn cell_of(&self, node: NodeId) -> Option<T::CellId> {
@@ -572,13 +644,13 @@ impl<T: Tessellation> Field<T> {
         let tessellation = &*self.tessellation;
         let (mut in_face, mut out_face) = (None, None);
         for &face in tessellation.faces_of(vp) {
-            let Some((cell, _)) = tessellation.neighbor(vp, face) else {
+            let Some(crossing) = self.neighbor_via(vp, face) else {
                 continue;
             };
-            if cell == fp {
+            if crossing.cell == fp {
                 in_face = Some(face);
             }
-            if cell == tp {
+            if crossing.cell == tp {
                 out_face = Some(face);
             }
         }

@@ -389,6 +389,191 @@ impl<T: Tessellation> Topology<T> {
     }
 }
 
+/// Why a fold does not currently glue anything in a field.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum InactiveReason {
+    /// An end cell is not in the field.
+    MissingCell,
+    /// A glued face has an ordinary in-field neighbour: the fold must not silently override it.
+    InteriorNeighbor,
+    /// Gluing would make a cell neighbour the same cell twice among the active links.
+    DuplicateNeighbor,
+}
+
+/// Whether a fold glues anything in a given field.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum FoldActivity {
+    Active,
+    Inactive(InactiveReason),
+}
+
+impl FoldActivity {
+    pub fn is_active(self) -> bool {
+        self == FoldActivity::Active
+    }
+}
+
+/// How the faces around a crossing correspond. `entry` is the face of the source cell the
+/// crossing leaves through.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Orientation<F> {
+    /// Chirality change. `false` for an ordinary neighbour and for an untwisted fold; `true` for
+    /// a twisted fold.
+    pub flips: bool,
+    pub entry: F,
+}
+
+/// The result of leaving a cell through a face: the adjacent cell, the face of it that is the
+/// same boundary piece, and how the faces around correspond. Ordinary adjacency and an active
+/// fold produce the same shape.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Crossing<C, F> {
+    pub cell: C,
+    pub face: F,
+    pub orientation: Orientation<F>,
+}
+
+impl<C: Copy, F: Copy + PartialEq> Crossing<C, F> {
+    /// Maps `face` of the source cell `from` to the face of the destination cell in the same
+    /// direction. With equal face counts the face at circular offset `k` from the entry face
+    /// maps to the face at offset `-k` (not flipped) or `+k` (flipped) from the exit face.
+    /// `None` when the face counts differ or `face` is not a face of `from`.
+    pub fn transfer<T: Tessellation<Face = F, CellId = C>>(
+        &self,
+        tessellation: &T,
+        from: C,
+        face: F,
+    ) -> Option<F> {
+        let src = tessellation.faces_of(from);
+        let dst = tessellation.faces_of(self.cell);
+        if src.len() != dst.len() {
+            return None;
+        }
+        let n = src.len();
+        let entry = src.iter().position(|&f| f == self.orientation.entry)?;
+        let idx = src.iter().position(|&f| f == face)?;
+        let exit = dst.iter().position(|&f| f == self.face)?;
+        let k = (idx + n - entry) % n;
+        let target = if self.orientation.flips {
+            (exit + k) % n
+        } else {
+            (exit + n - k) % n
+        };
+        Some(dst[target])
+    }
+}
+
+type TessCrossing<T> = Crossing<<T as Tessellation>::CellId, <T as Tessellation>::Face>;
+
+/// A topology resolved against one field: per-fold activity and the active gluing links.
+pub(crate) struct ResolvedTopology<T: Tessellation> {
+    pub(crate) topology: Topology<T>,
+    pub(crate) activity: Vec<FoldActivity>,
+    links: HashMap<(T::CellId, usize), TessCrossing<T>>,
+}
+
+impl<T: Tessellation> Clone for ResolvedTopology<T> {
+    fn clone(&self) -> Self {
+        Self {
+            topology: self.topology.clone(),
+            activity: self.activity.clone(),
+            links: self.links.clone(),
+        }
+    }
+}
+
+impl<T: Tessellation> ResolvedTopology<T> {
+    /// Resolves activity of every fold against the field's cell set (`contains`). Pure function
+    /// of topology and cell set, so callers recompute after every change of the cell set.
+    /// Folds are considered in fold order, which makes the `DuplicateNeighbor` outcome
+    /// deterministic.
+    pub(crate) fn resolve(
+        topology: Topology<T>,
+        tessellation: &T,
+        contains: impl Fn(T::CellId) -> bool,
+    ) -> Self {
+        let ordinary_neighbors = |cell: T::CellId| -> HashSet<T::CellId> {
+            tessellation
+                .faces_of(cell)
+                .iter()
+                .filter_map(|&face| tessellation.neighbor(cell, face))
+                .map(|(n, _)| n)
+                .filter(|&n| contains(n))
+                .collect()
+        };
+        let mut neighbors: HashMap<T::CellId, HashSet<T::CellId>> = HashMap::new();
+        let mut activity = Vec::with_capacity(topology.folds.len());
+        let mut links = HashMap::new();
+
+        for fold in &topology.folds {
+            let (a, b) = (fold.a, fold.b);
+            if !contains(a.cell) || !contains(b.cell) {
+                activity.push(FoldActivity::Inactive(InactiveReason::MissingCell));
+                continue;
+            }
+            let face_a = tessellation.faces_of(a.cell)[a.face_idx];
+            let face_b = tessellation.faces_of(b.cell)[b.face_idx];
+            let interior = [(a.cell, face_a), (b.cell, face_b)].iter().any(|&(c, f)| {
+                tessellation
+                    .neighbor(c, f)
+                    .is_some_and(|(n, _)| contains(n))
+            });
+            if interior {
+                activity.push(FoldActivity::Inactive(InactiveReason::InteriorNeighbor));
+                continue;
+            }
+            neighbors
+                .entry(a.cell)
+                .or_insert_with(|| ordinary_neighbors(a.cell));
+            neighbors
+                .entry(b.cell)
+                .or_insert_with(|| ordinary_neighbors(b.cell));
+            if neighbors[&a.cell].contains(&b.cell) || neighbors[&b.cell].contains(&a.cell) {
+                activity.push(FoldActivity::Inactive(InactiveReason::DuplicateNeighbor));
+                continue;
+            }
+            neighbors.get_mut(&a.cell).unwrap().insert(b.cell);
+            neighbors.get_mut(&b.cell).unwrap().insert(a.cell);
+            activity.push(FoldActivity::Active);
+            links.insert(
+                (a.cell, a.face_idx),
+                Crossing {
+                    cell: b.cell,
+                    face: face_b,
+                    orientation: Orientation {
+                        flips: fold.twist,
+                        entry: face_a,
+                    },
+                },
+            );
+            links.insert(
+                (b.cell, b.face_idx),
+                Crossing {
+                    cell: a.cell,
+                    face: face_a,
+                    orientation: Orientation {
+                        flips: fold.twist,
+                        entry: face_b,
+                    },
+                },
+            );
+        }
+        Self {
+            topology,
+            activity,
+            links,
+        }
+    }
+
+    pub(crate) fn has_links(&self) -> bool {
+        !self.links.is_empty()
+    }
+
+    pub(crate) fn link(&self, cell: T::CellId, face_idx: usize) -> Option<TessCrossing<T>> {
+        self.links.get(&(cell, face_idx)).copied()
+    }
+}
+
 #[cfg(test)]
 #[path = "topology_tests.rs"]
 mod tests;
