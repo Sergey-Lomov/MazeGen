@@ -198,6 +198,12 @@ pub enum IssuePayload {
     InvalidElevatorStop {
         nodes: HashMap<String, Vec<IssueRegionPayload>>,
     },
+    /// Keyed by source check id — one single-node region per dead end in an over-budget scope.
+    /// This is intentionally a distinct debug payload kind so warnings and QC narration identify
+    /// dead-end nodes without implying that they are elevator stops or repair candidates.
+    InvalidDeadEnd {
+        nodes: HashMap<String, Vec<IssueRegionPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` if
     /// the deficit is scoped to a specific floor (`RepairArea::Level`, the index being the floor's
     /// `levels_ordered()` position, same convention `NodeDto.level`/`level_index_of` already use

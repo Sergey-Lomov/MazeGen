@@ -109,6 +109,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(11);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::InvalidDeadEnd { nodes } => {
+            out.push(15);
+            write_str_keyed_node_lists(out, nodes);
+        }
         IssuePayload::AreaDeficit { areas } => {
             out.push(12);
             write_str_keyed_area_deficits(out, areas);

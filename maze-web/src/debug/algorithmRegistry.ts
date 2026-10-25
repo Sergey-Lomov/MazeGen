@@ -93,6 +93,8 @@ function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePayload<bi
       return { kind: "invalidElevator", groups: [...payload.groups.values()].flat().map(normalizeEdgeGroup) };
     case "InvalidElevatorStop":
       return { kind: "invalidElevatorStop", groups: [...payload.nodes.values()].flat().map(normalizeRegionGroup) };
+    case "InvalidDeadEnd":
+      return { kind: "invalidDeadEnd", groups: [...payload.nodes.values()].flat().map(normalizeRegionGroup) };
     case "AreaDeficit":
       return { kind: "areaDeficit" };
     case "MissingElevatorStopCount":

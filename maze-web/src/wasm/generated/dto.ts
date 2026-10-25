@@ -267,6 +267,10 @@ export type IssuePayloadDto =
       nodes: Record<string, IssueRegionPayload[]>;
     }
   | {
+      kind: "invalid_dead_end";
+      nodes: Record<string, IssueRegionPayload[]>;
+    }
+  | {
       kind: "area_deficit";
       areas: Record<string, (number | null)[]>;
     }

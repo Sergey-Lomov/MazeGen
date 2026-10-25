@@ -13,14 +13,15 @@ use super::issue::Issue;
 use super::issue_kinds::InvalidCrossElementGroupIssue;
 use super::issue_kinds::{
     AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-    InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
-    InvalidElevatorStopIssue, InvalidLoopGroupIssue, InvalidLoopIssue, InvalidOneWayGroupIssue,
-    InvalidOneWayIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue,
-    InvalidSplitNodeIssue, InvalidSplitRouteIssue, InvalidSplitTileGroupIssue,
-    InvalidSplitTileIssue, InvalidTeleportGroupIssue, InvalidTeleportIssue,
-    InvalidVerticalPassageGroupIssue, InvalidVerticalPassageIssue, MissingElevatorHeightIssue,
-    MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingTeleportsIssue,
-    MissingVerticalPassagesIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
+    InvalidDeadEndGroupIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
+    InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidLoopGroupIssue,
+    InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+    InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
+    InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
+    InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
+    InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
+    MissingElevatorsIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
+    RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
 };
 use crate::generation::PresetState;
 use crate::graph::Graph;
@@ -29,13 +30,14 @@ use crate::space::{MultiLevelField, Tessellation};
 use resolvers::{
     excessive_scc_count_preset_locked, region_preset_locked_for_expansion,
     region_preset_locked_for_shrink, resolve_area_deficit_map, resolve_cross_element_group_payload,
-    resolve_cycle_payload, resolve_edge_group_map, resolve_elevator_group_map,
-    resolve_elevator_stop_group_map, resolve_excessive_elevator_stop_gap_payload,
-    resolve_invalid_elevator_payload, resolve_invalid_elevator_stop_payload,
-    resolve_invalid_split_node_group_payload, resolve_invalid_split_node_payload,
-    resolve_invalid_split_route_payload, resolve_invalid_split_tile_group_payload,
-    resolve_invalid_split_tile_payload, resolve_missing_elevator_height_payload,
-    resolve_missing_elevator_stop_count_payload, resolve_region_map, resolve_single_edge_map,
+    resolve_cycle_payload, resolve_dead_end_group_map, resolve_edge_group_map,
+    resolve_elevator_group_map, resolve_elevator_stop_group_map,
+    resolve_excessive_elevator_stop_gap_payload, resolve_invalid_elevator_payload,
+    resolve_invalid_elevator_stop_payload, resolve_invalid_split_node_group_payload,
+    resolve_invalid_split_node_payload, resolve_invalid_split_route_payload,
+    resolve_invalid_split_tile_group_payload, resolve_invalid_split_tile_payload,
+    resolve_missing_elevator_height_payload, resolve_missing_elevator_stop_count_payload,
+    resolve_region_map, resolve_single_edge_map,
 };
 use std::collections::HashMap;
 
@@ -314,6 +316,16 @@ pub fn resolve_issue_payload<T: Tessellation>(
         .downcast_ref::<InvalidElevatorStopGroupIssue>()
         && let Some(payload) =
             resolve_elevator_stop_group_map(groups, invalid_sources, preset_state)
+    {
+        return payload;
+    }
+
+    if let Some(InvalidDeadEndGroupIssue {
+        groups,
+        invalid_sources,
+        ..
+    }) = issue.as_any().downcast_ref::<InvalidDeadEndGroupIssue>()
+        && let Some(payload) = resolve_dead_end_group_map(groups, invalid_sources)
     {
         return payload;
     }

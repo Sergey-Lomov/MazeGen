@@ -351,6 +351,17 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "invalid_elevator_stop", target: null });
   });
 
+  it("CheckRan with an InvalidDeadEnd payload carries one region highlight group per dead end", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_dead_end_group", payload: { kind: "InvalidDeadEnd", nodes: new Map([["check1", [{ region: [1n], presetLocked: false }, { region: [3n], presetLocked: false }]]]) }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({
+      kind: "issue", issueKind: "invalid_dead_end_group",
+      target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [3n], isSplit: false }] } },
+    });
+  });
+
   it("CheckRan with a MissingElevatorStopCount payload carries a region-shaped highlight target over the elevator's own fan-edge endpoint cells, not its available candidate floor nodes (GitHub issue #402)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",

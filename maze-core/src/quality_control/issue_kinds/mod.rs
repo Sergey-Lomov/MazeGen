@@ -11,6 +11,7 @@ mod excessive_elevator_stop_gap;
 mod excessive_scc_count;
 pub(crate) mod group_issue;
 mod invalid_cross_element_group;
+mod invalid_dead_end_group;
 mod invalid_elevator;
 mod invalid_elevator_group;
 mod invalid_elevator_stop;
@@ -53,6 +54,7 @@ pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 pub use invalid_cross_element_group::{
     CrossElementCloseNodes, CrossElementGroupKind, InvalidCrossElementGroupIssue,
 };
+pub use invalid_dead_end_group::{DeadEndGroupKind, InvalidDeadEndGroupIssue};
 pub use invalid_elevator::{ElevatorNodes, InvalidElevatorIssue};
 pub use invalid_elevator_group::{ElevatorGroupKind, InvalidElevatorGroupIssue};
 pub use invalid_elevator_stop::InvalidElevatorStopIssue;

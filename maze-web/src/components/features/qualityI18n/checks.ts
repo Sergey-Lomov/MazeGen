@@ -162,6 +162,14 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     label: m["check.max_split_count.label"] as MessageFn,
     description: m["check.max_split_count.description"] as MessageFn,
   },
+  max_dead_end_count: {
+    label: m["check.max_dead_end_count.label"] as MessageFn,
+    description: m["check.max_dead_end_count.description"] as MessageFn,
+  },
+  max_dead_end_density: {
+    label: m["check.max_dead_end_density.label"] as MessageFn,
+    description: m["check.max_dead_end_density.description"] as MessageFn,
+  },
   max_split_density: {
     label: m["check.max_split_density.label"] as MessageFn,
     description: m["check.max_split_density.description"] as MessageFn,

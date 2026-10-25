@@ -43,6 +43,7 @@ pub enum IssueKind {
     MissingElevatorHeight,
     ExcessiveElevatorStopGap,
     InvalidCrossElementGroup,
+    InvalidDeadEndGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -165,6 +166,11 @@ pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 /// doc comment. Repaired by `SplitGroupSelectStrategy`, which delegates each candidate tile's
 /// collapse to a nested `INVALID_SPLIT_TILE` strategy (`RemoveSplitStrategy`).
 pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup;
+
+/// A field-wide aggregate condition over dead-end nodes. `InvalidDeadEndGroup` is produced by
+/// the maximum dead-end count and density checks; its groups retain every candidate node in the
+/// affected scope together with the excess count for consistent warning/debug attribution.
+pub const INVALID_DEAD_END_GROUP: IssueKind = IssueKind::InvalidDeadEndGroup;
 
 /// The maze has fewer split tiles than some check requires (currently `SplitCountCheck`/
 /// `SplitDensityCheck`) — part of epic #246. Mirrors `MISSING_LOOPS`'s role for loops: a

@@ -30,6 +30,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_vertical_passage") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator_stop") return payload.nodes[sourceCheck] ?? null;
+  if (payload.kind === "invalid_dead_end") return payload.nodes[sourceCheck] ?? null;
   if (payload.kind === "missing_elevator_stop_count") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_cross_element_group") return payload.groups[sourceCheck]?.flat() ?? null;
   if (payload.kind === "invalid_split_tile") {
@@ -107,6 +108,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_elevator_group: () => ({ label: m["issue.invalid_elevator_group.label"](), description: m["issue.invalid_elevator_group.description"](), severity: "warning" }),
   invalid_elevator_stop: () => ({ label: m["issue.invalid_elevator_stop.label"](), description: m["issue.invalid_elevator_stop.description"](), severity: "warning" }),
   invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
+  invalid_dead_end_group: () => ({ label: m["issue.invalid_dead_end_group.label"](), description: m["issue.invalid_dead_end_group.description"](), severity: "warning" }),
   missing_elevators: () => ({ label: m["issue.missing_elevators.label"](), description: m["issue.missing_elevators.description"](), severity: "warning" }),
   area_missing_elevator_stops: () => ({ label: m["issue.area_missing_elevator_stops.label"](), description: m["issue.area_missing_elevator_stops.description"](), severity: "warning" }),
   missing_elevator_stop_count: () => ({ label: m["issue.missing_elevator_stop_count.label"](), description: m["issue.missing_elevator_stop_count.description"](), severity: "warning" }),
@@ -272,6 +274,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   elevator_span: (d) => d.span !== undefined ? m["issue.invalid_elevator.elevator_span_label"]({ span: d.span }) : undefined,
   max_elevator_count: (d) => d.max_elevator_count !== undefined ? m["issue.invalid_elevator_group.max_elevator_count_label"]({ max_elevator_count: d.max_elevator_count }) : undefined,
   max_elevator_density: (d) => d.max_elevator_density !== undefined ? m["issue.invalid_elevator_group.max_density_label"]({ max_density: d.max_elevator_density }) : undefined,
+  max_dead_end_count: (d) => d.max_dead_end_count !== undefined ? m["issue.invalid_dead_end_group.max_dead_end_count_label"]({ max_dead_end_count: d.max_dead_end_count }) : undefined,
+  max_dead_end_density: (d) => d.max_dead_end_density !== undefined ? m["issue.invalid_dead_end_group.max_dead_end_density_label"]({ max_dead_end_density: d.max_dead_end_density }) : undefined,
   max_elevator_stops: (d) => d.max_elevator_stops !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_label"]({ max_elevator_stops: d.max_elevator_stops }) : undefined,
   max_elevator_stops_per_floor: (d) => d.max_elevator_stops_per_floor !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_per_floor_label"]({ max_elevator_stops_per_floor: d.max_elevator_stops_per_floor }) : undefined,
   elevator_stops_skip: (d) => d.elevator_stops_skip !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_skip_label"]({ elevator_stops_skip: d.elevator_stops_skip }) : undefined,

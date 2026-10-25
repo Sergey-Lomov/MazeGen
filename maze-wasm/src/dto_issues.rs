@@ -191,6 +191,10 @@ pub enum IssuePayloadDto {
     InvalidElevatorStop {
         nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
     },
+    /// One single-node highlight region per dead end, keyed by source check id.
+    InvalidDeadEnd {
+        nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
+    },
     /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` for
     /// a floor-scoped deficit (`RepairArea::Level`, the index being the floor's `levels_ordered()`
     /// position — matches `NodeDto.level`), or `None` for a whole-maze deficit

@@ -143,6 +143,9 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                         nodes: region_payload_map_dto(nodes),
                     }
                 }
+                IssuePayload::InvalidDeadEnd { nodes } => IssuePayloadDto::InvalidDeadEnd {
+                    nodes: region_payload_map_dto(nodes),
+                },
                 IssuePayload::AreaDeficit { areas } => IssuePayloadDto::AreaDeficit { areas },
                 IssuePayload::MissingElevatorStopCount { groups } => {
                     IssuePayloadDto::MissingElevatorStopCount {

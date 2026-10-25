@@ -13,6 +13,8 @@ export const CHECK_IDS = [
   "loop_distance_from_finish",
   "loop_distance_from_start",
   "loop_length",
+  "max_dead_end_count",
+  "max_dead_end_density",
   "max_elevator_count",
   "max_elevator_density",
   "max_elevator_stop_gap",
@@ -76,6 +78,7 @@ export const CHECK_IDS = [
   "vertical_passage_group_geometric_proximity",
   "vertical_passage_group_graph_proximity",
 ] as const;
+
 export const STRATEGY_IDS = [
   "add_elevator",
   "add_elevator_height_stop",
@@ -128,6 +131,7 @@ export const STRATEGY_IDS = [
   "vertical_passage_region_merge",
   "weighted_region_merge",
 ] as const;
+
 export const RULE_PARAM_IDS = [
   "passage_type",
   "protect_route",
@@ -139,6 +143,7 @@ export const ISSUE_KIND_IDS = [
   "excessive_elevator_stop_gap",
   "excessive_scc_count",
   "invalid_cross_element_group",
+  "invalid_dead_end_group",
   "invalid_elevator",
   "invalid_elevator_group",
   "invalid_elevator_stop",
@@ -228,6 +233,8 @@ export const PARAM_IDS = [
   "max",
   "max_compactness",
   "max_connections",
+  "max_dead_end_count",
+  "max_dead_end_density",
   "max_density",
   "max_elevator_count",
   "max_elevator_density",

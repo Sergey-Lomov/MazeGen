@@ -44,6 +44,7 @@ impl IssueKind {
             IssueKind::MissingElevatorHeight => "missing_elevator_height",
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
             IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
+            IssueKind::InvalidDeadEndGroup => "invalid_dead_end_group",
         }
     }
 
@@ -71,7 +72,9 @@ impl IssueKind {
             "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
             "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
             "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
-            "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
+            "invalid_split_node_connection_group" => {
+                Some(IssueKind::InvalidSplitNodeConnectionGroup)
+            }
             "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
             "invalid_split_route" => Some(IssueKind::InvalidSplitRoute),
             "invalid_vertical_passage" => Some(IssueKind::InvalidVerticalPassage),
@@ -87,6 +90,7 @@ impl IssueKind {
             "missing_elevator_height" => Some(IssueKind::MissingElevatorHeight),
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
+            "invalid_dead_end_group" => Some(IssueKind::InvalidDeadEndGroup),
             _ => None,
         }
     }

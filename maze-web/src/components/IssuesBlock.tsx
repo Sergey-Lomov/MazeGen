@@ -164,6 +164,10 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         const nodes = payload.nodes[sourceCheck] ?? null;
         return nodes == null ? null : { kind: "invalidElevatorStop" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
       }
+      case "invalid_dead_end": {
+        const nodes = payload.nodes[sourceCheck] ?? null;
+        return nodes == null ? null : { kind: "invalidDeadEnd" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
+      }
       case "invalid_split_tile": {
         const groups = payload.groups[sourceCheck] ?? null;
         if (groups == null) return null;
