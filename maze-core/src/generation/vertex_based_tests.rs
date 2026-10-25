@@ -93,8 +93,8 @@ fn one_way_forbidden_by_placement_rules_produces_a_bidirectional_passage() {
     assert_eq!(added, Some((src, dst, true)));
     assert!(graph.edge_between(src, dst).is_some());
     assert!(graph.edge_between(dst, src).is_some());
-    let skipped: Vec<_> = log
-        .finish()
+    let tape = log.finish();
+    let skipped: Vec<_> = tape
         .iter()
         .filter(|event| matches!(event, VertexBasedEvent::ElementRollSkipped { element, cell_type, .. } if element == "one_way" && cell_type == "cell"))
         .collect();

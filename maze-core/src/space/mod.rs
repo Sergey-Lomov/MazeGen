@@ -26,6 +26,7 @@ pub mod square_octagon;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod topology;
+pub mod topology_edit;
 pub mod triangle;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
@@ -73,6 +74,10 @@ pub use square_octagon::{SquareOctagonFace, SquareOctagonPoint, SquareOctagonTes
 pub use topology::{
     Crossing, Fold, FoldActivity, FoldEnd, FoldGroup, FoldGroupId, FoldId, FoldSide,
     InactiveReason, Orientation, TessellationFingerprint, Topology, TopologyError,
+};
+pub use topology_edit::{
+    Contour, NewFold, TopologyEditError, TopologyPreset, boundary_contours,
+    topology_preset_availability,
 };
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 pub use trihexagonal::{
