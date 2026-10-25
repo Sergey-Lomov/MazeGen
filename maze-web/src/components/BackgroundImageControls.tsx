@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { ToggleRow } from "./ToggleRow";
 import { SettingsIconButton } from "./SettingsIconButton";
 import { BackgroundImageSettingsPanel } from "./BackgroundImageSettingsPanel";
+import { bringSidePanelToFront } from "./SidePanel";
 import type { PageLayoutInput } from "./dialogs/BackgroundImagePrintDialog";
 import * as m from "~/paraglide/messages";
 
@@ -28,7 +29,6 @@ export function BackgroundImageControls({
 
   function disable() {
     setBackgroundAutoFillPreview(null);
-    setSettingsOpen(false);
     setShowBackgroundImage(false);
   }
 
@@ -54,7 +54,10 @@ export function BackgroundImageControls({
         label={m["background.show"]()}
         checked={showBackgroundImage}
         onChange={(show) => show ? enable() : disable()}
-        action={<SettingsIconButton title={m["background.configure"]()} onClick={() => setSettingsOpen(true)} />}
+        action={<SettingsIconButton title={m["background.configure"]()} onClick={() => {
+          bringSidePanelToFront("background-image-settings");
+          setSettingsOpen(true);
+        }} />}
       />
       <input
         ref={inputRef}

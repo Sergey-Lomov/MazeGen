@@ -10,8 +10,8 @@ Generic resizable panel docked to the canvas's right edge (`SidePanel.tsx`). Por
 every panel docks next to the canvas regardless of where in the component tree it's triggered from
 (issue #237).
 
-Props: `title`, `subtitle?`, `onClose`, `warnings?` (dismissible strip, re-opens whenever the
-message set changes), `overlay?`, `onTopChange?`, `children`.
+Props: `title`, `stackKey?`, `subtitle?`, `onClose`, `warnings?` (dismissible strip, re-opens
+whenever the message set changes), `overlay?`, `onTopChange?`, `children`.
 
 ### Mount-order stack (issue #629)
 
@@ -21,7 +21,9 @@ the post-edit "Changes" panel and "Manage split nodes" panel). A module-level st
 (`panelStack`, keyed by a stable per-instance `Symbol`, not React context — panels mount across
 unrelated, non-nested trees) tracks mount order. Only the most recently mounted instance is shown;
 the rest stay mounted (internal state like scroll position or drafts survives) but are hidden.
-Closing the top one unmounts it and pops it off the stack, revealing the next one down.
+Closing the top one unmounts it and pops it off the stack, revealing the next one down. A panel
+with a `stackKey` can also be moved to the top in place by its control; this preserves its local
+state and means repeatedly pressing a panel control never closes that panel.
 
 Push/pop happen in `useLayoutEffect` (not split across render + cleanup) so the stack stays
 balanced under `StrictMode`'s mount-cleanup-mount effect cycle, and so two panels mounted in the

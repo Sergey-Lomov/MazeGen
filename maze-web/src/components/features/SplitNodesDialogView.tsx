@@ -246,7 +246,13 @@ export function SplitNodesDialogView<E>({
 
   return (
     <>
-    <SidePanel title={title} onClose={onClose} warnings={warnings} onTopChange={onTopChange}>
+    <SidePanel
+      title={title}
+      stackKey={notificationSource === "post_edit" ? "post-edit-split-nodes" : "preset-split-nodes"}
+      onClose={onClose}
+      warnings={warnings}
+      onTopChange={onTopChange}
+    >
       <div style={styles.tileArea}>
         {blueprints && blueprints.length > 0 && (
           <Stack gap="itemGap">

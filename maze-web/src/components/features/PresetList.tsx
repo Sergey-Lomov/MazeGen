@@ -441,7 +441,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <SidePanel title={m["preset.list"]()} onClose={onClose}>
+    <SidePanel title={m["preset.list"]()} stackKey="preset-list" onClose={onClose}>
       <div style={styles.filterSection}>
         <SectionHeader
           label={m["preset.list_filters"]({ active: activeFilterCount, total: visibleFilterDefinitions.length })}

@@ -121,7 +121,7 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <SidePanel title={m["post_edit.changes_title"]()} onClose={onClose}>
+    <SidePanel title={m["post_edit.changes_title"]()} stackKey="post-edit-changes" onClose={onClose}>
       <div style={styles.filterRow}>
         <input
           type="text"

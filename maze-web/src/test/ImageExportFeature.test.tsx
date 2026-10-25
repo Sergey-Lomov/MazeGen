@@ -51,12 +51,24 @@ describe("ImageExportFeature", () => {
     expect(screen.getByText(m["image_export.vector_by_walls.section_background"]())).toBeInTheDocument();
   });
 
-  it("clicking the active mode's switcher item toggles its settings panel closed", () => {
+  it("clicking the active mode's switcher item keeps its settings panel open", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     fireEvent.click(screen.getByRole("button", { name: m["image_export.mode.vector_by_walls.label"]() }));
-    expect(useMazeStore.getState().openRenderModeSettings).toBeNull();
+    expect(useMazeStore.getState().openRenderModeSettings).toBe("vector_by_walls");
     expect(useMazeStore.getState().activeRenderMode).toBe("vector_by_walls");
+  });
+
+  it("brings an already-open render-mode panel to the front", () => {
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls", openExportFormatSettings: "png" });
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    const wallsBackground = screen.getByText(m["image_export.vector_by_walls.section_background"]());
+    expect(wallsBackground).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: m["image_export.mode.vector_by_walls.label"]() }));
+
+    expect(wallsBackground).toBeVisible();
+    expect(screen.getByText(m["image_export.format.png.digital.scale"]())).not.toBeVisible();
   });
 
   it("clicking the active mode's switcher item again reopens its settings panel", () => {
@@ -76,6 +88,15 @@ describe("ImageExportFeature", () => {
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     const gear = getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() }));
     expect(gear.parentElement).toHaveStyle({ alignSelf: "stretch" });
+  });
+
+  it("stretches the visual preset buttons to a shared height", () => {
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    const save = screen.getByRole("button", { name: m["image_export.visual_preset.save"]() });
+    const load = screen.getByRole("button", { name: m["image_export.visual_preset.load"]() });
+
+    expect(save.parentElement).toHaveStyle({ alignItems: "stretch" });
+    expect(load.parentElement).toBe(save.parentElement);
   });
 
   it("clicking the PNG button calls onExportPng with the current settings", () => {

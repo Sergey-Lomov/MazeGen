@@ -105,6 +105,7 @@ export function DebugPanel() {
   return (
     <SidePanel
       title={m["debug.title"]()}
+      stackKey="debug"
       onClose={handleClose}
       warnings={debugStale ? [m["debug.outdated_warning"]()] : undefined}
     >

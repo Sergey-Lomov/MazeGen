@@ -60,7 +60,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
   const vertexParams = initialConfig as { method: string } & GenerationParams;
 
   return (
-    <SidePanel title={m["generation.vertex_settings_title"]()} onClose={onClose}>
+    <SidePanel title={m["generation.vertex_settings_title"]()} stackKey="vertex-based-settings" onClose={onClose}>
     <div style={styles.panelBody}>
       {cellTypes.length > 1 && (
         <Inline gap="groupGap" style={styles.placementRow}>

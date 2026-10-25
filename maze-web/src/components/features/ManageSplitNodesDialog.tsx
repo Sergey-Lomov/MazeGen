@@ -16,6 +16,7 @@ import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditUtils";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { bringSidePanelToFront } from "../SidePanel";
 import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";
 import type { TileFace, TileFaceKind } from "./TileFaceEditor";
 import { resolveActiveSplitEndpoint, splitPointKey, useSplitDialogFieldCells, useSplitNodesDialogOrchestration } from "./splitNodesOrchestration";
@@ -346,6 +347,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onEntityIdClick={(id) => {
         setPostEditHoveredEntity(null);
         setPostEditChangesEntityFilter(id);
+        bringSidePanelToFront("post-edit-changes");
         setPostEditChangesOpen(true);
       }}
       blueprints={blueprints}

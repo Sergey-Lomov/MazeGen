@@ -49,7 +49,7 @@ export function SymmetryPanel() {
   const canApply = status === "ready" && fieldOpError === null;
 
   return (
-    <SidePanel title={m["field.symmetry.tool"]()} onClose={closePanel}>
+    <SidePanel title={m["field.symmetry.tool"]()} stackKey="symmetry" onClose={closePanel}>
       <Stack gap="groupGap" style={styles.body}>
         <Stack gap="itemGap">
           <div style={styles.sectionLabel}>{m["field.symmetry.snap"]()}</div>
