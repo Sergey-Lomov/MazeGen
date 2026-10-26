@@ -39,6 +39,7 @@ export type IssueKindId =
   | "missing_elevator_height"
   | "excessive_elevator_stop_gap"
   | "invalid_cross_element_group"
+  | "invalid_dead_end"
   | "invalid_dead_end_group";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
@@ -80,5 +81,6 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_elevator_height",
   "excessive_elevator_stop_gap",
   "invalid_cross_element_group",
+  "invalid_dead_end",
   "invalid_dead_end_group",
 ] as const;

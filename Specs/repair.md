@@ -917,24 +917,34 @@ impl Pool {
 
 **`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
 
-### DeadEndToPassageStrategy
+### DeadEndGroupSelectStrategy / DeadEndToPassageStrategy
 
-Handles `INVALID_DEAD_END_GROUP` (GitHub issue #848) by adding exactly one geometric `Basic`
-passage from each selected dead end to an unconnected neighboring node. It processes up to each
-group's `to_remove` count; candidates that cannot accept a new passage because of geometry,
-existing connections, or preset locks are skipped, and the next QC pass evaluates any remaining
-excess. A destination cannot be another dead end named by the issue, so a successful source gets
-exactly its own one new passage rather than being changed incidentally by another repair. A node
-present in overlapping groups is processed only once, and its added passage reduces the remaining
-excess of every group that names it. Sources named by more groups are tried first, avoiding
-unnecessary repairs when whole-maze and per-floor checks overlap.
+`DeadEndGroupSelectStrategy` handles `INVALID_DEAD_END_GROUP` (GitHub issue #851). It makes one
+global candidate pass across every reported group, maintaining each group's independent
+`to_remove` budget. `priority: problematic` (the default) tries nodes present in more groups
+first; `random` shuffles them. A candidate is tried at most once per pass: success retires one
+unit from each group containing every invalidated candidate, and failure removes it from the pass.
+The selector delegates each selected node through its required `fix_target` nested slot, which
+accepts an `INVALID_DEAD_END` repair. A successful nested repair always invalidates its selected
+node and may invalidate other candidates based on its emitted mutation commands.
+
+`DeadEndToPassageStrategy` is the supplied `INVALID_DEAD_END` nested repair. It accepts exactly
+one node and adds one geometric `Basic` passage from it to an unconnected neighboring node.
+Candidates that cannot accept a new passage because of geometry, existing connections, or preset
+locks fail so the selector can try another candidate. Connecting to another selected dead end is
+permitted: a bidirectional passage resolves and accounts for both endpoints across every reported
+group, while a one-way passage resolves only its outward source.
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
 | `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |
 
-Returns `Failed` only when no passage can be added; otherwise returns `Fixed { score: None }`,
-even if some groups retain candidates for a later QC iteration.
+`DeadEndGroupSelectStrategy` exposes the standard group-select `priority` enum (`random`,
+`problematic`; default `problematic`) and requires one `fix_target` nested strategy.
+
+For a nonempty issue, the selector returns `Fixed` only when at least one nested repair succeeds;
+otherwise it returns `Failed`. An empty issue is already resolved and returns `Fixed` without
+requiring nested configuration.
 
 ### MissingLoopsRandomStrategy
 

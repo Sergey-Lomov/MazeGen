@@ -7,6 +7,7 @@ pub mod add_split;
 pub mod add_vertical_passage;
 pub mod cross_element_group_select;
 mod cycle_cut_set;
+pub mod dead_end_group_select;
 pub mod dead_end_priority;
 pub mod dead_end_to_passage;
 pub mod elevator_group_select;
@@ -94,6 +95,9 @@ pub use cross_element_group_select::{
     SLOT_SPLIT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_SPLIT_FIX,
     SLOT_TELEPORT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_TELEPORT_FIX,
     SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_VERTICAL_PASSAGE_FIX,
+};
+pub use dead_end_group_select::{
+    DeadEndGroupSelectStrategy, SLOT_FIX_TARGET as DEAD_END_GROUP_SELECT_SLOT_FIX_TARGET,
 };
 pub use dead_end_priority::{
     PARAM_SRC_MODE, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_OPTIONS, SRC_MODE_PARAM, SRC_MODE_RANDOM,

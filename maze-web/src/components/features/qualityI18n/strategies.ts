@@ -37,6 +37,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.dead_end_to_passage.label"] as MessageFn,
     description: m["strategy.dead_end_to_passage.description"] as MessageFn,
   },
+  dead_end_group_select: {
+    label: m["strategy.dead_end_group_select.label"] as MessageFn,
+    description: m["strategy.dead_end_group_select.description"] as MessageFn,
+  },
   missing_loops_random: {
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,

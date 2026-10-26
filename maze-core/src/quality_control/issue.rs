@@ -43,6 +43,7 @@ pub enum IssueKind {
     MissingElevatorHeight,
     ExcessiveElevatorStopGap,
     InvalidCrossElementGroup,
+    InvalidDeadEnd,
     InvalidDeadEndGroup,
 }
 
@@ -167,6 +168,10 @@ pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 /// collapse to a nested `INVALID_SPLIT_TILE` strategy (`RemoveSplitStrategy`).
 pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup;
 
+/// A single dead-end node selected from an aggregate group for repair. This nested-only kind is
+/// synthesized by `DeadEndGroupSelectStrategy`; no check emits it directly. Carries
+/// `InvalidDeadEndIssue` and is repaired by `DeadEndToPassageStrategy`.
+pub const INVALID_DEAD_END: IssueKind = IssueKind::InvalidDeadEnd;
 /// A field-wide aggregate condition over dead-end nodes. `InvalidDeadEndGroup` is produced by
 /// the maximum dead-end count and density checks; its groups retain every candidate node in the
 /// affected scope together with the excess count for consistent warning/debug attribution.

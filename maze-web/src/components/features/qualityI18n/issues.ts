@@ -127,6 +127,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_dead_end_group.label"] as MessageFn,
     description: m["issue.invalid_dead_end_group.description"] as MessageFn,
   },
+  invalid_dead_end: {
+    label: m["issue.invalid_dead_end.label"] as MessageFn,
+    description: m["issue.invalid_dead_end.description"] as MessageFn,
+  },
   missing_elevators: {
     label: m["issue.missing_elevators.label"] as MessageFn,
     description: m["issue.missing_elevators.description"] as MessageFn,

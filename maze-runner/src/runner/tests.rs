@@ -520,6 +520,7 @@ mod build_strategy_tests {
         "scored_endpoints",
         "invalid_loop_random",
         "invalid_loop_scored",
+        "dead_end_group_select",
         "dead_end_to_passage",
         "missing_loops_random",
         "expand_region_passage",
