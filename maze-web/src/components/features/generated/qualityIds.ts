@@ -92,6 +92,7 @@ export const STRATEGY_IDS = [
   "dead_end_to_passage",
   "dead_end_to_split",
   "dead_end_to_teleport",
+  "dead_end_to_vertical_passage",
   "elevator_group_select",
   "elevator_region_merge",
   "elevator_stop_group_select",

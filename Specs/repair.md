@@ -951,6 +951,14 @@ locks fail so the selector can try another candidate. Connecting to another sele
 permitted: a bidirectional passage resolves and accounts for both endpoints across every reported
 group, while a one-way passage resolves only its outward source.
 
+`DeadEndToVerticalPassageStrategy` (`dead_end_to_vertical_passage`, GitHub issue #857) is the
+multi-floor counterpart. It connects the selected node to the same field point on an adjacent
+floor with a `VerticalPassage`; it fails when no such point exists, the pair is already connected,
+or a preset lock blocks the new edge. It shares `dead_end_one_way_chance` with the ordinary
+passage repair. A one-way vertical passage always points out of the selected dead end, so that
+node no longer remains a dead end; a two-way passage also resolves the target if it was selected
+in an overlapping group. The strategy is available only on multi-floor mazes.
+
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
 | `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |

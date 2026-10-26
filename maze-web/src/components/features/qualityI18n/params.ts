@@ -823,6 +823,7 @@ const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
   "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
   "one_way_chance.dead_end_to_teleport": m["param.one_way_chance.dead_end_to_teleport.label"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
@@ -835,6 +836,7 @@ export function resolveParamLabel(id: string, fallback: string, contextId?: stri
 // `paramI18n` entry. `contextId` is the owning strategy's id.
 const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.description"] as MessageFn,
   "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
   "max_connections.one_way_group_super_hub": m["param.max_connections.one_way_group_super_hub.description"] as MessageFn,
   // The cross-element proximity checks (GitHub issue #376) have no comparison operator — `distance`

@@ -37,6 +37,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.dead_end_to_passage.label"] as MessageFn,
     description: m["strategy.dead_end_to_passage.description"] as MessageFn,
   },
+  dead_end_to_vertical_passage: {
+    label: m["strategy.dead_end_to_vertical_passage.label"] as MessageFn,
+    description: m["strategy.dead_end_to_vertical_passage.description"] as MessageFn,
+  },
   dead_end_to_teleport: {
     label: m["strategy.dead_end_to_teleport.label"] as MessageFn,
     description: m["strategy.dead_end_to_teleport.description"] as MessageFn,
@@ -248,7 +252,8 @@ const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
 };
 
 /** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
- * region-expansion slot (the nested strategy merges regions), "add-elevator" for
+ * region-expansion slot (the nested strategy merges regions), "repair" for a dead-end slot,
+ * "add-elevator" for
  * `AddElevatorStopStrategy`'s slot (GitHub issue #408 — deliberately not "removal", the nested
  * strategy there adds a new elevator, it doesn't remove anything), "removal" for every other kind
  * (the nested strategy removes the flagged element). `slotId`, when it names one of
@@ -256,6 +261,7 @@ const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
 export function resolveNestedStrategyLabel(kind: string, slotId?: string): string {
   if (slotId && CROSS_ELEMENT_SLOT_LABELS[slotId]) return CROSS_ELEMENT_SLOT_LABELS[slotId]();
   if (kind === "region_needs_expansion") return m["quality.nested_strategy.merge_label"]();
+  if (kind === "invalid_dead_end") return m["quality.nested_strategy.fix_label"]();
   if (kind === "missing_elevators") return m["quality.nested_strategy.add_elevator_label"]();
   return m["quality.nested_strategy.removal_label"]();
 }

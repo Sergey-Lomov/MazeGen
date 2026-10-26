@@ -93,9 +93,13 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndGroupIssue> for DeadEndGro
                 // A directed addition only gives its source a new outgoing edge. Its destination
                 // can still be a dead end, so it must remain eligible for a later repair.
                 MutationCommand::AddDirectedEdge { from, .. }
-                | MutationCommand::AddDirectedTeleport { from, .. } => node == from,
+                | MutationCommand::AddDirectedTeleport { from, .. }
+                | MutationCommand::AddDirectedVerticalPassage { from, .. } => node == from,
                 MutationCommand::AddBidirectionalEdge { a, b }
-                | MutationCommand::AddBidirectionalTeleport { a, b } => node == a || node == b,
+                | MutationCommand::AddBidirectionalTeleport { a, b }
+                | MutationCommand::AddBidirectionalVerticalPassage { a, b } => {
+                    node == a || node == b
+                }
                 // Replacing a point removes its old node id, so a different reported dead end at
                 // that point is no longer live and must consume its group's budget as well.
                 MutationCommand::ReplacePointNodes { at, .. } => node == at,

@@ -170,7 +170,8 @@ pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup
 
 /// A single dead-end node selected from an aggregate group for repair. This nested-only kind is
 /// synthesized by `DeadEndGroupSelectStrategy`; no check emits it directly. Carries
-/// `InvalidDeadEndIssue` and is repaired by `DeadEndToPassageStrategy` or
+/// `InvalidDeadEndIssue` and is repaired by `DeadEndToPassageStrategy`,
+/// `DeadEndToVerticalPassageStrategy`, or
 /// `DeadEndToTeleportStrategy`.
 pub const INVALID_DEAD_END: IssueKind = IssueKind::InvalidDeadEnd;
 /// A field-wide aggregate condition over dead-end nodes. `InvalidDeadEndGroup` is produced by

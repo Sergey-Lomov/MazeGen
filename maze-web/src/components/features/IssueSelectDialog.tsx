@@ -13,7 +13,7 @@ interface Props {
 }
 
 /** Fixed display order for issue kinds in `IssueSelectDialog`: General rules first (the
- * cross-element multi-type proximity and dead-end reduction checks), then kinds grouped into
+ * cross-element multi-type proximity and dead-end repair checks), then kinds grouped into
  * sections (Waypoints, One-ways, Teleports, Loops, Regions, Splits, Vertical Passages,
  * Elevators), each internally ordered add → validate → validate groups (Splits has extra
  * validate-node/validate-node-connection/validate-route steps between validate-tile and the

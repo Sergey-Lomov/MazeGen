@@ -348,7 +348,11 @@ const styles = {
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {
     ...typography.message,
-    flex: 1,
+    // The slot label is descriptive metadata; it must only reserve the width it needs so the
+    // selected strategy can use the remaining row width. Giving both spans `flex: 1` split the
+    // row in half even when the label was short, needlessly truncating long strategy labels.
+    flex: "0 1 auto",
+    minWidth: 0,
   },
   // Same token as `label`, but without `flex: 1` — the weight row has no "far right" content to
   // balance against (see `weightRow`), so the label must not claim the remaining width.

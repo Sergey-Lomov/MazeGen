@@ -12,6 +12,7 @@ pub mod dead_end_priority;
 pub mod dead_end_to_passage;
 pub mod dead_end_to_split;
 pub mod dead_end_to_teleport;
+pub mod dead_end_to_vertical_passage;
 pub mod elevator_group_select;
 pub mod elevator_region_merge;
 pub mod elevator_stop_group_select;
@@ -104,11 +105,13 @@ pub use dead_end_group_select::{
 pub use dead_end_priority::{
     PARAM_SRC_MODE, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_OPTIONS, SRC_MODE_PARAM, SRC_MODE_RANDOM,
 };
+pub use dead_end_to_passage::PARAM_ONE_WAY_CHANCE as DEAD_END_TO_VERTICAL_PASSAGE_PARAM_ONE_WAY_CHANCE;
 pub use dead_end_to_passage::{
     DeadEndToPassageStrategy, PARAM_ONE_WAY_CHANCE as DEAD_END_TO_PASSAGE_PARAM_ONE_WAY_CHANCE,
 };
 pub use dead_end_to_split::DeadEndToSplitStrategy;
 pub use dead_end_to_teleport::DeadEndToTeleportStrategy;
+pub use dead_end_to_vertical_passage::DeadEndToVerticalPassageStrategy;
 pub use elevator_group_select::{
     ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET,
 };

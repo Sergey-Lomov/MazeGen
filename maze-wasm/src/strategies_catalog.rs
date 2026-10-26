@@ -17,11 +17,11 @@ use maze_core::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
         CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
-        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, ElevatorGroupSelectStrategy,
-        ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy,
-        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
-        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
-        MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
+        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, DeadEndToVerticalPassageStrategy,
+        ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy,
+        ExpandRegionPassageStrategy, FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy,
+        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
+        MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
         MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
         OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
@@ -371,6 +371,29 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             ),
             nested_slots: vec![],
             visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_vertical_passage",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&DeadEndToVerticalPassageStrategy),
+                &[],
+            ),
+            experimental: <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToVerticalPassageStrategy),
+            nested_suppressed_params: <DeadEndToVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToVerticalPassageStrategy
+            ),
+            nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "dead_end_to_teleport",
@@ -1707,6 +1730,24 @@ mod tests {
     }
 
     #[test]
+    fn dead_end_to_vertical_passage_is_a_multi_floor_dead_end_fixer() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "dead_end_to_vertical_passage")
+            .expect("dead_end_to_vertical_passage must be registered");
+        assert_eq!(strategy.handles, INVALID_DEAD_END.as_str());
+        assert_eq!(strategy.visibility, Some(EntityVisibility::MultiFloorOnly));
+        assert!(matches!(
+            strategy.params.as_slice(),
+            [ParamDescriptor {
+                id: "dead_end_one_way_chance",
+                kind: ParamKindDto::Float { default, min, max },
+                ..
+            }] if *default == 0.0 && *min == 0.0 && *max == 100.0
+        ));
+    }
+
+    #[test]
     fn dead_end_to_split_uses_the_shared_split_configuration() {
         let strategy = available_strategies_list()
             .into_iter()
@@ -1851,6 +1892,7 @@ mod tests {
                 "add_elevator_stop_count",
                 "add_elevator_stop_for_gap",
                 "add_vertical_passage",
+                "dead_end_to_vertical_passage",
                 "elevator_group_select",
                 "elevator_region_merge",
                 "elevator_stop_group_select",
