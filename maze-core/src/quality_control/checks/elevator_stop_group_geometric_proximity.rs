@@ -1,10 +1,10 @@
 use super::elevator_core::elevator_groups;
-use super::proximity_scan_core::pairwise_geometric_scan;
+use super::proximity_scan_core::pairwise_surface_scan;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidElevatorStopGroupIssue};
-use crate::space::{Tessellation, floor_aware_distance};
+use crate::space::{DistancePolicy, FloorMetrics, Tessellation, cell_position};
 use rand::RngCore;
 
 pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
@@ -27,6 +27,9 @@ pub struct ElevatorStopGroupGeometricProximityCheck {
     pub instance_id: String,
     pub distance: f64,
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
@@ -62,7 +65,13 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
             return;
         }
 
-        let mut groups = pairwise_geometric_scan(
+        let metrics = FloorMetrics::new(
+            &maze.field,
+            DistancePolicy::from_approximate(self.approximate_topology),
+        );
+        let tessellation = maze.field.tessellation();
+        // Undecidable pairs (`scan.indeterminate`) are neither flagged nor cleared.
+        let mut groups = pairwise_surface_scan(
             &candidates,
             self.distance,
             |&(_, own_elevator, own_level, _), &(_, other_elevator, other_level, _)| {
@@ -71,12 +80,11 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
                         && own_level != other_level)
             },
             |&(_, _, own_level, own_point), &(_, _, other_level, other_point)| {
-                floor_aware_distance(
-                    maze.field.tessellation(),
+                metrics.distance(
                     own_level,
-                    own_point,
+                    cell_position(tessellation, own_point),
                     other_level,
-                    other_point,
+                    cell_position(tessellation, other_point),
                     self.floor_mode.include_height(),
                 )
             },
@@ -85,7 +93,9 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
                 group.sort_unstable();
                 (group, 1)
             },
-        );
+            |&(own_node, ..), &(other_node, ..)| Some((own_node, other_node)),
+        )
+        .into_groups(&maze.distance_diagnostics);
 
         if groups.is_empty() {
             return;
@@ -150,6 +160,7 @@ mod tests {
             instance_id: TEST_ID.to_string(),
             distance,
             floor_mode,
+            approximate_topology: false,
         }
     }
 

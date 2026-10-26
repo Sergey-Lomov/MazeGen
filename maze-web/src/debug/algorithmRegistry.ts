@@ -99,6 +99,8 @@ function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePayload<bi
       // `available` candidate floor nodes are intentionally dropped here — only the elevator's real
       // fan edges participate in the highlight (GitHub issue #402).
       return { kind: "missingElevatorStopCount", groups: [...payload.groups.values()].flat().map((g) => ({ edges: g.edges })) };
+    case "IndeterminateDistance":
+      return { kind: "indeterminateDistance", pairs: payload.pairs.map((p) => p.nodes) };
     case "InvalidCrossElementGroup":
       return {
         kind: "invalidCrossElementGroup",

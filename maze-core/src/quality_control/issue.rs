@@ -43,6 +43,7 @@ pub enum IssueKind {
     MissingElevatorHeight,
     ExcessiveElevatorStopGap,
     InvalidCrossElementGroup,
+    IndeterminateDistance,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -333,6 +334,12 @@ pub const EXCESSIVE_ELEVATOR_STOP_GAP: IssueKind = IssueKind::ExcessiveElevatorS
 /// `CrossElementGroupSelectStrategy`, which removes one element of the pair; a pair whose two
 /// elements are both unremovable (e.g. `[Start, Finish]`, or route-protected) is left in place.
 pub const INVALID_CROSS_ELEMENT_GROUP: IssueKind = IssueKind::InvalidCrossElementGroup;
+/// Not a toggleable QC check -- raised by `QualityControlEngine` when a geometric-distance check
+/// could not decide some element pairs on a glued field (GitHub issue #838): the distance bracket
+/// straddles the threshold, or the floor has a topological-only fold. Such a pair is neither
+/// flagged nor passed silently. Carries `IndeterminateDistanceIssue { unsupported, unknown }`; no
+/// repair strategy applies to it.
+pub const INDETERMINATE_DISTANCE: IssueKind = IssueKind::IndeterminateDistance;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

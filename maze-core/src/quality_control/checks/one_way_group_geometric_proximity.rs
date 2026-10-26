@@ -1,10 +1,10 @@
-use super::proximity_scan_core::pairwise_geometric_scan;
+use super::proximity_scan_core::pairwise_surface_scan;
 use crate::Maze;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::{GeometricFloorMode, InvalidOneWayGroupIssue};
-use crate::space::{Tessellation, edge_position, floor_aware_xy_distance};
+use crate::space::{DistancePolicy, DistanceResult, FloorMetrics, Tessellation, edge_position};
 use rand::RngCore;
 
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
@@ -39,6 +39,9 @@ pub struct OneWayGroupGeometricProximityCheck {
     pub protect_route: bool,
     /// GitHub issue #342: how a cross-floor one-way pair is treated by this geometric check.
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometricProximityCheck {
@@ -68,7 +71,12 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             return;
         }
 
-        let groups = pairwise_geometric_scan(
+        let metrics = FloorMetrics::new(
+            &maze.field,
+            DistancePolicy::from_approximate(self.approximate_topology),
+        );
+        // Undecidable pairs (`scan.indeterminate`) are neither flagged nor cleared.
+        let groups = pairwise_surface_scan(
             &one_ways,
             self.distance,
             |&(own_id, own_level, ..), &(other_id, other_level, ..)| {
@@ -77,7 +85,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
                         && own_level != other_level)
             },
             |&(own_id, own_level, own_position), &(other_id, other_level, other_position)| {
-                let dist = floor_aware_xy_distance(
+                let dist = metrics.distance(
                     own_level,
                     own_position,
                     other_level,
@@ -91,13 +99,20 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
                 // farther candidates for `own_id` instead of stopping on this one, same as the
                 // pre-extraction loop's own `if !both_route_protected { ...; break }` shape.
                 if both_route_protected {
-                    f64::INFINITY
+                    Ok(DistanceResult::exact(f64::INFINITY))
                 } else {
                     dist
                 }
             },
             |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
-        );
+            |&(own_id, ..), &(other_id, ..)| {
+                Some((
+                    maze.graph.edge(own_id)?.from,
+                    maze.graph.edge(other_id)?.from,
+                ))
+            },
+        )
+        .into_groups(&maze.distance_diagnostics);
 
         if groups.is_empty() {
             return;

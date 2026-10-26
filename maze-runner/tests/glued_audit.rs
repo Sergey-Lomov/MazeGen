@@ -1,0 +1,833 @@
+//! Algorithm audit on glued fields (GitHub issue #838): cylinders, tori, Moebius strips and Klein
+//! bottles of small sizes (including the narrowest the presets allow) run through the full
+//! pipeline with a broad QC rule set. Configs are built from the cylinder fixture (tessellation,
+//! stage skeleton); fold lists are generated with the preset layout of `Specs/topology.md`.
+
+use maze_core::graph::{EdgeKind, Graph};
+use maze_runner::config::GenerateConfig;
+use maze_runner::run_from_config;
+use serde_json::{Value, json};
+use std::collections::{HashSet, VecDeque};
+
+#[derive(Clone, Copy, Debug)]
+enum Surface {
+    Plain,
+    Cylinder,
+    Torus,
+    Mobius,
+    Klein,
+}
+
+fn fold(a: (i32, i32), fa: usize, b: (i32, i32), fb: usize, twist: bool) -> Value {
+    json!({
+        "a": {"cell": [a.0, a.1], "face_idx": fa},
+        "b": {"cell": [b.0, b.1], "face_idx": fb},
+        "twist": twist,
+        "group": 0
+    })
+}
+
+fn topology(surface: Surface, w: i32, h: i32) -> Value {
+    let mut folds = Vec::new();
+    let twisted_lr = matches!(surface, Surface::Mobius | Surface::Klein);
+    for y in 0..h {
+        let by = if twisted_lr { h - 1 - y } else { y };
+        folds.push(fold((w - 1, y), 0, (0, by), 2, twisted_lr));
+    }
+    if matches!(surface, Surface::Torus | Surface::Klein) {
+        for x in 0..w {
+            folds.push(fold((x, h - 1), 1, (x, 0), 3, false));
+        }
+    }
+    let ids: Vec<usize> = (0..folds.len()).collect();
+    json!({
+        "fingerprint": "square{}",
+        "folds": folds,
+        "groups": [{"id": 0, "folds": ids}]
+    })
+}
+
+fn check(local_id: &str, type_id: &str, params: Value) -> Value {
+    json!({"local_id": local_id, "type_id": type_id, "params": params})
+}
+
+fn rule(id: &str, checks: Vec<Value>, strategy: Option<&str>) -> Value {
+    json!({
+        "id": id,
+        "checks": checks,
+        "strategy": strategy.map(|s| json!({"id": s, "params": {}}))
+    })
+}
+
+/// A broad rule set: endpoints, reachability, short loops, small regions, SCC count.
+fn with_nested(mut rule: Value, id: &str, slot: &str) -> Value {
+    rule["strategy"]["nested"] = json!([{"id": id, "params": {}, "slot_id": slot}]);
+    rule
+}
+
+fn rich_rules() -> Vec<Value> {
+    vec![
+        rule(
+            "r1",
+            vec![check("0", "missing_endpoints", json!({}))],
+            Some("scored_endpoints"),
+        ),
+        rule(
+            "r2",
+            vec![check("0", "unreachable_finish", json!({}))],
+            None,
+        ),
+        rule(
+            "r3",
+            vec![check(
+                "0",
+                "loop_length",
+                json!({"length": "4", "comparison": "lt"}),
+            )],
+            Some("invalid_loop_random"),
+        ),
+        rule(
+            "r4",
+            vec![check("0", "min_loops_count", json!({"min_loops": "2"}))],
+            Some("missing_loops_random"),
+        ),
+        rule(
+            "r5",
+            vec![check(
+                "0",
+                "min_region_size",
+                json!({"min_region_size": "4", "region_class": "all"}),
+            )],
+            Some("expand_region_passage"),
+        ),
+    ]
+}
+
+fn config(surface: Surface, w: i32, h: i32, rules: Vec<Value>, elements: Value) -> GenerateConfig {
+    serde_json::from_value(config_value(surface, w, h, rules, elements)).unwrap()
+}
+
+fn config_value(surface: Surface, w: i32, h: i32, rules: Vec<Value>, elements: Value) -> Value {
+    let json = std::fs::read_to_string("tests/fixtures/topology-cylinder.json").unwrap();
+    let mut base: Value = serde_json::from_str(&json).unwrap();
+    let cells: Vec<Value> = (0..w)
+        .flat_map(|x| (0..h).map(move |y| json!([x, y])))
+        .collect();
+    base["level_fields"] = json!([cells]);
+    base["topology"] = match surface {
+        Surface::Plain => json!([]),
+        _ => json!([topology(surface, w, h)]),
+    };
+    base["stages"] = json!([{"id": "stage_1", "name": "Stage 1", "rules": rules}]);
+    base["elements"] = elements;
+    base["repair_max_iterations"] = json!(50);
+    base
+}
+
+fn reachable(graph: &Graph, start: maze_core::ids::NodeId) -> usize {
+    let mut seen = HashSet::from([start]);
+    let mut queue = VecDeque::from([start]);
+    while let Some(node) = queue.pop_front() {
+        for next in graph.outgoing_neighbors(node) {
+            if seen.insert(next) {
+                queue.push_back(next);
+            }
+        }
+    }
+    seen.len()
+}
+
+fn audit(surface: Surface, w: i32, h: i32, rules: Vec<Value>, elements: Value, seeds: u64) {
+    let config = config(surface, w, h, rules, elements);
+    audit_config(&config, surface, w, h, seeds, true);
+}
+
+/// `strict_reach == false` is the element-heavy mode: one-ways and teleports may legitimately cut
+/// the finish off on any field (the plain control fails the same way, no repair is configured for
+/// it), so `unreachable_finish` and full reachability are not asserted.
+fn audit_config(
+    config: &GenerateConfig,
+    surface: Surface,
+    w: i32,
+    h: i32,
+    seeds: u64,
+    strict_reach: bool,
+) -> Tally {
+    let mut tally = Tally::default();
+    for seed in 0..seeds {
+        let label = format!("{surface:?} {w}x{h} seed {seed}");
+        let result = run_from_config(seed, config).unwrap_or_else(|e| panic!("{label}: {e}"));
+        let nodes = result.graph.node_count();
+        tally.split_nodes += nodes - (w * h) as usize;
+        assert!(nodes >= (w * h) as usize, "{label}");
+
+        let mut seen = HashSet::new();
+        for edge in result.graph.edges() {
+            if edge.kind == EdgeKind::Teleport {
+                tally.teleports += 1;
+            }
+            assert!(
+                seen.insert((edge.from, edge.to, edge.kind)),
+                "{label}: duplicate edge {:?} -> {:?}",
+                edge.from,
+                edge.to
+            );
+            assert_ne!(edge.from, edge.to, "{label}: self loop");
+        }
+
+        let kinds: Vec<String> = result
+            .remaining_issues
+            .iter()
+            .map(|i| i.kind().as_str().to_string())
+            .filter(|k| strict_reach || k != "unreachable_finish")
+            // Undecidable pairs on a Moebius strip are expected and covered by their own test.
+            .filter(|k| k != "indeterminate_distance")
+            .collect();
+        assert!(kinds.is_empty(), "{label}: remaining issues {kinds:?}");
+        let start = result.start.expect("start");
+        assert!(result.finish.is_some(), "{label}: no finish");
+        if strict_reach {
+            assert_eq!(reachable(&result.graph, start), nodes, "{label}: reach");
+        }
+    }
+    tally
+}
+
+#[derive(Default, Debug)]
+struct Tally {
+    teleports: usize,
+    split_nodes: usize,
+}
+
+fn no_elements() -> Value {
+    json!({"one_way_chance": 0.0, "teleport_chance": 0, "teleport_one_way_chance": 0})
+}
+
+const SIZES: [(Surface, i32, i32); 11] = [
+    (Surface::Plain, 3, 3),
+    (Surface::Plain, 6, 3),
+    (Surface::Plain, 4, 4),
+    (Surface::Cylinder, 3, 3),
+    (Surface::Cylinder, 3, 6),
+    (Surface::Cylinder, 6, 3),
+    (Surface::Torus, 3, 3),
+    (Surface::Torus, 5, 4),
+    (Surface::Mobius, 3, 3),
+    (Surface::Mobius, 6, 3),
+    (Surface::Klein, 4, 4),
+];
+
+#[test]
+fn rich_qc_converges_on_glued_fields() {
+    for (surface, w, h) in SIZES {
+        audit(surface, w, h, rich_rules(), no_elements(), 10);
+    }
+}
+
+#[test]
+fn narrow_fields_generate_with_each_initial_method() {
+    for method in [
+        json!({"method": "recursive_backtracker"}),
+        json!({"method": "wilson_algorithm"}),
+        json!({"method": "kruskal_algorithm"}),
+        json!({"method": "custom_vertex_based", "depth_first": 0.6, "corridor_chance": 0.5,
+               "branching": 0.5, "directionality": 0.3}),
+    ] {
+        for (surface, w, h) in SIZES {
+            let mut c = config(
+                surface,
+                w,
+                h,
+                vec![rule(
+                    "r1",
+                    vec![check("0", "missing_endpoints", json!({}))],
+                    Some("scored_endpoints"),
+                )],
+                no_elements(),
+            );
+            c.initial = serde_json::from_value(method.clone()).unwrap();
+            for seed in 0..5 {
+                let result = run_from_config(seed, &c)
+                    .unwrap_or_else(|e| panic!("{method} {surface:?} {w}x{h}: {e}"));
+                assert_eq!(result.graph.node_count(), (w * h) as usize);
+            }
+        }
+    }
+}
+
+fn crossing_pattern() -> Value {
+    let face = |i: usize| json!({"face_index": i, "requirement": {"kind": "passage"}});
+    json!({"shape": "regular:4", "node_count": 2,
+           "faces": [[face(0), face(2)], [face(1), face(3)]], "weight": 1.0})
+}
+
+fn geometric_rules() -> Vec<Value> {
+    let patterns = serde_json::to_string(&vec![crossing_pattern()]).unwrap();
+    let mut split_rule = with_nested(
+        rule(
+            "r6",
+            vec![check(
+                "0",
+                "split_group_geometric_proximity",
+                json!({"split_group_geometric_proximity_distance": "2"}),
+            )],
+            Some("split_group_select"),
+        ),
+        "remove_split",
+        "fix_target",
+    );
+    split_rule["params"] = json!({ "split_patterns": patterns });
+    vec![
+        rule(
+            "r1",
+            vec![check("0", "missing_endpoints", json!({}))],
+            Some("scored_endpoints"),
+        ),
+        rule(
+            "r2",
+            vec![check("0", "unreachable_finish", json!({}))],
+            None,
+        ),
+        with_nested(
+            rule(
+                "r3",
+                vec![check(
+                    "0",
+                    "one_way_group_geometric_proximity",
+                    json!({"distance": "2"}),
+                )],
+                Some("one_way_group_select"),
+            ),
+            "one_way_to_wall",
+            "fix_target",
+        ),
+        rule(
+            "r4",
+            vec![check(
+                "0",
+                "teleport_geometric_length",
+                json!({"length": "3", "comparison": "lt"}),
+            )],
+            Some("remove_teleport"),
+        ),
+        split_rule,
+    ]
+}
+
+#[test]
+fn elements_and_geometric_checks_converge_on_glued_fields() {
+    let elements = json!({"one_way_chance": 0.15, "teleport_chance": 0.1,
+        "teleport_one_way_chance": 0.3, "split_chance": 0.2});
+    let mut total = Tally::default();
+    for (surface, w, h) in SIZES {
+        let mut c = config(surface, w, h, geometric_rules(), elements.clone());
+        c.initial = serde_json::from_value(json!({"method": "custom_vertex_based",
+            "depth_first": 0.6, "corridor_chance": 0.5, "branching": 0.5, "directionality": 0.3}))
+        .unwrap();
+        let tally = audit_config(&c, surface, w, h, 10, false);
+        total.teleports += tally.teleports;
+        total.split_nodes += tally.split_nodes;
+    }
+    // The audit is only meaningful if the elements were actually generated and survived repair.
+    assert!(total.teleports > 0 && total.split_nodes > 0, "{total:?}");
+}
+
+/// One rule per entry: `(checks, strategy, nested strategy for a group-select strategy)`.
+type Combo = (
+    Vec<(&'static str, Value)>,
+    &'static str,
+    Option<&'static str>,
+);
+
+fn sweep_combos() -> Vec<Combo> {
+    vec![
+        (
+            vec![("scc_count", json!({"max_scc_count": "1"}))],
+            "reduce_scc_count",
+            Some("expand_region_passage"),
+        ),
+        (
+            vec![("loop_length", json!({"length": "6", "comparison": "lt"}))],
+            "invalid_loop_random",
+            None,
+        ),
+        (
+            vec![("loop_length", json!({"length": "6", "comparison": "lt"}))],
+            "invalid_loop_scored",
+            None,
+        ),
+        (
+            vec![("min_loops_count", json!({"min_loops": "3"}))],
+            "missing_loops_random",
+            None,
+        ),
+        (
+            vec![("min_loop_density", json!({"min_density": "10"}))],
+            "missing_loops_random",
+            None,
+        ),
+        (
+            vec![(
+                "loop_distance_from_start",
+                json!({"min_distance_from_start": "3"}),
+            )],
+            "invalid_loop_random",
+            None,
+        ),
+        (
+            vec![(
+                "min_region_size",
+                json!({"min_region_size": "5", "region_class": "all"}),
+            )],
+            "weighted_region_merge",
+            Some("expand_region_passage"),
+        ),
+        (
+            vec![(
+                "min_region_size",
+                json!({"min_region_size": "5", "region_class": "all"}),
+            )],
+            "priority_region_merge",
+            Some("expand_region_passage"),
+        ),
+        (
+            vec![(
+                "min_region_size",
+                json!({"min_region_size": "5", "region_class": "all"}),
+            )],
+            "expand_region_passage",
+            None,
+        ),
+        (
+            vec![(
+                "max_region_size",
+                json!({"max_region_size": "8", "region_class": "all"}),
+            )],
+            "region_shrink_split",
+            None,
+        ),
+        (
+            vec![("min_region_count", json!({"alternative_count": "1"}))],
+            "missing_regions",
+            None,
+        ),
+        (
+            vec![("min_teleport_count", json!({"min_teleports": "2"}))],
+            "missing_teleports",
+            None,
+        ),
+        (
+            vec![("max_teleport_count", json!({"max_teleports": "1"}))],
+            "teleport_group_select",
+            Some("remove_teleport"),
+        ),
+        (
+            vec![("teleport_group_proximity", json!({"distance": "3"}))],
+            "teleport_group_select",
+            Some("remove_teleport"),
+        ),
+        (
+            vec![(
+                "teleport_graph_distance",
+                json!({"distance": "4", "comparison": "lt"}),
+            )],
+            "remove_teleport",
+            None,
+        ),
+        (
+            vec![("min_one_way_count", json!({"min_one_ways": "2"}))],
+            "missing_one_ways_from_passage",
+            None,
+        ),
+        (
+            vec![("max_one_way_count", json!({"max_one_ways": "1"}))],
+            "one_way_group_select",
+            Some("one_way_to_passage"),
+        ),
+        (
+            vec![("one_way_group_graph_proximity", json!({"distance": "3"}))],
+            "one_way_group_select",
+            Some("one_way_to_wall"),
+        ),
+        (
+            vec![(
+                "split_group_graph_proximity",
+                json!({"split_group_graph_proximity_distance": "3"}),
+            )],
+            "split_group_select",
+            Some("remove_split"),
+        ),
+        (
+            vec![("max_split_count", json!({"max_split_count": "1"}))],
+            "split_group_select",
+            Some("remove_split"),
+        ),
+    ]
+}
+
+fn sweep_rules((checks, strategy, nested): &Combo) -> Vec<Value> {
+    let checks = checks
+        .iter()
+        .enumerate()
+        .map(|(i, (type_id, params))| check(&i.to_string(), type_id, params.clone()))
+        .collect();
+    let mut main = rule("r3", checks, Some(strategy));
+    if let Some(nested) = nested {
+        let slot = match *strategy {
+            "reduce_scc_count" | "weighted_region_merge" | "priority_region_merge" => {
+                "merge_target"
+            }
+            _ => "fix_target",
+        };
+        main = with_nested(main, nested, slot);
+    }
+    vec![
+        rule(
+            "r1",
+            vec![check("0", "missing_endpoints", json!({}))],
+            Some("scored_endpoints"),
+        ),
+        rule(
+            "r2",
+            vec![check("0", "unreachable_finish", json!({}))],
+            None,
+        ),
+        main,
+    ]
+}
+
+/// Every check/strategy pairing runs on every glued surface without an error, a panic, a self
+/// loop or a duplicate edge, and leaves no more unresolved issues than the plain field of the
+/// same size does.
+#[test]
+fn check_strategy_sweep_matches_the_plain_field() {
+    let elements = json!({"one_way_chance": 0.1, "teleport_chance": 0.08,
+        "teleport_one_way_chance": 0.3, "split_chance": 0.1});
+    let patterns = serde_json::to_string(&vec![crossing_pattern()]).unwrap();
+    let mut worse = Vec::new();
+    for combo in sweep_combos() {
+        for (w, h) in [(4, 4), (6, 3), (5, 5)] {
+            let mut failures = std::collections::BTreeMap::new();
+            for surface in [
+                Surface::Plain,
+                Surface::Cylinder,
+                Surface::Torus,
+                Surface::Mobius,
+                Surface::Klein,
+            ] {
+                let mut rules = sweep_rules(&combo);
+                rules[2]["params"] = json!({ "split_patterns": patterns });
+                let mut c = config(surface, w, h, rules, elements.clone());
+                c.initial = serde_json::from_value(json!({"method": "custom_vertex_based",
+                    "depth_first": 0.6, "corridor_chance": 0.5, "branching": 0.5,
+                    "directionality": 0.3}))
+                .unwrap();
+                let mut unresolved = 0;
+                for seed in 0..12 {
+                    let label = format!("{:?} {surface:?} {w}x{h} seed {seed}", combo.1);
+                    let result =
+                        run_from_config(seed, &c).unwrap_or_else(|e| panic!("{label}: {e}"));
+                    let mut seen = HashSet::new();
+                    for edge in result.graph.edges() {
+                        assert!(
+                            seen.insert((edge.from, edge.to, edge.kind)),
+                            "{label}: duplicate edge"
+                        );
+                        assert_ne!(edge.from, edge.to, "{label}: self loop");
+                    }
+                    if result
+                        .remaining_issues
+                        .iter()
+                        .any(|i| i.kind().as_str() != "unreachable_finish")
+                    {
+                        unresolved += 1;
+                    }
+                }
+                failures.insert(format!("{surface:?}"), unresolved);
+            }
+            eprintln!("{} {w}x{h}: unresolved seeds {failures:?}", combo.1);
+            let plain = failures["Plain"];
+            for (surface, n) in &failures {
+                if *n > plain + 4 {
+                    worse.push(format!(
+                        "{} {w}x{h} {surface}: {n} vs plain {plain}",
+                        combo.1
+                    ));
+                }
+            }
+        }
+    }
+    assert!(worse.is_empty(), "{worse:#?}");
+}
+
+/// The committed fixtures: `(file, surface, width, height, rules, elements)`. Regenerate with
+/// `cargo test -p maze-runner --test glued_audit -- --ignored regenerate_glued_fixtures`.
+fn fixture_specs() -> Vec<(&'static str, Surface, i32, i32, Vec<Value>, Value)> {
+    let elements = json!({"one_way_chance": 0.1, "teleport_chance": 0.08,
+        "teleport_one_way_chance": 0.3, "split_chance": 0.1});
+    vec![
+        (
+            "glued-cylinder-narrow.json",
+            Surface::Cylinder,
+            3,
+            6,
+            rich_rules(),
+            no_elements(),
+        ),
+        (
+            "glued-torus-narrow.json",
+            Surface::Torus,
+            3,
+            3,
+            rich_rules(),
+            no_elements(),
+        ),
+        (
+            "glued-mobius-narrow.json",
+            Surface::Mobius,
+            4,
+            3,
+            rich_rules(),
+            no_elements(),
+        ),
+        (
+            "glued-cylinder-geometric.json",
+            Surface::Cylinder,
+            6,
+            3,
+            geometric_rules(),
+            elements.clone(),
+        ),
+        (
+            "glued-torus-geometric.json",
+            Surface::Torus,
+            5,
+            4,
+            geometric_rules(),
+            elements.clone(),
+        ),
+        (
+            "glued-mobius-geometric.json",
+            Surface::Mobius,
+            6,
+            3,
+            geometric_rules(),
+            elements,
+        ),
+    ]
+}
+
+#[test]
+#[ignore = "writes tests/fixtures/glued-*.json"]
+fn regenerate_glued_fixtures() {
+    for (file, surface, w, h, rules, elements) in fixture_specs() {
+        let value = config_value(surface, w, h, rules, elements);
+        let text = serde_json::to_string_pretty(&value).unwrap();
+        std::fs::write(
+            format!("tests/fixtures/{file}"),
+            text + "
+",
+        )
+        .unwrap();
+    }
+}
+
+/// Every parameter comes from the fixture file: connectivity, no duplicate edges, QC passes and
+/// repair converges on a cylinder, a torus and a Moebius strip.
+#[test]
+fn glued_fixtures_generate_repair_and_pass_qc() {
+    for (file, surface, w, h, ..) in fixture_specs() {
+        let strict = !file.contains("geometric");
+        for seed in 0..10 {
+            let label = format!("{file} seed {seed}");
+            let result = maze_runner::run_fixture(&format!("tests/fixtures/{file}"), seed);
+            let nodes = result.graph.node_count();
+            assert!(nodes >= (w * h) as usize, "{label}: {surface:?}");
+            let mut seen = HashSet::new();
+            for edge in result.graph.edges() {
+                assert!(
+                    seen.insert((edge.from, edge.to, edge.kind)),
+                    "{label}: duplicate edge"
+                );
+                assert_ne!(edge.from, edge.to, "{label}: self loop");
+            }
+            let kinds: Vec<&str> = result
+                .remaining_issues
+                .iter()
+                .map(|i| i.kind().as_str())
+                .filter(|k| strict || *k != "unreachable_finish")
+                .collect();
+            assert!(kinds.is_empty(), "{label}: remaining issues {kinds:?}");
+            if strict {
+                let start = result.start.expect("start");
+                assert_eq!(reachable(&result.graph, start), nodes, "{label}: reach");
+            }
+        }
+    }
+}
+
+/// Runs with at least one `indeterminate_distance` issue, and the largest number of such issues
+/// any single run reported.
+fn indeterminate_runs(surface: Surface, distance: &str) -> (usize, usize) {
+    let rules = vec![
+        rule(
+            "r1",
+            vec![check("0", "missing_endpoints", json!({}))],
+            Some("scored_endpoints"),
+        ),
+        rule(
+            "r2",
+            vec![check(
+                "0",
+                "one_way_group_geometric_proximity",
+                json!({"distance": distance}),
+            )],
+            None,
+        ),
+    ];
+    let elements =
+        json!({"one_way_chance": 0.4, "teleport_chance": 0, "teleport_one_way_chance": 0});
+    let mut c = config(surface, 6, 3, rules, elements);
+    c.initial = serde_json::from_value(json!({"method": "custom_vertex_based",
+        "depth_first": 0.6, "corridor_chance": 0.5, "branching": 0.5, "directionality": 0.3}))
+    .unwrap();
+    let per_run: Vec<usize> = (0..30)
+        .map(|seed| {
+            let result = run_from_config(seed, &c).unwrap();
+            result
+                .remaining_issues
+                .iter()
+                .filter(|i| i.kind().as_str() == "indeterminate_distance")
+                .count()
+        })
+        .collect();
+    (
+        per_run.iter().filter(|&&n| n > 0).count(),
+        per_run.iter().copied().max().unwrap_or(0),
+    )
+}
+
+/// A Moebius strip has no exact distance for some pairs: they are reported, never silently
+/// passed. Fields whose distance is exact (plain, cylinder, torus) never report it.
+#[test]
+fn undecidable_pairs_surface_as_an_issue_only_where_the_distance_is_not_exact() {
+    let (runs, max_per_run) = indeterminate_runs(Surface::Mobius, "2.5");
+    assert!(runs > 0);
+    // Several QC stages still yield a single aggregated issue per run.
+    assert_eq!(max_per_run, 1);
+    for surface in [Surface::Plain, Surface::Cylinder, Surface::Torus] {
+        assert_eq!(indeterminate_runs(surface, "2.5").0, 0, "{surface:?}");
+    }
+}
+
+/// A radial field (first ring 6 cells, classic layout) whose two outer arcs of different radii are
+/// glued: a topological-only fold, so no surface distance exists on the floor.
+fn nonisometric_value(approximate: bool) -> Value {
+    use maze_core::space::Tessellation;
+    use maze_core::{RadialFace, RadialLayout, RadialParams, RadialPoint, RadialTessellation};
+    let tessellation = RadialTessellation::new(RadialParams {
+        first_ring_cells: 6,
+        layout: RadialLayout::Classic,
+        max_cells: 200,
+    })
+    .unwrap();
+    let mut cells = vec![RadialPoint { ring: 0, index: 0 }];
+    let mut seen: HashSet<RadialPoint> = cells.iter().copied().collect();
+    let mut queue: VecDeque<RadialPoint> = cells.iter().copied().collect();
+    while let Some(cell) = queue.pop_front() {
+        for &face in tessellation.faces_of(cell) {
+            if let Some((next, _)) = tessellation.neighbor(cell, face) {
+                if next.ring <= 3 && seen.insert(next) {
+                    cells.push(next);
+                    queue.push_back(next);
+                }
+            }
+        }
+    }
+    // Open the outer side of (2, 6) so its outer arc is a boundary face.
+    let a = RadialPoint { ring: 2, index: 6 };
+    let hidden: HashSet<RadialPoint> = tessellation
+        .faces_of(a)
+        .iter()
+        .copied()
+        .filter(|f| matches!(f, RadialFace::Outer(_)))
+        .filter_map(|f| tessellation.neighbor(a, f).map(|(n, _)| n))
+        .collect();
+    cells.retain(|c| !hidden.contains(c));
+    let b = RadialPoint { ring: 3, index: 0 };
+    let outer = |cell: RadialPoint| {
+        tessellation
+            .faces_of(cell)
+            .iter()
+            .position(|f| matches!(f, RadialFace::Outer(_)))
+            .unwrap()
+    };
+    let wire = |c: RadialPoint| json!([c.ring, c.index]);
+    let mut base: Value = serde_json::from_str(
+        &std::fs::read_to_string("tests/fixtures/topology-cylinder.json").unwrap(),
+    )
+    .unwrap();
+    base["tessellation"] = json!({"kind": "radial", "params": {
+        "first_ring_cells": 6, "max_cells": 200, "ring_layout": "classic"}});
+    base["level_fields"] = json!([cells.iter().map(|&c| wire(c)).collect::<Vec<_>>()]);
+    base["topology"] = json!([{
+        "fingerprint": r#"radial{"first_ring_cells":6,"max_cells":200,"ring_layout":"classic"}"#,
+        "folds": [{"a": {"cell": wire(a), "face_idx": outer(a)},
+                   "b": {"cell": wire(b), "face_idx": outer(b)},
+                   "twist": false, "group": 0}],
+        "groups": [{"id": 0, "folds": [0]}]
+    }]);
+    let mut proximity = rule(
+        "r2",
+        vec![check(
+            "0",
+            "one_way_group_geometric_proximity",
+            json!({"distance": "2"}),
+        )],
+        None,
+    );
+    if approximate {
+        proximity["params"] = json!({"approximate_topology": "true"});
+    }
+    base["stages"] = json!([{"id": "stage_1", "name": "Stage 1", "rules": [
+        rule("r1", vec![check("0", "missing_endpoints", json!({}))], Some("scored_endpoints")),
+        proximity,
+    ]}]);
+    base["elements"] =
+        json!({"one_way_chance": 0.4, "teleport_chance": 0, "teleport_one_way_chance": 0});
+    base["initial"] = json!({"method": "custom_vertex_based", "depth_first": 0.6,
+        "corridor_chance": 0.5, "branching": 0.5, "directionality": 0.3});
+    base["repair_max_iterations"] = json!(50);
+    base
+}
+
+#[test]
+#[ignore = "writes tests/fixtures/glued-radial-nonisometric*.json"]
+fn regenerate_nonisometric_fixtures() {
+    for (file, approximate) in [
+        ("glued-radial-nonisometric.json", false),
+        ("glued-radial-nonisometric-approximate.json", true),
+    ] {
+        let text = serde_json::to_string_pretty(&nonisometric_value(approximate)).unwrap();
+        std::fs::write(format!("tests/fixtures/{file}"), text + "\n").unwrap();
+    }
+}
+
+/// A topological-only fold makes every geometric pair undecidable by default (reported, never
+/// silently passed); `approximate_topology` measures them by the planar distance instead.
+#[test]
+fn a_topological_only_fold_is_reported_unless_approximated() {
+    let count = |file: &str| {
+        (0..20)
+            .filter(|&seed| {
+                let result = maze_runner::run_fixture(&format!("tests/fixtures/{file}"), seed);
+                result
+                    .remaining_issues
+                    .iter()
+                    .any(|i| i.kind().as_str() == "indeterminate_distance")
+            })
+            .count()
+    };
+    assert!(count("glued-radial-nonisometric.json") > 0);
+    assert_eq!(count("glued-radial-nonisometric-approximate.json"), 0);
+}

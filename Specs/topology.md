@@ -195,6 +195,19 @@ All values below are world units; the bracket is `[lower, upper]` with `lower <=
 
 A `SurfaceMetric` snapshots the field's active isometric folds at construction (build a new one after `set_topology`). It holds interior caches (`RefCell`), so it is neither `Sync` nor shared between threads: build one per thread/run. The unfolding candidates of the non-lattice case (products of up to 3 seam transforms) are built on first use.
 
+### Floor distance
+
+`FloorMetrics` (`space/geometry/floor_surface.rs`, GitHub issue #838) is the consumer-side entry point: one `SurfaceMetric` per floor of a `MultiLevelField`, built per check run with `DistancePolicy::Strict`.
+
+- **Same floor.** `surface_distance` of that floor. A floor without active folds takes `floor_aware_xy_distance` directly, so results are bit-identical to the planar behaviour and canonical baselines do not change.
+- **Cross floor.** The xy part is the smaller bracket of the two floors' surface distances; with `include_height` it is lifted by `sqrt(xy^2 + dz^2)`.
+- **Consumers 1-6** (split, elevator stop, vertical passage, cross-element, one-way group proximity; teleport length) decide through `compare`. `pairwise_surface_scan` records a pair with `Unknown` or `Unsupported` in `SurfaceScan::indeterminate` and keeps scanning; it is neither flagged nor passed silently.
+- **Consumer 7** (`expand_region_passage` farthest-pair ranking) uses `SurfaceMetric::ranking_distance`: `upper_bound`, planar for `Unsupported`, planar when the floor has no seams.
+
+**Undecidable pairs.** A pair that is `Unknown` or `Unsupported` is recorded, not dropped: `SurfaceScan::into_groups` and `find_invalid_teleports` add it to `Maze::distance_diagnostics`; `QualityControlEngine::collect_final_report` clears the collection, runs the report pass and emits one `IndeterminateDistanceIssue { pairs }` (`quality_control.md`). A pair is located by a representative maze node per side and kept once whichever side the scan visits it from. The rule-level parameter `approximate_topology` (default `false`) selects `DistancePolicy::Approximate` for the six checks above; it never narrows an `Unknown` bracket.
+
+Audit result (`maze-runner/tests/glued_audit.rs`, with the `glued-*.json` fixtures: narrow and geometric cylinder / torus / Mobius, plus a radial field with a non-isometric fold; cylinder / torus / Mobius / Klein, narrow sizes included): generation, QC and repair run without errors, duplicate edges or self loops; every check/strategy pairing leaves no more unresolved issues than the plain field of the same size. Cycle detection, classification, `is_straight`, split matching, routing, nav-graph, analytics and one-way edges work on `Crossing::cell` and needed no change.
+
 ### Singular vertices
 
 At a vertex where the gluing is not flat (cube corners, cone points, the end of a partially glued edge) a shortest path may bend at the vertex instead of crossing a seam transversally. The search only traces straight unfoldings, so such a path is never produced: the upper bound stays a valid real path, possibly longer than the true distance, and the lower bounds stay sound (they do not assume straight paths). A result is `exact` only when the two bounds coincide, never because the search "finished". Bending at a seam endpoint is not searched.
@@ -202,10 +215,7 @@ At a vertex where the gluing is not flat (cube corners, cone points, the end of 
 ### Not done
 
 - `FoldRun` grouping (optional, internal): folds are processed one by one, every chain is an independent seam side.
-- Consumer migration and the indeterminate-issue wiring (see "Follow-ups").
 
 ### Follow-ups (not in this ticket)
 
-- `surface_distance` (done, #835, see "Surface distance") implements the result types and `compare`; consumers 1–7 migrate to it.
-- Algorithm audit: each `Strict` consumer gets the indeterminate-issue wiring and a `maze-runner` fixture with an active non-isometric fold.
-- `approximate_topology` is added to check/strategy params and the wasm/web config.
+- Performance of `surface_distance` on non-lattice topologies inside large pairwise scans.

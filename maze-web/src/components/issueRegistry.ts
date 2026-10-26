@@ -113,6 +113,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_elevator_height: () => ({ label: m["issue.missing_elevator_height.label"](), description: m["issue.missing_elevator_height.description"](), severity: "warning" }),
   excessive_elevator_stop_gap: () => ({ label: m["issue.excessive_elevator_stop_gap.label"](), description: m["issue.excessive_elevator_stop_gap.description"](), severity: "warning" }),
   invalid_cross_element_group: () => ({ label: m["issue.invalid_cross_element_group.label"](), description: m["issue.invalid_cross_element_group.description"](), severity: "warning" }),
+  indeterminate_distance: () => ({ label: m["issue.indeterminate_distance.label"](), description: m["issue.indeterminate_distance.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {

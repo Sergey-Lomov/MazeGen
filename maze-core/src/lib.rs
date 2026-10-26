@@ -60,6 +60,8 @@ pub struct Maze<T: Tessellation> {
     pub graph: Graph,
     pub meta: MazeMeta,
     pub analysis: MazeAnalysis,
+    /// Undecidable geometric-distance pairs recorded by QC checks (GitHub issue #838).
+    pub distance_diagnostics: quality_control::DistanceDiagnostics,
     /// Sole source of new `NodeId`s for this maze's lifetime — see GitHub issue #219. Built via
     /// `IdGenerator::resume_after` in `new`, never accepted as a parameter: a caller can't
     /// accidentally supply a fresh, incompatible generator that would collide with IDs `field`
@@ -78,6 +80,7 @@ impl<T: Tessellation> Maze<T> {
             graph,
             meta: MazeMeta::empty(),
             analysis: MazeAnalysis::default(),
+            distance_diagnostics: quality_control::DistanceDiagnostics::default(),
             ids,
         }
     }
@@ -122,6 +125,7 @@ impl<T: Tessellation> Maze<T> {
             graph: self.graph.clone(),
             meta: self.meta.clone(),
             analysis: MazeAnalysis::default(),
+            distance_diagnostics: quality_control::DistanceDiagnostics::default(),
             ids: self.ids.clone(),
         }
     }

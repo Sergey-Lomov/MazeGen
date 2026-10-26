@@ -127,6 +127,17 @@ pub enum DistancePolicy {
     Approximate,
 }
 
+impl DistancePolicy {
+    /// `Approximate` when the caller's config opts in (`approximate_topology`), else `Strict`.
+    pub fn from_approximate(approximate: bool) -> Self {
+        if approximate {
+            Self::Approximate
+        } else {
+            Self::Strict
+        }
+    }
+}
+
 /// A plane isometry `x' = a·x + c·y + tx`, `y' = b·x + d·y + ty` (the layout of
 /// `RigidTransform::matrix`).
 #[derive(Debug, Clone, Copy)]
@@ -391,6 +402,21 @@ impl SurfaceMetric {
     /// Whether the floor has any active isometric seam.
     pub fn has_seams(&self) -> bool {
         !self.sides.is_empty()
+    }
+
+    /// The distance for decisions that only *order* candidates (nearest, farthest), never
+    /// threshold them (`Specs/topology.md`, "Consumer policy"): the upper bound of the surface
+    /// distance, planar when the floor has no isometric seam, and planar for a pair the metric
+    /// cannot measure (an unsupported fold). Never fails, never raises an issue. Without seams it
+    /// is bit-identical to `planar_distance`.
+    pub fn ranking_distance(&self, a: ScaledPoint, b: ScaledPoint) -> f64 {
+        if !self.has_seams() {
+            return planar_distance(a, b);
+        }
+        match self.surface_distance(a, b) {
+            Ok(result) => result.upper_bound,
+            Err(DistanceError::Unsupported) => planar_distance(a, b),
+        }
     }
 
     /// Shortest surface path between two points, in `cell_scale` units of their mean scale.

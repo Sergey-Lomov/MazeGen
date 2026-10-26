@@ -44,6 +44,7 @@ impl IssueKind {
             IssueKind::MissingElevatorHeight => "missing_elevator_height",
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
             IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
+            IssueKind::IndeterminateDistance => "indeterminate_distance",
         }
     }
 
@@ -87,6 +88,7 @@ impl IssueKind {
             "missing_elevator_height" => Some(IssueKind::MissingElevatorHeight),
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
+            "indeterminate_distance" => Some(IssueKind::IndeterminateDistance),
             _ => None,
         }
     }

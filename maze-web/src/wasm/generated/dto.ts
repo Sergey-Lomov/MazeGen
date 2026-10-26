@@ -279,7 +279,21 @@ export type IssuePayloadDto =
       kind: "invalid_cross_element_group";
       groups: Record<string, CrossElementPayloadEntry[][]>;
     }
+  | {
+      kind: "indeterminate_distance";
+      pairs: IssueUndecidedPairPayload[];
+    }
 ;
+
+/**
+ * One pair a geometric check could not decide — mirrors `maze_core`'s
+ * `IssueUndecidedPairPayload`. `unsupported` is `true` for a topological-only fold, `false` for
+ * a distance bracket straddling the threshold.
+ */
+export interface IssueUndecidedPairPayload {
+  nodes: [number, number];
+  unsupported: boolean;
+}
 
 export interface IssueDto {
   kind: IssueKindId;

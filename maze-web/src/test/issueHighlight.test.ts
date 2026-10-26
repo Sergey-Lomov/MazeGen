@@ -43,6 +43,15 @@ describe("resolveIssueHighlight", () => {
     });
   });
 
+  it("resolves indeterminateDistance to one singleton region group per distinct pair node", () => {
+    const payload: NormalizedIssuePayload<number> = { kind: "indeterminateDistance", pairs: [[1, 2], [2, 3]] };
+    expect(resolveIssueHighlight(payload)).toEqual({
+      cycle: null,
+      region: { groups: [{ nodes: [1], isSplit: false }, { nodes: [2], isSplit: false }, { nodes: [3], isSplit: false }] },
+    });
+    expect(resolveIssueHighlight({ kind: "indeterminateDistance", pairs: [] })).toEqual({ cycle: null, region: null });
+  });
+
   it("resolves invalidVerticalPassage/invalidElevator/missingElevatorStopCount the same way as invalidTeleport", () => {
     for (const kind of ["invalidVerticalPassage", "invalidElevator", "missingElevatorStopCount"] as const) {
       const payload = { kind, groups: [edgeGroup([[5, 6]])] } as NormalizedIssuePayload<number>;

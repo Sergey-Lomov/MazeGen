@@ -9,6 +9,8 @@ pub mod elevator_stop_group_graph_proximity;
 pub mod elevator_stops_skip;
 pub mod elevator_stops_span;
 pub mod external_escape_diversity;
+#[cfg(test)]
+mod glued_geometric_tests;
 pub mod loop_distance_from_finish;
 pub mod loop_distance_from_start;
 pub mod loop_length;

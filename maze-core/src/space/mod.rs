@@ -49,8 +49,8 @@ pub use field_ops::{
 };
 pub use geometry::{
     BoundaryPath, CellScope, DistanceError, DistancePolicy, DistanceResult, FOLD_ISOMETRY_EPS,
-    FoldClass, FoldedFace, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point, RegionMode,
-    RegionTooLarge, RigidTransform, STRAIGHT_TOLERANCE, Segment, SurfaceMetric,
+    FloorMetrics, FoldClass, FoldedFace, GEOM_EPS, MAX_REGION_CANDIDATES, PathCommand, Point,
+    RegionMode, RegionTooLarge, RigidTransform, STRAIGHT_TOLERANCE, Segment, SurfaceMetric,
     TessellationGeometry, WithinLimit, chain_midpoint, classify_fold_faces, is_straight_geometric,
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};

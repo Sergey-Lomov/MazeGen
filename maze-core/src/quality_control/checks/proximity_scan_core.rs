@@ -1,8 +1,11 @@
+use crate::comparison::Comparison;
 use crate::graph::nav::{NavEdge, NavGraph, NavNodeId};
 use crate::graph::pathfinding::{
     dijkstra_forward_visit_edges_bounded, dijkstra_reverse_visit_edges_bounded,
 };
 use crate::ids::NodeId;
+use crate::quality_control::{DistanceDiagnostics, IndeterminateReason};
+use crate::space::{DistanceError, DistanceResult, WithinLimit};
 use std::collections::{HashMap, HashSet};
 
 /// A candidate's nav-graph anchor point(s) for `pairwise_graph_proximity_scan` — most checks
@@ -329,7 +332,8 @@ fn nearest_candidate_within<V: Copy>(
     best
 }
 
-/// Shared pairwise proximity scan for geometric-distance QC checks — see GitHub issue #413.
+/// Shared pairwise proximity scan for geometric-distance QC checks — see GitHub issue #413 (and
+/// GitHub issue #838 for the fold-aware `distance`, see `pairwise_surface_scan` below).
 ///
 /// `candidates` is scanned as an own/other double loop: for each `own` candidate, every `other`
 /// candidate is tried in order until `pair_excluded` skips it or `distance` reports it closer
@@ -343,26 +347,82 @@ fn nearest_candidate_within<V: Copy>(
 /// every caller already needs (`own`/`other` being literally the same slot is the caller's
 /// responsibility to encode into `pair_excluded` too, since "same slot" differs per candidate
 /// shape — an index, an id, ...).
-pub fn pairwise_geometric_scan<C, K>(
+/// A pair the scan could neither flag nor clear: the candidate indices and the pair's
+/// representative nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndeterminatePair {
+    pub own: usize,
+    pub other: usize,
+    pub nodes: (NodeId, NodeId),
+    pub reason: IndeterminateReason,
+}
+
+/// Result of `pairwise_surface_scan`: the flagged groups plus the pairs that could not be decided.
+pub struct SurfaceScan<K> {
+    pub groups: Vec<(Vec<K>, u32)>,
+    pub indeterminate: Vec<IndeterminatePair>,
+}
+
+impl<K> SurfaceScan<K> {
+    /// Records the undecidable pairs in `diagnostics` (surfaced by the engine as an
+    /// `IndeterminateDistanceIssue`) and returns the flagged groups.
+    pub fn into_groups(self, diagnostics: &DistanceDiagnostics) -> Vec<(Vec<K>, u32)> {
+        for pair in &self.indeterminate {
+            diagnostics.record(pair.nodes.0, pair.nodes.1, pair.reason);
+        }
+        self.groups
+    }
+}
+
+/// `pairwise_geometric_scan` over fold-aware distances (GitHub issue #838): `distance` returns
+/// the pair's `DistanceResult` bracket (or `Unsupported`), compared with `< threshold`. `Yes`
+/// flags the pair, `No` clears it, and an undecidable pair (`Unknown`, `Unsupported`) is neither
+/// flagged nor silently passed: it is reported in `SurfaceScan::indeterminate`, and the scan goes
+/// on to the next `other`, so a later definite match still counts. Each unordered pair is
+/// reported at most once, although the scan visits it from both sides. `pair_nodes` names the
+/// representative maze node of each candidate for the report; a pair it cannot name is dropped.
+pub fn pairwise_surface_scan<C, K>(
     candidates: &[C],
     threshold: f64,
     mut pair_excluded: impl FnMut(&C, &C) -> bool,
-    mut distance: impl FnMut(&C, &C) -> f64,
+    mut distance: impl FnMut(&C, &C) -> Result<DistanceResult, DistanceError>,
     mut on_close: impl FnMut(&C, &C) -> (Vec<K>, u32),
-) -> Vec<(Vec<K>, u32)> {
-    let mut groups = Vec::new();
-    for own in candidates {
-        for other in candidates {
+    mut pair_nodes: impl FnMut(&C, &C) -> Option<(NodeId, NodeId)>,
+) -> SurfaceScan<K> {
+    let mut scan = SurfaceScan {
+        groups: Vec::new(),
+        indeterminate: Vec::new(),
+    };
+    let mut reported = std::collections::HashSet::new();
+    for (own_idx, own) in candidates.iter().enumerate() {
+        for (other_idx, other) in candidates.iter().enumerate() {
             if pair_excluded(own, other) {
                 continue;
             }
-            if distance(own, other) < threshold {
-                groups.push(on_close(own, other));
-                break;
+            let reason = match distance(own, other) {
+                Ok(result) => match result.compare(Comparison::Lt, threshold) {
+                    WithinLimit::Yes => {
+                        scan.groups.push(on_close(own, other));
+                        break;
+                    }
+                    WithinLimit::No => continue,
+                    WithinLimit::Unknown => IndeterminateReason::DistanceUnknown,
+                },
+                Err(DistanceError::Unsupported) => IndeterminateReason::UnsupportedTopology,
+            };
+            if let Some(nodes) = pair_nodes(own, other)
+                && reported.insert((own_idx.min(other_idx), own_idx.max(other_idx)))
+            {
+                scan.indeterminate.push(IndeterminatePair {
+                    own: own_idx,
+                    other: other_idx,
+                    nodes,
+                    reason,
+                });
             }
         }
     }
-    groups
+    scan
 }
 
 #[cfg(test)]
@@ -373,6 +433,25 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use std::sync::Arc;
+
+    /// Plain f64 distances through the surface scan (every result exact).
+    fn pairwise_geometric_scan<C, K>(
+        candidates: &[C],
+        threshold: f64,
+        pair_excluded: impl FnMut(&C, &C) -> bool,
+        mut distance: impl FnMut(&C, &C) -> f64,
+        on_close: impl FnMut(&C, &C) -> (Vec<K>, u32),
+    ) -> Vec<(Vec<K>, u32)> {
+        pairwise_surface_scan(
+            candidates,
+            threshold,
+            pair_excluded,
+            |own, other| Ok(DistanceResult::exact(distance(own, other))),
+            on_close,
+            |_, _| None,
+        )
+        .groups
+    }
 
     /// A straight `width`-tile corridor, each pair of neighbors joined by a bidirectional `Basic`
     /// edge. Returns the nav graph and a `NodeId` accessor by x-coordinate.
@@ -706,5 +785,50 @@ mod tests {
             |a, b| (vec![*a as i64, *b as i64], 1),
         );
         assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn surface_scan_reports_a_symmetric_undecidable_pair_once() {
+        let candidates: Vec<f64> = vec![0.0, 1.0];
+        let scan = pairwise_surface_scan(
+            &candidates,
+            5.0,
+            |a, b| a == b,
+            |_, _| Err(DistanceError::Unsupported),
+            |a, b| (vec![*a as i64, *b as i64], 1),
+            |a, b| Some((*a as u64, *b as u64)),
+        );
+        assert!(scan.groups.is_empty());
+        assert_eq!(scan.indeterminate.len(), 1);
+    }
+
+    #[test]
+    fn surface_scan_reports_undecidable_pairs_and_keeps_scanning() {
+        let candidates: Vec<f64> = vec![0.0, 1.0, 2.0];
+        let scan = pairwise_surface_scan(
+            &candidates,
+            5.0,
+            |a, b| a == b,
+            |a, b| match (*a as i64, *b as i64) {
+                (0, 1) => Err(DistanceError::Unsupported),
+                (0, 2) => Ok(DistanceResult {
+                    lower_bound: 1.0,
+                    upper_bound: 9.0,
+                    exact: false,
+                }),
+                _ => Ok(DistanceResult::exact((a - b).abs())),
+            },
+            |a, b| (vec![*a as i64, *b as i64], 1),
+            |a, b| Some((*a as u64, *b as u64)),
+        );
+        // own=0.0 has no decidable partner: both pairs are reported, no group.
+        assert!(scan.groups.iter().all(|(g, _)| g[0] != 0));
+        let own_zero: Vec<_> = scan.indeterminate.iter().filter(|p| p.own == 0).collect();
+        assert_eq!(own_zero.len(), 2);
+        assert_eq!(own_zero[0].nodes, (0, 1));
+        assert_eq!(own_zero[0].reason, IndeterminateReason::UnsupportedTopology);
+        assert_eq!(own_zero[1].reason, IndeterminateReason::DistanceUnknown);
+        // own=1.0 and own=2.0 are decided normally.
+        assert_eq!(scan.groups.len(), 2);
     }
 }

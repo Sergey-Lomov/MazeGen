@@ -18,6 +18,7 @@ fn check(distance: f64, protect_route: bool) -> OneWayGroupGeometricProximityChe
         distance,
         protect_route,
         floor_mode: GeometricFloorMode::Ignore,
+        approximate_topology: false,
     }
 }
 
@@ -310,6 +311,7 @@ fn ignore_mode_measures_plain_edge_position_distance_across_floors() {
         distance: 0.5,
         protect_route: true,
         floor_mode: GeometricFloorMode::Ignore,
+        approximate_topology: false,
     };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -329,6 +331,7 @@ fn as_coordinate_mode_folds_floor_difference_into_the_distance() {
         distance: 0.5,
         protect_route: true,
         floor_mode: GeometricFloorMode::AsCoordinate,
+        approximate_topology: false,
     };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -344,6 +347,7 @@ fn as_coordinate_mode_folds_floor_difference_into_the_distance() {
         distance: 1.5,
         protect_route: true,
         floor_mode: GeometricFloorMode::AsCoordinate,
+        approximate_topology: false,
     };
     c.repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1, "floor-folded distance 1.0 < 1.5 must fire");
@@ -357,6 +361,7 @@ fn same_floor_only_mode_never_flags_a_cross_floor_pair() {
         distance: 1000.0,
         protect_route: true,
         floor_mode: GeometricFloorMode::SameFloorOnly,
+        approximate_topology: false,
     };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -375,6 +380,7 @@ fn same_floor_only_mode_still_flags_a_same_floor_pair() {
         distance: 5.0,
         protect_route: true,
         floor_mode: GeometricFloorMode::SameFloorOnly,
+        approximate_topology: false,
     };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);

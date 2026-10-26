@@ -67,7 +67,8 @@ export type NormalizedIssuePayload<Id> =
   | { kind: "invalidElevatorStop"; groups: NormalizedRegionGroup<Id>[] }
   | { kind: "areaDeficit" }
   | { kind: "missingElevatorStopCount"; groups: NormalizedEdgeGroup<Id>[] }
-  | { kind: "invalidCrossElementGroup"; entries: NormalizedCrossElementEntry<Id>[] };
+  | { kind: "invalidCrossElementGroup"; entries: NormalizedCrossElementEntry<Id>[] }
+  | { kind: "indeterminateDistance"; pairs: [Id, Id][] };
 
 /** A resolved cycle highlight — connected edges drawn as a line (`asWall: false`, loop/teleport/
  *  split-route groups) or as the shared wall between two adjacent cells (`asWall: true`, a
@@ -157,6 +158,14 @@ export function resolveIssueHighlight<Id>(payload: NormalizedIssuePayload<Id>): 
       // The route's own edge order and per-edge split-tile flag only matter to the repair
       // strategy's candidate filtering, not to highlighting the whole path on hover.
       return payload.edges.length > 0 ? { cycle: { edges: payload.edges, asWall: false }, region: null } : { cycle: null, region: null };
+
+    case "indeterminateDistance": {
+      // Both representative nodes of every undecided pair, one singleton group per node (same
+      // style as the teleport/vertical-passage endpoint cells) -- a pair has no on-field segment
+      // of its own (GitHub issue #838).
+      const nodes = dedupe(payload.pairs.flat());
+      return nodes.length > 0 ? { cycle: null, region: { groups: nodes.map((n) => ({ nodes: [n], isSplit: false })) } } : { cycle: null, region: null };
+    }
 
     case "invalidCrossElementGroup": {
       // A cross-element pair can mix a one-way member (wall) with region-shaped members (split/
