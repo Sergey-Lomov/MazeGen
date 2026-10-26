@@ -65,6 +65,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_teleport.label"] as MessageFn,
     description: m["strategy.missing_loops_teleport.description"] as MessageFn,
   },
+  priority_dead_end: {
+    label: m["strategy.priority_dead_end.label"] as MessageFn,
+    description: m["strategy.priority_dead_end.description"] as MessageFn,
+  },
   priority_missing_loops: {
     label: m["strategy.priority_missing_loops.label"] as MessageFn,
     description: m["strategy.priority_missing_loops.description"] as MessageFn,

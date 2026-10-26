@@ -1324,6 +1324,8 @@
   "strategy.missing_loops_split.description": "Closes a loop by turning a randomly chosen cell into a split tile, wiring one of its nodes to a geometric neighbor as a bridge, and lets the next quality control pass discard the ones that don't form a valid loop. Freely rebuilds the cell's other connections in the process — dropping existing ones and adding new ones as needed to fit the split — not just dividing them between the new nodes as-is.",
   "strategy.missing_loops_teleport.label": "Teleport loop seeding",
   "strategy.missing_loops_teleport.description": "Adds random teleport connections and lets the next quality control pass discard the ones that don't form a valid loop.",
+  "strategy.priority_dead_end.label": "Priority repair",
+  "strategy.priority_dead_end.description": "Tries several nested dead-end repair strategies in the order they are configured; if one fails, falls through to the next one until one succeeds or every candidate has been tried.",
   "strategy.priority_missing_loops.label": "Priority-fallback loop seeding",
   "strategy.priority_missing_loops.description": "Tries several nested missing-loops strategies in the order they're configured; if one fails, falls through to the next one until one succeeds or every candidate has been tried.",
   "strategy.expand_region_passage.label": "Region expansion via passage",

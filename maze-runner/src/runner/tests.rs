@@ -525,6 +525,7 @@ mod build_strategy_tests {
         "dead_end_to_split",
         "dead_end_to_teleport",
         "dead_end_to_vertical_passage",
+        "priority_dead_end",
         "missing_loops_random",
         "expand_region_passage",
         "teleport_region_merge",

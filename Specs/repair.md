@@ -405,8 +405,9 @@ strategy that receives an already-bundled issue.
 See GitHub issue #259, the priority-fallback companion to `dispatch_weighted` above.
 `maze-core/src/repair/nested_dispatch.rs` provides a second shared helper for a parent strategy
 that wants to pick *which* of several nested strategies filling one slot to actually run, this
-time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy` and
-`PriorityMissingLoopsStrategy` (below) are its users.
+time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy`,
+`PriorityMissingLoopsStrategy` (below), and `PriorityDeadEndStrategy` (see the dead-end repair
+section) are its users.
 
 ```rust
 pub fn dispatch_priority<T: Tessellation>(
@@ -978,6 +979,17 @@ of a planned edge also reject that candidate before it is reported as fixed.
 For a nonempty issue, the selector returns `Fixed` only when at least one nested repair succeeds;
 otherwise it returns `Failed`. An empty issue is already resolved and returns `Fixed` without
 requiring nested configuration.
+
+`PriorityDeadEndStrategy` (`priority_dead_end`, GitHub issue #854) is an `INVALID_DEAD_END`
+dispatcher meant to sit in `DeadEndGroupSelectStrategy`'s `fix_target` slot. It has no params and
+one nested slot, `dead_end_repair_target` (`kind = INVALID_DEAD_END`, `min = 1`, `max = None`,
+`dispatch_kind = Priority`). It passes the single-node issue unchanged to `dispatch_priority`: nested
+repairs run in configured order, the first `Fixed` result and its commands are used, and later
+candidates never run. Returns `Failed` when every candidate fails or none fills the slot; an empty
+issue returns `Fixed` without touching `rng` or `nested`. Each nested repair keeps its own params.
+Commands from the winning candidate are returned unchanged, so the selector's per-candidate
+invalidation (`element_invalidated`) and group-budget accounting behave exactly as with a direct
+nested repair.
 
 ### MissingLoopsRandomStrategy
 

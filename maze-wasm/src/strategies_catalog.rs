@@ -24,15 +24,16 @@ use maze_core::{
         MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
         MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
-        OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
-        RandomEndpointsStrategy, ReduceSccCountStrategy, RegionShrinkSplitStrategy,
-        RemoveElevatorStopStrategy, RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy,
-        RemoveSplitNodeStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
-        RemoveVerticalPassageStrategy, RepairStrategy, ReplaceElevatorWithPassagesStrategy,
-        ScoredEndpointsStrategy, SplitGroupSelectStrategy, SplitNodeConnectionGroupSelectStrategy,
-        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, TeleportGroupSelectStrategy,
-        TeleportRegionMergeStrategy, VerticalPassageGroupSelectStrategy,
-        VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
+        OneWayToWallStrategy, PriorityDeadEndStrategy, PriorityMissingLoopsStrategy,
+        PriorityRegionMergeStrategy, RandomEndpointsStrategy, ReduceSccCountStrategy,
+        RegionShrinkSplitStrategy, RemoveElevatorStopStrategy, RemoveElevatorStrategy,
+        RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy, RemoveSplitStrategy,
+        RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
+        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
+        SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
+        SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
+        VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
+        WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -558,6 +559,34 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 &MissingLoopsTeleportStrategy
             ),
             nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "priority_dead_end",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <PriorityDeadEndStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&PriorityDeadEndStrategy),
+                &[],
+            ),
+            experimental: <PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&PriorityDeadEndStrategy),
+            nested_suppressed_params: <PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &PriorityDeadEndStrategy
+            ),
+            nested_slots: nested_slots_dto(<PriorityDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::expected_nested(
+                &PriorityDeadEndStrategy
+            )),
             visibility: None,
         },
         StrategyDescriptor {
@@ -1805,6 +1834,23 @@ mod tests {
         assert_eq!(strategy.nested_slots.len(), 1);
         assert_eq!(strategy.nested_slots[0].slot_id, "fix_target");
         assert_eq!(strategy.nested_slots[0].kind, INVALID_DEAD_END.as_str());
+    }
+
+    #[test]
+    fn priority_dead_end_exposes_a_priority_dispatched_dead_end_slot() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "priority_dead_end")
+            .expect("priority_dead_end must be registered");
+        assert_eq!(strategy.handles, INVALID_DEAD_END.as_str());
+        assert!(strategy.params.is_empty());
+        assert_eq!(strategy.nested_slots.len(), 1);
+        assert_eq!(strategy.nested_slots[0].slot_id, "dead_end_repair_target");
+        assert_eq!(strategy.nested_slots[0].kind, INVALID_DEAD_END.as_str());
+        assert!(matches!(
+            strategy.nested_slots[0].dispatch_kind,
+            NestedDispatchKindDto::Priority
+        ));
     }
 
     #[test]

@@ -112,6 +112,7 @@ export const STRATEGY_IDS = [
   "one_way_group_select",
   "one_way_to_passage",
   "one_way_to_wall",
+  "priority_dead_end",
   "priority_missing_loops",
   "priority_region_merge",
   "random_endpoints",

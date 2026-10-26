@@ -37,6 +37,7 @@ pub mod one_way_group_select;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
 pub mod pool;
+pub mod priority_dead_end;
 pub mod priority_missing_loops;
 pub mod priority_region_merge;
 pub mod random_endpoints;
@@ -164,6 +165,9 @@ pub use one_way_group_select::{
 };
 pub use one_way_to_passage::OneWayToPassageStrategy;
 pub use one_way_to_wall::OneWayToWallStrategy;
+pub use priority_dead_end::{
+    PriorityDeadEndStrategy, SLOT_REPAIR_TARGET as PRIORITY_DEAD_END_SLOT_REPAIR_TARGET,
+};
 pub use priority_missing_loops::{
     PriorityMissingLoopsStrategy,
     SLOT_LOOP_SEED_TARGET as PRIORITY_MISSING_LOOPS_SLOT_LOOP_SEED_TARGET,
