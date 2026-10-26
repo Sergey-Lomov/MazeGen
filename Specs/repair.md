@@ -933,7 +933,7 @@ impl Pool {
 
 **`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
 
-### DeadEndGroupSelectStrategy / DeadEndToPassageStrategy
+### DeadEndGroupSelectStrategy / dead-end repair strategies
 
 `DeadEndGroupSelectStrategy` handles `INVALID_DEAD_END_GROUP` (GitHub issue #851). It makes one
 global candidate pass across every reported group, maintaining each group's independent
@@ -954,6 +954,15 @@ group, while a one-way passage resolves only its outward source.
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
 | `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |
+
+`DeadEndToSplitStrategy` (`dead_end_to_split`, GitHub issue #856) instead picks an unconnected
+geometric neighbor across a wall and replaces that neighbor's cell with a split tile. The shared
+split planner rotates or reflects a configured template until one split node can connect to the
+selected dead end; that bridge node must also have another edge, so the repair never merely moves
+the dead end onto the new split. Its `split_config` uses the same unrestricted-or-weighted-pattern
+configuration as `MissingLoopsSplitStrategy`. It fails when no walled neighbor is split-eligible
+or no generated/template variant can satisfy both required edges; preset locks on either endpoint
+of a planned edge also reject that candidate before it is reported as fixed.
 
 `DeadEndGroupSelectStrategy` exposes the standard group-select `priority` enum (`random`,
 `problematic`; default `problematic`) and requires one `fix_target` nested strategy.

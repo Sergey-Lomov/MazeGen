@@ -17,22 +17,22 @@ use maze_core::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
         CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
-        DeadEndToTeleportStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
-        ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
-        InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy,
-        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
-        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
-        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
-        OneWayGroupSelectStrategy, OneWayToPassageStrategy, OneWayToWallStrategy,
-        PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy, RandomEndpointsStrategy,
-        ReduceSccCountStrategy, RegionShrinkSplitStrategy, RemoveElevatorStopStrategy,
-        RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy,
-        RemoveSplitStrategy, RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
-        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
-        SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
-        SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
-        VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, ElevatorGroupSelectStrategy,
+        ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy,
+        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
+        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
+        MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
+        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
+        MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
+        OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
+        RandomEndpointsStrategy, ReduceSccCountStrategy, RegionShrinkSplitStrategy,
+        RemoveElevatorStopStrategy, RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy,
+        RemoveSplitNodeStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
+        RemoveVerticalPassageStrategy, RepairStrategy, ReplaceElevatorWithPassagesStrategy,
+        ScoredEndpointsStrategy, SplitGroupSelectStrategy, SplitNodeConnectionGroupSelectStrategy,
+        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, TeleportGroupSelectStrategy,
+        TeleportRegionMergeStrategy, VerticalPassageGroupSelectStrategy,
+        VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -391,6 +391,32 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 maze_core::quality_control::InvalidDeadEndIssue,
             >>::nested_suppressed_params(
                 &DeadEndToTeleportStrategy
+            ),
+            nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_split",
+            handles: INVALID_DEAD_END.as_str(),
+            params: vec![ParamDescriptor {
+                id: "split_config",
+                label: "Split settings",
+                kind: ParamKindDto::SplitGenerationConfig,
+                visibility: None,
+            }],
+            experimental: <DeadEndToSplitStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&DeadEndToSplitStrategy {
+                config: Default::default(),
+            }),
+            nested_suppressed_params: <DeadEndToSplitStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToSplitStrategy {
+                    config: Default::default(),
+                },
             ),
             nested_slots: vec![],
             visibility: None,
@@ -1677,6 +1703,23 @@ mod tests {
                 kind: ParamKindDto::Float { default, min, max },
                 ..
             } if default == 0.0 && min == 0.0 && max == 100.0
+        ));
+    }
+
+    #[test]
+    fn dead_end_to_split_uses_the_shared_split_configuration() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "dead_end_to_split")
+            .expect("dead_end_to_split must be registered");
+        assert_eq!(strategy.handles, INVALID_DEAD_END.as_str());
+        assert!(matches!(
+            strategy.params.as_slice(),
+            [ParamDescriptor {
+                id: "split_config",
+                kind: ParamKindDto::SplitGenerationConfig,
+                ..
+            }]
         ));
     }
 

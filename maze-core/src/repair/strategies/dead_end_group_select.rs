@@ -96,6 +96,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndGroupIssue> for DeadEndGro
                 | MutationCommand::AddDirectedTeleport { from, .. } => node == from,
                 MutationCommand::AddBidirectionalEdge { a, b }
                 | MutationCommand::AddBidirectionalTeleport { a, b } => node == a || node == b,
+                // Replacing a point removes its old node id, so a different reported dead end at
+                // that point is no longer live and must consume its group's budget as well.
+                MutationCommand::ReplacePointNodes { at, .. } => node == at,
                 _ => false,
             })
         };
@@ -239,6 +242,38 @@ mod tests {
 
     crate::impl_erased_repair_strategy!(AddsOneWay, InvalidDeadEndIssue);
 
+    struct ReplacesOther;
+
+    impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for ReplacesOther {
+        fn strategy_id(&self) -> &'static str {
+            "test_replaces_other_dead_end"
+        }
+
+        fn apply(
+            &self,
+            issue: &InvalidDeadEndIssue,
+            _: &Maze<T>,
+            _: &mut dyn RngCore,
+            _: &StrategyParams,
+            _: &PresetState,
+            _: &[NestedStrategyConfig<T>],
+        ) -> (RepairResult, Vec<MutationCommand>) {
+            let [source] = issue.invalid.as_slice() else {
+                return (RepairResult::Failed, vec![]);
+            };
+            let other = if *source == 0 { 1 } else { 0 };
+            (
+                RepairResult::Fixed { score: None },
+                vec![MutationCommand::ReplacePointNodes {
+                    at: other,
+                    nodes: vec![vec![]],
+                }],
+            )
+        }
+    }
+
+    crate::impl_erased_repair_strategy!(ReplacesOther, InvalidDeadEndIssue);
+
     fn nested(
         strategy: Box<dyn crate::repair::ErasedRepairStrategy<SquareTessellation>>,
     ) -> NestedStrategyConfig<SquareTessellation> {
@@ -355,6 +390,26 @@ mod tests {
             commands.len(),
             2,
             "an incoming one-way edge does not repair the destination dead end"
+        );
+    }
+
+    #[test]
+    fn replacing_another_reported_dead_end_retires_its_budget() {
+        let config = nested(Box::new(ReplacesOther));
+        let mut rng = MazeRng::seed_from_u64(6);
+        let (result, commands) = DeadEndGroupSelectStrategy.apply(
+            &issue(vec![(vec![0, 1], 2)]),
+            &maze(),
+            &mut rng,
+            &params(),
+            &PresetState::empty(),
+            &[config],
+        );
+        assert!(matches!(result, RepairResult::Fixed { .. }));
+        assert_eq!(
+            commands.len(),
+            1,
+            "replacing the other reported dead end resolves both candidates"
         );
     }
 }

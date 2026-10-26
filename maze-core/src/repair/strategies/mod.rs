@@ -10,6 +10,7 @@ mod cycle_cut_set;
 pub mod dead_end_group_select;
 pub mod dead_end_priority;
 pub mod dead_end_to_passage;
+pub mod dead_end_to_split;
 pub mod dead_end_to_teleport;
 pub mod elevator_group_select;
 pub mod elevator_region_merge;
@@ -106,6 +107,7 @@ pub use dead_end_priority::{
 pub use dead_end_to_passage::{
     DeadEndToPassageStrategy, PARAM_ONE_WAY_CHANCE as DEAD_END_TO_PASSAGE_PARAM_ONE_WAY_CHANCE,
 };
+pub use dead_end_to_split::DeadEndToSplitStrategy;
 pub use dead_end_to_teleport::DeadEndToTeleportStrategy;
 pub use elevator_group_select::{
     ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET,

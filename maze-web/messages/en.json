@@ -1404,6 +1404,8 @@
   "strategy.elevator_region_merge.description": "Merges an undersized region into another region on a different floor via an elevator, spanning exactly two floors -- either a brand-new elevator or an added stop on an existing one.",
   "strategy.cross_element_group_select.label": "Group reduction",
   "strategy.cross_element_group_select.description": "For each flagged pair of special elements that sit too close, picks one and delegates its removal to a per-type nested strategy (teleport, one-way, vertical passage, elevator stop, or split tile). An elevator-stop fix removes only the offending stop, not the whole elevator. Start and finish are never removed.",
+  "strategy.dead_end_to_split.label": "Add split near dead end",
+  "strategy.dead_end_to_split.description": "Replaces an unconnected neighboring cell with a split whose rotated or reflected layout connects back to the dead end.",
   "param.redistribute.label": "Redistribute connections",
   "param.redistribute.description": "If enabled, the removed split node's connections are reconnected to the original node instead of simply disappearing with it.",
   "param.entry_pick.label": "Entry pick",

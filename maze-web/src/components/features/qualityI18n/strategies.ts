@@ -225,6 +225,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.cross_element_group_select.label"] as MessageFn,
     description: m["strategy.cross_element_group_select.description"] as MessageFn,
   },
+  dead_end_to_split: {
+    label: m["strategy.dead_end_to_split.label"] as MessageFn,
+    description: m["strategy.dead_end_to_split.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {

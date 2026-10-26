@@ -90,6 +90,7 @@ export const STRATEGY_IDS = [
   "cross_element_group_select",
   "dead_end_group_select",
   "dead_end_to_passage",
+  "dead_end_to_split",
   "dead_end_to_teleport",
   "elevator_group_select",
   "elevator_region_merge",

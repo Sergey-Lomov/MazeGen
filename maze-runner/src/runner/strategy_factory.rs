@@ -6,11 +6,11 @@ use maze_core::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
         CrossElementGroupSelectStrategy, DeadEndGroupSelectStrategy, DeadEndToPassageStrategy,
-        DeadEndToTeleportStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
-        ElevatorStopGroupSelectStrategy, ErasedRepairStrategy, ExpandRegionPassageStrategy,
-        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
-        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
-        MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
+        DeadEndToSplitStrategy, DeadEndToTeleportStrategy, ElevatorGroupSelectStrategy,
+        ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy, ErasedRepairStrategy,
+        ExpandRegionPassageStrategy, FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy,
+        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
+        MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
         MissingTeleportsStrategy, NestedSlot, NestedStrategyConfig, OneWayGroupSelectStrategy,
         OneWayToPassageStrategy, OneWayToWallStrategy, PriorityMissingLoopsStrategy,
@@ -61,6 +61,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "invalid_loop_group_select" => Box::new(InvalidLoopGroupSelectStrategy),
         "dead_end_group_select" => Box::new(DeadEndGroupSelectStrategy),
         "dead_end_to_passage" => Box::new(DeadEndToPassageStrategy),
+        "dead_end_to_split" => Box::new(build_dead_end_to_split_strategy(params)),
         "dead_end_to_teleport" => Box::new(DeadEndToTeleportStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
         "missing_loops_vertical" => Box::new(MissingLoopsVerticalStrategy),
@@ -149,6 +150,14 @@ fn build_missing_loops_split_strategy(
     params: &HashMap<String, String>,
 ) -> MissingLoopsSplitStrategy {
     MissingLoopsSplitStrategy {
+        config: parse_split_config_param(params.get("split_config")),
+    }
+}
+
+/// Builds `DeadEndToSplitStrategy` with the same construction-time `split_config` convention as
+/// `MissingLoopsSplitStrategy`.
+fn build_dead_end_to_split_strategy(params: &HashMap<String, String>) -> DeadEndToSplitStrategy {
+    DeadEndToSplitStrategy {
         config: parse_split_config_param(params.get("split_config")),
     }
 }
