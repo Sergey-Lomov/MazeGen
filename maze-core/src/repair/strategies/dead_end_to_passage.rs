@@ -14,7 +14,7 @@ pub const PARAM_ONE_WAY_CHANCE: &str = "dead_end_one_way_chance";
 
 static PARAMS: [StrategyParam; 1] = [StrategyParam {
     id: PARAM_ONE_WAY_CHANCE,
-    label: "Dead-end one-way chance",
+    label: "One-way chance",
     kind: StrategyParamKind::Float {
         default: 0.0,
         min: 0.0,

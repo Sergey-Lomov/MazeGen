@@ -522,6 +522,7 @@ mod build_strategy_tests {
         "invalid_loop_scored",
         "dead_end_group_select",
         "dead_end_to_passage",
+        "dead_end_to_teleport",
         "missing_loops_random",
         "expand_region_passage",
         "teleport_region_merge",

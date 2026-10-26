@@ -35,7 +35,7 @@ export const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discour
 // Float params rendered as a 0-100 percent slider instead of the default number input — an
 // explicit id allowlist rather than a blanket "every Float is a slider" rule, since most Float
 // params (reserve_percent, min_distance, etc.) are edited as exact numbers elsewhere in the app.
-const PERCENT_SLIDER_PARAM_IDS = new Set(["one_way_chance", "loop_one_way_chance", "teleport_loop_one_way_chance", "vertical_loop_one_way_chance"]);
+const PERCENT_SLIDER_PARAM_IDS = new Set(["one_way_chance", "dead_end_one_way_chance", "loop_one_way_chance", "teleport_loop_one_way_chance", "vertical_loop_one_way_chance"]);
 
 // Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
 // fraction (0..1), only the slider bounds and displayed text are scaled by 100.

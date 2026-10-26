@@ -190,4 +190,15 @@ describe("wasm registry vs web i18n consistency", () => {
     const sibling = resolveParamLabel("selection", "fallback", "split_node_group_select");
     expect(sibling).toBe(generic);
   });
+
+  it("dead_end_to_teleport's one_way_chance label override actually overrides the generic text", () => {
+    expect(strategies.some((s) => s.id === "dead_end_to_teleport"), '"dead_end_to_teleport" is not a registered wasm strategy id').toBe(true);
+
+    const generic = resolveParamLabel("one_way_chance", "fallback");
+    const overridden = resolveParamLabel("one_way_chance", "fallback", "dead_end_to_teleport");
+    expect(overridden).not.toBe(generic);
+
+    const sibling = resolveParamLabel("one_way_chance", "fallback", "missing_teleports");
+    expect(sibling).toBe(generic);
+  });
 });

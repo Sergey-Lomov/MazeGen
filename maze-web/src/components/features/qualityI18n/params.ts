@@ -822,6 +822,7 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
   "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
+  "one_way_chance.dead_end_to_teleport": m["param.one_way_chance.dead_end_to_teleport.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {

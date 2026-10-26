@@ -12,6 +12,9 @@ pub struct InvalidDeadEndIssue {
     meta: IssueMeta,
     pub invalid: Vec<NodeId>,
     pub invalid_sources: HashMap<NodeId, Vec<String>>,
+    /// Still-live candidates from the selecting group pass, used only for nested exit priority.
+    /// `invalid` remains the exact repair target.
+    pub reported_candidates: Vec<NodeId>,
 }
 
 impl InvalidDeadEndIssue {
@@ -22,9 +25,18 @@ impl InvalidDeadEndIssue {
             .collect();
         Self {
             meta: IssueMeta::new_from_check(source_check),
+            reported_candidates: invalid.clone(),
             invalid,
             invalid_sources,
         }
+    }
+
+    pub fn new_from_group_select(source_check: &str, target: NodeId, others: &[NodeId]) -> Self {
+        let mut issue = Self::new_from_check(source_check, vec![target]);
+        issue.reported_candidates.extend_from_slice(others);
+        issue.reported_candidates.sort_unstable();
+        issue.reported_candidates.dedup();
+        issue
     }
 }
 
@@ -41,11 +53,15 @@ crate::impl_issue!(InvalidDeadEndIssue);
 impl IssueMerge for InvalidDeadEndIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
+        let other_reported_candidates = other.reported_candidates.clone();
         super::merge_id_sets(
             &mut self.invalid,
             &mut self.invalid_sources,
             other.invalid,
             other.invalid_sources,
         );
+        self.reported_candidates.extend(other_reported_candidates);
+        self.reported_candidates.sort_unstable();
+        self.reported_candidates.dedup();
     }
 }

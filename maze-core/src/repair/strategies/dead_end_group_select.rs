@@ -80,11 +80,12 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndGroupIssue> for DeadEndGro
 
         let build_nested_issue = |source_check: &str,
                                   target: &NodeId,
-                                  _others: &[NodeId]|
+                                  others: &[NodeId]|
          -> Box<dyn crate::quality_control::Issue> {
-            Box::new(InvalidDeadEndIssue::new_from_check(
+            Box::new(InvalidDeadEndIssue::new_from_group_select(
                 source_check,
-                vec![*target],
+                *target,
+                others,
             ))
         };
         let element_invalidated = |node: &NodeId, commands: &[MutationCommand], _maze: &Maze<T>| {
@@ -200,7 +201,7 @@ mod tests {
             };
             (
                 RepairResult::Fixed { score: None },
-                vec![MutationCommand::AddBidirectionalEdge { a: *source, b: 0 }],
+                vec![MutationCommand::AddBidirectionalTeleport { a: *source, b: 0 }],
             )
         }
     }
@@ -228,7 +229,7 @@ mod tests {
             };
             (
                 RepairResult::Fixed { score: None },
-                vec![MutationCommand::AddDirectedEdge {
+                vec![MutationCommand::AddDirectedTeleport {
                     from: *source,
                     to: 0,
                 }],

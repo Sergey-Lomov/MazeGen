@@ -37,6 +37,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.dead_end_to_passage.label"] as MessageFn,
     description: m["strategy.dead_end_to_passage.description"] as MessageFn,
   },
+  dead_end_to_teleport: {
+    label: m["strategy.dead_end_to_teleport.label"] as MessageFn,
+    description: m["strategy.dead_end_to_teleport.description"] as MessageFn,
+  },
   dead_end_group_select: {
     label: m["strategy.dead_end_group_select.label"] as MessageFn,
     description: m["strategy.dead_end_group_select.description"] as MessageFn,

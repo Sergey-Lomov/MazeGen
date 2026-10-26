@@ -730,6 +730,22 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
 - If `maze.meta.finish.is_none()`: candidates = `reachable_from(start)` minus start. Empty → `Failed`. Picks at random, sets `maze.meta.finish`.
 - Returns `Fixed`.
 
+### DeadEndToTeleportStrategy
+
+`dead_end_to_teleport` is a nested-only `INVALID_DEAD_END` repair for
+`dead_end_group_select`'s `fix_target` slot. It repairs exactly the supplied source by adding a
+teleport from that source to one eligible exit; it never selects group candidates or consumes a
+group's `to_remove` budget itself.
+
+Its parameters are `one_way_chance` (default `50`), `allow_cross_floor` (default `false`),
+`desired_length` (default `5..1000` raw forward graph hops), `allow_out_of_interval` (default
+`true`), `exit_pick` (`random` or `dead_end_priority`, default `dead_end_priority`; the latter
+prefers a still-live reported candidate), and
+`attempts_limit` (default `25`). It intentionally does not expose `reserve_percent`. A directed
+teleport always points from the supplied dead end to its exit. A bidirectional teleport also
+repairs its exit if that exit remains a live dead-end candidate; the outer selector detects those
+outcomes from returned mutation commands and performs all group-budget accounting.
+
 ### FarthestEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`. Places start and finish at nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra/two-BFS sweep — **not** an exhaustive search over all pairs (that's `ScoredEndpointsStrategy`'s job).
