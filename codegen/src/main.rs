@@ -1,7 +1,9 @@
 use std::env;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use codegen::{
     check, dto_ts, golden, id_enum, issue_payload_check, naming::to_camel_case, parser,
@@ -84,7 +86,17 @@ fn main() -> ExitCode {
             .join("src")
             .join(parent_dir_of(&source.location.rust_file))
             .join(format!("{}_wire.rs", source.location.stem));
-        let new_rust_text = rust_emitter::generate_rust_wire_file(source);
+        let raw_rust_text = rust_emitter::generate_rust_wire_file(source);
+        let new_rust_text = match format_rust(&raw_rust_text, &rust_wire_path) {
+            Ok(text) => text,
+            Err(e) => {
+                eprintln!(
+                    "codegen: could not format {}: {e}",
+                    rust_wire_path.display()
+                );
+                return ExitCode::FAILURE;
+            }
+        };
 
         if let Ok(old_text) = fs::read_to_string(&rust_wire_path) {
             warnings.extend(check::detect_breaking_changes(&old_text, source));
@@ -161,7 +173,14 @@ fn main() -> ExitCode {
             .join("src")
             .join(parent_dir_of(&source.rust_file))
             .join(format!("{}_ids.rs", to_snake_case_stem(&source.enum_name)));
-        let rust_text = id_enum::generate_rust_ids_file(source);
+        let raw_rust_text = id_enum::generate_rust_ids_file(source);
+        let rust_text = match format_rust(&raw_rust_text, &rust_ids_path) {
+            Ok(text) => text,
+            Err(e) => {
+                eprintln!("codegen: could not format {}: {e}", rust_ids_path.display());
+                return ExitCode::FAILURE;
+            }
+        };
         let had_errors_before_rust = had_errors;
         write_or_check(&rust_ids_path, &rust_text, check_only, &mut had_errors);
         if !check_only && had_errors != had_errors_before_rust {
@@ -431,6 +450,70 @@ fn write_or_check(path: &Path, text: &str, check_only: bool, had_errors: &mut bo
     }
 }
 
+/// Formats generated Rust through the same formatter the workspace check uses. Keeping this at
+/// the write boundary means generated files remain reproducible while `cargo fmt --check` can
+/// validate the entire workspace without a generated-code exception.
+fn format_rust(source: &str, output_path: &Path) -> Result<String, String> {
+    let file_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("invalid generated file name: {}", output_path.display()))?;
+    let parent = output_path
+        .parent()
+        .ok_or_else(|| format!("generated file has no parent: {}", output_path.display()))?;
+    let mut temporary_path = None;
+    for attempt in 0..100 {
+        let candidate = parent.join(format!(
+            ".{file_name}.rustfmt-{}-{attempt}.rs",
+            std::process::id()
+        ));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(source.as_bytes()) {
+                    let _ = fs::remove_file(&candidate);
+                    return Err(format!("failed to write temporary source: {e}"));
+                }
+                temporary_path = Some(candidate);
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("failed to create temporary source: {e}")),
+        }
+    }
+    let path =
+        temporary_path.ok_or_else(|| "could not reserve a temporary source path".to_string())?;
+
+    let output = match Command::new("rustfmt")
+        .args(["--edition", "2024"])
+        .arg(&path)
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => {
+            let _ = fs::remove_file(&path);
+            return Err(format!("failed to start rustfmt: {e}"));
+        }
+    };
+    let text =
+        fs::read_to_string(&path).map_err(|e| format!("failed to read formatted source: {e}"));
+    let _ = fs::remove_file(&path);
+
+    if output.status.success() {
+        text
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("rustfmt exited with {}", output.status)
+        } else {
+            stderr
+        })
+    }
+}
+
 fn normalize_line_endings(s: &str) -> String {
     s.replace("\r\n", "\n")
 }
@@ -627,6 +710,28 @@ fn json_escape(s: &str) -> String {
 #[cfg(test)]
 mod report_missing_entry_tests {
     use super::*;
+
+    #[test]
+    fn format_rust_uses_rustfmt_output() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let file_name = format!(
+            "codegen-format-rust-test-{}-{unique}.rs",
+            std::process::id()
+        );
+        let output_path = env::temp_dir().join(&file_name);
+        assert_eq!(
+            format_rust("fn main(){println!(\"ok\");}\n", &output_path).unwrap(),
+            "fn main() {\n    println!(\"ok\");\n}\n"
+        );
+        let temporary_path = output_path
+            .parent()
+            .unwrap()
+            .join(format!(".{file_name}.rustfmt-{}-0.rs", std::process::id()));
+        assert!(!temporary_path.exists());
+    }
 
     #[test]
     fn check_only_sets_had_errors() {
