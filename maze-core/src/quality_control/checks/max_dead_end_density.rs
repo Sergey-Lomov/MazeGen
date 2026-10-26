@@ -130,7 +130,8 @@ mod tests {
     #[test]
     fn scopes_density_independently_per_floor_or_across_the_whole_maze() {
         let mut ids = IdGenerator::new();
-        let mut field = MultiLevelField::new(Arc::default(), std::iter::empty());
+        let mut field =
+            MultiLevelField::<SquareTessellation>::new(Arc::default(), std::iter::empty());
         let bottom =
             field.add_level(Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap());
         let top = field.add_level(Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap());

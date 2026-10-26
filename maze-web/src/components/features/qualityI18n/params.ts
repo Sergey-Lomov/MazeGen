@@ -283,6 +283,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.loop_one_way_chance.label"] as MessageFn,
     description: m["param.loop_one_way_chance.description"] as MessageFn,
   },
+  dead_end_one_way_chance: {
+    label: m["param.dead_end_one_way_chance.label"] as MessageFn,
+    description: m["param.dead_end_one_way_chance.description"] as MessageFn,
+  },
   vertical_loop_one_way_chance: {
     label: m["param.vertical_loop_one_way_chance.label"] as MessageFn,
     description: m["param.vertical_loop_one_way_chance.description"] as MessageFn,

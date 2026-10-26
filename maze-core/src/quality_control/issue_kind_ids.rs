@@ -72,9 +72,7 @@ impl IssueKind {
             "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
             "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
             "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
-            "invalid_split_node_connection_group" => {
-                Some(IssueKind::InvalidSplitNodeConnectionGroup)
-            }
+            "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
             "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
             "invalid_split_route" => Some(IssueKind::InvalidSplitRoute),
             "invalid_vertical_passage" => Some(IssueKind::InvalidVerticalPassage),

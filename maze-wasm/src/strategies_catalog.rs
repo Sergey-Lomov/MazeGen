@@ -2,11 +2,12 @@ use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 use maze_core::{
     quality_control::{
         AREA_MISSING_ELEVATOR_STOPS, EXCESSIVE_ELEVATOR_STOP_GAP, EXCESSIVE_SCC_COUNT,
-        INVALID_CROSS_ELEMENT_GROUP, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP,
-        INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP, INVALID_LOOP_GROUP,
-        INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION,
-        INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
-        INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
+        INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END_GROUP, INVALID_ELEVATOR,
+        INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP,
+        INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
+        INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP,
+        INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_SPLIT_TILE,
+        INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
         INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_ELEVATOR_HEIGHT,
         MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS,
         MISSING_ONE_WAYS, MISSING_REGIONS, MISSING_SPLIT_TILES, MISSING_TELEPORTS,
@@ -15,22 +16,22 @@ use maze_core::{
     repair::{
         AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
         AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
-        CrossElementGroupSelectStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
-        ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
-        InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy,
-        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
-        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
-        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
-        OneWayGroupSelectStrategy, OneWayToPassageStrategy, OneWayToWallStrategy,
-        PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy, RandomEndpointsStrategy,
-        ReduceSccCountStrategy, RegionShrinkSplitStrategy, RemoveElevatorStopStrategy,
-        RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy,
-        RemoveSplitStrategy, RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
-        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
-        SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
-        SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
-        VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        CrossElementGroupSelectStrategy, DeadEndToPassageStrategy, ElevatorGroupSelectStrategy,
+        ElevatorRegionMergeStrategy, ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy,
+        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
+        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
+        MissingLoopsTeleportStrategy, MissingLoopsVerticalStrategy,
+        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
+        MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
+        OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
+        RandomEndpointsStrategy, ReduceSccCountStrategy, RegionShrinkSplitStrategy,
+        RemoveElevatorStopStrategy, RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy,
+        RemoveSplitNodeStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
+        RemoveVerticalPassageStrategy, RepairStrategy, ReplaceElevatorWithPassagesStrategy,
+        ScoredEndpointsStrategy, SplitGroupSelectStrategy, SplitNodeConnectionGroupSelectStrategy,
+        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, TeleportGroupSelectStrategy,
+        TeleportRegionMergeStrategy, VerticalPassageGroupSelectStrategy,
+        VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -317,6 +318,29 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             >>::expected_nested(
                 &InvalidLoopGroupSelectStrategy
             )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "dead_end_to_passage",
+            handles: INVALID_DEAD_END_GROUP.as_str(),
+            params: strategy_params_dto(
+                <DeadEndToPassageStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndGroupIssue,
+                >>::params(&DeadEndToPassageStrategy),
+                &[],
+            ),
+            experimental: <DeadEndToPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndGroupIssue,
+            >>::is_experimental(&DeadEndToPassageStrategy),
+            nested_suppressed_params: <DeadEndToPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndGroupIssue,
+            >>::nested_suppressed_params(
+                &DeadEndToPassageStrategy
+            ),
+            nested_slots: vec![],
             visibility: None,
         },
         StrategyDescriptor {
@@ -1583,6 +1607,24 @@ mod tests {
             one_way.kind,
             ParamKindDto::Float { default, min, max }
                 if default == 50.0 && min == 0.0 && max == 100.0
+        ));
+    }
+
+    #[test]
+    fn dead_end_to_passage_exposes_its_one_way_chance() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "dead_end_to_passage")
+            .expect("dead_end_to_passage must be registered");
+        assert_eq!(strategy.handles, INVALID_DEAD_END_GROUP.as_str());
+        assert_eq!(strategy.params.len(), 1);
+        assert!(matches!(
+            strategy.params[0],
+            ParamDescriptor {
+                id: "dead_end_one_way_chance",
+                kind: ParamKindDto::Float { default, min, max },
+                ..
+            } if default == 0.0 && min == 0.0 && max == 100.0
         ));
     }
 

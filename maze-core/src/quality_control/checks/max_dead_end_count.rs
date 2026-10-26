@@ -9,8 +9,8 @@ use std::collections::HashMap;
 pub const MAX_DEAD_END_COUNT_DEFAULT: u32 = 20;
 pub const MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
-/// Flags every dead end in each over-budget scope. This is warning-only: the group retains all
-/// candidates and its `to_remove` communicates the exact excess for UI/debug consumers.
+/// Flags every dead end in each over-budget scope. The group retains all candidates and its
+/// `to_remove` communicates the exact excess for UI/debug consumers.
 pub struct MaxDeadEndCountCheck {
     pub instance_id: String,
     pub max_dead_end_count: u32,

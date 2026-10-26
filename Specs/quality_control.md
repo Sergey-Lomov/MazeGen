@@ -1417,7 +1417,7 @@ Under `FloorScope::WholeMaze` (`max_split_count`'s default), both fire `InvalidS
 
 ### MaxDeadEndCountCheck / MaxDeadEndDensityCheck
 
-`max_dead_end_count` and `max_dead_end_density` emit the warning-only `InvalidDeadEndGroupIssue`; they never dispatch a repair strategy. A dead end is a node with exactly one outgoing graph edge, provided its target has a reverse edge back to that node of the same `EdgeKind`. The checks highlight every qualifying node in an over-budget scope, rather than selecting a subset for removal.
+`max_dead_end_count` and `max_dead_end_density` emit `InvalidDeadEndGroupIssue`. A dead end is a node with exactly one outgoing graph edge, provided its target has a reverse edge back to that node of the same `EdgeKind`. The checks highlight every qualifying node in an over-budget scope, rather than selecting a subset for removal. `DeadEndToPassageStrategy` may then resolve the configured excess by adding one new geometric passage outward from each selected dead end; see `repair.md`.
 
 `MaxDeadEndCountCheck` reports `count - max_dead_end_count`. `MaxDeadEndDensityCheck` measures dead ends per 100 field cells; when it exceeds the configured maximum, its excess is the number of nodes above `floor(max_dead_end_density * field_cells / 100)`, ensuring the warning cannot disappear through rounding. Both use `FloorScope`: whole-maze produces one group, while per-floor emits one independent group for each over-budget floor. Count defaults to `WholeMaze`; density defaults to `PerFloor`.
 

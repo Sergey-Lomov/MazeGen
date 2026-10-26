@@ -917,6 +917,25 @@ impl Pool {
 
 **`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
 
+### DeadEndToPassageStrategy
+
+Handles `INVALID_DEAD_END_GROUP` (GitHub issue #848) by adding exactly one geometric `Basic`
+passage from each selected dead end to an unconnected neighboring node. It processes up to each
+group's `to_remove` count; candidates that cannot accept a new passage because of geometry,
+existing connections, or preset locks are skipped, and the next QC pass evaluates any remaining
+excess. A destination cannot be another dead end named by the issue, so a successful source gets
+exactly its own one new passage rather than being changed incidentally by another repair. A node
+present in overlapping groups is processed only once, and its added passage reduces the remaining
+excess of every group that names it. Sources named by more groups are tried first, avoiding
+unnecessary repairs when whole-maze and per-floor checks overlap.
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |
+
+Returns `Failed` only when no passage can be added; otherwise returns `Fixed { score: None }`,
+even if some groups retain candidates for a later QC iteration.
+
 ### MissingLoopsRandomStrategy
 
 Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead seeds new connections at random between geometrically adjacent node pairs, expecting a follow-up QC pass to discard whichever of them don't end up forming a valid loop. `issue.missing` (how many loops short of the requirement) is mandatory — the producing check (`MinLoopsCountCheck`/`MinLoopDensityCheck`) already computed it; there is no other channel.

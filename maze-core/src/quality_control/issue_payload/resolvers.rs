@@ -658,8 +658,8 @@ pub(super) fn resolve_elevator_stop_group_map(
     }
 }
 
-/// Resolves a grouped dead-end warning into one highlightable single-node region per dead end.
-/// Dead-end checks are warning-only, so preset locks do not affect their visibility.
+/// Resolves a grouped dead-end issue into one highlightable single-node region per dead end.
+/// Preset locks do not affect visibility; they only constrain any later repair.
 pub(super) fn resolve_dead_end_group_map(
     groups: &[(Vec<NodeId>, u32)],
     invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>,
