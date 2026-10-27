@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig, WasmTessellationConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig, WasmTessellationConfig, WireTopology, WireFoldEnd } from "./types";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 
 function isNodeDto(v: unknown): v is NodeDto {
@@ -402,6 +402,93 @@ export function getGeometrySnapshot(config: {
     topology_version: config.topologyVersion ?? 0,
     topology: config.topology ?? null,
   }) as GeometrySnapshot;
+}
+
+/// The floor a topology query or edit is about: the tessellation, the floor's whole cell set and
+/// its current topology (`null` = no folds). Mirrors `runner::topology_edit::TopologyFloor`.
+export interface TopologyFloorRequest {
+  tessellation: WasmTessellationConfig;
+  field_cells: [number, number][];
+  topology: WireTopology | null;
+}
+
+export type InactiveFoldReason = "missing_cell" | "interior_neighbor" | "duplicate_neighbor";
+
+export type FoldActivityDto = { state: "active" } | { state: "inactive"; reason: InactiveFoldReason };
+
+/// Why core refused an edit (`runner::topology_edit::TopologyErrorDto`), with the sides
+/// it concerns. `internal` is raised on the client for an error that carries no structure.
+export type TopologyErrorDto =
+  | { code: "empty_run" }
+  | { code: "run_length_mismatch"; a: number; b: number }
+  | { code: "open_contour"; face: WireFoldEnd }
+  | { code: "inactive_fold"; reason: InactiveFoldReason; a: WireFoldEnd; b: WireFoldEnd; existing: boolean; connections?: [WireFoldEnd, WireFoldEnd][] }
+  | { code: "face_in_use"; face: WireFoldEnd }
+  | { code: "self_glued"; a: WireFoldEnd; b: WireFoldEnd }
+  | { code: "unknown_group"; group: number }
+  | { code: "inconsistent"; message: string }
+  | { code: "internal"; message: string };
+
+/// Activity and boundary contours of one floor (`topology_info`).
+export interface TopologyInfo {
+  /// One entry per fold, in `topology.folds` order; empty without folds.
+  activity: FoldActivityDto[];
+  /// Closed chains of boundary faces in traversal order (the field's cells stay on the left).
+  contours: WireFoldEnd[][];
+  /// Set when a boundary walk does not close (`contours` is then empty).
+  contours_error?: TopologyErrorDto | null;
+}
+
+/// One topology edit; applied as a whole or not at all (`runner::topology_edit::TopologyOp`).
+export type TopologyOp =
+  /** `replace` glues in place of that existing group (keeping its id) instead of adding a new one. */
+  | { kind: "glue"; a: WireFoldEnd[]; b: WireFoldEnd[]; twist: boolean; replace?: number }
+  | { kind: "remove_group"; id: number };
+
+export interface TopologyEditResult {
+  topology: WireTopology;
+  /// The id of the group the edit created; absent for remove / replace.
+  group?: number | null;
+}
+
+/// Raised by `getTopologyInfo` / `editTopology`; `problem` is core's structured reason.
+export class TopologyError extends Error {
+  constructor(readonly problem: TopologyErrorDto) {
+    super("message" in problem ? problem.message : problem.code);
+  }
+}
+
+/// Core's refusals arrive as the JSON of a `TopologyErrorDto`; anything else (a malformed request)
+/// has no structure and is wrapped as `internal`.
+function parseTopologyError(text: string): TopologyErrorDto {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && typeof (parsed as { code?: unknown }).code === "string") {
+      return parsed as TopologyErrorDto;
+    }
+  } catch {
+    // Not JSON: fall through.
+  }
+  return { code: "internal", message: text };
+}
+
+function topologyCall<T>(call: () => unknown): T {
+  try {
+    return call() as T;
+  } catch (error) {
+    throw new TopologyError(parseTopologyError(typeof error === "string" ? error : error instanceof Error ? error.message : String(error)));
+  }
+}
+
+/// Fold activity and boundary contours of one floor (GitHub issue #839).
+export function getTopologyInfo(floor: TopologyFloorRequest): TopologyInfo {
+  return topologyCall(() => getWasm().topology_info(floor));
+}
+
+/// One transactional edit of a floor's topology. On failure nothing changes: the thrown
+/// `TopologyError` names the reason.
+export function editTopology(floor: TopologyFloorRequest, op: TopologyOp): TopologyEditResult {
+  return topologyCall(() => getWasm().topology_edit({ ...floor, op }));
 }
 
 /// The cell at a world point within `scope` (`null` = the whole tessellation space).

@@ -1,6 +1,6 @@
 use super::*;
 use crate::ids::IdGenerator;
-use crate::space::{BrickPoint, BrickTessellation, SquarePoint, SquareTessellation, square_rect};
+use crate::space::{SquarePoint, SquareTessellation, square_rect};
 use std::sync::Arc;
 
 fn fp() -> TessellationFingerprint {
@@ -14,11 +14,6 @@ fn square_field(w: usize, h: usize) -> Field<SquareTessellation> {
         &mut IdGenerator::new(),
     )
     .unwrap()
-}
-
-fn brick_field(w: i32, h: i32) -> Field<BrickTessellation> {
-    let cells = (0..h).flat_map(|y| (0..w).map(move |x| BrickPoint { x, y }));
-    Field::new(Arc::new(BrickTessellation), cells, &mut IdGenerator::new()).unwrap()
 }
 
 fn end(x: i32, y: i32, face_idx: usize) -> FoldEnd<SquarePoint> {
@@ -39,9 +34,53 @@ fn shape<T: Tessellation>(t: &Topology<T>) -> Shape<T> {
     t.folds().iter().map(|f| (f.a, f.b, f.twist)).collect()
 }
 
-fn installed<T: Tessellation>(field: &mut Field<T>, topology: Topology<T>) {
-    field.set_topology(topology, &fp()).unwrap();
-    assert!(field.fold_activity().iter().all(|a| a.is_active()));
+/// Left and right sides of a square field, one run each, in contour order (the contour runs
+/// counter-clockwise: right side upwards, left side downwards).
+fn horizontal_sides(
+    field: &Field<SquareTessellation>,
+) -> (Vec<FoldEnd<SquarePoint>>, Vec<FoldEnd<SquarePoint>>) {
+    let faces = &boundary_contours(field).unwrap()[0].faces;
+    let side = |idx: usize, dir: i32| {
+        let mut run: Vec<_> = faces.iter().copied().filter(|f| f.face_idx == idx).collect();
+        run.sort_by_key(|f| dir * f.cell.y);
+        run
+    };
+    (side(2, -1), side(0, 1))
+}
+
+/// Bottom and top sides of a square field, one run each, in contour order (bottom rightwards,
+/// top leftwards).
+fn vertical_sides(
+    field: &Field<SquareTessellation>,
+) -> (Vec<FoldEnd<SquarePoint>>, Vec<FoldEnd<SquarePoint>>) {
+    let faces = &boundary_contours(field).unwrap()[0].faces;
+    let top_y = faces.iter().map(|f| f.cell.y).max().unwrap();
+    let side = |y: i32, dir: i32| {
+        let mut run: Vec<_> = faces
+            .iter()
+            .copied()
+            .filter(|f| f.face_idx % 2 == 1 && f.cell.y == y)
+            .collect();
+        run.sort_by_key(|f| dir * f.cell.x);
+        run
+    };
+    (side(0, 1), side(top_y, -1))
+}
+
+/// Left glued to right (a cylinder), optionally with a twist.
+fn cylinder(field: &Field<SquareTessellation>, twist: bool) -> Topology<SquareTessellation> {
+    let mut topology = Topology::empty(fp());
+    let (left, right) = horizontal_sides(field);
+    topology.glue(field, &fp(), &left, &right, twist).unwrap();
+    topology
+}
+
+/// Left glued to right and bottom to top, without twists.
+fn torus(field: &Field<SquareTessellation>) -> Topology<SquareTessellation> {
+    let mut topology = cylinder(field, false);
+    let (bottom, top) = vertical_sides(field);
+    topology.glue(field, &fp(), &bottom, &top, false).unwrap();
+    topology
 }
 
 #[test]
@@ -93,135 +132,6 @@ fn run_wraps_around_the_contour() {
     assert!(contour.run(0, 0).is_none());
     assert!(contour.run(0, n + 1).is_none());
     assert!(contour.run(n, 1).is_none());
-}
-
-#[test]
-fn square_presets_install_and_are_active() {
-    for preset in TopologyPreset::ALL {
-        let mut field = square_field(4, 4);
-        let topology = preset.build(&field, &fp()).unwrap();
-        let groups = if matches!(preset, TopologyPreset::Torus | TopologyPreset::Klein) {
-            2
-        } else {
-            1
-        };
-        assert_eq!(topology.groups().len(), groups, "{preset:?}");
-        assert_eq!(
-            topology.folds().len(),
-            4 * groups,
-            "{preset:?}: one fold per boundary face pair"
-        );
-        installed(&mut field, topology);
-    }
-}
-
-#[test]
-fn square_cylinder_glues_rows_across() {
-    let field = square_field(4, 3);
-    let topology = TopologyPreset::Cylinder.build(&field, &fp()).unwrap();
-    for fold in topology.folds() {
-        assert_eq!(fold.a.cell.y, fold.b.cell.y);
-        assert_eq!((fold.a.cell.x - fold.b.cell.x).abs(), 3);
-        assert!(!fold.twist);
-    }
-}
-
-#[test]
-fn mobius_and_klein_twist_the_left_right_gluing() {
-    let field = square_field(4, 4);
-    let mobius = TopologyPreset::Mobius.build(&field, &fp()).unwrap();
-    assert!(mobius.folds().iter().all(|f| f.twist));
-    let klein = TopologyPreset::Klein.build(&field, &fp()).unwrap();
-    let twisted = klein.folds().iter().filter(|f| f.twist).count();
-    assert_eq!(twisted, 4);
-    assert_eq!(klein.folds().len(), 8);
-}
-
-#[test]
-fn preset_builds_on_a_non_square_tessellation() {
-    let mut field = brick_field(4, 4);
-    let cylinder = TopologyPreset::Cylinder.build(&field, &fp()).unwrap();
-    assert_eq!(cylinder.groups().len(), 1);
-    installed(&mut field, cylinder);
-
-    // The staggered brick sides pair a cell with the same neighbour twice (v1 constraint) for the
-    // other presets: they fail with the reason, never with a partial topology.
-    let fresh = brick_field(4, 4);
-    for preset in [
-        TopologyPreset::Mobius,
-        TopologyPreset::Torus,
-        TopologyPreset::Klein,
-    ] {
-        let err = preset.build(&fresh, &fp()).unwrap_err();
-        assert!(
-            matches!(err, TopologyEditError::Inactive { .. }),
-            "{preset:?}: {err}"
-        );
-    }
-}
-
-#[test]
-fn preset_rejects_a_too_small_field() {
-    // Width 2: the glued cells are neighbours already.
-    let field = square_field(2, 4);
-    let err = TopologyPreset::Cylinder.build(&field, &fp()).unwrap_err();
-    assert!(matches!(err, TopologyEditError::TooSmall { .. }), "{err}");
-    // Width 1: the glued faces belong to one cell.
-    let field = square_field(1, 4);
-    assert!(TopologyPreset::Cylinder.build(&field, &fp()).is_err());
-    // 3x2 torus: vertical direction too small.
-    let field = square_field(3, 2);
-    assert!(TopologyPreset::Cylinder.build(&field, &fp()).is_ok());
-    let err = TopologyPreset::Torus.build(&field, &fp()).unwrap_err();
-    assert!(matches!(err, TopologyEditError::TooSmall { .. }), "{err}");
-    assert!(
-        TopologyPreset::Torus
-            .build(&square_field(3, 3), &fp())
-            .is_ok()
-    );
-}
-
-#[test]
-fn preset_rejects_a_non_rectangular_field() {
-    let cells: Vec<_> = square_rect(5, 5)
-        .into_iter()
-        .filter(|c| !(c.x == 2 && c.y == 2))
-        .collect();
-    let field = Field::new(Arc::new(SquareTessellation), cells, &mut IdGenerator::new()).unwrap();
-    let err = TopologyPreset::Cylinder.build(&field, &fp()).unwrap_err();
-    assert!(matches!(err, TopologyEditError::NotRectangular(_)), "{err}");
-}
-
-fn buildable<T: Tessellation>(field: &Field<T>) -> Vec<TopologyPreset> {
-    topology_preset_availability(field, &fp())
-        .into_iter()
-        .filter(|(_, r)| r.is_ok())
-        .map(|(p, _)| p)
-        .collect()
-}
-
-#[test]
-fn availability_lists_what_builds_and_why_not() {
-    assert_eq!(buildable(&square_field(4, 4)), TopologyPreset::ALL.to_vec());
-    assert_eq!(
-        buildable(&square_field(3, 2)),
-        vec![TopologyPreset::Cylinder, TopologyPreset::Mobius]
-    );
-    assert!(buildable(&square_field(1, 1)).is_empty());
-    let all = topology_preset_availability(&square_field(3, 2), &fp());
-    assert_eq!(all.len(), TopologyPreset::ALL.len());
-    assert!(matches!(all[1].1, Err(TopologyEditError::TooSmall { .. })));
-}
-
-#[test]
-fn preset_fails_with_a_reason_on_a_cross_shaped_field() {
-    let cells: Vec<_> = square_rect(5, 5)
-        .into_iter()
-        .filter(|c| (1..4).contains(&c.x) || (1..4).contains(&c.y))
-        .collect();
-    let field = Field::new(Arc::new(SquareTessellation), cells, &mut IdGenerator::new()).unwrap();
-    let err = TopologyPreset::Cylinder.build(&field, &fp()).unwrap_err();
-    assert!(!err.to_string().is_empty());
 }
 
 #[test]
@@ -305,38 +215,29 @@ fn an_inactive_fold_blocks_edits_of_other_groups_but_not_its_own_removal() {
 }
 
 #[test]
-fn preset_keys_round_trip() {
-    for preset in TopologyPreset::ALL {
-        assert_eq!(TopologyPreset::from_key(preset.key()), Some(preset));
-    }
-    assert_eq!(TopologyPreset::from_key("sphere"), None);
-}
-
-#[test]
 fn glue_pairs_untwisted_reversed_and_twisted_in_order() {
     let a = [end(0, 0, 2), end(0, 1, 2)];
     let b = [end(3, 0, 0), end(3, 1, 0)];
     let straight =
-        Topology::<SquareTessellation>::glue_folds(&SquareTessellation, &a, &b, false).unwrap();
+        Topology::<SquareTessellation>::glue_folds(&a, &b, false).unwrap();
     assert_eq!(straight[0].b, b[1]);
     assert_eq!(straight[1].b, b[0]);
     let twisted =
-        Topology::<SquareTessellation>::glue_folds(&SquareTessellation, &a, &b, true).unwrap();
+        Topology::<SquareTessellation>::glue_folds(&a, &b, true).unwrap();
     assert_eq!(twisted[0].b, b[0]);
     assert!(twisted.iter().all(|f| f.twist));
 }
 
 #[test]
 fn glue_rejects_bad_runs() {
-    let t = SquareTessellation;
     let a = [end(0, 0, 2)];
     let b = [end(3, 0, 0), end(3, 1, 0)];
     assert_eq!(
-        Topology::<SquareTessellation>::glue_folds(&t, &a, &b, false),
+        Topology::<SquareTessellation>::glue_folds(&a, &b, false),
         Err(TopologyEditError::RunLengthMismatch { a: 1, b: 2 })
     );
     assert_eq!(
-        Topology::<SquareTessellation>::glue_folds(&t, &[], &[], false),
+        Topology::<SquareTessellation>::glue_folds(&[], &[], false),
         Err(TopologyEditError::EmptyRun)
     );
 }
@@ -356,7 +257,7 @@ fn glue_adds_a_group_to_a_topology() {
 #[test]
 fn failed_edits_leave_the_topology_unchanged() {
     let field = square_field(4, 3);
-    let mut topology = TopologyPreset::Cylinder.build(&field, &fp()).unwrap();
+    let mut topology = cylinder(&field, false);
     let before = topology.clone();
     let before_shape = shape(&topology);
 
@@ -420,21 +321,12 @@ fn failed_edits_leave_the_topology_unchanged() {
 #[test]
 fn replace_group_swaps_all_its_folds_and_keeps_id_and_order() {
     let field = square_field(4, 4);
-    let mut topology = TopologyPreset::Torus.build(&field, &fp()).unwrap();
+    let mut topology = torus(&field);
     let first_before = topology.groups()[0].clone();
     let second_id = topology.groups()[1].id;
 
-    let new_folds = TopologyPreset::Mobius
-        .build(&field, &fp())
-        .unwrap()
-        .folds()
-        .iter()
-        .map(|f| NewFold {
-            a: f.a,
-            b: f.b,
-            twist: f.twist,
-        })
-        .collect::<Vec<_>>();
+    let (left, right) = horizontal_sides(&field);
+    let new_folds = Topology::<SquareTessellation>::glue_folds(&left, &right, true).unwrap();
     topology
         .replace_group(&field, &fp(), first_before.id, new_folds)
         .unwrap();
@@ -452,7 +344,7 @@ fn replace_group_swaps_all_its_folds_and_keeps_id_and_order() {
 #[test]
 fn remove_group_drops_the_whole_group_and_reindexes() {
     let field = square_field(4, 4);
-    let mut topology = TopologyPreset::Torus.build(&field, &fp()).unwrap();
+    let mut topology = torus(&field);
     let first = topology.groups()[0].id;
     let second = topology.groups()[1].id;
     topology.remove_group(&field, &fp(), first).unwrap();
@@ -468,7 +360,7 @@ fn remove_group_drops_the_whole_group_and_reindexes() {
 #[test]
 fn added_group_ids_never_collide_after_removal() {
     let field = square_field(4, 4);
-    let mut topology = TopologyPreset::Torus.build(&field, &fp()).unwrap();
+    let mut topology = torus(&field);
     let first = topology.groups()[0].id;
     topology.remove_group(&field, &fp(), first).unwrap();
     let left: Vec<_> = (0..4).map(|y| end(0, y, 2)).collect();

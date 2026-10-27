@@ -42,7 +42,8 @@ export type PendingFieldEdit =
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
-  | { kind: "copyFloorField"; sourceFloorId: string };
+  | { kind: "copyFloorField"; sourceFloorId: string }
+  | { kind: "applyTopologyOp"; op: import("../wasm/mazeService").TopologyOp };
 
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 export const DEFAULT_TRI_ORI: TriOrientation = "r0";

@@ -73,6 +73,12 @@ export const ui = {
     // attention", distinct from `refHighlight`'s cyan (info) and `issueHighlight`'s red (error).
     searchMatch: base.warning,
   },
+  // Run A / run B of a glue in the topology editor: bubbles in the panel and the canvas highlight
+  // (`canvas.topology`) share these hues.
+  topology: {
+    runA: { bg: base.topologyRunABg, text: base.topologyRunA },
+    runB: { bg: base.topologyRunBBg, text: base.topologyRunB },
+  },
 } as const;
 
 export const radius = {

@@ -54,8 +54,8 @@ floor without folds has no entry, and a file saved before this section loads wit
 `CURRENT_VERSION` is unchanged. The wire shape and fingerprint are specified in `Specs/topology.md`,
 "Wire form". The store keeps it as `floorTopology` (`FloorsState`), sends it as the `topology` key of
 the generate and compute-analytics configs, and clears it when the tessellation kind or params
-change (a topology is authored for one config), when a field config change targets its floor, and
-when its floor is removed.
+change (a topology is authored for one config) and when its floor is removed. A field edit keeps it: fold
+activity is recomputed (GitHub issue #839, `Specs/topology.md`, "Web authoring").
 
 On load `validate.ts` computes the fingerprint of the file's `tessellation` and calls
 `validateWireTopology` (`store/topologyWire.ts`) for every entry of a floor present in `floors`

@@ -66,7 +66,7 @@ outline while covered, `PngExportSettingsPanel` hides its print-frame canvas ove
 
 `ColorPickerPanel` (overlay), `DebugPanel`, `AnalyticsFeature`, `ImageExportFeature` (render-mode
 settings, overlay for nested config), `PostEditChangesPanel`, `SplitNodesDialogView`,
-`VertexBasedSettingsPanel`.
+`VertexBasedSettingsPanel`, `SymmetryPanel`, `TopologyPanel`, `GlueEditorPanel`.
 
 ### Top-edge hit testing (issue #679)
 

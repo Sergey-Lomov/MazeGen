@@ -8,6 +8,7 @@ import {
   type RegionMode,
   type WorldPoint,
 } from "../wasm/mazeService";
+import type { WireTopology } from "../wasm/types";
 import { flattenCommands } from "./geometry/pathFlatten";
 
 /// Geometry access layer over `maze-core`'s geometry snapshot (`Specs/space.md`, "Geometry
@@ -58,6 +59,9 @@ export function setMaxOutsideCells(limit: number): void {
 let cachedInstance: string | null = null;
 let fieldVersion = 0;
 let fieldSignature = "";
+/// The folds the snapshot was built with (by reference) and a counter bumped whenever they change.
+let cachedTopology: WireTopology | null = null;
+let topologyVersion = 0;
 
 /// Identity of a tessellation instance. Memoized per config object: reads run on render hot
 /// paths and must not serialize on every call.
@@ -81,26 +85,49 @@ export function getFieldVersion(): number {
   return fieldVersion;
 }
 
-/// Batched prewarm -- call when the field or tessellation changes (confirmTessellation, project
-/// load, generateWithSeed), not per frame. One snapshot call covers every field cell. Does nothing
-/// when neither the instance nor the cell set changed, so repeated calls keep the cache.
-export function warmCartesianCache(cfg: FieldConfig): void {
+/// Topology version: incremented whenever the folds the cached snapshot carries change. Together
+/// with the field version it keys the snapshot (`Specs/space.md`, "Geometry snapshot lifecycle").
+export function getTopologyVersion(): number {
+  return topologyVersion;
+}
+
+/// Batched prewarm -- call when the field, tessellation or the floor's folds change
+/// (confirmTessellation, project load, generateWithSeed, a topology edit), not per frame. One
+/// snapshot call covers every field cell and carries `topology` (`null` = no folds; compared by
+/// reference). Does nothing when neither the instance, the cell set nor the folds changed, so
+/// repeated calls keep the cache. A topology core refuses falls back to the plain snapshot.
+export function warmCartesianCache(cfg: FieldConfig, topology: WireTopology | null = null): void {
   const instance = instanceKey(cfg);
   const cells = configAllCells(cfg);
   const signature = cells.map(([x, y]) => cellKey(x, y)).join(";");
-  if (instance === cachedInstance && signature === fieldSignature) return;
+  if (instance === cachedInstance && signature === fieldSignature && topology === cachedTopology) return;
   fieldCache.clear();
   outsideCache.clear();
   cachedInstance = instance;
   fieldSignature = signature;
+  if (topology !== cachedTopology) topologyVersion++;
+  cachedTopology = topology;
   fieldVersion++;
   if (cells.length === 0) return;
-  const snapshot = getGeometrySnapshot({
-    tessellation: cfg.tessellation,
-    cells,
-    boundary: { kind: "path" },
-    fieldVersion,
-  });
+  const request = { tessellation: cfg.tessellation, cells, boundary: { kind: "path" } as const, fieldVersion, topologyVersion };
+  let snapshot;
+  try {
+    snapshot = getGeometrySnapshot(
+      topology === null
+        ? request
+        : {
+            ...request,
+            topology: {
+              field_cells: cells,
+              folds: topology.folds.map((fold) => ({ ...fold, twist: fold.twist === true })),
+              groups: topology.groups,
+            },
+          },
+    );
+  } catch (error) {
+    if (topology === null) throw error;
+    snapshot = getGeometrySnapshot(request);
+  }
   for (const geometry of snapshot.cells) fieldCache.set(cellKey(geometry.cell[0], geometry.cell[1]), withPolyline(geometry));
 }
 

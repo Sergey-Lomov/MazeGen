@@ -10,6 +10,8 @@ import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
+import { createTopologySlice, initialTopologyState } from "./slices/topologySlice";
+import { installTopologySync } from "./topologySync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
@@ -42,6 +44,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createPostEditSlice(...a),
   ...createImageExportSlice(...a),
   ...createFloorsSlice(...a),
+  ...createTopologySlice(...a),
 
   loadProject: (file) => {
     const [set, get] = a;
@@ -118,7 +121,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     } as MazeState);
 
     // Single atomic set of all non-maze state
-    warmCartesianCache(cfg);
+    warmCartesianCache(cfg, file.floorTopology?.[activeFloorId] ?? null);
     set({
       // tessellation
       tessellationKind: kind,
@@ -127,6 +130,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       triOrientation,
       floorFields,
       floorTopology: file.floorTopology ?? {},
+      ...initialTopologyState,
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,
@@ -359,3 +363,5 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     }
   },
 }));
+
+installTopologySync(useMazeStore);

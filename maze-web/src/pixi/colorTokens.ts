@@ -101,6 +101,13 @@ export const canvas = {
     trap: hexToNumber(base.nodeFinish),
   },
 
+  topology: {
+    runA: hexToNumber(base.topologyRunA),
+    runB: hexToNumber(base.topologyRunB),
+    // Sides a problem points at, drawn over the run highlight.
+    flagged: hexToNumber(base.error),
+  },
+
   debug: {
     active: hexToNumber(base.debugActive),
     currentSrc: hexToNumber(base.debugCurrentSrc),

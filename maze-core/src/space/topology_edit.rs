@@ -1,9 +1,8 @@
 //! Authoring of a floor's topology: boundary contours, gluing of boundary runs, whole-group
-//! edits and presets (cylinder, torus, Möbius, Klein bottle). Every edit is transactional: the
-//! candidate topology is built and validated as a whole (structure and activity against the
-//! field), then applied or rejected with no partial result. See `Specs/topology.md`.
+//! edits. Every edit is transactional: the candidate topology is built and validated as a
+//! whole (structure and activity against the field), then applied or rejected with no partial
+//! result. See `Specs/topology.md`.
 
-use super::geometry::{FoldClass, classify_fold_faces};
 use super::topology::ResolvedTopology;
 use super::{
     Field, Fold, FoldEnd, FoldGroup, FoldGroupId, FoldId, InactiveReason, Tessellation,
@@ -127,22 +126,6 @@ pub enum TopologyEditError<C> {
         a: usize,
         b: usize,
     },
-    FaceCountMismatch {
-        a: FoldEnd<C>,
-        b: FoldEnd<C>,
-    },
-    /// Preset: the glued faces do not match geometrically (different shapes along the seam).
-    IncompatibleFaces {
-        a: FoldEnd<C>,
-        b: FoldEnd<C>,
-    },
-    /// Preset: a glued pair is one cell or two neighbouring cells (fewer than 3 cells across).
-    TooSmall {
-        a: C,
-        b: C,
-    },
-    /// Preset: the field is not a single rectangle-like region with four distinct sides.
-    NotRectangular(&'static str),
 }
 
 impl<C: fmt::Debug> fmt::Display for TopologyEditError<C> {
@@ -163,22 +146,6 @@ impl<C: fmt::Debug> fmt::Display for TopologyEditError<C> {
             RunLengthMismatch { a, b } => {
                 write!(f, "glued runs differ in length: {a} faces against {b}")
             }
-            FaceCountMismatch { a, b } => write!(
-                f,
-                "cell {:?} and cell {:?} have a different number of faces",
-                a.cell, b.cell
-            ),
-            IncompatibleFaces { a, b } => write!(
-                f,
-                "face {} of cell {:?} does not match face {} of cell {:?} geometrically",
-                a.face_idx, a.cell, b.face_idx, b.cell
-            ),
-            TooSmall { a, b } => write!(
-                f,
-                "cells {a:?} and {b:?} are the same or neighbouring: at least 3 cells are needed \
-                 along a glued dimension"
-            ),
-            NotRectangular(reason) => write!(f, "field is not rectangular: {reason}"),
         }
     }
 }
@@ -192,7 +159,6 @@ impl<T: Tessellation> Topology<T> {
     /// (both runs traverse their boundary in the same rotational sense, so this is the ordinary
     /// orientation-reversing match); twisted, `a[i]` meets `b[i]`.
     pub fn glue_folds(
-        tessellation: &T,
         a: &[FoldEnd<T::CellId>],
         b: &[FoldEnd<T::CellId>],
         twist: bool,
@@ -210,9 +176,6 @@ impl<T: Tessellation> Topology<T> {
         let mut folds = Vec::with_capacity(n);
         for (i, &end_a) in a.iter().enumerate() {
             let end_b = if twist { b[i] } else { b[n - 1 - i] };
-            if tessellation.faces_of(end_a.cell).len() != tessellation.faces_of(end_b.cell).len() {
-                return Err(TopologyEditError::FaceCountMismatch { a: end_a, b: end_b });
-            }
             folds.push(NewFold {
                 a: end_a,
                 b: end_b,
@@ -231,7 +194,7 @@ impl<T: Tessellation> Topology<T> {
         b: &[FoldEnd<T::CellId>],
         twist: bool,
     ) -> Result<FoldGroupId, TopologyEditError<T::CellId>> {
-        let folds = Self::glue_folds(field.tessellation(), a, b, twist)?;
+        let folds = Self::glue_folds(a, b, twist)?;
         self.add_group(field, current, folds)
     }
 
@@ -354,218 +317,6 @@ impl<T: Tessellation> Topology<T> {
         }
         Ok(resolved.topology)
     }
-}
-
-/// Ready-made topologies of a rectangular field.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub enum TopologyPreset {
-    /// Left side glued to right side.
-    Cylinder,
-    /// Left to right and bottom to top.
-    Torus,
-    /// Left to right with a twist.
-    Mobius,
-    /// Left to right with a twist, bottom to top without.
-    Klein,
-}
-
-impl TopologyPreset {
-    pub const ALL: [TopologyPreset; 4] = [
-        TopologyPreset::Cylinder,
-        TopologyPreset::Torus,
-        TopologyPreset::Mobius,
-        TopologyPreset::Klein,
-    ];
-
-    pub fn key(self) -> &'static str {
-        match self {
-            TopologyPreset::Cylinder => "cylinder",
-            TopologyPreset::Torus => "torus",
-            TopologyPreset::Mobius => "mobius",
-            TopologyPreset::Klein => "klein",
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<TopologyPreset> {
-        Self::ALL.into_iter().find(|p| p.key() == key)
-    }
-
-    /// `(left-right twist, bottom-top twist)`; `None` when that pair is not glued.
-    fn gluing(self) -> (bool, Option<bool>) {
-        match self {
-            TopologyPreset::Cylinder => (false, None),
-            TopologyPreset::Torus => (false, Some(false)),
-            TopologyPreset::Mobius => (true, None),
-            TopologyPreset::Klein => (true, Some(false)),
-        }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-enum Side {
-    Left,
-    Right,
-    Bottom,
-    Top,
-}
-
-/// The four sides of a rectangle-like field as contour runs. Opposite sides are `(left, right)`
-/// and `(bottom, top)`.
-struct Sides<C> {
-    left: Vec<FoldEnd<C>>,
-    right: Vec<FoldEnd<C>>,
-    bottom: Vec<FoldEnd<C>>,
-    top: Vec<FoldEnd<C>>,
-}
-
-/// Splits the single contour of `field` into four runs by the side of the bounding box each
-/// boundary face lies on (by its contact point, relative to the box center and half extents).
-fn rectangle_sides<T: Tessellation>(
-    field: &Field<T>,
-) -> Result<Sides<T::CellId>, TopologyEditError<T::CellId>> {
-    use TopologyEditError::NotRectangular;
-    let contours = boundary_contours(field)?;
-    let [contour] = contours.as_slice() else {
-        return Err(NotRectangular("the boundary is not a single contour"));
-    };
-    let points: Vec<_> = contour
-        .faces
-        .iter()
-        .map(|end| {
-            let face = field.tessellation().faces_of(end.cell)[end.face_idx];
-            field.contact_point(end.cell, face)
-        })
-        .collect();
-    let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-    for p in &points {
-        min_x = min_x.min(p.x);
-        max_x = max_x.max(p.x);
-        min_y = min_y.min(p.y);
-        max_y = max_y.max(p.y);
-    }
-    let (cx, cy) = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
-    let (hw, hh) = ((max_x - min_x) / 2.0, (max_y - min_y) / 2.0);
-    if hw <= 0.0 || hh <= 0.0 {
-        return Err(NotRectangular("the field has no extent in one direction"));
-    }
-    let labels: Vec<Side> = points
-        .iter()
-        .map(|p| {
-            let (nx, ny) = ((p.x - cx) / hw, (p.y - cy) / hh);
-            if nx.abs() >= ny.abs() {
-                if nx < 0.0 { Side::Left } else { Side::Right }
-            } else if ny < 0.0 {
-                Side::Bottom
-            } else {
-                Side::Top
-            }
-        })
-        .collect();
-
-    let n = labels.len();
-    let Some(start) = (0..n).find(|&i| labels[i] != labels[(i + n - 1) % n]) else {
-        return Err(NotRectangular("the boundary has a single side"));
-    };
-    let mut runs: Vec<(Side, Vec<usize>)> = Vec::new();
-    for k in 0..n {
-        let i = (start + k) % n;
-        match runs.last_mut() {
-            Some((side, indices)) if *side == labels[i] => indices.push(i),
-            _ => runs.push((labels[i], vec![i])),
-        }
-    }
-    let distinct: HashSet<Side> = runs.iter().map(|(s, _)| *s).collect();
-    if runs.len() != 4 || distinct.len() != 4 {
-        return Err(NotRectangular(
-            "the boundary does not split into four sides",
-        ));
-    }
-    let take = |side: Side| {
-        runs.iter()
-            .find(|(s, _)| *s == side)
-            .map(|(_, indices)| indices.iter().map(|&i| contour.faces[i]).collect())
-            .unwrap_or_default()
-    };
-    Ok(Sides {
-        left: take(Side::Left),
-        right: take(Side::Right),
-        bottom: take(Side::Bottom),
-        top: take(Side::Top),
-    })
-}
-
-impl TopologyPreset {
-    /// Builds this preset's topology for the rectangular `field`. Verifies, for every glued pair,
-    /// the face counts of both cells, that the seam is isometric (the two faces have the same
-    /// shape) and that the cells are neither one cell nor neighbours (at least 3 cells along the
-    /// glued dimension). Fails with the reason instead of returning a partial topology.
-    pub fn build<T: Tessellation>(
-        self,
-        field: &Field<T>,
-        current: &TessellationFingerprint,
-    ) -> Result<Topology<T>, TopologyEditError<T::CellId>> {
-        let sides = rectangle_sides(field)?;
-        let (lr_twist, tb_twist) = self.gluing();
-        let tess = field.tessellation();
-        let mut topology = Topology::<T>::empty(current.clone());
-
-        let mut pairs = vec![(&sides.left, &sides.right, lr_twist)];
-        if let Some(twist) = tb_twist {
-            pairs.push((&sides.bottom, &sides.top, twist));
-        }
-        for (a, b, twist) in pairs {
-            let folds = Topology::<T>::glue_folds(tess, a, b, twist)?;
-            for fold in &folds {
-                check_preset_fold(field, fold)?;
-            }
-            topology.add_group(field, current, folds)?;
-        }
-        Ok(topology)
-    }
-}
-
-fn check_preset_fold<T: Tessellation>(
-    field: &Field<T>,
-    fold: &NewFold<T::CellId>,
-) -> Result<(), TopologyEditError<T::CellId>> {
-    let tess = field.tessellation();
-    let (a, b) = (fold.a, fold.b);
-    let adjacent = |from: FoldEnd<T::CellId>, to: T::CellId| {
-        tess.faces_of(from.cell)
-            .iter()
-            .any(|&f| tess.neighbor(from.cell, f).is_some_and(|(n, _)| n == to))
-    };
-    if a.cell == b.cell || adjacent(a, b.cell) {
-        return Err(TopologyEditError::TooSmall {
-            a: a.cell,
-            b: b.cell,
-        });
-    }
-    let segments = |end: FoldEnd<T::CellId>| {
-        tess.face_segments(end.cell, tess.faces_of(end.cell)[end.face_idx])
-    };
-    match classify_fold_faces(&segments(a), &segments(b), fold.twist) {
-        FoldClass::Isometric { .. } => Ok(()),
-        FoldClass::TopologicalOnly => Err(TopologyEditError::IncompatibleFaces { a, b }),
-    }
-}
-
-/// A preset with `Ok` when it builds, or the reason it does not.
-pub type PresetAvailability<T> = (
-    TopologyPreset,
-    Result<(), TopologyEditError<<T as Tessellation>::CellId>>,
-);
-
-/// Per preset, in `TopologyPreset::ALL` order, whether it builds for `field` and the reason when
-/// it does not: the capability list a UI shows for the current field.
-pub fn topology_preset_availability<T: Tessellation>(
-    field: &Field<T>,
-    current: &TessellationFingerprint,
-) -> Vec<PresetAvailability<T>> {
-    TopologyPreset::ALL
-        .into_iter()
-        .map(|p| (p, p.build(field, current).map(|_| ())))
-        .collect()
 }
 
 #[cfg(test)]

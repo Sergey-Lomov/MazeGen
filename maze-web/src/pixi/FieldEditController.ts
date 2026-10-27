@@ -20,6 +20,12 @@ import { fieldOperationAvailable, isFieldOpError } from "./fieldOps";
 import { translateFieldCells, type WorldPoint } from "../wasm/mazeService";
 import { canActivateFieldPrimitive, fieldPrimitiveForShortcut } from "./fieldPrimitiveShortcuts";
 import { blurActiveElement } from "./toolShortcuts";
+import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
+import { nearestContourFace } from "./topologyGeometry";
+import type { TopologyPickTarget } from "../store/topologyTypes";
+
+/** How close (screen pixels) a click must be to a boundary face to pick it for a fold. */
+const TOPOLOGY_PICK_RADIUS_PX = 14;
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -46,6 +52,8 @@ export class FieldEditController {
   private shiftHeld = false;
   private controlHeld = false;
   private gestureActive = false;
+  /** The topology run being dragged on a boundary contour (GitHub issue #839). */
+  private topologyDrag: { target: TopologyPickTarget; contour: number; anchor: number; length: number } | null = null;
   private gestureButton = 0;
   private lastGridX = NaN;
   private lastGridY = NaN;
@@ -144,7 +152,11 @@ export class FieldEditController {
         this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
       }
     }
-    if (e.code === "Escape") this.cancelGesture();
+    if (e.code === "Escape") {
+      this.cancelGesture();
+      this.topologyDrag = null;
+      if (state.topologyPick !== null) state.startTopologyPick(null);
+    }
     if (e.code === "Backspace" || e.code === "Delete") {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
@@ -217,6 +229,10 @@ export class FieldEditController {
     this.lastPointerCanvas = { x: canvasX, y: canvasY };
     const s = useMazeStore.getState();
     const field = s.floorFields[s.activeFloorId];
+    if (s.openCard === "field_setup" && s.topologyPick !== null && button === 0 && !this.spaceHeld) {
+      this.beginTopologyDrag(canvasX, canvasY);
+      return;
+    }
     if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
 
     if (s.backgroundAutoFillPreview !== null) {
@@ -362,6 +378,10 @@ export class FieldEditController {
     // Windows/Chrome doesn't fire pointerup for RMB; detect release via buttons mask.
     if (this.gestureActive && this.gestureButton === 2 && (buttons & 2) === 0) {
       this.onPointerUp();
+      return;
+    }
+    if (this.topologyDrag !== null) {
+      this.updateTopologyDrag(canvasX, canvasY);
       return;
     }
     const s = useMazeStore.getState();
@@ -598,6 +618,11 @@ export class FieldEditController {
   }
 
   onPointerUp(): void {
+    if (this.topologyDrag !== null) {
+      this.topologyDrag = null;
+      useMazeStore.getState().startTopologyPick(null);
+      return;
+    }
     const previewing = useMazeStore.getState().backgroundAutoFillPreview !== null;
     if (previewing) {
       if (this.gestureActive && (this.spaceHeld || this.gestureButton === 1)) this.panCallbacks.endPan();
@@ -687,6 +712,46 @@ export class FieldEditController {
 
   hasSelectionPreview(): boolean {
     return this.selectionPreviewVisible;
+  }
+
+  /** The boundary face of the topology contours nearest to the pointer, if within pick range. */
+  private topologyFaceAt(canvasX: number, canvasY: number, contour?: number): { contour: number; face: number; length: number } | null {
+    const state = useMazeStore.getState();
+    const result = floorTopologyInfo(state, state.activeFloorId);
+    if (!result.ok) return null;
+    const viewport = this.getViewport();
+    const point: [number, number] = [(canvasX - viewport.x) / viewport.scale.x, (canvasY - viewport.y) / viewport.scale.y];
+    const cfg = state.floorFields[state.activeFloorId].fieldConfig;
+    const contours = result.info.contours;
+    // While dragging, the run stays on its contour and any pointer position resolves to its nearest face.
+    const maxDistance = contour === undefined ? TOPOLOGY_PICK_RADIUS_PX / viewport.scale.x : Infinity;
+    const hit = nearestContourFace(contour === undefined ? contours : contours.map((faces, i) => (i === contour ? faces : [])), point, cfg, maxDistance);
+    return hit ? { contour: hit.contour, face: hit.face, length: contours[hit.contour].length } : null;
+  }
+
+  /** Tracks the boundary face under the pointer while a run is being edited (highlighted as an edge). */
+  updateTopologyFaceHover(canvasX: number, canvasY: number): void {
+    const state = useMazeStore.getState();
+    const hit = this.topologyDrag === null ? this.topologyFaceAt(canvasX, canvasY) : null;
+    state.setTopologyFaceHover(hit ? { contour: hit.contour, face: hit.face } : null);
+  }
+
+  /** Starts dragging the run chosen in the add-glue panel on the face under the pointer. */
+  private beginTopologyDrag(canvasX: number, canvasY: number): void {
+    const state = useMazeStore.getState();
+    const target = state.topologyPick;
+    const hit = this.topologyFaceAt(canvasX, canvasY);
+    if (target === null || !hit) return;
+    this.topologyDrag = { target, contour: hit.contour, anchor: hit.face, length: hit.length };
+    state.setTopologyRun(target, { contour: hit.contour, start: hit.face, end: hit.face });
+  }
+
+  /** Extends the dragged run along its contour to the face nearest the pointer. */
+  private updateTopologyDrag(canvasX: number, canvasY: number): void {
+    const drag = this.topologyDrag;
+    if (drag === null) return;
+    const hit = this.topologyFaceAt(canvasX, canvasY, drag.contour);
+    if (hit) useMazeStore.getState().setTopologyRun(drag.target, dragRun(drag.contour, drag.length, drag.anchor, hit.face));
   }
 
   private toGrid(canvasX: number, canvasY: number): { x: number; y: number } | null {

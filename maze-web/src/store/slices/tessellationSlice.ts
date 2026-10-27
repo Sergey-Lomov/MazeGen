@@ -76,7 +76,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     // Params define the cell set, so a params change discards the maze like a kind change does.
     const clearMaze = !sameTessellation(tessellation, tessellationOf(state));
     const freshField = defaultFloorFieldConfig(tessellation, hexOrientation, triOrientation);
-    warmCartesianCache(freshField.fieldConfig);
+    warmCartesianCache(freshField.fieldConfig, clearMaze ? null : state.floorTopology[state.activeFloorId] ?? null);
     // Kind/orientation are maze-wide (Specs/field-editor.md) — every floor's own field config is
     // rebuilt against the newly confirmed kind, same as a single-floor maze always did.
     const floorFields: Record<string, FloorFieldConfig> = {};

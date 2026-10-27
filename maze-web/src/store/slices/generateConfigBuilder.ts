@@ -286,7 +286,7 @@ function applyGenerationResult(
 ): void {
   const { snapshot, debugTape } = result;
   {
-    warmCartesianCache(activeTessellation);
+    warmCartesianCache(activeTessellation, get().floorTopology[get().activeFloorId] ?? null);
     let debugArena: DebugArenaHandle | null = null;
     let lastStep = 0;
     if (debugMode && debugTape) {

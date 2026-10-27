@@ -6,13 +6,21 @@ import { Tooltip } from "./Tooltip";
  *  panels (`RulesColumn`'s rule/stage rename buttons, `NestedStrategyPanel`'s own `editBtn`) rather
  *  than a pencil icon, so every edit entry point across the app renders and behaves identically
  *  instead of each row hand-rolling its own button+glyph copy. */
-export function EditIconButton({ onClick, title, fontSize }: { onClick: (e: React.MouseEvent) => void; title: string; fontSize?: number }) {
+export function EditIconButton({ onClick, title, fontSize, disabled, style }: {
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  fontSize?: number;
+  disabled?: boolean;
+  /** Extra style, e.g. an accent while the edit is active. */
+  style?: React.CSSProperties;
+}) {
   return (
     <Tooltip content={title}>
       <button
         type="button"
         className="hoverable"
-        style={fontSize === undefined ? styles.editBtn : { ...styles.editBtn, fontSize }}
+        style={{ ...styles.editBtn, ...(fontSize === undefined ? {} : { fontSize }), ...style }}
+        disabled={disabled}
         onClick={onClick}
       >
         ✎

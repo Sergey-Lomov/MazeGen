@@ -259,6 +259,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].selectedShape` | The preset shape chosen for that floor (a core preset key); applies in default mode and is remembered while a custom field is edited |
 | `floorFields[floorId].fieldConfig` | That floor's current `FieldConfig`; a preset shape in default mode, `custom` shape in free-draw mode |
 | `floorFields[floorId].savedShapes` | That floor's saved size params per preset shape, restored on shape/mode switch |
+| `floorTopology[floorId]` | That floor's fold groups (GitHub issue #839, `Specs/topology.md`, "Web authoring"); edited in the `TopologyPanel` side panel (opened from a button in the custom-field card; `GlueEditorPanel` adds a glue), kept across field edits (activity recomputed), discarded with the maze whenever its active folds change |
 | `fieldOpError` | The last refused symmetry preview/apply (`{kind, message?}`), shown in the symmetry panel status; cleared when the preview succeeds |
 
 `fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.

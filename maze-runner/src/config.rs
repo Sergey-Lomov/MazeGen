@@ -1,5 +1,4 @@
 use crate::config_dto::default_level_fields;
-use crate::topology_wire::TopologyDto;
 pub use crate::config_dto::{
     CheckInstanceConfig, ElementsConfigDto, GenerationParamsConfig, GenerationSourceModeDto,
     InitialGenerationConfig, LockedNodeDto, NodeLockKindDto, OneWayDirectionDto,
@@ -8,6 +7,7 @@ pub use crate::config_dto::{
     SplitPatternDto, SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig,
     TessellationKind, VerticalPassageDirectionDto,
 };
+use crate::topology_wire::TopologyDto;
 use maze_core::{
     RepairLimits,
     generation::{

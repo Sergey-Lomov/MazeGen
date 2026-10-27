@@ -3,6 +3,7 @@ import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
+import { TopologyOverlay } from "./TopologyOverlay";
 import { FieldEditController } from "./FieldEditController";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
@@ -80,6 +81,8 @@ export class MazeScene {
   private primitivePreviewContainer: Container;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
+  private topologyOverlay: TopologyOverlay;
+  private topologyContainer: Container;
   private presetConnectionsController: PresetConnectionsController;
   private postEditRenderer: PostEditRenderer;
   private postEditContainer: Container;
@@ -121,6 +124,8 @@ export class MazeScene {
     this.fieldEditorOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
     this.presetConnectionsContainer = new Container();
+    // Above the preset-connections layer, which draws the walls the topology highlights mark.
+    this.topologyContainer = new Container();
     this.postEditContainer = new Container();
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
@@ -135,6 +140,7 @@ export class MazeScene {
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
+      this.topologyContainer,
       this.postEditContainer,
       this.tessellationContainer,
       this.analyticsContainer,
@@ -166,6 +172,7 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
+    this.topologyOverlay = new TopologyOverlay(this.topologyContainer);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
     this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
@@ -175,6 +182,7 @@ export class MazeScene {
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
       this.presetConnectionsRenderer,
+      this.topologyOverlay,
       this.postEditRenderer,
       this.tessellationRenderer,
       this.analyticsRenderer,
@@ -636,6 +644,7 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
+    this.topologyOverlay.destroy();
     this.presetConnectionsController.destroy();
     this.postEditRenderer.destroy();
     this.postEditController.destroy();

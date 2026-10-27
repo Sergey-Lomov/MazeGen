@@ -75,10 +75,7 @@ pub use topology::{
     Crossing, Fold, FoldActivity, FoldEnd, FoldGroup, FoldGroupId, FoldId, FoldSide,
     InactiveReason, Orientation, TessellationFingerprint, Topology, TopologyError,
 };
-pub use topology_edit::{
-    Contour, NewFold, TopologyEditError, TopologyPreset, boundary_contours,
-    topology_preset_availability,
-};
+pub use topology_edit::{Contour, NewFold, TopologyEditError, boundary_contours};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 pub use trihexagonal::{
     TrihexagonalFace, TrihexagonalKind, TrihexagonalPoint, TrihexagonalTessellation,

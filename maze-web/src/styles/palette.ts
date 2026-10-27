@@ -154,4 +154,10 @@ export const base = {
   debugActive: "#4488ff",
   debugCurrentSrc: "#cccc22",
   debugRefHighlight: "#44ccff",
+  // The two runs of a glue (topology editor): soft, but far apart in hue so both read at a glance (kept clear of the info,
+  // warning and error hues).
+  topologyRunA: "#a78bfa",
+  topologyRunABg: "#a78bfa26",
+  topologyRunB: "#46c9b6",
+  topologyRunBBg: "#46c9b626",
 } as const;
