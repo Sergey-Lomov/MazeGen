@@ -2,7 +2,7 @@ use crate::Maze;
 use crate::generation::PresetState;
 use crate::quality_control::{Issue, MISSING_LOOPS, MissingLoopsIssue};
 use crate::repair::command::MutationCommand;
-use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::nested_dispatch::{dispatch_priority, slot_candidates};
 use crate::repair::params::{StrategyParam, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategies::standard_add_params::{
@@ -83,13 +83,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        // Defensive runtime filter, not the primary validation: `maze-runner`'s `build_nested`
-        // already guarantees every entry in `nested` fills a slot this strategy actually
-        // declared. This filter only protects direct `apply()` calls made outside the runner.
-        let candidates: Vec<&NestedStrategyConfig<T>> = nested
-            .iter()
-            .filter(|n| n.slot.slot_id == SLOT_LOOP_SEED_TARGET)
-            .collect();
+        let candidates = slot_candidates(nested, SLOT_LOOP_SEED_TARGET);
         if candidates.is_empty() {
             return (RepairResult::Failed, vec![]);
         }

@@ -3,7 +3,7 @@ use crate::generation::PresetState;
 use crate::graph::scc::ConnectedComponents;
 use crate::quality_control::{Issue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
-use crate::repair::nested_dispatch::{WeightedCandidate, dispatch_weighted};
+use crate::repair::nested_dispatch::{dispatch_weighted, slot_candidates, weighted_candidates};
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategies::region_merge_core;
@@ -13,15 +13,6 @@ use crate::repair::strategy::{
 use crate::space::Tessellation;
 use rand::RngCore;
 use std::collections::HashSet;
-
-/// `param_overrides` key a nested candidate's selection weight is read from — see
-/// `resolve_weight` below. Not a declared `StrategyParam` of the nested strategy itself (it's a
-/// convention this dispatcher imposes on top of whatever params the nested strategy already
-/// has), so it never appears in any strategy's `params()`.
-const WEIGHT_KEY: &str = "weight";
-
-/// Fallback weight used whenever `WEIGHT_KEY` is absent, unparsable, non-finite, or `<= 0.0`.
-const DEFAULT_WEIGHT: f64 = 1.0;
 
 /// Slot id for the nested region-merge strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Public: part of this strategy's configuration
@@ -38,19 +29,6 @@ static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
     max: None,
     dispatch_kind: NestedDispatchKind::Weighted,
 }];
-
-/// Resolves a nested candidate's selection weight from its `param_overrides`. Never returns a
-/// non-finite or non-positive value — any missing/unparsable/non-finite/`<= 0.0` input falls
-/// back to `DEFAULT_WEIGHT`, guaranteeing that as long as at least one nested candidate is
-/// configured, the pool passed to `dispatch_weighted` always has a strictly positive total
-/// weight.
-fn resolve_weight(param_overrides: &std::collections::HashMap<String, String>) -> f64 {
-    param_overrides
-        .get(WEIGHT_KEY)
-        .and_then(|raw| raw.parse::<f64>().ok())
-        .filter(|v| v.is_finite() && *v > 0.0)
-        .unwrap_or(DEFAULT_WEIGHT)
-}
 
 /// Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/
 /// `TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this
@@ -130,36 +108,12 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        // Defensive runtime filter, not the primary validation: `maze-runner`'s `build_nested`
-        // already guarantees every entry in `nested` fills a slot this strategy actually
-        // declared (the sole `merge_target` slot here). This filter only protects direct
-        // `apply()` calls made outside the runner (tests, future internal callers) — same
-        // posture `ReduceSccCountStrategy` takes toward its own single slot.
-        let candidate_configs: Vec<&NestedStrategyConfig<T>> = nested
-            .iter()
-            .filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET)
-            .collect();
+        let candidate_configs = slot_candidates(nested, SLOT_MERGE_TARGET);
         if candidate_configs.is_empty() {
             return (RepairResult::Failed, vec![]);
         }
 
-        debug_assert!(
-            candidate_configs.iter().all(|c| !c
-                .strategy
-                .params()
-                .iter()
-                .any(|p| p.id == WEIGHT_KEY)),
-            "a merge_target candidate declares its own \"{WEIGHT_KEY}\" param — this collides with \
-             resolve_weight's reserved param_overrides key; rename the candidate's param"
-        );
-
-        let candidates: Vec<WeightedCandidate<T>> = candidate_configs
-            .iter()
-            .map(|&config| WeightedCandidate {
-                config,
-                weight: resolve_weight(&config.param_overrides),
-            })
-            .collect();
+        let candidates = weighted_candidates(&candidate_configs, SLOT_MERGE_TARGET);
 
         // One fixed snapshot for the whole batch loop — every nested strategy's own `apply()`
         // would otherwise re-fetch this same cache entry per region anyway (keyed on
@@ -214,6 +168,7 @@ mod tests {
     use crate::IdGenerator;
     use crate::graph::Graph;
     use crate::random::MazeRng;
+    use crate::repair::nested_dispatch::WEIGHT_KEY;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::repair::strategies::{ExpandRegionPassageStrategy, TeleportRegionMergeStrategy};
@@ -448,26 +403,6 @@ mod tests {
 
     #[test]
     fn invalid_weight_values_fall_back_to_default_and_do_not_break_apply() {
-        for bad in ["not_a_number", "-3.0", "0", "NaN", "inf"] {
-            assert_eq!(
-                resolve_weight(&HashMap::from([(WEIGHT_KEY.to_string(), bad.to_string())])),
-                DEFAULT_WEIGHT,
-                "bad weight {bad:?} must fall back to default"
-            );
-        }
-        assert_eq!(
-            resolve_weight(&HashMap::new()),
-            DEFAULT_WEIGHT,
-            "missing weight must fall back to default"
-        );
-        assert_eq!(
-            resolve_weight(&HashMap::from([(
-                WEIGHT_KEY.to_string(),
-                "3.5".to_string()
-            )])),
-            3.5
-        );
-
         let mut maze = maze_4_singletons();
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);

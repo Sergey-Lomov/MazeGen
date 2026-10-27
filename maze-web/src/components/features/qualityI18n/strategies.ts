@@ -105,6 +105,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.teleport_group_select.label"] as MessageFn,
     description: m["strategy.teleport_group_select.description"] as MessageFn,
   },
+  weighted_dead_end: {
+    label: m["strategy.weighted_dead_end.label"] as MessageFn,
+    description: m["strategy.weighted_dead_end.description"] as MessageFn,
+  },
   weighted_region_merge: {
     label: m["strategy.weighted_region_merge.label"] as MessageFn,
     description: m["strategy.weighted_region_merge.description"] as MessageFn,

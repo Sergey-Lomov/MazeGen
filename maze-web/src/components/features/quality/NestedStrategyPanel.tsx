@@ -62,7 +62,7 @@ export function pathsEqual(a: PathSegment[], b: PathSegment[]): boolean {
   return a.length === b.length && a.every((v, i) => v.slotId === b[i].slotId && v.index === b[i].index);
 }
 
-// Mirrors maze-core's `resolve_weight` (weighted_region_merge.rs) — any missing/unparsable/
+// Mirrors maze-core's `resolve_weight` (nested_dispatch.rs) — any missing/unparsable/
 // non-finite/`<= 0` raw value falls back to the same default the Rust dispatcher uses, so the
 // displayed percentage always matches what `dispatch_weighted` will actually do at generation
 // time. Exported for direct unit testing — pure, no React/store involved.

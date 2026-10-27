@@ -3,7 +3,7 @@ use crate::generation::PresetState;
 use crate::graph::scc::ConnectedComponents;
 use crate::quality_control::{Issue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
-use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::nested_dispatch::{dispatch_priority, slot_candidates};
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategies::region_merge_core;
@@ -96,12 +96,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        // Defensive runtime filter, not the primary validation — see
-        // `WeightedRegionMergeStrategy::apply`'s identical comment for the rationale.
-        let candidates: Vec<&NestedStrategyConfig<T>> = nested
-            .iter()
-            .filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET)
-            .collect();
+        let candidates = slot_candidates(nested, SLOT_MERGE_TARGET);
         if candidates.is_empty() {
             return (RepairResult::Failed, vec![]);
         }

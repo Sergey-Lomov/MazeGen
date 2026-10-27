@@ -65,6 +65,7 @@ pub mod teleport_region_merge;
 pub mod vertical_passage_group_select;
 pub mod vertical_passage_region_merge;
 pub mod vertical_target;
+pub mod weighted_dead_end;
 pub mod weighted_region_merge;
 
 pub use add_elevator::AddElevatorStrategy;
@@ -246,21 +247,29 @@ pub use vertical_passage_region_merge::{
     PARAM_DIRECTION_BALANCE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE,
     VerticalPassageRegionMergeStrategy,
 };
+pub use weighted_dead_end::{
+    SLOT_REPAIR_TARGET as WEIGHTED_DEAD_END_SLOT_REPAIR_TARGET, WeightedDeadEndStrategy,
+};
 pub use weighted_region_merge::{
     SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET, WeightedRegionMergeStrategy,
 };
 
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use crate::Maze;
     use crate::generation::PresetState;
+    use crate::graph::Graph;
+    use crate::quality_control::InvalidDeadEndIssue;
     use crate::quality_control::apply_commands::apply_commands;
     use crate::quality_control::issue::IssueRequirement;
+    use crate::repair::command::MutationCommand;
     use crate::repair::params::StrategyParams;
     use crate::repair::result::RepairResult;
     use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
     use crate::space::Tessellation;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::{IdGenerator, Maze};
     use rand::RngCore;
+    use std::sync::Arc;
 
     /// Calls `strategy.apply` then immediately applies the returned commands to `maze` — mirrors
     /// `Rule::check_and_repair_typed`'s own apply-then-commit sequencing (GitHub issue #118), so
@@ -298,5 +307,56 @@ pub(crate) mod test_utils {
             preset_state,
             &[],
         )
+    }
+
+    /// Fixed-outcome `INVALID_DEAD_END` repair that records its `name` on every call — shared
+    /// by the dead-end dispatcher tests (`priority_dead_end`, `weighted_dead_end`).
+    pub struct DeadEndStub {
+        pub name: &'static str,
+        pub succeed: bool,
+        pub calls: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>>,
+    }
+
+    impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for DeadEndStub {
+        fn strategy_id(&self) -> &'static str {
+            "test_stub_dead_end_repair"
+        }
+
+        fn apply(
+            &self,
+            issue: &InvalidDeadEndIssue,
+            _: &Maze<T>,
+            _: &mut dyn RngCore,
+            _: &StrategyParams,
+            _: &PresetState,
+            _: &[NestedStrategyConfig<T>],
+        ) -> (RepairResult, Vec<MutationCommand>) {
+            self.calls.borrow_mut().push(self.name);
+            if self.succeed {
+                (
+                    RepairResult::Fixed { score: None },
+                    vec![MutationCommand::AddBidirectionalTeleport {
+                        a: issue.invalid[0],
+                        b: 1,
+                    }],
+                )
+            } else {
+                (RepairResult::Failed, vec![])
+            }
+        }
+    }
+
+    crate::impl_erased_repair_strategy!(DeadEndStub, InvalidDeadEndIssue);
+
+    /// Blank 2x2 square maze (nodes, no edges) for dead-end dispatcher tests.
+    pub fn maze_2x2() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        Maze::new(field, graph)
     }
 }

@@ -76,7 +76,8 @@ pub use strategies::{
     VERTICAL_PASSAGE_GROUP_SELECT_SLOT_FIX_TARGET,
     VERTICAL_PASSAGE_REGION_MERGE_PARAM_CONNECTION_MODE,
     VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE, VerticalPassageGroupSelectStrategy,
-    VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
+    VerticalPassageRegionMergeStrategy, WEIGHTED_DEAD_END_SLOT_REPAIR_TARGET,
+    WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
 };
 pub use strategy::{
     ErasedRepairStrategy, NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,

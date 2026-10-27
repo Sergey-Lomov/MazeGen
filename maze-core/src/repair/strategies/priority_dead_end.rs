@@ -2,7 +2,7 @@ use crate::Maze;
 use crate::generation::PresetState;
 use crate::quality_control::{INVALID_DEAD_END, InvalidDeadEndIssue, Issue};
 use crate::repair::command::MutationCommand;
-use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::nested_dispatch::{dispatch_priority, slot_candidates};
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{
@@ -61,11 +61,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for PriorityDeadEnd
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        // Defensive runtime filter, same posture as `PriorityMissingLoopsStrategy`.
-        let candidates: Vec<&NestedStrategyConfig<T>> = nested
-            .iter()
-            .filter(|n| n.slot.slot_id == SLOT_REPAIR_TARGET)
-            .collect();
+        let candidates = slot_candidates(nested, SLOT_REPAIR_TARGET);
         if candidates.is_empty() {
             return (RepairResult::Failed, vec![]);
         }
@@ -86,28 +82,15 @@ crate::impl_erased_repair_strategy!(PriorityDeadEndStrategy, InvalidDeadEndIssue
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IdGenerator;
-    use crate::graph::Graph;
     use crate::ids::NodeId;
     use crate::random::MazeRng;
     use crate::repair::params::build_params;
+    use crate::repair::strategies::test_utils::{DeadEndStub, maze_2x2};
     use crate::repair::strategy::ErasedRepairStrategy;
-    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::space::SquareTessellation;
     use rand::SeedableRng;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use std::sync::Arc;
-
-    fn maze() -> Maze<SquareTessellation> {
-        let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
-        let mut graph = Graph::new();
-        for node in field.all_node_ids() {
-            graph.add_node(node);
-        }
-        Maze::new(field, graph)
-    }
 
     fn params() -> StrategyParams {
         build_params(
@@ -123,50 +106,12 @@ mod tests {
         InvalidDeadEndIssue::new_from_check("test", invalid)
     }
 
-    /// Records every call and returns a fixed outcome.
-    struct Stub {
-        name: &'static str,
-        succeed: bool,
-        calls: Rc<RefCell<Vec<&'static str>>>,
-    }
-
-    impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for Stub {
-        fn strategy_id(&self) -> &'static str {
-            "test_stub_dead_end_repair"
-        }
-
-        fn apply(
-            &self,
-            issue: &InvalidDeadEndIssue,
-            _: &Maze<T>,
-            _: &mut dyn RngCore,
-            _: &StrategyParams,
-            _: &PresetState,
-            _: &[NestedStrategyConfig<T>],
-        ) -> (RepairResult, Vec<MutationCommand>) {
-            self.calls.borrow_mut().push(self.name);
-            if self.succeed {
-                (
-                    RepairResult::Fixed { score: None },
-                    vec![MutationCommand::AddBidirectionalTeleport {
-                        a: issue.invalid[0],
-                        b: 1,
-                    }],
-                )
-            } else {
-                (RepairResult::Failed, vec![])
-            }
-        }
-    }
-
-    crate::impl_erased_repair_strategy!(Stub, InvalidDeadEndIssue);
-
     fn nested_stub(
         name: &'static str,
         succeed: bool,
         calls: &Rc<RefCell<Vec<&'static str>>>,
     ) -> NestedStrategyConfig<SquareTessellation> {
-        let strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>> = Box::new(Stub {
+        let strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>> = Box::new(DeadEndStub {
             name,
             succeed,
             calls: calls.clone(),
@@ -187,7 +132,7 @@ mod tests {
         <PriorityDeadEndStrategy as RepairStrategy<SquareTessellation, InvalidDeadEndIssue>>::apply(
             &PriorityDeadEndStrategy,
             &issue(invalid),
-            &maze(),
+            &maze_2x2(),
             &mut rng,
             &params(),
             &PresetState::empty(),
@@ -291,7 +236,7 @@ mod tests {
         >>::apply(
             &DeadEndGroupSelectStrategy,
             &group_issue,
-            &maze(),
+            &maze_2x2(),
             &mut rng,
             &group_params,
             &PresetState::empty(),

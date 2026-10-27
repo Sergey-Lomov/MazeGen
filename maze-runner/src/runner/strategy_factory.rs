@@ -23,7 +23,7 @@ use maze_core::{
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::Tessellation,
 };
@@ -79,6 +79,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "missing_regions" => Box::new(MissingRegionsStrategy),
         "reduce_scc_count" => Box::new(ReduceSccCountStrategy),
         "weighted_region_merge" => Box::new(WeightedRegionMergeStrategy),
+        "weighted_dead_end" => Box::new(WeightedDeadEndStrategy),
         "priority_region_merge" => Box::new(PriorityRegionMergeStrategy),
         "priority_dead_end" => Box::new(PriorityDeadEndStrategy),
         "priority_missing_loops" => Box::new(PriorityMissingLoopsStrategy),

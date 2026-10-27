@@ -33,7 +33,7 @@ use maze_core::{
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedRegionMergeStrategy,
+        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -586,6 +586,34 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 maze_core::quality_control::InvalidDeadEndIssue,
             >>::expected_nested(
                 &PriorityDeadEndStrategy
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "weighted_dead_end",
+            handles: INVALID_DEAD_END.as_str(),
+            params: strategy_params_dto(
+                <WeightedDeadEndStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::InvalidDeadEndIssue,
+                >>::params(&WeightedDeadEndStrategy),
+                &[],
+            ),
+            experimental: <WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::is_experimental(&WeightedDeadEndStrategy),
+            nested_suppressed_params: <WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::nested_suppressed_params(
+                &WeightedDeadEndStrategy
+            ),
+            nested_slots: nested_slots_dto(<WeightedDeadEndStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::InvalidDeadEndIssue,
+            >>::expected_nested(
+                &WeightedDeadEndStrategy
             )),
             visibility: None,
         },
@@ -1850,6 +1878,23 @@ mod tests {
         assert!(matches!(
             strategy.nested_slots[0].dispatch_kind,
             NestedDispatchKindDto::Priority
+        ));
+    }
+
+    #[test]
+    fn weighted_dead_end_exposes_a_weighted_dispatched_dead_end_slot() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "weighted_dead_end")
+            .expect("weighted_dead_end must be registered");
+        assert_eq!(strategy.handles, INVALID_DEAD_END.as_str());
+        assert!(strategy.params.is_empty());
+        assert_eq!(strategy.nested_slots.len(), 1);
+        assert_eq!(strategy.nested_slots[0].slot_id, "dead_end_repair_target");
+        assert_eq!(strategy.nested_slots[0].kind, INVALID_DEAD_END.as_str());
+        assert!(matches!(
+            strategy.nested_slots[0].dispatch_kind,
+            NestedDispatchKindDto::Weighted
         ));
     }
 

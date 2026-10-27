@@ -4,6 +4,7 @@ use crate::quality_control::{
     ExcessiveSccCountIssue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue,
 };
 use crate::repair::command::MutationCommand;
+use crate::repair::nested_dispatch::slot_candidates;
 use crate::repair::params::{
     StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params,
 };
@@ -132,10 +133,7 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         // slot via `expected_nested()`'s `max: Some(1)` — this is a defensive re-check, not the
         // primary guard, same posture other strategies take toward their own mandatory inputs
         // (e.g. `ExpandRegionPassageStrategy` on missing `issue.data`).
-        let matching: Vec<&NestedStrategyConfig<T>> = nested
-            .iter()
-            .filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET)
-            .collect();
+        let matching = slot_candidates(nested, SLOT_MERGE_TARGET);
         debug_assert!(
             matching.len() <= 1,
             "ReduceSccCountStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_MERGE_TARGET}\" should prevent more than one nested strategy filling it"

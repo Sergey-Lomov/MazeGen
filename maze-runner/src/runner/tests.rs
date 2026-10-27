@@ -534,6 +534,7 @@ mod build_strategy_tests {
         "missing_regions",
         "reduce_scc_count",
         "weighted_region_merge",
+        "weighted_dead_end",
         "remove_teleport",
         "teleport_group_select",
         "one_way_to_passage",

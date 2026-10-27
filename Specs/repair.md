@@ -363,10 +363,16 @@ concrete `I`, since `NestedStrategyConfig`'s candidates are `Box<dyn ErasedRepai
 whose own `I` may differ from the caller's.
 
 - **Who resolves weights**: `dispatch_weighted` itself carries no convention for how a weight is
-  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. Deriving a
-  weight (e.g. reading a `"weight"` key out of `NestedStrategyConfig.param_overrides`) is the
-  calling dispatcher's own convention; `WeightedRegionMergeStrategy` is the reference
-  implementation of one such convention.
+  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. The shared
+  convention lives next to it in `nested_dispatch.rs`: `WEIGHT_KEY` (`"weight"`),
+  `DEFAULT_WEIGHT` (`1.0`), `resolve_weight(param_overrides)` (missing, unparsable, non-finite or
+  `<= 0.0` falls back to the default) and `weighted_candidates(configs, slot_id)`, which wraps
+  already-filtered configs into `WeightedCandidate`s and debug-asserts that no candidate strategy
+  declares its own `"weight"` param. `WeightedRegionMergeStrategy` and `WeightedDeadEndStrategy`
+  both use it.
+- **Slot filtering**: `slot_candidates(nested, slot_id)` (`nested_dispatch.rs`) is the shared
+  defensive runtime filter that narrows `nested` to the configs filling one slot, in configured
+  order. Used by the priority/weighted dispatchers and `ReduceSccCountStrategy`.
 - **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
   `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
   returns `Failed` immediately without touching `rng`.
@@ -442,7 +448,7 @@ a `Priority`-kind slot (`NestedStrategyPanel`) mutate exactly that stored order.
 - Empty `candidates` returns `Failed` immediately without touching `rng`, same as
   `dispatch_weighted`.
 - **No weight resolution, no `"weight"` `param_overrides` convention** — a `Priority`-kind slot has
-  nothing analogous to `WeightedRegionMergeStrategy::resolve_weight`; a candidate's position in the
+  nothing analogous to `nested_dispatch::resolve_weight`; a candidate's position in the
   configured `nested` list is its entire selection signal.
 
 ### Rule, Stage, and the unified QualityControlEngine
@@ -990,6 +996,8 @@ issue returns `Fixed` without touching `rng` or `nested`. Each nested repair kee
 Commands from the winning candidate are returned unchanged, so the selector's per-candidate
 invalidation (`element_invalidated`) and group-budget accounting behave exactly as with a direct
 nested repair.
+
+`WeightedDeadEndStrategy` (`weighted_dead_end`, GitHub issue #855) is the randomized counterpart of `PriorityDeadEndStrategy`: same `INVALID_DEAD_END` issue, no params, same `dead_end_repair_target` slot (`min = 1`, `max = None`) but with `dispatch_kind = Weighted`. It passes the single-node issue unchanged to `dispatch_weighted`; each nested candidate's weight comes from `param_overrides["weight"]` via `nested_dispatch::resolve_weight` (invalid or missing falls back to `1.0`). A random candidate is picked by weight, and on `Failed` another is picked without replacement until one is `Fixed` or the pool is exhausted (`Failed`). Empty issue returns `Fixed` without touching `rng` or `nested`; no candidate in the slot returns `Failed`. Intended for `DeadEndGroupSelectStrategy`'s `fix_target` slot.
 
 ### MissingLoopsRandomStrategy
 
