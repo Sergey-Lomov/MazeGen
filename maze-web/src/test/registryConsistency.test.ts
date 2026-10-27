@@ -26,7 +26,7 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "cross_element_geometric_proximity", "cross_element_graph_proximity",
 ];
 
-// `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.sh` / `wasm-rebuild.ps1`;
+// `src/wasm/pkg/` is gitignored build output produced by `scripts/wasm-rebuild.sh` / `scripts/windows/wasm-rebuild.ps1`;
 // `npm test` requires it (`tools/require-wasm.mjs`).
 const wasmPath = resolve(dirname(__filename), "../wasm/pkg/maze_wasm_bg.wasm");
 

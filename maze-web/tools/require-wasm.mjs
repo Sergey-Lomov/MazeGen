@@ -6,6 +6,6 @@ import { fileURLToPath } from "node:url";
 
 const wasm = resolve(dirname(fileURLToPath(import.meta.url)), "../src/wasm/pkg/maze_wasm_bg.wasm");
 if (!existsSync(wasm)) {
-  console.error(`Missing ${wasm}\nBuild it first: wasm-rebuild.sh (macOS/Linux) or wasm-rebuild.ps1 (Windows).`);
+  console.error(`Missing ${wasm}\nBuild it first: scripts/wasm-rebuild.sh (macOS/Linux) or scripts/windows/wasm-rebuild.ps1 (Windows).`);
   process.exit(1);
 }

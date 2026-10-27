@@ -1,5 +1,5 @@
 # Rebuild WASM and copy artifacts to web source directory
-$root = $PSScriptRoot
+$root = Split-Path (Split-Path $PSScriptRoot)
 $wasmPkg = "$root\maze-wasm\pkg"
 $webPkg  = "$root\maze-web\src\wasm\pkg"
 

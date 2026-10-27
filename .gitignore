@@ -5,3 +5,5 @@ maze-web/coverage/
 node_modules/
 .claude/settings.local.json
 .claude/hooks/wasm-rebuild.log
+maze-web/*.png
+maze-web/*.log

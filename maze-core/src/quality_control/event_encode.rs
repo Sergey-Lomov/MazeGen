@@ -180,7 +180,7 @@ pub(crate) fn write_details_map(
 
 /// Encodes `IssuePayload::RegionNeedsExpansion`/`RegionNeedsShrink`'s `nodes` field — this binary
 /// QC event tape is intentionally build-coupled (produced and consumed by the same wasm+web build,
-/// never persisted across builds via `wasm-rebuild.ps1`), so no backward-compatibility/versioning
+/// never persisted across builds via `scripts/windows/wasm-rebuild.ps1`), so no backward-compatibility/versioning
 /// is attempted here; a wire-shape change like this one is a normal, unversioned edit. Wire order
 /// per region: the `region` node list, then a trailing 1-byte `preset_locked` flag (0/1 — GitHub
 /// issue #245's region extension), mirroring `write_edge_group_payload`'s own trailing flag.

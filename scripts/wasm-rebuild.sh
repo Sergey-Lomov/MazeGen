@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild WASM and copy artifacts to web source directory
 set -euo pipefail
-root="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 wasm_pkg="$root/maze-wasm/pkg"
 web_pkg="$root/maze-web/src/wasm/pkg"
 

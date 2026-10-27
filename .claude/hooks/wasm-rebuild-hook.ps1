@@ -11,7 +11,7 @@ $matched = [bool]($changed -match '^(maze-core|maze-wasm)/')
 
 if ($matched) {
     "$ts fired matched=true invoking-rebuild" | Add-Content $logFile
-    & "$root\wasm-rebuild.ps1"
+    & "$root\scripts\windows\wasm-rebuild.ps1"
     "$ts rebuild-script-exit=$LASTEXITCODE" | Add-Content $logFile
 } else {
     "$ts fired matched=false skipped" | Add-Content $logFile

@@ -553,7 +553,7 @@ instance changes) — never by the display transform. Reads (`getCellGeometry`, 
 synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. Point and region queries
 (`cellAtWorldPoint`, `cellsInWorldRegion`) are scoped to the field's cells by default, so a selection
 over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a branded tuple. The web
-test suite requires the wasm build (`tools/require-wasm.mjs`; `test.sh`/`test.ps1` rebuild it).
+test suite requires the wasm build (`tools/require-wasm.mjs`; `scripts/test.sh`/`scripts/windows/test.ps1` rebuild it).
 
 Status (GitHub issue #761, second step): `maze-web/src/pixi/geometry/` holds the generic consumers
 of core geometry. `pathRenderer.ts` draws the path commands of a `{ kind: "path" }` snapshot (the web cache requests the path commands too, see #763) (`tracePath` onto Pixi `Graphics` or a

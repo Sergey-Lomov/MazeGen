@@ -8,3 +8,10 @@ members = [
 ]
 
 resolver = "2"
+
+# Keep line tables for panic backtraces; full debuginfo (no debugger use) made target/ huge.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
