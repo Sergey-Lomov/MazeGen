@@ -91,6 +91,13 @@ export function getTopologyVersion(): number {
   return topologyVersion;
 }
 
+/// Whether the cache holds the snapshot of `cfg`'s tessellation instance (the test `getCellGeometry`
+/// uses before it warms lazily). Lets a reader that needs the topology the snapshot was built with
+/// -- which a lazy warm cannot know -- avoid triggering that warm.
+export function isCacheWarmFor(cfg: FieldConfig): boolean {
+  return instanceKey(cfg) === cachedInstance;
+}
+
 /// Batched prewarm -- call when the field, tessellation or the floor's folds change
 /// (confirmTessellation, project load, generateWithSeed, a topology edit), not per frame. One
 /// snapshot call covers every field cell and carries `topology` (`null` = no folds; compared by
