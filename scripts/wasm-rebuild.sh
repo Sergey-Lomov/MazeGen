@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Rebuild WASM and copy artifacts to web source directory
+# Rebuild WASM and copy artifacts to web source directory.
+# Default: dev profile (fast, incremental). Pass --release for an optimized build.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 wasm_pkg="$root/maze-wasm/pkg"
 web_pkg="$root/maze-web/src/wasm/pkg"
 
 echo "Building WASM..."
-if ! wasm-pack build "$root/maze-wasm" --target web; then
+mode="--dev"
+[ "${1:-}" = "--release" ] && mode="--release"
+if ! wasm-pack build "$root/maze-wasm" --target web "$mode"; then
   echo "wasm-pack failed" >&2
   exit 1
 fi

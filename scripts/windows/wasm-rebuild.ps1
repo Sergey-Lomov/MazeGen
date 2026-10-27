@@ -1,4 +1,7 @@
-# Rebuild WASM and copy artifacts to web source directory
+# Rebuild WASM and copy artifacts to web source directory.
+# Default: dev profile (opt-level 0, incremental) - ~6x faster than release.
+# Use -Release for an optimized build (slow, ~5 min).
+param([switch]$Release)
 $root = Split-Path (Split-Path $PSScriptRoot)
 $wasmPkg = "$root\maze-wasm\pkg"
 $webPkg  = "$root\maze-web\src\wasm\pkg"
@@ -7,7 +10,8 @@ $webPkg  = "$root\maze-web\src\wasm\pkg"
 (Get-Item "$root\maze-wasm\src\lib.rs").LastWriteTime = Get-Date
 
 Write-Host "Building WASM..." -ForegroundColor Cyan
-wasm-pack build "$root\maze-wasm" --target web
+$mode = if ($Release) { "--release" } else { "--dev" }
+wasm-pack build "$root\maze-wasm" --target web $mode
 if ($LASTEXITCODE -ne 0) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "Copying artifacts to $webPkg..." -ForegroundColor Cyan
