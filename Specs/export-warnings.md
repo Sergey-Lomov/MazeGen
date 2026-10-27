@@ -83,6 +83,7 @@ network.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
 - `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
 - `teleport_on_special_split` — a teleport endpoint lands on a specially rendered split shape.
+- `teleport_connector_covers_one_way` — see **Both renderers**.
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
 
@@ -174,6 +175,24 @@ For the following rules, the base surface is the mode's primary surface:
 
 ### Color/distinguishability warnings
 
+#### Teleport connector covering a one-way indicator
+
+`teleport_connector_covers_one_way` (GitHub issue #862): a drawn teleport connector, line plus its
+floor-colored gap, passes over a one-way indicator. One-way indicators draw below the teleport layer,
+so the covered passage reads as two-way. Not emitted when `teleportConnectorStyle === "none"`.
+
+- The connector path is the one the renderer draws: the check rebuilds the renderer's marker layout,
+  marker scaler and avoidance waypoints and routes with the same `routeTeleportConnectors`. It
+  therefore also fires where routing cannot help (both teleport ends on the line through the
+  indicator), and stays silent when routing already steered around it.
+- An indicator counts as covered when its bounding circle is closer to the connector polyline than
+  `connectorWidth / 2 + connectorGapWidth`. Walls: the circle is the indicator's own extent
+  (`oneWayIndicatorSpan` without highlight padding). Corridors: the chevron row's length or width,
+  whichever is larger.
+- Hover highlights only the covered one-way passages (`nodes` and `edges` of each passage), not the
+  teleport, using the same boundary highlight as the one-way corridor warnings.
+- Teleport edges are taken without cross-floor badge spreading, like the other teleport warnings.
+
 #### Grid vs background
 
 Compare `gridColor` with `background` only when `showGrid === true` and the grid is actually
@@ -251,6 +270,7 @@ actually rendered.
 - `teleport_marker_invisible`;
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
+- `teleport_connector_covers_one_way`;
 - `elevator_indistinguishable`;
 - `marker_index_covers_stop_line`.
 

@@ -2575,6 +2575,8 @@
   "image_export.vector_by_walls.warning_teleport_group_ambiguous_description": "This teleport connection group resolves to the same color and shape as another group, and the connector style is set to \"None\" — with no connecting line, there's nothing else telling the two groups apart on the exported image.",
   "image_export.vector_by_walls.warning_teleport_waypoint_overlap": "Teleport marker overlaps a start/finish marker",
   "image_export.vector_by_walls.warning_teleport_waypoint_overlap_description": "A teleport marker overlaps a start/finish marker. The two will visibly collide on the exported image.",
+  "image_export.warning.teleport_connector_covers_one_way": "Teleport connector covers a one-way passage indicator",
+  "image_export.warning.teleport_connector_covers_one_way_description": "A teleport connector is drawn over a one-way passage indicator and hides it, so the passage may look two-way on the exported image. Remove the one-way passage, move the teleport endpoints or change the connector style.",
   "image_export.vector_by_walls.warning_waypoint_on_split": "Start/finish marker sits on a split point",
   "image_export.vector_by_walls.warning_waypoint_on_split_description": "A start/finish marker sits on a split point. This can render incorrectly.",
   "image_export.vector_by_walls.warning_teleport_on_special_split": "Teleport endpoint sits on a split point",

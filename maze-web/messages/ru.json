@@ -2577,6 +2577,8 @@
   "image_export.vector_by_walls.warning_teleport_group_ambiguous_description": "Эта группа телепортов совпадает по цвету и форме с другой группой, а стиль коннектора выключен (\"None\") — без соединительной линии группы больше нечем отличить друг от друга на экспортированном изображении.",
   "image_export.vector_by_walls.warning_teleport_waypoint_overlap": "Маркер телепорта пересекается с маркером старта/финиша",
   "image_export.vector_by_walls.warning_teleport_waypoint_overlap_description": "Маркер телепорта накладывается на маркер старта/финиша. На экспортированном изображении они визуально наложатся друг на друга.",
+  "image_export.warning.teleport_connector_covers_one_way": "Коннектор телепорта перекрывает индикатор одностороннего прохода",
+  "image_export.warning.teleport_connector_covers_one_way_description": "Коннектор телепорта нарисован поверх индикатора одностороннего прохода и скрывает его, поэтому на экспортированном изображении проход может выглядеть двусторонним. Уберите односторонний проход, переместите концы телепорта или измените стиль коннектора.",
   "image_export.vector_by_walls.warning_waypoint_on_split": "Маркер старта/финиша находится на точке разделения",
   "image_export.vector_by_walls.warning_waypoint_on_split_description": "Маркер старта/финиша находится на точке разделения, такая ситуация может отображаться некорректно.",
   "image_export.vector_by_walls.warning_teleport_on_special_split": "Край телепорта находится на точке разделения",

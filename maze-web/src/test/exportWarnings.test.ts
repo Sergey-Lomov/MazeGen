@@ -939,3 +939,56 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
     expect(on.find((w) => w.id === "label_low_contrast")?.fields).toEqual(expect.arrayContaining(["startText", "startFill"]));
   });
 });
+
+describe("teleport_connector_covers_one_way (GitHub issue #862)", () => {
+  // Row of four cells; the 1 -> 2 passage is one-way, so its indicator sits on the wall between
+  // cells 1 and 2, exactly on the line a 0 <-> 3 teleport connector takes.
+  const row = [n(0, 0, 0), n(1, 1, 0), n(2, 2, 0), n(3, 3, 0)];
+  const rowEdges = [e(0, 1), e(1, 0), e(1, 2), e(2, 3), e(3, 2), teleport(0, 3), teleport(3, 0)];
+  const covering = (id: string) => (w: { id: string }) => w.id === id;
+
+  it("flags the covered one-way passage in Vector by walls", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings(), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].nodes.sort()).toEqual([1, 2]);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+
+  it("does not fire when the one-way passage is off the connector's path", () => {
+    const nodes = [...row, n(4, 1, 3), n(5, 2, 3)];
+    const edges = [...rowEdges, e(2, 1), e(4, 5)];
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, baseSettings(), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("does not fire when connectors are disabled", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings({ teleportConnectorStyle: "none" }), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("flags a straight connector that crosses the indicator", () => {
+    const straight = computeVectorByWallsWarnings(row, rowEdges, squareCfg, baseSettings({ teleportConnectorStyle: "straight" }), null, null);
+    expect(straight.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(1);
+  });
+
+  it("reports one entry per passage even when several connectors cover it", () => {
+    const edges = [...rowEdges, teleport(1, 2), teleport(2, 1)];
+    const warnings = computeVectorByWallsWarnings(row, edges, squareCfg, baseSettings({ teleportConnectorStyle: "straight" }), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+
+  it("does not fire without teleports", () => {
+    const warnings = computeVectorByWallsWarnings(row, rowEdges.filter((x) => x.kind !== "teleport"), squareCfg, baseSettings(), null, null);
+    expect(warnings.filter(covering("teleport_connector_covers_one_way"))).toHaveLength(0);
+  });
+
+  it("flags the covered one-way passage in Vector by corridors", () => {
+    const warnings = computeVectorByCorridorsWarnings(row, rowEdges, squareCfg, baseCorridorsSettings(), null, null);
+    const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+});

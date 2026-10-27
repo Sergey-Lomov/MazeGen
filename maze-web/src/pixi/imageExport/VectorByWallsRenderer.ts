@@ -8,6 +8,7 @@ import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
+import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
@@ -36,6 +37,12 @@ import {
  *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
  *  must not import the web-styling layer. */
 export const WARNING_HIGHLIGHT_COLOR = 0xffaa44;
+
+/** Warnings about a one-way passage itself: highlighted as the passage's shared boundary (walls) or
+ *  its two cells (corridors) rather than as plain cell regions. */
+const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
+  "one_way_low_contrast_corridor", "one_way_arrows_overflow_corridor", "teleport_connector_covers_one_way",
+]);
 
 /** Owns the hover-highlight overlay for one mode renderer's export warnings — factored out (GitHub
  *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same
@@ -143,7 +150,7 @@ export class ExportWarningHighlight<TSettings> {
       nodesByTile.set(key, group);
     }
     const tileGroups = Array.from(nodesByTile.values());
-    const isBoundaryWarning = warning.id === "one_way_low_contrast_corridor" || warning.id === "one_way_arrows_overflow_corridor";
+    const isBoundaryWarning = BOUNDARY_WARNING_IDS.has(warning.id);
     const renderBoundaryAsRegion = isBoundaryWarning && boundaryWarningsAsRegions;
     const boundaryRegionGroups = renderBoundaryAsRegion
       ? warning.edges.map(([from, to]) => [from, to])
@@ -734,7 +741,9 @@ export class VectorByWallsRenderer {
       rawEndpoints.start, rawEndpoints.finish,
     );
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset,
+      // Boundary band as wide as the live one-way indicator, like the analytics highlight; without it the band spans the whole distance between the two cell centers.
+      oneWayIndicatorSpan(buildOneWayStyle(state.vectorByWallsSettings)));
   }
 
   destroy(): void {

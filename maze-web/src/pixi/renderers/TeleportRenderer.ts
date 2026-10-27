@@ -5,8 +5,9 @@ import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeCurvedConnectors, routeRadialConnectors, routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
-import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
+import { arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { TeleportConnectorRouter } from "./teleportConnectorRouter";
+import { routeTeleportConnectors } from "./teleportConnectorPlan";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
@@ -175,34 +176,10 @@ export class TeleportRenderer {
       return groupKey !== undefined ? groupOverrides[groupKey] : undefined;
     };
 
-    // Includes the gap once (not doubled) — two adjacent connectors' gaps are allowed to
-    // overlap a bit, only their core lines need to stay visually distinct.
-    const gap = (style.connectorWidth + style.connectorGapWidth) * 1.5;
-    // `edgeGapWidth` (GitHub issue #302) folded into `markerBorderWidth` here — the marker's real
-    // visual footprint that `endpointCollisionRadius`/corridor-offset clamping must stay clear of is
-    // `size + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
-    // just `size + borderWidth` — omitting the gap ring here would let another connector's
-    // routed path visually cut through it even though it correctly avoids the marker/border proper.
-    const endpointRadius = (style.size / 2) * this.selectionScaler.maxFactor;
-    const endpointStyle: EndpointMarkerStyle = {
-      markerRadius: endpointRadius,
-      markerBorderWidth: style.borderWidth + style.edgeGapWidth,
-      connectorGapWidth: style.connectorGapWidth,
-      connectorWidth: style.connectorWidth,
-    };
-    const markerAvoidanceRadius =
-      (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
-    const routed =
-      style.connectorStyle === "curved"
-        ? routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints)
-        :
-      cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal"
-        ? routeRadialConnectors(edges, markerAvoidanceRadius, waypoints)
-        : style.connectorStyle === "orthogonal"
-        ? this.connectorRouter.route(
-            edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
-          )
-        : routeStraightConnectors(edges);
+    const routed = routeTeleportConnectors({
+      router: this.connectorRouter, edges, style, cfg, waypoints, avoidFieldExit, fieldCells,
+      markerMaxFactor: this.selectionScaler.maxFactor,
+    });
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
     edges.forEach((e, i) => {

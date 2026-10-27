@@ -7,6 +7,7 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 `maze-web/src/pixi/renderers/teleportConnectorAxes.ts` — bend axes per tessellation.
 `maze-web/src/pixi/renderers/teleportConnectorRouter.ts` — `TeleportConnectorRouter`, all collision-avoidance routing.
 `maze-web/src/pixi/renderers/teleportConnectorRouting.ts` — `routeStraightConnectors` (the `"straight"` style, no bends/collision-avoidance) and arrow placement.
+`maze-web/src/pixi/renderers/teleportConnectorPlan.ts` — `routeTeleportConnectors`, the single entry that picks the router for a `connectorStyle` and derives marker clearances from the line style. Shared by `TeleportRenderer` and the export warning `teleport_connector_covers_one_way`, so the warning judges the path that is drawn.
 `maze-web/src/pixi/renderers/TeleportRenderer.ts` — draws the routed result.
 
 ## Connector styles

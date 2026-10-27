@@ -40,6 +40,7 @@ import {
   type ColorVisibilityContext, type ColorVisibilityMaze, type VisibleColor,
 } from "./colorFieldRegistry";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
+import { computeTeleportConnectorCoversOneWayWarning } from "./teleportOneWayCoverage";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
@@ -53,6 +54,10 @@ export type ExportWarningId =
   | "teleport_marker_invisible"
   | "teleport_group_ambiguous"
   | "teleport_waypoint_overlap"
+  /** Both vector modes (GitHub issue #862) — a drawn teleport connector (line plus its gap) passes
+   *  over a one-way indicator, which draws below it, so the passage reads as two-way. Highlights
+   *  the covered one-way passages. */
+  | "teleport_connector_covers_one_way"
   | "waypoint_on_split"
   | "teleport_on_special_split"
   /** Start/finish marker caption, elevator floor badge or teleport floor badge text exceeds its plate
@@ -1263,6 +1268,13 @@ export function computeVectorByWallsWarnings(
     edges,
   );
 
+  const coversOneWay = computeTeleportConnectorCoversOneWayWarning({
+    mode: "walls", settings, nodes, edges, cfg, start, finish, teleportEdges,
+    unscopedNodes, unscopedEdges: teleportFloorContext?.unscopedEdges ?? edges,
+    activeFloorIndex: teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+  });
+  if (coversOneWay) warnings.push(coversOneWay);
+
   const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
@@ -1463,6 +1475,13 @@ export function computeVectorByCorridorsWarnings(
     cfg,
     edges,
   );
+
+  const coversOneWay = computeTeleportConnectorCoversOneWayWarning({
+    mode: "corridors", settings, nodes, edges, cfg, start, finish, teleportEdges,
+    unscopedNodes: allNodesForWarnings, unscopedEdges: teleportFloorContext?.unscopedEdges ?? edges,
+    activeFloorIndex: teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+  });
+  if (coversOneWay) warnings.push(coversOneWay);
 
   const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(

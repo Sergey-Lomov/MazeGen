@@ -348,8 +348,8 @@ same pass. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTar
 
 - ordinary marker/teleport/badge warning cells: independent inward-inset cells;
 - split warnings: merged outward-inset regions;
-- `one_way_low_contrast_corridor` and `one_way_arrows_overflow_corridor`:
-  - Vector by Walls: boundary highlight;
+- `one_way_low_contrast_corridor`, `one_way_arrows_overflow_corridor` and `teleport_connector_covers_one_way`:
+  - Vector by Walls: boundary highlight, band as wide as the live one-way indicator (`oneWayIndicatorSpan`);
   - Vector by Corridors: merged inward-inset region for each warning `from/to` endpoint
     pair;
 - warning `cells` for targets without node ids, such as cross-floor teleport badge cells:
