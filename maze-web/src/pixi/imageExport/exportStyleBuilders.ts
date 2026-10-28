@@ -218,12 +218,14 @@ export function buildMarkerIndexEndpointResolver(args: {
   teleportEdges: TeleportEdge[];
   teleportStyle: TeleportLineStyle;
   groupCustomization: boolean;
+  /** Teleport merge mode (GitHub issue #868). */
+  mergeTeleports?: boolean;
   groupOverrides: Record<string, TeleportGroupOverride>;
   verticalStyle: VerticalConnectionStyle;
 }): ResolveMarkerEndpointVisual {
-  const { teleportEdges, teleportStyle, groupCustomization, groupOverrides, verticalStyle } = args;
+  const { teleportEdges, teleportStyle, groupCustomization, mergeTeleports = true, groupOverrides, verticalStyle } = args;
 
-  const groups = groupCustomization ? buildTeleportGroups(teleportEdges) : [];
+  const groups = groupCustomization ? buildTeleportGroups(teleportEdges, mergeTeleports) : [];
   const groupKeyByPoint = new Map<string, string>();
   for (const group of groups) {
     for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
@@ -280,7 +282,7 @@ export function layoutExportMarkers(args: {
   markers: MarkerData[];
   teleportEdges: TeleportEdge[];
   verticalMarkers: VerticalConnectionMarker[];
-  settings: MarkerLayoutSettingsFields & Pick<TeleportSettingsFields, "teleportMarker">;
+  settings: MarkerLayoutSettingsFields & Pick<TeleportSettingsFields, "teleportMarker" | "teleportMergeMode">;
   verticalStyle: VerticalConnectionStyle;
   splitHostKeys: Set<string>;
 }): MarkerLayoutResult {
@@ -294,6 +296,7 @@ export function layoutExportMarkers(args: {
       teleportRadius: tm.size / 2 + (tm.borderWidth ?? 0) + (tm.gapWidth ?? 0),
       verticalRadius: (m) => verticalMarkerFootprint(verticalStyle, m),
       splitHostKeys: args.splitHostKeys,
+      mergeTeleports: settings.teleportMergeMode,
     },
     { mode: settings.markerLayout, spacing: MARKER_LAYOUT_SPACING, scale: settings.markerScale },
   );

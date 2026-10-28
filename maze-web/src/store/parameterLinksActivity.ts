@@ -37,7 +37,7 @@ export interface ParamActivitySettings {
   floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram" };
 }
 
-const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportGroupCustomization", "teleportFloorBadge."];
+const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportMergeMode", "teleportGroupCustomization", "teleportFloorBadge."];
 const CROSS_FLOOR_TELEPORT_PREFIX = "teleportFloorBadge.";
 const ONE_WAY_PATHS = new Set([
   "oneWayJoin", "oneWayColor", "oneWayGapWidth", "oneWaySize", "oneWayThickness",

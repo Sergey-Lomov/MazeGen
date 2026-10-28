@@ -348,6 +348,10 @@ export interface TeleportSettingsFields {
    *  `TeleportFloorBadgeSettings`. The settings subsection is hidden entirely when the project has
    *  no cross-floor teleport. */
   teleportFloorBadge: TeleportFloorBadgeSettings;
+  /** Teleport merge mode (GitHub issue #868). On (default): teleports whose endpoints land on the
+   *  same cell share one marker and one group. Off: every teleport draws its own marker (laid out by
+   *  the marker positioning layer) and forms its own group. */
+  teleportMergeMode: boolean;
   /** Off by default — see this interface's own doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;

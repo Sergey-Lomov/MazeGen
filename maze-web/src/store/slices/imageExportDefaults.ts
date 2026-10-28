@@ -152,6 +152,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   teleportArrowSize: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowSize,
   teleportConnectorGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorGapWidth,
   teleportFloorBadge: { ...DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge },
+  teleportMergeMode: true,
   teleportGroupCustomization: false,
   teleportGroupOverrides: {},
 };

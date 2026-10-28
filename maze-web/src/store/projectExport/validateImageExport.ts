@@ -176,6 +176,7 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),
     teleportConnectorGapWidth: optNumber(obj, "teleportConnectorGapWidth", d.teleportConnectorGapWidth),
     teleportFloorBadge: validateTeleportFloorBadgeSettings(obj?.teleportFloorBadge, `${path}.teleportFloorBadge`, d.teleportFloorBadge),
+    teleportMergeMode: optBool(obj, "teleportMergeMode", d.teleportMergeMode),
     teleportGroupCustomization: optBool(obj, "teleportGroupCustomization", d.teleportGroupCustomization),
     teleportGroupOverrides: validateTeleportGroupOverrides(obj?.teleportGroupOverrides, `${path}.teleportGroupOverrides`),
   };

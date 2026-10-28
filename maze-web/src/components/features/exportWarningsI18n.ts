@@ -10,6 +10,7 @@ import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
 const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous"],
+  teleport_merged_without_connectors: m["image_export.vector_by_walls.warning_teleport_merged_without_connectors"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap"],
   teleport_connector_covers_one_way: m["image_export.warning.teleport_connector_covers_one_way"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split"],
@@ -76,6 +77,7 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
 const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible_description"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous_description"],
+  teleport_merged_without_connectors: m["image_export.vector_by_walls.warning_teleport_merged_without_connectors_description"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap_description"],
   teleport_connector_covers_one_way: m["image_export.warning.teleport_connector_covers_one_way_description"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split_description"],

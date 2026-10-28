@@ -143,11 +143,11 @@ const startMarker: VectorByCorridorsSettings["startMarker"] = { shape: "circle",
 const finishMarker: VectorByCorridorsSettings["finishMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1, sizeAdaptation: 0, text: "F" };
 const teleportDefaults: Pick<VectorByCorridorsSettings,
   "teleportMarker" | "teleportConnectorColor" | "teleportConnectorWidth" | "teleportConnectorStyle" |
-  "teleportAvoidFieldExit" | "teleportArrowMode" | "teleportArrowPeriod" | "teleportArrowSize" | "teleportConnectorGapWidth" |
+  "teleportAvoidFieldExit" | "teleportMergeMode" | "teleportArrowMode" | "teleportArrowPeriod" | "teleportArrowSize" | "teleportConnectorGapWidth" |
   "teleportFloorBadge" | "teleportGroupCustomization" | "teleportGroupOverrides"
 > = {
   teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "diamond", size: 0.16, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 3 },
-  teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false,
+  teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false, teleportMergeMode: true,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
   teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
   teleportGroupCustomization: false, teleportGroupOverrides: {},

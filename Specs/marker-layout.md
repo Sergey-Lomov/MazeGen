@@ -9,7 +9,7 @@ A **host** is one node position (`hostKey`, from `buildNodePositions`, so a spli
 is its own host). Markers sharing a host get distinct **slots**, in this order:
 
 1. start / finish markers (`buildMazeMarkers`),
-2. the teleport point (all teleport edges touching that node share ONE slot and move together),
+2. the teleport point (all teleport edges touching that node share ONE slot and move together; with `teleportMergeMode` off, `mergeTeleports: false`, every teleport end gets its own slot and index labels are paired to those slots by order, best-effort),
 3. vertical-connection markers (`vertical_passage` / `elevator`).
 
 A host with a single marker is untouched. Cross-floor teleport **badge** ends are never laid out — they

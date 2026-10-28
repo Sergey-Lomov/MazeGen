@@ -414,3 +414,13 @@ describe("validateFloorLabelSettings", () => {
     expect(validateImageExport({ floorLabelModeChosen: false, vectorByWallsSettings: { floorLabel: {} } }, "imageExport").floorLabelModeChosen).toBe(false);
   });
 });
+
+describe("validateTeleportSettingsFields merge mode", () => {
+  it("falls back to the default (merged) for a project saved before the setting existed", () => {
+    expect(validateTeleportSettingsFields({}, "path", DEFAULT_TELEPORT_SETTINGS).teleportMergeMode).toBe(true);
+  });
+
+  it("keeps a saved off value", () => {
+    expect(validateTeleportSettingsFields({ teleportMergeMode: false }, "path", DEFAULT_TELEPORT_SETTINGS).teleportMergeMode).toBe(false);
+  });
+});

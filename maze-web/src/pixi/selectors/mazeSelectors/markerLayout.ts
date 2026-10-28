@@ -140,6 +140,9 @@ export interface MarkerLayoutInput {
   teleportRadius: number;
   verticalRadius: (m: VerticalConnectionMarker) => number;
   splitHostKeys?: Set<string>;
+  /** Teleport merge mode (GitHub issue #868). `false` gives every teleport end its own slot instead
+   *  of one shared slot per host. Omitted = `true`. */
+  mergeTeleports?: boolean;
 }
 
 export interface MarkerLayoutResult {
@@ -206,6 +209,7 @@ type Slot = { kind: "marker" | "teleport" | "vertical"; index: number; radius: n
  *  place (they carry their own collision relocation, issue #480). A teleport point shared by several
  *  edges (one node, many teleports) is one slot and moves as one. */
 export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOptions): MarkerLayoutResult {
+  const mergeTeleports = input.mergeTeleports ?? true;
   const hosts = new Map<string, { pos: [number, number]; slots: Slot[] }>();
   const slotsOf = (pos: [number, number]) => {
     const k = hostKey(pos);
@@ -223,17 +227,23 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
       const pos = e[end];
       const k = hostKey(pos);
       teleportEnds.push({ edge, end });
-      if (teleportHostSeen.has(k)) continue;
-      teleportHostSeen.add(k);
-      slotsOf(pos).push({ kind: "teleport", index: -1, radius: input.teleportRadius });
+      if (mergeTeleports) {
+        if (teleportHostSeen.has(k)) continue;
+        teleportHostSeen.add(k);
+      }
+      slotsOf(pos).push({ kind: "teleport", index: teleportEnds.length - 1, radius: input.teleportRadius });
     }
   });
   input.verticalMarkers.forEach((m, index) => slotsOf(m.pos).push({ kind: "vertical", index, radius: input.verticalRadius(m) }));
 
   const markers = [...input.markers];
   const verticalMarkers = [...input.verticalMarkers];
+  // Keyed by host when merged (one shared slot per host), by `teleportEnds` index when not.
   const teleportShift = new Map<string, [number, number]>();
   const teleportScale = new Map<string, number>();
+  const endShift = new Map<number, [number, number]>();
+  const endScale = new Map<number, number>();
+  const nthTeleport = nextOccurrence();
   const groups: MarkerLayoutResult["groups"] = [];
   const shifts = new Map<string, [number, number]>();
   const scales = new Map<string, number>();
@@ -269,28 +279,34 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
         const sk = nthVertical(shiftKey(vm.kind === "elevator" ? "elevator" : "vertical", host.pos));
         shifts.set(sk, [dx, dy]);
         if (scale < 1) scales.set(sk, scale);
-      } else {
+      } else if (mergeTeleports) {
         teleportShift.set(key, [dx, dy]);
         if (scale < 1) teleportScale.set(key, scale);
         shifts.set(shiftKey("teleport", host.pos), [dx, dy]);
         if (scale < 1) scales.set(shiftKey("teleport", host.pos), scale);
+      } else {
+        endShift.set(slot.index, [dx, dy]);
+        if (scale < 1) endScale.set(slot.index, scale);
+        const sk = nthTeleport(shiftKey("teleport", host.pos));
+        shifts.set(sk, [dx, dy]);
+        if (scale < 1) scales.set(sk, scale);
       }
     });
     groups.push({ host: host.pos, items });
   }
 
   let teleportEdges = input.teleportEdges;
-  if (teleportShift.size > 0) {
+  if (teleportShift.size > 0 || endShift.size > 0) {
     teleportEdges = input.teleportEdges.map((e) => ({ ...e }));
-    for (const { edge, end } of teleportEnds) {
+    teleportEnds.forEach(({ edge, end }, endIndex) => {
       const k = hostKey(input.teleportEdges[edge][end]);
-      const shift = teleportShift.get(k);
-      if (!shift) continue;
+      const shift = mergeTeleports ? teleportShift.get(k) : endShift.get(endIndex);
+      if (!shift) return;
       const p = input.teleportEdges[edge][end];
       teleportEdges[edge][end] = [p[0] + shift[0], p[1] + shift[1]];
-      const sc = teleportScale.get(k);
+      const sc = mergeTeleports ? teleportScale.get(k) : endScale.get(endIndex);
       if (sc !== undefined) teleportEdges[edge][end === "from" ? "fromScale" : "toScale"] = sc;
-    }
+    });
   }
   return { markers, teleportEdges, verticalMarkers, groups, shifts, scales };
 }

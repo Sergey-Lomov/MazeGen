@@ -71,10 +71,12 @@ type ProjectGroupArgs = {
   avoidFieldExit: boolean;
   start: number | null;
   finish: number | null;
+  /** Teleport merge mode (GitHub issue #868) — `false` makes every teleport its own group. */
+  mergeTeleports?: boolean;
 };
 
 export function buildProjectTeleportGroups(args: ProjectGroupArgs): TeleportGroup[] {
-  const { nodes, edges, cfg, floors, avoidFieldExit, start, finish } = args;
+  const { nodes, edges, cfg, floors, avoidFieldExit, start, finish, mergeTeleports = true } = args;
   const floorList = floors.length > 0 ? floors : [{ id: "" }];
   // Same `{ floorContext, spread }` the vector renderers build; only `activeFloorIndex` varies per floor.
   const { floorContext, spread } = buildTeleportFloorInputs({
@@ -91,7 +93,7 @@ export function buildProjectTeleportGroups(args: ProjectGroupArgs): TeleportGrou
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const nodeById = new Map(scoped.nodes.map((n) => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, { ...floorContext, activeFloorIndex }, spread);
-    return buildTeleportGroups(teleportEdges);
+    return buildTeleportGroups(teleportEdges, mergeTeleports);
   });
   return mergeTeleportGroupsAcrossFloors(perFloor);
 }

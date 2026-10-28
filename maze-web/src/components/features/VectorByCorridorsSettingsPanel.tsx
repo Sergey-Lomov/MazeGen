@@ -607,6 +607,7 @@ export function VectorByCorridorsSettingsPanel() {
                 edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
                 avoidFieldExit: "teleportAvoidFieldExit",
+                mergeMode: "teleportMergeMode",
                 connectorColor: "teleportConnectorColor",
                 connectorWidth: null,
                 connectorGapWidth: "teleportConnectorGapWidth",

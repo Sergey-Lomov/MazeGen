@@ -79,6 +79,7 @@ network.
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance
+- `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled, so the groups cannot be told apart.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
 - `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
@@ -128,6 +129,7 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `teleport_marker_invisible` — an exit-only teleport endpoint has no visible border and its
   floor-colored outline fill leaves no visible marker.
 - `teleport_group_ambiguous` — multiple teleport groups resolve to the same visible appearance
+- `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
 - `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.

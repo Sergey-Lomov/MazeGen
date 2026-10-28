@@ -611,6 +611,7 @@ export function VectorByWallsSettingsPanel() {
                 edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
                 avoidFieldExit: "teleportAvoidFieldExit",
+                mergeMode: "teleportMergeMode",
                 connectorColor: "teleportConnectorColor",
                 connectorWidth: null,
                 connectorGapWidth: "teleportConnectorGapWidth",

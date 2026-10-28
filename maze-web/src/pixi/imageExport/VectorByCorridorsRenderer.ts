@@ -440,12 +440,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Groups computed once here and handed to `buildTeleportWidenMarkers`, rather than it calling
     // `buildTeleportGroups` again itself — `TeleportRenderer.render` below already recomputes the
     // same grouping internally for the same `teleportEdges`, so this avoids a third redundant pass.
-    const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(layout.teleportEdges) : [];
+    const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(layout.teleportEdges, settings.teleportMergeMode) : [];
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = settings.teleportGroupCustomization
       ? resolveRendererGroupOverrides(teleportGroups, withResolvedGroupOverrides(settings).teleportGroupOverrides, {
         nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
         avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+        mergeTeleports: settings.teleportMergeMode,
       })
       : settings.teleportGroupOverrides;
     drawMarkerWidenPatches(
@@ -505,6 +506,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       waypoints: teleportWaypoints,
       avoidFieldExit: settings.teleportAvoidFieldExit,
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
+      mergeTeleports: settings.teleportMergeMode,
     });
 
     this.markers.render({ markers: markerData, scaler });
@@ -523,6 +525,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         teleportEdges: layout.teleportEdges,
         teleportStyle,
         groupCustomization: settings.teleportGroupCustomization,
+        mergeTeleports: settings.teleportMergeMode,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });

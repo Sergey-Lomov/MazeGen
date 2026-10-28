@@ -154,6 +154,17 @@ describe("applyMarkerLayout", () => {
     expect(edges[0].from).toEqual([10, 10]);
   });
 
+  it("mergeTeleports: false gives each edge's end on a shared point its own slot", () => {
+    const edges: TeleportEdge[] = [
+      { from: [10, 10], to: [200, 0], oneWay: false },
+      { from: [10, 10], to: [0, 200], oneWay: false },
+    ];
+    const r = applyMarkerLayout({ markers: [], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, mergeTeleports: false }, opts);
+    expect(r.teleportEdges[0].from).not.toEqual(r.teleportEdges[1].from);
+    expect(r.teleportEdges[0].to).toEqual([200, 0]);
+    expect(r.teleportEdges[1].to).toEqual([0, 200]);
+  });
+
   it("leaves cross-floor badge ends in place", () => {
     const edges: TeleportEdge[] = [{ from: [10, 10], to: [30, 30], oneWay: false, toFloor: 2 }];
     const r = applyMarkerLayout({ markers: [mk([30, 30])], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 }, opts);

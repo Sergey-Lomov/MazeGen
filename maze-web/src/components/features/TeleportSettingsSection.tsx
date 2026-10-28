@@ -62,8 +62,9 @@ export function useTeleportGroupsAndCollisions(
     if (!settings.teleportGroupCustomization) return [];
     return buildProjectTeleportGroups({
       nodes: rawNodes, edges: rawEdges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start, finish,
+      mergeTeleports: settings.teleportMergeMode,
     });
-  }, [settings.teleportGroupCustomization, settings.teleportAvoidFieldExit, rawNodes, rawEdges, cfg, floors, start, finish]);
+  }, [settings.teleportGroupCustomization, settings.teleportAvoidFieldExit, settings.teleportMergeMode, rawNodes, rawEdges, cfg, floors, start, finish]);
 
   const teleportCollisionKeys = useMemo(() => {
     if (settings.teleportConnectorStyle !== "none") return new Set<string>();
@@ -306,6 +307,7 @@ export function TeleportSettingsSection<P extends string>({
     edgeGapWidth: P | null;
     connectorStyle: P | null;
     avoidFieldExit: P | null;
+    mergeMode: P | null;
     connectorColor: P | null;
     connectorWidth: P | null;
     connectorGapWidth: P | null;
@@ -399,6 +401,12 @@ export function TeleportSettingsSection<P extends string>({
           priorityColors={{ fillColor: edgeColorPriority, borderColor: edgeBorderColorPriority }}
           defaultColors={{ fillColor: edgeColorDefault, borderColor: edgeBorderColorDefault }}
           fields={{ fillColor: edgeColorField, borderColor: edgeBorderColorField }}
+        />
+        <LinkedToggleRow
+          label={m["image_export.vector_by_walls.teleport_merge_mode"]()}
+          checked={settings.teleportMergeMode}
+          onChange={(v) => onChange({ teleportMergeMode: v })}
+          linkTarget={linkTargets.mergeMode}
         />
       </div>}
 

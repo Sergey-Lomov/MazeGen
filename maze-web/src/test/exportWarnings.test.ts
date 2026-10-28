@@ -39,7 +39,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     startMarker: defaultMarker, finishMarker: defaultMarker,
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -67,7 +67,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
-    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
@@ -213,6 +213,26 @@ describe("computeVectorByWallsWarnings", () => {
       });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "teleport_group_ambiguous")).toHaveLength(0);
+    });
+  });
+
+  describe("teleport_merged_without_connectors", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 1), n(2, 4, 4)];
+    const sharing = [teleport(0, 1), teleport(0, 2)];
+    const run = (edges: ReturnType<typeof teleport>[], over: Parameters<typeof baseSettings>[0]) =>
+      computeVectorByWallsWarnings(nodes, edges, squareCfg, baseSettings(over), null, null)
+        .filter((w) => w.id === "teleport_merged_without_connectors");
+
+    it("flags merged teleports when connectors are disabled", () => {
+      const matches = run(sharing, { teleportConnectorStyle: "none", teleportMergeMode: true });
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes.sort()).toEqual([0]);
+    });
+
+    it("does not flag with merge mode off, connectors on, or no shared cell", () => {
+      expect(run(sharing, { teleportConnectorStyle: "none", teleportMergeMode: false })).toHaveLength(0);
+      expect(run(sharing, { teleportConnectorStyle: "straight", teleportMergeMode: true })).toHaveLength(0);
+      expect(run([teleport(0, 1)], { teleportConnectorStyle: "none", teleportMergeMode: true })).toHaveLength(0);
     });
   });
 

@@ -53,6 +53,9 @@ import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupC
 export type ExportWarningId =
   | "teleport_marker_invisible"
   | "teleport_group_ambiguous"
+  /** Merge mode on (GitHub issue #868), teleports really share a cell, and connectors are off — the
+   *  merged marker shows no real links. Highlights the teleports drawn merged. */
+  | "teleport_merged_without_connectors"
   | "teleport_waypoint_overlap"
   /** Both vector modes (GitHub issue #862) — a drawn teleport connector (line plus its gap) passes
    *  over a one-way indicator, which draws below it, so the passage reads as two-way. Highlights
@@ -401,8 +404,34 @@ function computeTeleportWarnings(
   // there is no connector to tell them apart visually (mirrors the panel's own pre-existing
   // check). One warning total, covering every colliding group at once — not one per group — but
   // its `nodes` still spans every affected group so hovering it highlights all of them. ---
+  if (settings.teleportMergeMode && settings.teleportConnectorStyle === "none") {
+    const edgeKeysByPoint = new Map<string, Set<string>>();
+    const nodesByPoint = new Map<string, Set<number>>();
+    for (const e of teleportEdges) {
+      const edgeKey = teleportEdgeKey(e);
+      for (const [pos, nodeId, floor] of [[e.from, e.fromNode, e.fromFloor], [e.to, e.toNode, e.toFloor]] as const) {
+        if (floor !== undefined) continue;
+        const pk = coordKey(pos[0], pos[1]);
+        (edgeKeysByPoint.get(pk) ?? edgeKeysByPoint.set(pk, new Set()).get(pk)!).add(edgeKey);
+        if (nodeId !== undefined) (nodesByPoint.get(pk) ?? nodesByPoint.set(pk, new Set()).get(pk)!).add(nodeId);
+      }
+    }
+    const mergedNodeIds = new Set<number>();
+    for (const [pk, keys] of edgeKeysByPoint) {
+      if (keys.size > 1) for (const id of nodesByPoint.get(pk) ?? []) mergedNodeIds.add(id);
+    }
+    if (mergedNodeIds.size > 0) {
+      warnings.push({
+        id: "teleport_merged_without_connectors",
+        key: "teleport_merged_without_connectors",
+        nodes: Array.from(mergedNodeIds),
+        edges: [],
+      });
+    }
+  }
+
   if (settings.teleportConnectorStyle === "none") {
-    const groups = buildTeleportGroups(teleportEdges);
+    const groups = buildTeleportGroups(teleportEdges, settings.teleportMergeMode);
     const resolvedKey = (groupKey: string) => {
       const o = settings.teleportGroupOverrides[groupKey];
       return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
@@ -459,6 +488,7 @@ function computeTeleportWarnings(
       teleportRadius: teleportRadius + (settings.teleportMarker.gapWidth ?? 0),
       verticalRadius: () => 0,
       splitHostKeys: buildSplitHostKeys(new Map(allNodes.map((n) => [n.id, n])), edges, cfg),
+      mergeTeleports: settings.teleportMergeMode,
     },
     { mode: settings.markerLayout, spacing: MARKER_LAYOUT_SPACING, scale: settings.markerScale },
   );
@@ -733,7 +763,7 @@ function teleportConnectorEntries(
   if (!settings.teleportGroupCustomization) {
     return [{ foreground: visibleColor(ctx, "teleportConnector"), background, nodes: baseNodes }];
   }
-  const groups = buildTeleportGroups(teleportEdges);
+  const groups = buildTeleportGroups(teleportEdges, settings.teleportMergeMode);
   const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
   const entries: ContrastEntry[] = [];
   for (const group of groups) {
@@ -761,7 +791,7 @@ function teleportBadgeColorEntries(
   if (!settings.teleportGroupCustomization) {
     return [{ foreground: visibleColor(ctx, defaultField), background, cells: teleportBadgeCells(crossFloorEdges, displayFloorIndex, cfg) }];
   }
-  const groups = buildTeleportGroups(teleportEdges);
+  const groups = buildTeleportGroups(teleportEdges, settings.teleportMergeMode);
   const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
   return groups.map((group) => {
     const groupEdges = group.edgeKeys.map((key) => edgesByKey.get(key)).filter((edge): edge is TeleportEdge => edge !== undefined && (edge.toFloor !== undefined || edge.fromFloor !== undefined));
@@ -936,7 +966,7 @@ function computeMarkerIndexStopLineWarning(
   // Plate placement depends only on each endpoint marker's outer radius, never on its colors, so
   // the teleport gap color and group customization are irrelevant here.
   const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
-    teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, groupOverrides: {}, verticalStyle,
+    teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, mergeTeleports: settings.teleportMergeMode, groupOverrides: {}, verticalStyle,
   });
   const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual);
   const plates = labels.map((label) => {
@@ -1140,7 +1170,7 @@ function addCommonContrastWarnings(
   if (start !== null && nodeById.has(start)) addMarker(settings.startMarker.borderWidth, [start], "startFill", "startBorder");
   if (finish !== null && nodeById.has(finish)) addMarker(settings.finishMarker.borderWidth, [finish], "finishFill", "finishBorder");
   if (teleport.length > 0) {
-    const groups = settings.teleportGroupCustomization ? buildTeleportGroups(teleportEdges) : [];
+    const groups = settings.teleportGroupCustomization ? buildTeleportGroups(teleportEdges, settings.teleportMergeMode) : [];
     const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
     const teleportBorderWidth = settings.teleportMarker.borderWidth;
     if (groups.length === 0) {

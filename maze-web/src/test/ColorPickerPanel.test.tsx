@@ -41,7 +41,7 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
-    teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
+    teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
     teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     teleportGroupCustomization: false, teleportGroupOverrides: {},

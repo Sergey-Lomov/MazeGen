@@ -512,9 +512,10 @@ export class VectorByWallsRenderer {
   ): Record<string, TeleportGroupOverride> {
     const settings = withResolvedGroupOverrides(state.vectorByWallsSettings);
     if (!settings.teleportGroupCustomization) return settings.teleportGroupOverrides;
-    return resolveRendererGroupOverrides(buildTeleportGroups(teleportEdges), settings.teleportGroupOverrides, {
+    return resolveRendererGroupOverrides(buildTeleportGroups(teleportEdges, settings.teleportMergeMode), settings.teleportGroupOverrides, {
       nodes: state.nodes, edges: state.edges, cfg: state.activeFieldConfig, floors: state.floors,
       avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+      mergeTeleports: settings.teleportMergeMode,
     });
   }
 
@@ -670,6 +671,7 @@ export class VectorByWallsRenderer {
       waypoints: teleportWaypoints,
       avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
       fieldCells: cells,
+      mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
     });
 
     this.markers.render({ markers: markerData, scaler });
@@ -688,6 +690,7 @@ export class VectorByWallsRenderer {
         teleportEdges: layout.teleportEdges,
         teleportStyle,
         groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
+        mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });

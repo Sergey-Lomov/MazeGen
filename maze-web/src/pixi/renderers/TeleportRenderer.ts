@@ -47,6 +47,7 @@ export class TeleportRenderer {
   private selectionFloorNavigable = false;
   // Marker size adaptation (GitHub issue #819): per-cell radius factors for markers and badges.
   private selectionScaler: MarkerScaler = NO_MARKER_SCALING;
+  private mergeTeleports = true;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
   // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
@@ -96,7 +97,11 @@ export class TeleportRenderer {
     /** Marker size adaptation (GitHub issue #819) — scales each endpoint marker's and floor badge's
      *  radius by its cell's factor; border/gap/connector widths stay as configured. */
     scaler?: MarkerScaler;
+    /** Teleport merge mode (GitHub issue #868) — `false` makes every teleport its own group, so
+     *  teleports whose endpoints coincide are not merged. Defaults to `true`. */
+    mergeTeleports?: boolean;
   }): void {
+    this.mergeTeleports = data.mergeTeleports ?? true;
     this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -133,7 +138,7 @@ export class TeleportRenderer {
     // color overrides) is on — a group's own connectors are drawn immediately before its own
     // points, then the next group's connectors, etc. (see `renderGroups`), so `groupCustomization`
     // only gates whether `groupOverrides` are applied, not the grouping/ordering itself.
-    const groups = buildTeleportGroups(edges);
+    const groups = buildTeleportGroups(edges, this.mergeTeleports);
     this.selectionGroups = groups;
     this.selectionStyle = style;
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
@@ -166,7 +171,7 @@ export class TeleportRenderer {
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
-    const groups = groupCustomization ? buildTeleportGroups(edges) : [];
+    const groups = groupCustomization ? buildTeleportGroups(edges, this.mergeTeleports) : [];
     const groupKeyByPoint = new Map<string, string>();
     for (const group of groups) {
       for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
