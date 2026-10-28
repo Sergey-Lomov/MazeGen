@@ -1217,6 +1217,16 @@ Both output modes show a result-info block (image size in px for digital, sheet 
 
 `MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (which resolves to `activeFieldConfig`, as generation/post-edit/analytics do) and to `refit()`'s `showsMaze` gate. Image-export renderers therefore use the active floor's shape consistently for drawing, measured export margins, preview placement, and the exported PNG. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.
 
+## Seams in export (GitHub issue #842)
+
+Topology seams (`Specs/topology.md`, "Seam rendering model") need no export code of their own: both vector modes read `buildMazeWalls` / `buildCorridorSegments`, which already resolve a glued face through the shared seam model (`getSeamModel`). Export never derives a partner, a correspondence or an orientation from coordinates, and every export format draws the same primitives as the canvas.
+
+- **Vector by corridors.** A passage through a seam is one segment per side, from the cell centre to the contact point of its own glued face (`v1TouchesSplit: true`, so the end is `butt`). Both tile kinds draw exactly that: line tiles (miter and round) hold a single port per side, `contact - centre`; the contour engine builds one mouth on each side's own face. Nothing runs between the two centres, so no corridor crosses the field.
+- **Vector by walls.** A closed seam face is a wall on each side, along that side's own face; an open passage removes the wall on both sides and leaves every neighbouring wall.
+- **Not exported.** Seam arrows and graph-hop stubs are canvas aids and are not part of export; teleports, markers and vertical connections are local elements and are exported as without seams.
+
+Tests: `maze-web/src/test/seamExport.test.ts` runs the real selectors into the real geometry of both modes on cylinder, torus (both seam directions) and Möbius, with no app launch. Corridors: line-tile ports and contour extent and mouths. Walls: the real `WallRenderer` with a recording `Graphics`.
+
 ## Teleport merge mode (GitHub issue #868)
 
 `teleportMergeMode` (Teleports > Edges, default `true`, shared by both vector modes). On: teleports whose endpoints coincide share one marker and one group (`buildTeleportGroups` union-find by coordinate). Off: `buildTeleportGroups(edges, false)` makes every teleport its own group, and `applyMarkerLayout` (`mergeTeleports: false`) gives every teleport end its own slot, so markers on one host are laid out by the marker positioning layer instead of sharing a slot. Group customization, project-wide group building (`buildProjectTeleportGroups`) and the warnings use the same flag.
