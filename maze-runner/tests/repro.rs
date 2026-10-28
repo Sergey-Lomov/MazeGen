@@ -375,7 +375,7 @@ fn repro_95_qc_only_official_export() {
 /// mode skips algorithmic generation entirely, so every edge in the final graph is directly
 /// attributable to `build_preset_state`'s endpoint resolution — this is the "from beginning to
 /// end through `run_from_config`" integration coverage `Specs/preset-connections.md`'s "Split
-/// nodes" section calls for, complementing `preset_state_tests.rs`'s unit-level coverage of the
+/// nodes" section calls for, complementing `preset_state_tests/`'s unit-level coverage of the
 /// same resolution logic.
 #[test]
 fn repro_231_preset_connection_addressing_declared_split_slot_routes_through_that_node() {
