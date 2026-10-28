@@ -36,6 +36,7 @@ export type IssuePayload =
   | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> }
+  | { kind: "InvalidDeadEnd"; nodes: Map<string, RegionGroup[]> }
   | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> }
   | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> }
   | { kind: "InvalidCrossElementGroup"; groups: Map<string, CrossElementEntry[][]> }
@@ -509,6 +510,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
     return { value: { kind: "InvalidCrossElementGroup", groups }, next };
   }
   if (tag === 15) {
+    const { value: nodes, next } = readStrKeyedNodeLists(bytes, offset + 1);
+    return { value: { kind: "InvalidDeadEnd", nodes }, next };
+  }
+  if (tag === 16) {
     const count = readU32(bytes, offset + 1);
     let pos = offset + 5;
     const pairs: UndecidedPair[] = [];

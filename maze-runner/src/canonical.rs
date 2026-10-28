@@ -301,6 +301,9 @@ fn canonical_payload(payload: &IssuePayload, cells: &CellIndex) -> Value {
         IssuePayload::InvalidElevatorStop { nodes } => {
             json!({ "invalid_elevator_stop": by_source(nodes, |r| region(cells, r)) })
         }
+        IssuePayload::InvalidDeadEnd { nodes } => {
+            json!({ "invalid_dead_end": by_source(nodes, |r| region(cells, r)) })
+        }
         IssuePayload::AreaDeficit { areas } => {
             json!({ "area_deficit": by_source(areas, |a| json!(a)) })
         }

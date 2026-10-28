@@ -7,7 +7,12 @@ pub mod add_split;
 pub mod add_vertical_passage;
 pub mod cross_element_group_select;
 mod cycle_cut_set;
+pub mod dead_end_group_select;
 pub mod dead_end_priority;
+pub mod dead_end_to_passage;
+pub mod dead_end_to_split;
+pub mod dead_end_to_teleport;
+pub mod dead_end_to_vertical_passage;
 pub mod elevator_group_select;
 pub mod elevator_region_merge;
 pub mod elevator_stop_group_select;
@@ -32,6 +37,7 @@ pub mod one_way_group_select;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
 pub mod pool;
+pub mod priority_dead_end;
 pub mod priority_missing_loops;
 pub mod priority_region_merge;
 pub mod random_endpoints;
@@ -59,6 +65,7 @@ pub mod teleport_region_merge;
 pub mod vertical_passage_group_select;
 pub mod vertical_passage_region_merge;
 pub mod vertical_target;
+pub mod weighted_dead_end;
 pub mod weighted_region_merge;
 
 pub use add_elevator::AddElevatorStrategy;
@@ -94,9 +101,19 @@ pub use cross_element_group_select::{
     SLOT_TELEPORT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_TELEPORT_FIX,
     SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_VERTICAL_PASSAGE_FIX,
 };
+pub use dead_end_group_select::{
+    DeadEndGroupSelectStrategy, SLOT_FIX_TARGET as DEAD_END_GROUP_SELECT_SLOT_FIX_TARGET,
+};
 pub use dead_end_priority::{
     PARAM_SRC_MODE, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_OPTIONS, SRC_MODE_PARAM, SRC_MODE_RANDOM,
 };
+pub use dead_end_to_passage::PARAM_ONE_WAY_CHANCE as DEAD_END_TO_VERTICAL_PASSAGE_PARAM_ONE_WAY_CHANCE;
+pub use dead_end_to_passage::{
+    DeadEndToPassageStrategy, PARAM_ONE_WAY_CHANCE as DEAD_END_TO_PASSAGE_PARAM_ONE_WAY_CHANCE,
+};
+pub use dead_end_to_split::DeadEndToSplitStrategy;
+pub use dead_end_to_teleport::DeadEndToTeleportStrategy;
+pub use dead_end_to_vertical_passage::DeadEndToVerticalPassageStrategy;
 pub use elevator_group_select::{
     ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET,
 };
@@ -149,6 +166,9 @@ pub use one_way_group_select::{
 };
 pub use one_way_to_passage::OneWayToPassageStrategy;
 pub use one_way_to_wall::OneWayToWallStrategy;
+pub use priority_dead_end::{
+    PriorityDeadEndStrategy, SLOT_REPAIR_TARGET as PRIORITY_DEAD_END_SLOT_REPAIR_TARGET,
+};
 pub use priority_missing_loops::{
     PriorityMissingLoopsStrategy,
     SLOT_LOOP_SEED_TARGET as PRIORITY_MISSING_LOOPS_SLOT_LOOP_SEED_TARGET,
@@ -227,21 +247,29 @@ pub use vertical_passage_region_merge::{
     PARAM_DIRECTION_BALANCE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE,
     VerticalPassageRegionMergeStrategy,
 };
+pub use weighted_dead_end::{
+    SLOT_REPAIR_TARGET as WEIGHTED_DEAD_END_SLOT_REPAIR_TARGET, WeightedDeadEndStrategy,
+};
 pub use weighted_region_merge::{
     SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET, WeightedRegionMergeStrategy,
 };
 
 #[cfg(test)]
 pub(crate) mod test_utils {
-    use crate::Maze;
     use crate::generation::PresetState;
+    use crate::graph::Graph;
+    use crate::quality_control::InvalidDeadEndIssue;
     use crate::quality_control::apply_commands::apply_commands;
     use crate::quality_control::issue::IssueRequirement;
+    use crate::repair::command::MutationCommand;
     use crate::repair::params::StrategyParams;
     use crate::repair::result::RepairResult;
     use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
     use crate::space::Tessellation;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::{IdGenerator, Maze};
     use rand::RngCore;
+    use std::sync::Arc;
 
     /// Calls `strategy.apply` then immediately applies the returned commands to `maze` — mirrors
     /// `Rule::check_and_repair_typed`'s own apply-then-commit sequencing (GitHub issue #118), so
@@ -279,5 +307,56 @@ pub(crate) mod test_utils {
             preset_state,
             &[],
         )
+    }
+
+    /// Fixed-outcome `INVALID_DEAD_END` repair that records its `name` on every call — shared
+    /// by the dead-end dispatcher tests (`priority_dead_end`, `weighted_dead_end`).
+    pub struct DeadEndStub {
+        pub name: &'static str,
+        pub succeed: bool,
+        pub calls: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>>,
+    }
+
+    impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for DeadEndStub {
+        fn strategy_id(&self) -> &'static str {
+            "test_stub_dead_end_repair"
+        }
+
+        fn apply(
+            &self,
+            issue: &InvalidDeadEndIssue,
+            _: &Maze<T>,
+            _: &mut dyn RngCore,
+            _: &StrategyParams,
+            _: &PresetState,
+            _: &[NestedStrategyConfig<T>],
+        ) -> (RepairResult, Vec<MutationCommand>) {
+            self.calls.borrow_mut().push(self.name);
+            if self.succeed {
+                (
+                    RepairResult::Fixed { score: None },
+                    vec![MutationCommand::AddBidirectionalTeleport {
+                        a: issue.invalid[0],
+                        b: 1,
+                    }],
+                )
+            } else {
+                (RepairResult::Failed, vec![])
+            }
+        }
+    }
+
+    crate::impl_erased_repair_strategy!(DeadEndStub, InvalidDeadEndIssue);
+
+    /// Blank 2x2 square maze (nodes, no edges) for dead-end dispatcher tests.
+    pub fn maze_2x2() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        Maze::new(field, graph)
     }
 }

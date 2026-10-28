@@ -45,6 +45,8 @@ impl IssueKind {
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
             IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
             IssueKind::IndeterminateDistance => "indeterminate_distance",
+            IssueKind::InvalidDeadEnd => "invalid_dead_end",
+            IssueKind::InvalidDeadEndGroup => "invalid_dead_end_group",
         }
     }
 
@@ -91,6 +93,8 @@ impl IssueKind {
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
             "indeterminate_distance" => Some(IssueKind::IndeterminateDistance),
+            "invalid_dead_end" => Some(IssueKind::InvalidDeadEnd),
+            "invalid_dead_end_group" => Some(IssueKind::InvalidDeadEndGroup),
             _ => None,
         }
     }

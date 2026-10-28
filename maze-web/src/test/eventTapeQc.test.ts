@@ -152,6 +152,21 @@ describe("decodeQcEvent", () => {
     });
   });
 
+  it("decodes CheckRan with IssuePayload::InvalidDeadEnd and an empty details map (tag 15)", () => {
+    // one entry: key "check1" -> one unpinned single-node region (5)
+    const nodesMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5), new Uint8Array([0]),
+    ]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_dead_end_group"), new Uint8Array([15]), nodesMap, u32le(0)]);
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "invalid_dead_end_group", payload: { kind: "InvalidDeadEnd", nodes: new Map([["check1", [{ region: [5n], presetLocked: false }]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
   it("decodes IssuesMerged with IssuePayload::None and an empty details map", () => {
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([0]), u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.ISSUES_MERGED, payload)).toEqual({

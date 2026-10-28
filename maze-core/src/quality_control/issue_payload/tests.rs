@@ -1910,6 +1910,31 @@ fn invalid_elevator_stop_group_issue_preset_locked_when_stop_touches_a_preset_ed
     );
 }
 
+#[test]
+fn invalid_dead_end_group_resolves_every_candidate_as_an_unlocked_single_node_region() {
+    let (graph, scc) = empty_graph_and_scc();
+    let issue =
+        InvalidDeadEndGroupIssue::new_from_check("max_dead_end_count", vec![(vec![3, 1], 1)]);
+
+    let payload = resolve(&issue, &graph, &scc);
+    let IssuePayload::InvalidDeadEnd { nodes } = payload else {
+        panic!("expected InvalidDeadEnd, got {payload:?}")
+    };
+    assert_eq!(
+        nodes["max_dead_end_count"],
+        vec![
+            IssueRegionPayload {
+                region: vec![3],
+                preset_locked: false
+            },
+            IssueRegionPayload {
+                region: vec![1],
+                preset_locked: false
+            },
+        ]
+    );
+}
+
 // --- AreaDeficit resolver (hover-highlight follow-up to GitHub issue #408) — covers
 // missing_vertical_passages/missing_teleports/missing_elevators/area_missing_elevator_stops, the
 // four sibling RepairArea-shaped deficit issues that previously all fell through to

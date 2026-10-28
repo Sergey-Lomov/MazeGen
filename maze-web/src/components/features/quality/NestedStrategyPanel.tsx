@@ -62,7 +62,7 @@ export function pathsEqual(a: PathSegment[], b: PathSegment[]): boolean {
   return a.length === b.length && a.every((v, i) => v.slotId === b[i].slotId && v.index === b[i].index);
 }
 
-// Mirrors maze-core's `resolve_weight` (weighted_region_merge.rs) — any missing/unparsable/
+// Mirrors maze-core's `resolve_weight` (nested_dispatch.rs) — any missing/unparsable/
 // non-finite/`<= 0` raw value falls back to the same default the Rust dispatcher uses, so the
 // displayed percentage always matches what `dispatch_weighted` will actually do at generation
 // time. Exported for direct unit testing — pure, no React/store involved.
@@ -348,7 +348,11 @@ const styles = {
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {
     ...typography.message,
-    flex: 1,
+    // The slot label is descriptive metadata; it must only reserve the width it needs so the
+    // selected strategy can use the remaining row width. Giving both spans `flex: 1` split the
+    // row in half even when the label was short, needlessly truncating long strategy labels.
+    flex: "0 1 auto",
+    minWidth: 0,
   },
   // Same token as `label`, but without `flex: 1` — the weight row has no "far right" content to
   // balance against (see `weightRow`), so the label must not claim the remaining width.

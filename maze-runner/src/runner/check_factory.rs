@@ -23,14 +23,16 @@ use maze_core::{
         ElevatorStopCountCheck, ElevatorStopGroupGeometricProximityCheck,
         ElevatorStopGroupGraphProximityCheck, ElevatorStopsSkipCheck, ElevatorStopsSpanCheck,
         ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue, ExternalEscapeDiversityCheck,
-        FloorScope, GeometricFloorMode, InvalidCrossElementGroupIssue, InvalidElevatorGroupIssue,
-        InvalidElevatorIssue, InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue,
-        InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+        FloorScope, GeometricFloorMode, InvalidCrossElementGroupIssue, InvalidDeadEndGroupIssue,
+        InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
+        InvalidLoopGroupIssue, InvalidLoopIssue, InvalidOneWayGroupIssue, InvalidOneWayIssue,
         InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue,
         InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
         InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
         LOOP_DISTANCE_FROM_FINISH_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_LENGTH_DEFAULT,
         LoopDistanceFromFinishCheck, LoopDistanceFromStartCheck, LoopLengthCheck,
+        MAX_DEAD_END_COUNT_DEFAULT, MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE,
+        MAX_DEAD_END_DENSITY_DEFAULT, MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE,
         MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
         MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT, MAX_LOOP_DENSITY_DEFAULT,
         MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_LOOPS_COUNT_DEFAULT,
@@ -62,22 +64,22 @@ use maze_core::{
         MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
         MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT,
         MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
-        MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MaxElevatorCountCheck,
-        MaxElevatorDensityCheck, MaxElevatorStopGapCheck, MaxElevatorStopsCheck,
-        MaxElevatorStopsPerFloorCheck, MaxLoopDensityCheck, MaxLoopsCountCheck,
-        MaxOneWayCountCheck, MaxOneWayRatioCheck, MaxRegionRatioCheck, MaxRegionSizeCheck,
-        MaxSplitCountCheck, MaxSplitDensityCheck, MaxSplitTileNodeCountCheck,
-        MaxTeleportCountCheck, MaxTeleportDensityCheck, MaxVerticalPassageCountCheck,
-        MaxVerticalPassageRatioCheck, MinElevatorCountCheck, MinElevatorDensityCheck,
-        MinElevatorHeightCheck, MinElevatorStopCountCheck, MinElevatorStopsPerAreaCountCheck,
-        MinElevatorStopsPerAreaDensityCheck, MinLoopDensityCheck, MinLoopsCountCheck,
-        MinOneWayCountCheck, MinOneWayRatioCheck, MinRegionCountCheck, MinRegionRatioCheck,
-        MinRegionSizeCheck, MinTeleportCountCheck, MinTeleportRatioCheck,
-        MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck, MissingElevatorHeightIssue,
-        MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingEndpointsCheck,
-        MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue,
-        MissingSplitTilesIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
-        ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MaxDeadEndCountCheck,
+        MaxDeadEndDensityCheck, MaxElevatorCountCheck, MaxElevatorDensityCheck,
+        MaxElevatorStopGapCheck, MaxElevatorStopsCheck, MaxElevatorStopsPerFloorCheck,
+        MaxLoopDensityCheck, MaxLoopsCountCheck, MaxOneWayCountCheck, MaxOneWayRatioCheck,
+        MaxRegionRatioCheck, MaxRegionSizeCheck, MaxSplitCountCheck, MaxSplitDensityCheck,
+        MaxSplitTileNodeCountCheck, MaxTeleportCountCheck, MaxTeleportDensityCheck,
+        MaxVerticalPassageCountCheck, MaxVerticalPassageRatioCheck, MinElevatorCountCheck,
+        MinElevatorDensityCheck, MinElevatorHeightCheck, MinElevatorStopCountCheck,
+        MinElevatorStopsPerAreaCountCheck, MinElevatorStopsPerAreaDensityCheck,
+        MinLoopDensityCheck, MinLoopsCountCheck, MinOneWayCountCheck, MinOneWayRatioCheck,
+        MinRegionCountCheck, MinRegionRatioCheck, MinRegionSizeCheck, MinTeleportCountCheck,
+        MinTeleportRatioCheck, MinVerticalPassageCountCheck, MinVerticalPassageRatioCheck,
+        MissingElevatorHeightIssue, MissingElevatorStopCountIssue, MissingElevatorsIssue,
+        MissingEndpointsCheck, MissingEndpointsIssue, MissingLoopsIssue, MissingOneWaysIssue,
+        MissingRegionsIssue, MissingSplitTilesIssue, MissingTeleportsIssue,
+        MissingVerticalPassagesIssue, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
@@ -1214,6 +1216,51 @@ pub(crate) fn build_split_group_check<T: Tessellation>(
             Some(Box::new(SplitGroupGraphProximityCheck {
                 instance_id,
                 distance,
+            }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_dead_end_group_check<T: Tessellation>(
+    instance: &CheckInstanceConfig,
+    instance_id: String,
+    _rule_params: &RuleParams,
+) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidDeadEndGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_dead_end_count" => {
+            let max_dead_end_count = instance
+                .params
+                .get("max_dead_end_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_DEAD_END_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(
+                instance.params.get("floor_scope"),
+                MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE,
+            );
+            Some(Box::new(MaxDeadEndCountCheck {
+                instance_id,
+                max_dead_end_count,
+                floor_scope,
+            }))
+        }
+        "max_dead_end_density" => {
+            let max_dead_end_density = instance
+                .params
+                .get("max_dead_end_density")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MAX_DEAD_END_DENSITY_DEFAULT);
+            let floor_scope = parse_floor_scope(
+                instance.params.get("floor_scope"),
+                MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE,
+            );
+            Some(Box::new(MaxDeadEndDensityCheck {
+                instance_id,
+                max_dead_end_density,
+                floor_scope,
             }))
         }
         _ => None,

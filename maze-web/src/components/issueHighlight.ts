@@ -65,6 +65,7 @@ export type NormalizedIssuePayload<Id> =
   | { kind: "invalidVerticalPassage"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidElevator"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidElevatorStop"; groups: NormalizedRegionGroup<Id>[] }
+  | { kind: "invalidDeadEnd"; groups: NormalizedRegionGroup<Id>[] }
   | { kind: "areaDeficit" }
   | { kind: "missingElevatorStopCount"; groups: NormalizedEdgeGroup<Id>[] }
   | { kind: "invalidCrossElementGroup"; entries: NormalizedCrossElementEntry<Id>[] }
@@ -138,7 +139,8 @@ export function resolveIssueHighlight<Id>(payload: NormalizedIssuePayload<Id>): 
 
     case "regionNeedsExpansion":
     case "regionNeedsShrink":
-    case "invalidElevatorStop": {
+    case "invalidElevatorStop":
+    case "invalidDeadEnd": {
       // One region-highlight group per flagged region/stop (not one merged group) -- an
       // `invalid_elevator_stop`'s stops aren't necessarily adjacent the way a region's own member
       // cells are (GitHub issue #399), and two distinct `region_needs_expansion`/`_shrink` regions

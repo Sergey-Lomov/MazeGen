@@ -109,6 +109,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(11);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::InvalidDeadEnd { nodes } => {
+            out.push(15);
+            write_str_keyed_node_lists(out, nodes);
+        }
         IssuePayload::AreaDeficit { areas } => {
             out.push(12);
             write_str_keyed_area_deficits(out, areas);
@@ -122,7 +126,7 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             write_str_keyed_cross_element_groups(out, groups);
         }
         IssuePayload::IndeterminateDistance { pairs } => {
-            out.push(15);
+            out.push(16);
             out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
             for pair in pairs {
                 out.extend_from_slice(&pair.nodes[0].to_le_bytes());

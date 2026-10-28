@@ -1,6 +1,7 @@
 pub mod cross_element_geometric_proximity;
 pub mod cross_element_graph_proximity;
 mod cycle_check_core;
+pub mod dead_end_core;
 pub mod elevator_core;
 pub mod elevator_span;
 pub mod elevator_stop_count;
@@ -14,6 +15,8 @@ mod glued_geometric_tests;
 pub mod loop_distance_from_finish;
 pub mod loop_distance_from_start;
 pub mod loop_length;
+pub mod max_dead_end_count;
+pub mod max_dead_end_density;
 pub mod max_elevator_count;
 pub mod max_elevator_density;
 pub mod max_elevator_stop_gap;
@@ -123,6 +126,12 @@ pub use loop_distance_from_finish::{
 };
 pub use loop_distance_from_start::{LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromStartCheck};
 pub use loop_length::{LOOP_LENGTH_DEFAULT, LOOP_LENGTH_DEFAULT_COMPARISON, LoopLengthCheck};
+pub use max_dead_end_count::{
+    MAX_DEAD_END_COUNT_DEFAULT, MAX_DEAD_END_COUNT_DEFAULT_FLOOR_SCOPE, MaxDeadEndCountCheck,
+};
+pub use max_dead_end_density::{
+    MAX_DEAD_END_DENSITY_DEFAULT, MAX_DEAD_END_DENSITY_DEFAULT_FLOOR_SCOPE, MaxDeadEndDensityCheck,
+};
 pub use max_elevator_count::{MAX_ELEVATOR_COUNT_DEFAULT, MaxElevatorCountCheck};
 pub use max_elevator_density::{MAX_ELEVATOR_DENSITY_DEFAULT, MaxElevatorDensityCheck};
 pub use max_elevator_stop_gap::{MAX_ELEVATOR_STOP_GAP_DEFAULT, MaxElevatorStopGapCheck};

@@ -363,10 +363,16 @@ concrete `I`, since `NestedStrategyConfig`'s candidates are `Box<dyn ErasedRepai
 whose own `I` may differ from the caller's.
 
 - **Who resolves weights**: `dispatch_weighted` itself carries no convention for how a weight is
-  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. Deriving a
-  weight (e.g. reading a `"weight"` key out of `NestedStrategyConfig.param_overrides`) is the
-  calling dispatcher's own convention; `WeightedRegionMergeStrategy` is the reference
-  implementation of one such convention.
+  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. The shared
+  convention lives next to it in `nested_dispatch.rs`: `WEIGHT_KEY` (`"weight"`),
+  `DEFAULT_WEIGHT` (`1.0`), `resolve_weight(param_overrides)` (missing, unparsable, non-finite or
+  `<= 0.0` falls back to the default) and `weighted_candidates(configs, slot_id)`, which wraps
+  already-filtered configs into `WeightedCandidate`s and debug-asserts that no candidate strategy
+  declares its own `"weight"` param. `WeightedRegionMergeStrategy` and `WeightedDeadEndStrategy`
+  both use it.
+- **Slot filtering**: `slot_candidates(nested, slot_id)` (`nested_dispatch.rs`) is the shared
+  defensive runtime filter that narrows `nested` to the configs filling one slot, in configured
+  order. Used by the priority/weighted dispatchers and `ReduceSccCountStrategy`.
 - **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
   `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
   returns `Failed` immediately without touching `rng`.
@@ -405,8 +411,9 @@ strategy that receives an already-bundled issue.
 See GitHub issue #259, the priority-fallback companion to `dispatch_weighted` above.
 `maze-core/src/repair/nested_dispatch.rs` provides a second shared helper for a parent strategy
 that wants to pick *which* of several nested strategies filling one slot to actually run, this
-time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy` and
-`PriorityMissingLoopsStrategy` (below) are its users.
+time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy`,
+`PriorityMissingLoopsStrategy` (below), and `PriorityDeadEndStrategy` (see the dead-end repair
+section) are its users.
 
 ```rust
 pub fn dispatch_priority<T: Tessellation>(
@@ -441,7 +448,7 @@ a `Priority`-kind slot (`NestedStrategyPanel`) mutate exactly that stored order.
 - Empty `candidates` returns `Failed` immediately without touching `rng`, same as
   `dispatch_weighted`.
 - **No weight resolution, no `"weight"` `param_overrides` convention** — a `Priority`-kind slot has
-  nothing analogous to `WeightedRegionMergeStrategy::resolve_weight`; a candidate's position in the
+  nothing analogous to `nested_dispatch::resolve_weight`; a candidate's position in the
   configured `nested` list is its entire selection signal.
 
 ### Rule, Stage, and the unified QualityControlEngine
@@ -730,6 +737,22 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
 - If `maze.meta.finish.is_none()`: candidates = `reachable_from(start)` minus start. Empty → `Failed`. Picks at random, sets `maze.meta.finish`.
 - Returns `Fixed`.
 
+### DeadEndToTeleportStrategy
+
+`dead_end_to_teleport` is a nested-only `INVALID_DEAD_END` repair for
+`dead_end_group_select`'s `fix_target` slot. It repairs exactly the supplied source by adding a
+teleport from that source to one eligible exit; it never selects group candidates or consumes a
+group's `to_remove` budget itself.
+
+Its parameters are `one_way_chance` (default `50`), `allow_cross_floor` (default `false`),
+`desired_length` (default `5..1000` raw forward graph hops), `allow_out_of_interval` (default
+`true`), `exit_pick` (`random` or `dead_end_priority`, default `dead_end_priority`; the latter
+prefers a still-live reported candidate), and
+`attempts_limit` (default `25`). It intentionally does not expose `reserve_percent`. A directed
+teleport always points from the supplied dead end to its exit. A bidirectional teleport also
+repairs its exit if that exit remains a live dead-end candidate; the outer selector detects those
+outcomes from returned mutation commands and performs all group-budget accounting.
+
 ### FarthestEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`. Places start and finish at nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra/two-BFS sweep — **not** an exhaustive search over all pairs (that's `ScoredEndpointsStrategy`'s job).
@@ -916,6 +939,65 @@ impl Pool {
 **Deliberately excludes `attempts_limit` accounting.** The three migrated strategies budget failed attempts differently (`AddElevatorStrategy` resets a per-slot consecutive count each time a slot is filled; `AddSplitStrategy`/`AddVerticalPassageStrategy` run one running total per area) — folding a budget into `Pool` would force one semantics onto every caller. `Pool` only owns candidate storage, ordering, and pop-based eviction; each strategy's own loop still tracks its own `attempts_limit` counter exactly as before. This also anticipates epic #520's follow-up split (single-element vs series/repeat strategies): the series strategy is expected to own the pool *and* whichever attempt-budget shape it needs, constructing/holding a `Pool` from outside the single-element strategy that consumes it, rather than `Pool` prescribing one.
 
 **`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
+
+### DeadEndGroupSelectStrategy / dead-end repair strategies
+
+`DeadEndGroupSelectStrategy` handles `INVALID_DEAD_END_GROUP` (GitHub issue #851). It makes one
+global candidate pass across every reported group, maintaining each group's independent
+`to_remove` budget. `priority: problematic` (the default) tries nodes present in more groups
+first; `random` shuffles them. A candidate is tried at most once per pass: success retires one
+unit from each group containing every invalidated candidate, and failure removes it from the pass.
+The selector delegates each selected node through its required `fix_target` nested slot, which
+accepts an `INVALID_DEAD_END` repair. A successful nested repair always invalidates its selected
+node and may invalidate other candidates based on its emitted mutation commands.
+
+`DeadEndToPassageStrategy` is the supplied `INVALID_DEAD_END` nested repair. It accepts exactly
+one node and adds one geometric `Basic` passage from it to an unconnected neighboring node.
+Candidates that cannot accept a new passage because of geometry, existing connections, or preset
+locks fail so the selector can try another candidate. Connecting to another selected dead end is
+permitted: a bidirectional passage resolves and accounts for both endpoints across every reported
+group, while a one-way passage resolves only its outward source.
+
+`DeadEndToVerticalPassageStrategy` (`dead_end_to_vertical_passage`, GitHub issue #857) is the
+multi-floor counterpart. It connects the selected node to the same field point on an adjacent
+floor with a `VerticalPassage`; it fails when no such point exists, the pair is already connected,
+or a preset lock blocks the new edge. It shares `dead_end_one_way_chance` with the ordinary
+passage repair. A one-way vertical passage always points out of the selected dead end, so that
+node no longer remains a dead end; a two-way passage also resolves the target if it was selected
+in an overlapping group. The strategy is available only on multi-floor mazes.
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `dead_end_one_way_chance` | Float | `0.0` | 0–100 | Chance the added passage is one-way. A one-way passage always points outward from the processed dead end, because an incoming-only edge would leave it a dead end. |
+
+`DeadEndToSplitStrategy` (`dead_end_to_split`, GitHub issue #856) instead picks an unconnected
+geometric neighbor across a wall and replaces that neighbor's cell with a split tile. The shared
+split planner rotates or reflects a configured template until one split node can connect to the
+selected dead end; that bridge node must also have another edge, so the repair never merely moves
+the dead end onto the new split. Its `split_config` uses the same unrestricted-or-weighted-pattern
+configuration as `MissingLoopsSplitStrategy`. It fails when no walled neighbor is split-eligible
+or no generated/template variant can satisfy both required edges; preset locks on either endpoint
+of a planned edge also reject that candidate before it is reported as fixed.
+
+`DeadEndGroupSelectStrategy` exposes the standard group-select `priority` enum (`random`,
+`problematic`; default `problematic`) and requires one `fix_target` nested strategy.
+
+For a nonempty issue, the selector returns `Fixed` only when at least one nested repair succeeds;
+otherwise it returns `Failed`. An empty issue is already resolved and returns `Fixed` without
+requiring nested configuration.
+
+`PriorityDeadEndStrategy` (`priority_dead_end`, GitHub issue #854) is an `INVALID_DEAD_END`
+dispatcher meant to sit in `DeadEndGroupSelectStrategy`'s `fix_target` slot. It has no params and
+one nested slot, `dead_end_repair_target` (`kind = INVALID_DEAD_END`, `min = 1`, `max = None`,
+`dispatch_kind = Priority`). It passes the single-node issue unchanged to `dispatch_priority`: nested
+repairs run in configured order, the first `Fixed` result and its commands are used, and later
+candidates never run. Returns `Failed` when every candidate fails or none fills the slot; an empty
+issue returns `Fixed` without touching `rng` or `nested`. Each nested repair keeps its own params.
+Commands from the winning candidate are returned unchanged, so the selector's per-candidate
+invalidation (`element_invalidated`) and group-budget accounting behave exactly as with a direct
+nested repair.
+
+`WeightedDeadEndStrategy` (`weighted_dead_end`, GitHub issue #855) is the randomized counterpart of `PriorityDeadEndStrategy`: same `INVALID_DEAD_END` issue, no params, same `dead_end_repair_target` slot (`min = 1`, `max = None`) but with `dispatch_kind = Weighted`. It passes the single-node issue unchanged to `dispatch_weighted`; each nested candidate's weight comes from `param_overrides["weight"]` via `nested_dispatch::resolve_weight` (invalid or missing falls back to `1.0`). A random candidate is picked by weight, and on `Failed` another is picked without replacement until one is `Fixed` or the pool is exhausted (`Failed`). Empty issue returns `Fixed` without touching `rng` or `nested`; no candidate in the slot returns `Failed`. Intended for `DeadEndGroupSelectStrategy`'s `fix_target` slot.
 
 ### MissingLoopsRandomStrategy
 

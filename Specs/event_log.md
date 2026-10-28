@@ -1935,7 +1935,8 @@ output or the raw `syn::File`:
   uses (unused-import lint is a build gate here, per `maze-web/tsconfig.json`'s
   `noUnusedLocals`/`noUnusedParameters`).
 
-`cargo run -p codegen` regenerates all 7 sources' output in one pass; `--check` is a dry run
+`cargo run -p codegen` regenerates all 7 sources' output in one pass and formats generated Rust
+with the workspace's Rust 2024 `rustfmt` settings; `--check` is a dry run
 (no file writes) that still reports duplicate/zero tags, unknown custom-codec references, and
 tag/field-layout changes on an already-generated variant (`check.rs`'s `detect_breaking_changes` —
 a warning, not a build failure, since retagging is sometimes legitimate, but it must be a conscious

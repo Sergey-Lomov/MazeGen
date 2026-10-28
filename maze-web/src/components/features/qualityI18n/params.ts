@@ -287,6 +287,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.loop_one_way_chance.label"] as MessageFn,
     description: m["param.loop_one_way_chance.description"] as MessageFn,
   },
+  dead_end_one_way_chance: {
+    label: m["param.dead_end_one_way_chance.label"] as MessageFn,
+    description: m["param.dead_end_one_way_chance.description"] as MessageFn,
+  },
   vertical_loop_one_way_chance: {
     label: m["param.vertical_loop_one_way_chance.label"] as MessageFn,
     description: m["param.vertical_loop_one_way_chance.description"] as MessageFn,
@@ -310,6 +314,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_split_density: {
     label: m["param.max_split_density.label"] as MessageFn,
     description: m["param.max_split_density.description"] as MessageFn,
+  },
+  max_dead_end_count: {
+    label: m["param.max_dead_end_count.label"] as MessageFn,
+    description: m["param.max_dead_end_count.description"] as MessageFn,
+  },
+  max_dead_end_density: {
+    label: m["param.max_dead_end_density.label"] as MessageFn,
+    description: m["param.max_dead_end_density.description"] as MessageFn,
   },
   max_elevator_count: {
     label: m["param.max_elevator_count.label"] as MessageFn,
@@ -814,6 +826,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
   "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
+  "one_way_chance.dead_end_to_teleport": m["param.one_way_chance.dead_end_to_teleport.label"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
@@ -826,6 +840,7 @@ export function resolveParamLabel(id: string, fallback: string, contextId?: stri
 // `paramI18n` entry. `contextId` is the owning strategy's id.
 const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
+  "priority.dead_end_group_select": m["param.priority.dead_end_group_select.description"] as MessageFn,
   "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
   "max_connections.one_way_group_super_hub": m["param.max_connections.one_way_group_super_hub.description"] as MessageFn,
   // The cross-element proximity checks (GitHub issue #376) have no comparison operator — `distance`

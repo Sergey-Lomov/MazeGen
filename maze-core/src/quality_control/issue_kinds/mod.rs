@@ -12,6 +12,8 @@ mod excessive_scc_count;
 pub(crate) mod group_issue;
 mod indeterminate_distance;
 mod invalid_cross_element_group;
+mod invalid_dead_end;
+mod invalid_dead_end_group;
 mod invalid_elevator;
 mod invalid_elevator_group;
 mod invalid_elevator_stop;
@@ -55,6 +57,8 @@ pub use indeterminate_distance::IndeterminateDistanceIssue;
 pub use invalid_cross_element_group::{
     CrossElementCloseNodes, CrossElementGroupKind, InvalidCrossElementGroupIssue,
 };
+pub use invalid_dead_end::InvalidDeadEndIssue;
+pub use invalid_dead_end_group::{DeadEndGroupKind, InvalidDeadEndGroupIssue};
 pub use invalid_elevator::{ElevatorNodes, InvalidElevatorIssue};
 pub use invalid_elevator_group::{ElevatorGroupKind, InvalidElevatorGroupIssue};
 pub use invalid_elevator_stop::InvalidElevatorStopIssue;

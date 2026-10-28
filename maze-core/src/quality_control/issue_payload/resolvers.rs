@@ -658,6 +658,33 @@ pub(super) fn resolve_elevator_stop_group_map(
     }
 }
 
+/// Resolves a grouped dead-end issue into one highlightable single-node region per dead end.
+/// Preset locks do not affect visibility; they only constrain any later repair.
+pub(super) fn resolve_dead_end_group_map(
+    groups: &[(Vec<NodeId>, u32)],
+    invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>,
+) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
+    for (group, _excess) in groups {
+        let mut key = group.clone();
+        key.sort_unstable();
+        for &id in group {
+            let Some(id32) = u32::try_from(id).ok() else {
+                continue;
+            };
+            for source in invalid_sources.get(&key).into_iter().flatten() {
+                out.entry(source.clone())
+                    .or_default()
+                    .push(IssueRegionPayload {
+                        region: vec![id32],
+                        preset_locked: false,
+                    });
+            }
+        }
+    }
+    (!out.is_empty()).then_some(IssuePayload::InvalidDeadEnd { nodes: out })
+}
+
 /// Resolves a deficit issue's `missing: Vec<(RepairArea, u32)>` (shared shape of
 /// `MissingVerticalPassagesIssue`/`MissingTeleportsIssue`/`MissingElevatorsIssue`/
 /// `AreaMissingElevatorStopsIssue`) into the `AreaDeficit` wire shape — `RepairArea::Level` becomes

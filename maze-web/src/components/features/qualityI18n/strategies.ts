@@ -33,6 +33,22 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.invalid_loop_group_select.label"] as MessageFn,
     description: m["strategy.invalid_loop_group_select.description"] as MessageFn,
   },
+  dead_end_to_passage: {
+    label: m["strategy.dead_end_to_passage.label"] as MessageFn,
+    description: m["strategy.dead_end_to_passage.description"] as MessageFn,
+  },
+  dead_end_to_vertical_passage: {
+    label: m["strategy.dead_end_to_vertical_passage.label"] as MessageFn,
+    description: m["strategy.dead_end_to_vertical_passage.description"] as MessageFn,
+  },
+  dead_end_to_teleport: {
+    label: m["strategy.dead_end_to_teleport.label"] as MessageFn,
+    description: m["strategy.dead_end_to_teleport.description"] as MessageFn,
+  },
+  dead_end_group_select: {
+    label: m["strategy.dead_end_group_select.label"] as MessageFn,
+    description: m["strategy.dead_end_group_select.description"] as MessageFn,
+  },
   missing_loops_random: {
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,
@@ -48,6 +64,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   missing_loops_teleport: {
     label: m["strategy.missing_loops_teleport.label"] as MessageFn,
     description: m["strategy.missing_loops_teleport.description"] as MessageFn,
+  },
+  priority_dead_end: {
+    label: m["strategy.priority_dead_end.label"] as MessageFn,
+    description: m["strategy.priority_dead_end.description"] as MessageFn,
   },
   priority_missing_loops: {
     label: m["strategy.priority_missing_loops.label"] as MessageFn,
@@ -84,6 +104,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   teleport_group_select: {
     label: m["strategy.teleport_group_select.label"] as MessageFn,
     description: m["strategy.teleport_group_select.description"] as MessageFn,
+  },
+  weighted_dead_end: {
+    label: m["strategy.weighted_dead_end.label"] as MessageFn,
+    description: m["strategy.weighted_dead_end.description"] as MessageFn,
   },
   weighted_region_merge: {
     label: m["strategy.weighted_region_merge.label"] as MessageFn,
@@ -213,6 +237,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.cross_element_group_select.label"] as MessageFn,
     description: m["strategy.cross_element_group_select.description"] as MessageFn,
   },
+  dead_end_to_split: {
+    label: m["strategy.dead_end_to_split.label"] as MessageFn,
+    description: m["strategy.dead_end_to_split.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {
@@ -232,7 +260,8 @@ const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
 };
 
 /** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
- * region-expansion slot (the nested strategy merges regions), "add-elevator" for
+ * region-expansion slot (the nested strategy merges regions), "repair" for a dead-end slot,
+ * "add-elevator" for
  * `AddElevatorStopStrategy`'s slot (GitHub issue #408 — deliberately not "removal", the nested
  * strategy there adds a new elevator, it doesn't remove anything), "removal" for every other kind
  * (the nested strategy removes the flagged element). `slotId`, when it names one of
@@ -240,6 +269,7 @@ const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
 export function resolveNestedStrategyLabel(kind: string, slotId?: string): string {
   if (slotId && CROSS_ELEMENT_SLOT_LABELS[slotId]) return CROSS_ELEMENT_SLOT_LABELS[slotId]();
   if (kind === "region_needs_expansion") return m["quality.nested_strategy.merge_label"]();
+  if (kind === "invalid_dead_end") return m["quality.nested_strategy.fix_label"]();
   if (kind === "missing_elevators") return m["quality.nested_strategy.add_elevator_label"]();
   return m["quality.nested_strategy.removal_label"]();
 }

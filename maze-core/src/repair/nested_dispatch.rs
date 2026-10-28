@@ -43,6 +43,66 @@ pub(crate) fn nested_params<T: Tessellation>(
     build_params(config.strategy.params(), Some(&overrides))
 }
 
+/// Nested candidates filling `slot_id`, in configured order. Defensive runtime filter, not the
+/// primary validation: `maze-runner`'s `build_nested` already guarantees every entry in `nested`
+/// fills a slot the parent actually declared, so this only protects direct `apply()` calls made
+/// outside the runner (tests, future internal callers). Shared by the priority/weighted
+/// dispatchers.
+pub(crate) fn slot_candidates<'a, T: Tessellation>(
+    nested: &'a [NestedStrategyConfig<T>],
+    slot_id: &str,
+) -> Vec<&'a NestedStrategyConfig<T>> {
+    nested
+        .iter()
+        .filter(|n| n.slot.slot_id == slot_id)
+        .collect()
+}
+
+/// `param_overrides` key a weighted nested candidate's selection weight is read from — see
+/// `resolve_weight`. Not a declared `StrategyParam` of the nested strategy itself (it's a
+/// convention the weighted dispatchers impose on top of whatever params the nested strategy
+/// already has), so it never appears in any strategy's `params()`.
+pub(crate) const WEIGHT_KEY: &str = "weight";
+
+/// Fallback weight used whenever `WEIGHT_KEY` is absent, unparsable, non-finite, or `<= 0.0`.
+pub(crate) const DEFAULT_WEIGHT: f64 = 1.0;
+
+/// Resolves a nested candidate's selection weight from its `param_overrides`. Never returns a
+/// non-finite or non-positive value — any missing/unparsable/non-finite/`<= 0.0` input falls
+/// back to `DEFAULT_WEIGHT`, guaranteeing that as long as at least one nested candidate is
+/// configured, the pool passed to `dispatch_weighted` always has a strictly positive total
+/// weight.
+pub(crate) fn resolve_weight(param_overrides: &HashMap<String, String>) -> f64 {
+    param_overrides
+        .get(WEIGHT_KEY)
+        .and_then(|raw| raw.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(DEFAULT_WEIGHT)
+}
+
+/// Wraps `configs` (already filtered to `slot_id`) into `WeightedCandidate`s using the shared
+/// `WEIGHT_KEY` convention (`resolve_weight`). Debug-asserts no candidate strategy declares its
+/// own `WEIGHT_KEY` param, which would collide with the reserved `param_overrides` key.
+pub(crate) fn weighted_candidates<'a, T: Tessellation>(
+    configs: &[&'a NestedStrategyConfig<T>],
+    slot_id: &str,
+) -> Vec<WeightedCandidate<'a, T>> {
+    debug_assert!(
+        configs
+            .iter()
+            .all(|c| !c.strategy.params().iter().any(|p| p.id == WEIGHT_KEY)),
+        "a {slot_id} candidate declares its own \"{WEIGHT_KEY}\" param — this collides with \
+         resolve_weight's reserved param_overrides key; rename the candidate's param"
+    );
+    configs
+        .iter()
+        .map(|&config| WeightedCandidate {
+            config,
+            weight: resolve_weight(&config.param_overrides),
+        })
+        .collect()
+}
+
 // `dispatch_weighted` operates at the erased boundary — nested candidates (`NestedStrategyConfig`)
 // hold `Box<dyn ErasedRepairStrategy<T>>`, whose own kind may differ from the caller's own `I`
 // (see `Specs/repair.md`'s nested-strategy contract) — so `issue` here is always `&dyn Issue`.
@@ -483,6 +543,76 @@ mod tests {
             Some(1),
             "dispatch_weighted must pass config.nested through, not &[]"
         );
+    }
+
+    fn config_for_slot(
+        slot: &'static NestedSlot,
+        weight: Option<&str>,
+    ) -> NestedStrategyConfig<SquareTessellation> {
+        let mut param_overrides = HashMap::new();
+        if let Some(w) = weight {
+            param_overrides.insert(WEIGHT_KEY.to_string(), w.to_string());
+        }
+        NestedStrategyConfig {
+            slot,
+            strategy: Box::new(AlwaysFixedStrategy),
+            param_overrides,
+            nested: vec![],
+        }
+    }
+
+    #[test]
+    fn slot_candidates_keeps_only_matching_slot_in_configured_order() {
+        static OTHER_SLOT: NestedSlot = NestedSlot {
+            slot_id: "other",
+            kind: MISSING_ENDPOINTS,
+            min: 0,
+            max: None,
+            dispatch_kind: NestedDispatchKind::Unordered,
+        };
+        let configs = [
+            config_for_slot(&DUMMY_SLOT, Some("1")),
+            config_for_slot(&OTHER_SLOT, None),
+            config_for_slot(&DUMMY_SLOT, Some("2")),
+        ];
+        let picked = slot_candidates(&configs, "dummy");
+        assert_eq!(picked.len(), 2);
+        assert!(std::ptr::eq(picked[0], &configs[0]));
+        assert!(std::ptr::eq(picked[1], &configs[2]));
+        assert!(slot_candidates(&configs, "absent").is_empty());
+    }
+
+    #[test]
+    fn resolve_weight_falls_back_to_default_for_invalid_values() {
+        for bad in ["not_a_number", "-3.0", "0", "NaN", "inf"] {
+            assert_eq!(
+                resolve_weight(&HashMap::from([(WEIGHT_KEY.to_string(), bad.to_string())])),
+                DEFAULT_WEIGHT,
+                "bad weight {bad:?} must fall back to default"
+            );
+        }
+        assert_eq!(resolve_weight(&HashMap::new()), DEFAULT_WEIGHT);
+        assert_eq!(
+            resolve_weight(&HashMap::from([(
+                WEIGHT_KEY.to_string(),
+                "3.5".to_string()
+            )])),
+            3.5
+        );
+    }
+
+    #[test]
+    fn weighted_candidates_resolves_each_weight_in_order() {
+        let configs = [
+            config_for_slot(&DUMMY_SLOT, Some("3")),
+            config_for_slot(&DUMMY_SLOT, None),
+        ];
+        let refs: Vec<&NestedStrategyConfig<SquareTessellation>> = configs.iter().collect();
+        let weights: Vec<f64> = weighted_candidates(&refs, "dummy")
+            .iter()
+            .map(|c| c.weight)
+            .collect();
+        assert_eq!(weights, vec![3.0, DEFAULT_WEIGHT]);
     }
 
     mod dispatch_priority_tests {

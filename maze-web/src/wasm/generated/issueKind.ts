@@ -39,7 +39,9 @@ export type IssueKindId =
   | "missing_elevator_height"
   | "excessive_elevator_stop_gap"
   | "invalid_cross_element_group"
-  | "indeterminate_distance";
+  | "indeterminate_distance"
+  | "invalid_dead_end"
+  | "invalid_dead_end_group";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_endpoints",
@@ -81,4 +83,6 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "excessive_elevator_stop_gap",
   "invalid_cross_element_group",
   "indeterminate_distance",
+  "invalid_dead_end",
+  "invalid_dead_end_group",
 ] as const;

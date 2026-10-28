@@ -53,6 +53,12 @@ const percentSliderParam: ParamDescriptor = {
   kind: { type: "float", default: 1, min: 0, max: 100 },
 };
 
+const deadEndPassagePercentSliderParam: ParamDescriptor = {
+  id: "dead_end_one_way_chance",
+  label: "One-way chance",
+  kind: { type: "float", default: 0, min: 0, max: 100 },
+};
+
 const plainFloatParam: ParamDescriptor = {
   id: "reserve_percent",
   label: "Reserve percent",
@@ -280,6 +286,11 @@ describe("ParamFields", () => {
       render(<ParamFields params={[percentSliderParam]} values={{ one_way_chance: "1" }} onChange={onChange} />);
       fireEvent.change(screen.getByRole("slider"), { target: { value: "80" } });
       expect(onChange).toHaveBeenCalledWith("one_way_chance", "80");
+    });
+
+    it("renders the dead-end passage one-way chance as a slider", () => {
+      render(<ParamFields params={[deadEndPassagePercentSliderParam]} values={{ dead_end_one_way_chance: "25" }} onChange={vi.fn()} />);
+      expect(screen.getByRole("slider")).toHaveValue("25");
     });
   });
 
