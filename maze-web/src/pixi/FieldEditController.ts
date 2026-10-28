@@ -3,7 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
 import { TILE_SIZE } from "./constants";
-import { normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "./primitiveGeometry";
+import { normalizeCellsToFixpoint, normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "./primitiveGeometry";
 import type { PrimitiveContext, ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import { cellsInsidePolygon, polygonWorldGeometry } from "./polygonGeometry";
 import type { PolygonPoint } from "./polygonGeometry";
@@ -724,7 +724,7 @@ export class FieldEditController {
       ? [...this.polygonPoints, this.polygonCursorPoint]
       : [...this.polygonPoints];
     this.lastPreviewCells = previewPoints.length >= 3
-      ? this.operationCells(cellsInsidePolygon(previewPoints, cfg))
+      ? this.operationCells(this.polygonCells(previewPoints))
       : [];
     this.reportSize({ shape: measureShape(this.lastPreviewCells, "polygon") });
     this.primitiveCallbacks.onPreviewUpdate(
@@ -737,6 +737,21 @@ export class FieldEditController {
         dashedClosing: this.polygonPoints.length >= 2,
         ...(field.fieldOperation === "select" ? { dashedAll: true } : {}),
       }),
+    );
+  }
+
+  /** Polygon cells without isolated cells and, with smoothing, single-connection spikes. When
+   * adding, cells already in the field count as neighbors. */
+  private polygonCells(points: PolygonPoint[]): [number, number][] {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const cells = cellsInsidePolygon(points, field.fieldConfig);
+    const adding = this.effectiveOperation(this.gestureButton) === "add";
+    return normalizeCellsToFixpoint(
+      cells,
+      field.fieldConfig,
+      state.smoothPrimitives,
+      adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
     );
   }
 
@@ -755,7 +770,7 @@ export class FieldEditController {
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "polygon"
       && this.polygonPoints.length >= 3)) return;
-    const committedCells = this.operationCells(cellsInsidePolygon(this.polygonPoints, field.fieldConfig));
+    const committedCells = this.operationCells(this.polygonCells(this.polygonPoints));
     if (field.fieldOperation === "select") {
       this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
     } else {

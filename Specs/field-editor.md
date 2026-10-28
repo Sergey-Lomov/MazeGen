@@ -367,8 +367,8 @@ the field is not changed and the selection remains visible until another gesture
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
 The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
-The tool works with square, hexagonal, triangular, and Cairo tessellations and does not apply
-primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion considers only the valid
+The tool works with square, hexagonal, triangular, and Cairo tessellations and applies the same
+isolated-cell cleanup and optional smoothing as the other primitives. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.
 
 In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
@@ -442,6 +442,8 @@ minimum 1.25px screen-space thickness at every zoom level.
 
 Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
 one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
+The Polygon tool repeats this cleanup until no cell changes, so removing one spike cannot leave a
+new one. When adding, cells already in the field count as neighbors but are never removed.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
 cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results.

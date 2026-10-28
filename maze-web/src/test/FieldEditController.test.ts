@@ -219,6 +219,23 @@ describe("FieldEditController polygon interaction", () => {
     expect(commits).toHaveLength(1);
   });
 
+  it("drops isolated and single-connection cells from a committed polygon when smoothing is on", () => {
+    useMazeStore.setState({ smoothPrimitives: true });
+    const { controller, commits } = makeController();
+    click(controller, 45, -45);
+    click(controller, 445, -45);
+    click(controller, 445, -285);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    expect(commits).toHaveLength(1);
+    const cells = commits[0].cells;
+    const set = new Set(cells.map(([x, y]) => `${x},${y}`));
+    for (const [x, y] of cells) {
+      const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => set.has(`${x + dx},${y + dy}`)).length;
+      expect(n).toBeGreaterThan(1);
+    }
+  });
+
   it("commits a polygon with the remove operation", () => {
     useMazeStore.setState({
       floorFields: {

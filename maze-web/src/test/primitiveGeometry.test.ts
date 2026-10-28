@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { normalizeCellsToFixpoint, normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "../pixi/primitiveGeometry";
 import { configAllCells } from "../pixi/tessellationCells";
 import { regularHexagonDimensions } from "../pixi/shapeSelection";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "../pixi/triShapeHelpers";
@@ -64,6 +64,28 @@ describe("field shape primitives", () => {
     const cells: [number, number][] = [[0, 0], [1, 0], [1, 1], [2, 0], [10, 10]];
     expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual([[0, 0], [1, 0], [1, 1], [2, 0]]);
     expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual([[1, 0]]);
+  });
+
+  describe("normalizeCellsToFixpoint", () => {
+    it("peels spikes repeatedly until every cell has two links", () => {
+      const block: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+      const cells: [number, number][] = [...block, [2, 0], [3, 0]];
+      expect(normalizeCellsToFixpoint(cells, SQUARE_CFG, true)).toEqual(block);
+      expect(normalizeCellsToFixpoint(cells, SQUARE_CFG, false)).toEqual(cells);
+    });
+
+    it("removes a lone isolated cell", () => {
+      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, false)).toEqual([]);
+      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, true)).toEqual([]);
+    });
+
+    it("counts anchors as neighbors without returning them", () => {
+      const anchors = new Set(["1,0", "2,0"]);
+      const isAnchor = (x: number, y: number) => anchors.has(`${x},${y}`);
+      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, false, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, true, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCellsToFixpoint([[5, 5]], SQUARE_CFG, false, isAnchor)).toEqual([]);
+    });
   });
 
   it("smooths terminal cells in predefined fields", () => {

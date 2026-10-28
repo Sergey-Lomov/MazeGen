@@ -269,6 +269,32 @@ export function normalizePrimitiveCells(
   return removeIsolatedPrimitiveCells(result, cfg);
 }
 
+/** Repeats isolated-cell removal (and, with `smooth`, single-connection removal) until stable, so
+ * peeling one spike cannot expose a new one. Cells in `anchors` (already part of the field) count
+ * as neighbors but are never removed (only `cells` are filtered). */
+export function normalizeCellsToFixpoint(
+  cells: [number, number][],
+  cfg: FieldConfig,
+  smooth: boolean,
+  isAnchor?: (x: number, y: number) => boolean,
+): [number, number][] {
+  let result = cells;
+  for (;;) {
+    // Smoothing needs at least four cells, matching `smoothPrimitiveCells`.
+    const minLinks = smooth && result.length >= 4 ? 2 : 1;
+    const present = new Set(result.map(([x, y]) => `${x},${y}`));
+    const next = result.filter(([x, y]) => {
+      let links = 0;
+      for (const [dx, dy] of getCellNeighborOffsets(cfg, x, y)) {
+        if (present.has(`${x + dx},${y + dy}`) || isAnchor?.(x + dx, y + dy)) links++;
+      }
+      return links >= minLinks;
+    });
+    if (next.length === result.length) return result;
+    result = next;
+  }
+}
+
 function removeIsolatedPrimitiveCells(cells: [number, number][], cfg: FieldConfig): [number, number][] {
   // Fewer than two cells cannot contain an accidental isolated cell. This preserves a valid
   // one-cell primitive such as a 1×1 rectangle.
