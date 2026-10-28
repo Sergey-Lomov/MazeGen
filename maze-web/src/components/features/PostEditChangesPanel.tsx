@@ -7,7 +7,7 @@ import { Button } from "../Button";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
-import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditReplay";
+import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditLifelines";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { sharedStyles } from "../../styles/shared";
 import { typography, muted, spacing, ui, radius } from "../../styles/theme";

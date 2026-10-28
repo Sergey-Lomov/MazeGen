@@ -719,7 +719,7 @@ dependent link, `ParamModifier`/`ColorModifier`, override) and silent on already
 (e.g. that links and modifiers persist with the project) — those belong to this spec, not to the
 in-app explanation.
 
-**Parameter-links dialog (`ParameterLinksDialog.tsx`, GitHub issue #644, redesigned link-centric
+**Parameter-links dialog (`ParameterLinksDialog.tsx`, split into `ParameterLinksPicker.tsx`, `ParameterLinksModifiers.tsx` and `ParameterLinksDialog.styles.ts`; GitHub issue #644, redesigned link-centric
 per follow-up feedback, then trimmed to just a filter/add toolbar plus the link list).** No
 explanatory hint text above the list — the toolbar and cards are self-explanatory. The toolbar holds
 a `BreadcrumbNav` filter (see below) and an `AddIconButton` (see below — the quality panel's own flat
@@ -1015,7 +1015,7 @@ GitHub issue #311's own check, plus the three teleport checks added as a #313 fo
 - **`teleport_marker_invisible`**, **`teleport_group_ambiguous`**, **`teleport_waypoint_overlap`** —
   identical checks to "Vector by walls"' own (see "Export warnings" below), since this mode reuses
   `TeleportRenderer` as-is and can hit the exact same caveats. Factored into a shared
-  `computeTeleportWarnings` helper (`exportWarnings.ts`) taking `TeleportSettingsFields` plus a
+  `computeTeleportWarnings` helper (`exportTeleportWarnings.ts`) taking `TeleportSettingsFields` plus a
   start/finish marker style, called by both `computeVectorByWallsWarnings` and
   `computeVectorByCorridorsWarnings`, so the two modes' warning sets can't silently drift apart on
   the fields they actually share.
@@ -1104,7 +1104,7 @@ Both split-point checks share one `specialSplitPointKeys` set (built once via `b
 
 - **`elevator_indistinguishable`** (GitHub issue #471) — fires only when marker indices are not shown for elevators (`!(markerIndex.enabled && markerIndex.coverage.elevator)`) **and** elevator floor badges are off (`elevatorBadges.enabled === false`) **and** two or more distinct `elevator` nodes occupy the same cell on the drawn (already floor-scoped) floor. By the one-node-per-shaft-per-floor invariant, two distinct elevator nodes in one cell are always different shafts, so no component analysis is needed — the check groups `elevator`-edge-incident node ids by `${x},${y}` and flags any cell with ≥2. Emitted by both `computeVectorByWallsWarnings` and `computeVectorByCorridorsWarnings`; `nodes` is the sorted union of the flagged node ids, `edges` empty.
 
-**Panel UI** (`VectorByWallsSettingsPanel.tsx`): a collapsible "Warnings" section at the bottom of the panel (title shows the count, e.g. "Warnings (2)"), hidden entirely when there are no warnings. Each warning renders as an `ExportWarningBubble` — same look/interaction as `IssuesBlock`'s `IssueBubble` (Analytics feature): an info icon opens a `Modal` with the warning's description (`resolveExportWarningDescription`, `exportWarningsI18n.ts` — descriptions state the problem only, no fix suggestions), hovering the bubble sets `hoveredExportWarningKey` in the store.
+**Panel UI** (`VectorByWallsSettingsPanel.tsx`; the store reads and derived data shared with `VectorByCorridorsSettingsPanel.tsx` come from `useExportPanelModel.ts`): a collapsible "Warnings" section at the bottom of the panel (title shows the count, e.g. "Warnings (2)"), hidden entirely when there are no warnings. Each warning renders as an `ExportWarningBubble` — same look/interaction as `IssuesBlock`'s `IssueBubble` (Analytics feature): an info icon opens a `Modal` with the warning's description (`resolveExportWarningDescription`, `exportWarningsI18n.ts` — descriptions state the problem only, no fix suggestions), hovering the bubble sets `hoveredExportWarningKey` in the store.
 
 **Highlight overlay**: `VectorByWallsRenderer` and `VectorByCorridorsRenderer` each own their own `RegionHighlightRenderer` instance (per `maze-web/CLAUDE.md`'s feature-renderer ownership rule — never shared between the two mode renderers or with `AnalyticsRenderer`'s issue-highlight overlay), rendering a yellow cell-fill highlight (`WARNING_HIGHLIGHT_COLOR`, `0xffaa44`, exported from `VectorByWallsRenderer.ts` for reuse — no perimeter, `skipPerimeter: true`) for the hovered warning's `nodes`, each as its own singleton region group so unrelated cells never get a perimeter drawn between them. Each renderer memoizes its own `compute*Warnings` result by reference-equality of its inputs (`nodes`/`edges`/`cfg`/its own mode settings/`start`/`finish`), so hovering a warning (which changes only `hoveredExportWarningKey`) doesn't recompute the whole warning list.
 

@@ -6,7 +6,9 @@ This specification defines warnings that belong to the two image-export renderer
 These are presentation warnings, not Quality Control issues. A maze may be valid and still
 produce an export whose colors, labels, markers, or geometry are difficult to read. The warnings
 are computed by the renderer-specific pure selectors in
-`maze-web/src/pixi/selectors/exportWarnings.ts` and are displayed in the corresponding export
+`maze-web/src/pixi/selectors/exportWarnings.ts` (entry points and per-mode orchestration; text fit in `exportTextFit.ts`,
+contrast checks in `exportContrastWarnings.ts`, teleport/elevator checks in `exportTeleportWarnings.ts`, corridor-specific
+checks in `exportCorridorWarnings.ts`) and are displayed in the corresponding export
 settings panel.
 
 ## Common rules

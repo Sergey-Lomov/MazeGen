@@ -1,39 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  canonicalize,
-  edgeKey,
-  computeInvalidKeysFromCells,
-  computeAutoLockedNodes,
-  applyTool,
-  computeInvalidTeleportIds,
-  computeInvalidMarkers,
-  computeInvalidEndpoint,
-  computeInvalidLockedNodeKeys,
-  cycleTeleportDirection,
-  removeTeleport,
-  moveTeleportEndpoint,
-  presetTeleportEntryToState,
-  pickEdgeAtPosition,
-  presetEdgeKey,
-  rotatePresetSplitPoint,
-  rotatePresetSplitPointBreaksNeighborShape,
-  resolvePresetPartnerAt,
-  allNodesAt,
-  presetSplitNodeFaceKinds,
-  presetConnectionsOnLevel,
-  cellExistsAt,
-  computeInvalidVerticalPassageIds,
-  computeInvalidElevatorIds,
-  cycleVerticalPassageDirection,
-  moveVerticalPassageEndpoint,
-  moveElevatorEndpoint,
-  presetVerticalPassageDirectionToDto,
-  pickTeleportEndpointAt,
-  pickVerticalPassageEndpointAt,
-  pickElevatorEndpointAt,
-  lockedNodesWithMovedLock,
-} from "../pixi/fieldEditUtils";
+import { canonicalize, edgeKey, computeInvalidKeysFromCells, computeAutoLockedNodes, applyTool, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, presetTeleportEntryToState, pickEdgeAtPosition, presetConnectionsOnLevel, cellExistsAt, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, cycleVerticalPassageDirection, moveVerticalPassageEndpoint, moveElevatorEndpoint, presetVerticalPassageDirectionToDto, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, lockedNodesWithMovedLock } from "../pixi/fieldEditUtils";
+import { presetEdgeKey, rotatePresetSplitPoint, rotatePresetSplitPointBreaksNeighborShape, resolvePresetPartnerAt, allNodesAt, presetSplitNodeFaceKinds } from "../pixi/presetSplitResolve";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";

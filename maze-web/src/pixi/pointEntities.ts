@@ -1,8 +1,6 @@
 import { presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
-import {
-  allNodesAt, canonicalizePresetPair, presetEdgeKey,
-  type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
-} from "./fieldEditUtils";
+import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "./fieldEditUtils";
+import { allNodesAt, canonicalizePresetPair, presetEdgeKey } from "./presetSplitResolve";
 import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "./presetSplitLabels";
 import { formatTargetLabel } from "./targetLabel";
 import type { NodeLockKind } from "../wasm/types";

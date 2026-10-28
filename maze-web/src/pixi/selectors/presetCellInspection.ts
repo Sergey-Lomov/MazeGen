@@ -1,8 +1,6 @@
 import { presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
-import {
-  allNodesAt, presetSplitNodeFaceKinds,
-  type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
-} from "../fieldEditUtils";
+import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../fieldEditUtils";
+import { allNodesAt, presetSplitNodeFaceKinds } from "../presetSplitResolve";
 import { presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
 import { splitShapeBinding } from "../splitShape";

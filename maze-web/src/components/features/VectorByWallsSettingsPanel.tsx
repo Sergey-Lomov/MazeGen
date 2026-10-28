@@ -1,20 +1,14 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { SectionHeader } from "../SectionHeader";
-import { hasCellAreaSpread } from "../../pixi/markerScale";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
-import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
-import { maxFittingFontSize } from "../../pixi/textFit";
-import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { TextFitContextProvider } from "./TextFitContext";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { computeVectorByWallsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
-import { requiredTextPlateDimensions } from "../../pixi/textFit";
-import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
-import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
+import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
@@ -22,14 +16,14 @@ import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { FloorLabelSection } from "./FloorLabelSection";
-import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
+import { TeleportSettingsSection } from "./TeleportSettingsSection";
+import { useExportPanelModel } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { TILE_SIZE } from "../../pixi/constants";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
-import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { ColorVisibilityProvider, LayoutGate } from "../ColorVisibilityContext";
-import { PC, buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
+import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 /** "Background", "Tiles", "Markers" and "One-ways" sections of the "Vector by walls" render mode's
@@ -97,93 +91,11 @@ export function VectorByWallsSettingsPanel() {
   const addLink = useMazeStore((s) => s.addVectorByWallsLink);
   const removeLink = useMazeStore((s) => s.removeVectorByWallsLink);
 
-  const rawNodes = useMazeStore((s) => s.nodes);
-  const rawEdges = useMazeStore((s) => s.edges);
-  const rawStart = useMazeStore((s) => s.start);
-  const rawFinish = useMazeStore((s) => s.finish);
-  const postEditMeta = useMazeStore((s) => s.postEditMeta);
-  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const cfg = useMazeStore((s) => s.activeFieldConfig);
-  const floors = useMazeStore((s) => s.floors);
-  const activeFloorId = useMazeStore((s) => s.activeFloorId);
-
-  // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
-  // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
-  // `state.start`/`state.finish`, only `postEditMeta` reflects a post-edit marker move).
-  const rawEffectiveEndpoints = useMemo(
-    () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
-    [rawNodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
-  );
-
-  // Scoped to `activeFloorId` (GitHub issue #347) — mirrors `VectorByWallsRenderer.renderAll`'s own
-  // scoping, so this panel's warnings/section-visibility checks see exactly what's drawn.
-  // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
-  // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list
-  // (Analytics feature) — see `exportWarnings.ts`'s doc comment.
-  const exportWarnings = useMemo(
-    () => computeVectorByWallsWarningsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
-    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
-  );
-
-  // Auto-fit data for font-size rows (GitHub issue #707) — floor labels have their own independent
-  // size control, so `fitAll` only covers the shared-style label controls.
-  const textFit = useMemo<TextFitContextValue>(() => {
-    const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
-    return {
-      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
-      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
-      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
-      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
-    };
-  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
-
-  // Group customization lists every teleport connection group of the *whole project*, cross-floor
-  // pairs included (GitHub issue #484) — not just the active floor's — so switching floors never
-  // changes the set of customizable groups. Built per floor exactly the way each floor's own
-  // renderer builds it, then merged by key (see the hook's own doc comment), so an override set
-  // here always resolves against what that floor's renderer draws.
-  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(
-    rawNodes, rawEdges, cfg, floors, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish,
-  );
-
-  // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
-  // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
-  // `nodes`/`edges` — so switching floors never makes a section appear or disappear (which flickered
-  // the panel). Same "hide only when there's genuinely nothing to configure anywhere" rule the
-  // "Vertical connections" sub-sections below already follow against `rawEdges`.
-  const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
-
-  // One visibility context for the whole panel (GitHub issue #717): the section gates below, the
-  // priority color lists and the "Project colors" list all derive from it, so they cannot drift.
-  // Built from the unscoped `rawNodes`/`rawEdges` so a floor switch never changes the answer.
-  const colorVisibility = useMemo(
-    () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors }, settings),
-    [rawNodes, rawEdges, floors, settings],
-  );
-  const hasOneWays = colorVisibility.oneWayIndicator;
-  const hasTeleports = colorVisibility.teleports;
-  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport.
-  const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
-  const hasTwoWayPassages = colorVisibility.twoWayPassages;
-  const hasOneWayPassages = colorVisibility.oneWayPassages;
-  const hasElevators = colorVisibility.elevators;
-  const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
-  // "Marker indices" is shown only when some marker could ever carry an index (GitHub issue #730).
-  const hasMarkerIndexSource = colorVisibility.markerIndexAvailable;
-  // Marker size adaptation only matters when cells differ in area (GitHub issue #819).
-  const hasAreaSpread = useMemo(() => hasCellAreaSpread(cfg), [cfg]);
-
-  // Which registry paths the panel currently shows (GitHub issue #670) — mirrors the section/
-  // subsection visibility conditions above, so the parameter-links dialog can tell an inactive
-  // parameter (e.g. a teleport field with no teleports in the maze) apart from an active one.
-  const activePaths = useMemo(
-    () => computeActivePaths(VECTOR_BY_WALLS_PARAM_REGISTRY, {
-      hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread,
-      hasMultipleFloors: floors.length > 1,
-    }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, floors.length, settings],
-  );
+  const {
+    floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
+    colorVisibility, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages,
+    hasElevators, hasVerticalSection, hasMarkerIndexSource, activePaths,
+  } = useExportPanelModel(settings, VECTOR_BY_WALLS_PARAM_REGISTRY, computeVectorByWallsWarningsAcrossFloors);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);

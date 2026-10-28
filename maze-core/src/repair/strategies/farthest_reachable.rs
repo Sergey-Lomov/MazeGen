@@ -1,11 +1,11 @@
 use crate::graph::Graph;
 use crate::graph::nav::NavGraph;
-use crate::graph::pathfinding::dijkstra_forward;
+use crate::graph::pathfinding::{bfs_distances, dijkstra_forward};
 #[cfg(test)]
-use crate::graph::pathfinding::dijkstra_reverse;
+use crate::graph::pathfinding::{bfs_distances_reverse, dijkstra_reverse};
 use crate::ids::NodeId;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 /// `search_mode` — see GitHub issue #515. Shared by `FarthestEndpointsStrategy` and
 /// `MissingTeleportsStrategy`'s `entry_pick: farthest_from_random`, both of which need a
@@ -70,7 +70,7 @@ pub(crate) fn farthest_to(nav: &NavGraph, target: usize) -> NodeId {
 /// `SEARCH_MODE_EXHAUSTIVE` counterpart to `farthest_from`: plain BFS over every raw-graph node
 /// (outgoing edges), not just nav nodes — can land mid-corridor. Same tie-break/fallback rules.
 pub(crate) fn farthest_from_exhaustive(graph: &Graph, source: NodeId) -> NodeId {
-    let dist = bfs_distances(graph, source, true);
+    let dist = bfs_distances(graph, source);
     farthest_from_distances(&dist, source)
 }
 
@@ -78,7 +78,7 @@ pub(crate) fn farthest_from_exhaustive(graph: &Graph, source: NodeId) -> NodeId 
 /// every raw-graph node. Same tie-break/fallback rules.
 #[cfg(test)]
 pub(crate) fn farthest_to_exhaustive(graph: &Graph, target: NodeId) -> NodeId {
-    let dist = bfs_distances(graph, target, false);
+    let dist = bfs_distances_reverse(graph, target);
     farthest_from_distances(&dist, target)
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn farthest_to_exhaustive(graph: &Graph, target: NodeId) -> NodeId {
 /// `FarthestEndpointsStrategy`'s exhaustive-mode `orient_farthest_pair` to compare both
 /// directions of a candidate pair, same as the nav-graph mode does via `dijkstra_forward`.
 pub(crate) fn exhaustive_distance(graph: &Graph, a: NodeId, b: NodeId) -> Option<usize> {
-    bfs_distances(graph, a, true).get(&b).copied()
+    bfs_distances(graph, a).get(&b).copied()
 }
 
 fn farthest_from_distances(dist: &HashMap<NodeId, usize>, fallback: NodeId) -> NodeId {
@@ -94,29 +94,6 @@ fn farthest_from_distances(dist: &HashMap<NodeId, usize>, fallback: NodeId) -> N
         .max_by_key(|&(&node_id, &d)| (d, std::cmp::Reverse(node_id)))
         .map(|(&node_id, _)| node_id)
         .unwrap_or(fallback)
-}
-
-/// BFS distances from `source` over the raw graph — `forward` selects outgoing (true) vs incoming
-/// (false) edges. `usize::MAX`-style "unreachable" nodes are simply absent from the map.
-fn bfs_distances(graph: &Graph, source: NodeId, forward: bool) -> HashMap<NodeId, usize> {
-    let mut dist = HashMap::new();
-    let mut queue: VecDeque<(NodeId, usize)> = VecDeque::new();
-    dist.insert(source, 0);
-    queue.push_back((source, 0));
-    while let Some((node, d)) = queue.pop_front() {
-        let neighbors: Vec<NodeId> = if forward {
-            graph.outgoing_neighbors(node).collect()
-        } else {
-            graph.incoming_neighbors(node).collect()
-        };
-        for next in neighbors {
-            if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(next) {
-                e.insert(d + 1);
-                queue.push_back((next, d + 1));
-            }
-        }
-    }
-    dist
 }
 
 #[cfg(test)]

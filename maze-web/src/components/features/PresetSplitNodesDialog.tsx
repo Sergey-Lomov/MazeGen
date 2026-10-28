@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds, rotatePresetSplitPointBreaksNeighborShape } from "../../pixi/fieldEditUtils";
+import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds, rotatePresetSplitPointBreaksNeighborShape } from "../../pixi/presetSplitResolve";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";

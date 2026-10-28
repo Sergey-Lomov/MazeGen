@@ -14,7 +14,8 @@ import {
 import { createFloorNodesSelector, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
-import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets, buildPostEditPointEntitiesAt } from "../store/slices/postEditSliceHelpers";
+import { resolveDragTargets } from "../store/slices/postEditSliceHelpers";
+import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, buildPostEditPointEntitiesAt } from "../store/slices/postEditBaselineBuilders";
 import { postEditEntitiesForPurpose } from "./entityToolKinds";
 import type { PostEditPointEntityDescriptor } from "./postEditPointEntities";
 import type { FieldEdge } from "./fieldEditUtils";

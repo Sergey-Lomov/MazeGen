@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig } from "./storeTestHelpers";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import { presetEdgeKey } from "../pixi/fieldEditUtils";
+import { presetEdgeKey } from "../pixi/presetSplitResolve";
 import { fieldOf } from "./fieldConfigFixtures";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 

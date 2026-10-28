@@ -1,6 +1,7 @@
 use crate::Maze;
 use crate::generation::PresetState;
 use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
+use crate::graph::pathfinding::bfs_distances;
 use crate::ids::NodeId;
 use crate::quality_control::InvalidDeadEndIssue;
 use crate::repair::command::MutationCommand;
@@ -11,7 +12,7 @@ use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
 use rand::seq::SliceRandom;
 use rand::{Rng, RngCore};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashSet;
 
 pub const PARAM_ONE_WAY_CHANCE: &str = "one_way_chance";
 pub const PARAM_ALLOW_CROSS_FLOOR: &str = "allow_cross_floor";
@@ -120,7 +121,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for DeadEndToTelepo
             .unwrap_or(50.0)
             .clamp(0.0, 100.0);
 
-        let distances = bfs_distances(maze, *source);
+        let distances = bfs_distances(&maze.graph, *source);
         let source_level = maze.field.level_of(*source);
         let mut in_interval = Vec::new();
         let mut out_of_interval = Vec::new();
@@ -175,21 +176,6 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndIssue> for DeadEndToTelepo
 }
 
 crate::impl_erased_repair_strategy!(DeadEndToTeleportStrategy, InvalidDeadEndIssue);
-
-fn bfs_distances<T: Tessellation>(maze: &Maze<T>, source: NodeId) -> HashMap<NodeId, usize> {
-    let mut distances = HashMap::new();
-    let mut queue = VecDeque::from([(source, 0)]);
-    distances.insert(source, 0);
-    while let Some((node, distance)) = queue.pop_front() {
-        for next in maze.graph.outgoing_neighbors(node) {
-            if let std::collections::hash_map::Entry::Vacant(entry) = distances.entry(next) {
-                entry.insert(distance + 1);
-                queue.push_back((next, distance + 1));
-            }
-        }
-    }
-    distances
-}
 
 fn order_candidates(
     mut candidates: Vec<NodeId>,

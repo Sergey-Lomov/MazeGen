@@ -3,7 +3,7 @@ import { downloadProjectFile, parseAndValidate, serializeProject, projectFileAcc
 import type { MazeState } from "../store/mazeStore";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import { buildPostEditBaseline } from "../store/slices/postEditSliceHelpers";
+import { buildPostEditBaseline } from "../store/slices/postEditBaselineBuilders";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";

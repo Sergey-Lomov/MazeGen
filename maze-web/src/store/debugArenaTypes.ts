@@ -1,7 +1,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
-import type { IssueHighlightTarget } from "../debug/algorithmRegistry";
+import type { IssueHighlightTarget } from "../debug/algorithmNarration";
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */

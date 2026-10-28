@@ -5,7 +5,8 @@ import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import { availablePresetKeys, presetParams } from "../pixi/fieldOps";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
-import { computeAutoLockedNodes, presetEdgeKey } from "../pixi/fieldEditUtils";
+import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
+import { presetEdgeKey } from "../pixi/presetSplitResolve";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
 import type {

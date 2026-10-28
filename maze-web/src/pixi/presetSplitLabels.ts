@@ -1,4 +1,5 @@
-import { allNodesAt, presetSplitNodeFaceKinds, presetSplitPointKey, type PresetConnectionEntry } from "./fieldEditUtils";
+import { type PresetConnectionEntry } from "./fieldEditUtils";
+import { allNodesAt, presetSplitNodeFaceKinds, presetSplitPointKey } from "./presetSplitResolve";
 import { presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
 import { splitNodeSemanticNamesFromKinds, splitPointShapeName } from "./splitNodeNames";
 import { detectSplitSpecialShapeKind } from "./splitFaceLayout";

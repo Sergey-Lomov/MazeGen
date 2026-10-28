@@ -9,7 +9,7 @@ import { buildCellSet } from "./selectors/sharedSelectors";
 import { pruneRemovedSplitNodes, postEditVerticalToDto } from "./postEditUtils";
 import { postEditTeleportsToDto } from "./postEditTeleportUtils";
 import { buildSplitNodeResolver, resolveEndpoint } from "./postEditEndpoint";
-import { buildMultiFloorPointNodeMap } from "../store/slices/postEditSliceHelpers";
+import { buildMultiFloorPointNodeMap } from "../store/slices/postEditBaselineBuilders";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FeatureId } from "../store/tessellationTypes";
 

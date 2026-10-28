@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { presetEdgeKey } from "../pixi/fieldEditUtils";
+import { presetEdgeKey } from "../pixi/presetSplitResolve";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { FieldConfig } from "../fieldConfig";

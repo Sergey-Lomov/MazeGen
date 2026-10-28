@@ -2,15 +2,8 @@ import { ArrowLeftRight, Settings, Trash2 } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import {
-  canonicalizePresetPair,
-  presetEdgeKey,
-  presetSplitPointKey,
-  type PresetConnectionEntry,
-  type PresetElevatorEntry,
-  type PresetTeleportEntry,
-  type PresetVerticalPassageEntry,
-} from "../../pixi/fieldEditUtils";
+import { type PresetConnectionEntry, type PresetElevatorEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry } from "../../pixi/fieldEditUtils";
+import { canonicalizePresetPair, presetEdgeKey, presetSplitPointKey } from "../../pixi/presetSplitResolve";
 import type { PresetPointEntityDescriptor } from "../../pixi/pointEntities";
 import { type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";

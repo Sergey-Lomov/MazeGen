@@ -14,7 +14,7 @@ import { postEditTargetLabel, type SplitLabelContext } from "../../pixi/postEdit
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditUtils";
+import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditRotation";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { bringSidePanelToFront } from "../SidePanel";
 import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";

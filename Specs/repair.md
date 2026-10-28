@@ -1480,6 +1480,8 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 | `cross_floor_mode` | Enum (`forbidden`, `natural`, `manual`) | `natural` | Cross-floor policy for the exit pick (GitHub issue #381) — `forbidden` restricts every candidate set to entry's own floor; `natural` ignores floor entirely; `manual` applies `cross_floor_balance`'s own-floor/other-floor roll within whichever zone is picked. |
 | `cross_floor_balance` | Float (0.0–1.0) | `0.5` | Under `cross_floor_mode: manual` only — chance of preferring an other-floor exit over a same-floor one; `0.0`/`1.0` are hard preferences (same-floor-only / other-floor-only), no fallback to the opposite group even if it's the only one populated. |
 
+The raw-`Graph` tile-hop BFS used by the teleport strategies and `farthest_reachable` is the single shared `bfs_distances` (`maze-core/src/graph/pathfinding.rs`): directed, outgoing edges, unreachable nodes absent from the result.
+
 **Entry/exit selection.** For each teleport slot, a pool index is picked per `entry_pick` (`pick_pool_index` — plain uniform under `random`/`farthest_from_random`, dead-end-biased under `dead_end_priority`), then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
 1. reachable, outside `[desired_min, desired_max]`
 2. reachable, inside `[desired_min, desired_max]`

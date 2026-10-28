@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPostEditPointEntitiesAt, type PostEditPointEntitiesSourceState } from "../store/slices/postEditSliceHelpers";
+import { buildPostEditPointEntitiesAt, type PostEditPointEntitiesSourceState } from "../store/slices/postEditBaselineBuilders";
 import { nodeEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
 import { baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";

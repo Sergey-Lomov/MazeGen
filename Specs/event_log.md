@@ -9,7 +9,7 @@ Module: `maze-core/src/event_log/`.
 Wire-level Rust/TS code (`NodeId`, `EdgeAdded`, event variant names) stays graph-jargon —
 unaffected by this section. But the *user-facing narration text* rendered in the debug tree
 (`messages/en.json`/`ru.json`'s `debug.tree.*` keys, built by each adapter's
-`narrationTokensFor` in `maze-web/src/debug/algorithmRegistry.ts`) had four different words for
+`narrationTokensFor` in `maze-web/src/debug/algorithmNarration.ts`) had four different words for
 a graph node (tile, node, cell, vertex) and two for a graph edge (edge, connection), mixed
 across algorithms and sometimes within the same enum's narration. Canonical picks, matching the
 non-debug UI's own vocabulary (`field.cell`/`field.cells`, `preset.passage`/`analytics.passages`)
@@ -471,19 +471,19 @@ panel needs the hover highlight independent of that).
 `target` is `null` for the 9 of 11 issue kinds with no structural payload (`IssuePayload::None`),
 otherwise the flattened structural data from `CheckRan`'s per-check `IssuePayload` or
 `IssuesMerged`'s merged-issue payload (`quality_control.md`'s "Trace events" section) — flattened
-across every contributing check via `algorithmRegistry.ts`'s `issueHighlightTarget`, since a single
+across every contributing check via `algorithmNarration.ts`'s `issueHighlightTarget`, since a single
 debug-tree bubble narrates one issue per event, unlike Analytics' `IssuesBlock`, which renders one
 bubble per contributing check and so highlights each check's own cycles/regions independently.
 
 `reasons` is one already-resolved display string per contributing check — built by
-`algorithmRegistry.ts`'s `issueReasons`/`issueReasonFor` from `resolveIssueSourceLabel`
+`algorithmNarration.ts`'s `issueReasons`/`issueReasonFor` from `resolveIssueSourceLabel`
 (`components/issueRegistry.ts`, the same per-check detail formatter Analytics' `IssueBubble` calls)
 against that check's *type* id (resolved from its wire *instance* id — `CheckRan.check_id`/
 `IssuesMerged.details`' keys — via `ScopeTitleLookup.checkTypeId`, a new lookup mirroring
 `stageTitle`/`ruleTitle`, sourced from the live store's `rules[].checks[]` the same way
 `IssueDto.source_check_types` is built for the analytics snapshot) and that check's own `details`
 map (`CheckRan.issue.details` / `IssuesMerged.details[checkId]`, both carried on the wire — see
-`quality_control.md`'s "Trace events" section). Resolved once per event, in `algorithmRegistry.ts`,
+`quality_control.md`'s "Trace events" section). Resolved once per event, in `algorithmNarration.ts`,
 not deferred to the render layer — `DebugRefBubble` only ever renders already-resolved strings, no
 `titleLookup` access of its own. Deduplicated (`issueReasons`) so two checks of the same type with
 identical params/details don't repeat the same reason twice.

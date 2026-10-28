@@ -121,7 +121,7 @@ The transverse span is derived from the entity geometry:
   elevator stops, cross-element group) lives in one place, `resolveIssueHighlight` in
   `maze-web/src/components/issueHighlight.ts` (GitHub issue #623) -- generic over `Id`
   (`number`/`bigint`) so Analytics' `IssuesBlock.tsx` (number/snake_case DTO) and the debug tree's
-  `algorithmRegistry.ts` (bigint/EventLog `IssuePayload`, via `IssueHighlightTarget`) each normalize
+  `algorithmNarration.ts` (bigint/EventLog `IssuePayload`, via `IssueHighlightTarget`) each normalize
   their own wire shape into a shared input type and call the same resolver, instead of maintaining
   two independently-drifting `switch` statements (the root cause of the #619 highlighting bugs).
   Each side still owns its own preset-lock (`showFullyPresetLockedIssues`) filtering before
@@ -338,7 +338,7 @@ multi-cell split tile with no literal duplicate. `hoveredIssueLoopEdges` and
 `invalid_cross_element_group` bubble mixing a one-way member (wall) with a split/region
 member sets both at once, and `IssueHighlightOverlay` renders them independently in the
 same pass. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTarget`'s
-`cycle`/`region` fields in `algorithmRegistry.ts`, rendered by
+`cycle`/`region` fields in `algorithmNarration.ts`, rendered by
 `DebugRefHighlightOverlay`) so an issue reads identically in both views.
 
 ### 3.5. Image Export warnings

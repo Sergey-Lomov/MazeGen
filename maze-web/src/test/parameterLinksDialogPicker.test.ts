@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allLeavesDisabled, allLeavesInactive, filterPickerTree, type PickerNode } from "../components/features/ParameterLinksDialog";
+import { allLeavesDisabled, allLeavesInactive, filterPickerTree, type PickerNode } from "../components/features/ParameterLinksPicker";
 
 type P = "a" | "b" | "c";
 

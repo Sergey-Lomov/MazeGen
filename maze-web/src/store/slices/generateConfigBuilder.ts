@@ -7,7 +7,8 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, c
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
+import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
+import { buildMultiFloorPostEditDraft, buildPostEditBaseline } from "./postEditBaselineBuilders";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";

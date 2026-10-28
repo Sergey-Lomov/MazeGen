@@ -186,7 +186,7 @@ resolved **once, at command-construction time**, reading live confirmed/derived 
 itself never reads outside its own `PostEditReplayContext`/fold state:
 
 - `rotateSplitPoint.nodes`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
-  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditUtils.ts`)
+  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditRotation.ts`)
   — replay has no tessellation/field access, so a rotation's or blueprint's geometric outcome is
   computed once by the store action, not re-derived during replay. `rotateSplitPoint.nodes` is a
   COMPLETE snapshot of every affected node's own face list (`ResolvedRotateNode`, the same shape
@@ -202,6 +202,12 @@ itself never reads outside its own `PostEditReplayContext`/fold state:
   is no one-way id, minting, reuse, or lifecycle.
 
 ### Replay (`pixi/postEditReplay.ts`)
+
+`postEditReplay.ts` holds `applyPostEditCommand` and the replay entry points. The lifeline grouping, cascade, delete/reset and
+renormalization helpers built on top of it (`lifelineKeysOf`, `collectAffectedLifelines`, `cascadeRemoveLifelines`,
+`deleteCommandAt`, `resetCommandsAt`, `filterCommandsForPoint`, ...) live in `pixi/postEditLifelines.ts`; the split-point
+rotation and face-owner resolution live in `pixi/postEditRotation.ts`; `pixi/postEditUtils.ts` keeps the draft/redirect
+builders.
 
 ```typescript
 interface PostEditReplayContext {
@@ -280,7 +286,7 @@ entity ever touched"), not an implementation accident.
 commands, point, level), /* dirty */ true)`. `resetPostEdit()` (whole graph) is the trivial case:
 `replacePostEditCommands(get, set, [], /* dirty */ false)`.
 
-### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditReplay.ts`)
+### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditLifelines.ts`)
 
 Each Changes-panel row (below) carries two actions, both confirmed via `ConfirmModal` before
 running: **Reset** truncates the log to end right after that row's own command
@@ -614,7 +620,7 @@ shape). `PostEditChangesPanel.tsx` builds the real context once per render from 
 entry), with `inFieldCellsAt` computing (and caching) each floor's in-field cell set from
 `buildActiveCells`/`buildCellSet` lazily per level, since a single row's bubbles can span several
 floors (an elevator/vertical passage) each potentially needing a different floor's own field shape.
-`buildPostEditPointEntitiesAt`/`buildPostEditResetLifelinesAt` (`postEditSliceHelpers.ts`) and
+`buildPostEditPointEntitiesAt`/`buildPostEditResetLifelinesAt` (`postEditBaselineBuilders.ts`) and
 `ManageSplitNodesDialog`/`PostEditElevatorFloorDialog` build their own `cfgAt`/per-row config lookup
 the same way.
 
@@ -659,7 +665,7 @@ earlier in the same issue) had left duplicated near-verbatim across four call si
 `postEditSliceHelpers.ts`), `confirmPostEditElevatorPlacement`, and `PostEditController.tryTeleportClick`.
 Each built its own `buildMultiFloorPointNodeMap` + `resolverForNodeId` + "look up the id's own
 `level`, re-inject it onto the resolved split endpoint" chain independently — `resolveNodeIdToEndpoint(nodes,
-splitPoints, id)` (`postEditSliceHelpers.ts`) is that chain, once; all four call sites now call it
+splitPoints, id)` (`postEditBaselineBuilders.ts`) is that chain, once; all four call sites now call it
 directly. Also collapsed a matching duplication one layer up: `PostEditEntityDeleteDialog` used to
 rebuild the exact same `nodesHere`/`nodeLevel`/`nodeById`/`inFieldCellsAt`/`splitCtx` scaffolding
 `buildPostEditPointEntitiesAt` already assembles for `requestPostEditEntityDelete`/
@@ -788,7 +794,7 @@ view with the rows) narrows `postEditCommands` down to the rows belonging to one
 clear (×) button inside the field, on its right edge, that resets back to the full log. `entityIdOf
 (command)` (`pixi/postEditCommandLabels.ts`) returns the id a command is associated with — the same
 id exposed as `PostEditCommandLabel.entityId` and rendered as the row's own id bubble (`"o5"`, `"t3"`,
-... — not a lifeline key: `lifelineKeysOf` in `postEditSliceHelpers.ts` serves point-reset pruning, a
+... — not a lifeline key: `lifelineKeysOf` in `postEditLifelines.ts` serves point-reset pruning, a
 different and broader
 purpose that also covers wall/basic edges and start/finish via synthetic keys never shown to the
 user) — or `undefined` for a command kind with no id of its own (`setEdge`/`setEdgePair` on a
@@ -1129,7 +1135,7 @@ Generator auto-split (GitHub issue #222), broader serialization work (#224) beyo
 ### On `generate()`
 
 1. Runs WASM generation.
-2. Builds a fresh `postEditBaseline` via `buildPostEditBaseline(nodes, edges, revision, generatedStart, generatedFinish)` (`postEditSliceHelpers.ts`) — bumps `revision`, builds the `PostEditReplayContext` (nodes + `resolveSplit`), and derives the pristine (empty-log) `PostEditDerivedState` via the shared `buildMultiFloorPostEditDraft(nodes, edges)` (groups nodes per floor first via `groupNodesByLevel`, GitHub issue #425/#358, so a same-`(x, y)` node on a different floor is never conflated into the same point's split-slot group; also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list, GitHub issue #363). Sets `postEditCommands = []`, `postEditDerived = postEditBaseline.derived`, and mirrors the legacy draft fields via `derivedStateToLegacyFields`.
+2. Builds a fresh `postEditBaseline` via `buildPostEditBaseline(nodes, edges, revision, generatedStart, generatedFinish)` (`postEditBaselineBuilders.ts`) — bumps `revision`, builds the `PostEditReplayContext` (nodes + `resolveSplit`), and derives the pristine (empty-log) `PostEditDerivedState` via the shared `buildMultiFloorPostEditDraft(nodes, edges)` (groups nodes per floor first via `groupNodesByLevel`, GitHub issue #425/#358, so a same-`(x, y)` node on a different floor is never conflated into the same point's split-slot group; also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list, GitHub issue #363). Sets `postEditCommands = []`, `postEditDerived = postEditBaseline.derived`, and mirrors the legacy draft fields via `derivedStateToLegacyFields`.
 3. Resets `_nextPostEditTeleportId`/`_nextPostEditVerticalPassageId`/`_nextPostEditElevatorId`/`_nextSplitSlotId` to one past whatever the baseline derivation found, and `postEditTeleportPendingFrom = null`.
 4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 5. Sets `postEditDirty = false`.
@@ -1523,7 +1529,7 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` —
 ## `buildPostEditDraftEdgesFromGenerated`
 
 Shared function in `pixi/postEditUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
-(`postEditSliceHelpers.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
+(`postEditBaselineBuilders.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
 trivial `resetPostEdit` case, see "Lifecycle" above). Ignores `kind: "teleport"`, `kind:
 "vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked
 separately (see `extractPostEditTeleports` below); vertical passage/elevator edges are resent

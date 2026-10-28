@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto,
-  floorScopedTeleportEdges,
-  rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
-  cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes, rotateSplitPointBreaksNeighborShape,
-} from "../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto, postEditVerticalPassageDirectionToDto, cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint, removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes } from "../pixi/postEditUtils";
+import { rotateSplitPointNodes, rotateSplitPointBreaksNeighborShape } from "../pixi/postEditRotation";
 import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitFaceLayout";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
