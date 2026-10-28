@@ -368,8 +368,8 @@ the field is not changed and the selection remains visible until another gesture
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
 The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
-The tool works with square, hexagonal, triangular, and Cairo tessellations and applies the same
-isolated-cell cleanup and optional smoothing as the other primitives. Cairo primitive inclusion considers only the valid
+The tool works with square, hexagonal, triangular, and Cairo tessellations and normalizes its
+cells with the shared `normalizeCells` routine like every other tool. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.
 
 In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
@@ -435,7 +435,7 @@ edge; the third click defines the second side (and thus the angle) and commits. 
 is derived: `a, b, b + s, a + s` with `s` running from `a` to the pointer. The preview follows the
 cursor after each click; Enter commits the current preview, Escape cancels, and switching tool or
 card discards pending points. Cells are the ones whose centers lie inside the outline, normalized
-like the polygon tool (`normalizeCellsToFixpoint`). Select mode shows the dashed outline.
+like every other tool (`normalizeCells`). Select mode shows the dashed outline.
 
 Edge alignment is on by default. `tessellationEdgeDirections` (`pixi/parallelogramGeometry.ts`)
 collects the distinct edge directions of the tessellation's cells (sampled over a 4×4 cell
@@ -466,10 +466,13 @@ committed cells. Hover highlighting is hidden for the duration of a drag so it c
 primitive preview. Control strokes (solid and dashed frames, including vertex outlines) keep a
 minimum 1.25px screen-space thickness at every zoom level.
 
-Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
-one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
-The Polygon tool repeats this cleanup until no cell changes, so removing one spike cannot leave a
-new one. When adding, cells already in the field count as neighbors but are never removed.
+Every tool normalizes its result with one routine (`normalizeCells`): it removes cells that have
+no edge-adjacent neighbor and, with `Smoothing` enabled, one-edge terminal cells, repeating until no
+cell changes so removing one spike cannot leave a new one. When adding, cells already in the field
+count as neighbors but are never removed. For remove and select no existing cells are used: only
+the shape's own cells are normalized, and the result is then intersected with the field, so
+smoothing matches the outline the user sees. Default-mode tessellation normalization has no
+existing cells and runs without anchors.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
 cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results.

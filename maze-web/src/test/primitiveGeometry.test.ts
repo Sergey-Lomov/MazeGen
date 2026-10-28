@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCellsToFixpoint, normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { normalizeCells, primitiveCells, primitiveWorldGeometry } from "../pixi/primitiveGeometry";
 import { configAllCells } from "../pixi/tessellationCells";
 import { regularHexagonDimensions } from "../pixi/shapeSelection";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "../pixi/triShapeHelpers";
@@ -60,31 +60,25 @@ describe("field shape primitives", () => {
     expect(cells).toContainEqual([0, 0]);
   });
 
-  it("removes isolated cells before and after smoothing", () => {
-    const cells: [number, number][] = [[0, 0], [1, 0], [1, 1], [2, 0], [10, 10]];
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual([[0, 0], [1, 0], [1, 1], [2, 0]]);
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual([[1, 0]]);
-  });
-
-  describe("normalizeCellsToFixpoint", () => {
+  describe("normalizeCells", () => {
     it("peels spikes repeatedly until every cell has two links", () => {
       const block: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
       const cells: [number, number][] = [...block, [2, 0], [3, 0]];
-      expect(normalizeCellsToFixpoint(cells, SQUARE_CFG, true)).toEqual(block);
-      expect(normalizeCellsToFixpoint(cells, SQUARE_CFG, false)).toEqual(cells);
+      expect(normalizeCells(cells, SQUARE_CFG, true)).toEqual(block);
+      expect(normalizeCells(cells, SQUARE_CFG, false)).toEqual(cells);
     });
 
     it("removes a lone isolated cell", () => {
-      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, false)).toEqual([]);
-      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, true)).toEqual([]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, false)).toEqual([]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, true)).toEqual([]);
     });
 
     it("counts anchors as neighbors without returning them", () => {
       const anchors = new Set(["1,0", "2,0"]);
       const isAnchor = (x: number, y: number) => anchors.has(`${x},${y}`);
-      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, false, isAnchor)).toEqual([[0, 0]]);
-      expect(normalizeCellsToFixpoint([[0, 0]], SQUARE_CFG, true, isAnchor)).toEqual([[0, 0]]);
-      expect(normalizeCellsToFixpoint([[5, 5]], SQUARE_CFG, false, isAnchor)).toEqual([]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, false, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCells([[0, 0]], SQUARE_CFG, true, isAnchor)).toEqual([[0, 0]]);
+      expect(normalizeCells([[5, 5]], SQUARE_CFG, false, isAnchor)).toEqual([]);
     });
   });
 
@@ -92,15 +86,6 @@ describe("field shape primitives", () => {
     const config = fieldOf("square", { shape: "circle", radius: 5 });
     expect(configAllCells(config)).toContainEqual([5, 0]);
     expect(configAllCells(config, true)).not.toContainEqual([5, 0]);
-  });
-
-  it("preserves primitives smaller than the normalization threshold", () => {
-    const cells: [number, number][] = [[0, 0]];
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, false)).toEqual(cells);
-    expect(normalizePrimitiveCells(cells, SQUARE_CFG, true)).toEqual(cells);
-
-    const twoCellLine: [number, number][] = [[0, 0], [1, 0]];
-    expect(normalizePrimitiveCells(twoCellLine, SQUARE_CFG, true)).toEqual(twoCellLine);
   });
 
   it("keeps predefined circle and rectangle shapes geometrically distinct", () => {

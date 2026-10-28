@@ -244,6 +244,7 @@ describe("FieldEditController polygon interaction", () => {
           fieldPrimitive: "polygon",
           fieldOperation: "remove",
           fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+          fieldPoints: new Set(Array.from({ length: 100 }, (_, i) => encodePoint(i % 10, Math.floor(i / 10)))),
         }),
       },
     });
@@ -281,6 +282,47 @@ describe("FieldEditController polygon interaction", () => {
 
     expect(commits).toHaveLength(0);
     expect(previewClear).toHaveBeenCalled();
+  });
+});
+
+describe("FieldEditController shape normalization", () => {
+  const allCells = (cols: number, rows: number) =>
+    new Set(Array.from({ length: cols * rows }, (_, i) => encodePoint(i % cols, Math.floor(i / cols))));
+
+  function commitTriangle(operation: "add" | "remove", fieldPoints: Set<number>): [number, number][] {
+    useMazeStore.setState({
+      smoothPrimitives: true,
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "polygon",
+          fieldOperation: operation,
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+          fieldPoints,
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+    click(controller, 45, -45);
+    click(controller, 445, -45);
+    click(controller, 445, -285);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    return commits[0].cells;
+  }
+
+  it("keeps spike cells that touch the existing field when adding", () => {
+    const alone = commitTriangle("add", new Set());
+    const withField = commitTriangle("add", allCells(10, 10));
+    expect(withField.length).toBeGreaterThan(alone.length);
+    for (const cell of alone) expect(withField).toContainEqual(cell);
+  });
+
+  it("commits only cells on the field when removing", () => {
+    const onField = allCells(10, 10);
+    onField.delete(encodePoint(0, 0));
+    const cells = commitTriangle("remove", onField);
+    expect(cells.length).toBeGreaterThan(0);
+    for (const [x, y] of cells) expect(onField.has(encodePoint(x, y))).toBe(true);
   });
 });
 

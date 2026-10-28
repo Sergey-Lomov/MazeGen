@@ -1,6 +1,6 @@
 import { getFieldPreset, getFieldPresetExtents, type FieldOpError } from "../wasm/mazeService";
 import { type FieldConfig, type ResolvedField } from "../fieldConfig";
-import { normalizePrimitiveCells } from "./primitiveGeometry";
+import { normalizeCells } from "./primitiveGeometry";
 
 /**
  * The cells of a field config. Preset shapes are built by `maze-core` (`field_preset`, GitHub
@@ -14,12 +14,17 @@ export function configAllCells(cfg: FieldConfig, smooth = false): [number, numbe
   if (Object.values(params).some((value) => value < 1)) return [];
   const key = JSON.stringify([cfg.tessellation, preset, params]);
   const cached = presetCache.get(key);
-  if (cached) return smooth ? normalizePrimitiveCells(copyCells(cached), cfg, true) : copyCells(cached);
+  if (cached) return smooth ? smoothPreset(copyCells(cached), cfg) : copyCells(cached);
   const cells = buildPresetCells(cfg, preset, params);
   if (presetCache.size >= PRESET_CACHE_LIMIT) presetCache.delete(presetCache.keys().next().value!);
   presetCache.set(key, cells);
   const result = copyCells(cells);
-  return smooth ? normalizePrimitiveCells(result, cfg, true) : result;
+  return smooth ? smoothPreset(result, cfg) : result;
+}
+
+/** A one-cell preset is a valid field, so it is not stripped as an isolated cell. */
+function smoothPreset(cells: [number, number][], cfg: FieldConfig): [number, number][] {
+  return cells.length < 2 ? cells : normalizeCells(cells, cfg, true);
 }
 
 /** Callers may mutate what they get, so the cache never hands out its own arrays. */
