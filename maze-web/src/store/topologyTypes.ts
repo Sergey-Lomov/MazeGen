@@ -9,6 +9,12 @@ export type TopologyPickTarget = "a" | "b";
 /** What the glue editor panel works on: a new glue, or an existing one (`glueId` is its fold group id). */
 export type TopologyGlueEditor = { mode: "add" } | { mode: "edit"; glueId: number };
 
+/** A seam arrow under the pointer, or one pair of it when `pair` is set. */
+export interface SeamHover {
+  arrow: number;
+  pair: number | null;
+}
+
 /** A hovered glue, or one pair of it when `fold` is set. */
 export interface TopologyHover {
   glue: number;
@@ -34,6 +40,8 @@ export interface TopologyState {
   /** What the panel list hovers: a whole glue (fold group id) or one of its pairs (index into
    * `WireTopology.folds`). Its faces are highlighted on the canvas. */
   topologyHover: TopologyHover | null;
+  /** The seam arrow (and glued pair) under the canvas pointer: an index into the active floor's arrows. */
+  seamHover: SeamHover | null;
   /** The boundary face under the pointer while a run is being edited; highlighted as an edge. */
   topologyFaceHover: { contour: number; face: number } | null;
   /** Sides of the glue editor panel under the pointer (the hovered one and its would-be partner),
@@ -45,6 +53,7 @@ export interface TopologyState {
 
 export interface TopologyActions {
   setTopologyHover: (hover: TopologyHover | null) => void;
+  setSeamHover: (hover: SeamHover | null) => void;
   setTopologySideHover: (hover: { a: readonly WireFoldEnd[]; b: readonly WireFoldEnd[] } | null) => void;
   setTopologyFlagged: (sides: readonly WireFoldEnd[]) => void;
   setTopologyFaceHover: (hover: { contour: number; face: number } | null) => void;

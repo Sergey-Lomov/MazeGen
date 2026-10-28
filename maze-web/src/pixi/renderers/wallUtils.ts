@@ -1,8 +1,10 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
-import { getSharedEdgeSegment, getCellCenter } from "../tessellationGeometry";
+import { getSharedEdgeSegment, getFaceEdgeSegment, getCellCenter } from "../tessellationGeometry";
+import { getSeamModel } from "../selectors/seams";
 import type { FieldConfig } from "../../fieldConfig";
+import type { WorldPoint } from "../../wasm/mazeService";
 import { drawRoundedPolygon } from "./markerShapes";
 import { WALL_THICKNESS } from "../renderConstants";
 import { tracePath } from "../geometry/pathRenderer";
@@ -216,26 +218,58 @@ export function drawCellBoundaryHighlight(
   spanWidth?: number,
   inset = 0,
 ): boolean {
+  // Across a seam the logical edge has two copies, one per side; the band is drawn on each, from that
+  // side's own face and cell center.
+  const seams = getSeamModel(cfg);
+  const half = seams.halfEdgeBetween(from, to);
+  if (half) {
+    let drew = false;
+    for (const [cell, faceIdx] of [[from, half.faceIdx], [to, seams.partnerOf(half).faceIdx]] as const) {
+      const face = getFaceEdgeSegment(cell, faceIdx, cfg);
+      if (!face) continue;
+      const center = getCellCenter(cell[0], cell[1], cfg);
+      const dx = face.contact.x - center.x;
+      const dy = face.contact.y - center.y;
+      drew = drawBoundaryBand(g, face.polyline, dx, dy, 2 * Math.hypot(dx, dy), color, fillAlpha, borderWidth, spanWidth, inset) || drew;
+    }
+    return drew;
+  }
   const seg = getSharedEdgeSegment(from, to, cfg);
   if (!seg) return false;
   const fromCenter = getCellCenter(from[0], from[1], cfg);
   const toCenter = getCellCenter(to[0], to[1], cfg);
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
-  const centerDistance = Math.hypot(dx, dy);
-  const edgeLength = polylineLength(seg.polyline);
+  return drawBoundaryBand(g, seg.polyline, dx, dy, Math.hypot(dx, dy), color, fillAlpha, borderWidth, spanWidth, inset);
+}
+
+/** The band of `drawCellBoundaryHighlight` on one boundary polyline. `(dx, dy)` points to the side the
+ *  band is built on first; `centerDistance` is the default span. */
+function drawBoundaryBand(
+  g: Graphics,
+  polyline: readonly WorldPoint[],
+  dx: number,
+  dy: number,
+  centerDistance: number,
+  color: number,
+  fillAlpha: number,
+  borderWidth: number,
+  spanWidth: number | undefined,
+  inset: number,
+): boolean {
+  const edgeLength = polylineLength(polyline);
   if (centerDistance === 0 || edgeLength === 0) return false;
 
   // Derive the normal from the shared edge itself. The centre-to-centre vector is only used to
   // choose the normal's sign (the side of the edge's direction of travel the band is built on
   // first); for triangular/hexagonal coordinates it is not guaranteed to be exactly perpendicular
   // to the edge after the display transform.
-  const first = seg.polyline[0], second = seg.polyline[1];
+  const first = polyline[0], second = polyline[1];
   const leftNormalX = -(second[1] - first[1]), leftNormalY = second[0] - first[0];
   const leftSign = leftNormalX * dx + leftNormalY * dy < 0 ? -1 : 1;
   const halfWidth = (spanWidth ?? centerDistance) / 2;
   const clampedInset = clampBoundaryInset(inset, edgeLength);
-  const trimmed = trimPolyline(seg.polyline, clampedInset, edgeLength - clampedInset);
+  const trimmed = trimPolyline(polyline, clampedInset, edgeLength - clampedInset);
   const insetLength = polylineLength(trimmed);
   const points = [
     ...offsetPolyline(trimmed, leftSign * halfWidth),

@@ -1,5 +1,7 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamHopContext } from "./selectors/seamHop";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
@@ -26,6 +28,7 @@ import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
@@ -38,6 +41,7 @@ export class GenerationRenderer {
   private readonly kruskalDsuHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
@@ -82,6 +86,7 @@ export class GenerationRenderer {
 
   constructor(viewport: Container) {
     this.gridContainer = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
@@ -101,6 +106,8 @@ export class GenerationRenderer {
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.verticalContainer);
     viewport.addChild(this.markersContainer);
+    // Above every layer of the maze itself, below only the highlights.
+    viewport.addChild(this.seamArrowContainer);
     viewport.addChild(this.debugValueHighlightContainer);
     // Hovered debug refs (including cell/region highlights) must stay above persistent debug-value
     // layers so the active event remains readable while frontier/reserve/visited are toggled on.
@@ -108,6 +115,7 @@ export class GenerationRenderer {
     viewport.addChild(this.kruskalDsuHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
@@ -129,7 +137,8 @@ export class GenerationRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
         state.openCard !== prev.openCard ||
-        state.showMaze !== prev.showMaze;
+        state.showMaze !== prev.showMaze ||
+        state._generatedNodes.length > 0 !== prev._generatedNodes.length > 0;
 
       if (visibilityChanged) {
         this.syncVisibility(state);
@@ -162,6 +171,8 @@ export class GenerationRenderer {
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
     const visible = state.openCard === "generation" && state.showMaze;
     this.gridContainer.visible = visible;
+    // Nothing to mark on the field before a maze is generated.
+    this.seamArrowContainer.visible = visible && state._generatedNodes.length > 0;
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
@@ -332,6 +343,7 @@ export class GenerationRenderer {
         },
         activeFloorIndex: Math.max(activeFloorIndex, 0),
         oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay),
+        seam: selectSeamHopContext(state, view.nodes),
       });
     } else {
       this.debugRefHighlight.clear();
@@ -375,6 +387,7 @@ export class GenerationRenderer {
         colorFor: (name) => colorByName.get(name) ?? canvas.debug.refHighlight,
         singleCellRegionNames,
         cfg,
+        seam: selectSeamHopContext(state, view.nodes),
       });
     } else {
       this.debugValueHighlight.clear();
@@ -392,6 +405,8 @@ export class GenerationRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();

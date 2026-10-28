@@ -1,10 +1,11 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
-import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
+import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, getFaceEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
 import { splitShapeBinding, canonicalFaceKinds } from "../../splitShape";
 import { DEFAULT_BRIDGE_TAPER_FRAC, selectSplitCellRenderer } from "../../splitCellRenderer";
 import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, facePolyline, pointAlongPolyline, type SplitFaceInput, type SplitFaceKind } from "../../splitFaceLayout";
+import { getSeamModel } from "../seams";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
@@ -344,6 +345,7 @@ export function buildSplitPassagesCore<Id>(
     return wallFallback ?? neighbors[0];
   };
 
+  const seams = getSeamModel(cfg);
   const result: SplitPassage[] = [];
   const wallFaces: SplitFaceInput[] = [];
   const specialShapes: SplitSpecialShape[] = [];
@@ -363,10 +365,17 @@ export function buildSplitPassagesCore<Id>(
     const faceInputs: SplitFaceInput[] = [];
     const kindsByFace: { nodeIndex: number; kind: SplitFaceKind }[][] = [];
 
-    for (const [dx, dy] of offsets) {
-      const neighbors = byPoint.get(`${px + dx},${py + dy}`);
+    for (const [faceIdx, [dx, dy]] of offsets.entries()) {
+      // A glued face has its partner across the seam, not at the base offset (which lies outside the
+      // field). The face is this point's own copy: its share is divided on this side's geometry, and
+      // the partner point divides its own copy of the face (`Specs/topology.md`, "Seam rendering model").
+      const half = seams.halfEdgeAt([px, py], faceIdx);
+      const partnerCell = half ? seams.partnerOf(half).cell : null;
+      const neighbors = byPoint.get(partnerCell ? `${partnerCell[0]},${partnerCell[1]}` : `${px + dx},${py + dy}`);
       const anyNeighbor = neighbors?.[0];
-      const seg = anyNeighbor ? getSharedEdgeSegment([px, py], [anyNeighbor.x, anyNeighbor.y], cfg) : null;
+      const seg = !anyNeighbor ? null
+        : half ? getFaceEdgeSegment([px, py], faceIdx, cfg)
+        : getSharedEdgeSegment([px, py], [anyNeighbor.x, anyNeighbor.y], cfg);
       if (!neighbors || !seg) { faceInputs.push({ v0: center, v1: center }); kindsByFace.push([]); continue; }
 
       faceInputs.push({ v0: seg.v0, v1: seg.v1, polyline: seg.polyline.map(([x, y]) => ({ x, y })) });

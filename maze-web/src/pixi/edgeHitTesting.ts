@@ -2,7 +2,8 @@ import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import { closestPointOnPolyline, fractionAlong } from "./geometry/polylineOps";
 import { makeProjection } from "./tessellationProjection";
 import { encodePoint } from "./tessellationProjection";
-import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
+import { getCellNeighborOffsets, getFaceEdgeSegment, getSharedEdgeSegment } from "./tessellationGeometry";
+import { getSeamModel } from "./selectors/seams";
 import { tessellationFamily, type FieldConfig } from "../fieldConfig";
 import { canonicalize, edgeKey, type FieldEdge } from "./fieldEditUtils";
 
@@ -76,6 +77,36 @@ export function pickEdgeAtPosition(
     }
   }
 
+  // A seam face has two copies, one per side, and a hit on either resolves to the same logical edge:
+  // the key is canonical over the pair of cells, as for an ordinary edge.
+  const seams = getSeamModel(cfg);
+  for (const [cx, cy] of candidates) {
+    if (!cellSet.has(encodePoint(cx, cy))) continue;
+    for (const half of seams.halfEdgesOf([cx, cy])) {
+      const [nx, ny] = half.partnerCell;
+      if (!cellSet.has(encodePoint(nx, ny))) continue;
+      const key = edgeKey([cx, cy], [nx, ny]);
+      const copyKey = `${key}#${cx},${cy}#${half.faceIdx}`;
+      if (checked.has(copyKey)) continue;
+      checked.add(copyKey);
+
+      const seg = getFaceEdgeSegment([cx, cy], half.faceIdx, cfg);
+      if (!seg) continue;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
+      const distSq = hit.distance * hit.distance;
+      if (distSq < thresholdSq && distSq < bestDist) {
+        bestDist = distSq;
+        bestKey = key;
+        const [from, to] = canonicalize([cx, cy], [nx, ny]);
+        bestFrom = from;
+        bestTo = to;
+      }
+    }
+  }
+
   if (bestKey && bestFrom && bestTo) {
     return { key: bestKey, from: bestFrom, to: bestTo };
   }
@@ -123,6 +154,15 @@ export function isInEdgeVertexDeadZone(
       checked.add(key);
 
       const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
+      if (!seg) continue;
+      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
+      if (!hit || hit.distance * hit.distance >= thresholdSq) continue;
+      const along = fractionAlong(seg.polyline, hit);
+      if (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
+    }
+    for (const half of getSeamModel(cfg).halfEdgesOf([cx, cy])) {
+      if (!cellSet.has(encodePoint(half.partnerCell[0], half.partnerCell[1]))) continue;
+      const seg = getFaceEdgeSegment([cx, cy], half.faceIdx, cfg);
       if (!seg) continue;
       const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
       if (!hit || hit.distance * hit.distance >= thresholdSq) continue;

@@ -51,6 +51,20 @@ vi.mock("../pixi/renderers/GridRenderer", () => ({
   },
 }));
 
+vi.mock("../pixi/renderers/SeamArrowRenderer", () => ({
+  SeamArrowRenderer: class {
+    render = vi.fn();
+    destroy = vi.fn();
+  },
+}));
+
+vi.mock("../pixi/renderers/TopologyBandRenderer", () => ({
+  TopologyBandRenderer: class {
+    render = vi.fn();
+    destroy = vi.fn();
+  },
+}));
+
 vi.mock("../pixi/renderers/WallRenderer", () => ({
   WallRenderer: class {
     render = vi.fn();

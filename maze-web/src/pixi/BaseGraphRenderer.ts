@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { pathLength, pointAtLength, type Point } from "./selectors/seamRouting";
 import { useMazeStore } from "../store/mazeStore";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -7,6 +8,7 @@ import { TILE_SIZE } from "./constants";
 import { computeCrossFloorBadgePos, drawCrossFloorBadge, drawCrossFloorStub, isCrossFloorBadgeCrowded, CROWDED_BADGE_RADIUS_FACTOR } from "./renderers/floorBadge";
 import type { Pos } from "./tessellationGeometry";
 import type { FieldConfig } from "../fieldConfig";
+import { hopPieces, seamHopPieces, type SeamHopContext } from "./graphSeams";
 
 export type { Pos };
 
@@ -24,6 +26,9 @@ export function nodeRadius(id: number, start: number | null, finish: number | nu
 export interface RenderEdge {
   path: Pos[];
   hasReverse: boolean;
+  /** `false` leaves that end untrimmed. */
+  trimStart?: boolean;
+  trimEnd?: boolean;
 }
 
 export interface RenderNode {
@@ -32,29 +37,33 @@ export interface RenderNode {
 }
 
 export function buildPairedRenderEdges(
-  edges: { from: number; to: number }[],
+  edges: { from: number; to: number; kind?: string }[],
   nodePos: Map<number, Pos>,
+  seam?: SeamHopContext,
 ): RenderEdge[] {
-  type PairFlags = { loToHi: boolean; hiToLo: boolean };
+  type PairFlags = { loToHi: boolean; hiToLo: boolean; teleport: boolean };
   const pairs = new Map<string, PairFlags>();
   for (const edge of edges) {
     const lo = Math.min(edge.from, edge.to);
     const hi = Math.max(edge.from, edge.to);
     const key = `${lo}:${hi}`;
     let f = pairs.get(key);
-    if (!f) { f = { loToHi: false, hiToLo: false }; pairs.set(key, f); }
+    if (!f) { f = { loToHi: false, hiToLo: false, teleport: false }; pairs.set(key, f); }
     if (edge.from === lo) f.loToHi = true; else f.hiToLo = true;
+    if (edge.kind === "teleport") f.teleport = true;
   }
 
   const renderEdges: RenderEdge[] = [];
-  for (const [key, { loToHi, hiToLo }] of pairs) {
+  for (const [key, { loToHi, hiToLo, teleport }] of pairs) {
     const [loStr, hiStr] = key.split(":");
-    const posLo = nodePos.get(Number(loStr));
-    const posHi = nodePos.get(Number(hiStr));
-    if (!posLo || !posHi) continue;
+    const lo = Number(loStr);
+    const hi = Number(hiStr);
     const both = loToHi && hiToLo;
-    if (loToHi) renderEdges.push({ path: [posLo, posHi], hasReverse: both });
-    if (hiToLo) renderEdges.push({ path: [posHi, posLo], hasReverse: both });
+    // A hop across a seam is drawn as two stubs, to and from the glue's slots, never as a line between the centers.
+    for (const [from, to, wanted] of [[lo, hi, loToHi], [hi, lo, hiToLo]] as const) {
+      if (!wanted) continue;
+      for (const piece of hopPieces(from, to, nodePos, teleport ? undefined : seam)) renderEdges.push({ ...piece, hasReverse: both });
+    }
   }
   return renderEdges;
 }
@@ -69,6 +78,7 @@ export function buildPathRenderEdges(
   navEdges: { path: number[] }[],
   nodePos: Map<number, Pos>,
   reverseCheckEdges: { path: number[] }[] = navEdges,
+  seam?: SeamHopContext,
 ): RenderEdge[] {
   // `hasReverse` keys on the endpoint pair first; when a same-endpoint reverse candidate exists it's
   // then confirmed by the exact node path (reversed). This distinguishes a genuine two-way corridor
@@ -86,14 +96,37 @@ export function buildPathRenderEdges(
 
   const renderEdges: RenderEdge[] = [];
   for (const e of navEdges) {
-    const path = e.path.map(nid => nodePos.get(nid)).filter((p): p is Pos => p !== undefined);
-    if (path.length < 2) continue;
     const fromNode = e.path[0];
     const toNode = e.path[e.path.length - 1];
     const hasReverse =
       endpointKeys.has(`${toNode}->${fromNode}`) &&
       pathKeys.has([...e.path].reverse().join(","));
-    renderEdges.push({ path, hasReverse });
+    const hops = seam ? e.path.slice(1).map((nid, i) => seamHopPieces(e.path[i], nid, nodePos, seam)) : [];
+    if (!hops.some((hop) => hop !== null)) {
+      const path = e.path.map(nid => nodePos.get(nid)).filter((p): p is Pos => p !== undefined);
+      if (path.length < 2) continue;
+      renderEdges.push({ path, hasReverse });
+      continue;
+    }
+    // A hop through a seam ends the line at the slot of the source face; the line goes on from the partner's slot.
+    let line: Pos[] = [];
+    let fromSlot = false;
+    const flush = (toSlot: boolean): void => {
+      if (line.length >= 2) renderEdges.push({ path: line, hasReverse, trimStart: !fromSlot, trimEnd: !toSlot });
+    };
+    e.path.forEach((nid, i) => {
+      const pos = nodePos.get(nid);
+      if (!pos) return;
+      const hop = i > 0 ? hops[i - 1] : null;
+      if (hop) {
+        line.push(hop[0].path[1]);
+        flush(true);
+        line = [hop[1].path[0]];
+        fromSlot = true;
+      }
+      line.push(pos);
+    });
+    flush(false);
   }
   return renderEdges;
 }
@@ -260,14 +293,15 @@ export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
 
   if (lenStart < 1 || lenEnd < 1) return;
 
-  const margin = NODE_RADIUS + 1;
+  const startMargin = edge.trimStart === false ? 0 : NODE_RADIUS + 1;
+  const endMargin = edge.trimEnd === false ? 0 : NODE_RADIUS + 1;
   const startPt: Pos = {
-    x: first.x + (dxStart / lenStart) * margin,
-    y: first.y + (dyStart / lenStart) * margin,
+    x: first.x + (dxStart / lenStart) * startMargin,
+    y: first.y + (dyStart / lenStart) * startMargin,
   };
   const endPt: Pos = {
-    x: last.x - (dxEnd / lenEnd) * margin,
-    y: last.y - (dyEnd / lenEnd) * margin,
+    x: last.x - (dxEnd / lenEnd) * endMargin,
+    y: last.y - (dyEnd / lenEnd) * endMargin,
   };
 
   g.moveTo(startPt.x, startPt.y);
@@ -278,12 +312,13 @@ export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
   g.stroke({ width: 2, color });
 
   if (!edge.hasReverse) {
-    const midX = (startPt.x + endPt.x) / 2;
-    const midY = (startPt.y + endPt.y) / 2;
-    const edgeLen = Math.sqrt((endPt.x - startPt.x) ** 2 + (endPt.y - startPt.y) ** 2);
-    if (edgeLen < 1) return;
-    const ux = (endPt.x - startPt.x) / edgeLen;
-    const uy = (endPt.y - startPt.y) / edgeLen;
+    // The arrow sits halfway along the drawn line (which bends on a route round the field).
+    const line: Point[] = [startPt, ...pts.slice(1, -1), endPt].map((p): Point => [p.x, p.y]);
+    const total = pathLength(line);
+    if (total < 1) return;
+    const { at, dir } = pointAtLength(line, total / 2);
+    const [midX, midY] = at;
+    const [ux, uy] = dir;
     drawDirectionArrow(g, midX, midY, ux, uy, TILE_SIZE * 0.18, color);
   }
 }

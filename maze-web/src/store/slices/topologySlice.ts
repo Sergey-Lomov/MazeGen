@@ -14,6 +14,7 @@ const CLEARED_EDITOR = {
   topologyFaceHover: null,
   topologyFlagged: [],
   topologySideHover: null,
+  seamHover: null,
 } as const;
 
 export const initialTopologyState: TopologyState = {
@@ -29,6 +30,8 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
   ...initialTopologyState,
 
   setTopologyHover: (hover) => set({ topologyHover: hover }),
+
+  setSeamHover: (hover) => set({ seamHover: hover }),
 
   setTopologySideHover: (hover) => set({ topologySideHover: hover }),
 

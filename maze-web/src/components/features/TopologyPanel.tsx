@@ -8,6 +8,8 @@ import type { TopologyInfo } from "../../wasm/mazeService";
 import type { TopologyHover } from "../../store/topologyTypes";
 import type { FieldConfig } from "../../fieldConfig";
 import { faceLabel } from "../../pixi/topologyLabels";
+import { glueColor } from "../../pixi/renderers/SeamArrowRenderer";
+import { seamArrowsFor } from "../../pixi/selectors/seamArrows";
 import { Button } from "../Button";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
@@ -23,7 +25,7 @@ import * as m from "~/paraglide/messages";
 /** Glue editor side panel of the field setup card (GitHub issue #839). A glue is a set of cell-face
  * pairs; the panel lists every glue with its pairs (hovering a glue highlights its faces on the
  * canvas) and glues two boundary runs picked on the canvas. All state lives in
- * the store; the canvas side is `TopologyOverlay`. */
+ * the store; the canvas side is `TopologyBandRenderer` in `FieldEditorOverlay`. */
 export function TopologyPanel({ onClose }: { onClose: () => void }) {
   const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId]?.fieldConfig);
   const topology = useMazeStore((s) => s.floorTopology[s.activeFloorId] ?? null);
@@ -53,6 +55,7 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
   }
   const { info } = result;
   const glues = topology?.groups ?? [];
+  const dotColors = glueDotColors(fieldConfig, topology);
 
   const iconButton = (title: string, onClick: () => void, icon: React.ReactNode, disabled: boolean, danger = false) => (
     <Tooltip content={title}>
@@ -86,6 +89,7 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
             topology={topology!}
             info={info}
             fieldConfig={fieldConfig}
+            dotColor={dotColors.get(glueItem.id) ?? null}
             canDelete={!locked}
             setHover={setHover}
             onEdit={() => openGlueEditor(glueItem.id)}
@@ -106,11 +110,28 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+/// The CSS colour of each glue's arrow on the canvas, by glue id: the same hue the arrow layer draws it in.
+function glueDotColors(cfg: FieldConfig | undefined, topology: WireTopology | null): Map<number, string> {
+  const colors = new Map<number, string>();
+  if (!cfg) return colors;
+  try {
+    const arrows = seamArrowsFor(cfg, topology);
+    arrows.forEach((arrow, index) => {
+      if (arrow.group !== null) colors.set(arrow.group, `#${glueColor(index, arrows.length, false).toString(16).padStart(6, "0")}`);
+    });
+  } catch {
+    // A field mid-reset has no geometry to read; the dots come back with the next render.
+  }
+  return colors;
+}
+
 interface GlueCellProps {
   glue: WireFoldGroup;
   topology: WireTopology;
   info: TopologyInfo;
   fieldConfig: FieldConfig | undefined;
+  /** The colour of the glue's arrow on the canvas; `null` when it has none (it glues nothing). */
+  dotColor: string | null;
   canDelete: boolean;
   setHover: (hover: TopologyHover | null) => void;
   onEdit: () => void;
@@ -118,7 +139,7 @@ interface GlueCellProps {
   iconButton: (title: string, onClick: () => void, icon: React.ReactNode, disabled: boolean, danger?: boolean) => React.ReactNode;
 }
 
-function GlueCell({ glue, topology, info, fieldConfig, canDelete, setHover, onEdit, onDelete, iconButton }: GlueCellProps) {
+function GlueCell({ glue, topology, info, fieldConfig, dotColor, canDelete, setHover, onEdit, onDelete, iconButton }: GlueCellProps) {
   const setFlagged = useMazeStore((s) => s.setTopologyFlagged);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const twisted = topology.folds[glue.folds[0]]?.twist === true;
@@ -166,6 +187,7 @@ function GlueCell({ glue, topology, info, fieldConfig, canDelete, setHover, onEd
         <span style={typography.body}>
           {m["topology.glue_title"]({ id: String(glue.id + 1) })}
         </span>
+        {dotColor !== null && <span data-testid="topology-glue-dot" style={{ ...styles.colorDot, background: dotColor }} />}
         <div style={styles.actions}>
           <EditIconButton title={m["topology.edit"]()} disabled={!canDelete} onClick={onEdit} />
           {iconButton(m["topology.remove"](), () => setConfirmingRemove(true), <Trash2 size={16} style={styles.iconGlyph} />, !canDelete, true)}
@@ -222,6 +244,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Everything in a glue cell but its title is one level in; the side bubbles add their own level.
   cellBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2, paddingLeft: indent.tree },
+  colorDot: { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
   titleRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
   actions: { display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto", flexShrink: 0 },
   run: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2 },

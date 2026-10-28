@@ -160,4 +160,9 @@ export const base = {
   topologyRunABg: "#a78bfa26",
   topologyRunB: "#46c9b6",
   topologyRunBBg: "#46c9b626",
+  // Seam arrows: secondary information, so a dark muted green; the hover colour is lighter.
+  topologySeamArrow: "#2873bd",
+  topologySeamArrowHover: "#5299e0",
+  // The twist icon on the disc in the middle of a twisted glue.
+  topologySeamTwistIcon: "#ffffff",
 } as const;

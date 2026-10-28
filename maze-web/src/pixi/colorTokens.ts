@@ -104,6 +104,9 @@ export const canvas = {
   topology: {
     runA: hexToNumber(base.topologyRunA),
     runB: hexToNumber(base.topologyRunB),
+    seamArrow: hexToNumber(base.topologySeamArrow),
+    seamArrowHover: hexToNumber(base.topologySeamArrowHover),
+    seamTwistIcon: hexToNumber(base.topologySeamTwistIcon),
     // Sides a problem points at, drawn over the run highlight.
     flagged: hexToNumber(base.error),
   },
