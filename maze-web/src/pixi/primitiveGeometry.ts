@@ -45,6 +45,8 @@ export type PrimitiveWorldGeometry =
       vertexCount?: number;
       /** Draw the segment from the cursor preview back to the first vertex as a dashed line. */
       dashedClosing?: boolean;
+      /** Draw the segment from the last point back to the first one in the same style as the rest. */
+      closed?: boolean;
       /** Draw every polygon segment as a dashed line while the polygon is being edited. */
       dashedAll?: boolean;
       /** Optional frame color for a tool-specific polygon overlay. */
@@ -84,11 +86,9 @@ function worldFrame(ctx: PrimitiveContext, config: FieldConfig, primitive?: Shap
   if (ctx.symmetric) {
     const symmetricWidth = Math.max(TILE_SIZE, Math.abs(dx) * 2 + TILE_SIZE);
     const symmetricHeight = Math.max(TILE_SIZE, Math.abs(dy) * 2 + TILE_SIZE);
-    const constrained = ctx.constrainSquare && primitive === "parallelogram"
-      ? equalSideParallelogramFrame(symmetricWidth, symmetricHeight)
-      : ctx.constrainSquare && primitive === "hexagon"
-        ? regularHexagonFrame(symmetricWidth, symmetricHeight, config)
-        : undefined;
+    const constrained = ctx.constrainSquare && primitive === "hexagon"
+      ? regularHexagonFrame(symmetricWidth, symmetricHeight, config)
+      : undefined;
     const side = ctx.constrainSquare ? Math.min(symmetricWidth, symmetricHeight) : undefined;
     const width = constrained?.width ?? side ?? symmetricWidth;
     const height = constrained?.height ?? side ?? symmetricHeight;
@@ -102,11 +102,9 @@ function worldFrame(ctx: PrimitiveContext, config: FieldConfig, primitive?: Shap
     };
   }
 
-  const constrained = ctx.constrainSquare && primitive === "parallelogram"
-    ? equalSideParallelogramFrame(rawWidth, rawHeight)
-    : ctx.constrainSquare && primitive === "hexagon"
-      ? regularHexagonFrame(rawWidth, rawHeight, config)
-      : undefined;
+  const constrained = ctx.constrainSquare && primitive === "hexagon"
+    ? regularHexagonFrame(rawWidth, rawHeight, config)
+    : undefined;
   const side = ctx.constrainSquare ? Math.min(rawWidth, rawHeight) : undefined;
   const width = constrained?.width ?? side ?? rawWidth;
   const height = constrained?.height ?? side ?? rawHeight;
@@ -341,21 +339,6 @@ export function primitiveWorldGeometry(primitive: ShapePrimitive, ctx: Primitive
   if (primitive === "rectangle") {
     return { kind: "polygon", points: rectanglePoints(frame.origin, halfWidth, halfHeight) };
   }
-  if (primitive === "parallelogram") {
-    const bounds = visualFrame(ctx, config, frame);
-    const skew = parallelogramSkewSign(frame) * bounds.height / (2 * Math.sqrt(3));
-    const halfBase = Math.max(0, bounds.width / 2 - Math.abs(skew));
-    return {
-      kind: "polygon",
-      points: [
-        { x: bounds.origin.x - halfBase - skew, y: bounds.origin.y - bounds.height / 2 },
-        { x: bounds.origin.x + halfBase - skew, y: bounds.origin.y - bounds.height / 2 },
-        { x: bounds.origin.x + halfBase + skew, y: bounds.origin.y + bounds.height / 2 },
-        { x: bounds.origin.x - halfBase + skew, y: bounds.origin.y + bounds.height / 2 },
-      ],
-    };
-  }
-
   const shape = shapeForPrimitive("hexagon", config, {
     width: width / TILE_SIZE,
     height: height / TILE_SIZE,
@@ -380,21 +363,11 @@ function rectangleBounds(start: WorldPoint, end: WorldPoint): { origin: WorldPoi
   };
 }
 
-function equalSideParallelogramFrame(width: number, height: number): { width: number; height: number } {
-  const axisRatio = Math.sqrt(3);
-  const sideHeight = Math.max(TILE_SIZE, Math.min(height, width / axisRatio));
-  return { width: axisRatio * sideHeight, height: sideHeight };
-}
-
 function regularHexagonFrame(width: number, height: number, config: FieldConfig): { width: number; height: number } {
   const diameter = Math.max(TILE_SIZE, Math.min(width, height));
   return hexShapeIsPointy(config)
     ? { width: diameter * Math.sqrt(3) / 2, height: diameter }
     : { width: diameter, height: diameter * Math.sqrt(3) / 2 };
-}
-
-function parallelogramSkewSign(frame: WorldFrame): -1 | 1 {
-  return frame.directionX === frame.directionY ? 1 : -1;
 }
 
 function visualFrame(ctx: PrimitiveContext, config: FieldConfig, frame: WorldFrame): { origin: WorldPoint; width: number; height: number } {

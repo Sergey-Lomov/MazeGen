@@ -19,8 +19,7 @@ export interface Linear {
 
 /// Lattice-dependent editor behavior of one tessellation kind.
 export interface EditorUi {
-  /// Axis-aligned grid: rect is `cols x rows` squares (width/height labels, exact print sizing)
-  /// and the parallelogram tool is redundant.
+  /// Axis-aligned grid: rect is `cols x rows` squares (width/height labels, exact print sizing).
   axisAlignedGrid: boolean;
   /// The rect preset is labelled "rectangle" rather than "rect".
   rectLabelRectangle: boolean;

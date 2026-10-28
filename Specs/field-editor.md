@@ -399,7 +399,8 @@ markers.
 | `triangle` | all | right triangle formed by the drag rectangle's diagonal, or centered directional triangle with Shift |
 | `equilateral_triangle` | all | equilateral triangle fitted to the drag frame and oriented with the triangle tessellation; on a triangular tessellation its apex softly snaps to one of six normals of the three edge families |
 | `hexagon` | all | hexagon fitted to the drag area in the orientation opposite to the tessellation, or centered hexagon with Shift |
-| `parallelogram` | all | world-space parallelogram fitted to the drag area, with a fixed hex-grid axis angle and the drag start on a frame vertex |
+
+`parallelogram` is not a drag primitive; it is built from three clicks (see below).
 
 Without Shift, shapes use `startGrid` and `endGrid` as the shared normalized drag frame. The frame
 is at least one cell wide and high, and the shape is centered in it; the circle is an ellipse when
@@ -425,8 +426,32 @@ Zoom-dependent by design: same pixel drag → same number of cells regardless of
 
 With Ctrl held, the frame's width and height are constrained to the same value. Ctrl therefore
 restores square proportions; Shift+Ctrl makes that square grow symmetrically from the start cell.
-For `parallelogram`, Ctrl uses a primitive-specific constraint instead: the frame is adjusted so
-the parallelogram's adjacent sides are equal while its axis angle remains fixed.
+
+### Parallelogram tool (GitHub issue #867)
+
+The tool is click-based and works on every tessellation. Click 1 and click 2 define the base
+edge; the third click defines the second side (and thus the angle) and commits. The fourth vertex
+is derived: `a, b, b + s, a + s` with `s` running from `a` to the pointer. The preview follows the
+cursor after each click; Enter commits the current preview, Escape cancels, and switching tool or
+card discards pending points. Cells are the ones whose centers lie inside the outline, normalized
+like the polygon tool (`normalizeCellsToFixpoint`). Select mode shows the dashed outline.
+
+Edge alignment is on by default. `tessellationEdgeDirections` (`pixi/parallelogramGeometry.ts`)
+collects the distinct edge directions of the tessellation's cells (sampled over a 4×4 cell
+block, so Cairo's orientation classes are covered). The base end snaps to the nearest direction
+within 12°, and the second side snaps to the nearest direction other than the base's. Shift
+disables snapping and uses exact pointer positions. Tessellations with more than 12 distinct edge
+directions (curved or irregular ones such as radial or voronoi) have no usable axes, so the angle
+stays free there. Without Shift the clicked points are cell centers. Ctrl makes the second side as long as the base. Degenerate (zero-area) results are
+ignored.
+
+The mouse button of the first click fixes the operation for the whole shape: later clicks of
+either button only place points, so a right-click on the third point of an Add parallelogram still
+adds. The outline is drawn closed with every side in the same style (solid; dashed in Select
+mode). A press-drag-release also works: the press places the first point and the release, if the
+pointer moved at least 3px, places the second. While the base is being dragged, the preview is a
+solid two-point line with both ends marked. The parallelogram reports its size in the status bar
+like the other shape primitives (`Parallelogram: W×H (N)`).
 
 ### Preview overlay
 

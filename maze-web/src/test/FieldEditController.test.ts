@@ -284,6 +284,95 @@ describe("FieldEditController polygon interaction", () => {
   });
 });
 
+describe("FieldEditController parallelogram interaction", () => {
+  beforeEach(() => {
+    useMazeStore.getState().setFieldPrimitive("parallelogram");
+  });
+
+  it("commits after three clicks and draws every side of the closed outline", () => {
+    const { controller, updates, commits } = makeController();
+    click(controller, 45, -45);
+    click(controller, 205, -45);
+    controller.onPointerMove(60, -125);
+    expect(lastPolygon(updates)).toMatchObject({ closed: true, vertexCount: 2 });
+    expect(lastPolygon(updates).points).toHaveLength(4);
+
+    click(controller, 45, -125);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].cells.length).toBeGreaterThan(0);
+    expect(commits[0].button).toBe(0);
+  });
+
+  it("previews the base as a two-point line with both ends marked while dragging", () => {
+    const { controller, updates, commits } = makeController();
+    controller.onPointerDown(45, -45, 0);
+    controller.onPointerMove(205, -45);
+
+    expect(lastPolygon(updates)).toMatchObject({ vertexCount: 2, closed: false });
+    expect(lastPolygon(updates).points).toHaveLength(2);
+
+    controller.onPointerUp();
+    click(controller, 45, -125);
+    expect(commits).toHaveLength(1);
+  });
+
+  it("treats a short press as a single point, not a drag", () => {
+    const { controller, commits } = makeController();
+    controller.onPointerDown(45, -45, 0);
+    controller.onPointerMove(46, -45);
+    controller.onPointerUp();
+    click(controller, 205, -45);
+    expect(commits).toHaveLength(0);
+    click(controller, 45, -125);
+    expect(commits).toHaveLength(1);
+  });
+
+  it("keeps the operation of the first click when the last click uses the other button", () => {
+    const { controller, commits } = makeController();
+    click(controller, 45, -45, 0);
+    click(controller, 205, -45, 0);
+    click(controller, 45, -125, 2);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].button).toBe(0);
+  });
+
+  it("snaps the second side to a grid axis and lets Shift keep it free", () => {
+    const { controller, updates } = makeController();
+    click(controller, 45, -45);
+    click(controller, 205, -45);
+    controller.onPointerMove(63, -125);
+    expect(lastPolygon(updates).points[3].x).toBeCloseTo(lastPolygon(updates).points[0].x, 6);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
+    controller.onPointerMove(63, -125);
+    expect(lastPolygon(updates).points[3].x).toBeCloseTo(63, 6);
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
+  });
+
+  it("commits the previewed outline with Enter", () => {
+    const { controller, commits } = makeController();
+    click(controller, 45, -45);
+    click(controller, 205, -45);
+    controller.onPointerMove(45, -125);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    expect(commits).toHaveLength(1);
+  });
+
+  it("cancels pending points with Escape", () => {
+    const { controller, commits, previewClear } = makeController();
+    click(controller, 45, -45);
+    click(controller, 205, -45);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    click(controller, 45, -125);
+
+    expect(commits).toHaveLength(0);
+    expect(previewClear).toHaveBeenCalled();
+  });
+});
+
 describe("FieldEditController select interaction", () => {
   it("keeps the existing cells selected and draws their boundary contour on polygon release", () => {
     useMazeStore.setState({

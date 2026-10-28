@@ -222,25 +222,6 @@ describe("field shape primitives", () => {
     }
   });
 
-  it("keeps the hex parallelogram inside the shared frame", () => {
-    const ctx = {
-      ...gesture,
-      kind: "hex" as const,
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-      endGrid: { x: 3, y: 2 },
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 120, y: 80 },
-    };
-    const rectangle = primitiveWorldGeometry("rectangle", ctx);
-    const parallelogram = primitiveWorldGeometry("parallelogram", ctx);
-    if (rectangle.kind !== "polygon" || parallelogram.kind !== "polygon") throw new Error("expected polygon geometry");
-    const bounds = (points: { x: number; y: number }[]) => ({
-      width: Math.max(...points.map((p) => p.x)) - Math.min(...points.map((p) => p.x)),
-      height: Math.max(...points.map((p) => p.y)) - Math.min(...points.map((p) => p.y)),
-    });
-    expect(bounds(parallelogram.points)).toEqual(bounds(rectangle.points));
-  });
-
   it("uses independent axial dimensions for the standard hex parallelogram", () => {
     const cells = configAllCells(fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 2 }, "flat_top"));
     expect(cells).toHaveLength(6);
@@ -261,34 +242,7 @@ describe("field shape primitives", () => {
     }
   });
 
-  it("uses equal parallelogram sides for Ctrl instead of a square bounding frame", () => {
-    const geometry = primitiveWorldGeometry("parallelogram", {
-      ...gesture,
-      kind: "hex",
-      config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-      endGrid: { x: 4, y: 1 },
-      startWorld: { x: 0, y: 0 },
-      endWorld: { x: 160, y: 40 },
-      constrainSquare: true,
-    });
-    if (geometry.kind !== "polygon") throw new Error("expected polygon geometry");
-    const length = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
-    expect(length(geometry.points[0], geometry.points[1])).toBeCloseTo(length(geometry.points[1], geometry.points[2]), 6);
-  });
-
-  it("keeps the parallelogram drag start on a frame vertex in every direction", () => {
-    for (const endWorld of [{ x: 120, y: 80 }, { x: 120, y: -80 }, { x: -120, y: 80 }, { x: -120, y: -80 }]) {
-      const geometry = primitiveWorldGeometry("parallelogram", {
-        ...gesture,
-        kind: "hex",
-        config: fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"),
-        startWorld: { x: 0, y: 0 },
-        endWorld,
-      });
-      if (geometry.kind !== "polygon") throw new Error("expected polygon geometry");
-      expect(geometry.points).toContainEqual({ x: 0, y: 0 });
-    }
-  });
+  // The parallelogram tool is click-based; see parallelogramGeometry.test.ts.
 
   it("matches the primitive hexagon orientation to the hex tessellation", () => {
     const flat = primitiveWorldGeometry("hexagon", {
@@ -380,7 +334,7 @@ describe("field shape primitives", () => {
 
   it("supports the same primitive set on every tessellation", () => {
     for (const kind of ["square", "hex", "tri"] as const) {
-      for (const primitive of ["rectangle", "circle", "triangle", "hexagon", "parallelogram"] as const) {
+      for (const primitive of ["rectangle", "circle", "triangle", "hexagon"] as const) {
         const cells = primitiveCells(primitive, { ...gesture, kind, config: kind === "hex"
           ? fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top")
           : kind === "tri"
@@ -464,7 +418,7 @@ describe("field shape primitives", () => {
           ? fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }, "r0")
           : fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
       for (const symmetric of [false, true]) for (const constrainSquare of [false, true]) {
-        for (const primitive of ["rectangle", "circle", "triangle", "hexagon", "parallelogram"] as const) {
+        for (const primitive of ["rectangle", "circle", "triangle", "hexagon"] as const) {
           const cells = primitiveCells(primitive, {
             ...gesture,
             kind,

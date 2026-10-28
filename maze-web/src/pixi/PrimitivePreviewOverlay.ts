@@ -104,7 +104,8 @@ export class PrimitivePreviewOverlay {
           const confirmedVertexCount = geometry.vertexCount ?? points.length;
           const pointCount = hasCursorPoint
             ? (confirmedVertexCount >= 2 ? points.length : 0)
-            : (confirmedVertexCount >= 3 ? points.length : 0);
+            // A `closed`-aware outline is already a complete shape, so two points make a line.
+            : (confirmedVertexCount >= (geometry.closed === undefined ? 3 : 2) ? points.length : 0);
           if (geometry.dashedAll && pointCount >= 2) {
             for (let i = 1; i < pointCount; i++) {
               drawDashedSegment(g, { x: points[i - 1].x, y: -points[i - 1].y }, { x: points[i].x, y: -points[i].y }, frameColor, this.strokeWidth(FRAME_WIDTH));
@@ -113,6 +114,17 @@ export class PrimitivePreviewOverlay {
             g.moveTo(points[0].x, -points[0].y);
             for (let i = 1; i < pointCount; i++) g.lineTo(points[i].x, -points[i].y);
             g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
+          }
+          if (geometry.closed && points.length >= 3) {
+            const first = points[0];
+            const last = points[points.length - 1];
+            if (geometry.dashedAll) {
+              drawDashedSegment(g, { x: last.x, y: -last.y }, { x: first.x, y: -first.y }, frameColor, this.strokeWidth(FRAME_WIDTH));
+            } else {
+              g.moveTo(last.x, -last.y);
+              g.lineTo(first.x, -first.y);
+              g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: this.strokeWidth(FRAME_WIDTH) });
+            }
           }
           if (geometry.dashedClosing && points.length >= 2) {
             const first = points[0];

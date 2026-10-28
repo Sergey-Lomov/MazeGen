@@ -7,6 +7,7 @@ import { normalizeCellsToFixpoint, normalizePrimitiveCells, primitiveCells, prim
 import type { PrimitiveContext, ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import { cellsInsidePolygon, polygonWorldGeometry } from "./polygonGeometry";
 import type { PolygonPoint } from "./polygonGeometry";
+import { parallelogramFromPoints, snapBaseEnd, tessellationEdgeDirections } from "./parallelogramGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
@@ -80,6 +81,13 @@ export class FieldEditController {
   private polygonDragStartCanvas: { x: number; y: number } | null = null;
   private polygonDragOriginalPoint: PolygonPoint | null = null;
   private polygonCloseCandidate = false;
+  /** Clicked parallelogram points: the base edge start and end (at most two). */
+  private parallelogramAnchors: PolygonPoint[] = [];
+  private parallelogramCursor: PolygonPoint | null = null;
+  /** Mouse button of the first click; it decides add/remove for the whole shape. */
+  private parallelogramButton = 0;
+  /** Canvas position of the press that placed the first point; a drag from it places the second. */
+  private parallelogramDownCanvas: { x: number; y: number } | null = null;
   private lastPointerCanvas: { x: number; y: number } | null = null;
   private symmetryDraggedPolygonIndex: number | null = null;
   private symmetryDragStartCanvas: { x: number; y: number } | null = null;
@@ -137,15 +145,11 @@ export class FieldEditController {
     if (e.code === "Space") { e.preventDefault(); this.spaceHeld = true; }
     if (e.key === "Shift") {
       this.shiftHeld = true;
-      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
-        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
-      }
+      this.refreshCursorPreviews();
     }
     if (e.key === "Control") {
       this.controlHeld = true;
-      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
-        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
-      }
+      this.refreshCursorPreviews();
     }
     if (e.code === "Escape") this.cancelGesture();
     if (e.code === "Backspace" || e.code === "Delete") {
@@ -176,6 +180,8 @@ export class FieldEditController {
           state.finishSymmetryPolygon();
           this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
         }
+      } else if (field.fieldPrimitive === "parallelogram") {
+        this.commitParallelogram();
       } else {
         this.commitPolygon();
       }
@@ -185,15 +191,11 @@ export class FieldEditController {
     if (e.code === "Space") this.spaceHeld = false;
     if (e.key === "Shift") {
       this.shiftHeld = false;
-      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
-        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
-      }
+      this.refreshCursorPreviews();
     }
     if (e.key === "Control") {
       this.controlHeld = false;
-      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
-        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
-      }
+      this.refreshCursorPreviews();
     }
   };
   private onContextMenu = (e: Event) => { e.preventDefault(); };
@@ -271,6 +273,7 @@ export class FieldEditController {
     }
 
     if (this.polygonPoints.length > 0 && this.activePrimitive !== "polygon") this.clearPolygon();
+    if (this.parallelogramAnchors.length > 0 && this.activePrimitive !== "parallelogram") this.clearParallelogram();
 
     if (this.spaceHeld || button === 1) {
       this.panCallbacks.startPan(canvasX, canvasY);
@@ -301,6 +304,19 @@ export class FieldEditController {
       } else this.applyEdit(grid.x, grid.y, button);
       this.lastGridX = grid.x;
       this.lastGridY = grid.y;
+    } else if (this.activePrimitive === "parallelogram") {
+      if (button !== 0 && button !== 2) return;
+      const grid = this.toGrid(canvasX, canvasY);
+      if (!grid) return;
+      // The first click fixes the operation; later clicks of either button only place points.
+      if (this.parallelogramAnchors.length === 0) {
+        this.parallelogramButton = button;
+        this.parallelogramDownCanvas = { x: canvasX, y: canvasY };
+      } else {
+        this.gestureButton = this.parallelogramButton;
+        this.parallelogramDownCanvas = null;
+      }
+      this.addParallelogramPoint(this.inputWorldPoint(canvasX, canvasY, grid));
     } else if (this.activePrimitive === "polygon") {
       if (button !== 0 && button !== 2) return;
       const grid = this.toGrid(canvasX, canvasY);
@@ -388,6 +404,10 @@ export class FieldEditController {
         this.activePrimitive = "polygon";
         this.updatePolygonCursor(canvasX, canvasY);
       }
+      if (field.fieldPrimitive === "parallelogram" && this.parallelogramAnchors.length > 0) {
+        this.activePrimitive = "parallelogram";
+        this.updateParallelogramCursor(canvasX, canvasY);
+      }
       return;
     }
 
@@ -453,6 +473,9 @@ export class FieldEditController {
       }
       this.lastGridX = grid.x;
       this.lastGridY = grid.y;
+    } else if (this.activePrimitive === "parallelogram") {
+      this.updateParallelogramCursor(canvasX, canvasY);
+      return;
     } else if (this.activePrimitive === "polygon") {
       if (this.draggedPolygonIndex !== null && this.polygonDragStartCanvas) {
         const moved = Math.hypot(
@@ -576,6 +599,11 @@ export class FieldEditController {
       this.lastGridY = NaN;
       return;
     }
+    if (this.parallelogramAnchors.length > 0) {
+      this.clearParallelogram();
+      this.gestureActive = false;
+      return;
+    }
     if (!this.gestureActive) return;
     // Point streak commits cells on each move — no batch to cancel.
     // Escape only cancels shape-primitive gestures (preview cleared, nothing committed).
@@ -617,6 +645,15 @@ export class FieldEditController {
       this.selectionDragActive = false;
       this.selectionDragStartCenter = null;
       this.updateSelectionPreview();
+    } else if (this.activePrimitive === "parallelogram") {
+      const down = this.parallelogramDownCanvas;
+      const up = this.lastPointerCanvas;
+      this.parallelogramDownCanvas = null;
+      if (down && up && this.parallelogramAnchors.length === 1 && Math.hypot(up.x - down.x, up.y - down.y) >= 3) {
+        this.gestureButton = this.parallelogramButton;
+        const grid = this.toGrid(up.x, up.y);
+        if (grid) this.addParallelogramPoint(this.inputWorldPoint(up.x, up.y, grid));
+      }
     } else if (this.activePrimitive === "polygon") {
       if (this.draggedPolygonIndex !== null) {
         if (this.polygonCloseCandidate) {
@@ -770,20 +807,22 @@ export class FieldEditController {
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "polygon"
       && this.polygonPoints.length >= 3)) return;
-    const committedCells = this.operationCells(this.polygonCells(this.polygonPoints));
-    if (field.fieldOperation === "select") {
-      this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
-    } else {
-      this.clearPreview();
-    }
-    if (field.fieldOperation !== "select" && committedCells.length > 0) {
-      this.primitiveCallbacks.onPrimitiveCommit(
-        committedCells,
-        this.operationButton(),
-      );
-    }
+    this.finishOutlineCommit(this.operationCells(this.polygonCells(this.polygonPoints)));
     this.clearPolygonState();
     this.gestureActive = false;
+  }
+
+  /** Applies a finished outline tool (polygon, parallelogram): Select shows the cells as the
+   * selection, Add/Remove commits them. */
+  private finishOutlineCommit(committedCells: [number, number][]): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    if (field.fieldOperation === "select") {
+      this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
+      return;
+    }
+    this.clearPreview();
+    if (committedCells.length > 0) this.primitiveCallbacks.onPrimitiveCommit(committedCells, this.operationButton());
   }
 
   private clearPolygon(): void {
@@ -804,6 +843,100 @@ export class FieldEditController {
     this.polygonDragStartCanvas = null;
     this.polygonDragOriginalPoint = null;
     this.polygonCloseCandidate = false;
+  }
+
+  /** Re-renders the cursor-following previews after a modifier key changed. */
+  private refreshCursorPreviews(): void {
+    if (!this.lastPointerCanvas) return;
+    if (this.polygonPoints.length > 0) this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+    if (this.parallelogramAnchors.length > 0) this.updateParallelogramCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+  }
+
+  /** Parallelogram outline for the clicked points and a pointer; Shift frees the angle, Ctrl
+   * equalizes the sides. Before the base edge is complete it is the base line itself. */
+  private parallelogramPoints(pointer: PolygonPoint | null): PolygonPoint[] | null {
+    const [a, b] = this.parallelogramAnchors;
+    if (!a) return null;
+    const directions = this.shiftHeld ? undefined : tessellationEdgeDirections(this.activeFieldConfig());
+    if (!b) return pointer ? [a, directions ? snapBaseEnd(a, pointer, directions) : pointer] : [a];
+    if (!pointer) return [a, b];
+    return parallelogramFromPoints(a, b, pointer, { directions, equalSides: this.controlHeld }) ?? [a, b];
+  }
+
+  private activeFieldConfig(): FieldConfig {
+    const state = useMazeStore.getState();
+    return state.floorFields[state.activeFloorId].fieldConfig;
+  }
+
+  private addParallelogramPoint(point: PolygonPoint): void {
+    const [a] = this.parallelogramAnchors;
+    if (!a) {
+      this.parallelogramAnchors = [point];
+    } else if (this.parallelogramAnchors.length === 1) {
+      const end = this.parallelogramPoints(point)?.[1];
+      if (!end || (end.x === a.x && end.y === a.y)) return;
+      this.parallelogramAnchors = [a, end];
+    } else {
+      const shape = this.parallelogramPoints(point);
+      if (!shape || shape.length < 4) return;
+      this.parallelogramCursor = point;
+      this.commitParallelogram();
+      return;
+    }
+    this.parallelogramCursor = null;
+    this.updateParallelogramPreview();
+  }
+
+  private updateParallelogramCursor(canvasX: number, canvasY: number): void {
+    if (this.parallelogramAnchors.length === 0) return;
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return;
+    this.parallelogramCursor = this.inputWorldPoint(canvasX, canvasY, grid);
+    this.updateParallelogramPreview();
+  }
+
+  private updateParallelogramPreview(): void {
+    const field = useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId];
+    const cfg = field.fieldConfig;
+    const points = this.parallelogramPoints(this.parallelogramCursor);
+    if (!points) return;
+    this.lastPreviewCells = points.length >= 4 ? this.operationCells(this.polygonCells(points)) : [];
+    this.reportSize({ shape: measureShape(this.lastPreviewCells, "parallelogram") });
+    this.primitiveCallbacks.onPreviewUpdate(
+      this.lastPreviewCells,
+      this.operationButton(),
+      cfg.tessellation.kind,
+      cfg,
+      polygonWorldGeometry(points, {
+        // While the base is previewed (one anchor + cursor) both of its ends are marked.
+        vertexCount: this.parallelogramAnchors.length === 1 ? points.length : this.parallelogramAnchors.length,
+        closed: points.length >= 3,
+        ...(field.fieldOperation === "select" ? { dashedAll: true } : {}),
+      }),
+    );
+  }
+
+  private commitParallelogram(): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    if (!(state.openCard === "field_setup"
+      && field.fieldEditMode === "custom"
+      && field.fieldPrimitive === "parallelogram"
+      && this.parallelogramAnchors.length === 2)) return;
+    const points = this.parallelogramPoints(this.parallelogramCursor);
+    if (!points || points.length < 4) return;
+    this.finishOutlineCommit(this.operationCells(this.polygonCells(points)));
+    this.parallelogramAnchors = [];
+    this.parallelogramCursor = null;
+    this.lastPreviewCells = [];
+    this.gestureActive = false;
+  }
+
+  private clearParallelogram(): void {
+    this.clearPreview();
+    this.parallelogramAnchors = [];
+    this.parallelogramCursor = null;
+    this.lastPreviewCells = [];
   }
 
   private inputWorldPoint(
