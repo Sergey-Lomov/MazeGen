@@ -30,6 +30,9 @@ pub(crate) fn resolve_rule_params(raw: &HashMap<String, String>) -> Result<RuleP
                     .unwrap_or(default);
                 match descriptor.id {
                     maze_core::quality_control::PARAM_PROTECT_ROUTE => params.protect_route = value,
+                    maze_core::quality_control::PARAM_APPROXIMATE_TOPOLOGY => {
+                        params.approximate_topology = value
+                    }
                     _ => unreachable!(
                         "RuleParamDescriptor {} has no matching RuleParams field — add one",
                         descriptor.id
@@ -76,6 +79,18 @@ mod tests {
     fn defaults_protect_route_to_true_when_absent() {
         let params = resolve_rule_params(&HashMap::new()).unwrap();
         assert!(params.protect_route);
+    }
+
+    #[test]
+    fn approximate_topology_defaults_to_false_and_parses_true() {
+        assert!(
+            !resolve_rule_params(&HashMap::new())
+                .unwrap()
+                .approximate_topology
+        );
+        let mut map = HashMap::new();
+        map.insert("approximate_topology".to_string(), "true".to_string());
+        assert!(resolve_rule_params(&map).unwrap().approximate_topology);
     }
 
     #[test]

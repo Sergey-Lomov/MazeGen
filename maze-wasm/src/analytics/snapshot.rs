@@ -152,6 +152,17 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                         groups: missing_elevator_stops_map_dto(groups),
                     }
                 }
+                IssuePayload::IndeterminateDistance { pairs } => {
+                    IssuePayloadDto::IndeterminateDistance {
+                        pairs: pairs
+                            .into_iter()
+                            .map(|p| crate::dto_issues::IssueUndecidedPairPayloadDto {
+                                nodes: p.nodes,
+                                unsupported: p.unsupported,
+                            })
+                            .collect(),
+                    }
+                }
                 IssuePayload::InvalidCrossElementGroup { groups } => {
                     IssuePayloadDto::InvalidCrossElementGroup {
                         groups: cross_element_group_map_dto(groups),

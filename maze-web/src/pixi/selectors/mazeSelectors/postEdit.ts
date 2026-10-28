@@ -3,6 +3,7 @@ import type { PostEditEdge } from "../../../store/mazeStore";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { NodeEdgeHighlight } from "../../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter } from "../../tessellationGeometry";
+import { seamCellSlots, seamStubHighlights, type SeamPairsContext } from "../../graphSeams";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../renderConstants";
 import { canvas } from "../../colorTokens";
 import { resolveEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint } from "../../postEditEndpoint";
@@ -68,21 +69,22 @@ function buildLinkHoverHighlight(
   nodes: NodeDto[],
   activeLevel: number,
   cfg: FieldConfig,
+  seam?: SeamPairsContext,
 ): { line: NodeEdgeHighlight[]; soloPoints: number[][] } {
   const fromNode = nodes.find((n) => pointMatchesNode(link.from, n));
   const toNode = nodes.find((n) => pointMatchesNode(link.to, n));
   if (fromNode && toNode && (fromNode.level ?? 0) === activeLevel && (toNode.level ?? 0) === activeLevel) {
-    return {
-      line: [{
-        from: getCellCenter(fromNode.x, fromNode.y, cfg),
-        to: getCellCenter(toNode.x, toNode.y, cfg),
-        color: link.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
-        alpha: 1.0,
-        width: WALL_THICKNESS * 2,
-        nodeRadius: NODE_RADIUS,
-      }],
-      soloPoints: [],
+    const line: NodeEdgeHighlight = {
+      from: getCellCenter(fromNode.x, fromNode.y, cfg),
+      to: getCellCenter(toNode.x, toNode.y, cfg),
+      color: link.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
+      alpha: 1.0,
+      width: WALL_THICKNESS * 2,
+      nodeRadius: NODE_RADIUS,
     };
+    // A link across a glue breaks at the glue's contour: two stubs, not a line across the whole field.
+    const slots = seam ? seamCellSlots([fromNode.x, fromNode.y], [toNode.x, toNode.y], seam) : null;
+    return { line: seamStubHighlights(line, slots), soloPoints: [] };
   }
   const soloPoints: number[][] = [];
   if (fromNode && (fromNode.level ?? 0) === activeLevel) soloPoints.push([fromNode.id]);
@@ -141,6 +143,7 @@ export function buildHoveredEntityHighlight(
   nodes: NodeDto[],
   activeLevel: number,
   cfg: FieldConfig,
+  seam?: SeamPairsContext,
 ): { link: NodeEdgeHighlight[]; regionGroups: number[][]; boundaryLinks?: PostEditBoundaryLink[] } {
   if (!entity) return { link: [], regionGroups: [] };
   if (entity.kind === "link") {
@@ -151,7 +154,7 @@ export function buildHoveredEntityHighlight(
         return { link: [], regionGroups: [], boundaryLinks: [{ from: entity.from, to: entity.to, style: entity.highlightStyle }] };
       }
     }
-    const { line, soloPoints } = buildLinkHoverHighlight(entity, nodes, activeLevel, cfg);
+    const { line, soloPoints } = buildLinkHoverHighlight(entity, nodes, activeLevel, cfg, seam);
     return { link: line, regionGroups: soloPoints };
   }
   const points = entity.kind === "point" ? [entity] : entity.points;

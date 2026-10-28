@@ -4,8 +4,11 @@ import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../re
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
-import { buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { buildNodePositions, getCellCenter, getFaceEdgeSegment, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
+import { getSeamModel } from "./seams";
+import { seamCellSlots, seamStubHighlights, type SeamPairsContext } from "../graphSeams";
+import { logicalEdgeSegments } from "./seamEdges";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
@@ -27,6 +30,7 @@ export function buildPresetWallGroups(
   const undecided: WallEdge[] = [];
   const preset: WallEdge[] = [];
   const invalidPassages: WallEdge[] = [];
+  const seams = getSeamModel(cfg);
 
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
@@ -35,6 +39,34 @@ export function buildPresetWallGroups(
       const nx = x + dx;
       const ny = y + dy;
       const neighborless = dx === 0 && dy === 0;
+      const half = seams.halfEdgeAt([x, y], face);
+      if (half) {
+        // A glued face is drawn by each side as its own wall edge, from the one logical connection.
+        const [px, py] = half.partnerCell;
+        if (!cellSet.has(`${px},${py}`) || splitPointKeys.has(`${px},${py}`)) {
+          preset.push({ a: [x, y], b: [px, py], face, kind: "none", style: "solid" });
+          continue;
+        }
+        const entry = connections.get(edgeKey([x, y], [px, py]));
+        if (!entry || entry.state === "undefined") {
+          undecided.push({ a: [x, y], b: [px, py], face, kind: "none", style: "faint" });
+        } else if (entry.state === "wall") {
+          preset.push({ a: [x, y], b: [px, py], face, kind: "none", style: "solid" });
+        } else if (entry.state !== "passage") {
+          const isForward = entry.state === "one_way_forward";
+          const ownIsFrom = entry.from.point[0] === x && entry.from.point[1] === y;
+          const edge = getFaceEdgeSegment([x, y], face, cfg);
+          const center = getCellCenter(x, y, cfg);
+          const len = edge ? Math.hypot(edge.contact.x - center.x, edge.contact.y - center.y) : 0;
+          // Out of this cell when this cell is the source of the allowed direction, else into it.
+          const sign = isForward === ownIsFrom ? 1 : -1;
+          const oneWayDir = edge && len > 0
+            ? { dx: (sign * (edge.contact.x - center.x)) / len, dy: (sign * (edge.contact.y - center.y)) / len }
+            : undefined;
+          preset.push({ a: [x, y], b: [px, py], face, kind: isForward ? "forward" : "backward", style: "solid", oneWayDir });
+        }
+        continue;
+      }
       if (neighborless || !cellSet.has(`${nx},${ny}`)) {
         // boundary wall — always solid
         preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
@@ -446,16 +478,18 @@ export function buildInvalidEdgeHighlights(
   for (const key of invalidKeys) {
     const entry = connections.get(key);
     if (!entry) continue;
-    const seg = getSharedEdgeSegment(entry.from.point, entry.to.point, cfg);
-    if (seg) {
-      result.push({
-        from: [seg.v0.x, seg.v0.y] as [number, number],
-        to: [seg.v1.x, seg.v1.y] as [number, number],
-        path: seg.path,
-        color: canvas.preset.invalid,
-        alpha: 0.9,
-        width: WALL_THICKNESS * 2.5,
-      });
+    const segs = logicalEdgeSegments(entry.from.point, entry.to.point, cfg);
+    if (segs.length > 0) {
+      for (const seg of segs) {
+        result.push({
+          from: [seg.v0.x, seg.v0.y] as [number, number],
+          to: [seg.v1.x, seg.v1.y] as [number, number],
+          path: seg.path,
+          color: canvas.preset.invalid,
+          alpha: 0.9,
+          width: WALL_THICKNESS * 2.5,
+        });
+      }
     } else {
       const cA = getCellCenter(entry.from.point[0], entry.from.point[1], cfg);
       const cB = getCellCenter(entry.to.point[0], entry.to.point[1], cfg);
@@ -477,16 +511,14 @@ export function buildHoverEdgeHighlight(
   color: number = canvas.fieldEditor.hover,
 ): EdgeHL[] {
   if (!edge) return [];
-  const seg = getSharedEdgeSegment(edge.from, edge.to, cfg);
-  if (!seg) return [];
-  return [{
+  return logicalEdgeSegments(edge.from, edge.to, cfg).map((seg) => ({
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
     path: seg.path,
     color,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
-  }];
+  }));
 }
 
 /** Highlight for `presetHoveredLink` (GitHub issue #237) — same "node-to-node" style
@@ -498,14 +530,18 @@ export function buildHoverEdgeHighlight(
 export function buildLinkHoverHighlight(
   link: { from: PresetEndpoint; to: PresetEndpoint } | null,
   cfg: FieldConfig,
+  seam?: SeamPairsContext,
 ): NodeEdgeHighlight[] {
   if (!link) return [];
-  return [{
+  const line: NodeEdgeHighlight = {
     from: getCellCenter(link.from.point[0], link.from.point[1], cfg),
     to: getCellCenter(link.to.point[0], link.to.point[1], cfg),
     color: canvas.fieldEditor.hover,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
     nodeRadius: NODE_RADIUS,
-  }];
+  };
+  // A link across a glue breaks at the glue's contour: two stubs, not a line across the whole field.
+  const slots = seam ? seamCellSlots(link.from.point, link.to.point, seam) : null;
+  return seamStubHighlights(line, slots);
 }

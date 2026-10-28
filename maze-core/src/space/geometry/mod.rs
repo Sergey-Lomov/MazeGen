@@ -9,16 +9,28 @@
 //! `TessellationGeometry` extension trait.
 
 mod boundary;
+mod floor_surface;
+#[cfg(test)]
+mod floor_surface_tests;
+mod fold;
+#[cfg(test)]
+mod fold_tests;
 mod point;
 mod query;
 mod segment;
+mod surface;
+#[cfg(test)]
+mod surface_tests;
 #[cfg(test)]
 mod tests;
 
 pub use boundary::{BoundaryPath, chain_midpoint};
+pub use floor_surface::FloorMetrics;
+pub use fold::{FOLD_ISOMETRY_EPS, FoldClass, FoldedFace, RigidTransform, classify_fold_faces};
 pub use point::Point;
 pub use query::{CellScope, MAX_REGION_CANDIDATES, RegionMode, RegionTooLarge};
 pub use segment::{PathCommand, Segment};
+pub use surface::{DistanceError, DistancePolicy, DistanceResult, SurfaceMetric, WithinLimit};
 
 use super::Tessellation;
 

@@ -5,7 +5,9 @@ use crate::Maze;
 use crate::event_log::EventLog;
 use crate::generation::PresetState;
 use crate::generation::pipeline::{GenerationTiming, RepairLimits};
-use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue};
+use crate::quality_control::issue_kinds::{
+    IndeterminateDistanceIssue, RepairLimitKind, RepairLimitReachedIssue,
+};
 use crate::space::Tessellation;
 use rand::RngCore;
 use std::collections::HashMap;
@@ -216,10 +218,16 @@ impl<T: Tessellation> QualityControlEngine<T> {
         timing: &mut HashMap<String, HashMap<String, RuleTimingAcc>>,
         now_ms: &impl Fn() -> f64,
     ) -> Vec<Box<dyn Issue>> {
-        let mut issues = Vec::new();
+        // Pairs recorded during repair belong to intermediate states; only this pass counts.
+        maze.distance_diagnostics.clear();
+        let mut issues: Vec<Box<dyn Issue>> = Vec::new();
         for stage in &self.stages {
             let stage_timing = timing.entry(stage.id.clone()).or_default();
             issues.append(&mut stage.run_report(maze, rng, stage_timing, now_ms));
+        }
+        let undecided = maze.distance_diagnostics.take();
+        if !undecided.is_empty() {
+            issues.push(Box::new(IndeterminateDistanceIssue::new(undecided)));
         }
         issues
     }

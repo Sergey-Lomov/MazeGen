@@ -1,5 +1,5 @@
 use super::elevator_core::elevator_groups;
-use super::proximity_scan_core::pairwise_geometric_scan;
+use super::proximity_scan_core::pairwise_surface_scan;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::quality_control::check::Check;
@@ -8,7 +8,7 @@ use crate::quality_control::cross_element::{
 };
 use crate::quality_control::issue_kinds::CrossElementCloseNodes;
 use crate::quality_control::{GeometricFloorMode, InvalidCrossElementGroupIssue};
-use crate::space::{Tessellation, floor_aware_xy_distance};
+use crate::space::{DistancePolicy, FloorMetrics, Tessellation};
 use rand::RngCore;
 use std::collections::{HashMap, HashSet};
 
@@ -184,6 +184,9 @@ pub struct CrossElementGeometricProximityCheck {
     pub distance: f64,
     pub set: CrossElementSet,
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
     pub protect_route: bool,
 }
 
@@ -213,7 +216,12 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue>
         let route_protected = route_protected_elements(maze, &occurrences, self.protect_route);
         let elevator_of_stop = elevator_of_stop(maze, &occurrences);
 
-        let raw = pairwise_geometric_scan(
+        let metrics = FloorMetrics::new(
+            &maze.field,
+            DistancePolicy::from_approximate(self.approximate_topology),
+        );
+        // Undecidable pairs (`scan.indeterminate`) are neither flagged nor cleared.
+        let raw = pairwise_surface_scan(
             &occurrences,
             self.distance,
             |own, other| {
@@ -225,7 +233,7 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue>
                     || same_elevator_pair(&elevator_of_stop, &own.element, &other.element)
             },
             |own, other| {
-                floor_aware_xy_distance(
+                metrics.distance(
                     own.level_index,
                     own.xy,
                     other.level_index,
@@ -244,7 +252,9 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue>
                     1,
                 )
             },
-        );
+            |own, other| Some((own.node, other.node)),
+        )
+        .into_groups(&maze.distance_diagnostics);
 
         let (groups, close_nodes) = aggregate_pairs(raw.into_iter().flat_map(|(v, _)| v).collect());
         if groups.is_empty() {
@@ -296,6 +306,7 @@ mod tests {
             distance,
             set,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
             protect_route: false,
         }
     }

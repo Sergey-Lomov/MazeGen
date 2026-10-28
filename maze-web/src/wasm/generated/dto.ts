@@ -4,6 +4,7 @@ import type { IssueKindId } from "./issueKind";
 import type { RegionClass } from "../types";
 import type { CheckInstanceConfig } from "../types";
 import type { WasmTessellationConfig } from "../types";
+import type { WireTopology } from "../types";
 import type { PresetConnection } from "../types";
 import type { StrategyConfig } from "../types";
 
@@ -282,7 +283,21 @@ export type IssuePayloadDto =
       kind: "invalid_cross_element_group";
       groups: Record<string, CrossElementPayloadEntry[][]>;
     }
+  | {
+      kind: "indeterminate_distance";
+      pairs: IssueUndecidedPairPayload[];
+    }
 ;
+
+/**
+ * One pair a geometric check could not decide — mirrors `maze_core`'s
+ * `IssueUndecidedPairPayload`. `unsupported` is `true` for a topological-only fold, `false` for
+ * a distance bracket straddling the threshold.
+ */
+export interface IssueUndecidedPairPayload {
+  nodes: [number, number];
+  unsupported: boolean;
+}
 
 export interface IssueDto {
   kind: IssueKindId;
@@ -591,6 +606,12 @@ export interface ComputeAnalyticsConfig {
    * (no `#[serde(default)]`) — every caller as of this issue sends it, one entry per floor.
    */
   level_fields: [number, number][][];
+  /**
+   * Each floor's own topology (GitHub issue #836), in `level_fields` order — mirrors
+   * `GenerateConfig.topology`. A missing or `null` entry means no folds on that floor.
+   * `#[serde(default)]` so callers predating this field still deserialize.
+   */
+  topology?: (WireTopology | null)[];
   /**
    * The client's authoritative node list (real ids from the previous generation/confirm) —
    * `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_cells`) instead of

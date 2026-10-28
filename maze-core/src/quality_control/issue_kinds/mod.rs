@@ -10,6 +10,7 @@ mod cycle_analysis_overflowed;
 mod excessive_elevator_stop_gap;
 mod excessive_scc_count;
 pub(crate) mod group_issue;
+mod indeterminate_distance;
 mod invalid_cross_element_group;
 mod invalid_dead_end;
 mod invalid_dead_end_group;
@@ -52,6 +53,7 @@ pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
 pub use excessive_elevator_stop_gap::ExcessiveElevatorStopGapIssue;
 pub use excessive_scc_count::ExcessiveSccCountIssue;
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
+pub use indeterminate_distance::IndeterminateDistanceIssue;
 pub use invalid_cross_element_group::{
     CrossElementCloseNodes, CrossElementGroupKind, InvalidCrossElementGroupIssue,
 };

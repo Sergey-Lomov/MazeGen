@@ -13,6 +13,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   floors: [initialFloor],
   nextFloorNumber: 2,
   activeFloorId: initialFloor.id,
+  floorTopology: {},
   // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
   // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
   floorFields: { [initialFloor.id]: defaultFloorFieldConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
@@ -42,6 +43,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const next = floors.filter((f) => f.id !== id);
     const nextFloorFields: Record<string, FloorFieldConfig> = { ...floorFields };
     delete nextFloorFields[id];
+    const { [id]: _removedTopology, ...nextFloorTopology } = state.floorTopology;
     // Presets on the removed floor are dropped entirely; presets on every floor above it shift
     // their `level` down by one to keep tracking the same floor's new array position (GitHub
     // issue #340) — mirrors `nextFloorFields` deleting the removed id's own entry above.
@@ -50,6 +52,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       ...buildResetDownstreamState(),
       floors: next,
       floorFields: nextFloorFields,
+      floorTopology: nextFloorTopology,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,

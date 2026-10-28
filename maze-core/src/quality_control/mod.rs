@@ -1,9 +1,9 @@
 pub mod apply_commands;
 pub mod check;
 pub mod checks;
-pub mod comparison;
 pub mod cross_element;
 pub mod cycle_kind;
+pub mod distance_diagnostics;
 pub mod engine;
 pub mod event;
 pub mod floor_group;
@@ -22,6 +22,7 @@ pub mod teleport_direction_filter;
 pub mod teleport_floor_kind_filter;
 pub mod vertical_passage_type;
 
+pub use crate::comparison::Comparison;
 pub use apply_commands::{ApplyOutcome, apply_commands};
 pub use check::Check;
 pub use checks::{
@@ -126,8 +127,8 @@ pub use checks::{
     VerticalPassageGroupGeometricProximityCheck, VerticalPassageGroupGraphProximityCheck,
     elevator_groups, elevator_stops_per_floor, stop_floors,
 };
-pub use comparison::Comparison;
 pub use cycle_kind::CycleKind;
+pub use distance_diagnostics::{DistanceDiagnostics, IndeterminateReason, UndecidedPair};
 pub use engine::QualityControlEngine;
 pub use event::QcEvent;
 pub use floor_group::{floor_point_count, floors_of_edge, floors_of_edges, floors_of_node};
@@ -135,27 +136,28 @@ pub use floor_scope::FloorScope;
 pub use geometric_floor_mode::GeometricFloorMode;
 pub use issue::{
     AREA_MISSING_ELEVATOR_STOPS, CYCLE_ANALYSIS_OVERFLOWED, EXCESSIVE_ELEVATOR_STOP_GAP,
-    EXCESSIVE_SCC_COUNT, INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END, INVALID_DEAD_END_GROUP,
-    INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP,
-    INVALID_LOOP, INVALID_LOOP_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE,
-    INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP,
-    INVALID_SPLIT_ROUTE, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT,
-    INVALID_TELEPORT_GROUP, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, Issue,
-    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT,
-    MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS,
-    MISSING_ONE_WAYS, MISSING_REGIONS, MISSING_SPLIT_TILES, MISSING_TELEPORTS,
-    MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED,
-    UNREACHABLE_FINISH,
+    EXCESSIVE_SCC_COUNT, INDETERMINATE_DISTANCE, INVALID_CROSS_ELEMENT_GROUP, INVALID_DEAD_END,
+    INVALID_DEAD_END_GROUP, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP,
+    INVALID_ELEVATOR_STOP_GROUP, INVALID_LOOP, INVALID_LOOP_GROUP, INVALID_ONE_WAY,
+    INVALID_ONE_WAY_GROUP, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION,
+    INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE,
+    INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, INVALID_TELEPORT, INVALID_TELEPORT_GROUP,
+    INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, Issue, IssueKind, IssueKindConst,
+    IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT, MISSING_ELEVATOR_STOP_COUNT,
+    MISSING_ELEVATORS, MISSING_ENDPOINTS, MISSING_LOOPS, MISSING_ONE_WAYS, MISSING_REGIONS,
+    MISSING_SPLIT_TILES, MISSING_TELEPORTS, MISSING_VERTICAL_PASSAGES, REGION_NEEDS_EXPANSION,
+    REGION_NEEDS_SHRINK, REPAIR_LIMIT_REACHED, UNREACHABLE_FINISH,
 };
 pub use issue_kinds::{
     AreaMissingElevatorStopsIssue, CrossElementCloseNodes, CrossElementGroupKind,
     CycleAnalysisOverflowedIssue, DeadEndGroupKind, ElevatorGroupKind, ElevatorNodes,
     ElevatorStopGroupKind, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
-    InvalidCrossElementGroupIssue, InvalidDeadEndGroupIssue, InvalidDeadEndIssue,
-    InvalidElevatorGroupIssue, InvalidElevatorIssue, InvalidElevatorStopGroupIssue,
-    InvalidElevatorStopIssue, InvalidGroupIssue, InvalidGroupIssueKind, InvalidLoopGroupIssue,
-    InvalidLoopGroupRequirement, InvalidLoopIssue, InvalidLoopRequirement, InvalidOneWayGroupIssue,
-    InvalidOneWayIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeConnectionIssue,
+    IndeterminateDistanceIssue, InvalidCrossElementGroupIssue, InvalidDeadEndGroupIssue,
+    InvalidDeadEndIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
+    InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidGroupIssue,
+    InvalidGroupIssueKind, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, InvalidLoopIssue,
+    InvalidLoopRequirement, InvalidOneWayGroupIssue, InvalidOneWayIssue,
+    InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeConnectionIssue,
     InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue, InvalidSplitRouteIssue,
     InvalidSplitTileGroupIssue, InvalidSplitTileIssue, InvalidTeleportGroupIssue,
     InvalidTeleportIssue, InvalidVerticalPassageGroupIssue, InvalidVerticalPassageIssue,
@@ -169,13 +171,14 @@ pub use issue_kinds::{
 pub use issue_payload::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload, resolve_issue_payload,
+    IssueSplitTilePayload, IssueUndecidedPairPayload, resolve_issue_payload,
 };
 pub use repair_area::RepairArea;
 pub use rule::{Rule, RuleIterationOutcome, RuleTrait};
 pub use rule_params::{
-    PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS, PARAM_VERTICAL_PASSAGE_TYPE, RULE_PARAM_DESCRIPTORS,
-    RuleParamDescriptor, RuleParamKind, RuleParams, rule_param_applies_to,
+    PARAM_APPROXIMATE_TOPOLOGY, PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS,
+    PARAM_VERTICAL_PASSAGE_TYPE, RULE_PARAM_DESCRIPTORS, RuleParamDescriptor, RuleParamKind,
+    RuleParams, rule_param_applies_to,
 };
 pub use stage::Stage;
 pub use teleport_direction_filter::TeleportDirectionFilter;

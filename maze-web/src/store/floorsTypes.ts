@@ -35,6 +35,10 @@ export interface FloorsState {
    * mutation could otherwise leave it dangling (removing the active floor) or out of range
    * (project load). */
   activeFloorId: string;
+  /** Per-floor topology (GitHub issue #836), keyed by floor id; a floor without folds has no entry.
+   * Authored for the tessellation config current when it was set, so every kind/params change
+   * clears it. Sent to wasm as the `topology` key and saved in the project file's `floorTopology`. */
+  floorTopology: Record<string, import("../wasm/types").WireTopology>;
 }
 
 export interface FloorsActions {

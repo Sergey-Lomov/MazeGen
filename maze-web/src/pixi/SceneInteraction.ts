@@ -163,6 +163,12 @@ export class SceneInteraction {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const field = st.floorFields[st.activeFloorId];
+        if (st.topologyPick !== null) {
+          // Editing a glue run highlights boundary edges, not cells.
+          fieldEditController.updateTopologyFaceHover(e.globalX, e.globalY);
+          fieldEditorOverlay.updateHover(null, field.fieldConfig);
+          return;
+        }
         const hoverCell = (field.fieldPrimitive === "polygon"
           || field.fieldPrimitive === "symmetry")
           ? null

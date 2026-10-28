@@ -107,6 +107,8 @@ Always use the named constant — never use string literals or enum variants inl
 
 **`CycleAnalysisOverflowed` is not a toggleable QC check** — every other kind here is produced by a `Check<T, I>` implementation the user selects via `config.checks`; this one is raised directly by `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) whenever `GraphAnalytics::cycle_analysis_overflowed` is true (cycle enumeration aborted past `MAX_SIMPLE_CYCLES` — see `graph-analytics.md`). It bypasses `QualityControlEngine` entirely: `build_analytics_snapshot` pushes `Box::new(CycleAnalysisOverflowedIssue::default())` straight into the issue list after the engine (or `issues_override`) has already run, so it surfaces unconditionally — same `IssuesBlock`/`FeatureCard` UI as any other issue, but with no corresponding `Check<T, I>` or `RepairStrategy` and no way for a user to disable it. `IssueKind::from_str` still parses it like any other kind (used to validate `config.strategies` keys), but no strategy can ever be registered against it — see `from_str`'s doc comment.
 
+**`IndeterminateDistance` is not a toggleable QC check either** (GitHub issue #838, see `topology.md`, "Floor distance"). The geometric-distance checks (`teleport_geometric_length`, `one_way_group_geometric_proximity`, `cross_element_geometric_proximity`, `split_group_geometric_proximity`, `elevator_stop_group_geometric_proximity`, `vertical_passage_group_geometric_proximity`) measure along the surface of a glued field. A pair whose distance cannot be decided - the bracket straddles the threshold (`Unknown`, Moebius and other non-lattice gluings) or the floor has a topological-only fold (`Unsupported`) - is neither flagged nor passed: the check records it in `Maze::distance_diagnostics` (`DistanceDiagnostics`, one entry per unordered pair of representative nodes, with its `IndeterminateReason`), and `QualityControlEngine::collect_final_report` clears the collection before the final report pass and turns a non-empty one into one `IndeterminateDistanceIssue { pairs: Vec<UndecidedPair> }` (no source check, no repair strategy, warning bubble in the web UI). The payload is `IssuePayload::IndeterminateDistance { pairs }` (`IssueUndecidedPairPayload { nodes: [u32; 2], unsupported }`, wire tag `15`); hovering the bubble highlights both nodes of every pair as singleton region cells. The rule-level boolean parameter `approximate_topology` (default `false`, applies to the six checks above) switches the checks to `DistancePolicy::Approximate`: an `Unsupported` pair is then measured by the planar distance and no longer reported. `Unknown` is never approximated.
+
 ### Issue trait and the 12 concrete types
 
 See GitHub issue #113. `Issue` used to be one concrete struct with a runtime `kind: IssueKind`
@@ -507,7 +509,7 @@ Skips the check silently if either endpoint is `None` — those cases are covere
 pub enum Comparison { Lt, Gt, Le, Ge, Eq }
 ```
 
-`Comparison` (`quality_control::comparison`) — see GitHub issue #177. A shared operator for checks that validate a single entity's numeric property against a threshold, letting a min/max pair whose two directions both flag the *same* problem on the *same* entity (4.2, "this entity is invalid" — same `IssueKind`, same repair strategy) merge into one check type instead of staying two near-duplicate types. `comparison.compare(value, threshold)`/`compare_f64` return whether `value` triggers the check for that operator.
+`Comparison` (`maze_core::comparison`, re-exported as `quality_control::Comparison`; lives outside `quality_control` because `space` uses it too) — see GitHub issue #177. A shared operator for checks that validate a single entity's numeric property against a threshold, letting a min/max pair whose two directions both flag the *same* problem on the *same* entity (4.2, "this entity is invalid" — same `IssueKind`, same repair strategy) merge into one check type instead of staying two near-duplicate types. `comparison.compare(value, threshold)`/`compare_f64` return whether `value` triggers the check for that operator.
 
 **When to merge, when not to** — the rule that decides whether a min/max pair becomes one `Comparison`-parametrized check or stays two separate checks:
 - **Merge** when both directions validate one entity and both name the *same* corrective action (4.2 checks) — e.g. `LoopLengthCheck`'s `Lt`/`Gt` both mean "this cycle is invalid, cut it", so `min_loop_length`/`max_loop_length` merged into one `loop_length` check type. `TeleportGeometricLengthCheck` and `TeleportWaypointDistanceCheck`'s `comparison` param follow the same rule.
@@ -865,6 +867,8 @@ Shared utility the geometric checks build on — see GitHub issue #74 and `Specs
 built-in tessellation, math Y-up, no display orientation): a cell's position is
 `space::cell_position(cell)` — its `Tessellation::center` together with its `cell_scale`.
 
+**Folds (GitHub issue #834).** The functions below are planar and ignore topology folds. The distance contract for folded floors (`surface_distance`, `DistanceResult`, `WithinLimit`, per-check policy for `Unknown`/`Unsupported`) is in `Specs/topology.md`, "Distance contract".
+
 **Distances are in `cell_scale` units.** Every geometric distance is the planar world distance
 divided by the mean `cell_scale` of the two positions (`space.md`'s "Scale between two
 positions"), so a threshold means the same number of
@@ -879,14 +883,16 @@ geometric — unrelated to graph/nav distance (`MazeAnalysis::distance_from_star
 `distance_from_finish`, used by `TeleportWaypointDistanceCheck` above), which counts tile-hops along
 actual edges instead of straight-line distance.
 
-`space::edge_position::<T>(from, to) -> ScaledPoint` (GitHub issue #199 follow-up) is the position of
+`space::edge_position::<T>(field, from, to) -> ScaledPoint` (`field`: the `Field` of the edge's level; fold-aware since GitHub issue #833) (GitHub issue #199 follow-up) is the position of
 the *edge* between two cells: the contact point of the face between them (`contact_point`, where a
 passage renders), measured in the mean `cell_scale` of both cells — needed because an edge like a
 one-way passage renders visually on the tile border it crosses, not at either endpoint node. Two
-cells that share no face fall back to the midpoint of their centers.
+cells that share no face and no active fold fall back to the midpoint of their centers.
 Edge-to-edge distance is `space::floor_aware_xy_distance` over two `edge_position`s, each resolved
 once per edge before any pair is compared (`OneWayGroupGeometricProximityCheck`, cross-element
 one-way occurrences) — never once per pair.
+
+**Surface distance on glued fields (GitHub issue #838)**: every geometric-distance check measures through `space::FloorMetrics` (one `SurfaceMetric` per floor, built once per check run) instead of calling `floor_aware_xy_distance` directly. A floor without folds takes the bit-identical planar path, so canonical baselines do not change. On a floor with folds the check compares a distance *bracket*; a pair whose bracket straddles the threshold (`Unknown`) or whose floor has a topological-only fold (`Unsupported`) is neither flagged nor cleared — it is counted in `Maze::distance_diagnostics` and reported once per final pass as `IndeterminateDistance` (see below). The rule-level `approximate_topology` param switches the checks to `DistancePolicy::Approximate`. See `topology.md`, "Floor distance".
 
 **Floor-aware variants (GitHub issue #342, multi-floor mazes)**: `space::floor_aware_distance::<T>(a_level: usize, a: T::CellId, b_level: usize, b: T::CellId, include_height: bool) -> f64` and `space::floor_aware_xy_distance(a_level, a: ScaledPoint, b_level, b: ScaledPoint, include_height: bool) -> f64` (the shared core, over pre-resolved positions) are the multi-floor counterparts of `geometric_distance`. With `include_height: false` they reproduce the plain (non-floor-aware) function exactly, floor indices ignored entirely — the correct behavior for a single-floor maze or when a caller wants x-y distance only. With `include_height: true`, the floor difference (`b_level as f64 - a_level as f64`) is folded in as a third coordinate, one `cell_scale` unit per floor apart, combined with the x-y distance via ordinary 3D Euclidean distance (`sqrt(dx² + dy² + dz²)`). These functions never decide *whether* a cross-floor pair should be evaluated at all — that decision belongs entirely to `GeometricFloorMode` below; a caller wanting "cross-floor pairs never count" skips calling the distance function for a mismatched pair rather than expecting it here.
 
@@ -1111,7 +1117,7 @@ Multiple instances may be active at once (multiple instances) — distinct `own_
 
 A rule-level parameter (GitHub issue #253) is configured once on a `Rule` and shared by every check/strategy in that rule that consumes it, instead of being duplicated as a separate per-instance config value on each one. This is **not** a "recommended default with local override" — a migrated parameter has no local config path at all anymore: it's a plain field on the check/strategy struct (e.g. `protect_route: bool` below), populated from the rule's own resolved value, with no way to set it independently per check/strategy.
 
-`maze-core::quality_control::rule_params` owns the catalog: `RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor]` (id, `RuleParamKind`, and `applies_to: &[&str]` — the check `type_id`s / strategy `id`s that actually consume it) and the resolved-value struct `RuleParams { pub protect_route: bool, pub vertical_passage_type: VerticalPassageType, pub split_patterns: Vec<SplitPattern> }`. `rule_param_applies_to(param_id, member_id)` answers "does this member consume this parameter" from `applies_to`, the single source of truth both the web UI (relevance filtering, see below) and `maze-runner`'s factory guards read.
+`maze-core::quality_control::rule_params` owns the catalog: `RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor]` (id, `RuleParamKind`, and `applies_to: &[&str]` — the check `type_id`s / strategy `id`s that actually consume it) and the resolved-value struct `RuleParams { pub protect_route: bool, pub vertical_passage_type: VerticalPassageType, pub split_patterns: Vec<SplitPattern>, pub approximate_topology: bool }`. `rule_param_applies_to(param_id, member_id)` answers "does this member consume this parameter" from `applies_to`, the single source of truth both the web UI (relevance filtering, see below) and `maze-runner`'s factory guards read.
 
 `maze-runner`'s `resolve_rule_params(&QcRuleConfig.params) -> Result<RuleParams, String>` parses a rule's raw `params: HashMap<String, String>` once, at `Rule` construction time (`build_rule_for!` in `rule_factory.rs`), before any of the rule's checks/strategy are built — mirrors how `Rule::new` already resolves `StrategyParams` once for the top-level strategy. Every key must match a known descriptor id; an unrecognized key is a hard `Err`, not a silently-ignored override (this project has no external config consumers, so there's no forward-compatibility need to weigh against catching a typo/stale key immediately). The single resolved `RuleParams` is then passed by reference into every `build_*_check`/`build_strategy_erased` call for that rule, so every consumer sees the identical value — a structural guarantee (one `resolve_rule_params` call, one shared `&RuleParams`), not a runtime cross-check.
 
@@ -1494,7 +1500,7 @@ pub fn reconstruct_tile_faces<T: Tessellation>(graph: &Graph, field: &Field<T>, 
 pub fn split_tile_matches_any<T: Tessellation>(graph: &Graph, field: &Field<T>, nodes: &[NodeId], patterns: &[SplitPattern]) -> bool;
 ```
 
-`reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `Tessellation::neighbor` over `faces_of(point)`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape (indexed by local face) against every pattern declared for the cell's shape template (`SplitPattern::applies_to`), trying every variant of the cell's allowed transform group (`generation::pattern_variants`, the same variant source generation and repair use, GitHub issue #758) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
+`reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `MultiLevelField::neighbor_via` (fold-aware effective adjacency, `Specs/topology.md`) over `faces_of(point)`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape (indexed by local face) against every pattern declared for the cell's shape template (`SplitPattern::applies_to`), trying every variant of the cell's allowed transform group (`generation::pattern_variants`, the same variant source generation and repair use, GitHub issue #758) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
 
 ### SplitNodeConnectionCountCheck
 
@@ -1563,7 +1569,7 @@ matter, `Basic` and `Teleport` both count.
 `NodeId` — a bucket with more than `max` edges fires, with `to_remove = bucket.len() - max`.
 
 **`SplitNodeConnectionPerFaceCheck`** buckets by face-direction index instead
-(`space::face_index_toward(split_point, neighbor_point)`, the position in `faces_of(split_point)`) —
+(`MultiLevelField::face_index_toward(level, split_point, neighbor_point)`, the position in `faces_of(split_point)`) —
 edges toward *different* outside neighbors that happen to share the same face direction land in
 the same bucket, so this check's cap is independent of how many distinct neighbors receive the
 connections, unlike the per-neighbor check above.
@@ -2147,7 +2153,7 @@ cells as region squares, one flat deduplicated group.
 On the binary QC event tape (`event_encode.rs`/`qcCustom.ts`, see `event_log.md`), `IssuePayload`
 variants are hand-written wire tags on both sides (`write_issue_payload` writes; `readIssuePayload`
 reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`, `InvalidCrossElementGroup`
-is tag `14`. `codegen`'s
+is tag `14`, `IndeterminateDistance` is tag `15`. `codegen`'s
 `issue_payload_check` module (`codegen/src/issue_payload_check.rs`) text-scans both functions' tag
 literals and fails `--check`/plain runs on any mismatch, since a tag added to one side and
 forgotten on the other only surfaces as a runtime "unknown tag" crash otherwise.

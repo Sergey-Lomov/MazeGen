@@ -147,8 +147,8 @@ pub struct RuleParamDescriptorDto {
 /// `ParamDescriptor.label` in this module).
 pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
     use maze_core::quality_control::{
-        PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS, PARAM_VERTICAL_PASSAGE_TYPE,
-        RULE_PARAM_DESCRIPTORS, RuleParamKind, VerticalPassageType,
+        PARAM_APPROXIMATE_TOPOLOGY, PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS,
+        PARAM_VERTICAL_PASSAGE_TYPE, RULE_PARAM_DESCRIPTORS, RuleParamKind, VerticalPassageType,
     };
     RULE_PARAM_DESCRIPTORS
         .iter()
@@ -170,6 +170,7 @@ pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
             };
             let label = match d.id {
                 id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
+                id if id == PARAM_APPROXIMATE_TOPOLOGY => "Approximate distance across folds",
                 id if id == PARAM_VERTICAL_PASSAGE_TYPE => "Type",
                 id if id == PARAM_SPLIT_PATTERNS => "Split patterns",
                 other => other,

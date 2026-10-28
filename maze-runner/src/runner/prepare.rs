@@ -1,6 +1,7 @@
 use super::resolve_start;
 use super::tessellation_factory::{CellCodec, TessellationVisitor, build_tessellation};
 use crate::config::{GenerateConfig, build_generation_config, build_generation_source_mode};
+use crate::topology_wire::install_topologies;
 use maze_core::{
     generation::GenerationConfig,
     ids::IdGenerator,
@@ -100,6 +101,13 @@ fn prepare<T: Tessellation>(
             Field::new(Arc::clone(&tessellation), pts, &mut ids).map_err(|e| e.to_string())?;
         field.add_level(level);
     }
+    install_topologies(
+        &mut field,
+        &config.topology,
+        tessellation.as_ref(),
+        |x, y| Some(cell_from_xy(x, y)),
+        &config.tessellation,
+    )?;
 
     let mut gen_config = build_generation_config(config);
     gen_config.element_placement_rules = Some(

@@ -2135,3 +2135,38 @@ fn is_batch_edge_group_type_agrees_with_every_checks_own_is_batch_edge_group() {
         count_incoming: false,
     });
 }
+
+#[test]
+fn indeterminate_distance_issue_resolves_each_pair_with_its_reason() {
+    use crate::quality_control::{IndeterminateReason, UndecidedPair};
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = IndeterminateDistanceIssue::new(vec![
+        UndecidedPair {
+            a: 1,
+            b: 4,
+            reason: IndeterminateReason::DistanceUnknown,
+        },
+        UndecidedPair {
+            a: 2,
+            b: 3,
+            reason: IndeterminateReason::UnsupportedTopology,
+        },
+    ]);
+    let payload = resolve(&issue, &graph, &scc);
+    let IssuePayload::IndeterminateDistance { pairs } = payload else {
+        panic!("expected IndeterminateDistance, got {payload:?}")
+    };
+    assert_eq!(
+        pairs,
+        vec![
+            IssueUndecidedPairPayload {
+                nodes: [1, 4],
+                unsupported: false
+            },
+            IssueUndecidedPairPayload {
+                nodes: [2, 3],
+                unsupported: true
+            },
+        ]
+    );
+}

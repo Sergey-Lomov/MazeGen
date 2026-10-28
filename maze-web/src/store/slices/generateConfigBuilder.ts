@@ -2,6 +2,7 @@ import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
+import { topologyKey } from "../topologyWire";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidLockedNodeKeys, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
@@ -223,6 +224,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     level_fields,
+    ...topologyKey(state),
     stages,
     ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
@@ -284,7 +286,7 @@ function applyGenerationResult(
 ): void {
   const { snapshot, debugTape } = result;
   {
-    warmCartesianCache(activeTessellation);
+    warmCartesianCache(activeTessellation, get().floorTopology[get().activeFloorId] ?? null);
     let debugArena: DebugArenaHandle | null = null;
     let lastStep = 0;
     if (debugMode && debugTape) {

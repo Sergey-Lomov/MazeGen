@@ -1,8 +1,9 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { WallEdge, PassageKind } from "../../renderers/types";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
+import { getCellCenter, getFaceEdgeSegment, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
+import { getSeamModel } from "../seams";
 import { buildSplitPointKeys } from "./split";
 
 // A cell is "closed" (filled as a wall) only when it has no connection at all — including a
@@ -128,6 +129,7 @@ export function buildMazeWalls(
   // never one of a split node's connected faces (`buildSplitPassagesCore` only draws segments
   // toward faces the point's nodes actually connect across), so skipping it here would leave the
   // point's outer edge with no wall at all.
+  const seams = getSeamModel(cfg);
   const boundaryDrawn = new Set<string>();
   for (const n of nodes) {
     const { offsets } = getNeighborData(cfg, n.x, n.y);
@@ -135,6 +137,32 @@ export function buildMazeWalls(
       const nx = n.x + dx;
       const ny = n.y + dy;
       const neighborless = dx === 0 && dy === 0;
+      const half = seams.halfEdgeAt([n.x, n.y], face);
+      if (half) {
+        // A glued face is not a field edge: each side draws the whole face as its own wall (or
+        // none, when the passage is open), and a one-way indicator on it points out of this cell on
+        // the source side and into it on the partner side.
+        const seamKey = `${n.x},${n.y}#${face}`;
+        if (boundaryDrawn.has(seamKey)) continue;
+        boundaryDrawn.add(seamKey);
+        const [px, py] = half.partnerCell;
+        const partnerSplit = splitPointKeys.has(`${px},${py}`) || splitPointKeys.has(`${n.x},${n.y}`);
+        const fwd = !partnerSplit && directed.has(`${n.x},${n.y}->${px},${py}`);
+        const bwd = !partnerSplit && directed.has(`${px},${py}->${n.x},${n.y}`);
+        if (fwd && bwd) continue;
+        const kind: PassageKind = fwd ? "forward" : bwd ? "backward" : "none";
+        let oneWayDir: { dx: number; dy: number } | undefined;
+        const edge = getFaceEdgeSegment([n.x, n.y], face, cfg);
+        if (kind !== "none" && edge) {
+          const center = getCellCenter(n.x, n.y, cfg);
+          const outX = edge.contact.x - center.x;
+          const outY = edge.contact.y - center.y;
+          const len = Math.hypot(outX, outY);
+          if (len > 0) oneWayDir = kind === "forward" ? { dx: outX / len, dy: outY / len } : { dx: -outX / len, dy: -outY / len };
+        }
+        result.push({ a: [n.x, n.y], b: [px, py], face, kind, style: "solid", oneWayDir });
+        continue;
+      }
       if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
       // A split point has several nodes at the same (x,y) — dedupe so its boundary side isn't
       // pushed once per node.
@@ -161,7 +189,7 @@ export function buildOneWayWallIndicatorPositions(
   const result: [number, number][] = [];
   for (const edge of edges) {
     if (!edge.oneWayDir) continue;
-    const seg = getSharedEdgeSegment(edge.a, edge.b, cfg);
+    const seg = edge.face === undefined ? getSharedEdgeSegment(edge.a, edge.b, cfg) : getFaceEdgeSegment(edge.a, edge.face, cfg);
     if (!seg) continue;
     result.push([seg.contact.x, seg.contact.y]);
   }

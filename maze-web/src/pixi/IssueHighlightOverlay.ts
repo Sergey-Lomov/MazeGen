@@ -13,6 +13,7 @@ import { canvas } from "./colorTokens";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import type { IssueHighlightEdge } from "../store/postEditFullTypes";
+import { hopPieces, type SeamHopContext } from "./graphSeams";
 
 const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
@@ -57,6 +58,8 @@ export interface IssueHighlightData {
   /** Width of the studio renderer's wall one-way marker. When omitted, a boundary highlight uses
    *  the full cell-to-cell distance for generic wall entities. */
   oneWayBoundaryWidth?: number;
+  /** Seam hop context (GitHub issue #841): a highlighted edge across a glue breaks at the glue's contour. */
+  seam?: SeamHopContext;
 }
 
 export class IssueHighlightOverlay extends BaseGraphRenderer {
@@ -72,7 +75,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
 
   render(data: IssueHighlightData): void {
     this.resetContainers();
-    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth } = data;
+    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth, seam } = data;
     const hasEdges = edges != null && edges.length > 0;
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
@@ -135,16 +138,18 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     const baseEdgeKeys = new Set(allEdges.map((e) => `${e.from},${e.to}`));
     const g = new Graphics();
     for (const [from, to] of linePairs) {
-      const a = nodePos.get(from);
-      const b = nodePos.get(to);
-      if (!a || !b) continue;
-      g.moveTo(a.x, a.y);
-      g.lineTo(b.x, b.y);
-      g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
-      if (baseEdgeKeys.has(`${from},${to}`) && !baseEdgeKeys.has(`${to},${from}`)) {
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len >= 1) {
-          drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, HIGHLIGHT_COLOR, HIGHLIGHT_ALPHA);
+      // A hop across a glue is two stubs ending at its contour, an ordinary one a single line.
+      for (const { path } of hopPieces(from, to, nodePos, seam)) {
+        const a = path[0];
+        const b = path[1];
+        g.moveTo(a.x, a.y);
+        g.lineTo(b.x, b.y);
+        g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+        if (baseEdgeKeys.has(`${from},${to}`) && !baseEdgeKeys.has(`${to},${from}`)) {
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
+          if (len >= 1) {
+            drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, HIGHLIGHT_COLOR, HIGHLIGHT_ALPHA);
+          }
         }
       }
     }

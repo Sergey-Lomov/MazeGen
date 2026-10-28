@@ -125,6 +125,15 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(14);
             write_str_keyed_cross_element_groups(out, groups);
         }
+        IssuePayload::IndeterminateDistance { pairs } => {
+            out.push(16);
+            out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
+            for pair in pairs {
+                out.extend_from_slice(&pair.nodes[0].to_le_bytes());
+                out.extend_from_slice(&pair.nodes[1].to_le_bytes());
+                out.push(pair.unsupported as u8);
+            }
+        }
     }
 }
 

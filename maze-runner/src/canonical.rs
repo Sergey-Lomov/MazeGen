@@ -315,6 +315,12 @@ fn canonical_payload(payload: &IssuePayload, cells: &CellIndex) -> Value {
                 "preset_locked": g.preset_locked,
             }))
         }),
+        IssuePayload::IndeterminateDistance { pairs } => json!({
+            "indeterminate_distance": sorted_values(pairs.iter().map(|p| json!({
+                "pair": sorted_strings(p.nodes.iter().map(|&n| cells.cell_u32(n)).collect()),
+                "unsupported": p.unsupported,
+            })).collect())
+        }),
         IssuePayload::InvalidCrossElementGroup { groups } => json!({
             "invalid_cross_element_group": by_source(groups, |group| sorted_values(
                 group.iter().map(|entry| json!({

@@ -3,6 +3,7 @@ import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
+import { SeamHoverTracker } from "./SeamHoverTracker";
 import { FieldEditController } from "./FieldEditController";
 import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
@@ -81,6 +82,7 @@ export class MazeScene {
   private primitivePreviewContainer: Container;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
+  private seamHoverTracker: SeamHoverTracker;
   private presetConnectionsController: PresetConnectionsController;
   private postEditRenderer: PostEditRenderer;
   private postEditContainer: Container;
@@ -169,6 +171,7 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
+    this.seamHoverTracker = new SeamHoverTracker(this.viewport, this.app.stage);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
     this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
@@ -652,6 +655,7 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
+    this.seamHoverTracker.destroy();
     this.presetConnectionsController.destroy();
     this.postEditRenderer.destroy();
     this.postEditController.destroy();

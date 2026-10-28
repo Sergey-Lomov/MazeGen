@@ -140,6 +140,7 @@ export const STRATEGY_IDS = [
 ] as const;
 
 export const RULE_PARAM_IDS = [
+  "approximate_topology",
   "passage_type",
   "protect_route",
   "split_patterns",

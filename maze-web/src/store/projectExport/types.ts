@@ -1,5 +1,5 @@
 import type { FieldShape, PresetFieldShape, TessellationKind } from "../../fieldConfig";
-import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
+import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
@@ -194,6 +194,10 @@ export interface ProjectFile {
   tessellation: { kind: TessellationKind; params: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation };
   /** One entry per floor id in `floors.floors`, its own field-shape state (GitHub issue #338). */
   floorFields: Record<string, ProjectFileFloorField>;
+  /** One entry per floor id that has folds (GitHub issue #836); a floor without folds has no entry.
+   * Optional on disk: absent in files saved before this issue, meaning no topology anywhere. Each
+   * entry's `fingerprint` must equal the file's tessellation fingerprint or the file is rejected. */
+  floorTopology?: Record<string, WireTopology>;
   generation: {
     seed: number;
     randomSeed: boolean;

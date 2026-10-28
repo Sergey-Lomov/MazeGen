@@ -9,6 +9,9 @@ export interface NodeEdgeHighlight {
   width: number;
   alpha: number;
   nodeRadius: number;
+  /** `false` leaves the start / end without its node marker (a stub ending at a seam). */
+  fromMarker?: boolean;
+  toMarker?: boolean;
   /** Same meaning as `EdgeHL.bidirectional`. */
   bidirectional?: boolean;
 }
@@ -53,7 +56,8 @@ export class NodeEdgeHighlightRenderer {
     this.edgeRenderer.render({ highlights: edgeHighlights });
 
     for (const h of highlights) {
-      for (const pos of [h.from, h.to]) {
+      for (const [pos, marked] of [[h.from, h.fromMarker], [h.to, h.toMarker]] as const) {
+        if (marked === false) continue;
         this.nodeGraphics.circle(pos.x, pos.y, h.nodeRadius);
         this.nodeGraphics.fill({ color: h.color, alpha: h.alpha });
       }

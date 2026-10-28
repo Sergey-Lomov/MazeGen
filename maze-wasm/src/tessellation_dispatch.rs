@@ -9,6 +9,7 @@ use maze_core::{
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
+use maze_runner::topology_wire::install_topologies;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -85,7 +86,15 @@ impl TessellationVisitor for GenerateVisitor<'_> {
             codec.to_xy,
         );
         let mut ids = IdGenerator::new();
-        let field = build_multi_level_field(&tessellation, level_points, &mut ids)?;
+        let mut field = build_multi_level_field(&tessellation, level_points, &mut ids)?;
+        install_topologies(
+            &mut field,
+            &config.topology,
+            tessellation.as_ref(),
+            |x, y| Some((codec.from_xy)(x, y)),
+            &config.tessellation,
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
         run_generate(seed, field, ids, start, config, codec.to_xy, codec.from_xy)
     }
 }

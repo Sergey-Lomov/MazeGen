@@ -7,6 +7,7 @@ import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import { drawCrossFloorBadge } from "./renderers/floorBadge";
 import { canvas } from "./colorTokens";
+import { seamHopPieces, type SeamHopContext } from "./graphSeams";
 
 const ROUTE_LINE_COLOR = 0xffdd44;
 const ROUTE_LINE_WIDTH = 3;
@@ -29,12 +30,14 @@ export interface RouteData {
   resolveNodeCell?: NodeCellResolver;
   /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
   activeFloorIndex?: number;
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 export class RouteOverlay extends BaseGraphRenderer {
   render(data: RouteData): void {
     this.resetContainers();
-    const { routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, seam } = data;
     if (routeInfo.path.length < 2) return;
 
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
@@ -56,7 +59,15 @@ export class RouteOverlay extends BaseGraphRenderer {
       } else if (segmentStart !== -1) {
         if (i - segmentStart >= 2) {
           g.moveTo(positions[segmentStart]!.x, positions[segmentStart]!.y);
-          for (let j = segmentStart + 1; j < i; j++) g.lineTo(positions[j]!.x, positions[j]!.y);
+          for (let j = segmentStart + 1; j < i; j++) {
+            // A hop through a seam breaks at the slot of the source face and goes on from the partner's slot.
+            const hop = seam ? seamHopPieces(routeInfo.path[j - 1], routeInfo.path[j], nodeMap, seam) : null;
+            if (hop) {
+              g.lineTo(hop[0].path[1].x, hop[0].path[1].y);
+              g.moveTo(hop[1].path[0].x, hop[1].path[0].y);
+            }
+            g.lineTo(positions[j]!.x, positions[j]!.y);
+          }
         }
         segmentStart = -1;
       }

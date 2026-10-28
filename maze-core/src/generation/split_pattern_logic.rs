@@ -213,9 +213,9 @@ fn resolve_face<T: Tessellation>(
         return true;
     }
 
-    let neighbor = tessellation
-        .neighbor(point, tess_face)
-        .and_then(|(neighbor_point, _)| field.nodes_at(level, neighbor_point).first().copied());
+    let neighbor = field
+        .neighbor_via(level, point, tess_face)
+        .and_then(|crossing| field.nodes_at(level, crossing.cell).first().copied());
 
     match face.requirement {
         SplitFaceRequirement::Wall => {

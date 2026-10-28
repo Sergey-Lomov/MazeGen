@@ -27,6 +27,8 @@ import { configAllCells } from "../../pixi/tessellationCells";
 import { availablePresetKeys, fieldOperationAvailable, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
+import { TopologyPanel } from "./TopologyPanel";
+import { bringSidePanelToFront } from "../SidePanel";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
@@ -69,6 +71,8 @@ export function FieldSetupFeature() {
   const setShowPaperLayout = useMazeStore((s) => s.setShowPaperLayout);
   const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
+  const topologyPanelOpen = useMazeStore((s) => s.topologyPanelOpen);
+  const setTopologyPanelOpen = useMazeStore((s) => s.setTopologyPanelOpen);
   const floorCount = useMazeStore((s) => s.floors.length);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
 
@@ -257,6 +261,17 @@ export function FieldSetupFeature() {
           </div>
           <Button
             variant="secondary"
+            disabled={fieldEditLocked}
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={() => {
+              bringSidePanelToFront("topology");
+              setTopologyPanelOpen(true);
+            }}
+          >
+            {m["topology.open"]()}
+          </Button>
+          <Button
+            variant="secondary"
             disabled={fieldEditLocked || fieldPoints.size === 0 || !translateAvailable}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={centerFieldPoints}
@@ -273,6 +288,7 @@ export function FieldSetupFeature() {
           </Button>
         </>
       )}
+      {isCustom && topologyPanelOpen && <TopologyPanel onClose={() => setTopologyPanelOpen(false)} />}
       {floorCount > 1 && (
         <>
           <Button

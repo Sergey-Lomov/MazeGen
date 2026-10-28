@@ -5,6 +5,7 @@ import { canvas } from "./colorTokens";
 import { BaseGraphRenderer, buildPathRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
+import type { SeamHopContext } from "./graphSeams";
 
 export interface NavGraphData {
   nodes: NodeDto[];
@@ -29,6 +30,8 @@ export interface NavGraphData {
   /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel` to
    *  tell a same-floor endpoint from a genuinely cross-floor one. */
   activeFloorIndex?: number;
+  /** Seam hop context (GitHub issue #841), built by the feature-renderer; omitted: every hop is a straight line. */
+  seam?: SeamHopContext;
 }
 
 export class NavGraphRenderer extends BaseGraphRenderer {
@@ -36,11 +39,11 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     this.resetContainers();
     if (data.nodes.length === 0) return;
 
-    const { nodes, navNodes, navEdges, edges, start, finish, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { nodes, navNodes, navEdges, edges, start, finish, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, seam } = data;
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
     const nodePos = buildNodePositions(nodes, cfg, directedPairs);
 
-    const renderEdges = buildPathRenderEdges(navEdges, nodePos);
+    const renderEdges = buildPathRenderEdges(navEdges, nodePos, navEdges, seam);
     this.drawEdges(renderEdges, canvas.edge.default);
 
     const navNodeIds = new Set(navNodes.map(n => n.node_id));

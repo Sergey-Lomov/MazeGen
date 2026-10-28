@@ -78,6 +78,8 @@ impl PreparedVisitor for TimeStage<'_> {
                 tolerance: GEOMETRY_TOLERANCE,
             },
             field_version: 0,
+            topology_version: 0,
+            topology: None,
         };
         let started = Instant::now();
         match self.stage {

@@ -1,5 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { TopologyBandRenderer } from "./renderers/TopologyBandRenderer";
+import { selectTopologyBands } from "./selectors/topologyBands";
+import { SeamArrowLayer } from "./seamArrowSync";
 import { decodePoint, encodePoint, makeProjection } from "./tessellationProjection";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
 import type { FieldConfig } from "../fieldConfig";
@@ -30,18 +33,22 @@ const SYMMETRY_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly backgroundImageContainer: Container;
   private readonly paperLayoutContainer: Container;
   private readonly fieldBoundaryContainer: Container;
+  private readonly topologyContainer: Container;
   private readonly floorContainer: Container;
   private readonly symmetryContainer: Container;
   private readonly originContainer: Container;
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly backgroundImage: BackgroundImageHost;
   private readonly paperLayout: PaperLayoutRenderer;
   private readonly fieldBoundary: WallRenderer;
+  private readonly topologyBands: TopologyBandRenderer;
   private readonly floor: CellFillRenderer;
   private readonly symmetryCells: CellFillRenderer;
   private readonly symmetryGraphics: Graphics;
@@ -56,9 +63,11 @@ export class FieldEditorOverlay {
   constructor(container: Container) {
     this.root = container;
     this.gridContainer = new Container();
+    this.seamArrowContainer = new Container();
     this.backgroundImageContainer = new Container();
     this.paperLayoutContainer = new Container();
     this.fieldBoundaryContainer = new Container();
+    this.topologyContainer = new Container();
     this.floorContainer = new Container();
     this.symmetryContainer = new Container();
     this.originContainer = new Container();
@@ -69,9 +78,12 @@ export class FieldEditorOverlay {
     this.root.addChild(this.paperLayoutContainer);
     this.root.addChild(this.symmetryContainer);
     this.root.addChild(this.originContainer);
+    // Above every layer of the maze itself, below only the highlights.
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,
       floor: this.floorContainer,
@@ -88,6 +100,9 @@ export class FieldEditorOverlay {
     this.hover = new CellFillRenderer(this.hoverContainer);
     // Keep the editor-only boundary above every underlay layer, including "above everything".
     this.root.addChild(this.fieldBoundaryContainer);
+    // The glue editor's highlights lie right above the boundary walls they mark.
+    this.root.addChild(this.topologyContainer);
+    this.topologyBands = new TopologyBandRenderer(this.topologyContainer);
 
     this.root.visible = false;
 
@@ -103,6 +118,19 @@ export class FieldEditorOverlay {
       if (isOpen && !wasOpen) {
         this.redrawAll(state);
       }
+
+      if (isOpen && (
+        state.activeFloorId !== prev.activeFloorId
+        || state.floorTopology !== prev.floorTopology
+        || state.topologyRunA !== prev.topologyRunA
+        || state.topologyRunB !== prev.topologyRunB
+        || state.topologyFaceHover !== prev.topologyFaceHover
+        || state.topologyFlagged !== prev.topologyFlagged
+        || state.topologySideHover !== prev.topologySideHover
+        || state.topologyPick !== prev.topologyPick
+        || field.fieldConfig !== prevField.fieldConfig
+        || field.fieldPoints !== prevField.fieldPoints
+      )) this.redrawTopology(state);
 
       if (isOpen && field.fieldPoints !== prevField.fieldPoints) {
         this.redrawFloor(state);
@@ -121,6 +149,15 @@ export class FieldEditorOverlay {
 
       if (isOpen && field.fieldConfig !== prevField.fieldConfig) {
         this.redrawAll(state);
+      }
+
+      // The boundary skips glued faces; the seam model behind that is rewarmed by `topologySync`, a
+      // subscriber of its own, so the redraw waits until the current notification has reached it.
+      if (isOpen && (state.floorTopology !== prev.floorTopology || state.activeFloorId !== prev.activeFloorId)) {
+        queueMicrotask(() => {
+          const latest = useMazeStore.getState();
+          if (latest.openCard === "field_setup") this.redrawFieldBoundary(latest);
+        });
       }
 
       if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
@@ -187,6 +224,7 @@ export class FieldEditorOverlay {
       this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
       this.redrawPaperLayout(state);
       this.redrawSymmetry(state);
+      this.redrawTopology(state);
     }
   }
 
@@ -196,6 +234,7 @@ export class FieldEditorOverlay {
     this.redrawFloor(state);
     this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
     this.redrawFieldBoundary(state);
+    this.redrawTopology(state);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
@@ -225,7 +264,13 @@ export class FieldEditorOverlay {
     this.fieldBoundary.render({ edges: boundaryWalls }, field.fieldConfig);
     // BackgroundImageLayer keeps its interactive transform/crop frame last; stay immediately
     // below that frame while remaining above the image itself.
-    this.root.setChildIndex(this.fieldBoundaryContainer, Math.max(0, this.root.children.length - 2));
+    const top = this.root.children.length - 2;
+    this.root.setChildIndex(this.fieldBoundaryContainer, Math.max(0, top - 1));
+    this.root.setChildIndex(this.topologyContainer, Math.max(0, top));
+  }
+
+  private redrawTopology(state: ReturnType<typeof useMazeStore.getState>): void {
+    this.topologyBands.render(selectTopologyBands(state));
   }
 
   private visibleFieldCells(state: ReturnType<typeof useMazeStore.getState>): [number, number][] {
@@ -422,10 +467,13 @@ export class FieldEditorOverlay {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.backgroundImage.destroy();
     this.paperLayout.destroy();
     this.fieldBoundary.destroy();
+    this.topologyBands.destroy();
     this.floor.destroy();
     this.symmetryCells.destroy();
     this.symmetryGraphics.destroy();
@@ -435,6 +483,7 @@ export class FieldEditorOverlay {
     this.backgroundImageContainer.destroy();
     this.paperLayoutContainer.destroy();
     this.fieldBoundaryContainer.destroy();
+    this.topologyContainer.destroy();
     this.floorContainer.destroy();
     this.symmetryContainer.destroy();
     this.originContainer.destroy();

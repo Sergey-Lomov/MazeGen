@@ -168,24 +168,30 @@ export function cellBounds(
 
 /** Inclusive point-in-polygon test shared by background classification and field containment. */
 export function pointInPolygon(point: Pos, vertices: Pos[]): boolean {
+  return pointInPolygonBy(point.x, point.y, vertices, (v) => v.x, (v) => v.y);
+}
+
+/** The inclusive point-in-polygon test for vertices of any shape: `xOf` / `yOf` read a vertex's coordinates, so a
+ *  `[x, y]` tuple ring needs no conversion. */
+export function pointInPolygonBy<V>(px: number, py: number, vertices: readonly V[], xOf: (vertex: V) => number, yOf: (vertex: V) => number): boolean {
   if (vertices.length < 3) return false;
   let inside = false;
   for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
-    const a = vertices[j];
-    const b = vertices[i];
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const apx = point.x - a.x;
-    const apy = point.y - a.y;
-    const cross = abx * apy - aby * apx;
+    const ax = xOf(vertices[j]);
+    const ay = yOf(vertices[j]);
+    const bx = xOf(vertices[i]);
+    const by = yOf(vertices[i]);
+    const abx = bx - ax;
+    const aby = by - ay;
+    const cross = abx * (py - ay) - aby * (px - ax);
     const scale = Math.max(1, Math.abs(abx) + Math.abs(aby));
     if (Math.abs(cross) <= 1e-9 * scale
-      && point.x >= Math.min(a.x, b.x) - 1e-9
-      && point.x <= Math.max(a.x, b.x) + 1e-9
-      && point.y >= Math.min(a.y, b.y) - 1e-9
-      && point.y <= Math.max(a.y, b.y) + 1e-9) return true;
-    if ((a.y > point.y) !== (b.y > point.y)
-      && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+      && px >= Math.min(ax, bx) - 1e-9
+      && px <= Math.max(ax, bx) + 1e-9
+      && py >= Math.min(ay, by) - 1e-9
+      && py <= Math.max(ay, by) + 1e-9) return true;
+    if ((ay > py) !== (by > py)
+      && px < (bx - ax) * (py - ay) / (by - ay) + ax) inside = !inside;
   }
   return inside;
 }

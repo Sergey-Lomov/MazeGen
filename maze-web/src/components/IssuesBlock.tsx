@@ -56,6 +56,14 @@ function toRegionGroup(g: { region: number[]; preset_locked: boolean }): Normali
   return { nodes: g.region };
 }
 
+/// Highlight payload of an issue with no source check (raised by the engine, not by a `Check`):
+/// today only `indeterminate_distance`, whose undecided pairs are pointed at on hover (GitHub issue
+/// #838).
+function normalizeSourcelessPayload(payload: IssueDto["payload"]): NormalizedIssuePayload<number> | null {
+  if (payload.kind !== "indeterminate_distance") return null;
+  return { kind: "indeterminateDistance", pairs: payload.pairs.map((p) => [p.nodes[0], p.nodes[1]] as [number, number]) };
+}
+
 export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
@@ -125,7 +133,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // applied here, per-kind, at the same granularity the old bespoke code used (e.g. cross-element
   // pairs filtered at pair granularity, split tiles filtered at tile granularity for
   // `TILE_GRANULARITY_CHECKS`), before handing normalized groups to the shared resolver.
-  const normalizedPayload: NormalizedIssuePayload<number> | null = sourceCheck == null ? null : (() => {
+  const normalizedPayload: NormalizedIssuePayload<number> | null = sourceCheck == null ? normalizeSourcelessPayload(issue.payload) : (() => {
     const payload = issue.payload;
     switch (payload.kind) {
       case "invalid_loop": {

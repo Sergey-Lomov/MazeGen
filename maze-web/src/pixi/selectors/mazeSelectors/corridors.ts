@@ -1,7 +1,8 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
-import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
+import { getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
+import { getSeamModel } from "../seams";
 import { buildSplitPointKeys } from "./split";
 import { selectFloorScopedMaze } from "./state";
 
@@ -31,7 +32,8 @@ export type CorridorSegment = {
   fromNode: number;
   toNode: number;
   /** `v1` lands on a shared face's own midpoint instead of the neighbor cell's center, because that
-   *  neighbor is a split point (GitHub issue #314 follow-up) — the renderer needs this to cap that
+   *  neighbor is a split point (GitHub issue #314 follow-up) or the face is a glued seam face (the
+   *  segment is this side's own copy, `fromNode`/`toNode` still name both cells) — the renderer needs this to cap that
    *  end `butt` instead of its usual round/square cap, since the diagonal/bridge shape drawn there
    *  by `buildSplitPassages` can bow or narrow away from this segment's own straight axis, uncovering
    *  a round/square cap's extra reach past the tile boundary. */
@@ -75,6 +77,7 @@ export function buildCorridorSegments(
   const cells: [number, number][] = nodes.map((n) => [n.x, n.y]);
   const cellSet = buildCellSet(cells);
   const splitPointKeys = buildSplitPointKeys(nodes);
+  const seams = getSeamModel(cfg);
   const result: CorridorSegment[] = [];
 
   for (const n of nodes) {
@@ -155,6 +158,51 @@ export function buildCorridorSegments(
         fromNode: n.id,
         toNode: neighborNode.id,
         v1TouchesSplit: neighborSplit,
+      });
+    }
+
+    // A passage through a glued face is drawn once per side: from this cell's center to the contact
+    // point of its own face, as a segment that belongs to this cell alone (like the plain side of a
+    // split neighbor). No segment runs to the partner's center and the partner is not duplicated.
+    if (selfSplit) continue;
+    for (const half of seams.halfEdgesOf([n.x, n.y])) {
+      const [px, py] = half.partnerCell;
+      const partnerNode = nodeByCoord.get(`${px},${py}`);
+      if (!partnerNode || splitPointKeys.has(`${px},${py}`)) continue;
+      const fwd = directed.has(`${selfKey}->${px},${py}`);
+      const bwd = directed.has(`${px},${py}->${selfKey}`);
+      if (!fwd && !bwd) continue;
+      const face = getFaceEdgeSegment([n.x, n.y], half.faceIdx, cfg);
+      if (!face) continue;
+      const v0 = getCellCenter(n.x, n.y, cfg);
+      const v1 = face.contact;
+      const faceLength = Math.hypot(face.v1.x - face.v0.x, face.v1.y - face.v0.y);
+      let faceNormal: { x: number; y: number } | undefined;
+      if (faceLength > 0) {
+        faceNormal = { x: -(face.v1.y - face.v0.y) / faceLength, y: (face.v1.x - face.v0.x) / faceLength };
+        if (faceNormal.x * (v1.x - v0.x) + faceNormal.y * (v1.y - v0.y) < 0) faceNormal = { x: -faceNormal.x, y: -faceNormal.y };
+      }
+      let oneWayDir: { dx: number; dy: number } | undefined;
+      const len = Math.hypot(v1.x - v0.x, v1.y - v0.y);
+      if (fwd !== bwd && len > 0) {
+        // Along `v0 -> v1` is out of this cell: the source side points out, the partner side in.
+        const sign = fwd ? 1 : -1;
+        oneWayDir = { dx: (sign * (v1.x - v0.x)) / len, dy: (sign * (v1.y - v0.y)) / len };
+      }
+      result.push({
+        v0,
+        v1,
+        ...(faceNormal ? {
+          faceMidpoint: face.contact,
+          faceNormal,
+          faceLength,
+          ...(face.polyline.length >= 3 ? { facePolyline: face.polyline.map(([x, y]) => ({ x, y })) } : {}),
+          cellVertices0: getCellVertices(n.x, n.y, cfg) ?? undefined,
+        } : {}),
+        oneWayDir,
+        fromNode: n.id,
+        toNode: partnerNode.id,
+        v1TouchesSplit: true,
       });
     }
   }

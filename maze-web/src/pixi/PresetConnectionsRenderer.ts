@@ -1,5 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import { SeamArrowLayer } from "./seamArrowSync";
+import { selectSeamPairs } from "./selectors/seamHop";
 import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel, lockedNodesWithMovedLock } from "./fieldEditUtils";
 import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
@@ -54,6 +56,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
   private readonly gridContainer: Container;
+  private readonly seamArrowContainer: Container;
   private readonly floorContainer: Container;
   private readonly backgroundImageContainer: Container;
   private readonly invalidPassagesContainer: Container;
@@ -78,6 +81,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly boundaryHover: Graphics;
 
   private readonly grid: GridRenderer;
+  private readonly seamLayer: SeamArrowLayer;
   private readonly floor: CellFillRenderer;
   private readonly backgroundImage: BackgroundImageHost;
   private readonly invalidPassages: WallRenderer;
@@ -116,6 +120,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root = container;
 
     this.gridContainer           = new Container();
+    this.seamArrowContainer = new Container();
     this.floorContainer          = new Container();
     this.backgroundImageContainer = new Container();
     this.invalidPassagesContainer = new Container();
@@ -151,6 +156,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
+    // Above every layer of the maze itself, below only the highlights.
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.invalidMarkerHLContainer);
     this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
@@ -164,6 +171,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.entityHighlightContainer);
 
     this.grid           = new GridRenderer(this.gridContainer);
+    this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,
@@ -502,7 +510,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const link = state.presetHoveredLink;
     this.boundaryHover.clear();
     if (!link || !link.highlightStyle || link.highlightStyle === "line") {
-      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg));
+      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg, selectSeamPairs(state)));
       return;
     }
     this.linkHover.render([]);
@@ -714,6 +722,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected destroyChildren(): void {
+    this.seamLayer.destroy();
+    this.seamArrowContainer.destroy();
     this.grid.destroy();
     this.backgroundImage.destroy();
     this.floor.destroy();

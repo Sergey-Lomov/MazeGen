@@ -7,6 +7,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { tessellationFingerprint } from "../topologyWire";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
@@ -67,7 +68,14 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
   }
 
   if (!derivedForActive) return {};
+  // A topology is authored for one tessellation config (GitHub issue #836): a config change
+  // invalidates every floor's folds. A field change keeps them; each fold's activity is recomputed
+  // against the new cell set (GitHub issue #839) and the user is told when one goes inactive.
+  const configChanged =
+    tessellationFingerprint(derivedForActive.kind, derivedForActive.params) !==
+    tessellationFingerprint(state.tessellationKind, state.tessellationParams);
   return {
+    ...(configChanged ? { floorTopology: {} } : {}),
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
@@ -393,6 +401,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applySymmetry": get().applySymmetry(); break;
       case "copyFloorField": get().copyFloorField(pending.sourceFloorId); break;
+      case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
     }
   },
 

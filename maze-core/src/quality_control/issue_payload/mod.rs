@@ -6,9 +6,10 @@ mod types;
 pub use types::{
     CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
     IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
-    IssueSplitTilePayload,
+    IssueSplitTilePayload, IssueUndecidedPairPayload,
 };
 
+use super::distance_diagnostics::IndeterminateReason;
 use super::issue::Issue;
 use super::issue_kinds::InvalidCrossElementGroupIssue;
 use super::issue_kinds::{
@@ -431,6 +432,25 @@ pub fn resolve_issue_payload<T: Tessellation>(
         )
     {
         return payload;
+    }
+
+    if let Some(indeterminate) = issue
+        .as_any()
+        .downcast_ref::<super::issue_kinds::IndeterminateDistanceIssue>()
+    {
+        let pairs: Vec<_> = indeterminate
+            .pairs
+            .iter()
+            .filter_map(|p| {
+                Some(IssueUndecidedPairPayload {
+                    nodes: [u32::try_from(p.a).ok()?, u32::try_from(p.b).ok()?],
+                    unsupported: p.reason == IndeterminateReason::UnsupportedTopology,
+                })
+            })
+            .collect();
+        if !pairs.is_empty() {
+            return IssuePayload::IndeterminateDistance { pairs };
+        }
     }
 
     IssuePayload::None

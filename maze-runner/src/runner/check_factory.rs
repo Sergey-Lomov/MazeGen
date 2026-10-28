@@ -709,6 +709,7 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(
                 length,
                 protect_route,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "teleport_graph_distance" => {
@@ -886,6 +887,7 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(
                 distance,
                 protect_route: rule_params.protect_route,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "one_way_group_graph_proximity" => {
@@ -1146,7 +1148,7 @@ pub(crate) fn build_split_node_group_check<T: Tessellation>(
 pub(crate) fn build_split_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_split_count" => {
@@ -1200,6 +1202,7 @@ pub(crate) fn build_split_group_check<T: Tessellation>(
                 instance_id,
                 distance,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "split_group_graph_proximity" => {
@@ -1369,7 +1372,7 @@ pub(crate) fn build_missing_vertical_passages_check<T: Tessellation>(
 pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidVerticalPassageGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_vertical_passage_count" => {
@@ -1455,6 +1458,7 @@ pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(
                 same_type_only,
                 count_incoming,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "vertical_passage_group_graph_proximity" => {
@@ -1713,7 +1717,7 @@ pub(crate) fn build_excessive_elevator_stop_gap_check<T: Tessellation>(
 pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
-    _rule_params: &RuleParams,
+    rule_params: &RuleParams,
 ) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidElevatorStopGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_elevator_stops" => {
@@ -1780,6 +1784,7 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(
                 instance_id,
                 distance,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
             }))
         }
         "elevator_stop_group_graph_proximity" => {
@@ -1877,6 +1882,7 @@ pub(crate) fn build_cross_element_group_check<T: Tessellation>(
                 distance,
                 set,
                 floor_mode,
+                approximate_topology: rule_params.approximate_topology,
                 protect_route,
             }))
         }

@@ -65,7 +65,8 @@ export type OneWayStyleOverride = {
 export type WallEdge = {
   a: [number, number];
   b: [number, number];
-  /** Face of `a` this wall covers; set only for a face with no neighbor (`b` equals `a`). */
+  /** Face of `a` this wall covers; set for a face with no neighbor (`b` equals `a`) and for a glued
+   *  seam face (`b` is the partner cell, and each side of the seam has its own wall edge). */
   face?: number;
   kind: PassageKind;
   style: WallStyle;

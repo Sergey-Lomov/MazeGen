@@ -47,6 +47,24 @@ rejects the file instead of falling back to `square`. Failures are
 `loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
 
+## Topology (`floorTopology`)
+
+GitHub issue #836. Optional section `floorTopology?: Record<floorId, WireTopology>` (`types.ts`); a
+floor without folds has no entry, and a file saved before this section loads with no topology, so
+`CURRENT_VERSION` is unchanged. The wire shape and fingerprint are specified in `Specs/topology.md`,
+"Wire form". The store keeps it as `floorTopology` (`FloorsState`), sends it as the `topology` key of
+the generate and compute-analytics configs, and clears it when the tessellation kind or params
+change (a topology is authored for one config) and when its floor is removed. A field edit keeps it: fold
+activity is recomputed (GitHub issue #839, `Specs/topology.md`, "Web authoring").
+
+On load `validate.ts` computes the fingerprint of the file's `tessellation` and calls
+`validateWireTopology` (`store/topologyWire.ts`) for every entry of a floor present in `floors`
+(entries of unknown floors are dropped). A fingerprint mismatch rejects the file with
+`floorTopology.<floorId>: topology was authored for tessellation `…`, current is `…``; so do
+structural violations (face glued to itself or in two folds, a fold in no or several groups, unknown
+group or fold references, malformed ends), each naming the fold or group. Cell validity and face
+ranges need the tessellation and are checked by core when the topology is installed on a floor.
+
 ## Visual preset (style file)
 
 GitHub issue #750. A standalone file with only the visual configuration, so a tuned style can be

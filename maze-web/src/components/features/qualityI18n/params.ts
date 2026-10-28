@@ -227,6 +227,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.priority.label"] as MessageFn,
     description: m["param.priority.description"] as MessageFn,
   },
+  approximate_topology: {
+    label: m["param.approximate_topology.label"] as MessageFn,
+    description: m["param.approximate_topology.description"] as MessageFn,
+  },
   protect_route: {
     label: m["param.protect_route.label"] as MessageFn,
     description: m["param.protect_route.description"] as MessageFn,

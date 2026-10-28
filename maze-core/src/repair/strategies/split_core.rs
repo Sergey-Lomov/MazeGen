@@ -255,8 +255,8 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
                     let tess_face = tessellation.faces_of(point)[local_face];
-                    let (neighbor_point, _) = tessellation.neighbor(point, tess_face)?;
                     let level = maze.field.level_of(at).expect("at must be in field");
+                    let neighbor_point = maze.field.neighbor_via(level, point, tess_face)?.cell;
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
                         return None;

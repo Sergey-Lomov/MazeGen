@@ -1,4 +1,4 @@
-use super::proximity_scan_core::pairwise_geometric_scan;
+use super::proximity_scan_core::pairwise_surface_scan;
 use super::vertical_passage_count_core::vertical_passage_proximity_candidates;
 use crate::Maze;
 use crate::ids::EdgeId;
@@ -6,7 +6,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{
     GeometricFloorMode, InvalidVerticalPassageGroupIssue, VerticalPassageType,
 };
-use crate::space::{Tessellation, floor_aware_distance};
+use crate::space::{DistancePolicy, FloorMetrics, Tessellation, cell_position};
 use rand::RngCore;
 
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
@@ -35,6 +35,9 @@ pub struct VerticalPassageGroupGeometricProximityCheck {
     pub same_type_only: bool,
     pub count_incoming: bool,
     pub floor_mode: GeometricFloorMode,
+    /// Measure pairs on a topological-only fold by the planar distance instead of leaving them
+    /// indeterminate (`DistancePolicy::Approximate`, GitHub issue #838).
+    pub approximate_topology: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
@@ -64,7 +67,13 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
             return;
         }
 
-        let groups = pairwise_geometric_scan(
+        let metrics = FloorMetrics::new(
+            &maze.field,
+            DistancePolicy::from_approximate(self.approximate_topology),
+        );
+        let tessellation = maze.field.tessellation();
+        // Undecidable pairs (`scan.indeterminate`) are neither flagged nor cleared.
+        let groups = pairwise_surface_scan(
             &candidates,
             self.distance,
             |&(own_id, own_level, _, own_type), &(other_id, other_level, _, other_type)| {
@@ -74,17 +83,23 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
                         && own_level != other_level)
             },
             |&(_, own_level, own_point, _), &(_, other_level, other_point, _)| {
-                floor_aware_distance(
-                    maze.field.tessellation(),
+                metrics.distance(
                     own_level,
-                    own_point,
+                    cell_position(tessellation, own_point),
                     other_level,
-                    other_point,
+                    cell_position(tessellation, other_point),
                     self.floor_mode.include_height(),
                 )
             },
             |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
-        );
+            |&(own_id, ..), &(other_id, ..)| {
+                Some((
+                    maze.graph.edge(own_id)?.from,
+                    maze.graph.edge(other_id)?.from,
+                ))
+            },
+        )
+        .into_groups(&maze.distance_diagnostics);
 
         if groups.is_empty() {
             return;
@@ -149,6 +164,7 @@ mod tests {
             same_type_only,
             count_incoming,
             floor_mode: GeometricFloorMode::AsCoordinate,
+            approximate_topology: false,
         }
     }
 

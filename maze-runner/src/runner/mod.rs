@@ -10,6 +10,7 @@ pub(crate) mod strategy_factory;
 pub mod tessellation_factory;
 #[cfg(test)]
 mod tests;
+pub mod topology_edit;
 
 use crate::config::{GenerateConfig, PresetEndpointDto};
 use maze_core::{

@@ -43,7 +43,8 @@ instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` 
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
 (`face_index_toward`, `cell_position`, `edge_position`, `geometric_distance`,
 `floor_aware_distance`) take the instance as their first argument; consumers resolve it from
-the field (`maze.field.tessellation()`).
+the field (`maze.field.tessellation()`). `edge_position` takes the `Field` instead, since it must
+see folds.
 
 **Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
 "tri" | "cairo" | "square_octagon" | "brick" | "trihexagonal" | "snub_hexagonal" | "snub_square" | "rhombitrihexagonal" | "truncated_hexagonal" | "truncated_trihexagonal" | "elongated_triangular" | "curved_quadrilateral" | "radial", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
@@ -61,7 +62,11 @@ decodes them with `CellCodec::decode_valid(&tessellation, points)`, which return
 `Err("invalid cell [x, y]")` for the first point that is not a cell. This covers the per-point
 queries (`tessellation_shapes`, `tessellation_cell_types`), the `scope` of the geometry point and
 region queries, and the geometry snapshot's cells. Field construction (`Field::new`) and the field
-operations reject invalid cells on their own.
+operations reject invalid cells on their own. The fold ends of a floor's `topology` are wire points
+too: `maze-runner::topology_wire::decode_topology` rejects an undecodable or invalid cell naming
+the fold and side (`folds[i].a: invalid cell [x, y]`), see `Specs/topology.md`, "Wire form". The
+canonical config string used as the topology fingerprint is produced by
+`topology_wire::tessellation_fingerprint` (kind plus sorted params).
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
@@ -86,7 +91,7 @@ operations reject invalid cells on their own.
   `neighbor_contract_tests` checks `Field::is_straight` against it for every tessellation.
 - **`face_index_toward(tessellation, cell, other)`** (free function) — position in
   `faces_of(cell)` of the face reaching `other`, or `None` when `other` is not a tessellation
-  neighbor. Used by the per-face split QC check.
+  neighbor. Base adjacency only (geometry, `edge_position`); maze algorithms use the fold-aware `Field::face_index_toward` / `MultiLevelField::face_index_toward`, e.g. the per-face split QC check. `edge_position` takes the `Field` and is fold-aware (see "Folded faces" under "Geometry"); it falls back to the midpoint of the centers only for cells that share neither a face nor an active fold.
 - **`is_valid_cell`** identifies whether a coordinate represents an actual tile. `Field::new` and `Field::from_id_cells` reject invalid points before storing them.
 - **`shape_descriptors`/`shape_of`** — the cell's shape template and allowed transform group (see
   "Shape templates" below). They are the only source of split-pattern variants; the old
@@ -96,7 +101,9 @@ operations reject invalid cells on their own.
   "Geometry" below. `cell_position`/`edge_position` (free functions in `space::mod`) resolve a
   cell's center or an edge's contact point together with its scale; `geometric_distance`,
   `floor_aware_distance` and `floor_aware_xy_distance` measure between them in `cell_scale` units,
-  unrelated to graph/nav distance (tile-hop count along real edges).
+  unrelated to graph/nav distance (tile-hop count along real edges). They are planar and ignore
+  folds (`planar_distance` is their shared core); the fold-aware `SurfaceMetric` and its contract
+  are in `Specs/topology.md`, "Distance contract" and "Surface distance".
 
 ## Field\<T\>
 
@@ -105,12 +112,13 @@ pub struct Field<T: Tessellation> {
     tessellation: Arc<T>,
     cell_to_nodes: HashMap<T::CellId, Vec<NodeId>>,
     node_to_cell: HashMap<NodeId, T::CellId>,
+    topology: Option<ResolvedTopology<T>>, // folds resolved against the cell set, None = no folds
 }
 ```
 
 The single-tessellation building block: a fixed set of cells, each resolving to one or more `NodeId`s (a cell splits into several routing passages via `add_node_at` — GitHub issue #219/epic #218). `Field` has no notion of "groups" or which geometric face belongs to which of a cell's several nodes — deciding that is entirely the caller's job (generation algorithms, QC/repair strategies).
 
-Key methods: `new(tessellation: Arc<T>, cells, &mut IdGenerator) -> Result<_, _>`, `from_id_cells(tessellation: Arc<T>, entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid cells), `add_node_at`/`remove_node_at`/`replace_nodes_at` (cell-based, panic on an unknown cell), `nodes_at(cell)`/`node_at(cell)` (creation-order slice / first node), `neighbors(node)` (iterates `faces_of`, skips faces whose `neighbor` is `None`), `is_straight(from, via, to)` (resolves `via`'s faces toward `from` and `to` in one pass over `faces_of(via)`, then asks `Tessellation::is_straight`; `false` when either is not a tessellation neighbor), `cell_of(node)`, `all_cells()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `cell_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `cell_count()`, GitHub issue #267), `contains(cell)`, `build_nodes(&mut Graph)`.
+Key methods: `new(tessellation: Arc<T>, cells, &mut IdGenerator) -> Result<_, _>`, `from_id_cells(tessellation: Arc<T>, entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid cells), `add_node_at`/`remove_node_at`/`replace_nodes_at` (cell-based, panic on an unknown cell), `nodes_at(cell)`/`node_at(cell)` (creation-order slice / first node), `neighbor_via(cell, face)` (effective adjacency: active fold, else `Tessellation::neighbor`; GitHub issue #832, `Specs/topology.md`), `face_index_toward(cell, other)`, `set_topology`/`clear_topology`/`topology`/`fold_activity`, `neighbors(node)` (iterates `faces_of`, goes through `neighbor_via`, skips faces with no crossing), `is_straight(from, via, to)` (resolves `via`'s faces toward `from` and `to` through `neighbor_via` in one pass over `faces_of(via)`, then asks `Tessellation::is_straight`; `false` when either is not a tessellation neighbor), `cell_of(node)`, `all_cells()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `cell_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `cell_count()`, GitHub issue #267), `contains(cell)`, `build_nodes(&mut Graph)`.
 
 `Field`'s cell set is fixed at construction — `add_node_at`/`remove_node_at` only add/remove nodes *within* an existing cell, never grow or shrink the cell set itself. `Clone` is a manual impl (not derived): the tessellation instance is shared via `Arc`, never copied, so `T` itself needs no `Clone`.
 
@@ -182,6 +190,8 @@ Raw `Field<T>` remains in use only:
 - At `maze-wasm`'s post-edit path (`analytics/post_edit.rs`'s `build_field_from_nodes`), which constructs via `Field::from_id_cells` (preserving client-supplied ids) and then wraps the result with `MultiLevelField::new([field])`.
 
 Built on top of this layer since: add/remove/reorder floors UI (#335), and — as of #337 — `CustomVertexBased` generation, which builds a field from `GenerateConfig.level_fields` (`maze-wasm`'s `dispatch_generate`/`build_multi_level_field`) and connects levels via `EdgeKind::VerticalPassage`/`Elevator` (`Specs/generation.md`'s "Vertical Connections"). As of #338, each level's own field *shape* is independent — `level_fields` carries one point-set per floor — though tessellation *kind* (`T`) is still fixed maze-wide (a `MultiLevelField<T>` uses one `T` for every level it holds — `Maze<T>`'s existing single-`T`-per-maze design). QC/repair/routing during generation is multi-floor-aware. `compute_analytics` (post-edit's confirm step and analytics/snapshot recompute) is genuinely multi-level as of GitHub issue #359 — `ComputeAnalyticsConfig` gained its own `level_fields`, mirroring `GenerateConfig`'s; `maze-wasm`'s `build_analytics_snapshot` always surfaces every floor now — the `all_levels: bool` param that used to gate this was removed (GitHub issue #355), since every real caller had passed `true` since #359 — see `Specs/floors.md`'s "`compute_analytics` multi-level awareness" section. Not yet built: a `LevelId`-aware project file format, or a wire-level way to vary tessellation kind itself between levels.
+
+**Folds (GitHub issues #831, #832).** Per-floor topology (cylinder/torus/twisted gluings of two faces, addressed by `(cell, face_idx)` with `face_idx` the position in `faces_of(cell)`) lives in `space::topology` and is installed per level with `Field::set_topology` / `MultiLevelField::set_topology`. `Field::neighbor_via(cell, face) -> Option<Crossing>` is the effective adjacency (active fold, else `Tessellation::neighbor`); `Field::neighbors`, `Field::is_straight`, `Field::face_index_toward` and every maze algorithm use it. `Tessellation::neighbor` is the base adjacency, called directly only from `space/` (geometry, `field_ops`, tessellation implementations) and the runner's geometry snapshot — enforced by a guard test. Without folds behaviour is unchanged. See `Specs/topology.md`.
 
 ## Target model: extensible tessellation (GitHub epic #752)
 
@@ -403,6 +413,7 @@ orientation or pixel scale (see "Display transform").
   area, never as a precomputed map of the whole (possibly infinite) space. Both cells get the
   same segments: the owner's run counter-clockwise along its boundary, and the other cell gets
   them reversed. Paired faces are therefore identical as segments and as flattened polylines.
+- **Folded faces.** A face glued by an active fold is unpaired: `Field::edge_owner`, `edge_segments` and `contact_point` give it its own segments and contact point, and `space::edge_position` takes a `Field` so that across a fold it resolves the folded face's own contact point. Folds are classified isometric or topological-only (`Field::fold_class`). See `Specs/topology.md`, "Fold geometry". Without folds nothing changes.
 - **Segments** (kinds: `Line`, `CircularArc`; more may be added) expose operations on a
   normalized parameter `t ∈ [0, 1]`, linear in arc length:
   - `point(t)` and `tangent(t)` (unit length).
@@ -543,7 +554,21 @@ runner, or `None` for the whole space); `maze-wasm`
 exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_region`. The snapshot's
 `instance` is the serialized tessellation config (equal configs build equal instances) and
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
-cell or a polyline request with a non-positive tolerance is an error. The benchmark measures the snapshot as its
+cell or a polyline request with a non-positive tolerance is an error.
+
+Status (GitHub issue #833): the request may carry `topology_version` and `topology`
+(`{ field_cells, folds: [{ a, b, twist, group }], groups }`, cells as `[x, y]` and `face_idx` a position in
+`faces_of`). `field_cells` is the floor's whole cell set, which decides fold activity (the requested `cells` may be a
+region of it); it must be non-empty and hold only valid cells, otherwise the request is an error. The topology is
+validated structurally and resolved like `Field::set_topology`, and an invalid one is an error. The snapshot echoes `topology_version` and is bound to the field version **and** the topology version: the web
+invalidates it when either changes. Every face of an active fold carries `fold`
+(`{ fold, partner_cell, partner_face_idx, twist, start_meets, isometric, transform }`): the partner `(cell, face)`, the endpoint
+correspondence (`start_meets`: which end of the partner's chain this face's chain start meets, `end` untwisted, `start`
+twisted; plus `twist`) and, for an isometric fold, the affine matrix `[a, b, c, d, e, f]` mapping the partner's face geometry
+into this cell's coordinates (the inverse of the class transform on side `b`). The face's `segments` and `contact_point` are
+its own, unpaired. The web never derives any of this from coordinates. Without `topology`, or with no active fold,
+the snapshot equals the plain one. A folded face's `neighbor` is still the base `Tessellation::neighbor` (possibly a cell
+outside the field); the glued partner is given by `fold` only. The snapshot rebuilds its `Field` on every call. The benchmark measures the snapshot as its
 `geometry` stage.
 
 Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is the web geometry

@@ -9,6 +9,8 @@ import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { fieldOf } from "./fieldConfigFixtures";
+import { tessellationFingerprint } from "../store/topologyWire";
+import type { WireTopology } from "../wasm/types";
 
 const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _legacyId?: string): PostEditEdgeState => ({ kind, from, to });
 
@@ -114,6 +116,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
+    floorTopology: {},
     showColorWarnings: true,
     linkIconVisibility: "linked",
   };
@@ -887,6 +890,56 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     delete data.presets.teleports;
     const result = parseAndValidate(data);
     expect(result.presets.teleports).toEqual([]);
+  });
+});
+
+const CYLINDER: WireTopology = {
+  fingerprint: "square{}",
+  folds: [{ a: { cell: [4, 0], face_idx: 0 }, b: { cell: [0, 0], face_idx: 2 }, twist: false, group: 0 }],
+  groups: [{ id: 0, folds: [0] }],
+};
+
+describe("floorTopology (GitHub issue #836)", () => {
+  const withTopology = (topology: WireTopology) => JSON.parse(JSON.stringify(serializeProject(makeState({ floorTopology: { floor_1: topology } }))));
+
+  it("round-trips a floor's topology", () => {
+    const state = makeState({ floorTopology: { floor_1: CYLINDER } });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.floorTopology).toEqual({ floor_1: CYLINDER });
+    expect(reparsed).toEqual(serialized);
+  });
+
+  it("loads a file without the section as no topology", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.floorTopology;
+    expect(parseAndValidate(raw).floorTopology).toEqual({});
+  });
+
+  it("rejects a fingerprint of another tessellation config with both configs named", () => {
+    const raw = withTopology({ ...CYLINDER, fingerprint: "hex{}" });
+    expect(() => parseAndValidate(raw)).toThrow(/authored for tessellation `hex\{\}`, current is `square\{\}`/);
+  });
+
+  it("rejects structural violations with reasons", () => {
+    const bad = (mutate: (t: WireTopology) => void) => {
+      const topology: WireTopology = JSON.parse(JSON.stringify(CYLINDER));
+      mutate(topology);
+      return withTopology(topology);
+    };
+    expect(() => parseAndValidate(bad((t) => { t.folds[0].b = t.folds[0].a; }))).toThrow(/glued to itself/);
+    expect(() => parseAndValidate(bad((t) => { t.folds.push({ ...t.folds[0], group: 0 }); }))).toThrow(/also belongs to fold 0/);
+    expect(() => parseAndValidate(bad((t) => { t.groups = []; }))).toThrow(/group 0 does not exist/);
+    expect(() => parseAndValidate(bad((t) => { t.groups[0].folds = [3]; }))).toThrow(/lists unknown fold 3/);
+    expect(() => parseAndValidate(bad((t) => { t.folds[0].a.face_idx = -1; }))).toThrow(/face_idx/);
+  });
+});
+
+describe("tessellationFingerprint", () => {
+  it("renders the kind and sorted params", () => {
+    expect(tessellationFingerprint("square", {})).toBe("square{}");
+    expect(tessellationFingerprint("radial", { max_cells: 3000, first_ring_cells: 9, ring_layout: "smooth" }))
+      .toBe('radial{"first_ring_cells":9,"max_cells":3000,"ring_layout":"smooth"}');
   });
 });
 

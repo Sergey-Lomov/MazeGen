@@ -219,6 +219,20 @@ pub enum IssuePayloadDto {
     InvalidCrossElementGroup {
         groups: HashMap<String, Vec<Vec<CrossElementPayloadEntryDto>>>,
     },
+    /// Every pair a geometric check could not decide (GitHub issue #838), one entry per pair.
+    IndeterminateDistance {
+        pairs: Vec<IssueUndecidedPairPayloadDto>,
+    },
+}
+
+/// One pair a geometric check could not decide — mirrors `maze_core`'s
+/// `IssueUndecidedPairPayload`. `unsupported` is `true` for a topological-only fold, `false` for
+/// a distance bracket straddling the threshold.
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueUndecidedPairPayload")]
+pub struct IssueUndecidedPairPayloadDto {
+    pub nodes: [u32; 2],
+    pub unsupported: bool,
 }
 
 #[derive(Serialize, Dto)]
