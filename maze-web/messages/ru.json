@@ -1917,6 +1917,8 @@
   "analytics.timing_report_prefix_check": "Проверка: {name}",
   "analytics.timing_report_prefix_strategy": "Стратегия: {name}",
   "status.no_maze": "Сначала сгенерируйте лабиринт",
+  "status.field_selection_size": "Выделено: {size}",
+  "status.field_shape_size": "{shape}: {size}",
   "status.analytics_no_issues": "Нет проблем",
   "post_edit.title": "Постобработка",
   "post_edit.tools": "Инструменты",

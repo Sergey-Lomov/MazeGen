@@ -20,6 +20,7 @@ import { fieldOperationAvailable, isFieldOpError } from "./fieldOps";
 import { translateFieldCells, type WorldPoint } from "../wasm/mazeService";
 import { canActivateFieldPrimitive, fieldPrimitiveForShortcut } from "./fieldPrimitiveShortcuts";
 import { blurActiveElement } from "./toolShortcuts";
+import { EMPTY_FIELD_SIZE_READOUT, measureCells, measureShape, mergeFieldSizeReadout, type FieldSizeReadout } from "./fieldSizeReadout";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -39,6 +40,7 @@ interface PrimitiveCallbacks {
   onSelectionMovePreview?: (sourceCells: [number, number][], temporaryCells: [number, number][]) => void;
   onSelectionMove?: (cells: [number, number][], vector: [number, number]) => boolean;
   onSymmetryPreviewUpdate?: (axis: SymmetryPoint[], polygon: SymmetryPoint[]) => void;
+  onSizeReadout?: (readout: FieldSizeReadout) => void;
 }
 
 export class FieldEditController {
@@ -55,6 +57,7 @@ export class FieldEditController {
   private primitiveStartCanvas: { x: number; y: number } | null = null;
   private lastPreviewCells: [number, number][] = [];
   private selectionPreviewVisible = false;
+  private lastSizeReadout: FieldSizeReadout = EMPTY_FIELD_SIZE_READOUT;
   private selectionSourceCells: [number, number][] = [];
   private selectionCells: [number, number][] = [];
   /** Pending move in `maze-core` world units; always a translation symmetry of the tessellation. */
@@ -353,6 +356,7 @@ export class FieldEditController {
       this.lastGridRadius = 1;
       this.lastEndGrid = grid;
       this.lastEndWorld = this.primitiveStartWorld;
+      this.reportSize({ shape: measureShape(this.lastPreviewCells, this.activePrimitive) });
       this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }));
     }
   }
@@ -491,6 +495,7 @@ export class FieldEditController {
       this.lastGridRadius = gridRadius;
       this.lastEndGrid = currentGrid;
       this.lastEndWorld = currentWorld;
+      this.reportSize({ shape: measureShape(this.lastPreviewCells, this.activePrimitive) });
       this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }));
     }
   }
@@ -575,7 +580,7 @@ export class FieldEditController {
     // Point streak commits cells on each move — no batch to cancel.
     // Escape only cancels shape-primitive gestures (preview cleared, nothing committed).
     if (this.activeShapePrimitive !== null && this.primitiveStartGrid !== null) {
-      this.primitiveCallbacks.onPreviewClear();
+      this.clearPreview();
       this.primitiveStartGrid = null;
       this.primitiveStartWorld = null;
       this.primitiveStartCanvas = null;
@@ -646,7 +651,7 @@ export class FieldEditController {
       if (field.fieldOperation === "select") {
         this.showSelection(this.lastPreviewCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
       } else {
-        this.primitiveCallbacks.onPreviewClear();
+        this.clearPreview();
         this.primitiveCallbacks.onPrimitiveCommit(this.lastPreviewCells, this.operationButton());
       }
       this.primitiveStartGrid = null;
@@ -721,6 +726,7 @@ export class FieldEditController {
     this.lastPreviewCells = previewPoints.length >= 3
       ? this.operationCells(cellsInsidePolygon(previewPoints, cfg))
       : [];
+    this.reportSize({ shape: measureShape(this.lastPreviewCells, "polygon") });
     this.primitiveCallbacks.onPreviewUpdate(
       this.lastPreviewCells,
       this.operationButton(),
@@ -753,7 +759,7 @@ export class FieldEditController {
     if (field.fieldOperation === "select") {
       this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
     } else {
-      this.primitiveCallbacks.onPreviewClear();
+      this.clearPreview();
     }
     if (field.fieldOperation !== "select" && committedCells.length > 0) {
       this.primitiveCallbacks.onPrimitiveCommit(
@@ -766,7 +772,7 @@ export class FieldEditController {
   }
 
   private clearPolygon(): void {
-    this.primitiveCallbacks.onPreviewClear();
+    this.clearPreview();
     this.clearPolygonState();
   }
 
@@ -984,8 +990,23 @@ export class FieldEditController {
       .filter(([x, y], index, cells) => cells.findIndex(([cx, cy]) => cx === x && cy === y) === index);
   }
 
+  /** Clears the primitive preview and, with it, the status-bar size readout. */
+  private clearPreview(): void {
+    this.primitiveCallbacks.onPreviewClear();
+    this.reportSize(EMPTY_FIELD_SIZE_READOUT);
+  }
+
+  /** Merges a partial update into the status-bar readout; the sink is notified only on a real change. */
+  private reportSize(update: Partial<FieldSizeReadout>): void {
+    const next = mergeFieldSizeReadout(this.lastSizeReadout, update);
+    if (next === this.lastSizeReadout) return;
+    this.lastSizeReadout = next;
+    this.primitiveCallbacks.onSizeReadout?.(next);
+  }
+
   private showSelection(cells: [number, number][], kind: TessellationKind, cfg: FieldConfig): void {
     this.primitiveCallbacks.onPreviewClear();
+    this.reportSize({ selection: measureCells(cells), shape: null });
     this.selectionSourceCells = cells.map(([x, y]) => [x, y]);
     this.selectionCells = cells.map(([x, y]) => [x, y]);
     this.selectionPendingVector = [0, 0];
@@ -1011,6 +1032,7 @@ export class FieldEditController {
     const field = state.floorFields[state.activeFloorId];
     const cfg = field.fieldConfig;
     const kind = cfg.tessellation.kind;
+    this.reportSize({ selection: measureCells(this.lastPreviewCells) });
     this.primitiveCallbacks.onPreviewUpdate(
       this.lastPreviewCells,
       1,
@@ -1055,6 +1077,8 @@ export class FieldEditController {
     const kind = cfg.tessellation.kind;
     const hasPendingMove = this.selectionDragActive
       || this.hasPendingSelectionMove();
+    // A translation can change the index span on offset-coordinate tessellations.
+    this.reportSize({ selection: measureCells(this.selectionCells) });
     this.primitiveCallbacks.onSelectionMovePreview?.(
       hasPendingMove ? this.selectionSourceCells : [],
       hasPendingMove ? this.selectionCells : [],
@@ -1111,7 +1135,7 @@ export class FieldEditController {
 
   private clearSelectionPreview(): void {
     this.primitiveCallbacks.onSelectionMovePreview?.([], []);
-    this.primitiveCallbacks.onPreviewClear();
+    this.clearPreview();
     this.selectionPreviewVisible = false;
     this.selectionSourceCells = [];
     this.selectionCells = [];

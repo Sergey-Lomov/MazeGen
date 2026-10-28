@@ -168,6 +168,21 @@ describe("zoom reset controls", () => {
     expect(newScale).toHaveBeenCalledTimes(1);
   });
 
+  it("clears a replaced field-size listener and ignores re-registration", () => {
+    const oldSize = vi.fn();
+    const newSize = vi.fn();
+    const current = { selection: { width: 2, height: 1, count: 2 }, shape: null };
+    const scene = { fieldSizeCallback: null, fieldSizeReadout: current } as unknown as MazeScene;
+
+    MazeScene.prototype.setFieldSizeListener.call(scene, oldSize);
+    expect(oldSize).toHaveBeenCalledWith(current);
+    MazeScene.prototype.setFieldSizeListener.call(scene, newSize);
+    expect(oldSize).toHaveBeenLastCalledWith({ selection: null, shape: null });
+    expect(newSize).toHaveBeenCalledWith(current);
+    MazeScene.prototype.setFieldSizeListener.call(scene, newSize);
+    expect(newSize).toHaveBeenCalledTimes(1);
+  });
+
   it("sets the viewport transform and exposes its current scale", () => {
     const syncLayersToViewport = vi.fn();
     const viewport = {

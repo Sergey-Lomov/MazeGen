@@ -449,6 +449,17 @@ updates the displayed field and resets generation and post-edit results.
 Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
 RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
 
+### Size readout (GitHub issue #863)
+
+The status bar (`HoverInfoPanel`) shows `Selection: W×H (N)` for the current selection preview
+(including the in-progress point selection and a pending move) and `<Shape name>: W×H (N)` (e.g. `Rectangle: 3×2 (6)`, localized primitive name) while a shape
+primitive or polygon is being built. `W`/`H` are the inclusive spans of the distinct grid x / y values of
+the cells and `N` is the cell count, so on non-square tessellations they are index spans, not
+geometric extents. `FieldEditController` computes it with `measureCells` (`pixi/fieldSizeReadout.ts`)
+and reports changes through `onSizeReadout` -> `MazeScene.setFieldSizeListener`. The polygon
+reports the cells inside its preview outline, including the cursor vertex. Any primitive
+preview clear resets both values; showing a selection resets the shape value.
+
 ### Gesture cancellation
 
 Escape key cancels any active shape-primitive or polygon gesture and clears a persistent selection

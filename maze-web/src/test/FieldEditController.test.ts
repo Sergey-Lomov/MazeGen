@@ -3,6 +3,7 @@ import { FieldEditController } from "../pixi/FieldEditController";
 import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
+import type { FieldSizeReadout } from "../pixi/fieldSizeReadout";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
@@ -18,6 +19,7 @@ function makeController() {
   const selectionMovePreviews: { source: [number, number][]; temporary: [number, number][] }[] = [];
   const selectionMoves: { cells: [number, number][]; vector: [number, number] }[] = [];
   const previewClear = vi.fn();
+  const readouts: FieldSizeReadout[] = [];
   const canvas = {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -41,10 +43,11 @@ function makeController() {
         return true;
       },
       onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
+      onSizeReadout: (readout) => readouts.push(readout),
     },
   );
   activeControllers.push(controller);
-  return { controller, updates, previewCells, symmetryUpdates, commits, selectionMoves, selectionMovePreviews, previewClear };
+  return { controller, updates, previewCells, symmetryUpdates, commits, selectionMoves, selectionMovePreviews, previewClear, readouts };
 }
 
 function click(controller: FieldEditController, x: number, y: number, button = 0): void {
@@ -816,5 +819,72 @@ describe("FieldEditController magic wand interaction", () => {
     expect(controller.getMagicWandPreview(20, -20)).toEqual(
       expect.arrayContaining([[0, 0], [1, 0], [0, 1]]),
     );
+  });
+});
+
+describe("FieldEditController size readout", () => {
+  it("reports the selection size, then clears it when the selection is cancelled", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "point",
+          fieldOperation: "select",
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+          fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
+        }),
+      },
+    });
+    const { controller, readouts } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 0);
+    expect(readouts.at(-1)).toEqual({ selection: { width: 2, height: 1, count: 2 }, shape: null });
+
+    controller.onPointerUp();
+    expect(readouts.at(-1)?.selection).toEqual({ width: 2, height: 1, count: 2 });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    expect(readouts.at(-1)).toEqual({ selection: null, shape: null });
+  });
+
+  it("reports the stretched shape size and clears it on commit", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "rectangle",
+          fieldOperation: "add",
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+        }),
+      },
+    });
+    const { controller, readouts } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(100, -60, 0);
+    const shape = readouts.at(-1)?.shape;
+    expect(shape).not.toBeNull();
+    expect(shape!.primitive).toBe("rectangle");
+    expect(shape!.width * shape!.height).toBeGreaterThanOrEqual(shape!.count);
+    expect(shape!.count).toBeGreaterThan(1);
+
+    controller.onPointerUp();
+    expect(readouts.at(-1)).toEqual({ selection: null, shape: null });
+  });
+
+  it("reports the polygon size while it is being built", () => {
+    const { controller, readouts } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+    controller.onPointerDown(180, -20, 0);
+    controller.onPointerUp();
+    controller.onPointerDown(180, -140, 0);
+    controller.onPointerUp();
+
+    const shape = readouts.at(-1)?.shape;
+    expect(shape?.primitive).toBe("polygon");
+    expect(shape!.count).toBeGreaterThan(0);
   });
 });

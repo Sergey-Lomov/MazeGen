@@ -4,6 +4,7 @@ import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
+import { EMPTY_FIELD_SIZE_READOUT, type FieldSizeReadout } from "./fieldSizeReadout";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
@@ -97,6 +98,8 @@ export class MazeScene {
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
+  private fieldSizeCallback: ((readout: FieldSizeReadout) => void) | null = null;
+  private fieldSizeReadout: FieldSizeReadout = EMPTY_FIELD_SIZE_READOUT;
   private cachedProjection: { cfg: FieldConfig; projection: TessellationProjection } | null = null;
 
   // All containers that must stay in sync with viewport position/scale.
@@ -249,6 +252,10 @@ export class MazeScene {
             && afterState.fieldEditConfirmation !== beforeState.fieldEditConfirmation;
           return fieldPointsChanged || moveQueuedForConfirmation;
         },
+        onSizeReadout: (readout) => {
+          this.fieldSizeReadout = readout;
+          this.fieldSizeCallback?.(readout);
+        },
         onSymmetryPreviewUpdate: (axis, polygon) => {
           this.fieldEditorOverlay.scheduleSymmetryPreview(axis, polygon);
         },
@@ -318,6 +325,15 @@ export class MazeScene {
     if (cb === this.viewportScaleCallback) return;
     this.viewportScaleCallback = cb;
     this.viewportScaleCallback?.(this.viewport.scale.x);
+  }
+
+  /** Same one-listener contract — HoverInfoPanel's field-editor selection / stretched-shape size
+   * readout (GitHub issue #863). */
+  setFieldSizeListener(cb: ((readout: FieldSizeReadout) => void) | null): void {
+    if (cb === this.fieldSizeCallback) return;
+    this.fieldSizeCallback?.(EMPTY_FIELD_SIZE_READOUT);
+    this.fieldSizeCallback = cb;
+    this.fieldSizeCallback?.(this.fieldSizeReadout);
   }
 
   /** Resets the current viewport transform back to a 1:1 scale while keeping the same world point

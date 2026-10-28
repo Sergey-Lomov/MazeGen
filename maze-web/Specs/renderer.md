@@ -67,6 +67,8 @@ Top-level coordinator. Holds a single `viewport: Container` for the maze, plus s
 
 Thin DOM bar docked at the bottom of the canvas column (`HoverInfoPanel`), showing the grid `x, y` under the cursor. Works uniformly across every card except `quality` (raw HTML5 canvas, no Pixi stage) — one shared mechanism rather than a per-feature reimplementation.
 
+The bar also shows field-editor geometry (GitHub issue #863): `Selection: W×H (N)` for the current selection preview and `<Shape name>: W×H (N)` while a shape primitive or polygon is being built. `W`/`H` are the inclusive grid-coordinate spans of the cells (distinct x / y range) and `N` the cell count. `FieldEditController` computes it (`pixi/fieldSizeReadout.ts`) and pushes it through `MazeScene.setFieldSizeListener`; cleared when the preview/selection is cleared.
+
 The zoom readout is also exposed as a reset control: clicking the percentage label or pressing `Shift+1` resets the active viewport back to 100% scale without running fit-to-screen.
 
 **`HoverProvider`** (`pixi/hoverTypes.ts`): `getHoverInfo(canvasX, canvasY): HoverInfo | null`. `canvasX/canvasY` are raw DOM pointer-event coordinates (before viewport pan/zoom is undone) — each provider does its own transform. Returns `null` only when hover info can't be determined at all (no active projection/viewport); coordinates outside the current field/graph bounds still return a valid `HoverInfo`.
