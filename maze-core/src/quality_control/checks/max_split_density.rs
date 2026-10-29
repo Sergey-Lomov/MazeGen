@@ -1,5 +1,5 @@
 use crate::Maze;
-use crate::graph::cycles::density_per_100;
+use crate::graph::cycles::rounded_excess_over_density;
 use crate::quality_control::check::Check;
 use crate::quality_control::floor_group::floor_point_count;
 use crate::quality_control::{FloorScope, InvalidSplitTileGroupIssue, SplitTileNodes};
@@ -114,18 +114,8 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
 }
 
 impl MaxSplitDensityCheck {
-    /// Excess tile count for one region (whole maze or one floor) given its own tile/cell counts
-    /// — shared by both `floor_scope` branches so the round-to-nearest `target_count` logic stays
-    /// identical either way. Mirrors `MaxOneWayRatioCheck::to_remove_for` exactly.
     fn to_remove_for(count: usize, field_cells: usize, max_density: f64) -> u32 {
-        if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
-            return 0;
-        }
-        // Round-to-nearest can push target_count above count on a small enough field (rounding
-        // error can exceed the margin the gate above guarantees) -- saturating_sub keeps the
-        // result at 0 rather than underflowing in that edge case.
-        let target_count = (max_density * field_cells as f64 / 100.0).round() as usize;
-        count.saturating_sub(target_count) as u32
+        rounded_excess_over_density(count, field_cells, max_density)
     }
 }
 

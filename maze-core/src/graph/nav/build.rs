@@ -420,7 +420,7 @@ fn build_ring(
         remaining.remove(&ring_start);
     }
 
-    for first_step in graph.outgoing_neighbors(anchor).collect::<Vec<_>>() {
+    for first_step in graph.outgoing_neighbors(anchor) {
         if let Some(path) = walk_ring_direction(graph, anchor, first_step, remaining) {
             // A ring consists entirely of corridor nodes (teleport/elevator endpoints are never
             // corridor nodes, so never part of a ring), so its hops are always Basic.

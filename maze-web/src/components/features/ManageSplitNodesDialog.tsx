@@ -17,7 +17,7 @@ import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditRotation";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { bringSidePanelToFront } from "../SidePanel";
-import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";
+import { buildPostEditPointEntities, postEditNodesAt } from "../../pixi/postEditPointEntities";
 import type { TileFace, TileFaceKind } from "./TileFaceEditor";
 import { resolveActiveSplitEndpoint, splitPointKey, useSplitDialogFieldCells, useSplitNodesDialogOrchestration } from "./splitNodesOrchestration";
 import * as m from "~/paraglide/messages";
@@ -137,7 +137,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const entityOriginal = nodes.find((n) => n.x === point[0] && n.y === point[1]);
   const entityNodes: PostEditEndpoint[] = entityOriginal
-    ? [nodeEndpoint(entityOriginal.id), ...slots.map((slotId) => splitEndpoint(point, slotId, level))]
+    ? postEditNodesAt(entityOriginal.id, point, slots, level)
     : [];
   const pointElements = buildPostEditPointEntities(
     entityNodes, slots,

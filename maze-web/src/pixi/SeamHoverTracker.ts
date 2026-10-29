@@ -1,7 +1,7 @@
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { MazeState } from "../store/storeTypes";
-import { arrowContains, pairAt } from "./selectors/seamArrows";
+import { arrowContains, pairAt, type SeamArrow } from "./selectors/seamArrows";
 import { selectSeamArrowData } from "./seamArrowSync";
 
 /// The pointer reach around an arrow, relative to its width.
@@ -10,6 +10,28 @@ const HIT_SLACK_SHARE = 0.5;
 /// does not make the layer flicker. Losing the focus is immediate, and so is moving the focus from one arrow or pair
 /// to another.
 export const HOVER_DELAY_MS = 100;
+
+/// Bounding box of everything an arrow can be hit on, per arrow (arrows are cached per config and topology), so a
+/// pointer move far from an arrow skips its segment and zone scans.
+const boundsCache = new WeakMap<SeamArrow, [number, number, number, number]>();
+
+function arrowBounds(arrow: SeamArrow): [number, number, number, number] {
+  let box = boundsCache.get(arrow);
+  if (!box) {
+    box = [Infinity, Infinity, -Infinity, -Infinity];
+    const lines = [arrow.path, ...(arrow.braces ?? []), arrow.headA, arrow.headB, ...(arrow.pairs ?? []).flatMap((pair) => pair.zones)];
+    for (const line of lines) {
+      for (const [x, y] of line ?? []) {
+        if (x < box[0]) box[0] = x;
+        if (y < box[1]) box[1] = y;
+        if (x > box[2]) box[2] = x;
+        if (y > box[3]) box[3] = y;
+      }
+    }
+    boundsCache.set(arrow, box);
+  }
+  return box;
+}
 
 /// The cards whose canvas shows the seam arrows (the field, presets, generation, analytics and post-edit
 /// renderers own a layer of them; tessellation and image export have none).
@@ -64,7 +86,12 @@ export class SeamHoverTracker {
     // glue is added or edited: the existing glues stay out of the way of the runs being picked.
     const cells = !isEdgeHighlightCard(state) && state.topologyGlueEditor === null;
     const reach = (width: number) => Math.max(slack, width * HIT_SLACK_SHARE);
-    const index = arrows.findIndex((arrow) => arrowContains(arrow, at, reach(arrow.width), cells));
+    const index = arrows.findIndex((arrow) => {
+      const margin = reach(arrow.width) + arrow.braceWidth;
+      const [minX, minY, maxX, maxY] = arrowBounds(arrow);
+      if (minX <= maxX && (at[0] < minX - margin || at[0] > maxX + margin || at[1] < minY - margin || at[1] > maxY + margin)) return false;
+      return arrowContains(arrow, at, reach(arrow.width), cells);
+    });
     if (index < 0) this.settle(null, null);
     else this.settle(index, pairAt(arrows[index], at, reach(arrows[index].width), cells));
   }

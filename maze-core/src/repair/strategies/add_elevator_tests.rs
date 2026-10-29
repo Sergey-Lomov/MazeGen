@@ -217,7 +217,7 @@ fn attempts_limit_failure_on_one_slot_does_not_abort_remaining_slots() {
     // while the surviving column still lets others succeed.
     let survivor_point = SquarePoint { x: 0, y: 0 };
     let mut preset_state = PresetState::empty();
-    for level in maze.field.levels_ordered().collect::<Vec<_>>() {
+    for level in maze.field.levels_ordered() {
         for node in maze
             .field
             .field_of(level)

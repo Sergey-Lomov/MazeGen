@@ -252,15 +252,7 @@ impl Graph {
     /// `to -> from`. `None` if `id` doesn't exist, isn't a `Teleport`, or has no reverse
     /// (a one-way teleport).
     pub fn teleport_reverse(&self, id: EdgeId) -> Option<EdgeId> {
-        let edge = self.edge(id)?;
-        if edge.kind != EdgeKind::Teleport {
-            return None;
-        }
-        self.edges()
-            .find(|other| {
-                other.kind == EdgeKind::Teleport && other.from == edge.to && other.to == edge.from
-            })
-            .map(|other| other.id)
+        self.reverse_of_kind(id, EdgeKind::Teleport)
     }
 
     /// Returns the opposite-direction `VerticalPassage` edge of a two-way vertical passage, if any
@@ -268,47 +260,41 @@ impl Graph {
     /// `VerticalPassage` edge. `None` if `id` doesn't exist, isn't a `VerticalPassage`, or has no
     /// reverse (a one-way vertical passage).
     pub fn vertical_passage_reverse(&self, id: EdgeId) -> Option<EdgeId> {
+        self.reverse_of_kind(id, EdgeKind::VerticalPassage)
+    }
+
+    fn reverse_of_kind(&self, id: EdgeId, kind: EdgeKind) -> Option<EdgeId> {
         let edge = self.edge(id)?;
-        if edge.kind != EdgeKind::VerticalPassage {
+        if edge.kind != kind {
             return None;
         }
         self.edges()
-            .find(|other| {
-                other.kind == EdgeKind::VerticalPassage
-                    && other.from == edge.to
-                    && other.to == edge.from
-            })
+            .find(|other| other.kind == kind && other.from == edge.to && other.to == edge.from)
             .map(|other| other.id)
     }
 
     pub fn reachable_to(&self, target: NodeId) -> Vec<NodeId> {
-        let mut visited: HashSet<NodeId> = HashSet::new();
-        let mut queue = VecDeque::new();
-        if self.incoming.contains_key(&target) {
-            visited.insert(target);
-            queue.push_back(target);
-        }
-        while let Some(current) = queue.pop_front() {
-            for neighbor in self.incoming_neighbors(current) {
-                if visited.insert(neighbor) {
-                    queue.push_back(neighbor);
-                }
-            }
-        }
-        let mut result: Vec<NodeId> = visited.into_iter().collect();
-        result.sort_unstable();
-        result
+        self.reachable(target, |g, n| g.incoming_neighbors(n).collect::<Vec<_>>())
     }
 
     pub fn reachable_from(&self, start: NodeId) -> Vec<NodeId> {
+        self.reachable(start, |g, n| g.outgoing_neighbors(n).collect::<Vec<_>>())
+    }
+
+    /// Sorted BFS closure of `origin` (itself included, if in the graph) under `step`.
+    fn reachable(
+        &self,
+        origin: NodeId,
+        step: impl Fn(&Self, NodeId) -> Vec<NodeId>,
+    ) -> Vec<NodeId> {
         let mut visited: HashSet<NodeId> = HashSet::new();
         let mut queue = VecDeque::new();
-        if self.outgoing.contains_key(&start) {
-            visited.insert(start);
-            queue.push_back(start);
+        if self.outgoing.contains_key(&origin) {
+            visited.insert(origin);
+            queue.push_back(origin);
         }
         while let Some(current) = queue.pop_front() {
-            for neighbor in self.outgoing_neighbors(current) {
+            for neighbor in step(self, current) {
                 if visited.insert(neighbor) {
                     queue.push_back(neighbor);
                 }

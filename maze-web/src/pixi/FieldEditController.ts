@@ -25,14 +25,10 @@ import { EMPTY_FIELD_SIZE_READOUT, measureCells, measureShape, mergeFieldSizeRea
 import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
 import { nearestContourFace } from "./topologyGeometry";
 import type { TopologyPickTarget } from "../store/topologyTypes";
+import { isTypingTarget } from "./domUtils";
 
 /** How close (screen pixels) a click must be to a boundary face to pick it for a fold. */
 const TOPOLOGY_PICK_RADIUS_PX = 14;
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;

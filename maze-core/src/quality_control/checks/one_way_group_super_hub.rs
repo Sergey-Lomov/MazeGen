@@ -51,8 +51,12 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupSuperHubC
             by_vertex.entry(to).or_default().push(id);
         }
 
+        // Sorted by vertex so group order does not depend on `HashMap` iteration order.
+        let mut by_vertex: Vec<(NodeId, Vec<EdgeId>)> = by_vertex.into_iter().collect();
+        by_vertex.sort_unstable_by_key(|&(vertex, _)| vertex);
         let groups: Vec<(Vec<EdgeId>, u32)> = by_vertex
-            .into_values()
+            .into_iter()
+            .map(|(_, edges)| edges)
             .filter(|edges| edges.len() as u32 > self.max_connections)
             .map(|edges| {
                 let to_remove = edges.len() as u32 - self.max_connections;

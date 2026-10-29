@@ -14,6 +14,7 @@ import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnecti
 import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, presetToolForShortcut } from "./toolShortcuts";
 import { bringSidePanelToFront } from "../components/SidePanel";
+import { isTypingTarget } from "./domUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -22,11 +23,6 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 // Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
 // the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
 const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source", "move"]);
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 type State = ReturnType<typeof useMazeStore.getState>;
 

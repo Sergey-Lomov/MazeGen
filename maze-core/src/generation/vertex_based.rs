@@ -36,12 +36,12 @@ pub(super) fn element_roll_allowed<T: Tessellation>(
     field: &MultiLevelField<T>,
     src: NodeId,
     kind: GeneratedElementKind,
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
     if state.allows(field, kind, src) {
         return true;
     }
-    if let Some(log) = scope.as_deref_mut()
+    if let Some(log) = scope
         && let Some(cell) = field.cell_of(src)
     {
         log.emit(VertexBasedEvent::ElementRollSkipped {
@@ -76,13 +76,7 @@ pub(super) fn try_add_regular_edge<T: Tessellation>(
             GeneratedElementKind::OneWay,
             scope.as_deref_mut(),
         );
-        let _ = element_roll_allowed(
-            state,
-            field,
-            dst,
-            GeneratedElementKind::OneWay,
-            scope.as_deref_mut(),
-        );
+        let _ = element_roll_allowed(state, field, dst, GeneratedElementKind::OneWay, scope);
     }
     add_edge_and_detect_direction(graph, src, dst, |g| {
         if one_way_allowed {
@@ -308,20 +302,20 @@ fn handle_empty_frontier<T: Tessellation>(
             fired: teleport_fired,
         });
     }
-    if !teleport_eligible && elements.teleport_chance > 0.0 {
-        if let Some(&blocked) = state
+    if !teleport_eligible
+        && elements.teleport_chance > 0.0
+        && let Some(&blocked) = state
             .all_nodes
             .iter()
             .find(|node| !state.allows(field, GeneratedElementKind::Teleport, **node))
-        {
-            let _ = element_roll_allowed(
-                state,
-                field,
-                blocked,
-                GeneratedElementKind::Teleport,
-                scope.as_deref_mut(),
-            );
-        }
+    {
+        let _ = element_roll_allowed(
+            state,
+            field,
+            blocked,
+            GeneratedElementKind::Teleport,
+            scope.as_deref_mut(),
+        );
     }
     if teleport_fired {
         let unvisited: Vec<NodeId> = state

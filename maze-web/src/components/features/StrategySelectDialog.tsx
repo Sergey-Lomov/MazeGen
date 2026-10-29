@@ -3,22 +3,12 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
-import { ParamFields, isEntityVisible } from "./ParamFields";
+import { ParamFields, isEntityVisible, defaultParamValue } from "./ParamFields";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
-
-function defaultValue(p: ParamDescriptor): string {
-  const k = p.kind;
-  if (k.type === "bool") return k.default ? "true" : "false";
-  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
-  if (k.type === "pattern_list") return "[]";
-  if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
-  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
-  return String(k.default);
-}
 
 // Mirrors `parseRuleSplitPatterns` in `RuleStrategyPanel.tsx` -- a malformed or missing
 // `split_patterns` rule param reads as "no patterns" (empty topology), same "invalid falls back
@@ -147,7 +137,7 @@ function StrategyParamPanel({ strategyId, params, values, onChange, addSplitPatt
   return (
     <ParamFields
       params={localizedParams}
-      getValue={(p) => values[p.id] ?? defaultValue(p)}
+      getValue={(p) => values[p.id] ?? defaultParamValue(p)}
       onChange={onChange}
       getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       addSplitPatternsOverride={addSplitPatternsOverride}

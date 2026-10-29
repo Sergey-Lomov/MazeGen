@@ -52,7 +52,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
 /// Whether every element in `elements` is `preset_locked` (GitHub issue #245). `null`/empty
 /// resolves `false`: a bubble with no preset-lock data at all is never "fully preset-locked" by
 /// this check, it just doesn't participate in the toggle.
-function isFullyPresetLocked(elements: { preset_locked: boolean }[] | null): boolean {
+export function isFullyPresetLocked(elements: { preset_locked: boolean }[] | null): boolean {
   return elements != null && elements.length > 0 && elements.every((e) => e.preset_locked);
 }
 

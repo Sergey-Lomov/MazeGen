@@ -66,10 +66,6 @@ export function triOrientationOf(config: FieldConfig): TriOrientation {
   return (config.orientation as TriOrientation | undefined) ?? "r0";
 }
 
-export function isCustomField(config: FieldConfig): config is ResolvedField {
-  return config.shape.shape === "custom";
-}
-
 /** An empty field of `kind` — for geometry calls that only need the tessellation and orientation. */
 export function kindFieldConfig(kind: TessellationKind, orientation?: DisplayOrientation): FieldConfig {
   const shape: FieldShape = { shape: "custom", points: [] };

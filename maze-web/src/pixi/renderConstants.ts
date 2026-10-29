@@ -4,7 +4,6 @@ export const GRID_LINE_ALPHA = 1.0;
 export const ACTIVE_CELL_ALPHA = 0.7;
 export const COMPONENT_MASK_ALPHA = 0.45;
 export const REGION_CLASS_MASK_ALPHA = 0.45;
-export const DEBUG_ACTIVE_ALPHA = 0.5;
 
 /** Default label font sizes in px (marker/badge text size is an absolute value, not a fraction of
  *  the marker diameter). */

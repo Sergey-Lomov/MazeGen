@@ -117,11 +117,7 @@ fn partial_success_when_only_some_requested_stops_could_be_added() {
 
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
-        vec![(
-            ElevatorNodes::new(nodes.clone()),
-            2,
-            vec![floors[3], floors[4]],
-        )],
+        vec![(ElevatorNodes::new(nodes), 2, vec![floors[3], floors[4]])],
     );
     let mut rng = MazeRng::seed_from_u64(2);
     let result = apply_and_commit(
@@ -157,7 +153,7 @@ fn apply_fails_when_no_stop_could_be_added_at_all() {
 
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
-        vec![(ElevatorNodes::new(nodes.clone()), 1, vec![floors[3]])],
+        vec![(ElevatorNodes::new(nodes), 1, vec![floors[3]])],
     );
     let mut rng = MazeRng::seed_from_u64(3);
     let result = apply_and_commit(
@@ -187,7 +183,7 @@ fn apply_skips_an_entry_whose_elevator_no_longer_exists() {
 
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
-        vec![(ElevatorNodes::new(nodes.clone()), 1, vec![floors[3]])],
+        vec![(ElevatorNodes::new(nodes), 1, vec![floors[3]])],
     );
     let mut rng = MazeRng::seed_from_u64(4);
     let result = apply_and_commit(
@@ -208,7 +204,7 @@ fn apply_is_deterministic_for_fixed_seed() {
     let issue_a = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes_a.clone()),
+            ElevatorNodes::new(nodes_a),
             1,
             vec![floors_a[2], floors_a[3], floors_a[4], floors_a[5]],
         )],
@@ -228,7 +224,7 @@ fn apply_is_deterministic_for_fixed_seed() {
     let issue_b = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes_b.clone()),
+            ElevatorNodes::new(nodes_b),
             1,
             vec![floors_b[2], floors_b[3], floors_b[4], floors_b[5]],
         )],
@@ -256,7 +252,7 @@ fn forbidden_only_adds_inside_floors() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[2], floors[3], floors[5], floors[6]],
         )],
@@ -292,7 +288,7 @@ fn forbidden_fails_the_entry_when_inside_alone_cannot_satisfy_count() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[3], floors[4]],
         )],
@@ -321,7 +317,7 @@ fn required_only_adds_outside_floors() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[2], floors[3], floors[5], floors[6]],
         )],
@@ -354,7 +350,7 @@ fn required_fails_the_entry_when_outside_alone_cannot_satisfy_count() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[2], floors[3]],
         )],
@@ -384,7 +380,7 @@ fn discouraged_prefers_inside_then_falls_back_to_outside() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[3], floors[4], floors[5], floors[6]],
         )],
@@ -423,7 +419,7 @@ fn preferred_prefers_outside_then_falls_back_to_inside() {
     let issue = MissingElevatorStopCountIssue::new_from_check(
         "min_elevator_stop_count",
         vec![(
-            ElevatorNodes::new(nodes.clone()),
+            ElevatorNodes::new(nodes),
             2,
             vec![floors[1], floors[2], floors[3], floors[6]],
         )],

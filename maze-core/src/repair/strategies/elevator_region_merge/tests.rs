@@ -1,6 +1,7 @@
 use super::*;
 use crate::IdGenerator;
 use crate::graph::{EdgeKind as EK, Graph};
+use crate::quality_control::checks::elevator_core::elevator_groups;
 use crate::random::MazeRng;
 use crate::repair::params::build_params;
 use crate::repair::strategies::test_utils::apply_and_commit;

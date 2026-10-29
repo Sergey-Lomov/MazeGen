@@ -193,7 +193,7 @@ mod tests {
             visited.push(src);
         }
         visited.sort();
-        let mut expected = nodes.clone();
+        let mut expected = nodes;
         expected.sort();
         assert_eq!(
             visited, expected,

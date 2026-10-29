@@ -85,36 +85,17 @@ pub(crate) fn dijkstra_forward_visit_edges_bounded(
     source: NavNodeId,
     edge_filter: impl Fn(&NavEdge) -> bool,
     max_dist: Option<usize>,
-    mut on_edge: impl FnMut(&NavEdge, usize) -> bool,
+    on_edge: impl FnMut(&NavEdge, usize) -> bool,
 ) {
-    let n = nav.nodes.len();
-    let mut dist = vec![usize::MAX; n];
-    let mut heap: BinaryHeap<Reverse<(usize, NavNodeId)>> = BinaryHeap::new();
-
-    dist[source] = 0;
-    heap.push(Reverse((0, source)));
-
-    while let Some(Reverse((cost, u))) = heap.pop() {
-        if dist[u] < cost {
-            continue;
-        }
-        if let Some(max) = max_dist
-            && cost > max
-        {
-            break;
-        }
-        for edge in nav.outgoing_edges(u).filter(|e| edge_filter(e)) {
-            if !on_edge(edge, cost) {
-                return;
-            }
-            let weight = edge.path.len().saturating_sub(1);
-            let next_cost = cost + weight;
-            if next_cost < dist[edge.to] {
-                dist[edge.to] = next_cost;
-                heap.push(Reverse((next_cost, edge.to)));
-            }
-        }
-    }
+    dijkstra_visit_edges_bounded(
+        nav,
+        source,
+        |nav, u| nav.outgoing_edges(u),
+        |e| e.to,
+        edge_filter,
+        max_dist,
+        on_edge,
+    );
 }
 
 /// Like `dijkstra_forward_visit_edges_bounded`, but follows incoming edges instead — for a caller
@@ -130,8 +111,32 @@ pub(crate) fn dijkstra_reverse_visit_edges_bounded(
     source: NavNodeId,
     edge_filter: impl Fn(&NavEdge) -> bool,
     max_dist: Option<usize>,
-    mut on_edge: impl FnMut(&NavEdge, usize) -> bool,
+    on_edge: impl FnMut(&NavEdge, usize) -> bool,
 ) {
+    dijkstra_visit_edges_bounded(
+        nav,
+        source,
+        |nav, u| nav.incoming_edges(u),
+        |e| e.from,
+        edge_filter,
+        max_dist,
+        on_edge,
+    );
+}
+
+/// Shared traversal of the two `dijkstra_*_visit_edges_bounded` variants: `edges_of` yields the
+/// edges leaving `u` in the traversal direction and `far_end` the node such an edge leads to.
+fn dijkstra_visit_edges_bounded<'a, I>(
+    nav: &'a NavGraph,
+    source: NavNodeId,
+    edges_of: impl Fn(&'a NavGraph, NavNodeId) -> I,
+    far_end: impl Fn(&NavEdge) -> NavNodeId,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: Option<usize>,
+    mut on_edge: impl FnMut(&NavEdge, usize) -> bool,
+) where
+    I: Iterator<Item = &'a NavEdge>,
+{
     let n = nav.nodes.len();
     let mut dist = vec![usize::MAX; n];
     let mut heap: BinaryHeap<Reverse<(usize, NavNodeId)>> = BinaryHeap::new();
@@ -148,15 +153,16 @@ pub(crate) fn dijkstra_reverse_visit_edges_bounded(
         {
             break;
         }
-        for edge in nav.incoming_edges(u).filter(|e| edge_filter(e)) {
+        for edge in edges_of(nav, u).filter(|e| edge_filter(e)) {
             if !on_edge(edge, cost) {
                 return;
             }
             let weight = edge.path.len().saturating_sub(1);
             let next_cost = cost + weight;
-            if next_cost < dist[edge.from] {
-                dist[edge.from] = next_cost;
-                heap.push(Reverse((next_cost, edge.from)));
+            let next = far_end(edge);
+            if next_cost < dist[next] {
+                dist[next] = next_cost;
+                heap.push(Reverse((next_cost, next)));
             }
         }
     }

@@ -1,21 +1,13 @@
 import { presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
 import { type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../fieldEditUtils";
 import { allNodesAt, presetSplitNodeFaceKinds } from "../presetSplitResolve";
-import { presetVertexMarkerEntities } from "../pointEntities";
+import { formatLockKind, presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
 import { splitShapeBinding } from "../splitShape";
 import type { PresetSplitLabelContext } from "../presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
-
-function formatLockKind(kind: NodeLockKind): string {
-  switch (kind) {
-    case "in": return m["status.cell_lock_in"]();
-    case "out": return m["status.cell_lock_out"]();
-    case "both": return m["status.cell_lock_both"]();
-  }
-}
 
 /** Every marker-line contributed by one specific preset-stage node (an original node or a declared
  *  split slot) — start/finish/gen-source markers, preset teleport/vertical-passage/elevator

@@ -455,9 +455,9 @@ fn outgoing_incoming_edges_getters() {
         .incoming_edges(nav1)
         .map(|e| nav.nodes[e.from].node_id)
         .collect();
-    let mut out_sorted = out.clone();
+    let mut out_sorted = out;
     out_sorted.sort();
-    let mut inc_sorted = inc.clone();
+    let mut inc_sorted = inc;
     inc_sorted.sort();
     assert_eq!(
         out_sorted,

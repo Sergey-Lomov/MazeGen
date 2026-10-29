@@ -957,14 +957,14 @@ fn cross_element_entry<T: Tessellation>(
             // Narrow to just the close nodes when the scan pinned them down (all split
             // occurrences share one point, so this is rarely a strict subset — but honor it).
             let narrowed: Vec<NodeId> = if close_nodes.is_empty() {
-                nodes.clone()
+                nodes
             } else {
                 let kept: Vec<NodeId> = nodes
                     .iter()
                     .copied()
                     .filter(|n| close_nodes.contains(n))
                     .collect();
-                if kept.is_empty() { nodes.clone() } else { kept }
+                if kept.is_empty() { nodes } else { kept }
             };
             let payload = tile_payload(&narrowed, preset_state);
             CrossElementPayloadEntry {

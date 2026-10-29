@@ -261,7 +261,7 @@ fn invalid_split_tile_group_issue_preserves_a_multi_tile_group_and_locks_only_wh
     let tile_b = SplitTileNodes::new(vec![3, 4]);
     let issue = InvalidSplitTileGroupIssue::new_from_check(
         "split_group_geometric_proximity",
-        vec![(vec![tile_a.clone(), tile_b.clone()], 1)],
+        vec![(vec![tile_a, tile_b], 1)],
     );
 
     // Only node 1 is preset-locked (touches a preset edge) -- tile_a is NOT fully locked (node

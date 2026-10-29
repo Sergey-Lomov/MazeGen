@@ -505,7 +505,7 @@ mod tests {
             "3 stops -> 3 occurrences, one distinct element each"
         );
         stops.sort_unstable();
-        let mut expected = nodes.clone();
+        let mut expected = nodes;
         expected.sort_unstable();
         assert_eq!(stops, expected, "each element's id is its own stop node");
     }

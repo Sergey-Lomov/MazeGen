@@ -250,7 +250,7 @@ fn elevator_non_consecutive_toggle_off_clamps_to_contiguous_run() {
         ..default_elements()
     };
     let preset = empty_presets();
-    let mut g = graph.clone();
+    let mut g = graph;
     let built = try_elevator(
         &mut g, &field, &elements, &preset, &mut state, src, false, None,
     );
@@ -283,7 +283,7 @@ fn elevator_non_consecutive_toggle_on_allows_full_pool() {
         ..default_elements()
     };
     let preset = empty_presets();
-    let mut g = graph.clone();
+    let mut g = graph;
     let built = try_elevator(
         &mut g, &field, &elements, &preset, &mut state, src, false, None,
     );
@@ -318,7 +318,7 @@ fn elevator_cyclic_context_guarantees_one_visited_floor_and_allows_gap() {
         ..default_elements()
     };
     let preset = empty_presets();
-    let mut g = graph.clone();
+    let mut g = graph;
     let built = try_elevator(
         &mut g, &field, &elements, &preset, &mut state, src, true, None,
     );
@@ -499,7 +499,7 @@ fn passage_fail_blocked_fallback_when_balance_fully_committed_to_passage() {
         ..default_elements()
     };
     let preset = empty_presets();
-    let mut g = graph.clone();
+    let mut g = graph;
     try_vertical_growth_connect(&mut g, &field, &elements, &preset, &mut state, src, None);
     assert_eq!(
         g.edges().count(),
@@ -594,7 +594,7 @@ fn growth_vertical_passage_on_boundary_floor_uses_the_single_available_neighbor(
     let mut state = GenState::new(&graph, 1, src);
     let elements = default_elements();
     let preset = empty_presets();
-    let mut g = graph.clone();
+    let mut g = graph;
     let built =
         try_growth_vertical_passage(&mut g, &field, &elements, &preset, &mut state, src, None);
     assert!(built);
@@ -651,7 +651,7 @@ fn single_floor_run_ordinary_step_body_consumes_identical_rng_regardless_of_vert
         ..default_elements()
     };
     let mut state_b = GenState::new(&graph, 99, src);
-    let mut g_b = graph.clone();
+    let mut g_b = graph;
     run_ordinary_step_body_for_node(
         &mut g_b,
         &field,

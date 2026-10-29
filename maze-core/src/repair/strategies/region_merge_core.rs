@@ -1,6 +1,10 @@
+use crate::Maze;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::ids::NodeId;
+use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
+use crate::repair::result::RepairResult;
+use crate::space::Tessellation;
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
 
@@ -166,6 +170,67 @@ pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, 
 /// sizes, so `pick_by_mode`'s `largest`/`smallest` arms (which read `scc.components[i].len()`)
 /// are covered by those strategies' own tests instead — this module covers everything that
 /// doesn't need a real `ConnectedComponents`.
+/// Component index (other than `region_idx` itself) that any of `commands` connects to. That
+/// neighbor, if it is also a still-pending region in the batch, has effectively been merged away
+/// by this dispatch and must not be separately dispatched later in the same `apply()` call.
+fn merged_neighbor(
+    commands: &[MutationCommand],
+    scc: &ConnectedComponents,
+    region_idx: ComponentId,
+) -> Option<ComponentId> {
+    commands.iter().find_map(|cmd| {
+        let (a, b) = mutation_command_endpoints(cmd)?;
+        [a, b]
+            .into_iter()
+            .filter_map(|node| scc.component_of(node))
+            .find(|&idx| idx != region_idx)
+    })
+}
+
+/// Shared batch loop of the dispatcher strategies (`WeightedRegionMergeStrategy`,
+/// `PriorityRegionMergeStrategy`): one `dispatch` call per region in `invalid`, each on a
+/// synthetic single-region issue, skipping regions already merged away by an earlier dispatch.
+/// One `scc()` snapshot taken up front stays valid for the whole call, since nested strategies
+/// only propose commands and never mutate `maze.graph`. `Fixed` if any dispatch succeeded.
+pub fn run_per_region_dispatch<T: Tessellation>(
+    invalid: &[ComponentId],
+    maze: &Maze<T>,
+    rng: &mut dyn RngCore,
+    mut dispatch: impl FnMut(&dyn Issue, &mut dyn RngCore) -> (RepairResult, Vec<MutationCommand>),
+) -> (RepairResult, Vec<MutationCommand>) {
+    let scc = maze.analysis.scc(&maze.graph);
+
+    let mut pending: Vec<ComponentId> = invalid.to_vec();
+    let mut merged_away: HashSet<ComponentId> = HashSet::new();
+    let mut all_commands: Vec<MutationCommand> = Vec::new();
+    let mut any_fixed = false;
+
+    while let Some(region_idx) = pending.pop() {
+        if merged_away.contains(&region_idx) {
+            continue;
+        }
+
+        let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
+        let (result, commands) = dispatch(&single_region_issue, rng);
+
+        if matches!(result, RepairResult::Fixed { .. }) {
+            any_fixed = true;
+            if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx)
+                && invalid.contains(&neighbor_idx)
+            {
+                merged_away.insert(neighbor_idx);
+            }
+            all_commands.extend(commands);
+        }
+    }
+
+    if any_fixed {
+        (RepairResult::Fixed { score: None }, all_commands)
+    } else {
+        (RepairResult::Failed, vec![])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

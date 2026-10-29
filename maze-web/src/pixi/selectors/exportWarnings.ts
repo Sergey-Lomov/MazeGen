@@ -251,19 +251,24 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
   return Array.from(byKey.values());
 }
 
+/** Teleport context of one floor's warning pass, built from the *unscoped* graph. */
+function buildFloorContext(nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], floor: WarningFloor): TeleportFloorContext {
+  return {
+    resolveNodeLevel: selectNodeLevelResolver(nodes),
+    unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
+    unscopedEdges: edges,
+    activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+    floorCount: floors.length,
+  };
+}
+
 export function computeVectorByWallsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
-    const floorContext: TeleportFloorContext = {
-      resolveNodeLevel: selectNodeLevelResolver(nodes),
-      unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
-      unscopedEdges: edges,
-      activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
-      floorCount: floors.length,
-    };
+    const floorContext = buildFloorContext(nodes, edges, floors, floor);
     return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
@@ -276,13 +281,7 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
   const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
-    const floorContext: TeleportFloorContext = {
-      resolveNodeLevel: selectNodeLevelResolver(nodes),
-      unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
-      unscopedEdges: edges,
-      activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
-      floorCount: floors.length,
-    };
+    const floorContext = buildFloorContext(nodes, edges, floors, floor);
     return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);

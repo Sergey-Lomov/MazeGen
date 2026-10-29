@@ -272,9 +272,9 @@ mod tests {
         left_first.merge(b.clone());
         left_first.merge(c.clone());
 
-        let mut right_first = b.clone();
-        right_first.merge(c.clone());
-        right_first.merge(a.clone());
+        let mut right_first = b;
+        right_first.merge(c);
+        right_first.merge(a);
 
         let key = canonical_cycle_key(&[1, 2, 3]);
         let extract_sorted = |issue: &InvalidLoopIssue| {

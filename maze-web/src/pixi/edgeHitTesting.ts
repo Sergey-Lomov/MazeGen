@@ -46,6 +46,22 @@ export function pickEdgeAtPosition(
   let bestTo: [number, number] | null = null;
   let bestDist = Infinity;
 
+  // Keeps the nearest in-threshold edge seen so far; `a`/`b` are the cells the edge joins.
+  const offer = (polyline: Parameters<typeof closestPointOnPolyline>[0], key: string, a: [number, number], b: [number, number]) => {
+    const hit = closestPointOnPolyline(polyline, [viewportX, viewportY]);
+    if (!hit) return;
+    const along = fractionAlong(polyline, hit);
+    if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) return;
+    const distSq = hit.distance * hit.distance;
+    if (distSq < thresholdSq && distSq < bestDist) {
+      bestDist = distSq;
+      bestKey = key;
+      const [from, to] = canonicalize(a, b);
+      bestFrom = from;
+      bestTo = to;
+    }
+  };
+
   const candidates: [number, number][] = [[cell.x, cell.y]];
   for (const [dx, dy] of getCellNeighborOffsets(cfg, cell.x, cell.y))
     candidates.push([cell.x + dx, cell.y + dy]);
@@ -61,19 +77,7 @@ export function pickEdgeAtPosition(
       checked.add(key);
 
       const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
-      if (!seg) continue;
-      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
-      if (!hit) continue;
-      const along = fractionAlong(seg.polyline, hit);
-      if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
-      const distSq = hit.distance * hit.distance;
-      if (distSq < thresholdSq && distSq < bestDist) {
-        bestDist = distSq;
-        bestKey = key;
-        const [from, to] = canonicalize([cx, cy], [nx, ny]);
-        bestFrom = from;
-        bestTo = to;
-      }
+      if (seg) offer(seg.polyline, key, [cx, cy], [nx, ny]);
     }
   }
 
@@ -91,19 +95,7 @@ export function pickEdgeAtPosition(
       checked.add(copyKey);
 
       const seg = getFaceEdgeSegment([cx, cy], half.faceIdx, cfg);
-      if (!seg) continue;
-      const hit = closestPointOnPolyline(seg.polyline, [viewportX, viewportY]);
-      if (!hit) continue;
-      const along = fractionAlong(seg.polyline, hit);
-      if (deadZone && (along < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || along > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
-      const distSq = hit.distance * hit.distance;
-      if (distSq < thresholdSq && distSq < bestDist) {
-        bestDist = distSq;
-        bestKey = key;
-        const [from, to] = canonicalize([cx, cy], [nx, ny]);
-        bestFrom = from;
-        bestTo = to;
-      }
+      if (seg) offer(seg.polyline, key, [cx, cy], [nx, ny]);
     }
   }
 

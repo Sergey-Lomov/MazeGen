@@ -736,6 +736,23 @@ pub(crate) fn density_per_100(cells: usize, field_cells: usize) -> f64 {
     cells as f64 * 100.0 / field_cells as f64
 }
 
+/// Count over the allowed share of one region (whole maze or one floor): `count` minus the
+/// `max_density` (per 100 cells) target rounded to the nearest whole count; `0` when the density
+/// is within `max_density`. Rounding can push the target above `count` on a small field, so the
+/// subtraction saturates at `0`. Shared by `MaxElevatorDensityCheck`, `MaxSplitDensityCheck` and
+/// `MaxTeleportDensityCheck`.
+pub(crate) fn rounded_excess_over_density(
+    count: usize,
+    field_cells: usize,
+    max_density: f64,
+) -> u32 {
+    if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
+        return 0;
+    }
+    let target_count = (max_density * field_cells as f64 / 100.0).round() as usize;
+    count.saturating_sub(target_count) as u32
+}
+
 #[cfg(test)]
 #[path = "cycles/tests.rs"]
 mod tests;

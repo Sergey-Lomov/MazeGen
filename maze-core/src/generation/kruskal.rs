@@ -142,7 +142,7 @@ pub fn generate<T: Tessellation>(
     // components with no actual edge behind it, wrongly rejecting a later genuinely-addable edge
     // between those components as a cycle.
     let mut edge_set: BTreeSet<(NodeId, NodeId)> = BTreeSet::new();
-    for node in graph.nodes().map(|n| n.id).collect::<Vec<_>>() {
+    for node in graph.nodes().map(|n| n.id) {
         for neighbor in split_aware_neighbors(field, graph, node) {
             if !bidirectional_edge_feasible(preset_state, node, neighbor) {
                 continue;

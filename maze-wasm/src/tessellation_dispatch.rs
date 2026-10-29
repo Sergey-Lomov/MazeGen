@@ -2,32 +2,16 @@ use crate::generation_config::GenerateConfig;
 use crate::result::GenerateResult;
 use crate::runner::run_generate;
 use maze_core::{
-    generation::resolve_generation_start,
     ids::IdGenerator,
     space::{Field, MultiLevelField, Tessellation},
 };
+use maze_runner::runner::resolve_start;
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
 use maze_runner::topology_wire::install_topologies;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
-
-/// Resolves the geometric fallback start point (GitHub issue #640) — a pin matching
-/// `gen_source_xy` wins if present, otherwise falls back to `mode` (default centroid-nearest, or
-/// seeded-random). Thin wrapper over `maze_core::generation::resolve_generation_start` that keeps
-/// this crate's coordinate-match pin lookup, matching `maze-runner`'s equivalent wrapper.
-fn resolve_start<P: Copy>(
-    pts: &[P],
-    gen_source_xy: Option<[i32; 2]>,
-    mode: maze_core::generation::GenerationSourceMode,
-    seed: u64,
-    to_xy: impl Fn(P) -> (i32, i32),
-) -> P {
-    let pinned =
-        gen_source_xy.and_then(|[px, py]| pts.iter().copied().find(|&p| to_xy(p) == (px, py)));
-    resolve_generation_start(pts, pinned, mode, seed, to_xy)
-}
 
 /// Builds a `level_points.len()`-level field on `tessellation`, each level's own point set
 /// (GitHub issue #338 — per-floor field shape). `level_points` must have at least one entry

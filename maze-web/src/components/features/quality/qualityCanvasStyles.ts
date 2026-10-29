@@ -323,18 +323,3 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     marginBottom: spacing.elementsGap,
   },
 };
-
-export function cardStyle(selected: boolean): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.groupGap,
-    padding: `0 ${inset.panelInsetX}px`,
-    background: ui.bg.panel,
-    borderRadius: radius.md,
-    border: `1px solid ${selected ? ui.state.selected : ui.border.default}`,
-    cursor: "default",
-    userSelect: "none",
-    minHeight: 34,
-  };
-}
