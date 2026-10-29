@@ -91,6 +91,10 @@ export interface TessellationState {
   symmetryPolygonFinished: boolean;
   /** Why the last field operation (move, symmetry) was refused by core; shown in the field editor. */
   fieldOpError: FieldOpError | null;
+  /** In-memory copy of a field selection (cells of the current tessellation), or null when nothing was copied. */
+  fieldClipboard: [number, number][] | null;
+  /** Whether the field editor currently shows a selection (mirrors the canvas controller; enables Copy). */
+  fieldHasSelection: boolean;
 }
 
 export interface TessellationActions {
@@ -122,6 +126,8 @@ export interface TessellationActions {
   setBackgroundAutoFillPreview: (points: Set<number> | null) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
   setFieldOpError: (error: FieldOpError | null) => void;
+  setFieldClipboard: (cells: [number, number][] | null) => void;
+  setFieldHasSelection: (has: boolean) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;
   setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;

@@ -215,8 +215,11 @@ export class SceneInteraction {
       }
       this.defaultPan.end();
     });
-    stage.on("pointerupoutside", () => {
+    stage.on("pointerupoutside", (e?: { nativeEvent?: { target?: EventTarget | null } }) => {
       const st = useMazeStore.getState();
+      // Copy / Paste read the selection on `click`, which follows this pointerup.
+      const released = e?.nativeEvent?.target as Element | null | undefined;
+      if (released?.closest?.("[data-preserves-field-selection]")) return;
       const controller = getController(st);
       const fieldEditController = getFieldEditController();
       const field = st.floorFields[st.activeFloorId];

@@ -708,6 +708,51 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("keeps the selection when the pointer is released on a control that preserves it", () => {
+    const stageHandlers: Record<string, (e?: unknown) => void> = {};
+    const commitPendingSelectionMove = vi.fn(() => true);
+    const cancelPointerGesture = vi.fn();
+    const fieldController = {
+      hasSelectionPreview: vi.fn(() => true),
+      commitPendingSelectionMove,
+      cancelPointerGesture,
+      clearHover: vi.fn(),
+    };
+    const state = useMazeStore.getState();
+    const previous = { openCard: state.openCard, floorFields: state.floorFields };
+    useMazeStore.setState({
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldEditMode: "custom", isEditingField: true },
+      },
+    });
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn((event: string, handler: (e?: unknown) => void) => { stageHandlers[event] = handler; }) },
+        canvas: { addEventListener: vi.fn(), removeEventListener: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => fieldController as any,
+      fieldEditorOverlay: { updateHover: vi.fn() } as any,
+      getController: () => fieldController as any,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+    const button = document.createElement("button");
+    button.setAttribute("data-preserves-field-selection", "");
+
+    stageHandlers.pointerupoutside({ nativeEvent: { target: button } });
+
+    expect(commitPendingSelectionMove).not.toHaveBeenCalled();
+    expect(cancelPointerGesture).not.toHaveBeenCalled();
+    interaction.destroy();
+    useMazeStore.setState(previous);
+  });
+
   it("confirms a persistent field selection when the pointer is released outside the canvas", () => {
     const stageHandlers: Record<string, () => void> = {};
     const state = useMazeStore.getState();

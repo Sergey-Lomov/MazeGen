@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
-import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
+import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
 import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
@@ -29,6 +29,7 @@ import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
 import { TopologyPanel } from "./TopologyPanel";
 import { bringSidePanelToFront } from "../SidePanel";
+import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
@@ -39,6 +40,8 @@ const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
   remove: ["−"],
   select: ["0"],
 };
+
+const CLIPBOARD_MODIFIER = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -75,6 +78,8 @@ export function FieldSetupFeature() {
   const setTopologyPanelOpen = useMazeStore((s) => s.setTopologyPanelOpen);
   const floorCount = useMazeStore((s) => s.floors.length);
   const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
+  const fieldHasSelection = useMazeStore((s) => s.fieldHasSelection);
+  const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
   const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
@@ -123,6 +128,26 @@ export function FieldSetupFeature() {
           ))}
         </select>
       </label>
+    );
+  }
+
+  function renderClipboardTool(tool: "copy" | "paste", block: FieldClipboardBlock | null) {
+    const description = block === "tessellation" ? m["field.clipboard.tessellation_disabled"]()
+      : block === "no_selection" ? m["field.copy.empty_selection"]()
+      : block === "empty_clipboard" ? m["field.paste.empty_clipboard"]()
+      : undefined;
+    return (
+      <ToolIconButton
+        selected={false}
+        disabled={fieldEditLocked || block !== null}
+        title={tool === "copy" ? m["field.copy.tool"]() : m["field.paste.tool"]()}
+        shortcut={[CLIPBOARD_MODIFIER, tool === "copy" ? "C" : "V"]}
+        description={description}
+        preservesFieldSelection
+        onClick={tool === "copy" ? copyFieldSelection : pasteFieldClipboard}
+      >
+        {tool === "copy" ? <Copy {...toolIconProps()} /> : <ClipboardPaste {...toolIconProps()} />}
+      </ToolIconButton>
     );
   }
 
@@ -236,6 +261,8 @@ export function FieldSetupFeature() {
               {primitiveIcon(tool.primitive)}
             </ToolIconButton>;
           })}
+          {renderClipboardTool("copy", fieldClipboardBlock("copy", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
+          {renderClipboardTool("paste", fieldClipboardBlock("paste", fieldConfig.tessellation, fieldHasSelection, hasClipboard))}
           </Inline>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
@@ -381,17 +408,23 @@ function primitivesForField(): PrimitiveToolOption[] {
   return primitives;
 }
 
-function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
+function toolIconProps() {
   const iconSize = TILE_SIZE * 0.8;
   const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
-  const wallColor = colorToHex(canvas.wall.default);
-  const iconProps = {
+  return {
     size: iconSize,
-    color: wallColor,
+    color: colorToHex(canvas.wall.default),
     strokeWidth: wallStyle.width * 24 / iconSize,
     strokeLinecap: wallStyle.cap,
     strokeLinejoin: wallStyle.join,
   } as const;
+}
+
+function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
+  const iconProps = toolIconProps();
+  const iconSize = iconProps.size;
+  const wallColor = iconProps.color;
+  const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
   switch (primitive) {
     case "point":
       return (

@@ -48,6 +48,7 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 | `post_edit` / `preset_connections` | `vertical_drag.failed_passage`, `vertical_drag.failed_elevator` | notice | a vertical drag cannot resolve the matching point on another floor |
 | `project_load` / `quality_preset_load` / `visual_preset_load` | `file_load.read_failed`, `file_load.invalid_json` | error | `readJsonFile` I/O or JSON syntax failure |
 | `field_setup` | `field_edit.auto_fill_preview_active` | notice | canvas click (not a pan gesture) during the background auto-fill preview (#772) |
+| `field_setup` | `field_edit.nothing_selected`, `field_edit.nothing_copied`, `field_edit.clipboard_unavailable` | notice (info) | Copy shortcut with no selection / Paste shortcut with an empty clipboard / either shortcut in a tessellation without translation symmetry (#880) |
 | `project_load` | `project.load_error`, `project.load_error_quality_preset`, `project.load_error_visual_preset` | error | invalid project file / file of another kind |
 | `quality_preset_load` | `quality.preset.load_error`, `quality.preset.load_error_project_file`, `quality.preset.load_error_visual_preset` | error | invalid quality preset / file of another kind |
 | `visual_preset_load` | `image_export.visual_preset.load_error`, `image_export.visual_preset.load_error_project_file`, `image_export.visual_preset.load_error_quality_preset` | error | invalid style preset / file of another kind |
@@ -57,6 +58,9 @@ Vertical-drag notices carry the formatted target as `coords` and use empty `dedu
 repeat updates the coordinates in place instead of creating another toast.
 
 ## Notice zone
+
+A notice code may set `severity: "info"` in its registration (default `warning`); the toast then uses
+the info palette. Info is for plain facts such as an empty clipboard, not refusals.
 
 | Rule | Value |
 |---|---|

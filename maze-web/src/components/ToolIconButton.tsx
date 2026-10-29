@@ -21,6 +21,8 @@ type Props = {
   disabled?: boolean;
   /** Destructive tool — a selected state shows a danger-hued border instead of the accent one. */
   danger?: boolean;
+  /** Releasing the pointer on this button keeps the canvas selection (it is read by the click). */
+  preservesFieldSelection?: boolean;
 };
 
 /** Shared presentation for icon-only tool labels and their optional explanations. */
@@ -49,7 +51,7 @@ export function ToolTooltip({ title, description, shortcut, descriptionShortcut,
 /** Square icon-only button for tool pickers (GitHub issue #456) — its own button type
  *  ("tool icon", `btn-tool-icon` in global.css), not a toggle. Selection is shown by an accent
  *  border, never a fill swap. Sized to one tessellation cell. */
-export function ToolIconButton({ selected, title, description, shortcut, descriptionShortcut, onClick, children, disabled, danger }: Props) {
+export function ToolIconButton({ selected, title, description, shortcut, descriptionShortcut, onClick, children, disabled, danger, preservesFieldSelection }: Props) {
   return (
     <ToolTooltip title={title} description={description} shortcut={shortcut} descriptionShortcut={descriptionShortcut}>
       <button
@@ -59,6 +61,7 @@ export function ToolIconButton({ selected, title, description, shortcut, descrip
         aria-label={title}
         onClick={onClick}
         disabled={disabled}
+        data-preserves-field-selection={preservesFieldSelection ? "" : undefined}
       >
         <span className="tool-icon-face">
           <span className="tool-icon-content">{children}</span>

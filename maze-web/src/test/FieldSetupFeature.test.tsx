@@ -10,7 +10,7 @@ import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import { getCartesian } from "../pixi/cartesianCache";
 import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
-import { getTooltipControlWithin } from "./tooltipTestUtils";
+import { getTooltipAnchor, getTooltipAnchors, getTooltipControlWithin } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
@@ -355,6 +355,56 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(symmetryTool).toBeDisabled();
     const description = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
     expect(description).toHaveTextContent("Unavailable in this tessellation.");
+  });
+
+  it("disables Copy without a selection and Paste without a clipboard, with explanations", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      fieldClipboard: null,
+      fieldHasSelection: false,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeDisabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeDisabled();
+    expect(getTooltipAnchor(m["field.copy.empty_selection"]())).toBeInTheDocument();
+    expect(getTooltipAnchor(m["field.paste.empty_clipboard"]())).toBeInTheDocument();
+  });
+
+  it("enables Copy with a selection and Paste with a clipboard", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      fieldClipboard: [[0, 0]],
+      fieldHasSelection: true,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeEnabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeEnabled();
+  });
+
+  it("shows only the tessellation reason when the tessellation has no translation symmetry", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldConfig: fieldOf("radial", { shape: "custom", points: [] }),
+        }),
+      },
+      fieldClipboard: null,
+      fieldHasSelection: false,
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: m["field.copy.tool"]() })).toBeDisabled();
+    expect(screen.getByRole("button", { name: m["field.paste.tool"]() })).toBeDisabled();
+    expect(getTooltipAnchors(m["field.clipboard.tessellation_disabled"]())).toHaveLength(2);
+    expect(screen.queryAllByTestId("tooltip-anchor").filter((a) => document.getElementById(a.getAttribute("aria-describedby") ?? "")?.textContent?.includes(m["field.paste.empty_clipboard"]()))).toHaveLength(0);
   });
 
   it("offers the parallelogram tool for a square field", () => {

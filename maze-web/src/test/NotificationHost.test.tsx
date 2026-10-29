@@ -16,6 +16,11 @@ registerNotificationCode("host.notice", {
   category: "notice",
   message: (p) => (getLocale() === "ru" ? `Отказ ${p.x ?? ""}` : `Rejected ${p.x ?? ""}`).trim(),
 });
+registerNotificationCode("host.info", {
+  category: "notice",
+  severity: "info",
+  message: () => "Just so you know",
+});
 registerNotificationCode("host.error", {
   category: "error",
   message: (p) => `Failed ${p.n}`,
@@ -347,5 +352,19 @@ describe("NotificationHost", () => {
     expect(within(host()).getByText("Отказ 3")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Закрыть" })).toBeInTheDocument();
     expect(politeTexts()).toEqual(["Rejected 3"]);
+  });
+});
+
+describe("NotificationHost severity", () => {
+  it("styles an info notice differently from a warning notice", () => {
+    renderHost();
+    act(() => {
+      notify({ source: "test", code: "host.info" });
+      notify({ source: "test", code: "host.notice" });
+    });
+
+    const [info, warning] = screen.getAllByTestId("notice-toast");
+    expect(info.style.background).not.toBe("");
+    expect(info.style.background).not.toBe(warning.style.background);
   });
 });
