@@ -431,6 +431,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "applySymmetry": get().applySymmetry(); break;
       case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology); break;
       case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
+      case "clearTopologyGroups": get().clearTopologyGroups(); break;
     }
   },
 

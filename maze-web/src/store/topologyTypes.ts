@@ -72,4 +72,6 @@ export interface TopologyActions {
   /** Glues the picked runs: as a new group, or in place of the edited glue. */
   confirmTopologyGlue: () => void;
   removeTopologyGroup: (id: number) => void;
+  /** Removes every glue of the active floor. */
+  clearTopologyGroups: () => void;
 }
