@@ -305,14 +305,6 @@ export function FieldSetupFeature() {
           >
             {m["field.center"]()}
           </Button>
-          <Button
-            variant="destructive"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={handleClearField}
-          >
-            {m["field.clear"]()}
-          </Button>
         </>
       )}
       {isCustom && topologyPanelOpen && <TopologyPanel onClose={() => setTopologyPanelOpen(false)} />}
@@ -335,6 +327,16 @@ export function FieldSetupFeature() {
             {m["floors.from_current"]()}
           </Button>
         </>
+      )}
+      {isCustom && (
+        <Button
+          variant="destructive"
+          disabled={fieldEditLocked}
+          layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+          onClick={handleClearField}
+        >
+          {m["field.clear"]()}
+        </Button>
       )}
       {confirmPending !== null && (
         <ConfirmModal

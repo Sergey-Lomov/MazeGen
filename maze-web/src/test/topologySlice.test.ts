@@ -72,6 +72,13 @@ describe("topology editor store (GitHub issue #839)", () => {
     expect(topologyOf()).toBeUndefined();
   });
 
+  it("clears all glues of the floor", () => {
+    glueCylinder();
+    get().clearTopologyGroups();
+    expect(topologyOf()).toBeUndefined();
+    expect(get().fieldEditConfirmation).toBeNull();
+  });
+
   it("drops the export cut line of a removed glue with the same update, and keeps the others", () => {
     glueCylinder();
     const id = topologyOf().groups[0].id;
@@ -170,6 +177,19 @@ describe("topology editor store (GitHub issue #839)", () => {
 
     get().confirmFieldEdit();
     expect(topologyOf()?.folds.length).toBeGreaterThan(0);
+    expect(get().fieldEditConfirmation).toBeNull();
+  });
+
+  it("asks for confirmation before clearing all glues of a dirty maze, and clears on confirm", () => {
+    glueCylinder();
+    markGenerated();
+    useMazeStore.setState({ mazeDirty: true });
+    get().clearTopologyGroups();
+    expect(topologyOf()).toBeDefined();
+    expect(get().fieldEditConfirmation).not.toBeNull();
+
+    get().confirmFieldEdit();
+    expect(topologyOf()).toBeUndefined();
     expect(get().fieldEditConfirmation).toBeNull();
   });
 

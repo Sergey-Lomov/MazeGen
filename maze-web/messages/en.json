@@ -2736,6 +2736,8 @@
   "topology.folds_inactive": "Floor {floor}: {count} glued pair(s) became inactive after the field edit.",
   "topology.open": "Topology",
   "topology.add": "Add glue",
+  "topology.delete_all": "Delete all",
+  "topology.confirm_delete_all": "Delete all glues of this floor?",
   "topology.add_title": "New glue",
   "topology.add_confirm": "Add glue",
   "topology.add_cancel_confirm": "Discard the new glue?",

@@ -2748,6 +2748,8 @@
   "topology.folds_inactive": "Этаж {floor}: неактивных пар склейки после правки поля: {count}.",
   "topology.open": "Топология",
   "topology.add": "Добавить склейку",
+  "topology.delete_all": "Удалить все",
+  "topology.confirm_delete_all": "Удалить все склейки этого этажа?",
   "topology.add_title": "Новая склейка",
   "topology.add_confirm": "Добавить склейку",
   "topology.add_cancel_confirm": "Отменить добавление склейки?",

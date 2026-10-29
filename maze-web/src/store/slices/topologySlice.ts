@@ -106,20 +106,7 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
       set(op.kind === "glue" ? { topologyGlueError: problem } : { topologyPanelError: problem });
       return;
     }
-    // Changing the set of active folds discards the maze and analytics, like a tessellation kind
-    // change does (Specs/topology.md, "Web authoring").
-    const { [floorId]: _previous, ...others } = state.floorTopology;
-    set({
-      floorTopology: topology.folds.length === 0 ? others : { ...others, [floorId]: topology },
-      ...withoutStaleCuts(state, floorId, topology.groups.map((group) => group.id)),
-      ...withActiveFloorField(state, { fieldDirty: true }),
-      topologyGlueError: null,
-      topologyPanelError: null,
-      topologyGlueEditor: null,
-      ...CLEARED_EDITOR,
-      ...buildResetDownstreamState(),
-      debugStale: debugStaleOf(state),
-    });
+    set(committedTopology(state, floorId, topology.folds.length === 0 ? null : topology));
   },
 
   confirmTopologyGlue: () => {
@@ -136,7 +123,36 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
   },
 
   removeTopologyGroup: (id) => get().applyTopologyOp({ kind: "remove_group", id }),
+
+  clearTopologyGroups: () => {
+    const state = get();
+    if (state.backgroundAutoFillPreview !== null) return;
+    const floorId = state.activeFloorId;
+    if (!state.floorTopology[floorId]) return;
+    if (state.mazeDirty || state.postEditDirty) {
+      set({ fieldEditConfirmation: { kind: "clearTopologyGroups" } });
+      return;
+    }
+    set(committedTopology(state, floorId, null));
+  },
 });
+
+/** Store update of an accepted edit of the floor's topology (`null`: no folds left). Changing the set of active
+ * folds discards the maze and analytics, like a tessellation kind change does (Specs/topology.md, "Web authoring"). */
+function committedTopology(state: MazeStore, floorId: string, topology: MazeStore["floorTopology"][string] | null): Partial<MazeStore> {
+  const { [floorId]: _previous, ...others } = state.floorTopology;
+  return {
+    floorTopology: topology === null ? others : { ...others, [floorId]: topology },
+    ...withoutStaleCuts(state, floorId, topology?.groups.map((group) => group.id) ?? []),
+    ...withActiveFloorField(state, { fieldDirty: true }),
+    topologyGlueError: null,
+    topologyPanelError: null,
+    topologyGlueEditor: null,
+    ...CLEARED_EDITOR,
+    ...buildResetDownstreamState(),
+    debugStale: debugStaleOf(state),
+  };
+}
 
 /** Export cut lines (GitHub issue #859) of the floor's glues that the edit removed. A new glue takes `max + 1` as its
  * id, so a stale `{floorId}:{group}` key would attach the old line to an unrelated glue. Part of the edit's own update,

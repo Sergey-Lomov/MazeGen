@@ -2,6 +2,7 @@ import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { floorTopologyInfo } from "../../store/topologyInfo";
 import { Button } from "../Button";
+import { ConfirmModal } from "../ConfirmModal";
 import { SidePanel } from "../SidePanel";
 import { GlueEditorPanel } from "./GlueEditorPanel";
 import { GlueCell, glueDotColors } from "./GlueCell";
@@ -23,6 +24,8 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
   const glueEditor = useMazeStore((s) => s.topologyGlueEditor);
   const openGlueEditor = useMazeStore((s) => s.openTopologyGlueEditor);
   const removeGroup = useMazeStore((s) => s.removeTopologyGroup);
+  const clearGroups = useMazeStore((s) => s.clearTopologyGroups);
+  const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const setHover = useMazeStore((s) => s.setTopologyHover);
   const panelError = useMazeStore((s) => s.topologyPanelError);
 
@@ -73,8 +76,21 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
         <Button variant="primary" disabled={locked} onClick={() => openGlueEditor()}>
           {m["topology.add"]()}
         </Button>
+        <Button variant="destructive" disabled={locked || glues.length === 0} onClick={() => setDeleteAllOpen(true)}>
+          {m["topology.delete_all"]()}
+        </Button>
       </Stack>
     </SidePanel>
+    {deleteAllOpen && (
+      <ConfirmModal
+        message={m["topology.confirm_delete_all"]()}
+        onConfirm={() => {
+          setDeleteAllOpen(false);
+          clearGroups();
+        }}
+        onCancel={() => setDeleteAllOpen(false)}
+      />
+    )}
     {glueEditor !== null && <GlueEditorPanel />}
     </>
   );
