@@ -97,7 +97,9 @@ export function FieldSetupFeature() {
   }
 
   function handleSwitchToDefault() {
-    if (isCustom && fieldPoints.size > 0) {
+    // The generation-loss dialog (store) already covers the loss of custom shape changes.
+    const generationLossDialogShown = useMazeStore.getState().mazeDirty || useMazeStore.getState().postEditDirty;
+    if (isCustom && fieldPoints.size > 0 && !generationLossDialogShown) {
       setConfirmPending("switchToDefault");
     } else {
       setFieldEditMode("default");
