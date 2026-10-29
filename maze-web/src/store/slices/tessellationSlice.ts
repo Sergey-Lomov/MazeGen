@@ -42,6 +42,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   symmetryPolygon: [],
   symmetryPolygonFinished: false,
   fieldOpError: null,
+  fieldClipboard: null,
+  fieldHasSelection: false,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
@@ -228,6 +230,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     };
   }),
   setFieldOpError: (error) => set({ fieldOpError: error }),
+  setFieldClipboard: (cells) => set({ fieldClipboard: cells }),
+  setFieldHasSelection: (has) => set((state) => state.fieldHasSelection === has ? {} : { fieldHasSelection: has }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),
   setSymmetryAxisPoints: (points) => set((state) => {

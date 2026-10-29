@@ -12,6 +12,8 @@ export type NotificationParams = Readonly<Record<string, NotificationParamValue>
 
 export interface NotificationCodeDef {
   category: NotificationCategory;
+  /** `notice` only: toast palette; defaults to `warning`. `info` is for plain facts, not refusals. */
+  severity?: "info" | "warning";
   /** Paraglide message function of the call's `params` — called at render time. */
   message: (params: NotificationParams) => string;
   /** `notice` only: params that are part of the dedup key. Defaults to none — the key is then

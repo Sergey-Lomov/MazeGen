@@ -66,6 +66,8 @@ beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
     backgroundAutoFillPreview: null,
+    fieldClipboard: null,
+    fieldHasSelection: false,
     openCard: "field_setup",
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
@@ -1034,5 +1036,169 @@ describe("FieldEditController size readout", () => {
     const shape = readouts.at(-1)?.shape;
     expect(shape?.primitive).toBe("polygon");
     expect(shape!.count).toBeGreaterThan(0);
+  });
+});
+
+describe("FieldEditController copy and paste", () => {
+  const press = (code: string, init: KeyboardEventInit = {}) =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { code, ctrlKey: true, ...init }));
+  const noticeCodes = () => useNotificationStore.getState().notices.map((n) => n.code);
+
+  function selectTwoCells() {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "point",
+          fieldOperation: "select",
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
+          fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
+        }),
+      },
+    });
+    const made = makeController();
+    made.controller.onPointerDown(20, -20, 0);
+    made.controller.onPointerMove(60, -20, 0);
+    made.controller.onPointerUp();
+    return made;
+  }
+
+  it("copies the selection as it is on screen, including a pending move", () => {
+    const { controller } = selectTwoCells();
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(100, -20, 0);
+    controller.onPointerUp();
+
+    press("KeyC");
+
+    expect(useMazeStore.getState().fieldClipboard).toEqual([[2, 0], [3, 0]]);
+  });
+
+  it("tells the user when there is nothing to copy or paste", () => {
+    makeController();
+
+    press("KeyC");
+    expect(noticeCodes()).toEqual(["field_edit.nothing_selected"]);
+    expect(useMazeStore.getState().fieldClipboard).toBeNull();
+
+    resetNotifications();
+    press("KeyV");
+    expect(noticeCodes()).toEqual(["field_edit.nothing_copied"]);
+  });
+
+  it("pastes as a pending selection move that adds the cells on Enter", () => {
+    const { commits, selectionMoves, selectionMovePreviews } = selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+
+    press("KeyV");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("select");
+    expect(selectionMovePreviews.at(-1)).toEqual({ source: [], temporary: [[0, 0], [1, 0]] });
+    expect(commits).toHaveLength(0);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    expect(commits).toEqual([{ cells: [[0, 0], [1, 0]], button: 0 }]);
+    expect(selectionMoves).toHaveLength(0);
+    expect(useMazeStore.getState().fieldHasSelection).toBe(false);
+  });
+
+  it("places the top-left copied cell under the cursor", () => {
+    const { controller, commits } = selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    (controller as unknown as { pointerInsideCanvas: boolean }).pointerInsideCanvas = true;
+    controller.onPointerMove(180, -100, 0);
+
+    press("KeyV");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    const cells = commits[0].cells;
+    expect(cells).toHaveLength(2);
+    expect(cells[1][0] - cells[0][0]).toBe(1);
+    expect(cells[0][0]).toBeGreaterThan(0);
+    expect(cells[0][1]).toBe(cells[1][1]);
+  });
+
+  it("cancels the whole paste with Escape", () => {
+    const { commits } = selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    press("KeyV");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    expect(commits).toHaveLength(0);
+    expect(useMazeStore.getState().fieldHasSelection).toBe(false);
+  });
+
+  it("does not remove anything when Delete is pressed during a paste", () => {
+    const { commits } = selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    press("KeyV");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Delete" }));
+
+    expect(commits).toHaveLength(0);
+    expect(useMazeStore.getState().fieldHasSelection).toBe(false);
+  });
+
+  it("aborts an unfinished polygon before pasting", () => {
+    const { controller, commits } = selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    useMazeStore.getState().setFieldPrimitive("polygon");
+    click(controller, 5, -10);
+    click(controller, 85, -10);
+
+    press("KeyV");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    expect(commits).toEqual([{ cells: [[0, 0], [1, 0]], button: 0 }]);
+  });
+
+  it("ignores the shortcuts while the auto-fill preview is active", () => {
+    selectTwoCells();
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(0, 0)]) });
+
+    press("KeyC");
+
+    expect(useMazeStore.getState().fieldClipboard).toBeNull();
+    expect(noticeCodes()).toEqual([]);
+  });
+
+  it("explains why the shortcuts do nothing in a tessellation without translation symmetry", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldConfig: fieldOf("radial", { shape: "custom", points: [] }),
+        }),
+      },
+    });
+    makeController();
+
+    press("KeyC");
+    press("KeyV");
+
+    expect(noticeCodes()).toEqual(["field_edit.clipboard_unavailable"]);
+  });
+
+  it("destroy clears the selection flag", () => {
+    useMazeStore.getState().setFieldHasSelection(true);
+    const { controller } = makeController();
+
+    controller.destroy();
+
+    expect(useMazeStore.getState().fieldHasSelection).toBe(false);
+  });
+
+  it("drops the clipboard when the tessellation changes", () => {
+    useMazeStore.getState().setFieldClipboard([[0, 0]]);
+
+    useMazeStore.getState().setTessellationKind("hex");
+
+    expect(useMazeStore.getState().fieldClipboard).toBeNull();
   });
 });

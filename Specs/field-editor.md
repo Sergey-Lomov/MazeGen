@@ -517,6 +517,41 @@ other refusal does the same. The drag only
 starts when `translate` is offered. `moveFieldPoints` translates the selected cells through core
 and replaces them in the field; a refusal leaves the field unchanged.
 
+### Copy and Paste (GitHub issue #880)
+
+Custom mode has two clipboard tools at the end of the primitive tools row, with the shortcuts Ctrl/Cmd+C and
+Ctrl/Cmd+V. The shortcuts work only while the field setup card is open in custom mode, are ignored
+while a text input has focus and during the background auto-fill preview.
+
+**Copy** stores the selected cells as they are on screen, including an uncommitted pending move, in
+the in-memory clipboard (`fieldClipboard` in the store). It is disabled while nothing is selected
+(`fieldHasSelection`), with a tooltip saying so; the shortcut with no selection shows the
+`field_edit.nothing_selected` notice.
+
+**Paste** is disabled while the clipboard is empty; the shortcut then shows `field_edit.nothing_copied`.
+It never commits to the field directly. It aborts every unfinished tool process (polygon,
+half-placed parallelogram, symmetry axis/polygon, topology pick, shape drag), commits an existing
+pending selection move, switches the operation to Select and shows the clipboard as a pending
+selection move (`FieldEditController.pasteMode`). The top-left copied cell (closest to the top-left
+corner of the cells' bounds) is placed under the cursor, or at the center of the canvas when the
+cursor is outside it (for example when pasting from the toolbar). When that exact offset is not a
+translation symmetry of the tessellation, the nearest cell within two cells that is one is used.
+The pasted cells can be dragged like any selection; Enter, Space, a click outside, or switching the
+tool or mode commits them with `addFieldPoints` (so the usual edit confirmation applies); Escape
+cancels the whole paste. Delete during a paste cancels it instead of removing field cells.
+
+Both tools are disabled when the tessellation offers no `translate` operation, with a tooltip
+explaining it (the shortcuts show the `field_edit.clipboard_unavailable` notice); this reason wins over the empty-clipboard and no-selection reasons
+(`fieldClipboardBlock`, `pixi/fieldClipboard.ts`).
+
+The clipboard survives floor switches while the tessellation stays the same. It is cleared when the
+confirmed tessellation kind, params or orientation change (`fieldClipboardSync.ts`) and when a
+project is loaded. Cut and other clipboard formats are out of scope.
+
+Releasing the pointer on a Copy or Paste button does not confirm the selection the way a release
+outside the canvas normally does (`data-preserves-field-selection`), because the button reads the
+selection on `click`, after the pointer release.
+
 ## Grid overlay
 
 Grid rendering is embedded in each feature renderer, not in a standalone component:

@@ -1,4 +1,4 @@
-import { notifyAutoFillPreviewActive } from "../notifications/fieldSetupNotifications";
+import { notifyAutoFillPreviewActive, notifyClipboardUnavailable, notifyNothingCopied, notifyNothingSelected } from "../notifications/fieldSetupNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
@@ -26,9 +26,13 @@ import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
 import { nearestContourFace } from "./topologyGeometry";
 import type { TopologyPickTarget } from "../store/topologyTypes";
 import { isTypingTarget } from "./domUtils";
+import { fieldClipboardSupported, registerFieldClipboardHost } from "./fieldClipboard";
 
 /** How close (screen pixels) a click must be to a boundary face to pick it for a fold. */
 const TOPOLOGY_PICK_RADIUS_PX = 14;
+
+/** Cells around the target cell tried when the exact paste offset is not a translation symmetry. */
+const PASTE_SNAP_RADIUS = 2;
 
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;
@@ -69,6 +73,9 @@ export class FieldEditController {
   private selectionPendingVector: [number, number] = [0, 0];
   private selectionDragActive = false;
   private selectionAdditiveGestureActive = false;
+  /** The selection is a paste preview: its source is the clipboard and a commit adds the cells. */
+  private pasteMode = false;
+  private pointerInsideCanvas = false;
   /** World-space center of the cell the drag grabbed. */
   private selectionDragStartCenter: WorldPoint | null = null;
   private selectionDragBaseVector: [number, number] = [0, 0];
@@ -114,6 +121,15 @@ export class FieldEditController {
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
     if (state.backgroundAutoFillPreview !== null) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === "KeyC" || e.code === "KeyV")
+      && state.openCard === "field_setup" && field.fieldEditMode === "custom") {
+      e.preventDefault();
+      blurActiveElement();
+      if (!fieldClipboardSupported(field.fieldConfig.tessellation)) notifyClipboardUnavailable();
+      else if (e.code === "KeyC") this.copySelection();
+      else this.paste();
+      return;
+    }
     if (state.openCard === "field_setup" && field.fieldEditMode === "custom" && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const operation = e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd"
         ? "add"
@@ -207,6 +223,8 @@ export class FieldEditController {
     }
   };
   private onContextMenu = (e: Event) => { e.preventDefault(); };
+  private onPointerEnter = () => { this.pointerInsideCanvas = true; };
+  private onPointerLeave = () => { this.pointerInsideCanvas = false; };
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -222,6 +240,9 @@ export class FieldEditController {
     this.primitiveCallbacks = primitiveCallbacks;
 
     canvas.addEventListener("contextmenu", this.onContextMenu);
+    canvas.addEventListener("pointerenter", this.onPointerEnter);
+    canvas.addEventListener("pointerleave", this.onPointerLeave);
+    registerFieldClipboardHost(this);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
   }
@@ -258,7 +279,8 @@ export class FieldEditController {
     this.activePrimitive = field.fieldPrimitive;
 
     if (this.selectionPreviewVisible) {
-      const additiveSelection = field.fieldPrimitive === "point"
+      const additiveSelection = !this.pasteMode
+        && field.fieldPrimitive === "point"
         && field.fieldOperation === "select"
         && button === 0
         && (this.shiftHeld || _shiftKey === true);
@@ -1228,6 +1250,7 @@ export class FieldEditController {
     this.selectionPendingVector = [0, 0];
     this.selectionDragActive = false;
     this.selectionDragStartCenter = null;
+    this.pasteMode = false;
     this.primitiveCallbacks.onPreviewUpdate(
       [],
       1,
@@ -1241,6 +1264,7 @@ export class FieldEditController {
       },
     );
     this.selectionPreviewVisible = true;
+    useMazeStore.getState().setFieldHasSelection(true);
   }
 
   private updatePointSelectionPreview(): void {
@@ -1296,7 +1320,7 @@ export class FieldEditController {
     // A translation can change the index span on offset-coordinate tessellations.
     this.reportSize({ selection: measureCells(this.selectionCells) });
     this.primitiveCallbacks.onSelectionMovePreview?.(
-      hasPendingMove ? this.selectionSourceCells : [],
+      hasPendingMove && !this.pasteMode ? this.selectionSourceCells : [],
       hasPendingMove ? this.selectionCells : [],
     );
     this.primitiveCallbacks.onPreviewUpdate(
@@ -1314,13 +1338,15 @@ export class FieldEditController {
   }
 
   private hasPendingSelectionMove(): boolean {
-    return this.selectionPendingVector[0] !== 0 || this.selectionPendingVector[1] !== 0;
+    return this.pasteMode || this.selectionPendingVector[0] !== 0 || this.selectionPendingVector[1] !== 0;
   }
 
   private commitSelectionMove(): boolean {
     if (useMazeStore.getState().backgroundAutoFillPreview !== null) return false;
     if (!this.selectionPreviewVisible) return false;
-    if (this.hasPendingSelectionMove()) {
+    if (this.pasteMode) {
+      this.primitiveCallbacks.onPrimitiveCommit(this.selectionCells, 0);
+    } else if (this.hasPendingSelectionMove()) {
       const applied = this.primitiveCallbacks.onSelectionMove?.(
         this.selectionSourceCells,
         this.selectionPendingVector,
@@ -1334,6 +1360,10 @@ export class FieldEditController {
   private deleteSelection(): void {
     if (useMazeStore.getState().backgroundAutoFillPreview !== null) return;
     if (!this.selectionPreviewVisible || this.selectionSourceCells.length === 0) return;
+    if (this.pasteMode) {
+      this.exitSelectionMode();
+      return;
+    }
     this.primitiveCallbacks.onPrimitiveCommit(this.selectionSourceCells, 2);
     this.exitSelectionMode();
   }
@@ -1349,10 +1379,110 @@ export class FieldEditController {
     return this.commitSelectionMove();
   }
 
+  /** Stores the selection as it is on screen (including a pending move) in the field clipboard. */
+  copySelection(): void {
+    const state = useMazeStore.getState();
+    if (!this.clipboardAvailable(state)) return;
+    if (!this.selectionPreviewVisible || this.selectionCells.length === 0) {
+      notifyNothingSelected();
+      return;
+    }
+    state.setFieldClipboard(this.selectionCells.map(([x, y]) => [x, y]));
+  }
+
+  /** Shows the clipboard as a pending selection move; a commit adds its cells to the field. */
+  paste(): void {
+    const state = useMazeStore.getState();
+    if (!this.clipboardAvailable(state)) return;
+    const clipboard = state.fieldClipboard;
+    if (clipboard === null || clipboard.length === 0) {
+      notifyNothingCopied();
+      return;
+    }
+    if (this.selectionPreviewVisible && !this.commitSelectionMove()) return;
+    this.abortUnfinishedProcesses();
+    useMazeStore.getState().setFieldOperation("select");
+    const after = useMazeStore.getState();
+    const field = after.floorFields[after.activeFloorId];
+    const cfg = field.fieldConfig;
+    const placement = this.pastePlacement(clipboard, cfg);
+    this.showSelection(placement.cells, cfg.tessellation.kind, cfg);
+    this.selectionSourceCells = clipboard.map(([x, y]) => [x, y]);
+    this.selectionPendingVector = placement.vector;
+    this.pasteMode = true;
+    this.activePrimitive = field.fieldPrimitive;
+    this.updateSelectionPreview();
+  }
+
+  private clipboardAvailable(state: ReturnType<typeof useMazeStore.getState>): boolean {
+    const field = state.floorFields[state.activeFloorId];
+    return state.openCard === "field_setup"
+      && field.fieldEditMode === "custom"
+      && state.backgroundAutoFillPreview === null
+      && fieldClipboardSupported(field.fieldConfig.tessellation);
+  }
+
+  /** Drops every half-finished tool state: polygon, parallelogram, symmetry setup, topology pick, shape drag. */
+  private abortUnfinishedProcesses(): void {
+    this.cancelPointerGesture();
+    this.topologyDrag = null;
+    const state = useMazeStore.getState();
+    if (state.topologyPick !== null) state.startTopologyPick(null);
+    if (state.symmetryAxisPoints.length > 0 || state.symmetryPolygon.length > 0) {
+      state.resetSymmetryAxis();
+      state.resetSymmetryPolygon();
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.([], []);
+    }
+    this.clearPolygon();
+    this.clearParallelogram();
+    this.gestureActive = false;
+  }
+
+  /** Clipboard cells translated so the top-left one sits under the cursor (or the view center). */
+  private pastePlacement(clipboard: [number, number][], cfg: FieldConfig): { cells: [number, number][]; vector: [number, number] } {
+    const centers = clipboard.map(([x, y]) => getCartesian(x, y, cfg));
+    const minX = Math.min(...centers.map(([x]) => x));
+    const maxY = Math.max(...centers.map(([, y]) => y));
+    let anchor = centers[0];
+    let best = Infinity;
+    for (const center of centers) {
+      const distance = (center[0] - minX) ** 2 + (center[1] - maxY) ** 2;
+      if (distance < best) { best = distance; anchor = center; }
+    }
+    const target = this.pasteTargetCanvas();
+    const grid = target ? this.toGrid(target.x, target.y) : null;
+    if (grid) {
+      const candidates: [number, number][] = [];
+      for (let dx = -PASTE_SNAP_RADIUS; dx <= PASTE_SNAP_RADIUS; dx++) {
+        for (let dy = -PASTE_SNAP_RADIUS; dy <= PASTE_SNAP_RADIUS; dy++) candidates.push([dx, dy]);
+      }
+      candidates.sort((a, b) => a[0] ** 2 + a[1] ** 2 - b[0] ** 2 - b[1] ** 2);
+      for (const [dx, dy] of candidates) {
+        const center = getCartesian(grid.x + dx, grid.y + dy, cfg);
+        const vector: [number, number] = [center[0] - anchor[0], center[1] - anchor[1]];
+        try {
+          return { cells: translateFieldCells(cfg.tessellation, clipboard, vector), vector };
+        } catch (error) {
+          if (!isFieldOpError(error)) throw error;
+        }
+      }
+    }
+    return { cells: clipboard.map(([x, y]) => [x, y]), vector: [0, 0] };
+  }
+
+  private pasteTargetCanvas(): { x: number; y: number } | null {
+    if (this.pointerInsideCanvas && this.lastPointerCanvas) return this.lastPointerCanvas;
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    return Number.isFinite(width) && Number.isFinite(height) ? { x: width / 2, y: height / 2 } : null;
+  }
+
   private clearSelectionPreview(): void {
     this.primitiveCallbacks.onSelectionMovePreview?.([], []);
     this.clearPreview();
     this.selectionPreviewVisible = false;
+    this.pasteMode = false;
+    useMazeStore.getState().setFieldHasSelection(false);
     this.selectionSourceCells = [];
     this.selectionCells = [];
     this.selectionPendingVector = [0, 0];
@@ -1364,6 +1494,10 @@ export class FieldEditController {
 
   destroy(): void {
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
+    this.canvas.removeEventListener("pointerenter", this.onPointerEnter);
+    this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    registerFieldClipboardHost(null);
+    useMazeStore.getState().setFieldHasSelection(false);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
   }

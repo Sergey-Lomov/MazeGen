@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { useLocale } from "../../i18n/useLocale";
 import { useMazeStore } from "../../store/mazeStore";
-import { notificationMessage } from "../../notifications/notificationRegistry";
+import { getNotificationCode, notificationMessage } from "../../notifications/notificationRegistry";
 import {
   ERROR_VISIBLE_CARDS,
   closeAllErrors,
@@ -95,7 +95,7 @@ function NoticeZone({ notices, queuedCount }: { notices: NoticeItem[]; queuedCou
       onMouseLeave={() => setNoticeZonePaused(false)}
     >
       {notices.map((n) => (
-        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle("warning") }}>
+        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle(getNotificationCode(n.code)?.severity ?? "warning") }}>
           <span style={styles.message}>{notificationMessage(n.code, n.params)}</span>
           <CloseButton onClick={() => closeNotice(n.id)} />
           <CountdownBar key={n.expiresAt} notice={n} paused={paused} />
