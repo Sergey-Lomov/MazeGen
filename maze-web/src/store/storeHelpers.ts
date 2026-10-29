@@ -19,6 +19,16 @@ export function activeFloorField(state: MazeState): FloorFieldConfig {
   return state.floorFields[state.activeFloorId];
 }
 
+/** `floorTopology` without the given floors' glues. Glues belong to the custom field they were
+ * drawn on, so a floor leaving custom editing drops them. Returns the same object when there is
+ * nothing to drop. */
+export function withoutFloorTopology(floorTopology: MazeState["floorTopology"], floorIds: string[]): MazeState["floorTopology"] {
+  if (!floorIds.some((id) => floorTopology[id] !== undefined)) return floorTopology;
+  const next = { ...floorTopology };
+  for (const id of floorIds) delete next[id];
+  return next;
+}
+
 /** Replaces the active floor's FloorFieldConfig, keyed by `state.activeFloorId`. */
 export function withActiveFloorField(state: MazeState, patch: Partial<FloorFieldConfig>): { floorFields: Record<string, FloorFieldConfig> } {
   return {

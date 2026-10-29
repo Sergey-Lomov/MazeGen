@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
+import { Switch } from "../Switch";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -15,10 +16,11 @@ export function CopyFloorDialog({ onClose }: Props) {
   const copyFloorField = useMazeStore((s) => s.copyFloorField);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [includeTopology, setIncludeTopology] = useState(true);
 
   function handleConfirm() {
     if (!selectedId) return;
-    copyFloorField(selectedId);
+    copyFloorField(selectedId, includeTopology);
     onClose();
   }
 
@@ -44,6 +46,10 @@ export function CopyFloorDialog({ onClose }: Props) {
             </button>
           );
         })}
+      </div>
+      <div style={styles.toggleRow}>
+        <span>{m["field.copy_floor_include_topology"]()}</span>
+        <Switch checked={includeTopology} onChange={setIncludeTopology} ariaLabel={m["field.copy_floor_include_topology"]()} />
       </div>
       <div style={styles.footer}>
         <Button variant="secondary" dialogAction layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
@@ -89,6 +95,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemLabel: {
     flex: 1,
+  },
+  toggleRow: {
+    ...typography.control,
+    color: ui.text.secondary,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: `${dialogSpacing.paddingY}px ${dialogSpacing.paddingX}px`,
   },
   footer: {
     display: "flex",

@@ -711,6 +711,7 @@
   "field.cell": "{count} cell",
   "field.cells": "{count} cells",
   "field.copy_floor": "Copy floor",
+  "field.copy_floor_include_topology": "Include topology",
   "field.copy_floor_title": "Copy floor",
   "field.different_shapes": "Different floor shapes",
   "field.print_sizing.open": "Calculate for print",

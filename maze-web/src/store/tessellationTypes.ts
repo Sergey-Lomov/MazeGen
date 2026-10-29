@@ -42,7 +42,7 @@ export type PendingFieldEdit =
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
-  | { kind: "copyFloorField"; sourceFloorId: string }
+  | { kind: "copyFloorField"; sourceFloorId: string; includeTopology: boolean }
   | { kind: "applyTopologyOp"; op: import("../wasm/mazeService").TopologyOp };
 
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
@@ -196,7 +196,7 @@ export interface FloorFieldsActions {
   applySymmetry: () => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
-  copyFloorField: (sourceFloorId: string) => void;
+  copyFloorField: (sourceFloorId: string, includeTopology?: boolean) => void;
   /** Replaces every other floor's field config with a copy of the active floor's config. */
   copyCurrentFloorFieldToAll: () => void;
   applyBackgroundAutoFill: (points: Set<number>) => void;

@@ -52,6 +52,23 @@ describe("CopyFloorDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("includes topology by default and skips it when the switch is turned off", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [FLOOR_3_ID]: topology } });
+    const { unmount } = render(<CopyFloorDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Floor 3"));
+    fireEvent.click(screen.getByText("Confirm"));
+    expect(useMazeStore.getState().floorTopology[FLOOR_2_ID]).toEqual(topology);
+    unmount();
+
+    useMazeStore.setState({ floorTopology: { [FLOOR_3_ID]: topology } });
+    render(<CopyFloorDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Floor 3"));
+    fireEvent.click(screen.getByLabelText("Include topology"));
+    fireEvent.click(screen.getByText("Confirm"));
+    expect(useMazeStore.getState().floorTopology[FLOOR_2_ID]).toBeUndefined();
+  });
+
   it("clicking the disabled active-floor row does not change the selection", () => {
     render(<CopyFloorDialog onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("Floor 2"));
