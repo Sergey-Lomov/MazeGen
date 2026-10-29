@@ -21,6 +21,55 @@ beforeEach(() => {
   });
 });
 
+describe("setFieldOperation", () => {
+  function setActiveField(patch: Record<string, unknown>) {
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floorFields: { ...state.floorFields, [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], ...patch } },
+    });
+  }
+
+  it("defaults the primitive to rectangle when entering select mode", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("select");
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldOperation).toBe("select");
+    expect(field.fieldPrimitive).toBe("rectangle");
+  });
+
+  it("clears pending symmetry state when entering select mode from the symmetry tool", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "symmetry" });
+    useMazeStore.setState({ symmetryAxisPoints: [{ x: 0, y: 0 }], symmetryPolygon: [{ x: 0, y: 0 }], symmetryPolygonFinished: true });
+    useMazeStore.getState().setFieldOperation("select");
+    const state = useMazeStore.getState();
+    expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("rectangle");
+    expect(state.symmetryAxisPoints).toEqual([]);
+    expect(state.symmetryPolygon).toEqual([]);
+    expect(state.symmetryPolygonFinished).toBe(false);
+  });
+
+  it("keeps the primitive when select mode is already active", () => {
+    setActiveField({ fieldOperation: "select", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("select");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
+  });
+
+  it("ignores operation changes while a background auto-fill preview is active", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "circle" });
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set() });
+    useMazeStore.getState().setFieldOperation("select");
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldOperation).toBe("add");
+    expect(field.fieldPrimitive).toBe("circle");
+  });
+
+  it("keeps the primitive when entering add mode", () => {
+    setActiveField({ fieldOperation: "select", fieldPrimitive: "circle" });
+    useMazeStore.getState().setFieldOperation("add");
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
+  });
+});
+
 describe("copyFloorField", () => {
   it("clears downstream results when the field shape changes", () => {
     useMazeStore.setState({

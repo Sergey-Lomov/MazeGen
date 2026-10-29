@@ -1119,6 +1119,20 @@ describe("FieldEditController copy and paste", () => {
     expect(cells[0][1]).toBe(cells[1][1]);
   });
 
+  it("keeps the current tool when pasting from another mode", () => {
+    selectTwoCells();
+    press("KeyC");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    useMazeStore.getState().setFieldOperation("add");
+    useMazeStore.getState().setFieldPrimitive("circle");
+
+    press("KeyV");
+
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.fieldOperation).toBe("select");
+    expect(field.fieldPrimitive).toBe("circle");
+  });
+
   it("cancels the whole paste with Escape", () => {
     const { commits } = selectTwoCells();
     press("KeyC");

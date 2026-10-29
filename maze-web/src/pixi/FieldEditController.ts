@@ -1401,7 +1401,9 @@ export class FieldEditController {
     }
     if (this.selectionPreviewVisible && !this.commitSelectionMove()) return;
     this.abortUnfinishedProcesses();
+    const toolBeforePaste = state.floorFields[state.activeFloorId].fieldPrimitive;
     useMazeStore.getState().setFieldOperation("select");
+    if (toolBeforePaste !== "symmetry") useMazeStore.getState().setFieldPrimitive(toolBeforePaste);
     const after = useMazeStore.getState();
     const field = after.floorFields[after.activeFloorId];
     const cfg = field.fieldConfig;
