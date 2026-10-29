@@ -328,7 +328,10 @@ The Modes section above Tools controls the operation for every primitive. Add in
 primitive's cells, Remove deletes them, and Select previews only the existing field cells without
 changing the field. In Add and Remove modes, the right mouse button performs the opposite
 operation; right mouse input is ignored in Select mode. The Symmetry tool remains visible
-but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
+but is disabled in Select mode because it only adds or removes reflected cells. Entering Select
+mode from another mode resets the active tool to Rectangle and clears any pending Symmetry
+axis/polygon state; re-selecting Select while it is already active keeps the current tool. Paste
+also enters Select mode but keeps the current tool (Rectangle if it was Symmetry). The polygon tool is a single tool;
 its operation also comes from the active mode.
 
 Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`.

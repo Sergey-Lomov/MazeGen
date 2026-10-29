@@ -276,13 +276,13 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldOperation: (operation) => set((state) => {
     if (state.backgroundAutoFillPreview !== null) return {};
     const field = activeFloorField(state);
-    const selectingWithSymmetry = operation === "select" && field.fieldPrimitive === "symmetry";
+    const enteringSelect = operation === "select" && field.fieldOperation !== "select";
     return {
       ...withActiveFloorField(state, {
         fieldOperation: operation,
-        ...(selectingWithSymmetry ? { fieldPrimitive: "point" } : {}),
+        ...(enteringSelect ? { fieldPrimitive: "rectangle" } : {}),
       }),
-      ...(selectingWithSymmetry
+      ...(enteringSelect && field.fieldPrimitive === "symmetry"
         ? { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }
         : {}),
     };
