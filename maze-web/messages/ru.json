@@ -723,6 +723,7 @@
   "field.cell": "{count} ячейка",
   "field.cells": "{count} ячеек",
   "field.copy_floor": "Скопировать этаж",
+  "field.copy_floor_include_topology": "Включая топологию",
   "field.copy_floor_title": "Скопировать этаж",
   "field.different_shapes": "Разные формы этажей",
   "field.print_sizing.open": "Рассчитать под печать",

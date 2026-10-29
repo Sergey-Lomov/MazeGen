@@ -12,7 +12,7 @@ import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFie
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
-  buildResetDownstreamState,
+  buildResetDownstreamState, withoutFloorTopology,
 } from "../storeHelpers";
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
@@ -21,6 +21,22 @@ function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) 
 
 function cloneFloorField(field: FloorFieldConfig): FloorFieldConfig {
   return structuredClone(field);
+}
+
+// Topology values are immutable wire data, so targets share the source's object. A source without
+// a topology clears the targets' (the copy must not keep stale seams of the replaced field).
+function topologyCopiedTo(
+  floorTopology: MazeState["floorTopology"],
+  sourceFloorId: string,
+  targetIds: string[],
+): MazeState["floorTopology"] {
+  const next = { ...floorTopology };
+  const source = floorTopology[sourceFloorId];
+  for (const id of targetIds) {
+    if (source) next[id] = source;
+    else delete next[id];
+  }
+  return next;
 }
 
 function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () => Partial<MazeState>) {
@@ -39,6 +55,7 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
     : [state.activeFloorId];
   const targetIdSet = new Set(targetIds);
   const floorFields = { ...state.floorFields };
+  const leftCustomIds: string[] = [];
   let derivedForActive: ReturnType<typeof deriveTessellationFromConfig> | null = null;
 
   for (const floor of state.floors) {
@@ -64,6 +81,7 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
       fieldPoints: derived.fieldPoints,
       fieldDirty: true,
     };
+    if (field.isEditingField && !derived.isEditingField) leftCustomIds.push(floor.id);
     if (floor.id === state.activeFloorId) derivedForActive = derived;
   }
 
@@ -75,7 +93,7 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
     tessellationFingerprint(derivedForActive.kind, derivedForActive.params) !==
     tessellationFingerprint(state.tessellationKind, state.tessellationParams);
   return {
-    ...(configChanged ? { floorTopology: {} } : {}),
+    floorTopology: configChanged ? {} : withoutFloorTopology(state.floorTopology, leftCustomIds),
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
@@ -162,6 +180,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const cfg = buildPredefinedConfig(tessellationOf(state), field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
+      ...(field.isEditingField ? { floorTopology: withoutFloorTopology(state.floorTopology, [state.activeFloorId]) } : {}),
       ...buildResetDownstreamState(),
       backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),
@@ -329,13 +348,18 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     };
   })),
 
-  copyFloorField: (sourceFloorId) => set((state) => {
+  copyFloorField: (sourceFloorId, includeTopology = true) => set((state) => {
     const source = state.floorFields[sourceFloorId];
     if (!source) return {};
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId } };
+    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology } };
     return {
       ...withActiveFloorField(state, { ...cloneFloorField(source), fieldDirty: true }),
+      floorTopology: includeTopology
+        ? topologyCopiedTo(state.floorTopology, sourceFloorId, [state.activeFloorId])
+        : activeFloorField(state).isEditingField && !source.isEditingField
+          ? withoutFloorTopology(state.floorTopology, [state.activeFloorId])
+          : state.floorTopology,
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
@@ -345,6 +369,11 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const source = state.floorFields[state.activeFloorId];
     if (!source || state.floors.length <= 1 || state.backgroundAutoFillPreview !== null) return {};
     return {
+      floorTopology: topologyCopiedTo(
+        state.floorTopology,
+        state.activeFloorId,
+        state.floors.map((floor) => floor.id).filter((id) => id !== state.activeFloorId),
+      ),
       floorFields: Object.fromEntries(state.floors.map((floor) => [
         floor.id,
         floor.id === state.activeFloorId
@@ -400,7 +429,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applySymmetry": get().applySymmetry(); break;
-      case "copyFloorField": get().copyFloorField(pending.sourceFloorId); break;
+      case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology); break;
       case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
     }
   },

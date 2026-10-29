@@ -66,10 +66,88 @@ describe("copyFloorField", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldDirty).toBe(true);
   });
 
+  it("copies the source topology by default and clears the target's when the source has none", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [OTHER_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toEqual(topology);
+
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
+  it("leaves the target's topology alone when includeTopology is false", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+  });
+
+  it("carries includeTopology through the dirty-maze confirmation", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology }, mazeDirty: true });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().fieldEditConfirmation)
+      .toEqual({ kind: "copyFloorField", sourceFloorId: OTHER_FLOOR_ID, includeTopology: false });
+    useMazeStore.getState().confirmFieldEdit();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+  });
+
+  it("without topology, still drops glues when a custom floor receives a standard one", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({
+      floorTopology: { [TEST_FLOOR_ID]: topology },
+      floorFields: {
+        ...useMazeStore.getState().floorFields,
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[1, 2]] }), isEditingField: true,
+        }),
+      },
+    });
+    useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID, false);
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
   it("is a no-op for an unknown source floor id", () => {
     const before = useMazeStore.getState().floorFields;
     useMazeStore.getState().copyFloorField("not_a_real_id");
     expect(useMazeStore.getState().floorFields).toBe(before);
+  });
+});
+
+describe("setFieldEditMode", () => {
+  it("drops the floor's glues when switching from a custom field to the standard one", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({
+      floorTopology: { [TEST_FLOOR_ID]: topology, [OTHER_FLOOR_ID]: topology },
+    });
+    useMazeStore.getState().setFieldEditMode("custom");
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+    useMazeStore.getState().setFieldEditMode("default");
+    const { floorTopology } = useMazeStore.getState();
+    expect(floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+    expect(floorTopology[OTHER_FLOOR_ID]).toBe(topology);
+  });
+
+  it("applies the same drop through the dirty-maze confirmation", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().setFieldEditMode("custom");
+    useMazeStore.setState({ mazeDirty: true });
+    useMazeStore.getState().setFieldEditMode("default");
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBe(topology);
+    useMazeStore.getState().confirmFieldEdit();
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
+  });
+
+  it("drops the glues when setFieldConfig turns a custom floor into a standard shape", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().setFieldEditMode("custom");
+    useMazeStore.getState().setFieldConfig(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }));
+    expect(useMazeStore.getState().floorTopology[TEST_FLOOR_ID]).toBeUndefined();
   });
 });
 
@@ -108,6 +186,17 @@ describe("copyCurrentFloorFieldToAll", () => {
     expect(floorFields[OTHER_FLOOR_ID].freeFieldPoints.square).not.toBe(floorFields.floor_third.freeFieldPoints.square);
     expect(floorFields[OTHER_FLOOR_ID].fieldDirty).toBe(true);
     expect(floorFields[TEST_FLOOR_ID].fieldDirty).toBe(false);
+  });
+
+  it("syncs the active floor's topology to every other floor, dropping topology the source lacks", () => {
+    const topology = { fingerprint: "square{}", folds: [], groups: [] };
+    useMazeStore.setState({ floorTopology: { [TEST_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyCurrentFloorFieldToAll();
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toEqual(topology);
+
+    useMazeStore.setState({ floorTopology: { [OTHER_FLOOR_ID]: topology } });
+    useMazeStore.getState().copyCurrentFloorFieldToAll();
+    expect(useMazeStore.getState().floorTopology[OTHER_FLOOR_ID]).toBeUndefined();
   });
 
   it("clears generated results", () => {
