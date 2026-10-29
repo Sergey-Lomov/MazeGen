@@ -111,6 +111,7 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
     const { [floorId]: _previous, ...others } = state.floorTopology;
     set({
       floorTopology: topology.folds.length === 0 ? others : { ...others, [floorId]: topology },
+      ...withoutStaleCuts(state, floorId, topology.groups.map((group) => group.id)),
       ...withActiveFloorField(state, { fieldDirty: true }),
       topologyGlueError: null,
       topologyPanelError: null,
@@ -136,6 +137,20 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
 
   removeTopologyGroup: (id) => get().applyTopologyOp({ kind: "remove_group", id }),
 });
+
+/** Export cut lines (GitHub issue #859) of the floor's glues that the edit removed. A new glue takes `max + 1` as its
+ * id, so a stale `{floorId}:{group}` key would attach the old line to an unrelated glue. Part of the edit's own update,
+ * not a store subscriber: a `setState` inside a subscriber reaches the other subscribers out of order. */
+function withoutStaleCuts(state: MazeStore, floorId: string, groups: number[]): Partial<MazeStore> {
+  const { pngExportSettings } = state;
+  const floor = pngExportSettings.cuts.lines[floorId];
+  if (!floor) return {};
+  const kept = Object.entries(floor).filter(([group]) => groups.includes(Number(group)));
+  if (kept.length === Object.keys(floor).length) return {};
+  const { [floorId]: _removed, ...others } = pngExportSettings.cuts.lines;
+  const lines = kept.length === 0 ? others : { ...others, [floorId]: Object.fromEntries(kept) };
+  return { pngExportSettings: { ...pngExportSettings, cuts: { ...pngExportSettings.cuts, lines } } };
+}
 
 /** The two picked runs as boundary faces, or `null` while either is incomplete. */
 function pickedRuns(state: MazeStore): { a: WireFoldEnd[]; b: WireFoldEnd[] } | null {

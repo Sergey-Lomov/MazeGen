@@ -15,7 +15,8 @@ import { ImageExportRenderer } from "./imageExport/ImageExportRenderer";
 import { ExportFrameOverlay } from "./imageExport/ExportFrameOverlay";
 import { PngExporter } from "./imageExport/PngExporter";
 import { fitFieldViewport } from "./FieldEditorOverlay";
-import { fitMazeViewport } from "./viewportFit";
+import { fitBoundsViewport, fitMazeViewport } from "./viewportFit";
+import { NO_MARGIN, resolveActiveCutPlan } from "./imageExport/exportContent";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
@@ -24,6 +25,8 @@ import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
 import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
+import { CutLineDragController, hasManualCutLine } from "./imageExport/CutLineDragController";
+import { CutLinesOverlay } from "./imageExport/CutLinesOverlay";
 import { RenderScheduler } from "./renderScheduler";
 import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
@@ -97,6 +100,9 @@ export class MazeScene {
   private interaction: SceneInteraction;
   private backgroundImageController: BackgroundImageController;
   private floorLabelDragController: FloorLabelDragController;
+  private cutLineDragController: CutLineDragController;
+  private cutLinesOverlay: CutLinesOverlay;
+  private cutLinesContainer: Container;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
@@ -130,6 +136,7 @@ export class MazeScene {
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
     this.imageExportContainer = new Container();
+    this.cutLinesContainer = new Container();
     // Deliberately NOT in syncedLayers — hosts ExportFrameOverlay, which draws in screen space.
     // Print mode's frame is a fixed rect (the sheet stays put while the maze content underneath
     // keeps panning/zooming with the normal viewport); digital mode's frame instead recomputes its
@@ -144,6 +151,7 @@ export class MazeScene {
       this.tessellationContainer,
       this.analyticsContainer,
       this.imageExportContainer,
+      this.cutLinesContainer,
     ];
 
     this.app.stage.addChild(this.viewport);
@@ -175,8 +183,15 @@ export class MazeScene {
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
     this.backgroundImageController = new BackgroundImageController(() => this.viewport);
     this.floorLabelDragController = new FloorLabelDragController(() => this.viewport);
+    this.cutLineDragController = new CutLineDragController(() => this.viewport, {
+      start: (x, y) => this.interaction.defaultPan.begin(x, y),
+      move: (x, y) => this.interaction.defaultPan.move(x, y),
+      end: () => this.interaction.defaultPan.end(),
+    });
+    this.cutLinesOverlay = new CutLinesOverlay(this.cutLinesContainer);
 
     this.viewportListeners = [
+      this.cutLinesOverlay,
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
@@ -279,6 +294,7 @@ export class MazeScene {
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
     if (st.floorLabelDrag !== null) return this.floorLabelDragController;
+    if (hasManualCutLine(st)) return this.cutLineDragController;
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }
@@ -618,7 +634,15 @@ export class MazeScene {
     const { nodes, previewFieldConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
     const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
-    const { x, y, scale } = showsMaze
+    const state = useMazeStore.getState();
+    const activeMode = state.activeRenderMode;
+    const cutBounds = resolveActiveCutPlan(
+      state,
+      () => (activeMode ? this.imageExportRenderer.getModeRenderer(activeMode)?.getRequiredExportMargin() : undefined) ?? NO_MARGIN,
+    )?.bounds;
+    const { x, y, scale } = cutBounds
+      ? fitBoundsViewport(cutBounds, this.app.screen.width, this.app.screen.height)
+      : showsMaze
       ? fitMazeViewport(
         floors.map((f) => floorFields[f.id].fieldConfig),
         nodes,
@@ -652,6 +676,7 @@ export class MazeScene {
     this.analyticsRenderer.destroy();
     this.imageExportRenderer.destroy();
     this.exportFrameOverlay.destroy();
+    this.cutLinesOverlay.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

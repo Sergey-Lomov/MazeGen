@@ -21,6 +21,7 @@ import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import type { RenderPass } from "./modeRendererFactory";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
@@ -235,6 +236,12 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   private readonly grid: GridRenderer;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+  private shown = true;
+  private showGrid = false;
+  private pass: RenderPass = "full";
+  /** Everything the mode draws above the backdrop. A cut sheet (GitHub issue #859) draws the backdrop once, over the
+   *  whole frame, and the content once per copy, clipped to the sheet's region. */
+  readonly content: Container;
 
   constructor(container: Container) {
     this.backgroundContainer = new Container();
@@ -245,22 +252,40 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
     this.gridContainer = new Container();
     container.addChild(this.gridContainer);
     this.grid = new GridRenderer(this.gridContainer);
+
+    this.content = new Container();
+    container.addChild(this.content);
   }
 
   setVisible(visible: boolean): void {
+    this.shown = visible;
+    this.applyVisibility();
+  }
+
+  setPass(pass: RenderPass): void {
+    this.pass = pass;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    this.content.visible = this.pass !== "backdrop";
+    const visible = this.shown && this.pass !== "content";
     this.backgroundContainer.visible = visible;
-    this.gridContainer.visible = visible;
+    this.gridContainer.visible = visible && this.showGrid;
   }
 
   /** Redraws the background rect + (if `showGrid`) the grid against the current viewport — call on
    *  both a settings/data change (`renderAll`) and a pan/zoom-only change (`onViewportChanged`),
    *  same dual-trigger convention `VectorByWallsRenderer` originally had inlined. */
   render(settings: TSettings, cfg: FieldConfig): void {
+    this.showGrid = settings.showGrid;
+    // A content copy of a cut sheet never shows the backdrop, so drawing it would be wasted work on every pan and zoom.
+    if (this.pass === "content") return;
     const { x, y, w, h } = viewportWorldRect(this.viewport);
     this.background.clear();
     this.background.rect(x, y, w, h).fill({ color: settings.background });
 
-    this.gridContainer.visible = settings.showGrid;
+    this.applyVisibility();
     if (settings.showGrid) this.grid.render({ viewport: this.viewport, color: settings.gridColor }, cfg);
   }
 
@@ -329,6 +354,7 @@ export class VectorByWallsRenderer {
    *  `computeVectorByWallsWarnings`. */
   private readonly warningHighlight: ExportWarningHighlight<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
 
+  private renderPass: RenderPass = "full";
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
 
@@ -355,8 +381,9 @@ export class VectorByWallsRenderer {
     verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
-  constructor(container: Container) {
-    this.backgroundGrid = new BackgroundGridLayer(container);
+  constructor(root: Container) {
+    this.backgroundGrid = new BackgroundGridLayer(root);
+    const container = this.backgroundGrid.content;
 
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
@@ -453,7 +480,8 @@ export class VectorByWallsRenderer {
     if (state.openCard === "image_export") {
       this.backgroundGrid.render(state.vectorByWallsSettings, state.activeFieldConfig);
       this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
-      if (state.vectorByWallsSettings.showInnerGrid) {
+      // Hidden content (the backdrop pass of a cut sheet) needs no grid of its own.
+      if (state.vectorByWallsSettings.showInnerGrid && this.renderPass !== "backdrop") {
         this.innerGrid.render(
           { viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor },
           state.activeFieldConfig,
@@ -498,6 +526,11 @@ export class VectorByWallsRenderer {
       [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
+  }
+
+  setRenderPass(pass: RenderPass): void {
+    this.renderPass = pass;
+    this.backgroundGrid.setPass(pass);
   }
 
   getBackgroundColor(): number {

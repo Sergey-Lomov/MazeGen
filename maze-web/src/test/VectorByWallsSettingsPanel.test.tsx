@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { VectorByWallsSettingsPanel } from "../components/features/VectorByWallsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -55,7 +55,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
-      gridColor: 0xffffff,
+      gridColor: 0xffffff, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
       showInnerGrid: false,
       innerGridColor: 0xffffff,
       floorColor: 0x2a2a2a,
@@ -186,7 +186,7 @@ describe("VectorByWallsSettingsPanel", () => {
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
-        background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
+        background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
@@ -1162,5 +1162,41 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_size"]())).toHaveLength(2);
+  });
+});
+
+describe("Topology section (cut lines, GitHub issue #859)", () => {
+  const withGlues = () => useMazeStore.setState({
+    floorTopology: { [useMazeStore.getState().activeFloorId]: { groups: [{ id: 0 }] } },
+    vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, topology: true },
+  } as never);
+
+  it("is hidden for a floor without glues", () => {
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the lines and glue-colour toggles, but not the colour while lines take their glue's colour", () => {
+    withGlues();
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getByText(m["image_export.topology.show_cut_lines"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.topology.cut_lines_glue_color"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.topology.cut_lines_color"]())).not.toBeInTheDocument();
+  });
+
+  it("offers the single colour once the glue colour is off, and hides the rest once the lines are off", () => {
+    withGlues();
+    useMazeStore.getState().setVectorByWallsCutLinesGlueColor(false);
+    const { rerender } = render(<VectorByWallsSettingsPanel />);
+    expect(screen.getByText(m["image_export.topology.cut_lines_color"]())).toBeInTheDocument();
+    act(() => useMazeStore.getState().setVectorByWallsShowCutLines(false));
+    rerender(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.topology.cut_lines_glue_color"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.topology.cut_lines_color"]())).not.toBeInTheDocument();
+  });
+
+  it("starts with the lines shown, in the glue colour", () => {
+    const { showCutLines, cutLinesGlueColor, cutLinesColor } = useMazeStore.getState().vectorByWallsSettings;
+    expect({ showCutLines, cutLinesGlueColor, cutLinesColor }).toEqual({ showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080 });
   });
 });

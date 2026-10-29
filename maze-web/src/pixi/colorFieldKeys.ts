@@ -2,7 +2,7 @@
  *  from `projectColorsSelector.ts` (which owns the localized labels) so the renderer/i18n-agnostic
  *  `exportWarnings.ts` can name the fields a warning concerns without pulling in paraglide. */
 export const STATIC_COLOR_FIELD_KEYS = [
-  "bgFill", "bgGrid", "innerGrid",
+  "bgFill", "bgGrid", "innerGrid", "cutLines",
   "corridorFill",
   "tilesFloor", "tilesWall",
   "oneWaysMarker",

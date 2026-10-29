@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
@@ -492,6 +492,14 @@ export function validateLinks<P extends string>(v: unknown, path: string, fallba
 /** Lenient — every field falls back to its own default when absent or malformed, same recovery
  * pattern `validateSplitGeneration` uses, since this whole section is optional (absent entirely
  * for project files saved before GitHub issue #295). */
+function cutLineStyle(obj: Record<string, unknown> | null, d: CutLineStyleFields): CutLineStyleFields {
+  return {
+    showCutLines: optBool(obj, "showCutLines", d.showCutLines),
+    cutLinesGlueColor: optBool(obj, "cutLinesGlueColor", d.cutLinesGlueColor),
+    cutLinesColor: optNumber(obj, "cutLinesColor", d.cutLinesColor),
+  };
+}
+
 export function validateVectorByWallsSettings(v: unknown, path: string, links: ParamLink<VectorByWallsParamPath>[]): VectorByWallsSettings {
   const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
   if (v == null) return { ...d, links };
@@ -507,6 +515,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     showInnerGrid: optBool(obj, "showInnerGrid", d.showInnerGrid),
     innerGridColor: optNumber(obj, "innerGridColor", d.innerGridColor),
+    ...cutLineStyle(obj, d),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
@@ -637,6 +646,40 @@ export function validatePrintExportSettings(v: unknown, path: string): PrintExpo
   };
 }
 
+const KNOWN_CUT_MODES = ["none", "auto", "manual"] as const;
+
+/** `v` as a plain object, or an empty one when it is anything else (an array included). */
+function asRecord(v: unknown): Record<string, unknown> {
+  return v != null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/** Lenient like its siblings: a project predating cut lines, or an entry that does not parse, falls
+ * back to the default (no cuts); a malformed entry is dropped, the others are kept. */
+export function validateCutExportSettings(v: unknown, path: string): CutExportSettings {
+
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  const lines: Record<string, Record<number, CutLineSetting>> = {};
+  for (const [floorId, rawFloor] of Object.entries(asRecord(obj?.lines))) {
+    const floor: Record<number, CutLineSetting> = {};
+    for (const [group, raw] of Object.entries(asRecord(rawFloor))) {
+      if (!/^\d+$/.test(group)) continue;
+      const entry = asRecord(raw);
+      const mode = optEnum(entry, "mode", KNOWN_CUT_MODES, "none");
+      if (mode === "none") continue;
+      floor[Number(group)] = { mode, offset: Math.min(Math.max(optNumber(entry, "offset", 0), -1), 1) };
+    }
+    if (Object.keys(floor).length > 0) lines[floorId] = floor;
+  }
+  return { lines };
+}
+
 export function validatePngExportSettings(v: unknown, path: string): PngExportSettings {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
@@ -650,6 +693,7 @@ export function validatePngExportSettings(v: unknown, path: string): PngExportSe
     outputMode: optEnum(obj, "outputMode", KNOWN_OUTPUT_MODES, DEFAULT_PNG_EXPORT_SETTINGS.outputMode),
     digital: validateDigitalExportSettings(obj?.digital, `${path}.digital`),
     print: validatePrintExportSettings(obj?.print, `${path}.print`),
+    cuts: validateCutExportSettings(obj?.cuts, `${path}.cuts`),
   };
 }
 
@@ -668,6 +712,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
+    ...cutLineStyle(obj, d),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),

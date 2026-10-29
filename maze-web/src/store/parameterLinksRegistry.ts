@@ -161,6 +161,7 @@ const G = {
   teleportMarkers: () => [m["image_export.vector_by_walls.section_teleports"](), m["image_export.vector_by_walls.teleport_subsection_edges"]()],
   teleportConnector: () => [m["image_export.vector_by_walls.section_teleports"](), m["image_export.vector_by_walls.teleport_subsection_connector"]()],
   markerIndex: () => [m["image_export.vector_by_walls.section_marker_index"]()],
+  topology: () => [m["topology.title"]()],
 
   verticalRoot: () => [m["image_export.vector_by_walls.section_vertical"]()],
   // `replaceTwoFloorElevatorsWithStairs`/`elevatorBadges.*` render identically regardless of
@@ -194,6 +195,13 @@ const G = {
   splits: () => [m["image_export.vector_by_walls.section_splits"]()],
   background: () => [m["image_export.vector_by_walls.section_background"]()],
   cells: () => [m["image_export.vector_by_corridors.section_corridors"]()],
+};
+
+/** The cut-line style (GitHub issue #859): the same three parameters in both render modes. */
+const CUT_LINE_PARAMS = {
+  showCutLines: descriptor("boolean", () => m["image_export.topology.show_cut_lines"](), G.topology, formatBoolean),
+  cutLinesGlueColor: descriptor("boolean", () => m["image_export.topology.cut_lines_glue_color"](), G.topology, formatBoolean),
+  cutLinesColor: descriptor("color", () => m["image_export.topology.cut_lines_color"](), G.topology),
 };
 
 /** "Vector by walls" mode's linkable parameter registry (GitHub issue #643) — one entry per field
@@ -372,6 +380,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
 
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
+  ...CUT_LINE_PARAMS,
   innerGridColor: descriptor("color", () => m["image_export.vector_by_walls.inner_grid_color"](), G.background),
   floorColor: descriptor("color", () => m["image_export.vector_by_walls.floor_color"](), G.tiles),
   wallColor: descriptor("color", () => m["image_export.vector_by_walls.wall_color"](), G.tiles),
@@ -580,6 +589,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
 
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
+  ...CUT_LINE_PARAMS,
   color: descriptor("color", () => m["image_export.vector_by_corridors.color"](), G.cells),
   thickness: descriptor("number", () => m["image_export.vector_by_corridors.thickness"](), G.cells),
   junctionRadius: descriptor("number", () => m["image_export.vector_by_corridors.junction_radius"](), G.cells),

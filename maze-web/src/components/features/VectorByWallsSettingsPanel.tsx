@@ -19,6 +19,7 @@ import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection } from "./TeleportSettingsSection";
 import { useExportPanelModel } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
+import { TopologySettingsSection } from "./TopologySettingsSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { TILE_SIZE } from "../../pixi/constants";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
@@ -57,6 +58,9 @@ export function VectorByWallsSettingsPanel() {
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
+  const setShowCutLines = useMazeStore((s) => s.setVectorByWallsShowCutLines);
+  const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByWallsCutLinesGlueColor);
+  const setCutLinesColor = useMazeStore((s) => s.setVectorByWallsCutLinesColor);
   const setShowInnerGrid = useMazeStore((s) => s.setVectorByWallsShowInnerGrid);
   const setInnerGridColor = useMazeStore((s) => s.setVectorByWallsInnerGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
@@ -1319,6 +1323,17 @@ export function VectorByWallsSettingsPanel() {
           )}
         </>
       )}
+
+      <TopologySettingsSection
+        expanded={isExpanded("topology")}
+        onToggle={() => toggleSection("topology")}
+        style={settings}
+        defaultColor={D.cutLinesColor}
+        priorityColors={[background, floor, wall, PC.bgGrid.at(settings.gridColor)]}
+        onShow={setShowCutLines}
+        onGlueColor={setCutLinesGlueColor}
+        onColor={setCutLinesColor}
+      />
 
     </div>
     </TextFitContextProvider>

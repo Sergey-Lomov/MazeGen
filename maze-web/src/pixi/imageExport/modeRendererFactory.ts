@@ -5,6 +5,9 @@ import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import type { ExportMargin } from "./exportMargins";
 
+/** See `ModeRenderer.setRenderPass`. */
+export type RenderPass = "full" | "backdrop" | "content";
+
 export interface ModeRenderer extends ViewportListener {
   /** World-space required margin around the maze's raw cell-boundary bounding box, per side —
    * pixel-accurate (GitHub issue #324 follow-up), measured off this mode's own already-rendered
@@ -16,6 +19,10 @@ export interface ModeRenderer extends ViewportListener {
    * `resolveBackgroundColor`. Used to pick a contrasting color for canvas-drawn UI (e.g. the
    * print-mode export frame) that must stay visible against it. */
   getBackgroundColor(): number;
+  /** Which part of the picture is drawn: the backdrop (background fill and grid, over the whole viewport), the
+   * content above it, or both. A cut sheet (GitHub issue #859) draws the backdrop once, unclipped, and the content
+   * once per copy, shifted and clipped to the sheet's region. */
+  setRenderPass(pass: RenderPass): void;
   destroy(): void;
 }
 

@@ -33,7 +33,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0x000000, showGrid: true, gridColor: 0x000000, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
+    background: 0x000000, showGrid: true, gridColor: 0x000000, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,

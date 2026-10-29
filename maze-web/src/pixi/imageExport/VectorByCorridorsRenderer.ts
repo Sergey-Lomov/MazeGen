@@ -26,7 +26,7 @@ import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
-import type { ModeRenderer } from "./modeRendererFactory";
+import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
 
@@ -152,8 +152,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   /** Contour tile shapes by key, kept across rebuilds so an edit only builds shapes it hasn't seen. */
   private readonly contourShapeCache: CorridorShapeCache = new Map();
 
-  constructor(container: Container) {
-    this.backgroundGrid = new BackgroundGridLayer(container);
+  constructor(root: Container) {
+    this.backgroundGrid = new BackgroundGridLayer(root);
+    const container = this.backgroundGrid.content;
 
     this.corridorsContainer = new Container();
     container.addChild(this.corridorsContainer);
@@ -282,6 +283,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
+  }
+
+  setRenderPass(pass: RenderPass): void {
+    this.backgroundGrid.setPass(pass);
   }
 
   getBackgroundColor(): number {

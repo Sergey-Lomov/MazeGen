@@ -37,7 +37,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -173,7 +173,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,

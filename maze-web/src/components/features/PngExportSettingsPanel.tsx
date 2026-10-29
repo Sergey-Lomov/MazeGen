@@ -18,6 +18,7 @@ import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
 import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
 import { resolveContentBoundsBasis } from "../../pixi/imageExport/exportMargins";
+import { resolveCutPlan, resolveExportContent } from "../../pixi/imageExport/exportContent";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
 import { Container } from "pixi.js";
@@ -135,16 +136,27 @@ export function PngExportSettingsPanel() {
     }
   }, [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings, cfg, nodes, edges, effStart, effFinish]);
 
-  const basis = activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell";
+  const topology = useMazeStore((s) => s.floorTopology[s.activeFloorId]);
+  const cuts = useMazeStore((s) => s.pngExportSettings.cuts);
+  // A glue with a cut line turns the sheet into the cut region (GitHub issue #859): its bounds
+  // replace the mode's own margin and basis in every fit below.
+  const cutPlan = useMemo(
+    () => resolveCutPlan({ cfg, floorId: activeFloorId, topology, cuts, floorNodes, margin: () => margin }),
+    [cfg, activeFloorId, topology, cuts, floorNodes, margin],
+  );
+  const { margin: fitMargin, basis } = useMemo(
+    () => resolveExportContent(cutPlan, margin, activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell"),
+    [cutPlan, margin, activeRenderMode],
+  );
 
   const digitalFit = useMemo(
-    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, margin, digital, basis) : null),
-    [cfg, floorNodes, margin, digital, basis],
+    () => (floorNodes.length > 0 ? computeDigitalExportFit(cfg, floorNodes, fitMargin, digital, basis) : null),
+    [cfg, floorNodes, fitMargin, digital, basis],
   );
 
   const printFit = useMemo(
-    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, margin, print, basis) : null),
-    [cfg, floorNodes, margin, print, basis],
+    () => (floorNodes.length > 0 ? computePrintExportFit(cfg, floorNodes, fitMargin, print, basis) : null),
+    [cfg, floorNodes, fitMargin, print, basis],
   );
 
   function handleCanvasModeChange(mode: PngCanvasMode) {
@@ -162,9 +174,9 @@ export function PngExportSettingsPanel() {
   // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
   useEffect(() => {
     if (!print.scaleAutoFit || floorNodes.length === 0) return;
-    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, margin, print, basis));
+    const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, fitMargin, print, basis));
     if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, margin, print, basis, setPrintScale]);
+  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, fitMargin, print, basis, setPrintScale]);
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];

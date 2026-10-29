@@ -26,6 +26,7 @@ export interface ProjectColorEntry {
 
 type SectionKey =
   | "background"
+  | "topology"
   | "corridor"
   | "tiles"
   | "one_ways"
@@ -45,6 +46,7 @@ type RoleKey =
   | "fill"
   | "grid"
   | "inner_grid"
+  | "cut_line"
   | "floor"
   | "wall"
   | "one_way_line"
@@ -66,6 +68,7 @@ type RoleKey =
 
 const sectionLabel: Record<SectionKey, () => string> = {
   background: m["color_picker.entry.section.background"],
+  topology: m["color_picker.entry.section.topology"],
   corridor: m["color_picker.entry.section.corridor"],
   tiles: m["color_picker.entry.section.tiles"],
   one_ways: m["color_picker.entry.section.one_ways"],
@@ -86,6 +89,7 @@ const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   fill: m["color_picker.entry.role.fill"],
   grid: m["color_picker.entry.role.grid"],
   inner_grid: m["color_picker.entry.role.inner_grid"],
+  cut_line: m["color_picker.entry.role.cut_line"],
   floor: m["color_picker.entry.role.floor"],
   wall: m["color_picker.entry.role.wall"],
   one_way_line: m["color_picker.entry.role.one_way_line"],
@@ -148,6 +152,7 @@ const STATIC_FIELDS = defineFields({
   bgFill: [["background"], "fill"],
   bgGrid: [["background"], "grid"],
   innerGrid: [["background"], "inner_grid"],
+  cutLines: [["topology"], "cut_line"],
 
   corridorFill: [["corridor"], "fill"],
 
