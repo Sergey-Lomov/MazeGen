@@ -243,7 +243,9 @@ impl<T: Tessellation> Topology<T> {
         if entries.len() == before {
             return Err(TopologyEditError::UnknownGroup(id));
         }
-        *self = self.candidate(field, current, entries)?;
+        // Activity is not checked: other groups may already be inactive (e.g. after the field
+        // changed), and removing a group must always stay possible.
+        *self = self.assemble(field, current, entries)?.topology;
         Ok(())
     }
 
@@ -284,6 +286,26 @@ impl<T: Tessellation> Topology<T> {
         current: &TessellationFingerprint,
         entries: Entries<T::CellId>,
     ) -> Result<Topology<T>, TopologyEditError<T::CellId>> {
+        let resolved = self.assemble(field, current, entries)?;
+        for (i, activity) in resolved.activity.iter().enumerate() {
+            if let super::FoldActivity::Inactive(reason) = activity {
+                return Err(TopologyEditError::Inactive {
+                    fold: FoldId(i),
+                    reason: *reason,
+                });
+            }
+        }
+        Ok(resolved.topology)
+    }
+
+    /// Builds the topology of `entries`, validates its structure and resolves fold activity
+    /// without rejecting inactive folds.
+    fn assemble(
+        &self,
+        field: &Field<T>,
+        current: &TessellationFingerprint,
+        entries: Entries<T::CellId>,
+    ) -> Result<ResolvedTopology<T>, TopologyEditError<T::CellId>> {
         let mut folds = Vec::new();
         let mut groups = Vec::new();
         for (id, new_folds) in entries {
@@ -305,17 +327,11 @@ impl<T: Tessellation> Topology<T> {
         candidate
             .validate(field.tessellation(), current)
             .map_err(TopologyEditError::Invalid)?;
-        let resolved =
-            ResolvedTopology::resolve(candidate, field.tessellation(), |c| field.contains(c));
-        for (i, activity) in resolved.activity.iter().enumerate() {
-            if let super::FoldActivity::Inactive(reason) = activity {
-                return Err(TopologyEditError::Inactive {
-                    fold: FoldId(i),
-                    reason: *reason,
-                });
-            }
-        }
-        Ok(resolved.topology)
+        Ok(ResolvedTopology::resolve(
+            candidate,
+            field.tessellation(),
+            |c| field.contains(c),
+        ))
     }
 }
 

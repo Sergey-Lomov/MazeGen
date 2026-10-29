@@ -589,14 +589,26 @@ mod tests {
     }
 
     #[test]
-    fn inactive_fold_blocks_edits_of_other_groups_but_not_its_own_removal() {
+    fn inactive_fold_blocks_glue_but_never_removal() {
         let built = torus();
         let mut shrunk = floor(4, 4, Some(built));
         // A right-edge cell: only the left-right group (0) glues it.
         shrunk.field_cells.retain(|&c| c != [3, 1]);
-        let blocked = edit(shrunk.clone(), TopologyOp::RemoveGroup { id: 1 }).unwrap_err();
+        let blocked = edit(
+            shrunk.clone(),
+            TopologyOp::Glue {
+                a: vec![end(1, 1, 0)],
+                b: vec![end(2, 2, 2)],
+                twist: false,
+                replace: None,
+            },
+        )
+        .unwrap_err();
         assert!(blocked.contains(r#""code":"inactive_fold""#), "{blocked}");
         assert!(blocked.contains(r#""existing":true"#), "{blocked}");
+        // Removing the healthy group works although group 0 stays inactive; so does removing it.
+        let other = edit(shrunk.clone(), TopologyOp::RemoveGroup { id: 1 }).unwrap();
+        assert_eq!(other.topology.groups.len(), 1);
         let own = edit(shrunk, TopologyOp::RemoveGroup { id: 0 }).unwrap();
         assert_eq!(own.topology.groups.len(), 1);
     }
