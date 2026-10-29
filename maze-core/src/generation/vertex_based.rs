@@ -56,6 +56,7 @@ pub(super) fn element_roll_allowed<T: Tessellation>(
 /// Adds a regular passage while suppressing its one-way-direction roll when either endpoint
 /// forbids one-way elements. A regular passage remains valid: only its optional directionality
 /// is constrained by the placement matrix.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn try_add_regular_edge<T: Tessellation>(
     graph: &mut Graph,
     field: &MultiLevelField<T>,

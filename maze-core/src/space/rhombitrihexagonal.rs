@@ -230,6 +230,13 @@ impl Tessellation for RhombitrihexagonalTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-2.366025403784438, 1.366025403784439),
+            Point::new(-2.366025403784438, -1.366025403784439),
+        ])
+    }
+
     fn center(&self, cell: RhombitrihexagonalPoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }

@@ -96,6 +96,13 @@ impl Tessellation for HexTessellation {
     }
 
     /// Flat-top hexagon of area 1. Lattice coordinates (`hex_lattice`): center `(3q, -(2r + q))`.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-0.930604859102099, 0.537284965911771),
+            Point::new(-0.930604859102099, -0.537284965911771),
+        ])
+    }
+
     fn center(&self, cell: HexPoint) -> Point {
         hex_lattice(3 * cell.q as i64, -(2 * cell.r as i64 + cell.q as i64))
     }

@@ -112,6 +112,58 @@ impl Tessellation for ScaledSquareTessellation {
     }
 }
 
+/// Square tessellation whose declared `translation_basis` is set by the test, used to check the
+/// basis contract (`check_translation_basis`) and that `translate_cells` honors a declared basis.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BasisSquareTessellation {
+    pub basis: Option<[Point; 2]>,
+}
+
+impl Tessellation for BasisSquareTessellation {
+    type CellId = SquarePoint;
+    type Face = SquareFace;
+
+    fn is_valid_cell(&self, cell: SquarePoint) -> bool {
+        SquareTessellation.is_valid_cell(cell)
+    }
+
+    fn faces_of(&self, cell: SquarePoint) -> &[SquareFace] {
+        SquareTessellation.faces_of(cell)
+    }
+
+    fn neighbor(&self, cell: SquarePoint, face: SquareFace) -> Option<(SquarePoint, SquareFace)> {
+        SquareTessellation.neighbor(cell, face)
+    }
+
+    fn is_straight(&self, cell: SquarePoint, in_face: SquareFace, out_face: SquareFace) -> bool {
+        SquareTessellation.is_straight(cell, in_face, out_face)
+    }
+
+    fn shape_descriptors(&self) -> &[ShapeDescriptor] {
+        SquareTessellation.shape_descriptors()
+    }
+
+    fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
+        SquareTessellation.shape_of(cell)
+    }
+
+    fn center(&self, cell: SquarePoint) -> Point {
+        SquareTessellation.center(cell)
+    }
+
+    fn face_segments(&self, cell: SquarePoint, face: SquareFace) -> Vec<Segment> {
+        SquareTessellation.face_segments(cell, face)
+    }
+
+    fn candidate_cells(&self, min: Point, max: Point, limit: usize) -> Option<Vec<SquarePoint>> {
+        SquareTessellation.candidate_cells(min, max, limit)
+    }
+
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        self.basis
+    }
+}
+
 /// Radial tessellations of several sizes in both layouts, each with every cell of its first
 /// rings: the center and rings whose neighbors overlap one to three cells of the adjacent rings.
 pub(crate) fn radial_cases() -> Vec<(super::RadialTessellation, Vec<super::RadialPoint>)> {

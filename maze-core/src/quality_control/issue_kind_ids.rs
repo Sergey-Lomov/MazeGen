@@ -50,6 +50,8 @@ impl IssueKind {
         }
     }
 
+    /// Not `FromStr`: an unknown id is `None`, not an error value, and callers match on that.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "missing_endpoints" => Some(IssueKind::MissingEndpoints),

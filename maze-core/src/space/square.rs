@@ -84,6 +84,10 @@ impl Tessellation for SquareTessellation {
     }
 
     /// Unit squares: cell `(x, y)` spans `[x, x + 1] × [y, y + 1]` (area 1).
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(0.0, -1.0), Point::new(-1.0, 0.0)])
+    }
+
     fn center(&self, cell: SquarePoint) -> Point {
         Point::new(cell.x as f64 + 0.5, cell.y as f64 + 0.5)
     }

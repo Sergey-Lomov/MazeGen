@@ -182,7 +182,11 @@ pub trait FieldOps: Tessellation {
     ) -> Result<Vec<Self::CellId>, FieldOpError> {
         require_operation(self, FieldOperation::Translate)?;
         let map = |point: Point| point + vector;
-        if !is_symmetry(self, &map, Point::default()) {
+        let is_translation = match self.translation_basis() {
+            Some(basis) => in_lattice(basis, vector),
+            None => is_symmetry(self, &map, Point::default()),
+        };
+        if !is_translation {
             return Err(FieldOpError::NotASymmetry);
         }
         map_cells(self, cells, &map)
@@ -244,6 +248,70 @@ fn same_vertex_set(a: &[Point], b: &[Point]) -> bool {
     a.len() == b.len()
         && a.iter().all(|p| b.iter().any(|q| near(p, q)))
         && b.iter().all(|q| a.iter().any(|p| near(p, q)))
+}
+
+/// Largest distance from an integer accepted for a lattice coordinate; absorbs floating-point
+/// noise of vectors computed from cell centers.
+const LATTICE_COORDINATE_TOLERANCE: f64 = 1e-6;
+
+/// Whether `vector` is an integer combination of the two `basis` vectors.
+fn in_lattice(basis: [Point; 2], vector: Point) -> bool {
+    let [a, b] = basis;
+    let determinant = a.x * b.y - a.y * b.x;
+    let along_a = (vector.x * b.y - vector.y * b.x) / determinant;
+    let along_b = (a.x * vector.y - a.y * vector.x) / determinant;
+    [along_a, along_b]
+        .iter()
+        .all(|c| (c - c.round()).abs() <= LATTICE_COORDINATE_TOLERANCE)
+}
+
+/// Checks the `Tessellation::translation_basis` contract of `tessellation`: a tessellation that
+/// offers `Translate` must declare a basis, and the basis must accept exactly the translations the
+/// slow symmetry probe accepts (tested on lattice vectors, fractions of them and other offsets).
+/// Run for every registered tessellation, so a new one cannot skip or get its basis wrong.
+pub fn check_translation_basis<T: Tessellation + ?Sized>(tessellation: &T) -> Result<(), String> {
+    let t = tessellation;
+    let Some(basis) = t.translation_basis() else {
+        return if t.field_operations().contains(&FieldOperation::Translate) {
+            Err("offers Translate but declares no translation_basis".to_string())
+        } else {
+            Ok(())
+        };
+    };
+    let [a, b] = basis;
+    let mut vectors = vec![Point::default()];
+    for i in -2..=2 {
+        for j in -2..=2 {
+            let lattice = a * f64::from(i) + b * f64::from(j);
+            vectors.push(lattice);
+            vectors.push(lattice + a * 0.5);
+            vectors.push(lattice + b * 0.5);
+            vectors.push(lattice + (a + b) * 0.5);
+            vectors.push(lattice + Point::new(0.3, 0.1));
+        }
+    }
+    let window = Point::new(2.0, 2.0);
+    let cells = t
+        .candidate_cells(
+            Point::default() - window,
+            Point::default() + window,
+            100_000,
+        )
+        .ok_or("no candidate cells near the origin")?;
+    let valid: Vec<_> = cells.into_iter().filter(|&c| t.is_valid_cell(c)).collect();
+    let first = *valid.first().ok_or("no valid cell near the origin")?;
+    vectors.extend(valid.iter().map(|&c| t.center(c) - t.center(first)));
+    for v in vectors {
+        let map = |point: Point| point + v;
+        let probed = is_symmetry(t, &map, Point::default());
+        if in_lattice(basis, v) != probed {
+            return Err(format!(
+                "translation_basis disagrees with the symmetry probe for ({}, {}): probe says {probed}",
+                v.x, v.y
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Whether the point map sends every cell of the probe window around `focus` onto a cell with the

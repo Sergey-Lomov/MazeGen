@@ -268,6 +268,11 @@ impl Tessellation for CairoTessellation {
     }
 
     /// Area centroid of the cell's pentagon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        use std::f64::consts::SQRT_2;
+        Some([Point::new(-SQRT_2, -SQRT_2), Point::new(SQRT_2, -SQRT_2)])
+    }
+
     fn center(&self, cell: CairoPoint) -> Point {
         let vertices = cairo_vertices(cell);
         let (mut cx, mut cy, mut doubled_area) = (0.0, 0.0, 0.0);

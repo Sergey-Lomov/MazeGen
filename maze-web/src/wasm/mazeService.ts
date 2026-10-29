@@ -579,8 +579,21 @@ export function translateFieldCells(
   cells: [number, number][],
   vector: [number, number],
 ): [number, number][] {
-  return getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+  // Core re-verifies that `vector` is a translation symmetry on every call, which is slow on dense
+  // tessellations; a drag repeats the same request on every pointer event inside one cell and
+  // again at commit, so the latest results are reused.
+  const key = JSON.stringify([tessellation, cells, vector]);
+  const hit = translateCache.get(key);
+  if (hit) return hit.map(([x, y]) => [x, y]);
+  const result = getWasm().field_translate_cells({ tessellation, cells, vector }) as [number, number][];
+  translateCache.set(key, result);
+  if (translateCache.size > TRANSLATE_CACHE_SIZE) translateCache.delete(translateCache.keys().next().value!);
+  return result.map(([x, y]) => [x, y]);
 }
+
+const TRANSLATE_CACHE_SIZE = 16;
+/// Only successful results are stored: a refused translation throws and is recomputed.
+const translateCache = new Map<string, [number, number][]>();
 
 /// Cells mirrored across the world line through two points; it must be a reflection symmetry.
 export function reflectFieldCells(

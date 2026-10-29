@@ -202,6 +202,13 @@ impl Tessellation for SnubSquareTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-1.866025403784438, 0.5),
+            Point::new(0.5, 1.866025403784439),
+        ])
+    }
+
     fn center(&self, cell: SnubSquarePoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }

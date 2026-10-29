@@ -191,6 +191,13 @@ impl Tessellation for SquareOctagonTessellation {
         })
     }
 
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(0.0, -2.414213562373095),
+            Point::new(-2.414213562373095, 0.0),
+        ])
+    }
+
     fn center(&self, cell: SquareOctagonPoint) -> Point {
         Point::new(
             lattice(cell.x as i64, cell.x as i64),
