@@ -197,10 +197,8 @@ mod tests {
     #[test]
     fn apply_removes_one_stop_from_the_flagged_group() {
         let (mut maze, nodes) = three_stop_elevator();
-        let issue = InvalidElevatorStopGroupIssue::new_from_check(
-            "max_elevator_stops",
-            vec![(nodes.clone(), 1)],
-        );
+        let issue =
+            InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops", vec![(nodes, 1)]);
         let params = no_params();
         let nested = nested_config();
         let mut rng = MazeRng::seed_from_u64(1);
@@ -262,10 +260,8 @@ mod tests {
     #[test]
     fn apply_removes_all_flagged_stops_when_to_remove_covers_them() {
         let (mut maze, nodes) = three_stop_elevator();
-        let issue = InvalidElevatorStopGroupIssue::new_from_check(
-            "max_elevator_stops",
-            vec![(nodes.clone(), 2)],
-        );
+        let issue =
+            InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops", vec![(nodes, 2)]);
         let params = no_params();
         let nested = nested_config();
         let mut rng = MazeRng::seed_from_u64(1);

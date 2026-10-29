@@ -123,6 +123,48 @@ function quarterTurn(o: DisplayOrientation | undefined): Linear {
 /** Drawn length of a snub square side, in pixels. */
 const SNUB_SQUARE_SIDE_PX = 60;
 
+/** Shared by the tessellations built around hexagons (trihexagonal family). */
+const HEXAGON_FACED_UI: TessellationUi = {
+  orientationSlot: null,
+  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+  orientations: [],
+  defaultParams: {},
+  paramSpecs: [],
+  // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
+  pixelsPerUnit: TILE_SIZE,
+  base: FLIP_Y,
+  orientation: () => IDENTITY,
+  // Half the 60 degree spacing of a hexagon's faces.
+  splitCircleRotationDeg: 30,
+  equilateralSnap: null,
+  cellSidePx: TILE_SIZE,
+  // The hexagon's circumcircle diameter, two sides.
+  cellMeasurePx: TILE_SIZE * 2,
+  originCell: [0, 0],
+  edgeHitThreshold: TILE_SIZE * 0.08,
+};
+
+/** Shared by the tessellations built around dodecagons (truncated family). */
+const DODECAGON_FACED_UI: TessellationUi = {
+  orientationSlot: null,
+  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+  orientations: [],
+  defaultParams: {},
+  paramSpecs: [],
+  // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
+  pixelsPerUnit: TILE_SIZE,
+  base: FLIP_Y,
+  orientation: () => IDENTITY,
+  // Half the 30 degree spacing of a dodecagon's faces.
+  splitCircleRotationDeg: 15,
+  equilateralSnap: null,
+  cellSidePx: TILE_SIZE,
+  // The dodecagon's circumcircle diameter, `1 / sin 15` sides.
+  cellMeasurePx: TILE_SIZE / Math.sin(Math.PI / 12),
+  originCell: [0, 0],
+  edgeHitThreshold: TILE_SIZE * 0.08,
+};
+
 export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   square: {
     orientationSlot: null,
@@ -251,101 +293,11 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
-  trihexagonal: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
-    orientations: [],
-    defaultParams: {},
-    paramSpecs: [],
-    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    orientation: () => IDENTITY,
-    // Half the 60 degree spacing of a hexagon's faces.
-    splitCircleRotationDeg: 30,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    // The hexagon's circumcircle diameter, two sides.
-    cellMeasurePx: TILE_SIZE * 2,
-    originCell: [0, 0],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
-  snub_hexagonal: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
-    orientations: [],
-    defaultParams: {},
-    paramSpecs: [],
-    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    orientation: () => IDENTITY,
-    // Half the 60 degree spacing of a hexagon's faces.
-    splitCircleRotationDeg: 30,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    // The hexagon's circumcircle diameter, two sides.
-    cellMeasurePx: TILE_SIZE * 2,
-    originCell: [0, 0],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
-  rhombitrihexagonal: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
-    orientations: [],
-    defaultParams: {},
-    paramSpecs: [],
-    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    orientation: () => IDENTITY,
-    // Half the 60 degree spacing of a hexagon's faces.
-    splitCircleRotationDeg: 30,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    // The hexagon's circumcircle diameter, two sides.
-    cellMeasurePx: TILE_SIZE * 2,
-    originCell: [0, 0],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
-  truncated_hexagonal: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
-    orientations: [],
-    defaultParams: {},
-    paramSpecs: [],
-    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    orientation: () => IDENTITY,
-    // Half the 30 degree spacing of a dodecagon's faces.
-    splitCircleRotationDeg: 15,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    // The dodecagon's circumcircle diameter, `1 / sin 15` sides.
-    cellMeasurePx: TILE_SIZE / Math.sin(Math.PI / 12),
-    originCell: [0, 0],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
-  truncated_trihexagonal: {
-    orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
-    orientations: [],
-    defaultParams: {},
-    paramSpecs: [],
-    // Every edge has world length 1, so a side is drawn `TILE_SIZE` long.
-    pixelsPerUnit: TILE_SIZE,
-    base: FLIP_Y,
-    orientation: () => IDENTITY,
-    // Half the 30 degree spacing of a dodecagon's faces.
-    splitCircleRotationDeg: 15,
-    equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
-    // The dodecagon's circumcircle diameter, `1 / sin 15` sides.
-    cellMeasurePx: TILE_SIZE / Math.sin(Math.PI / 12),
-    originCell: [0, 0],
-    edgeHitThreshold: TILE_SIZE * 0.08,
-  },
+  trihexagonal: HEXAGON_FACED_UI,
+  snub_hexagonal: HEXAGON_FACED_UI,
+  rhombitrihexagonal: HEXAGON_FACED_UI,
+  truncated_hexagonal: DODECAGON_FACED_UI,
+  truncated_trihexagonal: DODECAGON_FACED_UI,
   elongated_triangular: {
     orientationSlot: null,
     editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },

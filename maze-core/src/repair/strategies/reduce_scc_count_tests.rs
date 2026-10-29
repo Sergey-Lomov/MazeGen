@@ -63,7 +63,7 @@ mod select_merge_candidates_tests {
         let sizes = [5, 1, 3];
         let mut rng = MazeRng::seed_from_u64(1);
         let result = select_merge_candidates(&sizes, PRIORITY_SMALLEST, 100, &mut rng);
-        let mut sorted = result.clone();
+        let mut sorted = result;
         sorted.sort();
         assert_eq!(
             sorted,
@@ -99,7 +99,7 @@ mod select_merge_candidates_tests {
         let sizes = [1, 2, 3, 4, 5];
         let mut rng = MazeRng::seed_from_u64(7);
         let result = select_merge_candidates(&sizes, PRIORITY_RANDOM, 5, &mut rng);
-        let mut sorted = result.clone();
+        let mut sorted = result;
         sorted.sort();
         assert_eq!(
             sorted,

@@ -363,7 +363,7 @@ fn corridor_seed_low_id_does_not_false_ring() {
     );
     assert!(nav_ids.contains(&3), "node 3 is junction, must be nav node");
 
-    let mut covered: std::collections::HashSet<u64> = nav_ids.clone();
+    let mut covered: std::collections::HashSet<u64> = nav_ids;
     for e in nav.edges() {
         for &n in &e.path {
             covered.insert(n);

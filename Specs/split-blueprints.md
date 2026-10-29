@@ -185,8 +185,8 @@ face-kind helper `presetSplitNodeFaceKinds` is covered directly in `fieldEditUti
 (passage/wall per face, in-field face with no entry → `"undefined"`, one-way direction →
 `one_way_out`/`one_way_in`). `splitBlueprints.test.ts`
 covers the pure functions (`blueprintsFor`, `orientationsOf`,
-`fittingRotation`, `blueprintToSplitPattern`, `tileNodesForBlueprint`) directly. `postEditSlice.test.ts`
-and `presetConnectionsSlice.test.ts` cover `applySplitBlueprint`/`applyPresetSplitBlueprint`'s
+`fittingRotation`, `blueprintToSplitPattern`, `tileNodesForBlueprint`) directly. `postEditSlice.blueprint.test.ts`
+and `presetConnectionsSlice.splitNodes.test.ts` cover `applySplitBlueprint`/`applyPresetSplitBlueprint`'s
 store-level behavior: full replace of stale slots/edges, occupied-element migration, the
 out-of-degree face skip, and (preset only) the boundary-face skip and the explicit-wall-on-unused-face
 behavior.

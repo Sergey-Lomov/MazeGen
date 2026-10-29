@@ -7,6 +7,7 @@ import { backgroundImageEditMode, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "./colorTokens";
+import { isTypingTarget } from "./domUtils";
 
 interface SceneInteractionDeps {
   app: Application;
@@ -19,11 +20,6 @@ interface SceneInteractionDeps {
   onHoverChanged: (info: HoverInfo | null) => void;
   onViewportChanged: () => void;
   onResetZoom: () => void;
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
 function setCanvasCursor(canvas: HTMLCanvasElement, cursor: string): void {

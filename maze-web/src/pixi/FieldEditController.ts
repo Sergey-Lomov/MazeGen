@@ -3,7 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
 import { TILE_SIZE } from "./constants";
-import { normalizeCellsToFixpoint, normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry } from "./primitiveGeometry";
+import { normalizeCells, primitiveCells, primitiveWorldGeometry } from "./primitiveGeometry";
 import type { PrimitiveContext, ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import { cellsInsidePolygon, polygonWorldGeometry } from "./polygonGeometry";
 import type { PolygonPoint } from "./polygonGeometry";
@@ -25,14 +25,10 @@ import { EMPTY_FIELD_SIZE_READOUT, measureCells, measureShape, mergeFieldSizeRea
 import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
 import { nearestContourFace } from "./topologyGeometry";
 import type { TopologyPickTarget } from "../store/topologyTypes";
+import { isTypingTarget } from "./domUtils";
 
 /** How close (screen pixels) a click must be to a boundary face to pick it for a fold. */
 const TOPOLOGY_PICK_RADIUS_PX = 14;
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;
@@ -384,7 +380,7 @@ export class FieldEditController {
       const cfg = gs.floorFields[gs.activeFloorId].fieldConfig;
       const kind = cfg.tessellation.kind;
       const initialCells = primitiveCells(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
-      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(initialCells, cfg, gs.smoothPrimitives));
+      this.lastPreviewCells = this.normalizedOperationCells(initialCells);
       this.lastGridRadius = 1;
       this.lastEndGrid = grid;
       this.lastEndWorld = this.primitiveStartWorld;
@@ -534,7 +530,7 @@ export class FieldEditController {
       const cfg = ms.floorFields[ms.activeFloorId].fieldConfig;
       const kind = cfg.tessellation.kind;
       const nextCells = primitiveCells(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld });
-      this.lastPreviewCells = this.operationCells(normalizePrimitiveCells(nextCells, cfg, ms.smoothPrimitives));
+      this.lastPreviewCells = this.normalizedOperationCells(nextCells);
       this.lastGridRadius = gridRadius;
       this.lastEndGrid = currentGrid;
       this.lastEndWorld = currentWorld;
@@ -826,7 +822,7 @@ export class FieldEditController {
       ? [...this.polygonPoints, this.polygonCursorPoint]
       : [...this.polygonPoints];
     this.lastPreviewCells = previewPoints.length >= 3
-      ? this.operationCells(this.polygonCells(previewPoints))
+      ? this.polygonCells(previewPoints)
       : [];
     this.reportSize({ shape: measureShape(this.lastPreviewCells, "polygon") });
     this.primitiveCallbacks.onPreviewUpdate(
@@ -842,19 +838,10 @@ export class FieldEditController {
     );
   }
 
-  /** Polygon cells without isolated cells and, with smoothing, single-connection spikes. When
-   * adding, cells already in the field count as neighbors. */
   private polygonCells(points: PolygonPoint[]): [number, number][] {
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
-    const cells = cellsInsidePolygon(points, field.fieldConfig);
-    const adding = this.effectiveOperation(this.gestureButton) === "add";
-    return normalizeCellsToFixpoint(
-      cells,
-      field.fieldConfig,
-      state.smoothPrimitives,
-      adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
-    );
+    return this.normalizedOperationCells(cellsInsidePolygon(points, field.fieldConfig));
   }
 
   private updatePolygonCursor(canvasX: number, canvasY: number): void {
@@ -872,7 +859,7 @@ export class FieldEditController {
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "polygon"
       && this.polygonPoints.length >= 3)) return;
-    this.finishOutlineCommit(this.operationCells(this.polygonCells(this.polygonPoints)));
+    this.finishOutlineCommit(this.polygonCells(this.polygonPoints));
     this.clearPolygonState();
     this.gestureActive = false;
   }
@@ -965,7 +952,7 @@ export class FieldEditController {
     const cfg = field.fieldConfig;
     const points = this.parallelogramPoints(this.parallelogramCursor);
     if (!points) return;
-    this.lastPreviewCells = points.length >= 4 ? this.operationCells(this.polygonCells(points)) : [];
+    this.lastPreviewCells = points.length >= 4 ? this.polygonCells(points) : [];
     this.reportSize({ shape: measureShape(this.lastPreviewCells, "parallelogram") });
     this.primitiveCallbacks.onPreviewUpdate(
       this.lastPreviewCells,
@@ -990,7 +977,7 @@ export class FieldEditController {
       && this.parallelogramAnchors.length === 2)) return;
     const points = this.parallelogramPoints(this.parallelogramCursor);
     if (!points || points.length < 4) return;
-    this.finishOutlineCommit(this.operationCells(this.polygonCells(points)));
+    this.finishOutlineCommit(this.polygonCells(points));
     this.parallelogramAnchors = [];
     this.parallelogramCursor = null;
     this.lastPreviewCells = [];
@@ -1188,6 +1175,22 @@ export class FieldEditController {
     const field = state.floorFields[state.activeFloorId];
     if (field.fieldOperation !== "select") return cells;
     return cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+  }
+
+  /** Normalizes a shape's cells for the current gesture. Adding treats cells already in the field
+   * as neighbors that are never removed; remove and select normalize the shape alone, then keep
+   * only the cells on the field, so smoothing matches the outline the user sees. */
+  private normalizedOperationCells(cells: [number, number][]): [number, number][] {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const adding = this.effectiveOperation(this.gestureButton) === "add";
+    const normalized = normalizeCells(
+      cells,
+      field.fieldConfig,
+      state.smoothPrimitives,
+      adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
+    );
+    return adding ? normalized : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
   }
 
   private primitivePreviewGeometry(primitive: ShapePrimitive, context: PrimitiveContext): ReturnType<typeof primitiveWorldGeometry> {

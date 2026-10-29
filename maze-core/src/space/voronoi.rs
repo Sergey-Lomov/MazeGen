@@ -156,13 +156,13 @@ impl VoronoiTessellation {
     /// The site of lattice point `(q, r)`: the lattice point plus its seeded displacement.
     pub fn site(&self, q: i32, r: i32) -> Point {
         let reach = self.radius + CLIP_REACH;
-        if q.abs() <= reach && r.abs() <= reach {
-            if let Some(&site) = self
+        if q.abs() <= reach
+            && r.abs() <= reach
+            && let Some(&site) = self
                 .sites
                 .get(((q + reach) * (2 * reach + 1) + r + reach) as usize)
-            {
-                return site;
-            }
+        {
+            return site;
         }
         self.computed_site(q, r)
     }
@@ -255,9 +255,9 @@ impl VoronoiTessellation {
         }
         // A merged vertex is the mean of its members.
         let mut sums = vec![(Point::default(), 0usize); points.len()];
-        for id in 0..points.len() {
+        for (id, &point) in points.iter().enumerate() {
             let root = find(&mut parent, id);
-            sums[root].0 = sums[root].0 + points[id];
+            sums[root].0 = sums[root].0 + point;
             sums[root].1 += 1;
         }
         let merged: Vec<Point> = (0..points.len())

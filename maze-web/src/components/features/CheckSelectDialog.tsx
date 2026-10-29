@@ -2,11 +2,10 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
-import { ParamFields, isEntityVisible } from "./ParamFields";
+import { ParamFields, isEntityVisible, defaultParamValue } from "./ParamFields";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
-import type { ParamDescriptor } from "../../wasm/types";
 
 interface Props {
   /** Issue kind chosen in step 1 (IssueSelectDialog) — only checks of this kind are listed. */
@@ -22,16 +21,6 @@ interface Props {
 
 // "min,max" for interval params -- mirrors maze-core's `parse_param` Interval encoding
 // (repair/params.rs).
-function defaultValue(p: ParamDescriptor): string {
-  const k = p.kind;
-  if (k.type === "bool") return k.default ? "true" : "false";
-  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
-  if (k.type === "pattern_list") return "[]";
-  if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
-  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
-  return String(k.default);
-}
-
 export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const allChecks = useMazeStore((s) => s.availableChecks);
   const floorCount = useMazeStore((s) => s.floors.length);
@@ -79,7 +68,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
           <div style={styles.paramsSeparator} />
           <ParamFields
             params={selectedCheck.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
-            getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
+            getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultParamValue(p)}
             onChange={handleParamChange}
             getDescription={(p) => resolveParamDescription(p.id, selectedCheck.id)}
           />

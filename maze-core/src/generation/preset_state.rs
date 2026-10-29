@@ -608,5 +608,5 @@ pub fn build_preset_state<T: Tessellation>(
 }
 
 #[cfg(test)]
-#[path = "preset_state_tests.rs"]
+#[path = "preset_state_tests/mod.rs"]
 mod tests;

@@ -3,7 +3,7 @@ import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
-import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, presetLockElementsFor, TILE_GRANULARITY_CHECKS } from "./issueRegistry";
+import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, presetLockElementsFor, TILE_GRANULARITY_CHECKS, isFullyPresetLocked } from "./issueRegistry";
 import { resolveIssueHighlight, type NormalizedIssuePayload, type NormalizedEdgeGroup, type NormalizedRegionGroup } from "./issueHighlight";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
@@ -20,10 +20,6 @@ import type { IssueHighlightEdge } from "../store/postEditFullTypes";
 /// `false`: a bubble with no preset-lock data at all (a kind with no source check, e.g.
 /// `cycle_analysis_overflowed`) is never "fully preset-locked" by this check, it just doesn't
 /// participate in the toggle.
-function isFullyPresetLocked(elements: { preset_locked: boolean }[] | null): boolean {
-  return elements != null && elements.length > 0 && elements.every((e) => e.preset_locked);
-}
-
 /// Collapses a two-way teleport's opposite-direction groups into one -- each direction of a
 /// two-way teleport is its own base-graph `Teleport` edge, so the Rust side's per-edge grouping
 /// (`resolve_single_edge_map`) reports it as two separate one-edge groups, keyed by the same

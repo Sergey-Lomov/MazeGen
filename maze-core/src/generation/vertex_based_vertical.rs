@@ -451,7 +451,7 @@ pub(super) fn try_elevator<T: Tessellation>(
     }
 
     let unvisited_pool: Vec<NodeId> = if elements.allow_non_consecutive_elevator_floors {
-        unvisited_all.clone()
+        unvisited_all
     } else {
         longest_consecutive_run(field, &unvisited_all)
     };
@@ -510,7 +510,7 @@ pub(super) fn try_elevator<T: Tessellation>(
     } else {
         chosen_needed
     };
-    let mut pool = unvisited_pool.clone();
+    let mut pool = unvisited_pool;
     for _ in 0..unvisited_needed.min(pool.len()) {
         let idx = state.rng.random_range(0..pool.len());
         chosen.push(pool.swap_remove(idx));

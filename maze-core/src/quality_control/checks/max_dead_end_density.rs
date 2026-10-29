@@ -35,9 +35,11 @@ impl<T: Tessellation> Check<T, InvalidDeadEndGroupIssue> for MaxDeadEndDensityCh
             FloorScope::WholeMaze => {
                 let cells = maze.field.cell_count();
                 let excess = Self::excess(nodes.len(), cells, self.max_dead_end_density);
-                (excess > 0)
-                    .then(|| vec![(nodes, excess)])
-                    .unwrap_or_default()
+                if excess > 0 {
+                    vec![(nodes, excess)]
+                } else {
+                    Vec::new()
+                }
             }
             FloorScope::PerFloor => {
                 let mut by_level: HashMap<LevelId, Vec<_>> = HashMap::new();

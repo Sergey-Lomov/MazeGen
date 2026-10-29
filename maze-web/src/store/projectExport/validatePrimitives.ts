@@ -52,18 +52,6 @@ export function assertStringRecordRecord(v: unknown, path: string): Record<strin
   return obj as Record<string, Record<string, string>>;
 }
 
-export function assertHexOrientation(v: unknown, path: string): void {
-  const s = assertString(v, path);
-  if (s !== "flat_top" && s !== "pointy_top")
-    throw new Error(`Invalid hex orientation at ${path}: ${s}`);
-}
-
-export function assertTriOrientation(v: unknown, path: string): void {
-  const s = assertString(v, path);
-  if (s !== "r0" && s !== "r90" && s !== "r180" && s !== "r270")
-    throw new Error(`Invalid triangle orientation at ${path}: ${s}`);
-}
-
 // ─── Optional-field helpers (sections with defaults for old files) ──────────
 
 export function optBool(obj: Record<string, unknown> | null, key: string, fallback: boolean): boolean {

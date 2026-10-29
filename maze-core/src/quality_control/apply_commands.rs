@@ -86,10 +86,6 @@ pub fn apply_commands<T: Tessellation>(
             }
             _ => None,
         };
-        // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
-        // `RemoveTeleportWithReverse` (see those two `QcEvent` variants' own doc comments) — both
-        // return every `EdgeId` actually removed (one or two), so `len() > 1` means the reverse
-        // leg was genuinely there and got removed too, not just assumed from the command shape.
         // Both endpoints of any Add* command must still be field-live at apply time — a command
         // proposed against an earlier snapshot can reference a node an earlier command in this
         // same batch already removed (e.g. `remove_split_node`'s redistribute mode: node A's
@@ -113,6 +109,10 @@ pub fn apply_commands<T: Tessellation>(
             _ => true,
         };
 
+        // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
+        // `RemoveTeleportWithReverse` (see those two `QcEvent` variants' own doc comments) — both
+        // return every `EdgeId` actually removed (one or two), so `len() > 1` means the reverse
+        // leg was genuinely there and got removed too, not just assumed from the command shape.
         let mut reverse_removed = false;
         let mut replaced_nodes: Option<Vec<NodeId>> = None;
         let ok = if !endpoints_live {

@@ -35,7 +35,7 @@ export type PresetPointEntityScope =
   | { kind: "point_all" }
   | { kind: "vertex_markers"; endpoints: PresetEndpoint[] };
 
-function formatLockKind(kind: NodeLockKind): string {
+export function formatLockKind(kind: NodeLockKind): string {
   switch (kind) {
     case "in": return m["status.cell_lock_in"]();
     case "out": return m["status.cell_lock_out"]();

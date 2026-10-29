@@ -357,7 +357,7 @@ fn split_region_ignores_edges_leaving_the_region_when_collecting_the_cut_set() {
         maze.graph.add_edge(n, outsider, EK::Basic);
     }
 
-    let region: Vec<NodeId> = nodes.clone();
+    let region: Vec<NodeId> = nodes;
     let cut = split_region(&maze, &region, &PresetState::empty(), true).unwrap();
     for &(from, to) in &cut {
         assert_ne!(

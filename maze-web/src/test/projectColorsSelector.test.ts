@@ -10,7 +10,7 @@ import {
 } from "../store/slices/imageExportSlice";
 
 /** Minimal `MazeState` fixture — only the fields `selectActiveProfileColors` and its helpers
- *  (`sectionVisibility`, `teleportColors`, etc.) actually read. Mirrors `projectExport.test.ts`'s
+ *  (`sectionVisibility`, `teleportColors`, etc.) actually read. Mirrors `projectExportKit.ts`'s
  *  `makeState` cast convention rather than filling in the whole store shape. */
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {

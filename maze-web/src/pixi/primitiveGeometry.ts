@@ -243,34 +243,10 @@ function centeredHexRadius(frame: WorldFrame, config: FieldConfig): number {
   return Math.max(1, Math.round(diameter / TILE_SIZE / 4));
 }
 
-/** Removes one-cell-wide terminal spikes from a primitive result. */
-export function smoothPrimitiveCells(
-  cells: [number, number][],
-  cfg: FieldConfig,
-): [number, number][] {
-  if (cells.length < 4) return cells;
-  const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  return cells.filter(([x, y]) => {
-    let count = 0;
-    for (const [dx, dy] of getCellNeighborOffsets(cfg, x, y)) if (selected.has(`${x + dx},${y + dy}`)) count++;
-    return count !== 1;
-  });
-}
-
-export function normalizePrimitiveCells(
-  cells: [number, number][],
-  cfg: FieldConfig,
-  smooth: boolean,
-): [number, number][] {
-  let result = removeIsolatedPrimitiveCells(cells, cfg);
-  if (smooth) result = smoothPrimitiveCells(result, cfg);
-  return removeIsolatedPrimitiveCells(result, cfg);
-}
-
-/** Repeats isolated-cell removal (and, with `smooth`, single-connection removal) until stable, so
- * peeling one spike cannot expose a new one. Cells in `anchors` (already part of the field) count
+/** The single normalization routine for every tool. Repeats isolated-cell removal (and, with
+ * `smooth`, single-connection removal) until stable, so peeling one spike cannot expose a new one. Cells in `anchors` (already part of the field) count
  * as neighbors but are never removed (only `cells` are filtered). */
-export function normalizeCellsToFixpoint(
+export function normalizeCells(
   cells: [number, number][],
   cfg: FieldConfig,
   smooth: boolean,
@@ -278,7 +254,7 @@ export function normalizeCellsToFixpoint(
 ): [number, number][] {
   let result = cells;
   for (;;) {
-    // Smoothing needs at least four cells, matching `smoothPrimitiveCells`.
+    // Smoothing needs at least four cells to leave a meaningful shape.
     const minLinks = smooth && result.length >= 4 ? 2 : 1;
     const present = new Set(result.map(([x, y]) => `${x},${y}`));
     const next = result.filter(([x, y]) => {
@@ -291,15 +267,6 @@ export function normalizeCellsToFixpoint(
     if (next.length === result.length) return result;
     result = next;
   }
-}
-
-function removeIsolatedPrimitiveCells(cells: [number, number][], cfg: FieldConfig): [number, number][] {
-  // Fewer than two cells cannot contain an accidental isolated cell. This preserves a valid
-  // one-cell primitive such as a 1×1 rectangle.
-  if (cells.length < 2) return cells;
-  const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
-  return cells.filter(([x, y]) => getCellNeighborOffsets(cfg, x, y)
-    .some(([dx, dy]) => selected.has(`${x + dx},${y + dy}`)));
 }
 
 export function primitiveWorldGeometry(primitive: ShapePrimitive, ctx: PrimitiveContext): PrimitiveWorldGeometry {

@@ -332,7 +332,7 @@ fn planned_elevator_pairs(commands: &[MutationCommand]) -> Vec<(NodeId, NodeId)>
 /// candidate, merged with any real stops it's already connected to. `edges` is left empty for
 /// groups that gained any planned member (real `EdgeId`s don't exist for a not-yet-applied pair,
 /// and nothing in the reuse branch reads `.edges`).
-fn groups_with_planned<T: Tessellation>(
+pub(crate) fn groups_with_planned<T: Tessellation>(
     maze: &Maze<T>,
     planned: &[(NodeId, NodeId)],
 ) -> Vec<Elevator> {
@@ -381,6 +381,9 @@ fn groups_with_planned<T: Tessellation>(
             edges: Vec::new(),
         });
     }
+    // `adjacency.keys()` has no stable order; sort so callers that shuffle the groups with a
+    // seeded RNG stay deterministic for a fixed seed.
+    groups.sort_unstable_by(|a, b| a.stops.cmp(&b.stops));
     groups
 }
 

@@ -85,7 +85,7 @@ fn duplicate_entries_for_the_same_elevator_are_folded_to_a_single_growth() {
         "min_elevator_height",
         vec![
             (ElevatorNodes::new(nodes.clone()), 4),
-            (ElevatorNodes::new(nodes.clone()), 6),
+            (ElevatorNodes::new(nodes), 6),
         ],
     );
     let mut rng = MazeRng::seed_from_u64(7);
@@ -118,7 +118,7 @@ fn duplicate_entries_with_allow_incomplete_off_still_skip_when_width_unreachable
         "min_elevator_height",
         vec![
             (ElevatorNodes::new(nodes.clone()), 10),
-            (ElevatorNodes::new(nodes.clone()), 8),
+            (ElevatorNodes::new(nodes), 8),
         ],
     );
     let mut rng = MazeRng::seed_from_u64(8);
@@ -148,7 +148,7 @@ fn grows_both_ends_when_a_single_stop_could_never_close_the_gap() {
     let (mut maze, nodes, _floors) = maze_with_elevator(9, &[4, 6]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        vec![(ElevatorNodes::new(nodes), 6)],
     );
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(
@@ -189,7 +189,7 @@ fn stops_growing_once_interval_is_wide_enough() {
     let (mut maze, nodes, _floors) = maze_with_elevator(10, &[4, 5]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 4)],
+        vec![(ElevatorNodes::new(nodes), 4)],
     );
     let mut rng = MazeRng::seed_from_u64(2);
     apply_and_commit(
@@ -214,7 +214,7 @@ fn allow_incomplete_off_skips_entry_that_cannot_reach_needed_width() {
     let (mut maze, nodes, _floors) = maze_with_elevator(3, &[0, 2]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 10)],
+        vec![(ElevatorNodes::new(nodes), 10)],
     );
     let mut rng = MazeRng::seed_from_u64(3);
     let result = apply_and_commit(
@@ -234,7 +234,7 @@ fn allow_incomplete_on_still_adds_available_endpoints_when_width_unreachable() {
     let (mut maze, nodes, _floors) = maze_with_elevator(3, &[0, 2]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 10)],
+        vec![(ElevatorNodes::new(nodes), 10)],
     );
     let mut rng = MazeRng::seed_from_u64(4);
     let result = apply_and_commit(
@@ -272,7 +272,7 @@ fn allow_incomplete_off_still_commits_when_width_is_met_even_if_one_side_is_infe
 
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        vec![(ElevatorNodes::new(nodes), 6)],
     );
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(
@@ -304,7 +304,7 @@ fn one_sided_growth_still_commits_the_reachable_edge_stop_when_the_other_side_ha
     let (mut maze, nodes, _floors) = maze_with_elevator(7, &[0, 3]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 5)],
+        vec![(ElevatorNodes::new(nodes), 5)],
     );
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(
@@ -338,7 +338,7 @@ fn max_compactness_picks_the_pool_floor_closest_to_the_grown_window_edge() {
     let (mut maze, nodes, _floors) = maze_with_elevator(25, &[10, 12]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 4)],
+        vec![(ElevatorNodes::new(nodes), 4)],
     );
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(
@@ -376,7 +376,7 @@ fn balanced_growth_alternates_sides_once_both_are_eligible() {
     let (mut maze, nodes, _floors) = maze_with_elevator(21, &[7, 9]);
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 12)],
+        vec![(ElevatorNodes::new(nodes), 12)],
     );
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(
@@ -413,7 +413,7 @@ fn apply_skips_an_entry_whose_elevator_no_longer_exists() {
 
     let issue = MissingElevatorHeightIssue::new_from_check(
         "min_elevator_height",
-        vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        vec![(ElevatorNodes::new(nodes), 6)],
     );
     let mut rng = MazeRng::seed_from_u64(5);
     let result = apply_and_commit(

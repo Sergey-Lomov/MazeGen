@@ -25,6 +25,7 @@ import {
 } from "../notifications/editRefusalNotifications";
 import { blurActiveElement, postEditToolForShortcut } from "./toolShortcuts";
 import { bringSidePanelToFront } from "../components/SidePanel";
+import { isTypingTarget } from "./domUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -32,11 +33,6 @@ const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_pa
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
 
 type State = ReturnType<typeof useMazeStore.getState>;
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-}
 
 /** Whether a point currently has more than one node (a split point) — used by the unified Reset
  * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an

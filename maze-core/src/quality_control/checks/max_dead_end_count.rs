@@ -33,9 +33,11 @@ impl<T: Tessellation> Check<T, InvalidDeadEndGroupIssue> for MaxDeadEndCountChec
         let groups = match self.floor_scope {
             FloorScope::WholeMaze => {
                 let count = nodes.len() as u32;
-                (count > self.max_dead_end_count)
-                    .then(|| vec![(nodes, count - self.max_dead_end_count)])
-                    .unwrap_or_default()
+                if count > self.max_dead_end_count {
+                    vec![(nodes, count - self.max_dead_end_count)]
+                } else {
+                    Vec::new()
+                }
             }
             FloorScope::PerFloor => {
                 let mut by_level: HashMap<LevelId, Vec<_>> = HashMap::new();

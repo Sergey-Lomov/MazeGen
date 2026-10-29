@@ -1,7 +1,6 @@
 use crate::Maze;
 use crate::generation::PresetState;
-use crate::graph::scc::ConnectedComponents;
-use crate::quality_control::{Issue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue};
+use crate::quality_control::{REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::{dispatch_priority, slot_candidates};
 use crate::repair::params::{StrategyParam, StrategyParams};
@@ -12,7 +11,6 @@ use crate::repair::strategy::{
 };
 use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashSet;
 
 /// Slot id for the nested region-merge strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Its own constant, not a reuse of
@@ -51,24 +49,6 @@ static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
 /// **`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`.
 pub struct PriorityRegionMergeStrategy;
 
-/// Scans `commands` for any component index (other than `region_idx` itself) that a proposed
-/// mutation actually connects to — see `weighted_region_merge::merged_neighbor`. Both dispatchers
-/// share `region_merge_core::mutation_command_endpoints` (GitHub issue #391 postmortem — each used
-/// to carry its own copy of this match and both missed vertical-passage commands the same way).
-fn merged_neighbor(
-    commands: &[MutationCommand],
-    scc: &ConnectedComponents,
-    region_idx: usize,
-) -> Option<usize> {
-    commands.iter().find_map(|cmd| {
-        let (a, b) = region_merge_core::mutation_command_endpoints(cmd)?;
-        [a, b]
-            .into_iter()
-            .filter_map(|node| scc.component_of(node))
-            .find(|&idx| idx != region_idx)
-    })
-}
-
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityRegionMergeStrategy {
     fn strategy_id(&self) -> &'static str {
         "priority_region_merge"
@@ -101,46 +81,21 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
             return (RepairResult::Failed, vec![]);
         }
 
-        // One fixed snapshot for the whole batch loop — same rationale as
-        // `WeightedRegionMergeStrategy::apply`.
-        let scc = maze.analysis.scc(&maze.graph);
-
-        let mut pending: Vec<usize> = invalid.clone();
-        let mut merged_away: HashSet<usize> = HashSet::new();
-        let mut all_commands: Vec<MutationCommand> = Vec::new();
-        let mut any_fixed = false;
-
-        while let Some(region_idx) = pending.pop() {
-            if merged_away.contains(&region_idx) {
-                continue;
-            }
-
-            let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
-            let (result, commands) = dispatch_priority(
-                &single_region_issue as &dyn Issue,
-                maze,
-                rng,
-                preset_state,
-                &candidates,
-                &std::collections::HashMap::new(),
-            );
-
-            if matches!(result, RepairResult::Fixed { .. }) {
-                any_fixed = true;
-                if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx)
-                    && invalid.contains(&neighbor_idx)
-                {
-                    merged_away.insert(neighbor_idx);
-                }
-                all_commands.extend(commands);
-            }
-        }
-
-        if any_fixed {
-            (RepairResult::Fixed { score: None }, all_commands)
-        } else {
-            (RepairResult::Failed, vec![])
-        }
+        region_merge_core::run_per_region_dispatch(
+            invalid,
+            maze,
+            rng,
+            |single_region_issue, rng| {
+                dispatch_priority(
+                    single_region_issue,
+                    maze,
+                    rng,
+                    preset_state,
+                    &candidates,
+                    &std::collections::HashMap::new(),
+                )
+            },
+        )
     }
 }
 

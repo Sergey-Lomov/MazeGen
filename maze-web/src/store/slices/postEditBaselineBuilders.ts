@@ -223,6 +223,30 @@ export type PostEditPointEntitiesSourceState = Pick<
   | "floors" | "floorFields" | "activeFieldConfig" | "postEditActiveSplitNode"
 >;
 
+/** The `SplitLabelContext` both point-scoped pickers label their rows with, resolved from live state. */
+function buildSplitLabelContext(
+  state: Pick<MazeStore, "nodes" | "postEditDraftSplitPoints" | "postEditActiveSplitNode" | "floors" | "floorFields" | "activeFieldConfig" | "postEditDraftEdges">,
+): SplitLabelContext {
+  const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
+  };
+  const cfgAt = (lvl: number | undefined): typeof state.activeFieldConfig => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? field.fieldConfig : state.activeFieldConfig;
+  };
+  return {
+    allNodes: state.nodes,
+    splitPoints: state.postEditDraftSplitPoints,
+    activeSplitNode: state.postEditActiveSplitNode,
+    draftEdges: state.postEditDraftEdges,
+    cfgAt,
+    inFieldCellsAt,
+  };
+}
+
 /** Builds the removable-entity list for the post-edit delete-tool picker dialog (GitHub issue
  * #550) at one point/level — resolves `point`'s nodes (original node's confirmed id plus every
  * declared split slot) from `state.nodes`/`postEditDraftSplitPoints`, then defers to
@@ -250,24 +274,7 @@ export function buildPostEditPointEntitiesAt(
   // Same `SplitLabelContext` shape `PostEditChangesPanel`/`PostEditEntityDeleteDialog` build for
   // their own rows — needed here too since `buildPostEditPointEntities` now stamps every row with
   // the exact same coordinate bubbles the changes log shows (GitHub issue #550 fourth follow-up).
-  const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
-    const floor = state.floors[lvl ?? 0];
-    const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
-  };
-  const cfgAt = (lvl: number | undefined): typeof state.activeFieldConfig => {
-    const floor = state.floors[lvl ?? 0];
-    const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? field.fieldConfig : state.activeFieldConfig;
-  };
-  const splitCtx: SplitLabelContext = {
-    allNodes: state.nodes,
-    splitPoints: state.postEditDraftSplitPoints,
-    activeSplitNode: state.postEditActiveSplitNode,
-    draftEdges: state.postEditDraftEdges,
-    cfgAt,
-    inFieldCellsAt,
-  };
+  const splitCtx = buildSplitLabelContext(state);
   return buildPostEditPointEntities(nodesHere, slotIds, {
     postEditDraftSplitPoints: state.postEditDraftSplitPoints,
     postEditDraftMeta: state.postEditDraftMeta,
@@ -300,23 +307,6 @@ export function buildPostEditResetLifelinesAt(
   if (state.postEditBaseline === null) return [];
   const nodeById = buildNodeByIdMap(state.nodes);
   const multiFloor = state.floors.length > 1;
-  const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
-    const floor = state.floors[lvl ?? 0];
-    const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
-  };
-  const cfgAt = (lvl: number | undefined): typeof state.activeFieldConfig => {
-    const floor = state.floors[lvl ?? 0];
-    const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? field.fieldConfig : state.activeFieldConfig;
-  };
-  const splitCtx: SplitLabelContext = {
-    allNodes: state.nodes,
-    splitPoints: state.postEditDraftSplitPoints,
-    activeSplitNode: state.postEditActiveSplitNode,
-    draftEdges: state.postEditDraftEdges,
-    cfgAt,
-    inFieldCellsAt,
-  };
+  const splitCtx = buildSplitLabelContext(state);
   return buildPostEditResetLifelines(state.postEditBaseline, state.postEditCommands, point, level, nodeById, multiFloor, splitCtx);
 }

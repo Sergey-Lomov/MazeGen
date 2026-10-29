@@ -11,7 +11,7 @@ import { fieldOf } from "./fieldConfigFixtures";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
-// `VectorByCorridorsRenderer.test.ts`'s own `FakeBounds`.
+// `vbcMocks.ts`'s own `FakeBounds`.
 interface FakeBounds { minX: number; minY: number; maxX: number; maxY: number; clone(): FakeBounds; addBounds(b: FakeBounds): void }
 function makeBounds(minX: number, minY: number, maxX: number, maxY: number): FakeBounds {
   return {
