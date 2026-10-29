@@ -7,6 +7,7 @@ import { SymmetryPanel } from "./components/features/SymmetryPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
+import { NoExportRendererHint } from "./components/NoExportRendererHint";
 import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { NotificationHost } from "./components/notifications/NotificationHost";
@@ -129,6 +130,7 @@ export function App() {
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
+        {!qualityOpen && <NoExportRendererHint />}
         {showFloorSwitcher && <FloorSwitcher />}
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}

@@ -2091,6 +2091,7 @@
   "project.load_error_visual_preset": "This is a style preset, not a project file. Load it from the Image Export card.",
   "project.load_error_quality_preset": "This is a quality preset, not a project file. Load it from the Quality card.",
   "image_export.title": "Image Export",
+  "image_export.no_renderer_hint": "Select a render mode to preview the image.",
   "image_export.mode.vector_by_walls.label": "Vector by walls",
   "image_export.mode.vector_by_corridors.label": "Vector by corridors",
   "image_export.vector_by_corridors.section_corridors": "Corridor",
