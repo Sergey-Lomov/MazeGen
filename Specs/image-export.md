@@ -14,7 +14,7 @@ Computed by `computeImageExportCard` (`FeaturesPanel.tsx`), covered by `features
 
 ## Switcher: one active mode, no default
 
-`activeRenderMode: RenderModeId | null` (`imageExportSlice.ts`) starts as `null` — the switcher has **no default selection**. The user must explicitly pick a mode; until then the card shows the `warning` status above.
+`activeRenderMode: RenderModeId | null` (`imageExportSlice.ts`) starts as `null` — the switcher has **no default selection**. The user must explicitly pick a mode; until then the card shows the `warning` status above. While the Image Export card is open with no mode, the canvas draws nothing, so `NoExportRendererHint` (`components/NoExportRendererHint.tsx`, mounted in `App.tsx` over the canvas column, GitHub issue #882) shows a centered localized hint (`image_export.no_renderer_hint`); it ignores pointer events and disappears once a mode is selected.
 
 Clicking a switcher item (`ImageExportFeature.tsx`) makes it the active mode when needed and shows
 its settings `SidePanel` (`setOpenRenderModeSettings(mode)`). If that panel is already mounted

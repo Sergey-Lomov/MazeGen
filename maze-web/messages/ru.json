@@ -2094,6 +2094,7 @@
   "project.load_error_visual_preset": "Это пресет стиля, а не файл проекта. Загрузите его в карточке «Экспорт изображения».",
   "project.load_error_quality_preset": "Это пресет правил качества, а не файл проекта. Загрузите его в карточке «Качество».",
   "image_export.title": "Экспорт изображения",
+  "image_export.no_renderer_hint": "Для предпросмотра изображения выберите режим рендера.",
   "image_export.mode.vector_by_walls.label": "Вектор по стенам",
   "image_export.mode.vector_by_corridors.label": "Вектор по коридорам",
   "image_export.vector_by_corridors.section_corridors": "Коридор",
