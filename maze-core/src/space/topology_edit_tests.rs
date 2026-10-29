@@ -215,6 +215,30 @@ fn an_inactive_fold_blocks_edits_of_other_groups_but_not_its_own_removal() {
 }
 
 #[test]
+fn a_group_can_be_removed_while_other_groups_are_inactive() {
+    let field = square_field(4, 3);
+    let ghost_fold = |y: i32, group: u32| Fold {
+        a: end(0, y, 2),
+        b: end(9, y, 0),
+        twist: false,
+        group: FoldGroupId(group),
+    };
+    let group = |id: u32| FoldGroup {
+        id: FoldGroupId(id),
+        folds: vec![FoldId(id as usize)],
+    };
+    let mut topology = Topology::<SquareTessellation>::new(
+        fp(),
+        vec![ghost_fold(0, 0), ghost_fold(1, 1)],
+        vec![group(0), group(1)],
+    );
+    topology.remove_group(&field, &fp(), FoldGroupId(0)).unwrap();
+    assert_eq!(topology.groups().len(), 1);
+    topology.remove_group(&field, &fp(), FoldGroupId(1)).unwrap();
+    assert!(topology.is_empty());
+}
+
+#[test]
 fn glue_pairs_untwisted_reversed_and_twisted_in_order() {
     let a = [end(0, 0, 2), end(0, 1, 2)];
     let b = [end(3, 0, 0), end(3, 1, 0)];

@@ -228,6 +228,35 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.floorFields[otherFloorId].isEditingField).toBe(false);
     expect([s.floorFields[otherFloorId].fieldConfig.tessellation.kind, s.floorFields[otherFloorId].fieldConfig.shape.shape]).toEqual(["hex", "hexagon"]);
   });
+
+  it("confirmTessellation with an unchanged tessellation keeps every floor's field (GitHub issue #881)", () => {
+    const otherFloorId = "floor_2";
+    const s0 = useMazeStore.getState();
+    const other = baseFloorFieldConfig({ isEditingField: true, fieldPoints: new Set([1, 2, 3]) });
+    useMazeStore.setState({
+      previewKind: s0.tessellationKind,
+      previewParams: s0.tessellationParams,
+      previewHexOrientation: s0.hexOrientation,
+      previewTriOrientation: s0.triOrientation,
+      floorFields: { ...s0.floorFields, [otherFloorId]: other },
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.floorFields[TEST_FLOOR_ID]).toBe(s0.floorFields[TEST_FLOOR_ID]);
+    expect(s.floorFields[otherFloorId]).toBe(other);
+  });
+
+  it("confirmTessellation with a changed orientation still rebuilds the field", () => {
+    const s0 = useMazeStore.getState();
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      previewKind: "hex",
+      hexOrientation: "flat_top",
+      previewHexOrientation: "pointy_top",
+    });
+    useMazeStore.getState().confirmTessellation();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID]).not.toBe(s0.floorFields[TEST_FLOOR_ID]);
+  });
 });
 
 describe("mazeStore tessellation misc actions", () => {

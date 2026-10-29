@@ -220,7 +220,7 @@ image sizing; it does not add cells, change the custom field, or alter any gener
 
 ## Default shape per kind
 
-When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
+When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape. `confirmTessellation` with an unchanged tessellation (same kind, params, hex and triangle orientations) is a no-op for the fields: every floor keeps its field config as is (GitHub issue #881).
 
 | Kind | Default shape |
 |---|---|
