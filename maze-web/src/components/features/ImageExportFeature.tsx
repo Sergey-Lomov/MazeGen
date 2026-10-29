@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
@@ -7,6 +7,7 @@ import { ui } from "../../styles/theme";
 import { Stack, Inline } from "../Layout";
 import { bringSidePanelToFront, SidePanel } from "../SidePanel";
 import { HoverIconButton } from "../HoverIconButton";
+import { ExportTopologyPanel } from "./ExportTopologyPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
 import { downloadPngExport } from "./pngExport";
@@ -38,6 +39,13 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const loadVisualPreset = useMazeStore((s) => s.loadVisualPreset);
   const presetInputRef = useRef<HTMLInputElement>(null);
+  // The topology panel (GitHub issue #859) exists only for a floor that has glues.
+  const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
+  const exportTopologyOpen = useMazeStore((s) => s.exportTopologyOpen);
+  const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
+  useEffect(() => {
+    if (!hasGlues && exportTopologyOpen) setExportTopologyOpen(false);
+  }, [hasGlues, exportTopologyOpen, setExportTopologyOpen]);
 
   function handleClick(mode: RenderModeId) {
     bringSidePanelToFront("image-export-render-mode");
@@ -147,6 +155,8 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
           )}
         </SidePanel>
       )}
+
+      {hasGlues && exportTopologyOpen && <ExportTopologyPanel />}
 
       {openFormat && (
         <SidePanel

@@ -85,6 +85,34 @@ export interface PngExportSettings {
   outputMode: PngExportOutputMode;
   digital: DigitalExportSettings;
   print: PrintExportSettings;
+  /** Cut lines of the topology's glues (GitHub issue #859). Export-only: they never touch the maze
+   * or the topology. */
+  cuts: CutExportSettings;
+}
+
+/** How a glue's cut line is set: not at all, from the glue's own geometry, or by the user. */
+export type CutMode = "none" | "auto" | "manual";
+
+/** One glue's cut line. `offset` is the line's position as a fraction of the glue's period (`0` is
+ * the automatic position, negative is outward); it is read only in `manual` mode. */
+export interface CutLineSetting {
+  mode: CutMode;
+  offset: number;
+}
+
+/** How a render mode draws the cut lines of the export (GitHub issue #859): both modes carry these fields. */
+export interface CutLineStyleFields {
+  /** Draws the cut lines on the image (a fold line for a printed sheet). */
+  showCutLines: boolean;
+  /** Each cut line takes the colour of its glue; `cutLinesColor` applies when off. */
+  cutLinesGlueColor: boolean;
+  cutLinesColor: number;
+}
+
+/** Cut-line export settings (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). */
+export interface CutExportSettings {
+  /** Per floor, then per glue (group id); a missing entry means no cut. An edit that removes a glue drops its entry. */
+  lines: Record<string, Record<number, CutLineSetting>>;
 }
 
 /** Teleports section settings (GitHub issue #293, restructured in a follow-up that removed the
@@ -592,7 +620,7 @@ export interface MarkerLayoutSettingsFields {
   markerScale: number;
 }
 
-export interface VectorByWallsSettings extends MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByWallsSettings extends CutLineStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
@@ -715,7 +743,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends CutLineStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
@@ -859,6 +887,9 @@ export interface ImageExportState {
    * overlay reads this alongside `openExportFormatSettings === "png"` — it would otherwise keep
    * drawing the frame/dimming for a panel the user can no longer see or act on. */
   exportFormatSettingsCovered: boolean;
+  /** The export topology panel (GitHub issue #859) is open: the canvas shows the active floor's glues
+   * and cut lines and lets the manual cut lines be dragged. */
+  exportTopologyOpen: boolean;
   pngExportSettings: PngExportSettings;
 }
 
@@ -878,6 +909,7 @@ export interface ImageExportActions {
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;
+  setExportTopologyOpen: (open: boolean) => void;
   setPngOutputMode: (mode: PngExportOutputMode) => void;
   setDigitalScale: (scale: number) => void;
   setDigitalCanvasMode: (mode: PngCanvasMode) => void;
@@ -892,6 +924,8 @@ export interface ImageExportActions {
   setPrintScale: (scale: number) => void;
   setPrintScaleAutoFit: (autoFit: boolean) => void;
   setPrintAnchor: (anchor: PrintAnchor) => void;
+  /** Sets or (with `null` / mode `none`) removes a glue's cut line. */
+  setCutLine: (floorId: string, group: number, setting: CutLineSetting | null) => void;
   /** Sets scale + offset together and switches `anchor` to `"custom"` in one update — used when
    * the user pans/zooms the maze under the on-canvas print frame (`ExportFrameOverlay`), where all
    * three values change together on every viewport move and must land in a single render, not
@@ -904,6 +938,9 @@ export interface ImageExportActions {
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;
+  setVectorByCorridorsShowCutLines: (v: boolean) => void;
+  setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
+  setVectorByCorridorsCutLinesColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJunctionRadius: (v: number) => void;
@@ -990,6 +1027,9 @@ export interface ImageExportActions {
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
+  setVectorByWallsShowCutLines: (v: boolean) => void;
+  setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
+  setVectorByWallsCutLinesColor: (color: number) => void;
   setVectorByWallsShowInnerGrid: (v: boolean) => void;
   setVectorByWallsInnerGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;

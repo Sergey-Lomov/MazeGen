@@ -12,7 +12,7 @@ const HIT_SLACK_SHARE = 0.5;
 export const HOVER_DELAY_MS = 100;
 
 /// The cards whose canvas shows the seam arrows (the field, presets, generation, analytics and post-edit
-/// renderers own a layer of them; tessellation and image export have none).
+/// renderers own a layer of them, image export one while its topology panel is open; tessellation has none).
 export function seamArrowsShown(state: MazeState): boolean {
   switch (state.openCard) {
     case "field_setup":
@@ -20,6 +20,8 @@ export function seamArrowsShown(state: MazeState): boolean {
     case "post_edit":
     case "analytics":
       return true;
+    case "image_export":
+      return state.exportTopologyOpen;
     case "generation":
       return state.showMaze && state._generatedNodes.length > 0;
     default:

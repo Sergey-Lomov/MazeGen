@@ -7,7 +7,7 @@ import type { ExportMargin } from "./exportMargins";
  * wall stroke sits on the cell face), `"center"` (`cellCenterBounds`) for modes whose content stops
  * well short of it (e.g. "Vector by corridors": a line runs cell-center to cell-center, so a border
  * cell's own segment never reaches the tile edge — GitHub issue #324). */
-export type ContentBoundsBasis = "cell" | "center";
+export type ContentBoundsBasis = "cell" | "center" | { box: { minX: number; minY: number; maxX: number; maxY: number } };
 
 /** World-space bounding box of the maze's own drawn content — the render mode's own raw bbox
  * (`basis`, correct per-tessellation extent, not a uniform per-center pad) inset by `margin` on
@@ -22,7 +22,9 @@ export function contentWorldBounds(
   margin: ExportMargin,
   basis: ContentBoundsBasis = "cell",
 ): { minX: number; minY: number; width: number; height: number } {
-  const { minX, minY, maxX, maxY } = basis === "center" ? cellCenterBounds(nodes, cfg) : exactCellBounds(nodes, cfg);
+  const { minX, minY, maxX, maxY } = typeof basis === "object"
+    ? basis.box
+    : basis === "center" ? cellCenterBounds(nodes, cfg) : exactCellBounds(nodes, cfg);
   return {
     minX: minX - margin.left,
     minY: minY - margin.top,

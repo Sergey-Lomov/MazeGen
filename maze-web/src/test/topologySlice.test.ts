@@ -72,6 +72,23 @@ describe("topology editor store (GitHub issue #839)", () => {
     expect(topologyOf()).toBeUndefined();
   });
 
+  it("drops the export cut line of a removed glue with the same update, and keeps the others", () => {
+    glueCylinder();
+    const id = topologyOf().groups[0].id;
+    const auto = { mode: "auto" as const, offset: 0 };
+    const cuts = { lines: { [TEST_FLOOR_ID]: { [id]: auto, 7: auto }, other: { 0: auto } } };
+    useMazeStore.setState({ pngExportSettings: { ...get().pngExportSettings, cuts } });
+    const topologies: unknown[] = [];
+    const unsubscribe = useMazeStore.subscribe((state) => topologies.push(state.floorTopology[TEST_FLOOR_ID]));
+    get().removeTopologyGroup(id);
+    unsubscribe();
+    expect(topologyOf()).toBeUndefined();
+    // The removed glue's line is gone, the other floor's stays; a floor left with no lines has no entry.
+    expect(get().pngExportSettings.cuts.lines).toEqual({ other: { 0: auto } });
+    // One store update, not a second one from a subscriber.
+    expect(topologies).toEqual([undefined]);
+  });
+
   it("glues two picked boundary runs as a new group", () => {
     const info = floorTopologyInfo(get(), TEST_FLOOR_ID);
     if (!info.ok) throw new Error(info.error);

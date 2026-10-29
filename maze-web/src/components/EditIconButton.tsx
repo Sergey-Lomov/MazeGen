@@ -19,7 +19,7 @@ export function EditIconButton({ onClick, title, fontSize, disabled, style }: {
       <button
         type="button"
         className="hoverable"
-        style={{ ...styles.editBtn, ...(fontSize === undefined ? {} : { fontSize }), ...style }}
+        style={{ ...styles.editBtn, ...(fontSize === undefined ? {} : { fontSize }), ...(disabled ? { opacity: 0.4 } : {}), ...style }}
         disabled={disabled}
         onClick={onClick}
       >

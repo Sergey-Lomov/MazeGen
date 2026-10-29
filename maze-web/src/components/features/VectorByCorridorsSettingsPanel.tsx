@@ -17,6 +17,7 @@ import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection } from "./TeleportSettingsSection";
 import { useExportPanelModel } from "./useExportPanelModel";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
+import { TopologySettingsSection } from "./TopologySettingsSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
@@ -60,6 +61,9 @@ export function VectorByCorridorsSettingsPanel() {
   const setBackground = useMazeStore((s) => s.setVectorByCorridorsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByCorridorsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
+  const setShowCutLines = useMazeStore((s) => s.setVectorByCorridorsShowCutLines);
+  const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesGlueColor);
+  const setCutLinesColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesColor);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
@@ -1149,6 +1153,17 @@ export function VectorByCorridorsSettingsPanel() {
           onClose={() => setRenderStyleInfoOpen(false)}
         />
       )}
+      <TopologySettingsSection
+        expanded={isExpanded("topology")}
+        onToggle={() => toggleSection("topology")}
+        style={settings}
+        defaultColor={D.cutLinesColor}
+        priorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
+        onShow={setShowCutLines}
+        onGlueColor={setCutLinesGlueColor}
+        onColor={setCutLinesColor}
+      />
+
     </div>
     </TextFitContextProvider>
     </ColorVisibilityProvider>

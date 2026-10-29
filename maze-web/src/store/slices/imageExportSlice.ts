@@ -169,6 +169,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   hoveredExportWarningKey: null,
   openExportFormatSettings: null,
   exportFormatSettingsCovered: false,
+  exportTopologyOpen: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
@@ -181,7 +182,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       hoveredExportWarningKey: null,
       showColorWarnings: p.showColorWarnings,
       linkIconVisibility: p.linkIconVisibility,
-      pngExportSettings: p.pngExportSettings,
+      // Cut lines belong to this project's glues, not to the style.
+      pngExportSettings: { ...p.pngExportSettings, cuts: s.pngExportSettings.cuts },
       floorLabelModeChosen: p.floorLabelModeChosen,
       vectorByWallsSettings: markLinked(withMazeBound(p.vectorByWallsSettings, s.vectorByWallsSettings)),
       vectorByCorridorsSettings: markLinked(withMazeBound(p.vectorByCorridorsSettings, s.vectorByCorridorsSettings)),
@@ -246,6 +248,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     };
   }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
+  setExportTopologyOpen: (open) => set({ exportTopologyOpen: open }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from
   // whatever the previously open format's covered state happened to be.
   setOpenExportFormatSettings: (format) => set({ openExportFormatSettings: format, exportFormatSettingsCovered: false }),
@@ -309,6 +312,16 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, anchor } } })),
   setPrintCustomPlacement: (scale, offsetXMm, offsetYMm) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale, offsetXMm, offsetYMm, anchor: "custom" } } })),
+  setCutLine: (floorId, group, setting) =>
+    set((s) => {
+      const lines = { ...s.pngExportSettings.cuts.lines };
+      const floor = { ...lines[floorId] };
+      if (setting === null || setting.mode === "none") delete floor[group];
+      else floor[group] = setting;
+      if (Object.keys(floor).length === 0) delete lines[floorId];
+      else lines[floorId] = floor;
+      return { pngExportSettings: { ...s.pngExportSettings, cuts: { ...s.pngExportSettings.cuts, lines } } };
+    }),
   setVectorByWallsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
   setVectorByCorridorsSectionExpanded: (id, expanded) =>
@@ -318,6 +331,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsBackground: (color) => set(corridorsParam("background", color)),
   setVectorByCorridorsShowGrid: (v) => set(corridorsParam("showGrid", v)),
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
+  setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
+  setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
+  setVectorByCorridorsCutLinesColor: (color) => set(corridorsParam("cutLinesColor", color)),
   setVectorByCorridorsColor: (color) => set(corridorsParam("color", color)),
   setVectorByCorridorsThickness: (v) => set(corridorsParam("thickness", v)),
   setVectorByCorridorsJunctionRadius: (v) => set(corridorsParam("junctionRadius", v)),
@@ -389,6 +405,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   resetVectorByCorridorsSettings: () => set((s) => ({
     vectorByCorridorsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, defaultFloorLabelMode(s.floors))),
+    // The topology (cut lines) belongs to the renderer settings too.
+    pngExportSettings: { ...s.pngExportSettings, cuts: DEFAULT_PNG_EXPORT_SETTINGS.cuts },
   })),
   setVectorByCorridorsLinkEnabled: (target, enabled) =>
     set((s) => {
@@ -410,6 +428,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsBackground: (color) => set(wallsParam("background", color)),
   setVectorByWallsShowGrid: (v) => set(wallsParam("showGrid", v)),
   setVectorByWallsGridColor: (color) => set(wallsParam("gridColor", color)),
+  setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
+  setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),
+  setVectorByWallsCutLinesColor: (color) => set(wallsParam("cutLinesColor", color)),
   setVectorByWallsShowInnerGrid: (v) => set(wallsParam("showInnerGrid", v)),
   setVectorByWallsInnerGridColor: (color) => set(wallsParam("innerGridColor", color)),
   setVectorByWallsFloorColor: (color) => set(wallsParam("floorColor", color)),
@@ -486,6 +507,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   resetVectorByWallsSettings: () => set((s) => ({
     vectorByWallsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_WALLS_SETTINGS, defaultFloorLabelMode(s.floors))),
+    // The topology (cut lines) belongs to the renderer settings too.
+    pngExportSettings: { ...s.pngExportSettings, cuts: DEFAULT_PNG_EXPORT_SETTINGS.cuts },
   })),
   setVectorByWallsLinkEnabled: (target, enabled) =>
     set((s) => {

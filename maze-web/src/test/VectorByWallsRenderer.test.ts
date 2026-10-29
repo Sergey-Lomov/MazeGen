@@ -161,7 +161,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
-    gridColor: 0x222222,
+    gridColor: 0x222222, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
     showInnerGrid: false,
     innerGridColor: 0x222222,
     floorColor: 0x333333,

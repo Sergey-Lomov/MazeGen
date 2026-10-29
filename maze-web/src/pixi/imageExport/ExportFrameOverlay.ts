@@ -4,6 +4,7 @@ import { createFloorNodesSelector } from "../selectors/mazeSelectors";
 import { computePrintExportFit, computeSheetScreenLayout, computePrintPlacementFromViewport, computeViewportFromPrintPlacement, DPI_BY_DENSITY, mmToPx } from "./printFit";
 import { computeDigitalExportFit } from "./exportFit";
 import { resolveBackgroundColor, resolveContentBoundsBasis } from "./exportMargins";
+import { resolveCutPlan, resolveExportContent } from "./exportContent";
 import { contrastGray } from "../colorTokens";
 import type { ViewportListener } from "../sceneTypes";
 import type { PrintExportSettings } from "../../store/storeTypes";
@@ -151,10 +152,25 @@ export class ExportFrameOverlay implements ViewportListener {
       ?? { left: 0, right: 0, top: 0, bottom: 0 };
   }
 
+  /** The margin and bounds basis of the fit math: the active mode's own, or the cut sheet's region
+   * when a glue has a cut line (GitHub issue #859). */
+  private resolveContent(state: ReturnType<typeof useMazeStore.getState>) {
+    const modeMargin = this.resolveMargin(state);
+    const plan = resolveCutPlan({
+      cfg: state.activeFieldConfig,
+      floorId: state.activeFloorId,
+      topology: state.floorTopology[state.activeFloorId],
+      cuts: state.pngExportSettings.cuts,
+      floorNodes: activeFloorNodes(state),
+      margin: () => modeMargin,
+    });
+    return resolveExportContent(plan, modeMargin, resolveContentBoundsBasis(state.activeRenderMode!));
+  }
+
   private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
-    const margin = this.resolveMargin(state);
-    const printFit = computePrintExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
+    const { margin, basis } = this.resolveContent(state);
+    const printFit = computePrintExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, basis);
     if (printFit.sheetWidthPx <= 0 || printFit.sheetHeightPx <= 0) return null;
     const screenSize = this.getScreenSize();
     const layout = computeSheetScreenLayout(printFit.sheetWidthPx, printFit.sheetHeightPx, screenSize.width, screenSize.height);
@@ -167,8 +183,8 @@ export class ExportFrameOverlay implements ViewportListener {
    * derived from the current maze bbox + settings, nothing to keep in sync). */
   private currentDigitalFrameLayout(state: ReturnType<typeof useMazeStore.getState>): ScreenRect | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "digital" || state.activeRenderMode === null) return null;
-    const margin = this.resolveMargin(state);
-    const fit = computeDigitalExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
+    const { margin, basis } = this.resolveContent(state);
+    const fit = computeDigitalExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.digital, basis);
     if (fit.width <= 0 || fit.height <= 0) return null;
     const { scale } = this.lastViewport;
     return {
@@ -189,9 +205,9 @@ export class ExportFrameOverlay implements ViewportListener {
    * overwrite the scale this call is about to set, back to the auto-fit value, every render). */
   private syncPlacementToViewport(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const margin = this.resolveMargin(state);
+    const { margin, basis } = this.resolveContent(state);
     const { scale, offsetXMm, offsetYMm } = computePrintPlacementFromViewport(
-      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, this.lastViewport, frameLayout, basis,
     );
     this.syncingDepth++;
     try {
@@ -209,9 +225,9 @@ export class ExportFrameOverlay implements ViewportListener {
    * the viewport back into itself. */
   private syncViewportToPlacement(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const margin = this.resolveMargin(state);
+    const { margin, basis } = this.resolveContent(state);
     const { x, y, scale } = computeViewportFromPrintPlacement(
-      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, frameLayout, basis,
     );
     this.lastViewport = { x, y, scale };
     // setViewportTransform synchronously fans out into onViewportChanged -> syncPlacementToViewport

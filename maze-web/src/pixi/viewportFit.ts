@@ -63,3 +63,17 @@ function centersBounds(centers: { x: number; y: number }[], pad: number): { minX
   }
   return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
 }
+
+/** The viewport transform that fits a world-space box onto the screen, centered on it: the cut sheet of an export
+ * (GitHub issue #859) is not the maze's own bounding box, so the plain maze fit would leave it off-centre. */
+export function fitBoundsViewport(
+  box: { minX: number; minY: number; maxX: number; maxY: number },
+  screenW: number,
+  screenH: number,
+): { x: number; y: number; scale: number } {
+  const w = box.maxX - box.minX;
+  const h = box.maxY - box.minY;
+  if (w <= 0 || h <= 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
+  const scale = Math.min(VIEWPORT_FIT_PADDING * screenW / w, VIEWPORT_FIT_PADDING * screenH / h);
+  return { scale, x: screenW / 2 - scale * (box.minX + box.maxX) / 2, y: screenH / 2 - scale * (box.minY + box.maxY) / 2 };
+}

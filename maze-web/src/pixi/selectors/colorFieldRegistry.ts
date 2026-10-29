@@ -35,6 +35,8 @@ export interface ColorVisibilityContext {
   /** `wallColor` — hidden when the random-wall-color palette replaces the single wall color. */
   wall: boolean;
   innerGrid: boolean;
+  /** `cutLinesColor` — shown only for lines drawn in their own single colour. */
+  cutLines: boolean;
   oneWayIndicator: boolean;
   teleports: boolean;
   crossFloorTeleports: boolean;
@@ -98,6 +100,7 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     slotCount: maxSplitNodeCount(maze.nodes),
     grid: s.showGrid,
     innerGrid: "showInnerGrid" in s && s.showInnerGrid,
+    cutLines: s.showCutLines && !s.cutLinesGlueColor,
     wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
     oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
     teleports,
@@ -168,6 +171,8 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
     get: (s) => ("innerGridColor" in s ? s.innerGridColor : undefined),
     set: (s, v) => { if ("innerGridColor" in s) s.innerGridColor = v; },
   },
+
+  cutLines: { visible: (c) => c.cutLines, get: (s) => s.cutLinesColor, set: (s, v) => { s.cutLinesColor = v; } },
 
   corridorFill: {
     visible: (c) => c.mode === "corridors",
@@ -296,7 +301,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
  *  appears in exactly one table — enforced by a test. */
 export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
   [
-    "bgFill", "bgGrid", "innerGrid", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
+    "bgFill", "bgGrid", "innerGrid", "cutLines", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
     "sharedMarkerFill", "sharedMarkerBorder",
     "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText",
     "teleportEdge", "teleportEdgeBorder", "teleportConnector",

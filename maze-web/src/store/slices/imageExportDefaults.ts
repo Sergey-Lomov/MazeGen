@@ -14,6 +14,7 @@ import type {
   FloorLabelSettings,
   FloorLabelMode,
   FloorState,
+  CutLineStyleFields,
 } from "../storeTypes";
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
@@ -288,6 +289,9 @@ export const DEFAULT_MARKER_LAYOUT: MarkerLayoutSettingsFields = { markerLayout:
  * `teleportConnectorGapWidth` field driven by "Shared style" (GitHub issue #322, generalized by
  * #643) holds a placeholder value below, overwritten by the `propagate` call right after — see
  * `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment for exactly which fields it touches. */
+/** Cut lines are drawn by default, in the colour of their glue; grey when a single colour is chosen. */
+export const DEFAULT_CUT_LINE_STYLE: CutLineStyleFields = { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080 };
+
 export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate(
   {
     background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
@@ -295,6 +299,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     gridColor: DEFAULT_MAZE_RENDER_STYLE.grid.color,
     showInnerGrid: false,
     innerGridColor: 0x3a3a3a,
+    ...DEFAULT_CUT_LINE_STYLE,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
     randomWallColorMode: "off",
@@ -362,6 +367,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     background: canvas.stage.background,
     showGrid: false,
     gridColor: canvas.grid.line,
+    ...DEFAULT_CUT_LINE_STYLE,
     color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
     junctionRadius: 4,
@@ -399,4 +405,5 @@ export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
   outputMode: "digital",
   digital: { scale: 4, canvasMode: "edge_to_edge", marginValue: 20, fixedWidth: 1920, fixedHeight: 1080 },
   print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: true, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
+  cuts: { lines: {} },
 };

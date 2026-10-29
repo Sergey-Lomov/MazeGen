@@ -1271,8 +1271,10 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       outputMode: "print" as const,
       digital: { ...DEFAULT_PNG_EXPORT_SETTINGS.digital, scale: 4, canvasMode: "fixed_size" as const, fixedWidth: 800, fixedHeight: 600 },
       print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, paperSize: "a3" as const, orientation: "landscape" as const, anchor: "top_left" as const },
+      cuts: { lines: { "floor-1": { 0: { mode: "manual" as const, offset: 0.25 }, 1: { mode: "auto" as const, offset: 0 } } } },
     };
-    const state = makeState({ pngExportSettings: settings });
+    const glues = { fingerprint: "square{}", folds: [], groups: [{ id: 0, folds: [] }, { id: 1, folds: [] }] };
+    const state = makeState({ pngExportSettings: settings, floorTopology: { "floor-1": glues } });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.imageExport.pngExportSettings).toEqual(settings);
