@@ -575,6 +575,16 @@ export function getFieldPreset(
   return getWasm().field_preset({ tessellation, preset, params }) as [number, number][];
 }
 
+/// The topology a preset shape defines together with its cells (`field_preset_topology`, GitHub
+/// issue #858); `null` for a preset that is only a shape. Throws the wire `FieldOpError`.
+export function getFieldPresetTopology(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): WireTopology | null {
+  return (getWasm().field_preset_topology({ tessellation, preset, params }) as WireTopology | undefined) ?? null;
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions.
 export function getFieldPresetExtents(
   tessellation: WasmTessellationConfig,

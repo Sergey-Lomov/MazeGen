@@ -15,7 +15,12 @@ fn preset_keys<T: Tessellation>(tessellation: &T) -> Vec<&'static str> {
 
 /// Sample parameters for every param of `descriptor`, all set to `value`.
 fn params_of(descriptor: &PresetDescriptor, value: u32) -> Vec<(&'static str, u32)> {
-    descriptor.params.iter().map(|p| (p.name, value)).collect()
+    // `mode` and `net` of the box are two-valued switches, not sizes; `0` is the connected net.
+    descriptor
+        .params
+        .iter()
+        .map(|p| (p.name, if matches!(p.name, "mode" | "net") { 0 } else { value }))
+        .collect()
 }
 
 fn check_presets_build_valid_connected_sorted_cells<T: Tessellation>(tessellation: &T) {
@@ -72,7 +77,7 @@ fn every_builtin_preset_builds_valid_connected_sorted_cells() {
 fn presets_per_kind_match_the_spec_table() {
     assert_eq!(
         preset_keys(&SquareTessellation),
-        ["rect", "circle", "triangle"]
+        ["rect", "circle", "triangle", "box"]
     );
     assert_eq!(
         preset_keys(&HexTessellation),

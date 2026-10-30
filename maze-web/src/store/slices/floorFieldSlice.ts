@@ -8,6 +8,7 @@ import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeSymmetryPreview } from "../../pixi/symmetry";
 import { tessellationFingerprint } from "../topologyWire";
+import { withPresetTopology } from "../presetTopology";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
@@ -92,8 +93,14 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
   const configChanged =
     tessellationFingerprint(derivedForActive.kind, derivedForActive.params) !==
     tessellationFingerprint(state.tessellationKind, state.tessellationParams);
+  // A floor on a standard shape holds exactly the topology that shape defines (box), or none.
+  let floorTopology = configChanged ? {} : withoutFloorTopology(state.floorTopology, leftCustomIds);
+  for (const id of targetIds) {
+    const cfg = configs[id];
+    if (cfg && !floorFields[id].isEditingField) floorTopology = withPresetTopology(floorTopology, id, cfg);
+  }
   return {
-    floorTopology: configChanged ? {} : withoutFloorTopology(state.floorTopology, leftCustomIds),
+    floorTopology,
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
@@ -180,7 +187,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const cfg = buildPredefinedConfig(tessellationOf(state), field.selectedShape, state.hexOrientation, state.triOrientation, field.savedShapes);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
-      ...(field.isEditingField ? { floorTopology: withoutFloorTopology(state.floorTopology, [state.activeFloorId]) } : {}),
+      floorTopology: withPresetTopology(state.floorTopology, state.activeFloorId, cfg),
       ...buildResetDownstreamState(),
       backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),

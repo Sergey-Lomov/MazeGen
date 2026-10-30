@@ -3,8 +3,9 @@
 
 use super::tessellation_factory::{CellCodec, TessellationVisitor, build_tessellation};
 use crate::config::TessellationConfig;
+use crate::topology_wire::{TopologyDto, encode_topology, tessellation_fingerprint};
 use maze_core::space::{
-    FieldOpError, FieldOperation, FieldOps, Point, Tessellation, TessellationGeometry,
+    FieldOpError, FieldOperation, FieldOps, Point, Tessellation, TessellationGeometry, Topology,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -105,6 +106,13 @@ pub fn field_capabilities(request: &CapabilitiesRequest) -> Result<FieldCapabili
 
 pub fn build_preset(request: &PresetRequest) -> Result<Vec<[i32; 2]>, FieldOpWireError> {
     build_tessellation(&request.tessellation, Preset { request }).map_err(invalid_request)?
+}
+
+/// The topology a preset defines together with its cells (GitHub issue #858, `Specs/topology.md`,
+/// "Topology presets"): `None` for a preset that is only a shape. The fingerprint is that of
+/// `request.tessellation`, so the result installs on any floor of the same config.
+pub fn preset_topology(request: &PresetRequest) -> Result<Option<TopologyDto>, FieldOpWireError> {
+    build_tessellation(&request.tessellation, PresetTopology { request }).map_err(invalid_request)?
 }
 
 /// Extent of a preset shape's cell boundaries along two world directions: for direction `d`, the
@@ -216,6 +224,32 @@ impl TessellationVisitor for Preset<'_> {
             .collect();
         let cells = tessellation.build_preset(&self.request.preset, &params)?;
         Ok(cells.into_iter().map(|cell| wire(cell, codec)).collect())
+    }
+}
+
+struct PresetTopology<'a> {
+    request: &'a PresetRequest,
+}
+
+impl TessellationVisitor for PresetTopology<'_> {
+    type Output = Result<Option<TopologyDto>, FieldOpWireError>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        let params: Vec<(&str, u32)> = self
+            .request
+            .params
+            .iter()
+            .map(|(name, &value)| (name.as_str(), value))
+            .collect();
+        let groups = tessellation.build_preset_folds(&self.request.preset, &params)?;
+        if groups.is_empty() {
+            return Ok(None);
+        }
+        let topology = Topology::<T>::from_groups(
+            tessellation_fingerprint(&self.request.tessellation),
+            groups,
+        );
+        Ok(Some(encode_topology(&topology, |cell| (codec.to_xy)(cell))))
     }
 }
 

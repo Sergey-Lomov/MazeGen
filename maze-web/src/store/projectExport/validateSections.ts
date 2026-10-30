@@ -14,10 +14,10 @@ import type {
   ProjectFileQuality,
 } from "./types";
 import { availablePresetKeys } from "../../pixi/fieldOps";
-import { tessellationConfigOf, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
+import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
-  assertStringRecord, assertStringRecordRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
+  assertStringRecord, assertStringRecordRecord, optEnum, optNumber, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
@@ -29,11 +29,18 @@ function validateAbsoluteFlag(v: unknown, path: string): { absolute?: true } {
   return { absolute: true };
 }
 
-/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`). */
+/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`, `box`). */
 export function validatePresetFieldShape(v: unknown, path: string): PresetFieldShape {
   const shape = validateFieldShape(v, path);
   if (shape.shape === "custom") throw new Error(`${path}.shape: expected a preset shape`);
   return shape;
+}
+
+/** A preset switch `0..=max`; absent (older project files) means `0`. */
+function assertSwitch<T extends number>(v: unknown, path: string, max: number): T {
+  if (v === undefined) return 0 as T;
+  if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > max) throw new Error(`${path}: expected 0..${max}`);
+  return v as T;
 }
 
 export function validateFieldShape(v: unknown, path: string): FieldShape {
@@ -48,6 +55,19 @@ export function validateFieldShape(v: unknown, path: string): FieldShape {
       return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };
     case "triangle":
       return { shape, side: assertNumber(obj.side, `${path}.side`) };
+    case "box":
+      const net = assertSwitch<BoxNet>(obj.net, `${path}.net`, 2);
+      // The compact layout is always by faces.
+      const mode = net === BOX_NET_COMPACT ? 1 : assertSwitch<BoxMode>(obj.mode, `${path}.mode`, 1);
+      return {
+        shape,
+        width: assertNumber(obj.width, `${path}.width`),
+        height: assertNumber(obj.height, `${path}.height`),
+        depth: assertNumber(obj.depth, `${path}.depth`),
+        net,
+        mode,
+        aspect: optNumber(obj, "aspect", BOX_DEFAULT_ASPECT),
+      };
     case "custom":
       return {
         shape,

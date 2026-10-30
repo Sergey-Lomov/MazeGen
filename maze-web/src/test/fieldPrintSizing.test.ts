@@ -227,6 +227,38 @@ describe("field print sizing", () => {
   });
 });
 
+describe("print sizing of a box", () => {
+  const box = (net: 0 | 1 | 2, mode: 0 | 1) =>
+    fieldOf("square", { shape: "box", width: 10, height: 10, depth: 10, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    // The nets are asked one after another with the same paper: none may get another's answer.
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 0], [0, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(box(net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "box", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet", () => {
+    const portrait = calculatePrintFieldConfig(box(2, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(box(2, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    expect(portrait.fieldHeightMm).toBeGreaterThan(portrait.fieldWidthMm);
+    expect(landscape.fieldWidthMm).toBeGreaterThan(landscape.fieldHeightMm);
+  });
+
+  it("keeps the proportions of the sides and fits the paper", () => {
+    const input = fieldOf("square", { shape: "box", width: 4, height: 2, depth: 2, net: 0, mode: 0, aspect: 100 }) as PredefinedFieldConfig;
+    const result = calculatePrintFieldConfig(input, printInput)!;
+    const shape = result.config.shape as { width: number; height: number; depth: number };
+    expect(shape.width).toBe(2 * shape.height);
+    expect(shape.height).toBe(shape.depth);
+    expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+    expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+  });
+});
+
 function shapeCapacity(config: Pick<FieldConfig, "shape">): number {
   const { shape } = config;
   if ("cols" in shape && "rows" in shape) return Number(shape.cols) * Number(shape.rows);

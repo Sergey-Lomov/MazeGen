@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { Fragment, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
+import { BOX_NET_COMPACT, type FieldConfig, type FieldShape, type PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
@@ -93,7 +93,9 @@ export function FieldSetupFeature() {
     : null;
 
   function setField(field: string, value: number) {
-    setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value } as FieldShape });
+    // The compact box layout is always by faces.
+    const forced = fieldConfig.shape.shape === "box" && field === "net" && value === BOX_NET_COMPACT ? { mode: 1 } : {};
+    setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value, ...forced } as FieldShape });
   }
 
   function handleSwitchToDefault() {
@@ -169,7 +171,48 @@ export function FieldSetupFeature() {
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
     const values = shape as unknown as Record<string, number>;
-    return presetParams(fieldConfig.tessellation, shape.shape).map(({ name, min, max }) => (
+    const compactBox = shape.shape === "box" && shape.net === BOX_NET_COMPACT;
+    const params = presetParams(fieldConfig.tessellation, shape.shape);
+    return params.map(({ name, min, max }) => {
+      // The compact layout's sheet aspect is set by print sizing, not typed in.
+      if (name === "aspect") return null;
+      if (shape.shape === "box" && BOX_SIZES.includes(name)) {
+        if (name !== BOX_SIZES[0]) return null;
+        // One "Dimensions" caption above the three side inputs in a row.
+        return (
+          <Fragment key={name}>
+            <div style={styles.sectionLabel}>{m["field.sizes"]()}</div>
+            <Inline gap="itemGap">
+              {params.filter((p) => BOX_SIZES.includes(p.name)).map((p) => (
+                <SizeParam
+                  key={p.name}
+                  hideLabel
+                  label={paramLabel(tessellationKind, shape.shape, p.name)}
+                  value={values[p.name]}
+                  min={p.min}
+                  max={p.max ?? paramMax(tessellationKind, shape.shape, p.name)}
+                  disabled={fieldEditLocked}
+                  onCommit={(v) => setField(p.name, v)}
+                />
+              ))}
+            </Inline>
+          </Fragment>
+        );
+      }
+      const choices = paramChoices(shape.shape, name);
+      if (choices) {
+        return (
+          <label key={name} style={styles.label}>
+            {paramLabel(tessellationKind, shape.shape, name)}
+            <select style={styles.select} value={compactBox && name === "mode" ? 1 : values[name]} name={`field-${name}`}
+              disabled={fieldEditLocked || (compactBox && name === "mode")}
+              onChange={(e) => setField(name, Number(e.target.value))}>
+              {choices.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        );
+      }
+      return (
       <SizeParam
         key={name}
         label={paramLabel(tessellationKind, shape.shape, name)}
@@ -179,7 +222,8 @@ export function FieldSetupFeature() {
         disabled={fieldEditLocked}
         onCommit={(v) => setField(name, v)}
       />
-    ));
+      );
+    });
   }
 
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
@@ -555,8 +599,12 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
+    case "box": return m["field.shape.box"]();
   }
 }
+
+/** The box side params, shown as one row of inputs under a single caption. */
+const BOX_SIZES = ["width", "height", "depth"];
 
 function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: string): string {
   switch (name) {
@@ -564,8 +612,28 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
     case "rows": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
     case "radius": return m["field.radius"]();
     case "side": return m["field.side"]();
+    case "width": return m["field.width"]();
+    case "height": return m["field.height"]();
+    case "depth": return m["field.depth"]();
+    case "mode": return m["field.box.mode"]();
+    case "net": return m["field.box.net"]();
     default: return name;
   }
+}
+
+/** Switch-like params (core publishes them as `0..max` integers) rendered as a select, not a number input. */
+function paramChoices(shape: PresetFieldShapeName, name: string): { value: number; label: string }[] | null {
+  if (shape !== "box") return null;
+  if (name === "mode") return [
+    { value: 0, label: m["field.box.mode.net"]() },
+    { value: 1, label: m["field.box.mode.faces"]() },
+  ];
+  if (name === "net") return [
+    { value: 0, label: m["field.box.net.cross"]() },
+    { value: 1, label: m["field.box.net.t"]() },
+    { value: BOX_NET_COMPACT, label: m["field.box.net.compact"]() },
+  ];
+  return null;
 }
 
 /** Fallback upper bound of a size param in the editor — UI metadata, used when core publishes no `max`. */
@@ -619,6 +687,7 @@ export function configCellCount(cfg: FieldConfig): number {
     case "triangle":
       return ui.triangleCellCount === null ? configAllCells(cfg).length : ui.triangleCellCount(shape.side);
     case "circle": return configAllCells(cfg).length;
+    case "box": return 2 * (shape.width * shape.height + shape.height * shape.depth + shape.width * shape.depth);
   }
 }
 
@@ -630,6 +699,7 @@ function configSizeLabel(cfg: FieldConfig): string {
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
     case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "box": return `${shape.width} × ${shape.height} × ${shape.depth}`;
     case "custom": return "";
   }
 }

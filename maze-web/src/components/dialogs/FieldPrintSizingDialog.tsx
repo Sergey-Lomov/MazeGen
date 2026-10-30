@@ -226,6 +226,7 @@ export function configSizeDescription(config: FieldConfig): string {
     case "circle":
     case "hexagon": return m["field.print_sizing.result_radius"]({ size: String(shape.radius) });
     case "triangle": return m["field.print_sizing.result_side"]({ size: String(shape.side) });
+    case "box": return m["field.print_sizing.result_size"]({ size: `${shape.width} × ${shape.height} × ${shape.depth}` });
     case "custom": return "";
   }
 }
@@ -278,6 +279,7 @@ function printFieldShapeLabel(config: FieldConfig): string {
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
+    case "box": return m["field.shape.box"]();
     case "custom": return m["field.print_sizing.floor_non_standard"]();
   }
 }
@@ -290,6 +292,7 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
     case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "box": return `${shape.width} × ${shape.height} × ${shape.depth}`;
   }
 }
 

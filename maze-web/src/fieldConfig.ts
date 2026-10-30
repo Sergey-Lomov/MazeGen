@@ -18,6 +18,16 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 /** Display-only orientation; never part of the tessellation config or the field shape. */
 export type DisplayOrientation = HexOrientation | TriOrientation;
 
+/** Box preset switches (core publishes them as small integer params): the faces stay joined as a net
+ * (`0`) or become six separate rectangles glued along all twelve edges (`1`). */
+export type BoxMode = 0 | 1;
+/** Default `aspect` of a box: the compact layout is packed for a square area. */
+export const BOX_DEFAULT_ASPECT = 100;
+/** The compact box net: always by faces, packed for the printed sheet. */
+export const BOX_NET_COMPACT = 2;
+/** Box net: cross (`0`), T-shaped (`1`) or the compact print layout (`2`, always by faces). */
+export type BoxNet = 0 | 1 | 2;
+
 /**
  * A floor's field shape, independent of the tessellation kind. Which preset shapes a tessellation
  * offers is decided by core (`field_capabilities`); `custom` carries the cell list directly.
@@ -28,6 +38,7 @@ export type FieldShape =
   | { shape: "circle"; radius: number }
   | { shape: "triangle"; side: number }
   | { shape: "hexagon"; radius: number }
+  | { shape: "box"; width: number; height: number; depth: number; net: BoxNet; mode: BoxMode; aspect: number }
   | { shape: "custom"; points: [number, number][] };
 
 export type FieldShapeName = FieldShape["shape"];

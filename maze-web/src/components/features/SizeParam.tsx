@@ -14,9 +14,11 @@ interface SizeParamProps {
   /** Only whole numbers are accepted. */
   integer?: boolean;
   disabled?: boolean;
+  /** Shows the input without the visible label (the label stays as its accessible name); the caller supplies a caption. */
+  hideLabel?: boolean;
 }
 
-export function SizeParam({ label, value, min, max, onCommit, step, integer = false, disabled = false }: SizeParamProps) {
+export function SizeParam({ label, value, min, max, onCommit, step, integer = false, disabled = false, hideLabel = false }: SizeParamProps) {
   const hint = useFieldHint();
   const [local, setLocal] = useState(String(value));
 
@@ -43,13 +45,14 @@ export function SizeParam({ label, value, min, max, onCommit, step, integer = fa
   }
 
   return (
-    <label ref={hint.labelRef as React.Ref<HTMLLabelElement>} style={sharedStyles.fieldLabel}>
-      {label}
+    <label ref={hint.labelRef as React.Ref<HTMLLabelElement>} style={hideLabel ? { ...sharedStyles.fieldLabel, flex: 1, minWidth: 0 } : sharedStyles.fieldLabel}>
+      {hideLabel ? null : label}
       <input
         ref={hint.anchorRef as React.Ref<HTMLInputElement>}
         style={{ ...sharedStyles.input, ...hint.fieldStyle }}
         type="number"
         name={label}
+        aria-label={hideLabel ? label : undefined}
         min={min}
         max={max}
         step={step}

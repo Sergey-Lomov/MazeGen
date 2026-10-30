@@ -1,9 +1,10 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
+use super::square_box::{BOX_PRESET, box_cells, box_folds, box_param_max};
 use super::{
-    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
+    ShapeDescriptor, Tessellation, validate_preset,
 };
 use std::sync::LazyLock;
 
@@ -132,7 +133,24 @@ impl Tessellation for SquareTessellation {
             )),
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
+            "box" => box_cells(params),
             _ => Err(FieldOpError::Unavailable),
+        }
+    }
+
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        if key == "box" { box_param_max(name) } else { None }
+    }
+
+    fn build_preset_folds(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Vec<NewFold<SquarePoint>>>, FieldOpError> {
+        validate_preset(&SQUARE_PRESETS, key, params)?;
+        match key {
+            "box" => box_folds(params),
+            _ => Ok(Vec::new()),
         }
     }
 
@@ -177,7 +195,8 @@ pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
 }
 
 /// Preset field shapes of the square grid, in UI order.
-const SQUARE_PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+const SQUARE_PRESETS: [PresetDescriptor; 4] =
+    [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET, BOX_PRESET];
 
 /// `square_rect` shifted so the origin cell sits at `size / 2` (rounded down) of each axis.
 fn centered_square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

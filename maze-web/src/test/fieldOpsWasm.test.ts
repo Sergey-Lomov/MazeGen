@@ -18,7 +18,7 @@ describe("field operations over wasm", () => {
   it("lists the operations and preset schemas of a tessellation", () => {
     const capabilities = getFieldCapabilities(square);
     expect(capabilities.operations).toEqual(["translate", "reflect"]);
-    expect(capabilities.presets.map((preset) => preset.key)).toEqual(["rect", "circle", "triangle"]);
+    expect(capabilities.presets.map((preset) => preset.key)).toEqual(["rect", "circle", "triangle", "box"]);
   });
 
   it("publishes the radial circle radius limit from the tessellation params", () => {

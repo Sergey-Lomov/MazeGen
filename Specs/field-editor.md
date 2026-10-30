@@ -44,6 +44,7 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 | `circle` | `radius` |
 | `triangle` | `side` |
 | `hexagon` | `radius` |
+| `box` | `width`, `height`, `depth` (cells, default 10 each; a "Dimensions" heading above three inputs), `net` (0 cross, 1 T-shaped lying on its side, 2 compact: the faces packed tightly, possibly turned), `mode` (0 net, 1 by faces: six separate rectangles); `net` ("Shape") and `mode` ("Mode") are selects in that order; the compact shape forces mode to by faces and locks that select; print sizing keeps the proportions of the three sides and, for the compact shape, sets the hidden `aspect` to the width to height of the printable area so the faces are packed for that sheet |
 | `custom` | `points` (the free-drawn cell list) |
 
 Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #762):
@@ -56,7 +57,7 @@ current table, for reference:
 
 | Kind | Preset shapes |
 |---|---|
-| `square` | rect, circle, triangle |
+| `square` | rect, circle, triangle, box (topology preset: `width`, `height`, `depth`; field and gluing together, `Specs/topology.md`, "Topology presets") |
 | `hex` | rect, parallelogram, hexagon, circle, triangle |
 | `tri` | rect, triangle, hexagon, circle |
 | `cairo` | rect, circle, triangle, hexagon |
@@ -114,7 +115,10 @@ forms by field radius, and triangular forms by field side.
 `fieldPrintSizing.ts` selects a sizing strategy by shape family: axis-aligned rectangles,
 general rectangles/parallelograms, radial shapes, and Cairo rectangles. Shared code owns paper
 validation, margins, physical-unit conversion, final polygon-bound measurement, and result
-formatting. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
+formatting. A `box` is scaled as a radial shape by its longest side: the three sides keep their
+proportions (each at least 1), `net` and `mode` stay as chosen, and the cache key includes the full
+box shape. For the compact net the sheet's usable width/height ratio is stored as the hidden `aspect`
+param (x100) so that core packs the faces to fit the sheet. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
 pentagon bounds without materializing a complete candidate field during the search.
 
 The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
@@ -311,6 +315,7 @@ shape variant.
 |---|---|---|
 | square `rect` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
 | square `circle` | cells with `x² + y² < r²` | naturally centered |
+| square `box` | `2 × (w·h + h·d + w·d)` | the bounding box of the faces (cross: `2d + 2w` by `h + 2d`; T: `2d + 2w` by `h + 2w`; one extra cell per neighbouring row and column by faces; compact: the tightest packing, faces four cells apart), centered like a rectangle: offset by `floor(width / 2)`, `floor(height / 2)` of that box |
 | square `triangle` | `side × (side + 1) / 2` | centered by its bounding box |
 | hex `triangle` | cells whose centers fit the configured triangle | naturally centered |
 | hex `rect` | `cols × rows` cells in a screen-aligned rectangle with alternating half-cell offsets | naturally centered |

@@ -1,7 +1,8 @@
-import type { FieldConfig, PresetFieldShape } from "../fieldConfig";
+import { BOX_NET_COMPACT, type FieldConfig, type PresetFieldShape } from "../fieldConfig";
 import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
+import { presetParams } from "./fieldOps";
 import { presetShapeExtents } from "./tessellationCells";
 import { displayTransform } from "./tessellationGeometry";
 import { printRectSizingOf, TESSELLATION_UI } from "./geometry/tessellationUi";
@@ -69,8 +70,10 @@ export function calculatePrintFieldConfig(
   input: PrintFieldSizingInput,
 ): PrintFieldSizingResult | null {
   // Floors of one shape kind ask the same question, and the dialog re-asks it on every render.
-  // The answer does not depend on the current size, only on the shape kind.
-  const key = JSON.stringify([{ ...current, shape: current.shape.shape }, input]);
+  // The answer does not depend on the current size, only on the shape kind; a box also depends
+  // on everything it is made of (proportions, net, mode), as the sizing keeps them.
+  const shape = current.shape.shape === "box" ? current.shape : current.shape.shape;
+  const key = JSON.stringify([{ ...current, shape }, input]);
   if (!sizingCache.has(key)) {
     if (sizingCache.size >= SIZING_CACHE_LIMIT) sizingCache.delete(sizingCache.keys().next().value!);
     sizingCache.set(key, computePrintFieldConfig(current, input));
@@ -98,7 +101,7 @@ function computePrintFieldConfig(
 
   const cellSideMm = printMeasureToCellSideMm(current, input.cellSizeMm);
   const config = sizingStrategyFor(current).calculate({
-    current,
+    current: packedForSheet(current, usableWidthMm, usableHeightMm),
     usableWidthMm,
     usableHeightMm,
     cellSizeMm: cellSideMm,
@@ -281,11 +284,12 @@ function calculateBestRadialConfig(
   let best: FieldConfig | null = null;
   let low = 1;
   let probe = 1;
+  const maxSize = Math.min(MAX_RADIUS, sizeParamMax(current, shape));
 
   // Bounds grow monotonically with radius. Exponential probing avoids walking every radius when
   // the requested cell is large; the binary search below avoids the O(radius^3) behavior that
   // occurred for tiny cells when every candidate regenerated all radial cells.
-  while (probe <= MAX_RADIUS) {
+  while (probe <= maxSize) {
     const candidate = radialCandidate(current, shape, probe);
     if (!fits(boundsInCellSides(candidate), usableWidthMm, usableHeightMm, cellSizeMm)) break;
     best = candidate;
@@ -295,7 +299,7 @@ function calculateBestRadialConfig(
 
   if (!best) return null;
 
-  let high = Math.min(probe - 1, MAX_RADIUS);
+  let high = Math.min(probe - 1, maxSize);
   while (low <= high) {
     const radius = Math.floor((low + high) / 2);
     const candidate = radialCandidate(current, shape, radius);
@@ -309,8 +313,37 @@ function calculateBestRadialConfig(
   return best;
 }
 
-function radialCandidate(current: FieldConfig, shape: RadialShape, radius: number): FieldConfig {
-  return { ...current, shape: shape.shape === "triangle" ? { ...shape, side: radius } : { ...shape, radius } };
+/** The param the radial search grows: the box is grown by its width, the others by one size. */
+const SIZE_PARAM: Partial<Record<RadialShape["shape"], string>> = { triangle: "side", box: "width" };
+
+/** Core's upper bound of the shape's size parameter, when it publishes one. */
+function sizeParamMax(current: FieldConfig, shape: RadialShape): number {
+  const name = SIZE_PARAM[shape.shape] ?? "radius";
+  return presetParams(current.tessellation, shape.shape).find((p) => p.name === name)?.max ?? Infinity;
+}
+
+function radialCandidate(current: FieldConfig, shape: RadialShape, size: number): FieldConfig {
+  switch (shape.shape) {
+    case "triangle": return { ...current, shape: { ...shape, side: size } };
+    case "box": return { ...current, shape: scaledBox(shape, size) };
+    default: return { ...current, shape: { ...shape, radius: size } };
+  }
+}
+
+/** A box in the compact layout is packed for the shape of the printable area (a portrait sheet
+ * wants the faces stacked, a landscape one side by side); other fields are returned as they are. */
+function packedForSheet(current: PredefinedFieldConfig, usableWidthMm: number, usableHeightMm: number): PredefinedFieldConfig {
+  const { shape } = current;
+  if (shape.shape !== "box" || shape.net !== BOX_NET_COMPACT) return current;
+  const aspect = Math.min(1000, Math.max(1, Math.round(usableWidthMm / usableHeightMm * 100)));
+  return { ...current, shape: { ...shape, aspect } };
+}
+
+/** The box keeping its proportions with `longest` cells along its longest side. */
+function scaledBox(shape: Extract<RadialShape, { shape: "box" }>, longest: number): RadialShape {
+  const scale = longest / Math.max(shape.width, shape.height, shape.depth);
+  const side = (value: number) => Math.max(1, Math.round(value * scale));
+  return { ...shape, width: side(shape.width), height: side(shape.height), depth: side(shape.depth) };
 }
 
 function fits(bounds: Bounds, usableWidthMm: number, usableHeightMm: number, cellSizeMm: number): boolean {
