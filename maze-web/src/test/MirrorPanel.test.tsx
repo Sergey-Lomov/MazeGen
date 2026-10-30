@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { SymmetryPanel } from "../components/features/SymmetryPanel";
+import { MirrorPanel } from "../components/features/MirrorPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
 
@@ -9,67 +9,67 @@ beforeEach(() => {
     ...baseStoreState(),
     fieldOpError: null,
     floorFields: {
-      [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", fieldPrimitive: "symmetry" }),
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", fieldPrimitive: "mirror" }),
     },
   });
 });
 
-describe("SymmetryPanel", () => {
+describe("MirrorPanel", () => {
   it("updates snap mode, scope, and source direction through toggle controls", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
-      symmetryScope: "one_side",
+      mirrorAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
+      mirrorScope: "one_side",
     });
-    render(<SymmetryPanel />);
+    render(<MirrorPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: "Free" }));
     fireEvent.click(screen.getByRole("button", { name: "Polygon" }));
 
-    expect(useMazeStore.getState().symmetrySnapMode).toBe("free");
-    expect(useMazeStore.getState().symmetryScope).toBe("polygon");
+    expect(useMazeStore.getState().mirrorSnapMode).toBe("free");
+    expect(useMazeStore.getState().mirrorScope).toBe("polygon");
 
     fireEvent.click(screen.getByRole("button", { name: "Everything" }));
-    expect(useMazeStore.getState().symmetryScope).toBe("everything");
+    expect(useMazeStore.getState().mirrorScope).toBe("everything");
 
     fireEvent.click(screen.getByRole("button", { name: "One side" }));
     fireEvent.click(screen.getByRole("button", { name: "Change direction" }));
-    expect(useMazeStore.getState().symmetrySourceSide).toBe(-1);
+    expect(useMazeStore.getState().mirrorSourceSide).toBe(-1);
   });
 
   it("requires an explicit polygon finish before enabling apply", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
-      symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
+      mirrorScope: "polygon",
+      mirrorPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
+      mirrorPolygonFinished: false,
     });
-    render(<SymmetryPanel />);
+    render(<MirrorPanel />);
 
     expect(screen.getByText("Finish the processing polygon to enable Apply.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply symmetry" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply mirror" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Finish polygon" }));
 
-    expect(useMazeStore.getState().symmetryPolygonFinished).toBe(true);
-    expect(screen.getByRole("button", { name: "Apply symmetry" })).not.toBeDisabled();
+    expect(useMazeStore.getState().mirrorPolygonFinished).toBe(true);
+    expect(screen.getByRole("button", { name: "Apply mirror" })).not.toBeDisabled();
   });
 
   it("shows a refused core operation as a warning and disables apply", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
+      mirrorAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
       fieldOpError: { kind: "not_a_symmetry" },
     });
-    render(<SymmetryPanel />);
+    render(<MirrorPanel />);
 
     expect(screen.getByText(/This axis does not fit/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply symmetry" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply mirror" })).toBeDisabled();
   });
 
   it("shows no status when the configuration is ready", () => {
-    useMazeStore.setState({ symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }], symmetryScope: "everything" });
-    render(<SymmetryPanel />);
+    useMazeStore.setState({ mirrorAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }], mirrorScope: "everything" });
+    render(<MirrorPanel />);
 
     expect(screen.queryByText("The configuration is ready to apply.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply symmetry" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply mirror" })).not.toBeDisabled();
   });
 });

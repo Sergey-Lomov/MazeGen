@@ -6,7 +6,7 @@ import { getCartesian } from "../../pixi/cartesianCache";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
-import { computeSymmetryPreview } from "../../pixi/symmetry";
+import { computeMirrorPreview } from "../../pixi/mirror";
 import { tessellationFingerprint } from "../topologyWire";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
@@ -282,8 +282,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         fieldOperation: operation,
         ...(enteringSelect ? { fieldPrimitive: "rectangle" } : {}),
       }),
-      ...(enteringSelect && field.fieldPrimitive === "symmetry"
-        ? { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }
+      ...(enteringSelect && field.fieldPrimitive === "mirror"
+        ? { mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false }
         : {}),
     };
   }),
@@ -292,27 +292,27 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     if (state.backgroundAutoFillPreview !== null) return {};
     return {
       ...withActiveFloorField(state, { fieldPrimitive: p }),
-      ...(p === "symmetry"
+      ...(p === "mirror"
         ? {}
-        : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
+        : { mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false }),
     };
   }),
 
-  applySymmetry: () => set((state) => guardFieldEdit(state, { kind: "applySymmetry" }, () => {
+  applyMirror: () => set((state) => guardFieldEdit(state, { kind: "applyMirror" }, () => {
     const field = activeFloorField(state);
-    const axis = state.symmetryAxisPoints;
+    const axis = state.mirrorAxisPoints;
     if (field.fieldEditMode !== "custom" || axis.length !== 2
       || (axis[0].x === axis[1].x && axis[0].y === axis[1].y)) return {};
-    if (state.symmetryScope === "polygon"
-      && (state.symmetryPolygon.length < 3 || !state.symmetryPolygonFinished)) return {};
-    const preview = computeSymmetryPreview(
+    if (state.mirrorScope === "polygon"
+      && (state.mirrorPolygon.length < 3 || !state.mirrorPolygonFinished)) return {};
+    const preview = computeMirrorPreview(
       field.fieldPoints,
       field.fieldConfig,
       {
-        scope: state.symmetryScope,
-        sourceSide: state.symmetrySourceSide,
+        scope: state.mirrorScope,
+        sourceSide: state.mirrorSourceSide,
         axis: [axis[0], axis[1]],
-        polygon: state.symmetryPolygon,
+        polygon: state.mirrorPolygon,
       },
       encodePoint,
       decodePoint,
@@ -342,9 +342,9 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         },
       },
       fieldOpError: null,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
     };
   })),
 
@@ -428,7 +428,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "centerFieldPoints": get().centerFieldPoints(); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
-      case "applySymmetry": get().applySymmetry(); break;
+      case "applyMirror": get().applyMirror(); break;
       case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology); break;
       case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
       case "clearTopologyGroups": get().clearTopologyGroups(); break;

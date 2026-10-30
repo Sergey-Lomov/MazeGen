@@ -6,7 +6,7 @@ import { fieldOf } from "./fieldConfigFixtures";
 const stubs = vi.hoisted(() => ({
   grids: [] as unknown[],
   floors: [] as unknown[],
-  symmetryCells: [] as unknown[],
+  mirrorCells: [] as unknown[],
   origins: [] as unknown[],
   papers: [] as unknown[],
   walls: [] as unknown[],
@@ -131,9 +131,9 @@ vi.mock("../pixi/tessellationGeometry", async (importOriginal) => ({
     : { minX: -10, minY: 20, maxX: 30, maxY: 60 },
 }));
 
-vi.mock("../pixi/symmetry", () => ({
-  computeSymmetryPreview: vi.fn(() => ({ sourceCells: [[0, 0]], mirroredCells: [[2, 0]] })),
-  symmetryCandidateCells: vi.fn(() => [[0, 0]]),
+vi.mock("../pixi/mirror", () => ({
+  computeMirrorPreview: vi.fn(() => ({ sourceCells: [[0, 0]], mirroredCells: [[2, 0]] })),
+  mirrorCandidateCells: vi.fn(() => [[0, 0]]),
 }));
 
 import { Container } from "pixi.js";
@@ -148,7 +148,7 @@ let overlays: FieldEditorOverlay[] = [];
 beforeEach(() => {
   stubs.grids.length = 0;
   stubs.floors.length = 0;
-  stubs.symmetryCells.length = 0;
+  stubs.mirrorCells.length = 0;
   stubs.origins.length = 0;
   stubs.papers.length = 0;
   stubs.walls.length = 0;
@@ -254,21 +254,21 @@ describe("FieldEditorOverlay", () => {
     expect(fieldRender.mock.calls[fieldRenderCount][0].cells).not.toEqual(smoothedCells);
   });
 
-  it("draws symmetry cells and polygon geometry only while symmetry is active", () => {
+  it("draws mirror cells and polygon geometry only while mirror is active", () => {
     const { overlay } = openOverlay();
     const state = useMazeStore.getState();
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
-      symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }],
-      symmetryPolygonFinished: true,
+      mirrorAxisPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+      mirrorScope: "polygon",
+      mirrorPolygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }],
+      mirrorPolygonFinished: true,
       floorFields: {
         ...state.floorFields,
-        [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+        [TEST_FLOOR_ID]: { ...state.floorFields[TEST_FLOOR_ID], fieldPrimitive: "mirror" },
       },
     });
 
-    overlay.updateSymmetryPreview();
+    overlay.updateMirrorPreview();
 
     expect((stubs.floors[1] as Stub).render).toHaveBeenCalledWith(
       expect.objectContaining({ cells: [[2, 0]], alpha: 0.45 }), expect.anything(),

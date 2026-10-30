@@ -60,21 +60,21 @@ describe("mazeStore setters", () => {
     expect(state.mazeDirty).toBe(false);
   });
 
-  it("keeps a completed symmetry polygon when resetting the axis", () => {
+  it("keeps a completed mirror polygon when resetting the axis", () => {
     const polygon = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }];
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
-      symmetryPolygon: polygon,
-      symmetryPolygonFinished: true,
+      mirrorAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      mirrorPolygon: polygon,
+      mirrorPolygonFinished: true,
       fieldOpError: { kind: "not_a_symmetry" },
     });
 
-    useMazeStore.getState().resetSymmetryAxis();
+    useMazeStore.getState().resetMirrorAxis();
 
     const state = useMazeStore.getState();
-    expect(state.symmetryAxisPoints).toEqual([]);
-    expect(state.symmetryPolygon).toEqual(polygon);
-    expect(state.symmetryPolygonFinished).toBe(true);
+    expect(state.mirrorAxisPoints).toEqual([]);
+    expect(state.mirrorPolygon).toEqual(polygon);
+    expect(state.mirrorPolygonFinished).toBe(true);
     expect(state.fieldOpError).toBeNull();
   });
 
@@ -82,109 +82,109 @@ describe("mazeStore setters", () => {
     setActiveField({
       fieldEditMode: "custom",
       isEditingField: true,
-      fieldPrimitive: "symmetry",
+      fieldPrimitive: "mirror",
       fieldPoints: new Set([encodePoint(1, 0)]),
     });
-    useMazeStore.setState({ symmetryScope: "polygon" });
+    useMazeStore.setState({ mirrorScope: "polygon" });
 
-    useMazeStore.getState().setSymmetryAxisPoints([{ x: -100, y: -100 }, { x: 100, y: -60 }]);
+    useMazeStore.getState().setMirrorAxisPoints([{ x: -100, y: -100 }, { x: 100, y: -60 }]);
 
     expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
   });
 
-  it("clears a previous symmetry error for a valid replacement axis", () => {
+  it("clears a previous mirror error for a valid replacement axis", () => {
     setActiveField({
       fieldEditMode: "custom",
       isEditingField: true,
-      fieldPrimitive: "symmetry",
+      fieldPrimitive: "mirror",
       fieldPoints: new Set([encodePoint(1, 0)]),
     });
     useMazeStore.setState({ fieldOpError: { kind: "not_a_symmetry" } });
 
-    useMazeStore.getState().setSymmetryAxisPoints([{ x: 20, y: -100 }, { x: 20, y: 100 }]);
+    useMazeStore.getState().setMirrorAxisPoints([{ x: 20, y: -100 }, { x: 20, y: 100 }]);
 
     expect(useMazeStore.getState().fieldOpError).toBeNull();
   });
 
-  it("clears unfinished symmetry geometry when switching to another field primitive", () => {
-    setActiveField({ fieldPrimitive: "symmetry" });
+  it("clears unfinished mirror geometry when switching to another field primitive", () => {
+    setActiveField({ fieldPrimitive: "mirror" });
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 10, y: 0 }, { x: 10, y: 80 }],
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 40 }],
-      symmetryPolygonFinished: true,
+      mirrorAxisPoints: [{ x: 10, y: 0 }, { x: 10, y: 80 }],
+      mirrorPolygon: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 40 }],
+      mirrorPolygonFinished: true,
     });
 
     useMazeStore.getState().setFieldPrimitive("polygon");
 
     const state = useMazeStore.getState();
     expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
-    expect(state.symmetryAxisPoints).toEqual([]);
-    expect(state.symmetryPolygon).toEqual([]);
-    expect(state.symmetryPolygonFinished).toBe(false);
+    expect(state.mirrorAxisPoints).toEqual([]);
+    expect(state.mirrorPolygon).toEqual([]);
+    expect(state.mirrorPolygonFinished).toBe(false);
   });
 
-  it("clears symmetry geometry after applying while preserving its settings", () => {
+  it("clears mirror geometry after applying while preserving its settings", () => {
     setActiveField({
       fieldEditMode: "custom",
       isEditingField: true,
-      fieldPrimitive: "symmetry",
+      fieldPrimitive: "mirror",
       fieldOperation: "remove",
     });
     useMazeStore.setState({
-      symmetrySnapMode: "free",
-      symmetryScope: "one_side",
-      symmetrySourceSide: -1,
-      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
-      symmetryPolygonFinished: true,
+      mirrorSnapMode: "free",
+      mirrorScope: "one_side",
+      mirrorSourceSide: -1,
+      mirrorAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      mirrorPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
+      mirrorPolygonFinished: true,
     });
 
-    useMazeStore.getState().applySymmetry();
+    useMazeStore.getState().applyMirror();
 
     const state = useMazeStore.getState();
     expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
-    expect(state.symmetryAxisPoints).toEqual([]);
-    expect(state.symmetryPolygon).toEqual([]);
-    expect(state.symmetryPolygonFinished).toBe(false);
+    expect(state.mirrorAxisPoints).toEqual([]);
+    expect(state.mirrorPolygon).toEqual([]);
+    expect(state.mirrorPolygonFinished).toBe(false);
     expect(state.floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
-    expect(state.symmetrySnapMode).toBe("free");
-    expect(state.symmetryScope).toBe("one_side");
-    expect(state.symmetrySourceSide).toBe(-1);
+    expect(state.mirrorSnapMode).toBe("free");
+    expect(state.mirrorScope).toBe("one_side");
+    expect(state.mirrorSourceSide).toBe(-1);
   });
 
-  it("does not apply a polygon symmetry preview before the polygon is finished", () => {
+  it("does not apply a polygon mirror preview before the polygon is finished", () => {
     setActiveField({
       fieldEditMode: "custom",
       isEditingField: true,
-      fieldPrimitive: "symmetry",
+      fieldPrimitive: "mirror",
       fieldPoints: new Set([encodePoint(1, 0)]),
     });
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: -100 }, { x: 20, y: 100 }],
-      symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: -40 }, { x: 100, y: -40 }, { x: 50, y: 40 }],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [{ x: 20, y: -100 }, { x: 20, y: 100 }],
+      mirrorScope: "polygon",
+      mirrorPolygon: [{ x: 0, y: -40 }, { x: 100, y: -40 }, { x: 50, y: 40 }],
+      mirrorPolygonFinished: false,
     });
 
-    useMazeStore.getState().applySymmetry();
+    useMazeStore.getState().applyMirror();
 
     const state = useMazeStore.getState();
     expect(state.floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(new Set([encodePoint(1, 0)]));
-    expect(state.symmetryAxisPoints).toHaveLength(2);
-    expect(state.symmetryPolygonFinished).toBe(false);
+    expect(state.mirrorAxisPoints).toHaveLength(2);
+    expect(state.mirrorPolygonFinished).toBe(false);
   });
 
-  it("does not apply symmetry with a zero-length axis", () => {
-    setActiveField({ fieldEditMode: "custom", isEditingField: true, fieldPrimitive: "symmetry" });
+  it("does not apply mirror with a zero-length axis", () => {
+    setActiveField({ fieldEditMode: "custom", isEditingField: true, fieldPrimitive: "mirror" });
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 20 }],
-      symmetryPolygon: [],
+      mirrorAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 20 }],
+      mirrorPolygon: [],
     });
 
-    useMazeStore.getState().applySymmetry();
+    useMazeStore.getState().applyMirror();
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
-    expect(useMazeStore.getState().symmetryAxisPoints).toHaveLength(2);
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("mirror");
+    expect(useMazeStore.getState().mirrorAxisPoints).toHaveLength(2);
   });
 
   it("setSeed updates seed and clears error", () => {

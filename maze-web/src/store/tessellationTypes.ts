@@ -3,11 +3,11 @@ import type { FieldConfig, PresetFieldShape, PresetFieldShapeName, TessellationK
 
 export type { TessellationKind, HexOrientation, TriOrientation };
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry" | "magic_wand";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "mirror" | "magic_wand";
 export type FieldOperation = "add" | "remove" | "select";
-export type SymmetrySnapMode = "centers" | "corners" | "free";
-export type SymmetryScope = "everything" | "one_side" | "polygon";
-export type SymmetryPoint = { x: number; y: number };
+export type MirrorSnapMode = "centers" | "corners" | "free";
+export type MirrorScope = "everything" | "one_side" | "polygon";
+export type MirrorPoint = { x: number; y: number };
 export type BackgroundImageLayerMode = "below_grid" | "above_grid" | "above_floor" | "above_everything";
 export type BackgroundAutoFillMode = "transparent" | "color";
 export interface BackgroundImage {
@@ -41,7 +41,7 @@ export type PendingFieldEdit =
   | { kind: "centerFieldPoints" }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
-  | { kind: "applySymmetry" }
+  | { kind: "applyMirror" }
   | { kind: "copyFloorField"; sourceFloorId: string; includeTopology: boolean }
   | { kind: "applyTopologyOp"; op: import("../wasm/mazeService").TopologyOp }
   | { kind: "clearTopologyGroups" };
@@ -84,13 +84,15 @@ export interface TessellationState {
   /** Transient custom-field preview produced by the underlay auto-fill tool. */
   backgroundAutoFillPreview: Set<number> | null;
   smoothPrimitives: boolean;
-  symmetrySnapMode: SymmetrySnapMode;
-  symmetryScope: SymmetryScope;
-  symmetryAxisPoints: SymmetryPoint[];
-  symmetrySourceSide: -1 | 1;
-  symmetryPolygon: SymmetryPoint[];
-  symmetryPolygonFinished: boolean;
-  /** Why the last field operation (move, symmetry) was refused by core; shown in the field editor. */
+  /** True while the smoothing hotkey is held: the editor draws with the opposite of `smoothPrimitives`. */
+  smoothInverted: boolean;
+  mirrorSnapMode: MirrorSnapMode;
+  mirrorScope: MirrorScope;
+  mirrorAxisPoints: MirrorPoint[];
+  mirrorSourceSide: -1 | 1;
+  mirrorPolygon: MirrorPoint[];
+  mirrorPolygonFinished: boolean;
+  /** Why the last field operation (move, mirror) was refused by core; shown in the field editor. */
   fieldOpError: FieldOpError | null;
   /** In-memory copy of a field selection (cells of the current tessellation), or null when nothing was copied. */
   fieldClipboard: [number, number][] | null;
@@ -126,17 +128,18 @@ export interface TessellationActions {
   setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
   setBackgroundAutoFillPreview: (points: Set<number> | null) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
+  setSmoothInverted: (inverted: boolean) => void;
   setFieldOpError: (error: FieldOpError | null) => void;
   setFieldClipboard: (cells: [number, number][] | null) => void;
   setFieldHasSelection: (has: boolean) => void;
-  setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
-  setSymmetryScope: (scope: SymmetryScope) => void;
-  setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;
-  setSymmetrySourceSide: (side: -1 | 1) => void;
-  setSymmetryPolygon: (points: SymmetryPoint[]) => void;
-  finishSymmetryPolygon: () => void;
-  resetSymmetryPolygon: () => void;
-  resetSymmetryAxis: () => void;
+  setMirrorSnapMode: (mode: MirrorSnapMode) => void;
+  setMirrorScope: (scope: MirrorScope) => void;
+  setMirrorAxisPoints: (points: MirrorPoint[]) => void;
+  setMirrorSourceSide: (side: -1 | 1) => void;
+  setMirrorPolygon: (points: MirrorPoint[]) => void;
+  finishMirrorPolygon: () => void;
+  resetMirrorPolygon: () => void;
+  resetMirrorAxis: () => void;
 }
 
 /** Per-floor field-shape state — GitHub issue #338. Everything about "what cells make up this
@@ -194,7 +197,7 @@ export interface FloorFieldsActions {
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldOperation: (operation: FieldOperation) => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
-  applySymmetry: () => void;
+  applyMirror: () => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string, includeTopology?: boolean) => void;

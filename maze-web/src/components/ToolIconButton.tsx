@@ -26,11 +26,13 @@ type Props = {
 };
 
 /** Shared presentation for icon-only tool labels and their optional explanations. */
-export function ToolTooltip({ title, description, shortcut, descriptionShortcut, children }: {
+export function ToolTooltip({ title, description, shortcut, descriptionShortcut, block, children }: {
   title: string;
   description?: string;
   shortcut?: readonly ShortcutKey[];
   descriptionShortcut?: readonly ShortcutKey[];
+  /** Wraps a whole settings row instead of an inline control. */
+  block?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -42,7 +44,7 @@ export function ToolTooltip({ title, description, shortcut, descriptionShortcut,
         </span>
         {description && <span style={styles.description}>{descriptionShortcut && <ShortcutKeycaps keys={descriptionShortcut} />}{description}</span>}
       </span>
-    }>
+    } block={block}>
       {children}
     </Tooltip>
   );

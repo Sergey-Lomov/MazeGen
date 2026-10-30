@@ -12,7 +12,7 @@ import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
 import { decodePoint, encodePoint } from "./tessellationProjection";
-import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type SymmetryPoint } from "./symmetry";
+import { sideOfAxis, snapMirrorPoint, mirrorStatus, worldPointForCell, type MirrorPoint } from "./mirror";
 import { selectionBoundary } from "./fieldSelectionGeometry";
 import { canvas } from "./colorTokens";
 import { connectedMagicWandCells } from "./magicWand";
@@ -46,7 +46,7 @@ interface PrimitiveCallbacks {
   onPrimitiveCommit: (cells: [number, number][], button: number) => void;
   onSelectionMovePreview?: (sourceCells: [number, number][], temporaryCells: [number, number][]) => void;
   onSelectionMove?: (cells: [number, number][], vector: [number, number]) => boolean;
-  onSymmetryPreviewUpdate?: (axis: SymmetryPoint[], polygon: SymmetryPoint[]) => void;
+  onMirrorPreviewUpdate?: (axis: MirrorPoint[], polygon: MirrorPoint[]) => void;
   onSizeReadout?: (readout: FieldSizeReadout) => void;
 }
 
@@ -100,12 +100,12 @@ export class FieldEditController {
   /** Canvas position of the press that placed the first point; a drag from it places the second. */
   private parallelogramDownCanvas: { x: number; y: number } | null = null;
   private lastPointerCanvas: { x: number; y: number } | null = null;
-  private symmetryDraggedPolygonIndex: number | null = null;
-  private symmetryDragStartCanvas: { x: number; y: number } | null = null;
-  private symmetryDragOriginalPoint: SymmetryPoint | null = null;
-  private symmetryDraggedAxisIndex: number | null = null;
-  private symmetryAxisDragStartCanvas: { x: number; y: number } | null = null;
-  private symmetryAxisDragOriginalPoint: SymmetryPoint | null = null;
+  private mirrorDraggedPolygonIndex: number | null = null;
+  private mirrorDragStartCanvas: { x: number; y: number } | null = null;
+  private mirrorDragOriginalPoint: MirrorPoint | null = null;
+  private mirrorDraggedAxisIndex: number | null = null;
+  private mirrorAxisDragStartCanvas: { x: number; y: number } | null = null;
+  private mirrorAxisDragOriginalPoint: MirrorPoint | null = null;
 
   private canvas: HTMLCanvasElement;
   private getProjection: () => TessellationProjection | null;
@@ -142,6 +142,12 @@ export class FieldEditController {
         e.preventDefault();
         blurActiveElement();
         state.setFieldOperation(operation);
+        return;
+      }
+      if (e.code === "KeyS") {
+        e.preventDefault();
+        blurActiveElement();
+        this.setSmoothInverted(true);
         return;
       }
       const primitive = fieldPrimitiveForShortcut(e.code);
@@ -191,18 +197,18 @@ export class FieldEditController {
       if (field.fieldOperation === "select" && this.selectionPreviewVisible) {
         e.preventDefault();
         this.commitSelectionMove();
-      } else if (field.fieldPrimitive === "symmetry") {
-        const status = symmetryStatus({
-          axisPoints: state.symmetryAxisPoints,
-          scope: state.symmetryScope,
-          polygon: state.symmetryPolygon,
-          polygonFinished: state.symmetryPolygonFinished,
+      } else if (field.fieldPrimitive === "mirror") {
+        const status = mirrorStatus({
+          axisPoints: state.mirrorAxisPoints,
+          scope: state.mirrorScope,
+          polygon: state.mirrorPolygon,
+          polygonFinished: state.mirrorPolygonFinished,
         });
         if (status === "ready") {
-          state.applySymmetry();
-        } else if (state.symmetryScope === "polygon") {
-          state.finishSymmetryPolygon();
-          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+          state.applyMirror();
+        } else if (state.mirrorScope === "polygon") {
+          state.finishMirrorPolygon();
+          this.primitiveCallbacks.onMirrorPreviewUpdate?.(state.mirrorAxisPoints, state.mirrorPolygon);
         }
       } else if (field.fieldPrimitive === "parallelogram") {
         this.commitParallelogram();
@@ -213,6 +219,7 @@ export class FieldEditController {
   };
   private onKeyUp = (e: KeyboardEvent) => {
     if (e.code === "Space") this.spaceHeld = false;
+    if (e.code === "KeyS") this.setSmoothInverted(false);
     if (e.key === "Shift") {
       this.shiftHeld = false;
       this.refreshCursorPreviews();
@@ -222,6 +229,7 @@ export class FieldEditController {
       this.refreshCursorPreviews();
     }
   };
+  private onWindowBlur = () => { this.setSmoothInverted(false); };
   private onContextMenu = (e: Event) => { e.preventDefault(); };
   private onPointerEnter = () => { this.pointerInsideCanvas = true; };
   private onPointerLeave = () => { this.pointerInsideCanvas = false; };
@@ -245,6 +253,7 @@ export class FieldEditController {
     registerFieldClipboardHost(this);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("blur", this.onWindowBlur);
   }
 
   onPointerDown(canvasX: number, canvasY: number, button: number, _shiftKey?: boolean, clickCount = 1): void {
@@ -314,8 +323,8 @@ export class FieldEditController {
       return;
     }
 
-    if (this.activePrimitive === "symmetry") {
-      this.handleSymmetryPointerDown(canvasX, canvasY, button);
+    if (this.activePrimitive === "mirror") {
+      this.handleMirrorPointerDown(canvasX, canvasY, button);
       return;
     }
 
@@ -434,8 +443,8 @@ export class FieldEditController {
     }
 
     if (!this.gestureActive) {
-      if (field.fieldPrimitive === "symmetry") {
-        this.updateSymmetryCursor(canvasX, canvasY);
+      if (field.fieldPrimitive === "mirror") {
+        this.updateMirrorCursor(canvasX, canvasY);
         return;
       }
       if (field.fieldPrimitive === "polygon" && this.polygonPoints.length > 0) {
@@ -454,30 +463,30 @@ export class FieldEditController {
       return;
     }
 
-    if (this.activePrimitive === "symmetry") {
-      if (this.symmetryDraggedAxisIndex !== null && this.symmetryAxisDragStartCanvas) {
-        const moved = Math.hypot(canvasX - this.symmetryAxisDragStartCanvas.x, canvasY - this.symmetryAxisDragStartCanvas.y) >= 3;
+    if (this.activePrimitive === "mirror") {
+      if (this.mirrorDraggedAxisIndex !== null && this.mirrorAxisDragStartCanvas) {
+        const moved = Math.hypot(canvasX - this.mirrorAxisDragStartCanvas.x, canvasY - this.mirrorAxisDragStartCanvas.y) >= 3;
         if (moved) {
           const state = useMazeStore.getState();
           const field = state.floorFields[state.activeFloorId];
-          const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.fieldConfig);
-          const axis = [...state.symmetryAxisPoints];
-          axis[this.symmetryDraggedAxisIndex] = point;
-          state.setSymmetryAxisPoints(axis);
-          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axis, state.symmetryPolygon);
+          const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
+          const axis = [...state.mirrorAxisPoints];
+          axis[this.mirrorDraggedAxisIndex] = point;
+          state.setMirrorAxisPoints(axis);
+          this.primitiveCallbacks.onMirrorPreviewUpdate?.(axis, state.mirrorPolygon);
         }
         return;
       }
-      if (this.symmetryDraggedPolygonIndex !== null && this.symmetryDragStartCanvas) {
-        const moved = Math.hypot(canvasX - this.symmetryDragStartCanvas.x, canvasY - this.symmetryDragStartCanvas.y) >= 3;
+      if (this.mirrorDraggedPolygonIndex !== null && this.mirrorDragStartCanvas) {
+        const moved = Math.hypot(canvasX - this.mirrorDragStartCanvas.x, canvasY - this.mirrorDragStartCanvas.y) >= 3;
         if (moved) {
           const state = useMazeStore.getState();
           const field = state.floorFields[state.activeFloorId];
-          const polygon = [...state.symmetryPolygon];
-          const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.fieldConfig);
-          polygon[this.symmetryDraggedPolygonIndex] = point;
-          state.setSymmetryPolygon(polygon);
-          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+          const polygon = [...state.mirrorPolygon];
+          const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
+          polygon[this.mirrorDraggedPolygonIndex] = point;
+          state.setMirrorPolygon(polygon);
+          this.primitiveCallbacks.onMirrorPreviewUpdate?.(state.mirrorAxisPoints, polygon);
         }
       }
       return;
@@ -567,12 +576,12 @@ export class FieldEditController {
     const state = useMazeStore.getState();
     if (state.backgroundAutoFillPreview !== null) return;
     const field = state.floorFields[state.activeFloorId];
-    if (field.fieldPrimitive === "symmetry") {
-      if (state.symmetryScope === "polygon" && state.symmetryPolygon.length >= 3 && state.symmetryAxisPoints.length === 2) {
-        state.finishSymmetryPolygon();
-        this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+    if (field.fieldPrimitive === "mirror") {
+      if (state.mirrorScope === "polygon" && state.mirrorPolygon.length >= 3 && state.mirrorAxisPoints.length === 2) {
+        state.finishMirrorPolygon();
+        this.primitiveCallbacks.onMirrorPreviewUpdate?.(state.mirrorAxisPoints, state.mirrorPolygon);
       }
-      this.updateSymmetryCursor(canvasX, canvasY);
+      this.updateMirrorCursor(canvasX, canvasY);
       return;
     }
     if (!(state.openCard === "field_setup"
@@ -594,29 +603,29 @@ export class FieldEditController {
     if (this.selectionPreviewVisible) {
       this.clearSelectionPreview();
     }
-    if (this.activePrimitive === "symmetry") {
-      if (this.symmetryDraggedPolygonIndex !== null && this.symmetryDragOriginalPoint) {
+    if (this.activePrimitive === "mirror") {
+      if (this.mirrorDraggedPolygonIndex !== null && this.mirrorDragOriginalPoint) {
         const state = useMazeStore.getState();
-        const polygon = [...state.symmetryPolygon];
-        polygon[this.symmetryDraggedPolygonIndex] = this.symmetryDragOriginalPoint;
-        state.setSymmetryPolygon(polygon);
+        const polygon = [...state.mirrorPolygon];
+        polygon[this.mirrorDraggedPolygonIndex] = this.mirrorDragOriginalPoint;
+        state.setMirrorPolygon(polygon);
       }
-      if (this.symmetryDraggedAxisIndex !== null && this.symmetryAxisDragOriginalPoint) {
+      if (this.mirrorDraggedAxisIndex !== null && this.mirrorAxisDragOriginalPoint) {
         const state = useMazeStore.getState();
-        const axis = [...state.symmetryAxisPoints];
-        axis[this.symmetryDraggedAxisIndex] = this.symmetryAxisDragOriginalPoint;
-        state.setSymmetryAxisPoints(axis);
+        const axis = [...state.mirrorAxisPoints];
+        axis[this.mirrorDraggedAxisIndex] = this.mirrorAxisDragOriginalPoint;
+        state.setMirrorAxisPoints(axis);
       }
       this.gestureActive = false;
-      if (this.symmetryDraggedPolygonIndex !== null) {
-        this.symmetryDraggedPolygonIndex = null;
-        this.symmetryDragStartCanvas = null;
-        this.symmetryDragOriginalPoint = null;
+      if (this.mirrorDraggedPolygonIndex !== null) {
+        this.mirrorDraggedPolygonIndex = null;
+        this.mirrorDragStartCanvas = null;
+        this.mirrorDragOriginalPoint = null;
       }
-      this.symmetryDraggedAxisIndex = null;
-      this.symmetryAxisDragStartCanvas = null;
-      this.symmetryAxisDragOriginalPoint = null;
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(useMazeStore.getState().symmetryAxisPoints, useMazeStore.getState().symmetryPolygon);
+      this.mirrorDraggedAxisIndex = null;
+      this.mirrorAxisDragStartCanvas = null;
+      this.mirrorAxisDragOriginalPoint = null;
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(useMazeStore.getState().mirrorAxisPoints, useMazeStore.getState().mirrorPolygon);
       return;
     }
     if (this.draggedPolygonIndex !== null) {
@@ -717,14 +726,14 @@ export class FieldEditController {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
       this.showSelection(this.operationCells(this.lastPreviewCells), field.fieldConfig.tessellation.kind, field.fieldConfig);
-    } else if (this.activePrimitive === "symmetry") {
-      this.symmetryDraggedAxisIndex = null;
-      this.symmetryAxisDragStartCanvas = null;
-      this.symmetryAxisDragOriginalPoint = null;
-      this.symmetryDraggedPolygonIndex = null;
-      this.symmetryDragStartCanvas = null;
-      this.symmetryDragOriginalPoint = null;
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(useMazeStore.getState().symmetryAxisPoints, useMazeStore.getState().symmetryPolygon);
+    } else if (this.activePrimitive === "mirror") {
+      this.mirrorDraggedAxisIndex = null;
+      this.mirrorAxisDragStartCanvas = null;
+      this.mirrorAxisDragOriginalPoint = null;
+      this.mirrorDraggedPolygonIndex = null;
+      this.mirrorDragStartCanvas = null;
+      this.mirrorDragOriginalPoint = null;
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(useMazeStore.getState().mirrorAxisPoints, useMazeStore.getState().mirrorPolygon);
     } else if (this.activeShapePrimitive !== null && this.primitiveStartGrid !== null) {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
@@ -919,6 +928,18 @@ export class FieldEditController {
     this.polygonCloseCandidate = false;
   }
 
+  /** Flips smoothing for the shape in progress and redraws its preview at the last pointer position. */
+  private setSmoothInverted(inverted: boolean): void {
+    const state = useMazeStore.getState();
+    if (state.smoothInverted === inverted) return;
+    state.setSmoothInverted(inverted);
+    const pointer = this.lastPointerCanvas;
+    if (!pointer || !this.gestureActive || !this.activeShapePrimitive || !this.primitiveStartGrid) return;
+    // The pointer-move dedupe would skip an unchanged position, so drop its memo first.
+    this.lastEndGrid = null;
+    this.onPointerMove(pointer.x, pointer.y);
+  }
+
   /** Re-renders the cursor-following previews after a modifier key changed. */
   private refreshCursorPreviews(): void {
     if (!this.lastPointerCanvas) return;
@@ -1021,65 +1042,65 @@ export class FieldEditController {
     return this.shiftHeld ? this.toWorld(canvasX, canvasY) : this.gridToWorld(grid);
   }
 
-  private handleSymmetryPointerDown(canvasX: number, canvasY: number, button: number): void {
+  private handleMirrorPointerDown(canvasX: number, canvasY: number, button: number): void {
     if (button !== 0) return;
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
-    const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.fieldConfig);
-    const axisPoints = state.symmetryAxisPoints;
+    const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
+    const axisPoints = state.mirrorAxisPoints;
     if (axisPoints.length < 2) {
       const nextAxis = axisPoints.length === 0 ? [point] : [axisPoints[0], point];
-      state.setSymmetryAxisPoints(nextAxis);
+      state.setMirrorAxisPoints(nextAxis);
       if (nextAxis.length === 2) {
-        const axis: [SymmetryPoint, SymmetryPoint] = [nextAxis[0], nextAxis[1]];
+        const axis: [MirrorPoint, MirrorPoint] = [nextAxis[0], nextAxis[1]];
         const reference = [...field.fieldPoints].map(decodePoint)
           .map((cell) => worldPointForCell(cell, field.fieldConfig))
           .find((candidate) => sideOfAxis(candidate, axis) !== 0);
-        state.setSymmetrySourceSide(reference ? (sideOfAxis(reference, axis) < 0 ? -1 : 1) : 1);
+        state.setMirrorSourceSide(reference ? (sideOfAxis(reference, axis) < 0 ? -1 : 1) : 1);
       }
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(nextAxis, state.symmetryPolygon);
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(nextAxis, state.mirrorPolygon);
       return;
     }
-    const axisNodeIndex = this.findSymmetryAxisNode(canvasX, canvasY, axisPoints);
+    const axisNodeIndex = this.findMirrorAxisNode(canvasX, canvasY, axisPoints);
     if (axisNodeIndex !== null) {
-      this.symmetryDraggedAxisIndex = axisNodeIndex;
-      this.symmetryAxisDragStartCanvas = { x: canvasX, y: canvasY };
-      this.symmetryAxisDragOriginalPoint = axisPoints[axisNodeIndex];
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axisPoints, state.symmetryPolygon);
+      this.mirrorDraggedAxisIndex = axisNodeIndex;
+      this.mirrorAxisDragStartCanvas = { x: canvasX, y: canvasY };
+      this.mirrorAxisDragOriginalPoint = axisPoints[axisNodeIndex];
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(axisPoints, state.mirrorPolygon);
       return;
     }
-    if (state.symmetryScope !== "polygon") return;
-    const polygon = [...state.symmetryPolygon];
-    const nodeIndex = this.findSymmetryNode(canvasX, canvasY, polygon);
+    if (state.mirrorScope !== "polygon") return;
+    const polygon = [...state.mirrorPolygon];
+    const nodeIndex = this.findMirrorNode(canvasX, canvasY, polygon);
     if (nodeIndex !== null) {
-      this.symmetryDraggedPolygonIndex = nodeIndex;
-      this.symmetryDragStartCanvas = { x: canvasX, y: canvasY };
-      this.symmetryDragOriginalPoint = polygon[nodeIndex];
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+      this.mirrorDraggedPolygonIndex = nodeIndex;
+      this.mirrorDragStartCanvas = { x: canvasX, y: canvasY };
+      this.mirrorDragOriginalPoint = polygon[nodeIndex];
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(state.mirrorAxisPoints, polygon);
       return;
     }
-    if (state.symmetryPolygonFinished) return;
+    if (state.mirrorPolygonFinished) return;
     const previous = polygon[polygon.length - 1];
     if (!previous || previous.x !== point.x || previous.y !== point.y) polygon.push(point);
-    state.setSymmetryPolygon(polygon);
-    this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+    state.setMirrorPolygon(polygon);
+    this.primitiveCallbacks.onMirrorPreviewUpdate?.(state.mirrorAxisPoints, polygon);
   }
 
-  private updateSymmetryCursor(canvasX: number, canvasY: number): void {
+  private updateMirrorCursor(canvasX: number, canvasY: number): void {
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
-    const axisPoints = state.symmetryAxisPoints;
+    const axisPoints = state.mirrorAxisPoints;
     if (axisPoints.length === 1) {
-      const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.fieldConfig);
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.([axisPoints[0], point], state.symmetryPolygon);
-    } else if (axisPoints.length === 2 && state.symmetryScope === "polygon"
-      && !state.symmetryPolygonFinished && state.symmetryPolygon.length > 0) {
-      const cursor = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.fieldConfig);
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axisPoints, [...state.symmetryPolygon, cursor]);
+      const point = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.([axisPoints[0], point], state.mirrorPolygon);
+    } else if (axisPoints.length === 2 && state.mirrorScope === "polygon"
+      && !state.mirrorPolygonFinished && state.mirrorPolygon.length > 0) {
+      const cursor = snapMirrorPoint(this.toWorld(canvasX, canvasY), state.mirrorSnapMode, field.fieldConfig);
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.(axisPoints, [...state.mirrorPolygon, cursor]);
     }
   }
 
-  private findSymmetryNode(canvasX: number, canvasY: number, polygon: SymmetryPoint[]): number | null {
+  private findMirrorNode(canvasX: number, canvasY: number, polygon: MirrorPoint[]): number | null {
     const viewport = this.getViewport();
     let nearest: number | null = null;
     let distance = 12;
@@ -1095,7 +1116,7 @@ export class FieldEditController {
     return nearest;
   }
 
-  private findSymmetryAxisNode(canvasX: number, canvasY: number, axis: SymmetryPoint[]): number | null {
+  private findMirrorAxisNode(canvasX: number, canvasY: number, axis: MirrorPoint[]): number | null {
     if (axis.length !== 2) return null;
     const viewport = this.getViewport();
     let nearest: number | null = null;
@@ -1209,7 +1230,7 @@ export class FieldEditController {
     const normalized = normalizeCells(
       cells,
       field.fieldConfig,
-      state.smoothPrimitives,
+      state.smoothPrimitives !== state.smoothInverted,
       adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
     );
     return adding ? normalized : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
@@ -1403,7 +1424,7 @@ export class FieldEditController {
     this.abortUnfinishedProcesses();
     const toolBeforePaste = state.floorFields[state.activeFloorId].fieldPrimitive;
     useMazeStore.getState().setFieldOperation("select");
-    if (toolBeforePaste !== "symmetry") useMazeStore.getState().setFieldPrimitive(toolBeforePaste);
+    if (toolBeforePaste !== "mirror") useMazeStore.getState().setFieldPrimitive(toolBeforePaste);
     const after = useMazeStore.getState();
     const field = after.floorFields[after.activeFloorId];
     const cfg = field.fieldConfig;
@@ -1424,16 +1445,16 @@ export class FieldEditController {
       && fieldClipboardSupported(field.fieldConfig.tessellation);
   }
 
-  /** Drops every half-finished tool state: polygon, parallelogram, symmetry setup, topology pick, shape drag. */
+  /** Drops every half-finished tool state: polygon, parallelogram, mirror setup, topology pick, shape drag. */
   private abortUnfinishedProcesses(): void {
     this.cancelPointerGesture();
     this.topologyDrag = null;
     const state = useMazeStore.getState();
     if (state.topologyPick !== null) state.startTopologyPick(null);
-    if (state.symmetryAxisPoints.length > 0 || state.symmetryPolygon.length > 0) {
-      state.resetSymmetryAxis();
-      state.resetSymmetryPolygon();
-      this.primitiveCallbacks.onSymmetryPreviewUpdate?.([], []);
+    if (state.mirrorAxisPoints.length > 0 || state.mirrorPolygon.length > 0) {
+      state.resetMirrorAxis();
+      state.resetMirrorPolygon();
+      this.primitiveCallbacks.onMirrorPreviewUpdate?.([], []);
     }
     this.clearPolygon();
     this.clearParallelogram();
@@ -1502,5 +1523,7 @@ export class FieldEditController {
     useMazeStore.getState().setFieldHasSelection(false);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("blur", this.onWindowBlur);
+    useMazeStore.getState().setSmoothInverted(false);
   }
 }

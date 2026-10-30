@@ -6,7 +6,7 @@ import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../sto
 import type { FieldConfig, FieldShape, PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
-import { ToolIconButton } from "../ToolIconButton";
+import { ToolIconButton, ToolTooltip } from "../ToolIconButton";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
@@ -74,6 +74,7 @@ export function FieldSetupFeature() {
   const setShowPaperLayout = useMazeStore((s) => s.setShowPaperLayout);
   const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
+  const smoothInverted = useMazeStore((s) => s.smoothInverted);
   const topologyPanelOpen = useMazeStore((s) => s.topologyPanelOpen);
   const setTopologyPanelOpen = useMazeStore((s) => s.setTopologyPanelOpen);
   const floorCount = useMazeStore((s) => s.floors.length);
@@ -154,14 +155,26 @@ export function FieldSetupFeature() {
   }
 
   function renderSmoothingToggle() {
-    return (
+    const row = (
       <div style={styles.originRow}>
         <span style={styles.smoothingLabelGroup}>
           <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
           <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
         </span>
-        <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
+        <Switch checked={smoothPrimitives !== smoothInverted} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
       </div>
+    );
+    // The hold hotkey only exists while drawing in the custom field editor.
+    if (!isCustom) return row;
+    return (
+      <ToolTooltip
+        block
+        title={m["field.smooth_primitives"]()}
+        description={m["field.smooth_hold_hint"]()}
+        descriptionShortcut={["S"]}
+      >
+        {row}
+      </ToolTooltip>
     );
   }
 
@@ -248,10 +261,10 @@ export function FieldSetupFeature() {
               disabled={!canActivateFieldPrimitive(tool.primitive, fieldOperation, fieldEditLocked, reflectAvailable)}
               title={tool.label}
               shortcut={shortcut ? [shortcut] : undefined}
-              description={tool.primitive === "symmetry" && !reflectAvailable
-                ? m["field.symmetry.tessellation_disabled"]()
-                : tool.primitive === "symmetry" && fieldOperation === "select"
-                ? m["field.symmetry.select_disabled"]()
+              description={tool.primitive === "mirror" && !reflectAvailable
+                ? m["field.mirror.tessellation_disabled"]()
+                : tool.primitive === "mirror" && fieldOperation === "select"
+                ? m["field.mirror.select_disabled"]()
                 : tool.primitive === "polygon"
                 ? m["field.polygon.shift_tooltip"]()
                 : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
@@ -384,6 +397,7 @@ export function FieldSetupFeature() {
           onClose={() => setSmoothingInfoOpen(false)}
         >
           <div style={styles.infoText}>{m["field.smoothing_info_description"]()}</div>
+          <div style={{ ...styles.infoText, marginTop: 8 }}>{m["field.smoothing_info_hotkey"]()}</div>
         </Modal>
       )}
     </Stack>
@@ -407,7 +421,7 @@ function primitivesForField(): PrimitiveToolOption[] {
     { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
     { key: "polygon", primitive: "polygon", label: m["field.polygon.tool"]() },
     { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
-    { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
+    { key: "mirror", primitive: "mirror", label: m["field.mirror.tool"]() },
   ];
   return primitives;
 }
@@ -436,7 +450,7 @@ function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
           <circle cx={iconSize / 2} cy={iconSize / 2} r={iconSize * 0.18} fill={wallColor} />
         </svg>
       );
-    case "symmetry": return <FlipHorizontal {...iconProps} />;
+    case "mirror": return <FlipHorizontal {...iconProps} />;
     case "magic_wand": {
       const cellSize = 5;
       const cellGap = 1;
