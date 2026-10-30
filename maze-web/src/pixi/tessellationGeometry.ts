@@ -298,6 +298,48 @@ export function cellsInDisplayRect(
   return [...found.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
+/// Most chunks kept by `cellsNearDisplayRect`; the oldest are dropped first.
+const MAX_CACHED_RECT_CHUNKS = 600;
+/// Cells per side of one cached chunk of `cellsNearDisplayRect`: small, so a normal-zoom grid is not
+/// padded by a whole large chunk, yet few enough wasm calls per redraw when zoomed far out.
+const NEAR_RECT_CHUNK_CELLS = 32;
+const rectChunkCache = new Map<string, [number, number][]>();
+
+/// A superset of `cellsInDisplayRect(rect, "intersects")`: the cells of every fixed, grid-aligned
+/// chunk the rectangle overlaps. Each chunk is queried once and kept, so a painter that redraws a
+/// slowly moving rectangle (the viewport grid) only pays core for the newly exposed chunks. Without
+/// duplicates, in no particular order.
+export function cellsNearDisplayRect(
+  rect: { minX: number; minY: number; maxX: number; maxY: number },
+  cfg: FieldConfig,
+): [number, number][] {
+  const chunk = NEAR_RECT_CHUNK_CELLS * TESSELLATION_UI[cfg.tessellation.kind].pixelsPerUnit;
+  const prefix = `${JSON.stringify(cfg.tessellation)}|${cfg.orientation ?? ""}|`;
+  const found = new Map<string, [number, number]>();
+  const lastColumn = Math.floor(rect.maxX / chunk);
+  const lastRow = Math.floor(rect.maxY / chunk);
+  for (let column = Math.floor(rect.minX / chunk); column <= lastColumn; column++) {
+    for (let row = Math.floor(rect.minY / chunk); row <= lastRow; row++) {
+      const key = `${prefix}${column},${row}`;
+      let cells = rectChunkCache.get(key);
+      if (cells) {
+        rectChunkCache.delete(key);
+      } else {
+        cells = cellsInDisplayRect({
+          minX: column * chunk,
+          maxX: (column + 1) * chunk,
+          minY: row * chunk,
+          maxY: (row + 1) * chunk,
+        }, "intersects", cfg);
+      }
+      rectChunkCache.set(key, cells);
+      for (const cell of cells) found.set(`${cell[0]},${cell[1]}`, cell);
+    }
+  }
+  while (rectChunkCache.size > MAX_CACHED_RECT_CHUNKS) rectChunkCache.delete(rectChunkCache.keys().next().value!);
+  return [...found.values()];
+}
+
 /// Offsets of a cell's neighbors and the boundary-vertex indices of each face, one entry per face
 /// in core's `faces_of` order -- the order every face index in the web follows.
 export function getNeighborData(

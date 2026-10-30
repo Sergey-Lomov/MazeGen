@@ -111,9 +111,14 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 
 ### GridRenderer
 
-The viewport grid is cached while panning: moving the viewport without changing the visible grid
-cell bounds reuses the existing world-space geometry, while zoom and newly exposed grid ranges still
-redraw it. If the viewport would require more than `MAX_VIEWPORT_GRID_CELLS` cells, the background
+The viewport grid is cached while panning: it is drawn over the viewport plus a margin (20% of the
+viewport size per side, at least a few cells), and a pan that keeps the viewport inside that drawn
+area reuses the existing world-space geometry. Zoom and leaving the drawn area redraw it
+(GitHub issue #889: zoomed-out drags no longer rebuild the grid on every cell crossed). A redraw
+asks core for cells through `cellsNearDisplayRect` (`pixi/tessellationGeometry.ts`): it splits the
+area into fixed grid-aligned chunks of 32 cells per side and keeps each chunk's cell list in a
+bounded cache keyed by tessellation and orientation, so only newly exposed chunks reach core. The
+result is a duplicate-free superset of the rectangle's cells, in no particular order. If the viewport would require more than `MAX_VIEWPORT_GRID_CELLS` cells, the background
 grid is temporarily suppressed because it is below a useful visual scale; maze geometry remains
 visible. This also prevents extreme zoom-out from turning every pointermove into an unbounded grid
 rebuild (GitHub issue #650).
