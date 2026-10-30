@@ -3,8 +3,10 @@ import { configAllCells } from "./tessellationCells";
 import {
   getCellAt,
   getCellsInRegion,
+  getCellOutlines,
   getGeometrySnapshot,
   type PathCellGeometry,
+  type PathCommand,
   type RegionMode,
   type WorldPoint,
 } from "../wasm/mazeService";
@@ -110,6 +112,7 @@ export function warmCartesianCache(cfg: FieldConfig, topology: WireTopology | nu
   if (instance === cachedInstance && signature === fieldSignature && topology === cachedTopology) return;
   fieldCache.clear();
   outsideCache.clear();
+  outlineCache.clear();
   cachedInstance = instance;
   fieldSignature = signature;
   if (topology !== cachedTopology) topologyVersion++;
@@ -166,6 +169,41 @@ export function getCellGeometry(x: number, y: number, cfg: FieldConfig): CellGeo
   outsideCache.set(key, geometry);
   if (outsideCache.size > maxOutsideCells) outsideCache.delete(outsideCache.keys().next().value!);
   return geometry;
+}
+
+/// Boundaries of cells that only a painter asked for (the viewport grid): outside the field and
+/// never needed with their faces, so they skip the full snapshot. Bounded like `outsideCache`.
+const outlineCache = new Map<string, PathCommand[]>();
+
+/// Loads the boundary of every cell of `cells` that no cache holds with one `geometry_outlines`
+/// call, so painting many cells outside the field costs neither one wasm call per cell nor the
+/// faces of a full snapshot.
+export function prefetchCellOutlines(cells: readonly (readonly [number, number])[], cfg: FieldConfig): void {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  const missing = cells.filter(([x, y]) => {
+    const key = cellKey(x, y);
+    return !fieldCache.has(key) && !outsideCache.has(key) && !outlineCache.has(key);
+  });
+  if (missing.length === 0) return;
+  for (const outline of getCellOutlines(cfg.tessellation, missing.map(([x, y]) => [x, y]))) {
+    outlineCache.set(cellKey(outline.cell[0], outline.cell[1]), outline.commands);
+  }
+  while (outlineCache.size > maxOutsideCells) outlineCache.delete(outlineCache.keys().next().value!);
+}
+
+/// Boundary path commands of one cell in world units: from the field or outside cache when it holds
+/// the cell, else from the outline cache, else one `geometry_outlines` call.
+export function getCellOutline(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  const key = cellKey(x, y);
+  const known = fieldCache.get(key) ?? outsideCache.get(key);
+  if (known) return known.boundary.commands;
+  let commands = outlineCache.get(key);
+  if (!commands) {
+    prefetchCellOutlines([[x, y]], cfg);
+    commands = outlineCache.get(key)!;
+  }
+  return commands;
 }
 
 /// Signed-area magnitude of a polygon, in world units (a unit cell has area 1 in the square tessellation).

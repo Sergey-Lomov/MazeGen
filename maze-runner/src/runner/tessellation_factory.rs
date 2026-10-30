@@ -585,6 +585,73 @@ mod tests {
         }
     }
 
+    /// Position of `kind` in `TessellationKind::ALL`. The match is exhaustive on purpose: a new
+    /// kind fails to compile here until it is added, and `ALL` is checked against it.
+    fn index_in_all(kind: TessellationKind) -> usize {
+        match kind {
+            TessellationKind::Square => 0,
+            TessellationKind::Hex => 1,
+            TessellationKind::Tri => 2,
+            TessellationKind::Cairo => 3,
+            TessellationKind::SquareOctagon => 4,
+            TessellationKind::Brick => 5,
+            TessellationKind::Trihexagonal => 6,
+            TessellationKind::SnubHexagonal => 7,
+            TessellationKind::SnubSquare => 8,
+            TessellationKind::Rhombitrihexagonal => 9,
+            TessellationKind::TruncatedHexagonal => 10,
+            TessellationKind::TruncatedTrihexagonal => 11,
+            TessellationKind::ElongatedTriangular => 12,
+            TessellationKind::CurvedQuadrilateral => 13,
+            TessellationKind::Radial => 14,
+            TessellationKind::Voronoi => 15,
+        }
+    }
+
+    #[test]
+    fn all_lists_every_kind_once() {
+        for (position, kind) in TessellationKind::ALL.into_iter().enumerate() {
+            assert_eq!(index_in_all(kind), position, "{kind:?}");
+        }
+    }
+
+    /// A buildable config for `kind` (the parametrized kinds need params).
+    fn sample_config(kind: TessellationKind) -> TessellationConfig {
+        match kind {
+            TessellationKind::Radial => radial_config(
+                serde_json::json!({ "first_ring_cells": 9, "max_cells": 3000, "ring_layout": "classic" }),
+            ),
+            TessellationKind::Voronoi => {
+                voronoi_config(serde_json::json!({ "jitter": 0.15, "seed": 3, "max_cells": 3000 }))
+            }
+            _ => config(kind),
+        }
+    }
+
+    /// Runs the `Tessellation::translation_basis` contract check on the built instance.
+    struct BasisContract;
+
+    impl TessellationVisitor for BasisContract {
+        type Output = Result<(), String>;
+
+        fn visit<T: Tessellation>(
+            self,
+            tessellation: Arc<T>,
+            _codec: CellCodec<T>,
+        ) -> Self::Output {
+            maze_core::space::check_translation_basis(&*tessellation)
+        }
+    }
+
+    #[test]
+    fn every_kind_meets_the_translation_basis_contract() {
+        for kind in TessellationKind::ALL {
+            let verdict = build_tessellation(&sample_config(kind), BasisContract)
+                .unwrap_or_else(|e| panic!("{kind:?}: {e}"));
+            assert_eq!(verdict, Ok(()), "{kind:?}");
+        }
+    }
+
     #[test]
     fn rejects_unknown_params() {
         let mut cfg = config(TessellationKind::Hex);

@@ -269,6 +269,13 @@ impl Tessellation for SnubHexagonalTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-0.5, -2.598076211353316),
+            Point::new(-2.0, 1.732050807568877),
+        ])
+    }
+
     fn center(&self, cell: SnubHexagonalPoint) -> Point {
         let (vs, n) = vertices(cell);
         let (x2, y) = vs[..n]

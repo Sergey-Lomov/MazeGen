@@ -561,9 +561,12 @@ fn check_strategy_sweep_matches_the_plain_field() {
     assert!(worse.is_empty(), "{worse:#?}");
 }
 
-/// The committed fixtures: `(file, surface, width, height, rules, elements)`. Regenerate with
+/// One committed fixture: `(file, surface, width, height, rules, elements)`.
+type FixtureSpec = (&'static str, Surface, i32, i32, Vec<Value>, Value);
+
+/// The committed fixtures. Regenerate with
 /// `cargo test -p maze-runner --test glued_audit -- --ignored regenerate_glued_fixtures`.
-fn fixture_specs() -> Vec<(&'static str, Surface, i32, i32, Vec<Value>, Value)> {
+fn fixture_specs() -> Vec<FixtureSpec> {
     let elements = json!({"one_way_chance": 0.1, "teleport_chance": 0.08,
         "teleport_one_way_chance": 0.3, "split_chance": 0.1});
     vec![
@@ -737,11 +740,12 @@ fn nonisometric_value(approximate: bool) -> Value {
     let mut queue: VecDeque<RadialPoint> = cells.iter().copied().collect();
     while let Some(cell) = queue.pop_front() {
         for &face in tessellation.faces_of(cell) {
-            if let Some((next, _)) = tessellation.neighbor(cell, face) {
-                if next.ring <= 3 && seen.insert(next) {
-                    cells.push(next);
-                    queue.push_back(next);
-                }
+            if let Some((next, _)) = tessellation.neighbor(cell, face)
+                && next.ring <= 3
+                && seen.insert(next)
+            {
+                cells.push(next);
+                queue.push_back(next);
             }
         }
     }

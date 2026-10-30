@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { cellAtSpacePoint, getCellGeometry, type CellGeometryEntry } from "./cartesianCache";
+import { cellAtSpacePoint, getCellGeometry, getCellOutline, type CellGeometryEntry } from "./cartesianCache";
 import { getCellsInRegion, type RegionMode } from "../wasm/mazeService";
 import type { PathCommand } from "../wasm/mazeService";
 import { rotationTransform, splitShapeBinding } from "./splitShape";
@@ -133,6 +133,26 @@ export function getCellPath(x: number, y: number, cfg: FieldConfig): readonly Pa
   let commands = byTransform.get(t);
   if (!commands) {
     commands = geometry.boundary.commands.map((command) => transformCommand(t, command));
+    byTransform.set(t, commands);
+  }
+  return commands;
+}
+
+const outlinePathCache = new WeakMap<readonly PathCommand[], Map<WorldTransform, PathCommand[]>>();
+
+/// Like `getCellPath` for a painter that needs the boundary only: it never loads the cell's faces,
+/// so a viewport full of cells outside the field stays cheap.
+export function getCellOutlinePath(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
+  const world = getCellOutline(x, y, cfg);
+  const t = displayTransform(cfg);
+  let byTransform = outlinePathCache.get(world);
+  if (!byTransform) {
+    byTransform = new Map();
+    outlinePathCache.set(world, byTransform);
+  }
+  let commands = byTransform.get(t);
+  if (!commands) {
+    commands = world.map((command) => transformCommand(t, command));
     byTransform.set(t, commands);
   }
   return commands;

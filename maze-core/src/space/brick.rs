@@ -124,6 +124,10 @@ impl Tessellation for BrickTessellation {
         Some(CellShape::full(&SHAPES[0], &LOCAL_TO_CANONICAL))
     }
 
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(-1.0, 0.0), Point::new(-0.5, -1.0)])
+    }
+
     fn center(&self, cell: BrickPoint) -> Point {
         corner(cell, 1, 1)
     }

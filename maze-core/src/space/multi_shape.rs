@@ -416,7 +416,8 @@ mod tests {
         assert!(anchor_cells(0..=1, |_| 0..=1, 2, 7, make).is_none());
         assert_eq!(anchor_cells(0..=1, |_| 0..=1, 2, 8, make).unwrap().len(), 8);
         // An empty inner range (end before start) holds no anchors and counts as zero.
-        assert_eq!(anchor_cells(0..=1, |_| 1..=0, 2, 0, make), Some(vec![]));
+        let empty = |_| std::ops::RangeInclusive::new(1, 0);
+        assert_eq!(anchor_cells(0..=1, empty, 2, 0, make), Some(vec![]));
     }
 
     #[test]

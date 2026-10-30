@@ -136,6 +136,10 @@ impl Tessellation for CurvedQuadrilateralTessellation {
     }
 
     /// The center of the underlying unit square; the tile is symmetric about it.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(-1.0, -1.0), Point::new(1.0, -1.0)])
+    }
+
     fn center(&self, cell: CurvedQuadrilateralPoint) -> Point {
         Point::new(cell.x as f64 + 0.5, cell.y as f64 + 0.5)
     }

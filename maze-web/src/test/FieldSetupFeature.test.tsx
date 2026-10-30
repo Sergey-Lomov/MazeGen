@@ -277,6 +277,18 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].selectedShape).toBe("parallelogram");
   });
 
+  it("shows only the generation-loss dialog when switching from custom to default", () => {
+    const base = baseFloorFieldConfig();
+    useMazeStore.setState({
+      mazeDirty: true,
+      floorFields: { [TEST_FLOOR_ID]: { ...base, fieldEditMode: "custom", fieldPoints: new Set([1, 2]) } },
+    });
+    render(<FieldSetupFeature />);
+    fireEvent.click(screen.getByText(m["field.default"]()));
+    expect(screen.getByText(m["field.reset_generation_warning"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["field.confirm_switch_to_default"]())).not.toBeInTheDocument();
+  });
+
   it("is hidden with a single floor", () => {
     render(<FieldSetupFeature />);
     expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();

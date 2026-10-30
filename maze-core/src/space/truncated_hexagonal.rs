@@ -182,6 +182,13 @@ impl Tessellation for TruncatedHexagonalTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-3.732050807568877, 0.0),
+            Point::new(1.866025403784439, 3.232050807568877),
+        ])
+    }
+
     fn center(&self, cell: TruncatedHexagonalPoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }

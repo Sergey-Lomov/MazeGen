@@ -190,6 +190,13 @@ impl Tessellation for TrihexagonalTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(-1.0, 1.732050807568877),
+            Point::new(1.0, 1.732050807568877),
+        ])
+    }
+
     fn center(&self, cell: TrihexagonalPoint) -> Point {
         let offsets = vertex_offsets(cell.kind);
         let (i, j) = offsets

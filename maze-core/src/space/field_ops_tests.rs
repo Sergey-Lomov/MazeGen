@@ -1,4 +1,5 @@
 use super::*;
+use crate::space::test_support::BasisSquareTessellation;
 
 fn square(x: i32, y: i32) -> SquarePoint {
     SquarePoint { x, y }
@@ -369,4 +370,59 @@ fn a_tessellation_can_withhold_operations() {
         NoOps.build_preset("rect", &[]),
         Err(FieldOpError::Unavailable)
     );
+}
+
+fn unit_basis() -> [Point; 2] {
+    [Point::new(1.0, 0.0), Point::new(0.0, 1.0)]
+}
+
+#[test]
+fn translation_basis_accepts_lattice_vectors_within_tolerance_only() {
+    let t = BasisSquareTessellation {
+        basis: Some(unit_basis()),
+    };
+    // Integer combinations of either sign, with floating-point noise below the tolerance.
+    assert_eq!(
+        t.translate_cells(&[square(0, 0)], Point::new(-3.0 + 1e-9, 2.0 - 1e-9)),
+        Ok(vec![square(-3, 2)])
+    );
+    for vector in [Point::new(1.001, 0.0), Point::new(0.0, 0.5)] {
+        assert_eq!(
+            t.translate_cells(&[square(0, 0)], vector),
+            Err(FieldOpError::NotASymmetry),
+            "({}, {})",
+            vector.x,
+            vector.y
+        );
+    }
+}
+
+#[test]
+fn translate_trusts_a_declared_basis_over_the_probe() {
+    // The probe would accept (1, 0); a coarser declared basis refuses it, so the basis decides.
+    let t = BasisSquareTessellation {
+        basis: Some([Point::new(2.0, 0.0), Point::new(0.0, 2.0)]),
+    };
+    assert_eq!(
+        t.translate_cells(&[square(0, 0)], Point::new(1.0, 0.0)),
+        Err(FieldOpError::NotASymmetry)
+    );
+}
+
+#[test]
+fn basis_contract_check_passes_a_correct_basis_and_fails_wrong_or_missing_ones() {
+    let check = |basis| check_translation_basis(&BasisSquareTessellation { basis });
+    assert_eq!(check(Some(unit_basis())), Ok(()));
+    // A basis that is too coarse rejects a real symmetry; one that is too fine accepts a fake.
+    assert!(
+        check(Some([Point::new(2.0, 0.0), Point::new(0.0, 2.0)]))
+            .unwrap_err()
+            .contains("disagrees")
+    );
+    assert!(
+        check(Some([Point::new(0.5, 0.0), Point::new(0.0, 0.5)]))
+            .unwrap_err()
+            .contains("disagrees")
+    );
+    assert!(check(None).unwrap_err().contains("no translation_basis"));
 }

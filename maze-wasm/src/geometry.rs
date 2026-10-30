@@ -2,6 +2,7 @@ use crate::generation_config::TessellationConfig;
 use maze_core::space::Tessellation;
 use maze_runner::runner::geometry::{
     self as runner_geometry, CellAtRequest, CellsInRegionRequest, GeometrySnapshotRequest,
+    OutlinesRequest,
 };
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
@@ -21,6 +22,16 @@ pub fn geometry_snapshot(request: JsValue) -> Result<JsValue, JsValue> {
     let snapshot =
         runner_geometry::geometry_snapshot(&request).map_err(|e| JsValue::from_str(&e))?;
     Ok(serde_wasm_bindgen::to_value(&snapshot).unwrap())
+}
+
+/// Boundary path commands of a cell set and nothing else (no faces, shapes or contact points):
+/// the cheap request for painting many cells, see `maze_runner::runner::geometry::cell_outlines`.
+#[wasm_bindgen]
+pub fn geometry_outlines(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: OutlinesRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let outlines = runner_geometry::cell_outlines(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&outlines).unwrap())
 }
 
 /// Point query: the cell at a world point, within an optional cell-set scope.

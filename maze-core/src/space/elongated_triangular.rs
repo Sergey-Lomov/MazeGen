@@ -179,6 +179,10 @@ impl Tessellation for ElongatedTriangularTessellation {
     }
 
     /// Centroid of the cell's polygon.
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([Point::new(-1.0, 0.0), Point::new(-0.5, -1.866025403784438)])
+    }
+
     fn center(&self, cell: ElongatedTriangularPoint) -> Point {
         TILING.center(cell.q, cell.r, cell.kind.index())
     }

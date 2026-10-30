@@ -61,6 +61,16 @@ describe("field operations over wasm", () => {
     }
   });
 
+  it("reuses translation results without sharing arrays and does not cache refusals", () => {
+    const first = translateFieldCells(square, [[0, 0], [1, 0]], [2, 1]);
+    first[0][0] = 999;
+    first.pop();
+    expect(translateFieldCells(square, [[0, 0], [1, 0]], [2, 1])).toEqual([[2, 1], [3, 1]]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(() => translateFieldCells(square, [[0, 0]], [0.5, 0])).toThrow();
+    }
+  });
+
   it("builds square-octagon presets and accepts only octagon-pitch translations", () => {
     const octagons = tessellationConfigOf("square_octagon");
     // 2x2 octagons around the origin octagon plus the one square between them.

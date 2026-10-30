@@ -513,6 +513,24 @@ the error carries a reason:
 
 Results are sorted by `CellId`. An empty input yields an empty result.
 
+**Translation basis.** Probing a translation geometrically (above) scans a 12 × 12 world window and
+costs hundreds of milliseconds on dense tilings such as 3.3.3.3.6, which makes dragging a selection
+lag (it runs on every pointer move). A periodic tessellation therefore declares
+`Tessellation::translation_basis() -> Option<[Point; 2]>`: a reduced basis of its lattice of
+translation symmetries. `translate_cells` then accepts a vector exactly when it is an integer
+combination of the basis (tolerance `1e-6` on the coordinates), by arithmetic. Without a basis
+(`None`, the default) it falls back to the probe. The contract:
+
+- a tessellation whose `field_operations` contains `Translate` must declare a basis;
+- the basis must accept exactly the vectors the probe accepts.
+
+`field_ops::check_translation_basis` verifies both for one instance (lattice vectors, fractions of
+them, other offsets). The `maze-runner` factory test runs it for every `TessellationKind::ALL`
+entry, and an exhaustive match keeps `ALL` complete, so a new kind cannot skip the basis or get it
+wrong. To find a basis for a new tessellation, collect the center differences from one cell to
+nearby cells that pass the probe and take the shortest vector and the shortest one independent of
+it.
+
 Presets are built in canonical math orientation — there is no orientation param, because core
 geometry knows nothing about the display transform. All sizes are world units (cell area 1), the
 shape is centered on the tessellation origin (the origin cell's center, or the lattice origin for
@@ -527,6 +545,9 @@ Wire (`maze-runner::runner::field_ops`, exported by `maze-wasm`): `field_capabil
 `{ kind, message? }` with `kind` one of the reasons above (`invalid_request` for a malformed
 request; also returned for non-finite vector or axis coordinates). `field_preset_extents` takes a preset plus two world directions and returns the `[min, max]` extent of the shape's cell boundaries along each, without shipping the cells (print-fit sizing evaluates many candidate sizes); it flattens only the cells whose centers lie within twice the cell reach (centre-to-farthest-boundary-point distance) of the center limits. The reach is the maximum over the cells at the limits and the first cell of every distinct shape descriptor, so a tessellation of mixed sizes (a dodecagon beside a triangle in 3.12.12, a dodecagon beside a square in 4.6.12) is not underestimated; cells of one shape are assumed near-uniform. Future extension: let a tessellation choose its extent mode (for example a core-supplied upper bound of cell reach, or an exact full scan when none is given), with a shared test comparing every mode against the full scan on small fields. The web `configAllCells` treats
 `invalid_preset` as an empty field and caches built presets by tessellation, key and params.
+`translateFieldCells` keeps the last 16 successful results by (tessellation, cells, vector) and
+returns copies: dragging a selection repeats the same request on every pointer event inside one
+cell and again at commit. Refusals are not cached.
 
 ### Display transform
 

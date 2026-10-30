@@ -102,6 +102,13 @@ impl Tessellation for TriTessellation {
     }
 
     /// Centroid of the cell's triangle (area 1).
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        Some([
+            Point::new(0.759835685651592, 1.316074012952492),
+            Point::new(1.519671371303185, 0.0),
+        ])
+    }
+
     fn center(&self, cell: TriPoint) -> Point {
         let [a, b, c] = tri_vertices(cell);
         Point::new((a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0)

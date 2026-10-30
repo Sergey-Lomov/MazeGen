@@ -76,6 +76,29 @@ pub enum TessellationKind {
     Voronoi,
 }
 
+impl TessellationKind {
+    /// Every registered kind. `tessellation_factory` tests check it against an exhaustive match,
+    /// so a new kind cannot be left out.
+    pub const ALL: [TessellationKind; 16] = [
+        TessellationKind::Square,
+        TessellationKind::Hex,
+        TessellationKind::Tri,
+        TessellationKind::Cairo,
+        TessellationKind::SquareOctagon,
+        TessellationKind::Brick,
+        TessellationKind::Trihexagonal,
+        TessellationKind::SnubHexagonal,
+        TessellationKind::SnubSquare,
+        TessellationKind::Rhombitrihexagonal,
+        TessellationKind::TruncatedHexagonal,
+        TessellationKind::TruncatedTrihexagonal,
+        TessellationKind::ElongatedTriangular,
+        TessellationKind::CurvedQuadrilateral,
+        TessellationKind::Radial,
+        TessellationKind::Voronoi,
+    ];
+}
+
 /// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory
 /// builds the instance deterministically from it and rejects params the kind does not accept.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]

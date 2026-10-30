@@ -45,7 +45,7 @@ pub use elongated_triangular::{
 };
 pub use field_ops::{
     FieldOpError, FieldOperation, FieldOps, PresetDescriptor, PresetParam, PresetParams,
-    is_connected, validate_preset,
+    check_translation_basis, is_connected, validate_preset,
 };
 pub use geometry::{
     BoundaryPath, CellScope, DistanceError, DistancePolicy, DistanceResult, FOLD_ISOMETRY_EPS,
@@ -153,6 +153,15 @@ pub trait Tessellation: Send + Sync + 'static {
     /// for operations not listed; `FieldOps` refuses them with `FieldOpError::Unavailable`.
     fn field_operations(&self) -> &[FieldOperation] {
         &[FieldOperation::Translate, FieldOperation::Reflect]
+    }
+
+    /// A reduced basis of the lattice of translation symmetries (world vectors), for a periodic
+    /// tessellation; `None` when it has none or it is not known. `FieldOps::translate_cells`
+    /// checks a vector against the basis by arithmetic instead of probing the tiling, so a
+    /// returned basis must generate exactly the translation symmetries (tests compare it to
+    /// the probe).
+    fn translation_basis(&self) -> Option<[Point; 2]> {
+        None
     }
 
     /// The preset field shapes this tessellation offers, each with its parameter schema.
