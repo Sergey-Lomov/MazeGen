@@ -5,7 +5,7 @@ import {
   resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, resolveEndpointToHoverPoint,
   buildLogicalCandidates, resolvePartnerForPlacement,
 } from "../../pixi/postEditEndpoint";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbor, resolveFaceNeighbors } from "../../pixi/faceNeighbors";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
@@ -210,11 +210,9 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
   // named special-split topology for `semanticNames` below.
   const facesOf = (endpoint: PostEditEndpoint): TileFace[] => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    return offsets.map(([dx, dy]) => {
-      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-      if (boundary) return { kind: "wall" as TileFaceKind, boundary };
+    return resolveFaceNeighbors(cfg, point, inFieldCells).map((neighbor) => {
+      const boundary = neighbor === null;
+      if (neighbor === null) return { kind: "wall" as TileFaceKind, boundary };
       if (!draftEdges) return { kind: "wall" as TileFaceKind, boundary };
 
       const neighborActive = resolveConnectedNeighborAt(neighbor, endpoint);
@@ -291,9 +289,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     if (!draftEdges) return null;
     const activeEndpoint = activeSplitNode[key] ?? originalEndpoint;
     if (!activeEndpoint) return null;
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    const [dx, dy] = offsets[offsetIndex];
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighbor = resolveFaceNeighbor(cfg, point, offsetIndex, inFieldCells);
+    if (neighbor === null) return null;
     const neighborActive = resolveConnectedNeighborAt(neighbor, activeEndpoint);
     return neighborActive ? { point: activeEndpoint, neighbor: neighborActive } : null;
   };

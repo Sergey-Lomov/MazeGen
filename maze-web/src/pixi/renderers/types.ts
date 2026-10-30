@@ -90,6 +90,9 @@ export type SplitPassage = {
   /** The split point's own `"${x},${y}"` key (GitHub issue #294) — lets `SplitJunctionRenderer`
    *  skip a point's ordinary passages when it's drawn via `SplitSpecialShape` instead. */
   pointKey: string;
+  /** Set on a share a split node on the other side of a seam mirrors onto this (unsplit) cell's
+   *  own copy of the glued face. `pointKey` is then the unsplit cell, which holds no split hub. */
+  mirrored?: boolean;
   /** The split point's own tile center (GitHub issue #314 follow-up) — `VectorByCorridorsRenderer`
    *  draws each of this node's face shares as a straight line from here (never `connectors`' hub
    *  fan-out/2-share-straightening — every share always runs to the point's own center, since a

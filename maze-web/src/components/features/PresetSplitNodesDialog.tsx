@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds, rotatePresetSplitPointBreaksNeighborShape } from "../../pixi/presetSplitResolve";
 import { activeFloorLevel } from "../../store/storeHelpers";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbor, resolveFaceNeighbors } from "../../pixi/faceNeighbors";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
@@ -120,16 +120,14 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   // neighbor's real connecting node per face (GitHub issue #243), shared with the split-target
   // dialog / status panel.
   const facesOf = (endpoint: PresetEndpoint): TileFace[] => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
     const kinds = presetSplitNodeFaceKinds(
       endpoint, point, cfg, inFieldCells, presetConnections,
       useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode, level,
     );
-    return offsets.map(([dx, dy], i): TileFace => {
-      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-      return { kind: kinds[i], boundary };
-    });
+    return resolveFaceNeighbors(cfg, point, inFieldCells).map((neighbor, i): TileFace => ({
+      kind: kinds[i],
+      boundary: neighbor === null,
+    }));
   };
 
   // Node endpoints in row order (original node first, then each slot in slotId order) — the same
@@ -196,10 +194,8 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     // Every in-field geometric neighbor face with no connection entry at all defaults to
     // "undefined" (GitHub issue #234 follow-up) — a face isn't invisible just because the user
     // never clicked it; it starts out optional/undecided, same as `facesOf`'s tile-diagram model.
-    const { offsets } = getNeighborData(cfg, ep.point[0], ep.point[1]);
-    for (const [dx, dy] of offsets) {
-      const neighbor: [number, number] = [ep.point[0] + dx, ep.point[1] + dy];
-      if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
+    for (const neighbor of resolveFaceNeighbors(cfg, ep.point, inFieldCells)) {
+      if (neighbor === null) continue;
       const neighborEndpoint = resolvePresetActiveEndpoint(neighbor, activeSplitNode, level);
       if (decidedPartners.has(presetEndpointKey(neighborEndpoint))) continue;
       undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "->", category: "undefined" });
@@ -220,9 +216,8 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   });
 
   const handleFaceClick = (offsetIndex: number) => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    const [dx, dy] = offsets[offsetIndex];
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighbor = resolveFaceNeighbor(cfg, point, offsetIndex, inFieldCells);
+    if (neighbor === null) return;
 
     if (activeKind === "undefined") {
       const neighborActive = resolvePresetActiveEndpoint(neighbor, useMazeStore.getState().presetActiveSplitNode, level);
@@ -235,9 +230,8 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   };
 
   const handleFaceRightClick = (offsetIndex: number) => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    const [dx, dy] = offsets[offsetIndex];
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighbor = resolveFaceNeighbor(cfg, point, offsetIndex, inFieldCells);
+    if (neighbor === null) return;
     applyPresetConnectionsToolAt("wall", "", point, neighbor);
   };
 

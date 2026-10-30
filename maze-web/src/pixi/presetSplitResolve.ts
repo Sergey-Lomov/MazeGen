@@ -1,4 +1,5 @@
-import { getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
+import { rotateFaceIndex } from "./tessellationGeometry";
+import { faceIndexTo, faceNeighborCells, resolveFaceNeighbors } from "./faceNeighbors";
 import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import { type SplitFaceKind, canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
@@ -114,10 +115,8 @@ export function presetSplitNodeFaceKinds(
   presetActiveSplitNode: Record<string, PresetEndpoint>,
   level?: number,
 ): SplitFaceKind[] {
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
-  return offsets.map(([dx, dy]): SplitFaceKind => {
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-    if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) return "wall";
+  return resolveFaceNeighbors(cfg, point, inFieldCells).map((neighbor): SplitFaceKind => {
+    if (neighbor === null) return "wall";
     const neighborPartner = resolvePresetPartnerAt(
       [endpoint], neighbor, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
     );
@@ -170,11 +169,10 @@ export function presetDecidedFaceIndicesOf(
   cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]>,
 ): Set<number> {
-  const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
+  const neighbors = faceNeighborCells(cfg, candidatePoint);
   const result = new Set<number>();
   for (const form of candidateForms) {
-    offsets.forEach(([dx, dy], i) => {
-      const neighbor: [number, number] = [candidatePoint[0] + dx, candidatePoint[1] + dy];
+    neighbors.forEach((neighbor, i) => {
       // Check against EVERY one of the neighbor's declared nodes (original + slots), not just its
       // original — a face's real partner across the shared edge is just as often one of the
       // neighbor's split slots (e.g. two adjacent bridge tiles), and checking only the original
@@ -240,9 +238,8 @@ export function resolvePresetFaceOwner(
   level: number | undefined,
 ): PresetEndpoint | null {
   const candidates = allNodesAt(newNeighbor, presetSplitPoints, level);
-  const { offsets: neighborOffsets } = getNeighborData(cfg, newNeighbor[0], newNeighbor[1]);
-  const degree = neighborOffsets.length;
-  const targetFace = neighborOffsets.findIndex(([dx, dy]) => newNeighbor[0] + dx === point[0] && newNeighbor[1] + dy === point[1]);
+  const degree = faceNeighborCells(cfg, newNeighbor).length;
+  const targetFace = faceIndexTo(cfg, newNeighbor, point);
 
   if (targetFace !== -1) {
     const existing = selectExistingPresetFaceOwner(candidates, newNeighbor, targetFace, presetConnections, cfg, presetSplitPoints);
@@ -295,8 +292,8 @@ export function rotatePresetSplitPoint(
   presetActiveSplitNode: Record<string, PresetEndpoint>,
   level?: number,
 ): SplitRotationResult<Map<string, PresetConnectionEntry>> {
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
-  const n = offsets.length;
+  const faceNeighbors = faceNeighborCells(cfg, point);
+  const n = faceNeighbors.length;
   if (n === 0) return presetConnections;
 
   const endpoints: PresetEndpoint[] = [presetEndpoint(point, undefined, level), ...slotIds.map((slotId) => presetEndpoint(point, slotId, level))];
@@ -306,7 +303,7 @@ export function rotatePresetSplitPoint(
 
   for (const ep of endpoints) {
     for (let i = 0; i < n; i++) {
-      const neighbor: [number, number] = [point[0] + offsets[i][0], point[1] + offsets[i][1]];
+      const neighbor = faceNeighbors[i];
       const oldNeighborCandidates = allNodesAt(neighbor, presetSplitPoints, level).map((c) => ({ forms: [c], identity: c }));
       const classifyPair = (target: PresetEndpoint, form: PresetEndpoint): PairState => {
         const e = presetConnections.get(presetEdgeKey(form, target));
@@ -320,7 +317,7 @@ export function rotatePresetSplitPoint(
       const entry = presetConnections.get(key)!;
 
       const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
-      const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
+      const newNeighbor = faceNeighbors[j];
       if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) {
         return refusedRotation(new Map(presetConnections), "outside_field");
       }
@@ -414,9 +411,7 @@ export function rotatePresetSplitPointBreaksNeighborShape(
   );
   if (after.refusalReason) return false; // refused — nothing changes
 
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
-  for (const [dx, dy] of offsets) {
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+  for (const neighbor of faceNeighborCells(cfg, point)) {
     const neighborEndpoints = allNodesAt(neighbor, presetSplitPoints, level);
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
     const neighborBinding = splitShapeBinding(cfg, neighbor[0], neighbor[1]);

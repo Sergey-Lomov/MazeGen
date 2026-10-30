@@ -1,6 +1,6 @@
-import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
+import { makeProjection, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
-import { getCellNeighborOffsets } from "./tessellationGeometry";
+import { resolveFaceNeighbors } from "./faceNeighbors";
 import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
@@ -381,33 +381,27 @@ export function computeAutoLockedNodes(
   const result = new Set<string>();
   for (const { level, cfg, customPoints, smooth } of fields) {
     const cells = resolveCells(cfg, customPoints, smooth);
-    const cellSet = new Set<number>();
-    for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
+    const cellSet = new Set<string>();
+    for (const [x, y] of cells) cellSet.add(`${x},${y}`);
 
     for (const [x, y] of cells) {
-      const offsets = getCellNeighborOffsets(cfg, x, y);
+      const neighbors = resolveFaceNeighbors(cfg, [x, y], cellSet);
       const pointKey = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
       const slots = presetSplitPoints[pointKey] ?? [];
       const endpoints = [presetEndpoint([x, y], undefined, level), ...slots.map((slotId) => presetEndpoint([x, y], slotId, level))];
 
-      let hasInteriorEdge = false;
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx, ny = y + dy;
-        if (cellSet.has(encodePoint(nx, ny))) hasInteriorEdge = true;
-      }
-      if (!hasInteriorEdge) continue;
+      if (neighbors.every((n) => n === null)) continue;
       let allNodesDefined = true;
       const nodeResults: { key: string; defined: boolean }[] = [];
       for (const ep of endpoints) {
         let allDefined = true;
-        for (const [dx, dy] of offsets) {
-          const nx = x + dx, ny = y + dy;
-          if (!cellSet.has(encodePoint(nx, ny))) continue;
+        for (const faceNeighbor of neighbors) {
+          if (faceNeighbor === null) continue;
           // A geometric neighbor can itself be a split point. Resolve the actual node
           // recorded on this face instead of assuming that the original node is used;
           // otherwise autoblock misses decided split-to-split connections.
           const neighbor = resolvePresetPartnerAt(
-            [ep], [nx, ny], presetConnections, presetSplitPoints, {}, level,
+            [ep], faceNeighbor, presetConnections, presetSplitPoints, {}, level,
           );
           const key = presetEdgeKey(ep, neighbor);
           const entry = presetConnections.get(key);

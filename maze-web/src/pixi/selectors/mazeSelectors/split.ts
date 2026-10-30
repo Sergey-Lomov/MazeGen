@@ -4,8 +4,8 @@ import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
 import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, getFaceEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
 import { splitShapeBinding, canonicalFaceKinds } from "../../splitShape";
 import { DEFAULT_BRIDGE_TAPER_FRAC, selectSplitCellRenderer } from "../../splitCellRenderer";
-import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, facePolyline, pointAlongPolyline, type SplitFaceInput, type SplitFaceKind } from "../../splitFaceLayout";
-import { getSeamModel } from "../seams";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, facePolyline, pointAlongPolyline, subPolyline, type SplitFaceInput, type SplitFaceKind } from "../../splitFaceLayout";
+import { getSeamModel, partnerFraction, type HalfEdge } from "../seams";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
@@ -364,12 +364,14 @@ export function buildSplitPassagesCore<Id>(
     // exist as a per-node decision state, see `splitFaceLayout.ts`).
     const faceInputs: SplitFaceInput[] = [];
     const kindsByFace: { nodeIndex: number; kind: SplitFaceKind }[][] = [];
+    const halfByFace: (HalfEdge | null)[] = [];
 
     for (const [faceIdx, [dx, dy]] of offsets.entries()) {
       // A glued face has its partner across the seam, not at the base offset (which lies outside the
       // field). The face is this point's own copy: its share is divided on this side's geometry, and
       // the partner point divides its own copy of the face (`Specs/topology.md`, "Seam rendering model").
       const half = seams.halfEdgeAt([px, py], faceIdx);
+      halfByFace.push(half);
       const partnerCell = half ? seams.partnerOf(half).cell : null;
       const neighbors = byPoint.get(partnerCell ? `${partnerCell[0]},${partnerCell[1]}` : `${px + dx},${py + dy}`);
       const anyNeighbor = neighbors?.[0];
@@ -635,6 +637,53 @@ export function buildSplitPassagesCore<Id>(
 
       result.push({ color, nodeIndex, pointKey, center, wallSegments, connectors });
     }
+
+    // A seam's other side is a different face of a different cell, so a share on this side has no
+    // shared edge to show it on. When that cell is an ordinary (unsplit) point nothing else draws
+    // it, so each share is mirrored onto the partner's own copy of the face (`Specs/topology.md`,
+    // "Seam rendering model"); a split partner draws its own nodes' shares itself.
+    // Only the colored share on the face is drawn there (no connector toward the partner's center:
+    // the split is not inside that cell). A point drawn as a special shape (bridge, divider) has no
+    // per-node shares to mirror.
+    faceLayouts.forEach((layout, faceIndex) => {
+      const half = halfByFace[faceIndex];
+      if (!half || specialShapeKind !== null) return;
+      const partner = seams.partnerOf(half);
+      const partnerKey = `${partner.cell[0]},${partner.cell[1]}`;
+      if (byPoint.get(partnerKey)?.length !== 1) return;
+      const partnerFace = getFaceEdgeSegment(partner.cell, partner.faceIdx, cfg);
+      if (!partnerFace) return;
+      const partnerPolyline = facePolyline({ v0: partnerFace.v0, v1: partnerFace.v1, polyline: partnerFace.polyline.map(([x, y]) => ({ x, y })) });
+      const seam = seams.seams[half.seam];
+      for (const s of layout.segments) {
+        const u0 = partnerFraction(seam, s.t0);
+        const u1 = partnerFraction(seam, s.t1);
+        const reversed = u0 > u1;
+        const polyline = subPolyline(partnerPolyline, Math.min(u0, u1), Math.max(u0, u1));
+        const mid = pointAlongPolyline(partnerPolyline, partnerFraction(seam, (s.t0 + s.t1) / 2));
+        // The passage runs outward from this node toward the face, so it runs inward on the partner.
+        const oneWayOut = s.kind === "one_way_out" ? false : s.kind === "one_way_in" ? true : undefined;
+        const isUndefined = s.kind === "undefined";
+        result.push({
+          color: splitSlotColor(s.nodeIndex, nodeColors),
+          nodeIndex: s.nodeIndex,
+          pointKey: partnerKey,
+          mirrored: true,
+          center: mid,
+          wallSegments: [{
+            v0: polyline[0],
+            v1: polyline[polyline.length - 1],
+            polyline,
+            center: mid,
+            isUndefined,
+            oneWayOut,
+            atFaceStart: reversed ? s.atFaceEnd : s.atFaceStart,
+            atFaceEnd: reversed ? s.atFaceStart : s.atFaceEnd,
+          }],
+          connectors: [],
+        });
+      }
+    });
   }
 
   return { passages: result, wallFaces, specialShapes };
@@ -687,7 +736,7 @@ export function buildSplitJunctionPositions(passages: SplitPassage[]): [number, 
   const seen = new Set<string>();
   const result: [number, number][] = [];
   for (const p of passages) {
-    if (seen.has(p.pointKey)) continue;
+    if (p.mirrored || seen.has(p.pointKey)) continue; // a mirrored share's cell holds no hub
     seen.add(p.pointKey);
     result.push([p.center.x, p.center.y]);
   }

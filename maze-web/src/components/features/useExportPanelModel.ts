@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
+import { floorIdsWithCut } from "../../pixi/imageExport/exportContent";
 import type { EdgeDto, NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { ParamDescriptor } from "../../store/parameterLinks";
@@ -26,7 +27,7 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   registry: Record<P, ParamDescriptor>,
   computeWarnings: (
     nodes: NodeDto[], edges: EdgeDto[], floors: FloorEntry[], cfg: FieldConfig,
-    settings: S, start: number | null, finish: number | null,
+    settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>,
   ) => ExportWarning[],
 ) {
   const rawNodes = useMazeStore((s) => s.nodes);
@@ -47,9 +48,15 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   );
 
   // Export specific rendering caveats (GitHub issue #298), distinct from the QC issue list.
+  const floorTopology = useMazeStore((s) => s.floorTopology);
+  const cuts = useMazeStore((s) => s.pngExportSettings.cuts);
+  const cutFloorIds = useMemo(
+    () => floorIdsWithCut(floors, cfg, floorTopology, cuts),
+    [floors, cfg, floorTopology, cuts],
+  );
   const exportWarnings = useMemo(
-    () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
-    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
+    () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds),
+    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds],
   );
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent

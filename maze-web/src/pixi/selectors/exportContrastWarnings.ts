@@ -189,6 +189,9 @@ export function splitContrastData(
   edges: EdgeDto[],
   cfg: FieldConfig,
   ctx: ColorVisibilityContext,
+  /// Whether a share mirrored onto a seam partner (`SplitPassage.mirrored`) highlights the partner's
+  /// node. Off when a cut line separates the two sides in the exported image.
+  highlightSeamMirrors: boolean,
 ): { colors: (VisibleColor | null)[]; keys: string[]; nodes: number[] } {
   if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [] };
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -207,6 +210,7 @@ export function splitContrastData(
       colors.push(passage.nodeIndex === undefined ? unownedColor(passage.color) : visibleColor(ctx, splitNodeKey(passage.nodeIndex)));
       keys.push(String(key));
     }
+    if (passage.mirrored && !highlightSeamMirrors) continue;
     for (const node of nodeById.values()) {
       if (`${node.x},${node.y}` === passage.pointKey) ids.add(node.id);
     }
