@@ -251,6 +251,9 @@ const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetField
     triangle: { shape: "triangle", side: 12 },
     hexagon: { shape: "hexagon", radius: 10 },
     circle: { shape: "circle", radius: 10 },
+    tetrahedron: { shape: "tetrahedron", side: 8, net: 0, mode: 0, aspect: 100 },
+    octahedron: { shape: "octahedron", side: 6, net: 0, mode: 0, aspect: 100 },
+    icosahedron: { shape: "icosahedron", side: 4, net: 0, mode: 0, aspect: 100 },
   },
   cairo: {
     rect: { shape: "rect", cols: 10, rows: 10 },

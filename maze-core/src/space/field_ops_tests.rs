@@ -85,7 +85,15 @@ fn presets_per_kind_match_the_spec_table() {
     );
     assert_eq!(
         preset_keys(&TriTessellation),
-        ["rect", "triangle", "hexagon", "circle"]
+        [
+            "rect",
+            "triangle",
+            "hexagon",
+            "circle",
+            "tetrahedron",
+            "octahedron",
+            "icosahedron"
+        ]
     );
     assert_eq!(
         preset_keys(&CairoTessellation),

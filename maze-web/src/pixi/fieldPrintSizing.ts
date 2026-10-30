@@ -1,8 +1,8 @@
-import { BOX_NET_COMPACT, type FieldConfig, type PresetFieldShape } from "../fieldConfig";
+import { isSwitchedShape, type FieldConfig, type PresetFieldShape } from "../fieldConfig";
 import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
-import { presetParams } from "./fieldOps";
+import { compactNetOf, presetParams } from "./fieldOps";
 import { presetShapeExtents } from "./tessellationCells";
 import { displayTransform } from "./tessellationGeometry";
 import { printRectSizingOf, TESSELLATION_UI } from "./geometry/tessellationUi";
@@ -70,9 +70,9 @@ export function calculatePrintFieldConfig(
   input: PrintFieldSizingInput,
 ): PrintFieldSizingResult | null {
   // Floors of one shape kind ask the same question, and the dialog re-asks it on every render.
-  // The answer does not depend on the current size, only on the shape kind; a box also depends
+  // The answer does not depend on the current size, only on the shape kind; a box or polyhedron also depends
   // on everything it is made of (proportions, net, mode), as the sizing keeps them.
-  const shape = current.shape.shape === "box" ? current.shape : current.shape.shape;
+  const shape = isSwitchedShape(current.shape) ? current.shape : current.shape.shape;
   const key = JSON.stringify([{ ...current, shape }, input]);
   if (!sizingCache.has(key)) {
     if (sizingCache.size >= SIZING_CACHE_LIMIT) sizingCache.delete(sizingCache.keys().next().value!);
@@ -314,7 +314,7 @@ function calculateBestRadialConfig(
 }
 
 /** The param the radial search grows: the box is grown by its width, the others by one size. */
-const SIZE_PARAM: Partial<Record<RadialShape["shape"], string>> = { triangle: "side", box: "width" };
+const SIZE_PARAM: Partial<Record<RadialShape["shape"], string>> = { triangle: "side", box: "width", tetrahedron: "side", octahedron: "side", icosahedron: "side" };
 
 /** Core's upper bound of the shape's size parameter, when it publishes one. */
 function sizeParamMax(current: FieldConfig, shape: RadialShape): number {
@@ -324,7 +324,10 @@ function sizeParamMax(current: FieldConfig, shape: RadialShape): number {
 
 function radialCandidate(current: FieldConfig, shape: RadialShape, size: number): FieldConfig {
   switch (shape.shape) {
-    case "triangle": return { ...current, shape: { ...shape, side: size } };
+    case "triangle":
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return { ...current, shape: { ...shape, side: size } };
     case "box": return { ...current, shape: scaledBox(shape, size) };
     default: return { ...current, shape: { ...shape, radius: size } };
   }
@@ -334,7 +337,7 @@ function radialCandidate(current: FieldConfig, shape: RadialShape, size: number)
  * wants the faces stacked, a landscape one side by side); other fields are returned as they are. */
 function packedForSheet(current: PredefinedFieldConfig, usableWidthMm: number, usableHeightMm: number): PredefinedFieldConfig {
   const { shape } = current;
-  if (shape.shape !== "box" || shape.net !== BOX_NET_COMPACT) return current;
+  if (!isSwitchedShape(shape) || shape.net !== compactNetOf(current.tessellation, shape)) return current;
   const aspect = Math.min(1000, Math.max(1, Math.round(usableWidthMm / usableHeightMm * 100)));
   return { ...current, shape: { ...shape, aspect } };
 }

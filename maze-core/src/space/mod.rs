@@ -29,6 +29,7 @@ pub(crate) mod test_support;
 pub mod topology;
 pub mod topology_edit;
 pub mod triangle;
+mod tri_polyhedron;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
 pub mod truncated_trihexagonal;
@@ -746,3 +747,7 @@ mod field_ops_tests;
 #[cfg(test)]
 #[path = "square_box_tests.rs"]
 mod square_box_tests;
+
+#[cfg(test)]
+#[path = "tri_polyhedron_tests.rs"]
+mod tri_polyhedron_tests;

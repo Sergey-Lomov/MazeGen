@@ -492,8 +492,8 @@ Field-editing operations work on cell sets and live in core (`space/field_ops.rs
   symmetry;
 - **preset field shapes** built from named integer params: `rect`, `parallelogram`, `circle`,
   `triangle` and `hexagon` (the ported `square_rect`, `hex_hexagon`, `tri_*`, `cairo_rect` and the
-  web generators from `storeHelpers`/`fieldConfig`); the square tessellation also offers `box`, whose
-  net comes with gluings (`Tessellation::build_preset_folds`, default empty: one `Vec<NewFold>`
+  web generators from `storeHelpers`/`fieldConfig`); the square tessellation also offers `box` and the triangle tessellation `tetrahedron`, `octahedron` and `icosahedron`, whose
+  nets come with gluings (`Tessellation::build_preset_folds`, default empty: one `Vec<NewFold>`
   per fold group; see `topology.md`, "Topology presets").
 
 Availability is separate from execution. `Tessellation::field_operations` lists the supported

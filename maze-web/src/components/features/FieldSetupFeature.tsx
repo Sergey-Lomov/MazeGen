@@ -3,7 +3,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import { BOX_NET_COMPACT, type FieldConfig, type FieldShape, type PresetFieldShapeName } from "../../fieldConfig";
+import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
@@ -24,7 +24,7 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { availablePresetKeys, fieldOperationAvailable, presetParams } from "../../pixi/fieldOps";
+import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronFaceCount, polyhedronNetCount, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
 import { TopologyPanel } from "./TopologyPanel";
@@ -93,8 +93,9 @@ export function FieldSetupFeature() {
     : null;
 
   function setField(field: string, value: number) {
-    // The compact box layout is always by faces.
-    const forced = fieldConfig.shape.shape === "box" && field === "net" && value === BOX_NET_COMPACT ? { mode: 1 } : {};
+    // The compact layout of a box or polyhedron is always by faces.
+    const { shape } = fieldConfig;
+    const forced = isSwitchedShape(shape) && field === "net" && value === compactNetOf(fieldConfig.tessellation, shape) ? { mode: 1 } : {};
     setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value, ...forced } as FieldShape });
   }
 
@@ -171,7 +172,7 @@ export function FieldSetupFeature() {
     const { shape } = fieldConfig;
     if (shape.shape === "custom") return null;
     const values = shape as unknown as Record<string, number>;
-    const compactBox = shape.shape === "box" && shape.net === BOX_NET_COMPACT;
+    const compactBox = isSwitchedShape(shape) && shape.net === compactNetOf(fieldConfig.tessellation, shape);
     const params = presetParams(fieldConfig.tessellation, shape.shape);
     return params.map(({ name, min, max }) => {
       // The compact layout's sheet aspect is set by print sizing, not typed in.
@@ -199,7 +200,7 @@ export function FieldSetupFeature() {
           </Fragment>
         );
       }
-      const choices = paramChoices(shape.shape, name);
+      const choices = paramChoices(fieldConfig.tessellation, shape.shape, name);
       if (choices) {
         return (
           <label key={name} style={styles.label}>
@@ -600,6 +601,9 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
     case "box": return m["field.shape.box"]();
+    case "tetrahedron": return m["field.shape.tetrahedron"]();
+    case "octahedron": return m["field.shape.octahedron"]();
+    case "icosahedron": return m["field.shape.icosahedron"]();
   }
 }
 
@@ -622,8 +626,10 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
 }
 
 /** Switch-like params (core publishes them as `0..max` integers) rendered as a select, not a number input. */
-function paramChoices(shape: PresetFieldShapeName, name: string): { value: number; label: string }[] | null {
-  if (shape !== "box") return null;
+function paramChoices(tessellation: FieldConfig["tessellation"], shape: PresetFieldShapeName, name: string): { value: number; label: string }[] | null {
+  const polyhedron = (POLYHEDRON_SHAPES as readonly string[]).includes(shape);
+  if (shape !== "box" && !polyhedron) return null;
+  if (name === "net" && polyhedron) return polyhedronNetChoices(tessellation, shape as PolyhedronShapeName);
   if (name === "mode") return [
     { value: 0, label: m["field.box.mode.net"]() },
     { value: 1, label: m["field.box.mode.faces"]() },
@@ -634,6 +640,20 @@ function paramChoices(shape: PresetFieldShapeName, name: string): { value: numbe
     { value: BOX_NET_COMPACT, label: m["field.box.net.compact"]() },
   ];
   return null;
+}
+
+/** The nets core offers (its `net` max counts them) with their captions, then the compact layout. */
+function polyhedronNetChoices(tessellation: FieldConfig["tessellation"], shape: PolyhedronShapeName): { value: number; label: string }[] {
+  const captions: Record<PolyhedronShapeName, string[]> = {
+    tetrahedron: [m["field.polyhedron.net.star"](), m["field.polyhedron.net.strip"]()],
+    octahedron: [m["field.polyhedron.net.wide"](), m["field.polyhedron.net.close"]()],
+    icosahedron: [m["field.polyhedron.net.band"]()],
+  };
+  const count = polyhedronNetCount(tessellation, shape);
+  return [
+    ...Array.from({ length: count }, (_, value) => ({ value, label: captions[shape][value] ?? `#${value + 1}` })),
+    { value: count, label: m["field.box.net.compact"]() },
+  ];
 }
 
 /** Fallback upper bound of a size param in the editor — UI metadata, used when core publishes no `max`. */
@@ -688,6 +708,9 @@ export function configCellCount(cfg: FieldConfig): number {
       return ui.triangleCellCount === null ? configAllCells(cfg).length : ui.triangleCellCount(shape.side);
     case "circle": return configAllCells(cfg).length;
     case "box": return 2 * (shape.width * shape.height + shape.height * shape.depth + shape.width * shape.depth);
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return polyhedronFaceCount(cfg.tessellation, shape.shape) * shape.side * shape.side;
   }
 }
 
@@ -698,7 +721,10 @@ function configSizeLabel(cfg: FieldConfig): string {
     case "parallelogram": return `${shape.cols}\u00D7${shape.rows}`;
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
-    case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "triangle":
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return `${m["field.side"]()} ${shape.side}`;
     case "box": return `${shape.width} × ${shape.height} × ${shape.depth}`;
     case "custom": return "";
   }

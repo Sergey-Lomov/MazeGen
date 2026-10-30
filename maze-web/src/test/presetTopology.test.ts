@@ -56,6 +56,21 @@ describe("topology presets over wasm", () => {
   });
 });
 
+describe("polyhedron topology presets over wasm", () => {
+  const tri = tessellationConfigOf("tri");
+
+  it.each([
+    ["tetrahedron", 6, 3],
+    ["octahedron", 12, 5],
+    ["icosahedron", 30, 11],
+  ])("the %s net glues the %i edges it does not join, by faces glues all", (shape, edges, netGroups) => {
+    const folds = (mode: number) => getFieldPresetTopology(tri, shape, { side: 2, net: 0, mode, aspect: 100 });
+    expect(folds(0)?.groups).toHaveLength(netGroups);
+    expect(folds(1)?.groups).toHaveLength(edges);
+    expect(folds(1)?.folds).toHaveLength(2 * edges);
+  });
+});
+
 describe("a floor on a topology preset", () => {
   it("takes the box's gluings with the shape and drops them on another shape", () => {
     get().setSelectedShape("box");

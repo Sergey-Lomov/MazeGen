@@ -13,7 +13,7 @@ import type {
   ProjectFileFloorField,
   ProjectFileQuality,
 } from "./types";
-import { availablePresetKeys } from "../../pixi/fieldOps";
+import { availablePresetKeys, polyhedronNetCount } from "../../pixi/fieldOps";
 import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
@@ -55,6 +55,16 @@ export function validateFieldShape(v: unknown, path: string): FieldShape {
       return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };
     case "triangle":
       return { shape, side: assertNumber(obj.side, `${path}.side`) };
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": {
+      // Polyhedra are triangle-tessellation presets.
+      const compactNet = polyhedronNetCount(tessellationConfigOf("tri"), shape);
+      const net = assertSwitch<number>(obj.net, `${path}.net`, compactNet);
+      // The compact layout is always by faces.
+      const mode = net === compactNet ? 1 : assertSwitch<BoxMode>(obj.mode, `${path}.mode`, 1);
+      return { shape, side: assertNumber(obj.side, `${path}.side`), net, mode, aspect: optNumber(obj, "aspect", BOX_DEFAULT_ASPECT) };
+    }
     case "box":
       const net = assertSwitch<BoxNet>(obj.net, `${path}.net`, 2);
       // The compact layout is always by faces.

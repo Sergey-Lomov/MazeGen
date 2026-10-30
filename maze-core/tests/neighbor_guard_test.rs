@@ -7,8 +7,12 @@ use std::path::{Path, PathBuf};
 
 /// Directories and files where direct `.neighbor(` calls are allowed: the space layer itself
 /// (tessellation implementations, `space/geometry`, `field_ops`, presets) and the geometry
-/// snapshot, which describes base geometry.
-const ALLOWED: &[&str] = &["maze-core/src/space/", "maze-runner/src/runner/geometry.rs"];
+/// snapshot and the topology editor, which describe base geometry.
+const ALLOWED: &[&str] = &[
+    "maze-core/src/space/",
+    "maze-runner/src/runner/geometry.rs",
+    "maze-runner/src/runner/topology_edit.rs",
+];
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {

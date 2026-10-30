@@ -259,6 +259,29 @@ describe("print sizing of a box", () => {
   });
 });
 
+describe("print sizing of a polyhedron", () => {
+  const polyhedron = (shape: "tetrahedron" | "octahedron" | "icosahedron", net: number, mode: 0 | 1) =>
+    fieldOf("tri", { shape, side: 6, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(polyhedron("octahedron", net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "octahedron", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet and fits the paper", () => {
+    const portrait = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    for (const result of [portrait, landscape]) {
+      expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+      expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+    }
+  });
+});
+
 function shapeCapacity(config: Pick<FieldConfig, "shape">): number {
   const { shape } = config;
   if ("cols" in shape && "rows" in shape) return Number(shape.cols) * Number(shape.rows);

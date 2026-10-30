@@ -44,6 +44,7 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 | `circle` | `radius` |
 | `triangle` | `side` |
 | `hexagon` | `radius` |
+| `tetrahedron`, `octahedron`, `icosahedron` | `side` (the edge length in cells, one size input), `net` (a select: tetrahedron star / strip, octahedron band with caps apart / close, icosahedron band with caps; the last value is always the compact print layout), `mode` (0 net, 1 by faces: separate triangles); the compact net forces mode to by faces and locks that select; print sizing grows `side` as for a radial shape and, for the compact net, sets the hidden `aspect` to the width to height of the printable area |
 | `box` | `width`, `height`, `depth` (cells, default 10 each; a "Dimensions" heading above three inputs), `net` (0 cross, 1 T-shaped lying on its side, 2 compact: the faces packed tightly, possibly turned), `mode` (0 net, 1 by faces: six separate rectangles); `net` ("Shape") and `mode` ("Mode") are selects in that order; the compact shape forces mode to by faces and locks that select; print sizing keeps the proportions of the three sides and, for the compact shape, sets the hidden `aspect` to the width to height of the printable area so the faces are packed for that sheet |
 | `custom` | `points` (the free-drawn cell list) |
 
@@ -59,7 +60,7 @@ current table, for reference:
 |---|---|
 | `square` | rect, circle, triangle, box (topology preset: `width`, `height`, `depth`; field and gluing together, `Specs/topology.md`, "Topology presets") |
 | `hex` | rect, parallelogram, hexagon, circle, triangle |
-| `tri` | rect, triangle, hexagon, circle |
+| `tri` | rect, triangle, hexagon, circle, tetrahedron, octahedron, icosahedron (topology presets: `side`, `net`, `mode`; field and gluing together, `Specs/topology.md`, "Topology presets") |
 | `cairo` | rect, circle, triangle, hexagon |
 
 Each floor keeps one `selectedShape` (a preset key); the default is the kind's default preset
@@ -118,7 +119,7 @@ validation, margins, physical-unit conversion, final polygon-bound measurement, 
 formatting. A `box` is scaled as a radial shape by its longest side: the three sides keep their
 proportions (each at least 1), `net` and `mode` stay as chosen, and the cache key includes the full
 box shape. For the compact net the sheet's usable width/height ratio is stored as the hidden `aspect`
-param (x100) so that core packs the faces to fit the sheet. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
+param (x100) so that core packs the faces to fit the sheet. A polyhedron (`tetrahedron`, `octahedron`, `icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf` (`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
 pentagon bounds without materializing a complete candidate field during the search.
 
 The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
@@ -324,6 +325,7 @@ shape variant.
 | hex `hexagon` | `3r² + 3r + 1` cells from the axial hex-distance rule | naturally centered on the origin cell |
 | tri `rect` | `(2 × cols) × rows` triangle cells; each configured column supplies the complete opposite-orientation pair | centered complete coordinate block |
 | tri `triangle` | `n²` | bbox center, parity-safe offset |
+| tri `tetrahedron` / `octahedron` / `icosahedron` | `4n²` / `8n²` / `20n²` | the bounding box of the faces, centered like a lattice shape: the shift keeps the parity of `col + row` (rows may be negative) |
 | tri `hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
 | tri `circle` | cells whose complete triangles lie within radius `r` | naturally centered, without isolated edge spikes |
 

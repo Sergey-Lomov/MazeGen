@@ -225,7 +225,10 @@ export function configSizeDescription(config: FieldConfig): string {
     case "parallelogram": return m["field.print_sizing.result_size"]({ size: `${shape.cols} × ${shape.rows}` });
     case "circle":
     case "hexagon": return m["field.print_sizing.result_radius"]({ size: String(shape.radius) });
-    case "triangle": return m["field.print_sizing.result_side"]({ size: String(shape.side) });
+    case "triangle":
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return m["field.print_sizing.result_side"]({ size: String(shape.side) });
     case "box": return m["field.print_sizing.result_size"]({ size: `${shape.width} × ${shape.height} × ${shape.depth}` });
     case "custom": return "";
   }
@@ -280,6 +283,9 @@ function printFieldShapeLabel(config: FieldConfig): string {
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
     case "box": return m["field.shape.box"]();
+    case "tetrahedron": return m["field.shape.tetrahedron"]();
+    case "octahedron": return m["field.shape.octahedron"]();
+    case "icosahedron": return m["field.shape.icosahedron"]();
     case "custom": return m["field.print_sizing.floor_non_standard"]();
   }
 }
@@ -291,7 +297,10 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
     case "parallelogram": return `${shape.cols} × ${shape.rows}`;
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
-    case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "triangle":
+    case "tetrahedron":
+    case "octahedron":
+    case "icosahedron": return `${m["field.side"]()} ${shape.side}`;
     case "box": return `${shape.width} × ${shape.height} × ${shape.depth}`;
   }
 }

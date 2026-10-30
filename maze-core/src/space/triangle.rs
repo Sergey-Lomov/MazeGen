@@ -2,9 +2,13 @@ use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param,
 };
 use super::square::{cell_range, grid_candidates};
+use super::tri_polyhedron::{
+    ICOSAHEDRON_PRESET, OCTAHEDRON_PRESET, TETRAHEDRON_PRESET, is_polyhedron, polyhedron_cells,
+    polyhedron_folds, polyhedron_param_max,
+};
 use super::{
-    CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
-    Tessellation, validate_preset,
+    CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
+    ShapeDescriptor, Tessellation, validate_preset,
 };
 use std::sync::LazyLock;
 
@@ -159,10 +163,27 @@ impl Tessellation for TriTessellation {
                 let origin = self.center(TriPoint { col: 0, row: 0 });
                 circle_cells(self, origin, param(params, "radius"), Inclusion::WholeCell)?
             }
+            _ if is_polyhedron(key) => polyhedron_cells(key, params)?,
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
         Ok(cells)
+    }
+
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        polyhedron_param_max(key, name)
+    }
+
+    fn build_preset_folds(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Vec<NewFold<TriPoint>>>, FieldOpError> {
+        validate_preset(&TRI_PRESETS, key, params)?;
+        match key {
+            _ if is_polyhedron(key) => polyhedron_folds(key, params),
+            _ => Ok(Vec::new()),
+        }
     }
 
     fn area(&self, _cell: TriPoint) -> f64 {
@@ -242,8 +263,15 @@ pub fn tri_hexagon(radius: usize) -> Vec<TriPoint> {
 }
 
 /// Preset field shapes of the triangle grid, in UI order.
-const TRI_PRESETS: [PresetDescriptor; 4] =
-    [RECT_PRESET, TRIANGLE_PRESET, HEXAGON_PRESET, CIRCLE_PRESET];
+const TRI_PRESETS: [PresetDescriptor; 7] = [
+    RECT_PRESET,
+    TRIANGLE_PRESET,
+    HEXAGON_PRESET,
+    CIRCLE_PRESET,
+    TETRAHEDRON_PRESET,
+    OCTAHEDRON_PRESET,
+    ICOSAHEDRON_PRESET,
+];
 
 /// Each configured column is a pair of adjacent opposite-orientation triangles, so a rectangle
 /// holds `2 · cols` triangles per row.

@@ -213,11 +213,9 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
         events2[4]
     );
 
-    // Step 3: frontier is now empty — handle_empty_frontier runs, teleport bridge roll fails
-    // (teleport_chance = 0), reserve is empty so the scan exhausts immediately. No SplitRolled
-    // here — handle_empty_frontier's teleport-bridge branch only calls try_split_src once it has
-    // picked a src/bridge pair, which requires an unvisited node to exist (none left in a 1x2
-    // field at this point), so this branch returns early before ever reaching the split roll.
+    // Step 3: frontier is now empty — handle_empty_frontier runs. No unvisited node is left in a
+    // 1x2 field, so no teleport bridge is eligible: neither TeleportBridgeRolled nor SplitRolled
+    // is emitted, and the empty reserve exhausts the scan immediately.
     let step3 = step_scopes
         .next()
         .expect("expected a third \"step N\" scope");
@@ -232,18 +230,9 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        events3.len(),
-        1,
-        "expected exactly 1 event directly under step 3, got {events3:?}"
-    );
     assert!(
-        matches!(
-            events3[0],
-            VertexBasedEvent::TeleportBridgeRolled { fired: false, .. }
-        ),
-        "event 0: {:?}",
-        events3[0]
+        events3.is_empty(),
+        "no teleport bridge is eligible once every node is visited, got {events3:?}"
     );
     let reserve_search = step3
         .children()
