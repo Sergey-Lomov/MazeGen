@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { cellsInDisplayRect, getCellOutlinePath } from "../tessellationGeometry";
+import { cellsNearDisplayRect, getCellOutlinePath } from "../tessellationGeometry";
 import { prefetchCellOutlines } from "../cartesianCache";
 import { tracePath } from "../geometry/pathRenderer";
 import { TILE_SIZE } from "../constants";
@@ -31,13 +31,30 @@ export function shouldRenderViewportGrid(bounds: GridBounds): boolean {
   return viewportGridCellCount(bounds) <= MAX_VIEWPORT_GRID_CELLS;
 }
 
+/// Extra margin drawn around the viewport, as a fraction of its size. A pan then reuses the
+/// geometry until the viewport leaves the drawn area, instead of rebuilding on every cell crossed.
+const VIEWPORT_DRAW_MARGIN = 0.2;
+
+interface WorldRect {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 interface GridRenderState {
   cfg: FieldConfig;
   color: number;
   scale: number;
   cells: readonly [number, number][] | undefined;
-  bounds: GridBounds | null;
+  /// World rect the current geometry covers; null for explicit cells or a suppressed grid.
+  drawn: WorldRect | null;
   suppressed: boolean;
+}
+
+function rectContains(outer: WorldRect, inner: WorldRect): boolean {
+  return outer.minX <= inner.minX && outer.maxX >= inner.maxX
+    && outer.minY <= inner.minY && outer.maxY >= inner.maxY;
 }
 
 export class GridRenderer {
@@ -56,21 +73,43 @@ export class GridRenderer {
   ): void {
     const { x, y, w, h, scale } = data.viewport;
     const color = data.color ?? canvas.grid.line;
+    const view: WorldRect = {
+      minX: -x / scale,
+      maxX: (-x + w) / scale,
+      minY: -y / scale,
+      maxY: (-y + h) / scale,
+    };
+    const previous = this.lastRender;
+    if (previous
+      && previous.cfg === cfg
+      && previous.color === color
+      && previous.scale === scale
+      && previous.cells === cells
+      && (cells ? !previous.suppressed : previous.drawn !== null && rectContains(previous.drawn, view))) {
+      return;
+    }
+
     const bounds = cells
       ? null
       : makeProjection(cfg).gridBounds(x, y, w, h, scale);
     const suppressed = bounds !== null && !shouldRenderViewportGrid(bounds);
-    const nextRender: GridRenderState = { cfg, color, scale, cells, bounds, suppressed };
-
-    if (this.sameRender(nextRender)) return;
 
     // Clearing an already-suppressed grid on every pointermove still needlessly touches Pixi's
     // graphics object. The first transition to the suppressed state is enough.
     if (suppressed) {
-      if (!this.lastRender?.suppressed) this.g.clear();
-      this.lastRender = nextRender;
+      if (!previous?.suppressed) this.g.clear();
+      this.lastRender = { cfg, color, scale, cells, drawn: null, suppressed };
       return;
     }
+
+    const padX = Math.max(VIEWPORT_CELL_PAD * TILE_SIZE, VIEWPORT_DRAW_MARGIN * (view.maxX - view.minX));
+    const padY = Math.max(VIEWPORT_CELL_PAD * TILE_SIZE, VIEWPORT_DRAW_MARGIN * (view.maxY - view.minY));
+    const drawn: WorldRect | null = cells ? null : {
+      minX: view.minX - padX,
+      maxX: view.maxX + padX,
+      minY: view.minY - padY,
+      maxY: view.maxY + padY,
+    };
 
     this.g.clear();
 
@@ -84,39 +123,15 @@ export class GridRenderer {
       // Export renderers can supply the actual maze cells so the optional grid does not bleed
       // into the viewport/export margin around an irregular field.
       for (const [xi, yi] of cells) drawCell(xi, yi);
-    } else if (bounds) {
+    } else if (drawn) {
       // Not every lattice coordinate is a cell (Cairo skips some), so ask core which cells the
-      // viewport touches instead of walking the coordinate box.
-      // Wider than the cells the reuse bounds (`sameRender`) tolerate: a pan that keeps the
-      // bounds unchanged moves the viewport by less than `GRID_BOUNDS_PAD` cells.
-      const pad = VIEWPORT_CELL_PAD * TILE_SIZE;
-      const visible = cellsInDisplayRect({
-        minX: -x / scale - pad,
-        maxX: (-x + w) / scale + pad,
-        minY: -y / scale - pad,
-        maxY: (-y + h) / scale + pad,
-      }, "intersects", cfg);
+      // drawn area touches instead of walking the coordinate box.
+      const visible = cellsNearDisplayRect(drawn, cfg);
       prefetchCellOutlines(visible, cfg);
       for (const [xi, yi] of visible) drawCell(xi, yi);
     }
     this.g.stroke();
-    this.lastRender = nextRender;
-  }
-
-  private sameRender(next: GridRenderState): boolean {
-    const previous = this.lastRender;
-    if (!previous
-      || previous.cfg !== next.cfg
-      || previous.color !== next.color
-      || previous.scale !== next.scale
-      || previous.cells !== next.cells
-      || previous.suppressed !== next.suppressed) return false;
-    if (previous.bounds === next.bounds) return true;
-    if (!previous.bounds || !next.bounds) return false;
-    return previous.bounds.minX === next.bounds.minX
-      && previous.bounds.maxX === next.bounds.maxX
-      && previous.bounds.minY === next.bounds.minY
-      && previous.bounds.maxY === next.bounds.maxY;
+    this.lastRender = { cfg, color, scale, cells, drawn, suppressed };
   }
 
   destroy(): void {
