@@ -91,6 +91,8 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   const hasTeleports = colorVisibility.teleports;
   // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross floor teleport.
   const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
+  // "Route through seams" (GitHub issue #873) only makes sense when some floor has a fold.
+  const hasSeams = useMemo(() => Object.values(floorTopology).some((topology) => topology.folds.length > 0), [floorTopology]);
   const hasTwoWayPassages = colorVisibility.twoWayPassages;
   const hasOneWayPassages = colorVisibility.oneWayPassages;
   const hasElevators = colorVisibility.elevators;
@@ -105,15 +107,15 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   const activePaths = useMemo(
     () => computeActivePaths(registry, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread,
+      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams,
       hasMultipleFloors: floors.length > 1,
     }, settings),
-    [registry, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, floors.length, settings],
+    [registry, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams, floors.length, settings],
   );
 
   return {
     floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
     colorVisibility, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages,
-    hasElevators, hasVerticalSection, hasMarkerIndexSource, activePaths,
+    hasElevators, hasVerticalSection, hasMarkerIndexSource, hasSeams, activePaths,
   };
 }

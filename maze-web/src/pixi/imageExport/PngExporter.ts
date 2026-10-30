@@ -96,8 +96,8 @@ export class PngExporter {
     }
   }
 
-  /** The mode's backdrop (background and grid) over the whole frame, then its content once per plan
-   * offset clipped to the region, then the cut lines when asked for. */
+  /** The mode's backdrop (background and grid) over the whole frame, then its content and then its
+   * overlay, each once per plan offset clipped to the region, then the cut lines when asked for. */
   private renderCutSheet(
     sceneRoot: Container,
     scene: Container,
@@ -122,10 +122,13 @@ export class PngExporter {
     mask.poly(plan.region.flat()).fill(0xffffff);
     sceneRoot.addChild(mask);
     scene.mask = mask;
-    modeRenderer.setRenderPass("content");
-    for (const [dx, dy] of plan.offsets) {
-      scene.position.set(dx, dy);
-      renderer.render({ container: sceneRoot, target, clear: false });
+    // One pass over every copy per layer, so the overlay of an earlier copy is never covered by the content of a later one.
+    for (const pass of modeRenderer.hasOverlay ? (["content", "overlay"] as const) : (["content"] as const)) {
+      modeRenderer.setRenderPass(pass);
+      for (const [dx, dy] of plan.offsets) {
+        scene.position.set(dx, dy);
+        renderer.render({ container: sceneRoot, target, clear: false });
+      }
     }
     modeRenderer.setRenderPass("full");
     scene.mask = null;

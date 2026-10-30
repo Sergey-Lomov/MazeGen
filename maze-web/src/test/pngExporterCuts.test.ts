@@ -19,6 +19,7 @@ interface FakeNode {
 
 const renders: { offset: [number, number]; masked: boolean; clear: boolean | undefined; strokes: number; pass: string }[] = [];
 const pass = { current: "full", log: [] as string[] };
+const mode = { hasOverlay: true };
 const drawn = { fills: [] as unknown[], strokes: 0, polys: [] as number[][] };
 
 vi.mock("pixi.js", () => {
@@ -48,6 +49,7 @@ vi.mock("../pixi/imageExport/modeRendererFactory", () => ({
   createModeRenderer: () => ({
     getRequiredExportMargin: () => ({ left: 5, right: 5, top: 5, bottom: 5 }),
     getBackgroundColor: () => 0xabcdef,
+    hasOverlay: mode.hasOverlay,
     onViewportChanged: () => {},
     setRenderPass: (p: string) => { pass.current = p; pass.log.push(p); },
     destroy: () => {},
@@ -113,6 +115,7 @@ beforeEach(() => {
   drawn.polys = [];
   pass.current = "full";
   pass.log = [];
+  mode.hasOverlay = true;
   app.renderer.render.mockClear();
 });
 
@@ -130,20 +133,27 @@ describe("PngExporter cut sheet", () => {
     const settings = setState({ [TEST_FLOOR_ID]: { 0: { mode: "auto", offset: 0 } } });
     const blob = await new PngExporter(app as never).export(settings);
     expect(blob).not.toBeNull();
-    // Background fill, the backdrop, then the content copies (a cylinder cut once needs the plain and one shifted).
+    // Background fill, the backdrop, then the content copies, then the overlay copies (a cylinder cut once needs the plain and one shifted).
     expect(drawn.fills[0]).toBe(0xabcdef);
     const scenePasses = renders.slice(2);
-    expect(renders).toHaveLength(4);
+    expect(renders).toHaveLength(6);
     expect(scenePasses.every((pass) => pass.masked && pass.clear === false)).toBe(true);
     expect(scenePasses.map((pass) => pass.offset)).toContainEqual([0, 0]);
     expect(scenePasses.some((pass) => pass.offset[0] !== 0)).toBe(true);
-    // The backdrop is drawn once, unmasked, before the masked content passes; the mode is left whole afterwards.
+    // The backdrop is drawn once, unmasked, before the masked passes; every content copy precedes every overlay copy; the mode is left whole afterwards.
     expect(renders[1].pass).toBe("backdrop");
     expect(renders[1].masked).toBe(false);
-    expect(scenePasses.every((p) => p.pass === "content")).toBe(true);
+    expect(scenePasses.map((p) => p.pass)).toEqual(["content", "content", "overlay", "overlay"]);
+    expect(scenePasses.slice(0, 2).map((p) => p.offset)).toEqual(scenePasses.slice(2).map((p) => p.offset));
     expect(pass.current).toBe("full");
     expect(drawn.polys).toHaveLength(1);
     expect(drawn.polys[0].length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("skips the overlay copies of a mode without an overlay", async () => {
+    mode.hasOverlay = false;
+    await new PngExporter(app as never).export(setState({ [TEST_FLOOR_ID]: { 0: { mode: "auto", offset: 0 } } }));
+    expect(renders.slice(2).map((p) => p.pass)).toEqual(["content", "content"]);
   });
 
   it("draws guide lines only when the flag is on", async () => {

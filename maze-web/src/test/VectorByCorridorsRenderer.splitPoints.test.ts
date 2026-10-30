@@ -38,7 +38,7 @@ describe("VectorByCorridorsRenderer split points", () => {
         specialShapes: [],
       });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).splitLines;
       const colors = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
       expect(colors).toContain(0xaaaaaa);
       expect(colors).toContain(0xbbbbbb);
@@ -61,7 +61,7 @@ describe("VectorByCorridorsRenderer split points", () => {
         specialShapes: [],
       });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).splitLines;
       expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(3);
       expect(corridorsGraphics.moveTo.mock.calls.every((call: unknown[]) => call[0] === 5 && call[1] === 5)).toBe(true);
     });
@@ -84,7 +84,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; quadraticCurveTo: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; quadraticCurveTo: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).splitLines;
       expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(6);
       expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 7 && y === 5)).toHaveLength(3);
       expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 3 && y === 5)).toHaveLength(3);
@@ -113,7 +113,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; arc: ReturnType<typeof vi.fn>; quadraticCurveTo: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; arc: ReturnType<typeof vi.fn>; quadraticCurveTo: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).splitLines;
       expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
       // The universal cell-safe contour may use Bezier fallbacks for synthetic split-cell fixtures;
       // the production geometry path is still curved, but no longer relies on Pixi arc commands.
@@ -134,7 +134,7 @@ describe("VectorByCorridorsRenderer split points", () => {
         specialShapes: [],
       });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       const colors = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
       expect(colors).not.toContain(0xff0000);
     });
@@ -150,7 +150,7 @@ describe("VectorByCorridorsRenderer split points", () => {
         specialShapes: [],
       });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       const widths = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { width: number }).width);
       expect(widths).toContain(settingsA.thickness / 2);
     });
@@ -173,7 +173,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 3 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       // The through/cross lines and the background gap patch all draw on their own throwaway
       // tile-masked `clipView` (GitHub issue #314 follow-up), never on the shared `corridors`
       // graphics — so the point's own ordinary passage share must not appear there either, and
@@ -211,7 +211,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       expect(corridorsGraphics.stroke.mock.calls.some(([style]) => (style as { color: number }).color === 0xaaaaaa)).toBe(false);
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
@@ -254,7 +254,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce(bridgeOverFork() as never);
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).splitLines;
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
       const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number }));
@@ -267,11 +267,11 @@ describe("VectorByCorridorsRenderer split points", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce(bridgeOverFork() as never);
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = makeRenderer();
-      const corridors = (renderer as unknown as { corridors: {
+      const corridors = (renderer as unknown as { splitLines: {
         moveTo: ReturnType<typeof vi.fn>;
         lineTo: ReturnType<typeof vi.fn>;
         closePath: ReturnType<typeof vi.fn>;
-      } }).corridors;
+      } }).splitLines;
       expect(corridors.moveTo).toHaveBeenCalledWith(20, 20);
       expect(corridors.lineTo).toHaveBeenCalledWith(10, 10);
       expect(corridors.closePath).not.toHaveBeenCalled();
@@ -296,7 +296,7 @@ describe("VectorByCorridorsRenderer split points", () => {
         vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 10 },
       });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { poly: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
       const backgroundPolygons = groupGraphics.flatMap((g) => g.fill.mock.calls.some((call: unknown[]) => call[0] === settingsA.background)
@@ -321,7 +321,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 3 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { fill: ReturnType<typeof vi.fn> } }).splitLines;
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { fill: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
       const fills = groupGraphics.flatMap((g) => g.fill.mock.calls.map((call: unknown[]) => call[0] as number));
@@ -340,7 +340,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 0 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).splitLines;
       // Each ribbon draws on its own throwaway tile-masked `clipView` (GitHub issue #314
       // follow-up), never on the shared `corridors` graphics.
       expect(corridorsGraphics.bezierCurveTo).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 3 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).splitLines;
       // The ribbon's own line and its background gap frame draw on two separate `Graphics`
       // (`clipView`/`gapView`, GitHub issue #314 follow-up) — never on the shared `corridors`
       // graphics. Each is its own filled ribbon (2 bezierCurveTo calls, one per long edge).
@@ -393,7 +393,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
 
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { fill: ReturnType<typeof vi.fn> } }).splitLines;
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as {
         bezierCurveTo: ReturnType<typeof vi.fn>;
         fill: ReturnType<typeof vi.fn>;
@@ -421,7 +421,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 3 } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).splitLines;
 
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
@@ -463,7 +463,7 @@ describe("VectorByCorridorsRenderer split points", () => {
       });
       mockStore.current = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: false } });
       const renderer = makeRenderer();
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { splitLines: { stroke: ReturnType<typeof vi.fn> } }).splitLines;
       const strokeArgs = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
       expect(strokeArgs).toContain(0xaaaaaa);
     });

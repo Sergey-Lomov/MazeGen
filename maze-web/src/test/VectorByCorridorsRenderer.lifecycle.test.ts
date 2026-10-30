@@ -33,6 +33,7 @@ describe("VectorByCorridorsRenderer lifecycle and rendering", () => {
 
     const asAny = renderer as unknown as {
       corridorsContainer: { getLocalBounds: () => FakeBounds };
+      splitLines: { getLocalBounds: () => FakeBounds };
       splitShapesLayer: { getLocalBounds: () => FakeBounds };
       teleportContainer: { getLocalBounds: () => FakeBounds };
       markersContainer: { getLocalBounds: () => FakeBounds };
@@ -41,12 +42,55 @@ describe("VectorByCorridorsRenderer lifecycle and rendering", () => {
     // the top edge only (screen minY) — corridors/splits/markers stay at the plain cell-center
     // bbox, teleport pokes 30px past it on top alone.
     asAny.corridorsContainer.getLocalBounds = () => makeBounds(20, -100, 100, -20);
+    asAny.splitLines.getLocalBounds = () => makeEmptyBounds();
     asAny.splitShapesLayer.getLocalBounds = () => makeEmptyBounds();
     asAny.teleportContainer.getLocalBounds = () => makeBounds(20, -130, 100, -20);
     asAny.markersContainer.getLocalBounds = () => makeEmptyBounds();
 
     const margin = renderer.getRequiredExportMargin();
     expect(margin).toEqual({ left: 0, right: 0, top: 30, bottom: 0 });
+  });
+
+  it("lifts everything but the corridor network into the overlay layer (GitHub issue #888)", () => {
+    mockStore.current = baseState({ vectorByCorridorsSettings: settingsB });
+    const renderer = makeRenderer();
+    type Layer = { addChild: ReturnType<typeof vi.fn> };
+    const asAny = renderer as unknown as {
+      backgroundGrid: { content: Layer; overlay: Layer };
+      corridorsContainer: unknown; splitLines: unknown; splitShapesLayer: unknown; markersContainer: unknown; teleportContainer: unknown;
+    };
+    const inContent = asAny.backgroundGrid.content.addChild.mock.calls.map(([child]) => child);
+    const inOverlay = asAny.backgroundGrid.overlay.addChild.mock.calls.map(([child]) => child);
+    expect(inContent).toEqual([asAny.corridorsContainer]);
+    expect(inOverlay).toEqual(expect.arrayContaining([asAny.splitLines, asAny.splitShapesLayer, asAny.teleportContainer, asAny.markersContainer]));
+    // The split lines sit below the special split shapes, as the corridor graphics did before the overlay existed.
+    expect(inOverlay.indexOf(asAny.splitLines)).toBeLessThan(inOverlay.indexOf(asAny.splitShapesLayer));
+  });
+
+  it("shows the content, the overlay and the backdrop according to the render pass (GitHub issue #888)", () => {
+    mockStore.current = baseState({ vectorByCorridorsSettings: settingsB });
+    const renderer = makeRenderer();
+    const grid = (renderer as unknown as { backgroundGrid: { content: { visible: boolean }; overlay: { visible: boolean } } }).backgroundGrid;
+    const shown = () => [grid.content.visible, grid.overlay.visible];
+    renderer.setRenderPass("content");
+    expect(shown()).toEqual([true, false]);
+    renderer.setRenderPass("overlay");
+    expect(shown()).toEqual([false, true]);
+    renderer.setRenderPass("backdrop");
+    expect(shown()).toEqual([false, false]);
+    renderer.setRenderPass("foreground");
+    expect(shown()).toEqual([true, true]);
+    renderer.setRenderPass("full");
+    expect(shown()).toEqual([true, true]);
+  });
+
+  it("exposes its content and overlay layers, so a cut sheet can stack them across copies (GitHub issue #888)", () => {
+    mockStore.current = baseState({ vectorByCorridorsSettings: settingsB });
+    const renderer = makeRenderer();
+    const grid = (renderer as unknown as { backgroundGrid: { content: unknown; overlay: unknown } }).backgroundGrid;
+    expect(renderer.hasOverlay).toBe(true);
+    expect(renderer.layers.content).toBe(grid.content);
+    expect(renderer.layers.overlay).toBe(grid.overlay);
   });
 
   it("getBackgroundColor resolves to the mode's own configurable background (GitHub issue #309)", () => {

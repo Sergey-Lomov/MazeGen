@@ -51,6 +51,8 @@ function descriptor(type: ParamType, label: () => string, group: () => string[],
         ? formatMarkerShape
         : type === "verticalArrowStyle"
           ? formatVerticalArrowStyle
+          : type === "teleportCurveDirection"
+            ? formatTeleportCurveDirection
           : type === "labelFontWeight"
             ? formatElevatorBadgesFontWeight
             : type === "number"
@@ -69,6 +71,12 @@ function descriptor(type: ParamType, label: () => string, group: () => string[],
     },
     format: format ?? defaultFormat,
   };
+}
+
+function formatTeleportCurveDirection(value: unknown): string {
+  if (value === "inward") return m["image_export.vector_by_walls.teleport_curve_direction_inward"]();
+  if (value === "outward") return m["image_export.vector_by_walls.teleport_curve_direction_outward"]();
+  return String(value);
 }
 
 function formatCornerStyle(value: unknown): string {
@@ -289,6 +297,9 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   teleportConnectorGapWidth: descriptor("number", () => m["image_export.vector_by_walls.teleport_connector_gap_width"](), G.teleportConnector),
   teleportConnectorColor: descriptor("color", () => m["image_export.vector_by_walls.teleport_connector_color"](), G.teleportConnector),
   teleportAvoidFieldExit: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_avoid_field_exit"](), G.teleportConnector, formatBoolean),
+  teleportThroughSeams: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_through_seams"](), G.teleportConnector, formatBoolean),
+  teleportCurveDirection: descriptor("teleportCurveDirection", () => m["image_export.vector_by_walls.teleport_curve_direction"](), G.teleportConnector),
+  teleportCurveStrength: descriptor("number", () => m["image_export.vector_by_walls.teleport_curve_strength"](), G.teleportConnector),
   teleportMergeMode: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_merge_mode"](), G.teleportRoot, formatBoolean),
   teleportGroupCustomization: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_group_customization"](), G.teleportRoot, formatBoolean),
   "teleportFloorBadge.shape": descriptor("markerShape", () => m["image_export.vector_by_walls.teleport_floor_badge_shape"](), G.teleportFloorBadges),
@@ -495,6 +506,9 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   teleportConnectorGapWidth: descriptor("number", () => m["image_export.vector_by_walls.teleport_connector_gap_width"](), G.teleportConnector),
   teleportConnectorColor: descriptor("color", () => m["image_export.vector_by_walls.teleport_connector_color"](), G.teleportConnector),
   teleportAvoidFieldExit: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_avoid_field_exit"](), G.teleportConnector, formatBoolean),
+  teleportThroughSeams: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_through_seams"](), G.teleportConnector, formatBoolean),
+  teleportCurveDirection: descriptor("teleportCurveDirection", () => m["image_export.vector_by_walls.teleport_curve_direction"](), G.teleportConnector),
+  teleportCurveStrength: descriptor("number", () => m["image_export.vector_by_walls.teleport_curve_strength"](), G.teleportConnector),
   teleportMergeMode: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_merge_mode"](), G.teleportRoot, formatBoolean),
   teleportGroupCustomization: descriptor("boolean", () => m["image_export.vector_by_walls.teleport_group_customization"](), G.teleportRoot, formatBoolean),
   "teleportFloorBadge.shape": descriptor("markerShape", () => m["image_export.vector_by_walls.teleport_floor_badge_shape"](), G.teleportFloorBadges),

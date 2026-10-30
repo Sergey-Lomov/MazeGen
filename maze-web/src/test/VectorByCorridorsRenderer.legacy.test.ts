@@ -71,10 +71,10 @@ describe("VectorByCorridorsRenderer legacy_line style", () => {
     } as never);
     mockStore.current = baseState({ vectorByCorridorsSettings: legacyRound });
     const renderer = makeRenderer();
-    const corridors = (renderer as unknown as { corridors: {
+    const corridors = (renderer as unknown as { splitLines: {
       moveTo: ReturnType<typeof vi.fn>;
       lineTo: ReturnType<typeof vi.fn>;
-    } }).corridors;
+    } }).splitLines;
     // A straight line from the node centre to the face midpoint at half the corridor thickness.
     expect(corridors.moveTo).toHaveBeenCalledWith(center.x, center.y);
     expect(corridors.lineTo).toHaveBeenCalledWith(faceMid.x, faceMid.y);

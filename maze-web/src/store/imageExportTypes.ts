@@ -360,6 +360,9 @@ export interface TeleportSettingsFields {
    *  outranking every other routing weight (see `FIELD_EXIT_WEIGHT` in `teleportConnectorRouter.ts`),
    *  so a connector prefers any in-field detour over stepping outside the field. */
   teleportAvoidFieldExit: boolean;
+  /** "Route through seams" toggle (GitHub issue #873) — whether a connector crossing a topological
+   *  seam is drawn seam-aware. Shown only while some floor has a seam; off when absent. */
+  teleportThroughSeams?: boolean;
   /** How a one-way connector draws its direction arrow(s) — see `TeleportArrowMode`. */
   teleportArrowMode: TeleportArrowMode;
   /** Tile-width period between arrows in `"periodic"` mode — unused (and hidden in the settings

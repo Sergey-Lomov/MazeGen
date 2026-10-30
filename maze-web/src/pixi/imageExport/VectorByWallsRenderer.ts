@@ -22,7 +22,7 @@ import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
-import type { RenderPass } from "./modeRendererFactory";
+import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
@@ -241,8 +241,11 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   private showGrid = false;
   private pass: RenderPass = "full";
   /** Everything the mode draws above the backdrop. A cut sheet (GitHub issue #859) draws the backdrop once, over the
-   *  whole frame, and the content once per copy, clipped to the sheet's region. */
+   *  whole frame, and the content once per copy, clipped to the sheet's region, below the `overlay` of every copy. */
   readonly content: Container;
+  /** Everything that must stay above the content of every cut copy (the `"overlay"` pass), so a later copy's
+   *  corridors never cover an earlier copy's top-layer shapes. Stacked directly above `content`. */
+  readonly overlay: Container;
 
   constructor(container: Container) {
     this.backgroundContainer = new Container();
@@ -256,6 +259,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
 
     this.content = new Container();
     container.addChild(this.content);
+
+    this.overlay = new Container();
+    container.addChild(this.overlay);
   }
 
   setVisible(visible: boolean): void {
@@ -269,8 +275,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   }
 
   private applyVisibility(): void {
-    this.content.visible = this.pass !== "backdrop";
-    const visible = this.shown && this.pass !== "content";
+    this.content.visible = this.pass === "full" || this.pass === "content" || this.pass === "foreground";
+    this.overlay.visible = this.pass === "full" || this.pass === "overlay" || this.pass === "foreground";
+    const visible = this.shown && (this.pass === "full" || this.pass === "backdrop");
     this.backgroundContainer.visible = visible;
     this.gridContainer.visible = visible && this.showGrid;
   }
@@ -280,8 +287,8 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
    *  same dual-trigger convention `VectorByWallsRenderer` originally had inlined. */
   render(settings: TSettings, cfg: FieldConfig): void {
     this.showGrid = settings.showGrid;
-    // A content copy of a cut sheet never shows the backdrop, so drawing it would be wasted work on every pan and zoom.
-    if (this.pass === "content") return;
+    // A copy of a cut sheet never shows the backdrop, so drawing it would be wasted work on every pan and zoom.
+    if (this.pass !== "full" && this.pass !== "backdrop") return;
     const { x, y, w, h } = viewportWorldRect(this.viewport);
     this.background.clear();
     this.background.rect(x, y, w, h).fill({ color: settings.background });
@@ -482,7 +489,7 @@ export class VectorByWallsRenderer {
       this.backgroundGrid.render(state.vectorByWallsSettings, state.activeFieldConfig);
       this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
       // Hidden content (the backdrop pass of a cut sheet) needs no grid of its own.
-      if (state.vectorByWallsSettings.showInnerGrid && this.renderPass !== "backdrop") {
+      if (state.vectorByWallsSettings.showInnerGrid && this.renderPass !== "backdrop" && this.renderPass !== "overlay") {
         this.innerGrid.render(
           { viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor },
           state.activeFieldConfig,
@@ -527,6 +534,13 @@ export class VectorByWallsRenderer {
       [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
+  }
+
+  /** Everything is content; the overlay stays empty. */
+  readonly hasOverlay = false;
+
+  get layers(): ModeRenderer["layers"] {
+    return this.backgroundGrid;
   }
 
   setRenderPass(pass: RenderPass): void {
@@ -706,6 +720,7 @@ export class VectorByWallsRenderer {
       avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
       fieldCells: cells,
       mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+      seam: state.vectorByWallsSettings.teleportThroughSeams !== false ? { cfg } : undefined,
     });
 
     this.markers.render({ markers: markerData, scaler });

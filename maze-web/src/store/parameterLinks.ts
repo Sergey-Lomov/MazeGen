@@ -9,7 +9,7 @@ import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToCo
  *  gets its own localized `format` instead of showing a raw enum string. `boolean` covers plain
  *  on/off toggles. A `"color"` value is a packed 24-bit RGB number, same as every other color field
  *  in the app (`store/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. */
-export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "indexLabelStyle" | "labelFontWeight" | "boolean";
+export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "teleportCurveDirection" | "indexLabelStyle" | "labelFontWeight" | "boolean";
 
 /** Registry entry for one linkable parameter — the single source of truth for its type, value
  *  equality, display label, and settings-panel location, instead of scattered `!==` comparisons /

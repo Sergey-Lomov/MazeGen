@@ -1,8 +1,11 @@
 import type { TeleportArrowMode, TeleportCurveDirection, TeleportEdge } from "./types";
 
 /** A drawable polyline for one connector: `points` is `[x0,y0,x1,y1,...]`. A straight path has
- * two points, a regular orthogonal path has three, and a radial path can include sampled arc points. */
-export type RoutedConnector = { points: number[] };
+ * two points, a regular orthogonal path has three, and a radial path can include sampled arc points.
+ * `partnerPoints` (GitHub issue #873) is the connector's second piece when it crosses a topological
+ * seam: `points` runs from the source to its seam slot, `partnerPoints` from the partner slot to the
+ * target. Nothing is drawn between the two slots. */
+export type RoutedConnector = { points: number[]; partnerPoints?: number[] };
 
 /** Routes every `edges` entry as a `"straight"` center-to-center line — no bend, no collision
  *  offset (two straight connectors can still visually overlap if collinear, but that's the
