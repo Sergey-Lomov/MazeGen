@@ -7,7 +7,9 @@ import {
   getCartesian,
   getCellGeometry,
   getFieldVersion,
+  getCellOutline,
   getFieldWorldBounds,
+  prefetchCellOutlines,
   DEFAULT_MAX_OUTSIDE_CELLS,
   setMaxOutsideCells,
   warmCartesianCache,
@@ -25,6 +27,21 @@ describe("geometry access layer", () => {
     expect(getCellGeometry(0, 0, square).polyline).toHaveLength(4);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+
+  it("prefetches many outside cell outlines with one outline call and no snapshot", () => {
+    const square = fieldOf("square", { shape: "custom", points: [[0, 0]] });
+    warmCartesianCache(square);
+    const outlines = vi.spyOn(mazeService, "getCellOutlines");
+    const snapshot = vi.spyOn(mazeService, "getGeometrySnapshot");
+    prefetchCellOutlines([[0, 0], [5, 5], [6, 5], [7, 5]], square);
+    expect(outlines).toHaveBeenCalledTimes(1);
+    expect(outlines.mock.calls[0][1]).toEqual([[5, 5], [6, 5], [7, 5]]);
+    expect(getCellOutline(6, 5, square)).toEqual(getCellGeometry(6, 5, square).boundary.commands);
+    prefetchCellOutlines([[5, 5], [6, 5]], square);
+    expect(outlines).toHaveBeenCalledTimes(1);
+    outlines.mockRestore();
+    snapshot.mockRestore();
   });
 
   it("bumps the field version only when the instance or the cell set changes", () => {

@@ -239,6 +239,51 @@ pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySn
     })
 }
 
+/// Request for the boundary outlines of `cells` only.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OutlinesRequest {
+    pub tessellation: TessellationConfig,
+    pub cells: Vec<[i32; 2]>,
+}
+
+/// A cell and its boundary path commands, in the order of the request.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CellOutline {
+    pub cell: [i32; 2],
+    pub commands: Vec<PathCommandDto>,
+}
+
+/// The boundary of each cell without faces, contact points or shape data: a drawing-only
+/// counterpart of `geometry_snapshot` for callers that paint many cells (the viewport grid) and
+/// must not pay for serializing everything else.
+pub fn cell_outlines(request: &OutlinesRequest) -> Result<Vec<CellOutline>, String> {
+    build_tessellation(&request.tessellation, Outlines { request })?
+}
+
+struct Outlines<'a> {
+    request: &'a OutlinesRequest,
+}
+
+impl TessellationVisitor for Outlines<'_> {
+    type Output = Result<Vec<CellOutline>, String>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        Ok(codec
+            .decode_valid(&*tessellation, &self.request.cells)?
+            .into_iter()
+            .map(|cell| CellOutline {
+                cell: wire(cell, codec),
+                commands: tessellation
+                    .boundary_path(cell)
+                    .path_commands()
+                    .iter()
+                    .map(command_dto)
+                    .collect(),
+            })
+            .collect())
+    }
+}
+
 /// `Err` when `scope` names a point that is not a cell.
 pub fn cell_at(request: &CellAtRequest) -> Result<Option<[i32; 2]>, String> {
     build_tessellation(&request.tessellation, CellAt { request })?
@@ -568,6 +613,40 @@ mod tests {
             topology_version: 0,
             topology: None,
         }
+    }
+
+    #[test]
+    fn outlines_match_the_snapshot_path_boundaries() {
+        for kind in [TessellationKind::Square, TessellationKind::SnubHexagonal] {
+            let cells = vec![[0, 0], [1, 0], [2, 1]];
+            let snapshot =
+                geometry_snapshot(&request_with(kind, cells.clone(), BoundaryRequest::Path))
+                    .unwrap();
+            let outlines = cell_outlines(&OutlinesRequest {
+                tessellation: config(kind),
+                cells,
+            })
+            .unwrap();
+            assert_eq!(outlines.len(), snapshot.cells.len());
+            for (outline, cell) in outlines.iter().zip(&snapshot.cells) {
+                assert_eq!(outline.cell, cell.cell);
+                assert_eq!(
+                    BoundaryDto::Path {
+                        commands: outline.commands.clone()
+                    },
+                    cell.boundary
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn outlines_reject_a_non_cell() {
+        let request = OutlinesRequest {
+            tessellation: config(TessellationKind::SquareOctagon),
+            cells: vec![[1, 2]],
+        };
+        assert!(cell_outlines(&request).is_err());
     }
 
     #[test]

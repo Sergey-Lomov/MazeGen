@@ -404,6 +404,18 @@ export function getGeometrySnapshot(config: {
   }) as GeometrySnapshot;
 }
 
+/// A cell's boundary and nothing else (`geometry_outlines`).
+export interface CellOutline {
+  cell: [number, number];
+  commands: PathCommand[];
+}
+
+/// Boundary path commands of `cells` without faces, shapes or contact points: the cheap request
+/// for painting many cells (the viewport grid).
+export function getCellOutlines(tessellation: WasmTessellationConfig, cells: [number, number][]): CellOutline[] {
+  return getWasm().geometry_outlines({ tessellation, cells }) as CellOutline[];
+}
+
 /// The floor a topology query or edit is about: the tessellation, the floor's whole cell set and
 /// its current topology (`null` = no folds). Mirrors `runner::topology_edit::TopologyFloor`.
 export interface TopologyFloorRequest {

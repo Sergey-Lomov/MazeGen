@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { cellsInDisplayRect, getCellPath } from "../tessellationGeometry";
+import { cellsInDisplayRect, getCellOutlinePath } from "../tessellationGeometry";
+import { prefetchCellOutlines } from "../cartesianCache";
 import { tracePath } from "../geometry/pathRenderer";
 import { TILE_SIZE } from "../constants";
 import { GRID_LINE_ALPHA } from "../renderConstants";
@@ -76,7 +77,7 @@ export class GridRenderer {
     this.g.setStrokeStyle({ width: 1 / scale, color, alpha: GRID_LINE_ALPHA });
 
     const drawCell = (xi: number, yi: number): void => {
-      tracePath(this.g, getCellPath(xi, yi, cfg));
+      tracePath(this.g, getCellOutlinePath(xi, yi, cfg));
     };
 
     if (cells) {
@@ -95,6 +96,7 @@ export class GridRenderer {
         minY: -y / scale - pad,
         maxY: (-y + h) / scale + pad,
       }, "intersects", cfg);
+      prefetchCellOutlines(visible, cfg);
       for (const [xi, yi] of visible) drawCell(xi, yi);
     }
     this.g.stroke();
