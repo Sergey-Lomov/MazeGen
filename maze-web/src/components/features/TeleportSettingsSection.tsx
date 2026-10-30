@@ -177,9 +177,12 @@ function TeleportGroupCell({
   useEffect(() => () => setHovered(null), [setHovered]);
 
   const allNodeIds = Array.from(new Set(group.links.flatMap((link) => [link.from, link.to])));
+  // The color picker is a portal child: React still delivers its enter events to this cell's
+  // handlers, which would re-arm the highlight while the pointer is over the picker (GitHub issue #877).
+  const hoverAll = (e: React.MouseEvent<HTMLElement>) => { if (e.currentTarget.contains(e.target as Node)) setHovered(allNodeIds); };
 
   return (
-    <div style={styles.groupCell} onMouseEnter={() => setHovered(allNodeIds)} onMouseLeave={() => setHovered(null)}>
+    <div style={styles.groupCell} onMouseEnter={hoverAll} onMouseLeave={() => setHovered(null)}>
       <div style={styles.groupCellTop}>
         <div style={styles.groupCellLinks}>
           {group.links.map((link) => (
@@ -205,14 +208,14 @@ function TeleportGroupCell({
             </div>
           ))}
         </div>
-        <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
+        <div style={styles.groupCellHeader} onMouseEnter={hoverAll}>
           <Tooltip content={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}><span style={styles.warningIcon}>
             {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
           </span></Tooltip>
           <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
         </div>
       </div>
-      <div style={styles.groupCellControls} onMouseEnter={() => setHovered(allNodeIds)}>
+      <div style={styles.groupCellControls} onMouseEnter={hoverAll}>
         <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_shape"]()}><select
           name={`teleport-group-${index}-shape`}
           style={sharedStyles.selectSm}
@@ -227,6 +230,7 @@ function TeleportGroupCell({
         <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_color"]()}><span>
           <ColorSwatch
             color={fillColor}
+            onOpen={() => setHovered(null)}
             onChange={(c) => onChange({ fillColor: c })}
             priorityColors={[PC.teleportGroup(index, "border").at(borderColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "fill")}
@@ -236,6 +240,7 @@ function TeleportGroupCell({
         <Tooltip content={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}><span>
           <ColorSwatch
             color={borderColor}
+            onOpen={() => setHovered(null)}
             onChange={(c) => onChange({ borderColor: c })}
             priorityColors={[PC.teleportGroup(index, "fill").at(fillColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "border")}
