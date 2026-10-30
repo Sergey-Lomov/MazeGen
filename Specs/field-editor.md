@@ -402,8 +402,8 @@ markers.
 | `rectangle` | all | rectangular drag area |
 | `circle` | all | ellipse fitted to the drag area, or symmetric ellipse with Shift |
 | `triangle` | all | right triangle formed by the drag rectangle's diagonal, or centered directional triangle with Shift |
-| `equilateral_triangle` | all | equilateral triangle fitted to the drag frame and oriented with the triangle tessellation; on a triangular tessellation its apex softly snaps to one of six normals of the three edge families |
-| `hexagon` | all | hexagon fitted to the drag area in the orientation opposite to the tessellation, or centered hexagon with Shift |
+| `equilateral_triangle` | all | directed drag, see "Directed equilateral shapes" below |
+| `hexagon` | all | directed drag, see "Directed equilateral shapes" below |
 
 `parallelogram` is not a drag primitive; it is built from three clicks (see below).
 
@@ -431,6 +431,22 @@ Zoom-dependent by design: same pixel drag → same number of cells regardless of
 
 With Ctrl held, the frame's width and height are constrained to the same value. Ctrl therefore
 restores square proportions; Shift+Ctrl makes that square grow symmetrically from the start cell.
+
+### Directed equilateral shapes
+
+`equilateral_triangle` and `hexagon` do not use the shared drag frame above, and Ctrl has no effect
+on them. Both are measured in world coordinates from the drag start to the pointer, and the
+pointer direction softly snaps (within 6°) to the lattice directions (`equilateralSnap` of the
+tessellation, turned by the display orientation) or stays free otherwise. With no pointer movement
+the triangle points up, and the hexagon uses the orientation of a hexagon of cells.
+
+| Primitive | Without Shift | With Shift |
+|---|---|---|
+| `equilateral_triangle` | the start is the center of the base, the pointer is the apex | the start is the centroid, the pointer is the apex |
+| `hexagon` | the start and the pointer are opposite vertices, so the shape grows to one side | the start is the center, the pointer is a vertex |
+
+The minimum size is one cell (triangle height, hexagon diameter or circumradius respectively).
+Cells are selected by their center.
 
 ### Parallelogram tool (GitHub issue #867)
 

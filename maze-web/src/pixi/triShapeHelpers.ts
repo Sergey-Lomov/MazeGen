@@ -9,19 +9,6 @@ export function triTriangleRaw(n: number): [number, number][] {
   return cells;
 }
 
-export function triHexagonRaw(r: number): [number, number][] {
-  const odd_base = r % 2 === 0 ? r - 1 : r;
-  const cells: [number, number][] = [];
-  for (let row = 0; row < 2 * r; row++) {
-    const k = Math.min(row, 2 * r - 1 - row);
-    const indent = odd_base - k;
-    const width = 2 * (k + r) + 1;
-    for (let col = indent; col < indent + width; col++)
-      cells.push([col, row]);
-  }
-  return cells;
-}
-
 export function triCenterOffset(raw: [number, number][]): { ox: number; oy: number } {
   const cols = raw.map(c => c[0]);
   const rows = raw.map(c => c[1]);
