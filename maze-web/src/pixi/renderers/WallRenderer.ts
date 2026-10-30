@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { getFaceEdgeSegment, getSharedEdgeSegment, type SharedEdge } from "../tessellationGeometry";
+import { prefetchCellGeometries } from "../cartesianCache";
 import { tracePath } from "../geometry/pathRenderer";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
@@ -164,6 +165,8 @@ export class WallRenderer {
     this.g.clear();
     if (!cfg) return;
 
+    // Edges on a field border name a cell outside the field; load them in one batch.
+    prefetchCellGeometries(data.edges.flatMap((edge) => (edge.face === undefined ? [edge.a, edge.b] : [edge.a])), cfg);
     const solidSegs: SharedEdge[] = [];
     const oneWays: { cx: number; cy: number; dx: number; dy: number }[] = [];
     for (const edge of data.edges) {

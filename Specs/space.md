@@ -577,6 +577,8 @@ exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_regi
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
 cell or a polyline request with a non-positive tolerance is an error.
 
+Status (GitHub issue #890): the snapshot wire is trimmed for load speed. A third boundary request, `{ kind: "faces" }`, returns `BoundaryDto::Faces` and no boundary data: the faces' segments chain in `faces_of` order, so the caller rebuilds the path (`MoveTo` the first segment's start, then one command per segment); `getGeometrySnapshot` in the web does this for `{ kind: "path" }` (`pathCommandsOfFaces`) and its tests pin it equal to core's `geometry_outlines`. A cell's `allowed_group` is an index into the snapshot's `allowed_groups`, which holds each distinct group once; the web resolves the index back to the permutation list, so consumers still read `CellGeometry.allowed_group` as before.
+
 Status (GitHub issue #833): the request may carry `topology_version` and `topology`
 (`{ field_cells, folds: [{ a, b, twist, group }], groups }`, cells as `[x, y]` and `face_idx` a position in
 `faces_of`). `field_cells` is the floor's whole cell set, which decides fold activity (the requested `cells` may be a
@@ -596,7 +598,7 @@ Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is
 access layer. It holds the snapshot of the current field's cells, invalidated by the tessellation
 instance (the serialized config) and a web-owned field version (bumped when the cell set or the
 instance changes) — never by the display transform. Reads (`getCellGeometry`, `getCartesian`) are
-synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. Point and region queries
+synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. A caller about to read many outside cells (auto-lock over other floors, the wall renderer's border neighbors) calls `prefetchCellGeometries`, which loads the uncached ones in snapshot calls of at most 1000 cells instead of one call per cell (GitHub issue #890). Point and region queries
 (`cellAtWorldPoint`, `cellsInWorldRegion`) are scoped to the field's cells by default, so a selection
 over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a branded tuple. The web
 test suite requires the wasm build (`tools/require-wasm.mjs`; `scripts/test.sh`/`scripts/windows/test.ps1` rebuild it).

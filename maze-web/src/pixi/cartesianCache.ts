@@ -171,6 +171,30 @@ export function getCellGeometry(x: number, y: number, cfg: FieldConfig): CellGeo
   return geometry;
 }
 
+/// Most cells one `geometry_snapshot` call loads in `prefetchCellGeometries`.
+const PREFETCH_CHUNK = 1000;
+
+/// Loads the geometry of every cell of `cells` that no cache holds, in chunked snapshot calls, so a
+/// caller about to read many cells outside the warmed field (other floors, the ring of neighbors
+/// past a field edge) pays one wasm call per chunk instead of one per cell in `getCellGeometry`.
+export function prefetchCellGeometries(cells: readonly (readonly [number, number])[], cfg: FieldConfig): void {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  const seen = new Set<string>();
+  const missing: [number, number][] = [];
+  for (const [x, y] of cells) {
+    const key = cellKey(x, y);
+    if (seen.has(key) || fieldCache.has(key) || outsideCache.has(key)) continue;
+    seen.add(key);
+    missing.push([x, y]);
+  }
+  for (let start = 0; start < missing.length; start += PREFETCH_CHUNK) {
+    const chunk = missing.slice(start, start + PREFETCH_CHUNK);
+    const snapshot = getGeometrySnapshot({ tessellation: cfg.tessellation, cells: chunk, boundary: { kind: "path" }, fieldVersion });
+    for (const geometry of snapshot.cells) outsideCache.set(cellKey(geometry.cell[0], geometry.cell[1]), withPolyline(geometry));
+  }
+  while (outsideCache.size > maxOutsideCells) outsideCache.delete(outsideCache.keys().next().value!);
+}
+
 /// Boundaries of cells that only a painter asked for (the viewport grid): outside the field and
 /// never needed with their faces, so they skip the full snapshot. Bounded like `outsideCache`.
 const outlineCache = new Map<string, PathCommand[]>();

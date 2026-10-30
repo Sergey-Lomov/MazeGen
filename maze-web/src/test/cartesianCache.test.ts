@@ -8,6 +8,7 @@ import {
   getCellGeometry,
   getFieldVersion,
   getCellOutline,
+  prefetchCellGeometries,
   getFieldWorldBounds,
   prefetchCellOutlines,
   DEFAULT_MAX_OUTSIDE_CELLS,
@@ -42,6 +43,55 @@ describe("geometry access layer", () => {
     expect(outlines).toHaveBeenCalledTimes(1);
     outlines.mockRestore();
     snapshot.mockRestore();
+  });
+
+  it("rebuilds the path boundary from the faces exactly as core's outline", () => {
+    for (const kind of ["square", "hex", "tri", "curved_quadrilateral"] as const) {
+      const cfg = fieldOf(kind, { shape: "custom", points: [[0, 0], [2, 2]] });
+      const cells: [number, number][] = [[0, 0], [1, 0], [0, 1], [2, 2]];
+      const snapshot = mazeService.getGeometrySnapshot({ tessellation: cfg.tessellation, cells, boundary: { kind: "path" }, fieldVersion: 1 });
+      const outlines = mazeService.getCellOutlines(cfg.tessellation, cells);
+      expect(snapshot.cells.map((cell) => cell.boundary.commands), kind).toEqual(outlines.map((outline) => outline.commands));
+    }
+  });
+
+  it("shares one allowed group between cells of the same shape", () => {
+    const cfg = fieldOf("square", { shape: "custom", points: [[0, 0], [2, 2]] });
+    const snapshot = mazeService.getGeometrySnapshot({ tessellation: cfg.tessellation, cells: [[0, 0], [1, 0]], boundary: { kind: "path" }, fieldVersion: 1 });
+    expect(snapshot.cells[0].allowed_group).toBe(snapshot.cells[1].allowed_group);
+    expect(snapshot.cells[0].allowed_group?.[0]).toEqual([0, 1, 2, 3]);
+  });
+
+  it("prefetches cells outside the field in chunked snapshot calls, once each", () => {
+    const square = fieldOf("square", { shape: "custom", points: [[0, 0]] });
+    warmCartesianCache(square);
+    const spy = vi.spyOn(mazeService, "getGeometrySnapshot");
+    const outside: [number, number][] = Array.from({ length: 1500 }, (_, i) => [100 + i, 100]);
+    prefetchCellGeometries([[0, 0], ...outside, outside[0]], square);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls.map(([request]) => request.cells.length)).toEqual([1000, 500]);
+    expect(spy.mock.calls.flatMap(([request]) => request.cells)).not.toContainEqual([0, 0]);
+    getCellGeometry(100, 100, square);
+    getCellGeometry(1599, 100, square);
+    prefetchCellGeometries(outside, square);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it("builds a path from face segments: a move to the first start, then one command per segment", () => {
+    const face = (segments: mazeService.SegmentDto[]) => ({ neighbor: null, canonical_face: null, contact_point: [0, 0] as [number, number], segments });
+    expect(mazeService.pathCommandsOfFaces([])).toEqual([]);
+    expect(
+      mazeService.pathCommandsOfFaces([
+        face([{ kind: "line", from: [0, 0], to: [1, 0] }]),
+        face([{ kind: "arc", from: [1, 0], to: [0, 1], center: [0, 0], radius: 1, start_angle: 0, sweep: -Math.PI / 2 }]),
+        face([]),
+      ]),
+    ).toEqual([
+      { op: "move_to", to: [0, 0] },
+      { op: "line_to", to: [1, 0] },
+      { op: "arc_to", center: [0, 0], radius: 1, start_angle: 0, end_angle: -Math.PI / 2, ccw: false },
+    ]);
   });
 
   it("bumps the field version only when the instance or the cell set changes", () => {
