@@ -5,6 +5,9 @@ import type { ParamDescriptor } from "../store/parameterLinks";
 type P =
   | "teleportMarker.fillColor"
   | "teleportFloorBadge.enabled"
+  | "teleportThroughSeams"
+  | "teleportCurveStrength"
+  | "teleportCurveDirection"
   | "oneWayColor"
   | "replaceTwoFloorElevatorsWithStairs"
   | "gridColor"
@@ -30,7 +33,7 @@ type P =
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
-    "teleportMarker.fillColor", "teleportFloorBadge.enabled", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
+    "teleportMarker.fillColor", "teleportFloorBadge.enabled", "teleportThroughSeams", "teleportCurveStrength", "teleportCurveDirection", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
     "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
     "verticalDecorativeSize", "verticalDecorativeArrowSize",
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
@@ -73,6 +76,17 @@ describe("isPathActive", () => {
   it("hides cross-floor teleport badge fields even with teleports, unless cross-floor ones exist", () => {
     expect(active("teleportFloorBadge.enabled", { hasTeleports: true, hasCrossFloorTeleports: false })).toBe(false);
     expect(active("teleportFloorBadge.enabled", { hasTeleports: true, hasCrossFloorTeleports: true })).toBe(true);
+  });
+
+  it("shows the seam toggle only while some floor has a seam (GitHub issue #873)", () => {
+    expect(active("teleportThroughSeams", { hasTeleports: true, hasSeams: false })).toBe(false);
+    expect(active("teleportThroughSeams", { hasTeleports: true, hasSeams: true })).toBe(true);
+  });
+
+  it("shows the curve fields only for the curved connector style", () => {
+    expect(active("teleportCurveStrength", { hasTeleports: true }, { teleportConnectorStyle: "orthogonal" })).toBe(false);
+    expect(active("teleportCurveStrength", { hasTeleports: true }, { teleportConnectorStyle: "curved" })).toBe(true);
+    expect(active("teleportCurveDirection", { hasTeleports: true }, { teleportConnectorStyle: "curved" })).toBe(true);
   });
 
   it("gates one-way fields on hasOneWays", () => {

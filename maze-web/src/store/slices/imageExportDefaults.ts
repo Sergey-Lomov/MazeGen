@@ -148,6 +148,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   teleportCurveDirection: DEFAULT_MAZE_RENDER_STYLE.teleport.curveDirection,
   teleportCurveStrength: DEFAULT_MAZE_RENDER_STYLE.teleport.curveStrength,
   teleportAvoidFieldExit: false,
+  teleportThroughSeams: true,
   teleportArrowMode: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowMode,
   teleportArrowPeriod: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowPeriod,
   teleportArrowSize: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowSize,

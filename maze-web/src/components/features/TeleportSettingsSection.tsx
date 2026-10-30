@@ -263,6 +263,7 @@ export function TeleportSettingsSection<P extends string>({
   teleportGroups,
   teleportCollisionKeys,
   hasCrossFloorTeleports,
+  hasSeams,
   linkTargets,
   edgeColorPriority,
   edgeBorderColorPriority,
@@ -294,6 +295,9 @@ export function TeleportSettingsSection<P extends string>({
   /** Whether the project has at least one cross-floor teleport (its two endpoints on different
    *  floors) — the "Floor badges" subsection is hidden entirely otherwise (GitHub issue #485). */
   hasCrossFloorTeleports: boolean;
+  /** Whether some floor has a topological seam — the "Route through seams" row is hidden otherwise
+   *  (GitHub issue #873). */
+  hasSeams: boolean;
   /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
    *  concrete path where the registry models the field, `null` where it doesn't. */
   linkTargets: {
@@ -307,6 +311,9 @@ export function TeleportSettingsSection<P extends string>({
     edgeGapWidth: P | null;
     connectorStyle: P | null;
     avoidFieldExit: P | null;
+    throughSeams: P | null;
+    curveDirection: P | null;
+    curveStrength: P | null;
     mergeMode: P | null;
     connectorColor: P | null;
     connectorWidth: P | null;
@@ -432,6 +439,14 @@ export function TeleportSettingsSection<P extends string>({
             linkTarget={linkTargets.avoidFieldExit}
           />
         )}
+        {hasSeams && (
+          <LinkedToggleRow
+            label={m["image_export.vector_by_walls.teleport_through_seams"]()}
+            checked={settings.teleportThroughSeams ?? true}
+            onChange={(v) => onChange({ teleportThroughSeams: v })}
+            linkTarget={linkTargets.throughSeams}
+          />
+        )}
         {settings.teleportConnectorStyle === "curved" && (<>
           <LinkedSelectRow
             label={m["image_export.vector_by_walls.teleport_curve_direction"]()}
@@ -441,7 +456,7 @@ export function TeleportSettingsSection<P extends string>({
               { value: "outward" as TeleportCurveDirection, label: m["image_export.vector_by_walls.teleport_curve_direction_outward"]() },
             ]}
             onChange={(v) => onChange({ teleportCurveDirection: v })}
-            linkTarget={null}
+            linkTarget={linkTargets.curveDirection}
           />
           <LinkedSliderRow
             label={m["image_export.vector_by_walls.teleport_curve_strength"]()}
@@ -451,7 +466,7 @@ export function TeleportSettingsSection<P extends string>({
             max={1}
             step={0.05}
             format={(v) => `${Math.round(v * 100)}%`}
-            linkTarget={null}
+            linkTarget={linkTargets.curveStrength}
           />
         </>)}
 

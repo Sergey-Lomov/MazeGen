@@ -21,6 +21,8 @@ export interface ParamActivityContext {
   hasMultipleFloors?: boolean;
   /** Cell areas of the active field differ enough for marker size adaptation to matter (GitHub issue #819). */
   hasAreaSpread?: boolean;
+  /** Some floor has a topological seam — "Route through seams" is shown only then (GitHub issue #873). */
+  hasSeams?: boolean;
 }
 
 /** Settings fields this activity check needs to read across both render modes' settings objects —
@@ -28,6 +30,7 @@ export interface ParamActivityContext {
  *  union, since `isPathActive` only ever branches on these few toggle/enum fields. */
 export interface ParamActivitySettings {
   verticalStyle?: "abstract" | "decorative";
+  teleportConnectorStyle?: string;
   showGrid?: boolean;
   showInnerGrid?: boolean;
   showCutLines?: boolean;
@@ -39,7 +42,7 @@ export interface ParamActivitySettings {
   floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram" };
 }
 
-const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportMergeMode", "teleportGroupCustomization", "teleportFloorBadge."];
+const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportThroughSeams", "teleportCurve", "teleportMergeMode", "teleportGroupCustomization", "teleportFloorBadge."];
 const CROSS_FLOOR_TELEPORT_PREFIX = "teleportFloorBadge.";
 const ONE_WAY_PATHS = new Set([
   "oneWayJoin", "oneWayColor", "oneWayGapWidth", "oneWaySize", "oneWayThickness",
@@ -92,6 +95,8 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
   if (startsWithAny(p, TELEPORT_PREFIXES)) {
     if (!ctx.hasTeleports) return false;
     if (p.startsWith(CROSS_FLOOR_TELEPORT_PREFIX) && !ctx.hasCrossFloorTeleports) return false;
+    if (p === "teleportThroughSeams") return ctx.hasSeams !== false;
+    if (p.startsWith("teleportCurve")) return settings.teleportConnectorStyle === "curved";
     return true;
   }
 

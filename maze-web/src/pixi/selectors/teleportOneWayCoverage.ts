@@ -170,6 +170,7 @@ export function computeTeleportConnectorCoversOneWayWarning(input: TeleportOneWa
     avoidFieldExit: settings.teleportAvoidFieldExit,
     fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
     markerMaxFactor: scaler.maxFactor,
+    seam: settings.teleportThroughSeams !== false ? { cfg } : undefined,
   });
 
   // The line and the floor-colored gap around it both hide what is below.
@@ -178,7 +179,8 @@ export function computeTeleportConnectorCoversOneWayWarning(input: TeleportOneWa
   layout.teleportEdges.forEach((edge, i) => {
     if (edge.from[0] === edge.to[0] && edge.from[1] === edge.to[1]) return;
     for (const indicator of indicators) {
-      if (polylineDistance(routed[i].points, indicator.center) < indicator.radius + reach) {
+      const { points, partnerPoints } = routed[i];
+      if (polylineDistance(points, indicator.center) < indicator.radius + reach || (partnerPoints && polylineDistance(partnerPoints, indicator.center) < indicator.radius + reach)) {
         covered.set(`${indicator.fromNode}:${indicator.toNode}`, indicator);
       }
     }

@@ -2483,6 +2483,7 @@
   "image_export.vector_by_walls.teleport_curve_direction_outward": "Outward",
   "image_export.vector_by_walls.teleport_curve_strength": "Curve strength",
   "image_export.vector_by_walls.teleport_avoid_field_exit": "Avoid field exit",
+  "image_export.vector_by_walls.teleport_through_seams": "Route through seams",
   "image_export.vector_by_walls.teleport_merge_mode": "Merge teleports on one cell",
   "image_export.vector_by_walls.teleport_arrow_mode": "Mode",
   "image_export.vector_by_walls.teleport_arrow_mode_none": "None",

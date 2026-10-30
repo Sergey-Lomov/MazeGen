@@ -171,6 +171,7 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportCurveDirection: optTeleportCurveDirection(obj, "teleportCurveDirection", d.teleportCurveDirection ?? "inward"),
     teleportCurveStrength: Math.min(1, Math.max(0, optNumber(obj, "teleportCurveStrength", d.teleportCurveStrength ?? 0.25))),
     teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
+    teleportThroughSeams: optBool(obj, "teleportThroughSeams", d.teleportThroughSeams ?? true),
     teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
     teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
     teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),

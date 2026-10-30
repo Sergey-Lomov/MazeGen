@@ -100,6 +100,9 @@ export class TeleportRenderer {
     /** Teleport merge mode (GitHub issue #868) — `false` makes every teleport its own group, so
      *  teleports whose endpoints coincide are not merged. Defaults to `true`. */
     mergeTeleports?: boolean;
+    /** Glued pairs of the floor (GitHub issue #873) — present only when "Route through seams" is on.
+     *  A connector between two cells glued by a seam is then drawn as two pieces through the seam. */
+    seam?: { cfg: FieldConfig };
   }): void {
     this.mergeTeleports = data.mergeTeleports ?? true;
     this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
@@ -119,6 +122,7 @@ export class TeleportRenderer {
       data.avoidFieldExit ?? false,
       data.fieldCells ?? [],
       data.floorNavigable ?? false,
+      data.seam,
     );
   }
 
@@ -132,6 +136,7 @@ export class TeleportRenderer {
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
     floorNavigable: boolean,
+    seam?: { cfg: FieldConfig },
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -153,7 +158,7 @@ export class TeleportRenderer {
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
       style.connectorStyle !== "none"
-        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells)
+        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells, seam)
         : [];
 
     this.renderGroups();
@@ -170,6 +175,7 @@ export class TeleportRenderer {
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
+    seam?: { cfg: FieldConfig },
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
     const groups = groupCustomization ? buildTeleportGroups(edges, this.mergeTeleports) : [];
     const groupKeyByPoint = new Map<string, string>();
@@ -183,7 +189,7 @@ export class TeleportRenderer {
 
     const routed = routeTeleportConnectors({
       router: this.connectorRouter, edges, style, cfg, waypoints, avoidFieldExit, fieldCells,
-      markerMaxFactor: this.selectionScaler.maxFactor,
+      markerMaxFactor: this.selectionScaler.maxFactor, seam,
     });
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
@@ -348,16 +354,20 @@ export class TeleportRenderer {
    *  on top — so the gap wraps the arrowheads too, not just the line. `color` (GitHub issue #293
    *  follow-up) is passed separately from `style` since a group override can replace it. */
   private drawRoutedConnector(g: Graphics, routed: RoutedConnector, style: TeleportLineStyle, color: number, oneWay: boolean): void {
-    const pts = routed.points;
-    const placements = oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE, style.arrowSize) : [];
+    // A connector through a seam (GitHub issue #873) is two pieces, each stroked and given arrows on
+    // its own — "center"/"double" arrows therefore appear once/twice per piece.
+    const pieces = routed.partnerPoints ? [routed.points, routed.partnerPoints] : [routed.points];
+    const placements = pieces.map((pts) => (oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE, style.arrowSize) : []));
 
     const draw = (width: number, drawColor: number, arrowSize: number) => {
-      g.moveTo(pts[0], pts[1]);
-      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
-      g.stroke({ width, color: drawColor, cap: "round" });
-      for (const p of placements) {
-        drawDirectionArrow(g, p.x, p.y, p.dx, p.dy, arrowSize, drawColor);
-      }
+      pieces.forEach((pts, pieceIdx) => {
+        g.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+        g.stroke({ width, color: drawColor, cap: "round" });
+        for (const p of placements[pieceIdx]) {
+          drawDirectionArrow(g, p.x, p.y, p.dx, p.dy, arrowSize, drawColor);
+        }
+      });
     };
 
     if (style.connectorGapWidth > 0) {

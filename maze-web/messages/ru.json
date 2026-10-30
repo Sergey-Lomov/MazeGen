@@ -2485,6 +2485,7 @@
   "image_export.vector_by_walls.teleport_curve_direction_outward": "Наружу",
   "image_export.vector_by_walls.teleport_curve_strength": "Сила изгиба",
   "image_export.vector_by_walls.teleport_avoid_field_exit": "Избегать выхода за поле",
+  "image_export.vector_by_walls.teleport_through_seams": "Проводить через склейки",
   "image_export.vector_by_walls.teleport_merge_mode": "Объединять телепорты в одной клетке",
   "image_export.vector_by_walls.teleport_arrow_mode": "Режим",
   "image_export.vector_by_walls.teleport_arrow_mode_none": "Нет",

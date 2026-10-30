@@ -150,7 +150,7 @@ export function VectorByCorridorsSettingsPanel() {
   const {
     floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
     colorVisibility, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages,
-    hasElevators, hasVerticalSection, hasMarkerIndexSource, activePaths,
+    hasElevators, hasVerticalSection, hasMarkerIndexSource, hasSeams, activePaths,
   } = useExportPanelModel(settings, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, computeVectorByCorridorsWarningsAcrossFloors);
 
   return (
@@ -520,6 +520,7 @@ export function VectorByCorridorsSettingsPanel() {
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
               hasCrossFloorTeleports={hasCrossFloorTeleports}
+              hasSeams={hasSeams}
               linkTargets={{
                 lineCornerStyle: "teleportMarker.cornerStyle",
                 lineShape: "teleportMarker.shape",
@@ -531,6 +532,9 @@ export function VectorByCorridorsSettingsPanel() {
                 edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
                 avoidFieldExit: "teleportAvoidFieldExit",
+                throughSeams: "teleportThroughSeams",
+                curveDirection: "teleportCurveDirection",
+                curveStrength: "teleportCurveStrength",
                 mergeMode: "teleportMergeMode",
                 connectorColor: "teleportConnectorColor",
                 connectorWidth: null,

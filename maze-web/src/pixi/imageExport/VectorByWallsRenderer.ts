@@ -720,6 +720,7 @@ export class VectorByWallsRenderer {
       avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
       fieldCells: cells,
       mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+      seam: state.vectorByWallsSettings.teleportThroughSeams !== false ? { cfg } : undefined,
     });
 
     this.markers.render({ markers: markerData, scaler });

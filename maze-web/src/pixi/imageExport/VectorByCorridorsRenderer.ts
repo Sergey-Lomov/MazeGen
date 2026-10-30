@@ -528,6 +528,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       avoidFieldExit: settings.teleportAvoidFieldExit,
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
       mergeTeleports: settings.teleportMergeMode,
+      seam: settings.teleportThroughSeams !== false ? { cfg } : undefined,
     });
 
     this.markers.render({ markers: markerData, scaler });
