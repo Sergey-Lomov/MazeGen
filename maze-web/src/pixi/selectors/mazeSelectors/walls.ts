@@ -145,10 +145,12 @@ export function buildMazeWalls(
         const seamKey = `${n.x},${n.y}#${face}`;
         if (boundaryDrawn.has(seamKey)) continue;
         boundaryDrawn.add(seamKey);
+        // A split point's seam face is drawn by `buildSplitPassages` (passage segments or an
+        // all-wall face, on this side's own geometry), same as its ordinary faces.
+        if (splitPointKeys.has(`${n.x},${n.y}`)) continue;
         const [px, py] = half.partnerCell;
-        const partnerSplit = splitPointKeys.has(`${px},${py}`) || splitPointKeys.has(`${n.x},${n.y}`);
-        const fwd = !partnerSplit && directed.has(`${n.x},${n.y}->${px},${py}`);
-        const bwd = !partnerSplit && directed.has(`${px},${py}->${n.x},${n.y}`);
+        const fwd = directed.has(`${n.x},${n.y}->${px},${py}`);
+        const bwd = directed.has(`${px},${py}->${n.x},${n.y}`);
         if (fwd && bwd) continue;
         const kind: PassageKind = fwd ? "forward" : bwd ? "backward" : "none";
         let oneWayDir: { dx: number; dy: number } | undefined;

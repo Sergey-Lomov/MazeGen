@@ -8,6 +8,7 @@ import { cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbor } from "../../pixi/faceNeighbors";
 import type { ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import { activeFloorField, activeFloorLevel } from "../storeHelpers";
 import { appendPostEditCommand, removePostEditSplitSlots } from "./postEditSliceHelpers";
@@ -198,9 +199,8 @@ export const createPostEditSplitActions = (set: CreatorSet, get: CreatorGet): Pi
         // a direct/programmatic `applySplitBlueprint` call) — `offsets[faceIndex]` would
         // otherwise be `undefined` and the destructure below would throw.
         if (faceIndex >= offsets.length) continue;
-        const [dx, dy] = offsets[faceIndex];
-        const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-        if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
+        const neighbor = resolveFaceNeighbor(state.activeFieldConfig, point, faceIndex, inFieldCells);
+        if (neighbor === null) continue;
         const neighborIds: number[] = [];
         for (const n of state.nodes) if (n.x === neighbor[0] && n.y === neighbor[1] && (n.level ?? 0) === (level ?? 0)) neighborIds.push(n.id);
         const neighborKey = level === undefined ? `${neighbor[0]},${neighbor[1]}` : `${neighbor[0]},${neighbor[1]}@${level}`;

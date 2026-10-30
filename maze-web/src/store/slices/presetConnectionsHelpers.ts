@@ -6,7 +6,7 @@ import { debugStaleOf } from "../storeHelpers";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbors } from "../../pixi/faceNeighbors";
 import { levelFieldsOf } from "../storeHelpers";
 
 /** Removes `presetConnections[key]`, but — unlike a plain `.delete` — leaves the pair reading as
@@ -191,11 +191,9 @@ export function applyDefaultEdgeState(
     const cellSet = buildCellSet(cells);
 
     for (const [x, y] of cells) {
-      const { offsets } = getNeighborData(cfg, x, y);
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (!cellSet.has(`${nx},${ny}`)) continue;
+      for (const neighbor of resolveFaceNeighbors(cfg, [x, y], cellSet)) {
+        if (neighbor === null) continue;
+        const [nx, ny] = neighbor;
         const less = x < nx || (x === nx && y < ny);
         if (!less) continue; // only process edge once (owner = canonical-lesser cell)
         const from = presetEndpoint([x, y], undefined, levelField.level);

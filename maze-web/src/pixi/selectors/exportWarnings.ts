@@ -262,14 +262,18 @@ function buildFloorContext(nodes: NodeDto[], edges: EdgeDto[], floors: WarningFl
   };
 }
 
+/** Floors with an export cut line (GitHub issue #859), by id: the argument of the `*AcrossFloors` passes. */
+const NO_CUT_FLOORS: ReadonlySet<string> = new Set();
+
 export function computeVectorByWallsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
+  cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
 ): ExportWarning[] {
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title);
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id));
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -277,12 +281,13 @@ export function computeVectorByWallsWarningsAcrossFloors(
 export function computeVectorByCorridorsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
+  cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
 ): ExportWarning[] {
   const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit);
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id));
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -356,6 +361,7 @@ export function computeVectorByWallsWarnings(
   unscopedNodes: NodeDto[] = nodes,
   teleportFloorContext?: TeleportFloorContext,
   displayFloorTitle?: string,
+  highlightSeamMirrors = true,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -392,7 +398,7 @@ export function computeVectorByWallsWarnings(
       pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_wall", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "tilesWall")));
     }
   }
-  const splitFloor = splitContrastData(nodes, edges, cfg, ctx);
+  const splitFloor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
   pushContrastWarning(warnings, "split_low_contrast_floor", splitFloor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "tilesFloor")]), splitFloor.nodes);
   pushSplitPairwiseWarning(warnings, splitFloor);
 
@@ -564,6 +570,7 @@ export function computeVectorByCorridorsWarnings(
   allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
   displayFloorTitle?: string,
   maxCorridorFace?: number,
+  highlightSeamMirrors = true,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -617,7 +624,7 @@ export function computeVectorByCorridorsWarnings(
       pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_background", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "bgFill")));
     }
   }
-  const splitCorridor = splitContrastData(nodes, edges, cfg, ctx);
+  const splitCorridor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
   pushContrastWarning(warnings, "split_low_contrast_corridor", splitCorridor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "corridorFill")]), splitCorridor.nodes);
   pushContrastWarning(warnings, "split_low_contrast_background", splitCorridor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "bgFill")]), splitCorridor.nodes);
   pushSplitPairwiseWarning(warnings, splitCorridor);

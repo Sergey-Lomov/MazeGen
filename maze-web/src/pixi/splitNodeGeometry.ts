@@ -4,6 +4,7 @@ import type { SplitSpecialShapeKind } from "./renderers/types";
 import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import { splitShapeBinding } from "./splitShape";
+import { faceNeighborCells } from "./faceNeighbors";
 import { getSplitCircleRotationDeg, getCellCenter, getCellVertices, getNeighborData, type Pos } from "./tessellationGeometry";
 
 /** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
@@ -311,10 +312,10 @@ export function splitPointFaceKindsByNode<Id extends string | number>(
   directed: ReadonlySet<string>,
   cfg: FieldConfig,
 ): SplitFaceKind[][] {
-  const { offsets } = getNeighborData(cfg, pointNodes[0].x, pointNodes[0].y);
+  const faceCells = faceNeighborCells(cfg, [pointNodes[0].x, pointNodes[0].y]);
   return pointNodes.map((pn) =>
-    offsets.map(([dx, dy]) => {
-      const neighbors = byTile.get(`${pn.x + dx}:${pn.y + dy}`) ?? [];
+    faceCells.map(([cx, cy]) => {
+      const neighbors = byTile.get(`${cx}:${cy}`) ?? [];
       let fwd = false;
       let bwd = false;
       for (const nb of neighbors) {

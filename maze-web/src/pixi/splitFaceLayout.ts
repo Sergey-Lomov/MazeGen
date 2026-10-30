@@ -270,6 +270,10 @@ export interface SplitFaceSegment {
    *  caller's own join/cap style instead of the always-`"butt"` internal-division ends. */
   atFaceStart: boolean;
   atFaceEnd: boolean;
+  /** The share's span as fractions (0..1) of the face's length along `v0 -> v1`; lets a seam's
+   *  partner side map the same share onto its own copy of the face. */
+  t0: number;
+  t1: number;
 }
 
 export interface SplitFaceLayout {
@@ -337,6 +341,8 @@ export function computeSplitFaceLayouts(
         mid: pointAlongPolyline(boundary, (i + 0.5) / n),
         atFaceStart: i === 0,
         atFaceEnd: i === n - 1,
+        t0: i / n,
+        t1: (i + 1) / n,
       };
     });
 

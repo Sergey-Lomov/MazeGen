@@ -168,7 +168,9 @@ export function buildCorridorSegments(
     for (const half of seams.halfEdgesOf([n.x, n.y])) {
       const [px, py] = half.partnerCell;
       const partnerNode = nodeByCoord.get(`${px},${py}`);
-      if (!partnerNode || splitPointKeys.has(`${px},${py}`)) continue;
+      // A split partner needs no special case: this segment already ends on the cell's own face
+      // (`v1TouchesSplit`), where the split side's `buildSplitPassages` share picks up.
+      if (!partnerNode) continue;
       const fwd = directed.has(`${selfKey}->${px},${py}`);
       const bwd = directed.has(`${px},${py}->${selfKey}`);
       if (!fwd && !bwd) continue;

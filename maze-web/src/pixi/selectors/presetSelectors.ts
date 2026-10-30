@@ -7,6 +7,7 @@ import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { buildNodePositions, getCellCenter, getFaceEdgeSegment, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { getSeamModel } from "./seams";
+import { resolveFaceNeighbors } from "../faceNeighbors";
 import { seamCellSlots, seamStubHighlights, type SeamPairsContext } from "../graphSeams";
 import { logicalEdgeSegments } from "./seamEdges";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
@@ -16,6 +17,24 @@ import { hostKey } from "./mazeSelectors/markerLayout";
 import { splitSlotColor } from "../colorUtils";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
+
+const pairKey = (a: [number, number], b: [number, number]): string =>
+  a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? `${a[0]},${a[1]}|${b[0]},${b[1]}` : `${b[0]},${b[1]}|${a[0]},${a[1]}`;
+
+/** Strongest decided entry (passage, then one-way, then wall) per unordered cell pair, over every
+ *  node of the two cells; undecided entries are left out. Built once so each seam face looks its
+ *  pair up directly instead of scanning all connections. */
+function strongestEntryByCellPair(connections: Map<string, PresetConnectionEntry>): Map<string, PresetConnectionEntry> {
+  const rank = (entry: PresetConnectionEntry): number => (entry.state === "passage" ? 3 : entry.state === "wall" ? 1 : 2);
+  const best = new Map<string, PresetConnectionEntry>();
+  for (const entry of connections.values()) {
+    if (entry.state === "undefined") continue;
+    const key = pairKey(entry.from.point, entry.to.point);
+    const current = best.get(key);
+    if (current === undefined || rank(entry) > rank(current)) best.set(key, entry);
+  }
+  return best;
+}
 
 export function buildPresetWallGroups(
   cells: [number, number][],
@@ -31,6 +50,7 @@ export function buildPresetWallGroups(
   const preset: WallEdge[] = [];
   const invalidPassages: WallEdge[] = [];
   const seams = getSeamModel(cfg);
+  let splitPairs: Map<string, PresetConnectionEntry> | undefined;
 
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
@@ -43,11 +63,15 @@ export function buildPresetWallGroups(
       if (half) {
         // A glued face is drawn by each side as its own wall edge, from the one logical connection.
         const [px, py] = half.partnerCell;
-        if (!cellSet.has(`${px},${py}`) || splitPointKeys.has(`${px},${py}`)) {
+        if (!cellSet.has(`${px},${py}`)) {
           preset.push({ a: [x, y], b: [px, py], face, kind: "none", style: "solid" });
           continue;
         }
-        const entry = connections.get(edgeKey([x, y], [px, py]));
+        // A split partner's connections are keyed by its nodes (original or slot), so look the pair
+        // up by cell: any open passage across the face leaves this side open too.
+        const entry = splitPointKeys.has(`${px},${py}`)
+          ? (splitPairs ??= strongestEntryByCellPair(connections)).get(pairKey([x, y], [px, py]))
+          : connections.get(edgeKey([x, y], [px, py]));
         if (!entry || entry.state === "undefined") {
           undecided.push({ a: [x, y], b: [px, py], face, kind: "none", style: "faint" });
         } else if (entry.state === "wall") {
@@ -122,6 +146,8 @@ export function buildPresetWallGroups(
       const nx = x + dx;
       const ny = y + dy;
       const neighborless = dx === 0 && dy === 0;
+      // A glued face is drawn by `buildPresetSplitPassages` (or the seam's own wall), never a field edge.
+      if (seams.halfEdgeAt([x, y], face)) continue;
       if (!neighborless && cellSet.has(`${nx},${ny}`)) continue;
       preset.push({ a: [x, y], b: [nx, ny], face: neighborless ? face : undefined, kind: "none", style: "solid" });
     }
@@ -201,10 +227,9 @@ export function buildPresetSplitPassages(
     addNode(presetEndpoint([x, y]));
     for (const slotId of [...presetSplitPoints[key]].sort((a, b) => a - b)) addNode(presetEndpoint([x, y], slotId));
 
-    const { offsets } = getNeighborData(cfg, x, y);
-    for (const [dx, dy] of offsets) {
-      const nx = x + dx, ny = y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) continue;
+    for (const neighbor of resolveFaceNeighbors(cfg, [x, y], cellSet)) {
+      if (neighbor === null) continue;
+      const [nx, ny] = neighbor;
       addNode(presetEndpoint([nx, ny]));
       // The neighbor may itself be a declared split point with its own slots — register all of
       // them too, not just its original node, otherwise `buildSplitPassagesCore`'s per-node

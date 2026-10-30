@@ -58,6 +58,21 @@ export function floorCutLines(inputs: Pick<CutInputs, "cfg" | "floorId" | "topol
   });
 }
 
+/// Ids of the floors that have a cut line set, so are exported as a cut sheet.
+export function floorIdsWithCut(
+  floors: { id: string }[],
+  cfg: FieldConfig,
+  floorTopology: Record<string, WireTopology | null | undefined>,
+  cuts: CutExportSettings,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const floor of floors) {
+    const inputs = { cfg, floorId: floor.id, topology: floorTopology[floor.id], cuts };
+    if (floorGroupCuts(inputs).some((cut) => cutLineOf(cut, cutSettingOf(cuts, floor.id, cut.group)))) ids.add(floor.id);
+  }
+  return ids;
+}
+
 /// The cut sheet of the floor, or `null` when no glue has a usable cut line.
 export function resolveCutPlan(inputs: CutInputs): CutPlan | null {
   if (inputs.floorNodes.length === 0) return null;

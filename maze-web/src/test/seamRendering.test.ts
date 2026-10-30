@@ -1,8 +1,10 @@
 import { range } from "./seamFixtures";
 import { describe, expect, it } from "vitest";
 import { warmCartesianCache } from "../pixi/cartesianCache";
-import { buildCorridorSegments, buildHoveredEntityHighlight, buildMazeWalls, buildOneWayWallIndicatorPositions, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
-import { buildHoverEdgeHighlight } from "../pixi/selectors/presetSelectors";
+import { buildCorridorSegments, buildHoveredEntityHighlight, buildMazeWalls, buildOneWayWallIndicatorPositions, buildSplitJunctionPositions, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
+import { buildHoverEdgeHighlight, buildPresetWallGroups } from "../pixi/selectors/presetSelectors";
+import { presetEndpoint } from "../pixi/presetEndpoint";
+import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { insidePolygon } from "../pixi/selectors/seamRouting";
 import { arrowContains, buildSeamArrows, headPolygon, pairAt, seamFocusOf, BRACE_OFFSET, BRACE_WIDTH } from "../pixi/selectors/seamArrows";
 import { glueColor } from "../pixi/renderers/SeamArrowRenderer";
@@ -17,6 +19,9 @@ import type { Graphics } from "pixi.js";
 import { getCellCenter, getCellVertices, getFaceEdgeSegment } from "../pixi/tessellationGeometry";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
+import { buildRegionGeometry } from "../pixi/selectors/issueHighlightSelectors";
+import { splitContrastData } from "../pixi/selectors/exportContrastWarnings";
+import type { ColorVisibilityContext } from "../pixi/selectors/colorFieldRegistry";
 
 // Seam drawing (GitHub issue #841) against the real `maze-core` module loaded by `setup.ts`. A 6x5
 // square field; face 0 is east, 1 north, 2 west, 3 south. Expected coordinates come from the display
@@ -169,6 +174,23 @@ describe("seam corridors", () => {
     for (const segment of segments) {
       expect(segment.faceNormal!.x * (segment.v1.x - segment.v0.x) + segment.faceNormal!.y * (segment.v1.y - segment.v0.y)).toBeGreaterThan(0);
     }
+  });
+
+  it("draws the plain side of a seam whose partner is a split point, and none for the split side", () => {
+    warm(cylinder);
+    const splitNodes: NodeDto[] = [...nodes, { id: 600, x: COLUMNS - 1, y: 2, i: 1 }];
+    const target = idOf([0, 2]);
+    const splitEdges: EdgeDto[] = [
+      { from: 600, to: target, kind: "basic" },
+      { from: target, to: 600, kind: "basic" },
+    ];
+    const segments = buildCorridorSegments(splitNodes, splitEdges, field);
+    expect(segments).toHaveLength(1);
+    const face = getFaceEdgeSegment([0, 2], 2, field)!;
+    const center = getCellCenter(0, 2, field);
+    expect(segments[0].fromNode).toBe(target);
+    expect(segments[0].v1TouchesSplit).toBe(true);
+    close([segments[0].v0.x, segments[0].v0.y, segments[0].v1.x, segments[0].v1.y], [center.x, center.y, face.contact.x, face.contact.y]);
   });
 
   it("gives a one-way passage the same direction on both copies: out of the source, into the target", () => {
@@ -759,5 +781,158 @@ describe("seam route axes", () => {
     expect(along).toEqual([[0, 0], [100, 0]]);
     const slanted = routePair([port(0, 0, 0, -1), port(100, 40, 0, -1)], [], square, box, 10, axes);
     expect(slanted.length).toBeGreaterThan(2);
+  });
+});
+
+describe("seam split mirror", () => {
+  const splitEast = (rowTo: number) => {
+    const splitNodes: NodeDto[] = [...nodes, { id: 600, x: COLUMNS - 1, y: 1, i: 1 }];
+    const target = idOf([0, rowTo]);
+    const splitEdges: EdgeDto[] = [
+      { from: 600, to: target, kind: "basic" },
+      { from: target, to: 600, kind: "basic" },
+    ];
+    return { splitNodes, splitEdges };
+  };
+
+  it("flags the mirrored share and keeps it out of the junction positions", () => {
+    warm(cylinder);
+    const { splitNodes, splitEdges } = splitEast(1);
+    const { passages } = buildSplitPassages(splitNodes, splitEdges, field);
+    expect(passages.filter((p) => p.mirrored).map((p) => p.pointKey)).toEqual(["0,1"]);
+    expect(buildSplitJunctionPositions(passages)).toHaveLength(1);
+  });
+
+  it("maps the share onto the partner's row of a twisted seam", () => {
+    warm(mobius);
+    // (5,1) joins (0, ROWS-1-1) across the twisted seam.
+    const row = ROWS - 1 - 1;
+    const { splitNodes, splitEdges } = splitEast(row);
+    const { passages } = buildSplitPassages(splitNodes, splitEdges, field);
+    const mirrored = passages.filter((p) => p.mirrored);
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0].pointKey).toBe(`0,${row}`);
+    const face = faceOf([0, row], 2);
+    const share = mirrored[0].wallSegments[0];
+    const lowY = Math.min(face.v0.y, face.v1.y) - 1e-6;
+    const highY = Math.max(face.v0.y, face.v1.y) + 1e-6;
+    for (const point of [share.v0, share.v1]) {
+      expect(point.y).toBeGreaterThanOrEqual(lowY);
+      expect(point.y).toBeLessThanOrEqual(highY);
+    }
+  });
+
+  it("highlights the mirror partner in contrast warnings only without a cut", () => {
+    warm(cylinder);
+    const { splitNodes, splitEdges } = splitEast(1);
+    const ctx = { settings: { splitNodeColors: [0xff0000, 0x00ff00] }, mode: "corridors", slotCount: 2 } as unknown as ColorVisibilityContext;
+    const partner = idOf([0, 1]);
+    expect(splitContrastData(splitNodes, splitEdges, field, ctx, true).nodes).toContain(partner);
+    expect(splitContrastData(splitNodes, splitEdges, field, ctx, false).nodes).not.toContain(partner);
+    expect(splitContrastData(splitNodes, splitEdges, field, ctx, false).nodes).toContain(600);
+  });
+
+  it("mirrors nothing for a point drawn as a bridge", () => {
+    warm(cylinder);
+    const x = COLUMNS - 1;
+    const bridgeNodes: NodeDto[] = [...nodes.filter((node) => !(node.x === x && node.y === 1)), { id: 600, x, y: 1, i: 1 }, { id: 601, x, y: 1, i: 1 }];
+    const link = (a: number, b: number): EdgeDto[] => [{ from: a, to: b, kind: "basic" }, { from: b, to: a, kind: "basic" }];
+    // Node 600 runs west to east across the seam, node 601 north to south.
+    const bridgeEdges = [...link(600, idOf([x - 1, 1])), ...link(600, idOf([0, 1])), ...link(601, idOf([x, 2])), ...link(601, idOf([x, 0]))];
+    const { passages, specialShapes } = buildSplitPassages(bridgeNodes, bridgeEdges, field);
+    expect(specialShapes.map((shape) => shape.pointKey)).toEqual([`${x},1`]);
+    expect(passages.some((p) => p.mirrored)).toBe(false);
+  });
+
+  it("mirrors nothing when the partner is split too", () => {
+    warm(cylinder);
+    const { splitNodes, splitEdges } = splitEast(1);
+    const bothSplit: NodeDto[] = [...splitNodes, { id: 601, x: 0, y: 1, i: 1 }];
+    const { passages } = buildSplitPassages(bothSplit, splitEdges, field);
+    expect(passages.some((p) => p.mirrored)).toBe(false);
+  });
+
+  it("leaves a split point's seam face to its own passages in the walls", () => {
+    warm(cylinder);
+    const { splitNodes, splitEdges } = splitEast(1);
+    const walls = buildMazeWalls(splitNodes, splitEdges, field);
+    expect(walls.some((w) => w.a[0] === COLUMNS - 1 && w.a[1] === 1 && w.face === 0)).toBe(false);
+  });
+
+  it("mirrors a split node's share onto an unsplit partner across the seam", () => {
+    warm(cylinder);
+    // (5,1) is split in two nodes; node 600 connects east through the seam to the unsplit (0,1).
+    const splitNodes: NodeDto[] = [...nodes, { id: 600, x: COLUMNS - 1, y: 1, i: 1 }];
+    const target = idOf([0, 1]);
+    const splitEdges: EdgeDto[] = [
+      { from: 600, to: target, kind: "basic" },
+      { from: target, to: 600, kind: "basic" },
+    ];
+    const { passages } = buildSplitPassages(splitNodes, splitEdges, field);
+    const own = passages.filter((p) => p.pointKey === `${COLUMNS - 1},1`);
+    const mirrored = passages.filter((p) => p.pointKey === "0,1");
+    expect(own).toHaveLength(1);
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0].color).toBe(own[0].color);
+    expect(mirrored[0].connectors).toEqual([]);
+    // The share lies on the partner's own west face (face 2), not on the split side's east face.
+    const face = faceOf([0, 1], 2);
+    const share = mirrored[0].wallSegments[0];
+    for (const point of [share.v0, share.v1]) {
+      const onFace = [face.v0, face.v1].some((end) => Math.abs(end.x - point.x) < 1e-6) || Math.abs(face.v0.x - point.x) < 1e-6;
+      expect(onFace).toBe(true);
+    }
+  });
+});
+
+describe("seam preset walls with a split partner", () => {
+  const east: [number, number] = [COLUMNS - 1, 1];
+  const west: [number, number] = [0, 1];
+  const entry = (state: PresetConnectionEntry["state"], slot?: number): PresetConnectionEntry => ({
+    from: presetEndpoint(east), to: presetEndpoint(west, slot), state, source: "user",
+  });
+  const eastSeamEdges = (edges: { a: [number, number]; face?: number }[]) =>
+    edges.filter((e) => e.a[0] === east[0] && e.a[1] === east[1] && e.face === 0);
+  const build = (states: [PresetConnectionEntry["state"], number?][]) => {
+    warm(cylinder);
+    const connections = new Map(states.map(([state, slot], i) => [`c${i}`, entry(state, slot)]));
+    return buildPresetWallGroups(cells, connections, field, { "0,1": [1] });
+  };
+
+  it("leaves the unsplit side open when any node of the split partner has a passage", () => {
+    const { preset, undecided } = build([["wall"], ["passage", 1]]);
+    expect(eastSeamEdges(preset)).toHaveLength(0);
+    expect(eastSeamEdges(undecided)).toHaveLength(0);
+  });
+
+  it("draws a wall when every decided entry is a wall", () => {
+    const { preset } = build([["wall"], ["wall", 1]]);
+    expect(eastSeamEdges(preset)).toHaveLength(1);
+  });
+
+  it("reads the face as undecided without a decided entry", () => {
+    const { undecided } = build([["undefined"]]);
+    expect(eastSeamEdges(undecided)).toHaveLength(1);
+  });
+
+  it("never draws a glued face of a split cell as a field edge", () => {
+    warm(cylinder);
+    const { preset } = buildPresetWallGroups(cells, new Map(), field, { "5,1": [1] });
+    expect(preset.filter((e) => e.a[0] === east[0] && e.a[1] === east[1] && e.face === 0)).toHaveLength(0);
+  });
+});
+
+describe("seam region highlight", () => {
+  it("outlines each side of a region crossing a seam on its own face, as separate components", () => {
+    warm(cylinder);
+    // (5,1) and (0,1) are glued across the cylinder seam, so they are neighbours but not on screen.
+    const region = [idOf([COLUMNS - 1, 1]), idOf([0, 1])];
+    const { cells, perimeterSegments } = buildRegionGeometry(region, nodes, field);
+    expect(cells).toHaveLength(2);
+    expect(new Set(perimeterSegments.map((s) => s.component)).size).toBe(2);
+    // Each cell has four faces, all exposed: the screen shows the two cells apart.
+    expect(perimeterSegments).toHaveLength(8);
+    const seamFace = faceOf([COLUMNS - 1, 1], 0);
+    expect(perimeterSegments.some((s) => [s.v0, s.v1].every((p) => [seamFace.v0, seamFace.v1].some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6)))).toBe(true);
   });
 });

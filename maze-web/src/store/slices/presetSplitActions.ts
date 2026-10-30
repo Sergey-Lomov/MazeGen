@@ -8,6 +8,7 @@ import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveFaceNeighbor } from "../../pixi/faceNeighbors";
 import type { NodeLockKind } from "../../wasm/types";
 import { withRecomputedAutoLock, activeFloorField, activeFloorLevel } from "../storeHelpers";
 import { notify } from "../../notifications/notificationStore";
@@ -298,9 +299,8 @@ export const createPresetSplitActions = (set: CreatorSet, get: CreatorGet): Pick
         const endpoint = nodeEndpoints[nodeIndex];
         const requiredFaces = new Set(blueprint.nodeFaces[nodeIndex]);
         for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
-          const [dx, dy] = offsets[faceIndex];
-          const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-          if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
+          const neighbor = resolveFaceNeighbor(field.fieldConfig, point, faceIndex, inFieldCells);
+          if (neighbor === null) continue;
           // The neighbor's real connecting node — not just its active UI slot (GitHub issue #243).
           // Resolved against the pre-cleanup snapshot (`state.presetConnections`) and `point`'s
           // *old* (pre-blueprint) endpoints: any pre-existing neighbor entry was recorded against

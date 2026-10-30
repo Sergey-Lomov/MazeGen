@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
@@ -774,7 +775,7 @@ export class VectorByWallsRenderer {
     );
     const warnings = computeVectorByWallsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByWallsSettings,
-      rawEndpoints.start, rawEndpoints.finish,
+      rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
     );
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset,

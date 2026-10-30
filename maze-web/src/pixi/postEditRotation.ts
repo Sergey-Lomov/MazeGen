@@ -1,6 +1,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import { getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
+import { rotateFaceIndex } from "./tessellationGeometry";
+import { faceIndexTo, faceNeighborCells, resolveFaceNeighbors } from "./faceNeighbors";
 import type { FieldConfig } from "../fieldConfig";
 import { type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual, buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement } from "./postEditEndpoint";
 import { canCompleteOppositePair, isFinishedSplitPair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
@@ -37,8 +38,8 @@ export function collectRotateMoves(
   nodes: NodeDto[],
   level: number | undefined,
 ): RotateMove[] | undefined {
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
-  const n = offsets.length;
+  const neighbors = faceNeighborCells(cfg, point);
+  const n = neighbors.length;
   if (n === 0) return [];
 
   const coordsOf = (ep: PostEditEndpoint): [number, number] | undefined => {
@@ -67,7 +68,7 @@ export function collectRotateMoves(
       const otherCoords = coordsOf(other);
       if (!otherCoords) continue;
 
-      const i = offsets.findIndex(([dx, dy]) => point[0] + dx === otherCoords[0] && point[1] + dy === otherCoords[1]);
+      const i = faceIndexTo(cfg, point, otherCoords);
       if (i === -1) continue; // not a geometric neighbor of `point` (shouldn't happen for a face edge)
 
       // Radial cells are not rotationally symmetric, but post-edit explicitly offers a separate
@@ -77,7 +78,7 @@ export function collectRotateMoves(
       const j = cfg.tessellation.kind === "radial"
         ? (i + direction + n) % n
         : rotateFaceIndex(cfg, point[0], point[1], i, direction);
-      const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
+      const newNeighbor = neighbors[j];
       // Refuse entirely — not just for a neighbor outside the field, but also for one inside it
       // with no node at all yet (a sparse/partially-populated field can have an empty cell in
       // `cellSet`). `rotateSplitPointNodes`' own `resolveActiveAt` requires a node to exist at the
@@ -115,12 +116,10 @@ export function postEditSplitNodeFaceKinds(
   nodes: NodeDto[],
   level?: number,
 ): SplitFaceKind[] {
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const levelSplitPoints = recordOnLevel(splitPoints, level);
   const splitPointsAt = (p: [number, number]) => levelSplitPoints[`${p[0]},${p[1]}`] ?? [];
-  return offsets.map(([dx, dy]): SplitFaceKind => {
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-    if (!cellSet.has(`${neighbor[0]},${neighbor[1]}`)) return "wall";
+  return resolveFaceNeighbors(cfg, point, cellSet).map((neighbor): SplitFaceKind => {
+    if (neighbor === null) return "wall";
     const neighborIds: number[] = [];
     for (const n of nodes) if (n.x === neighbor[0] && n.y === neighbor[1] && (n.level ?? 0) === (level ?? 0)) neighborIds.push(n.id);
     if (neighborIds.length === 0) return "wall";
@@ -150,7 +149,6 @@ export function decidedFaceIndicesOf(
   cfg: FieldConfig,
   nodes: NodeDto[],
 ): Set<number> {
-  const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
   const coordsOf = (ep: PostEditEndpoint): [number, number] | undefined => {
     if (ep.kind === "split") return ep.point;
     const node = nodes.find((n) => n.id === ep.id);
@@ -165,7 +163,7 @@ export function decidedFaceIndicesOf(
     const other = fromForm ? e.to : e.from;
     const otherCoords = coordsOf(other);
     if (!otherCoords) continue;
-    const i = offsets.findIndex(([dx, dy]) => candidatePoint[0] + dx === otherCoords[0] && candidatePoint[1] + dy === otherCoords[1]);
+    const i = faceIndexTo(cfg, candidatePoint, otherCoords);
     if (i !== -1) result.add(i);
   }
   return result;
@@ -268,9 +266,8 @@ export function resolveFaceOwner(
     return candidate?.forms.find((f) => f.kind === "split") ?? nodeEndpoint(nodeId);
   };
 
-  const { offsets: neighborOffsets } = getNeighborData(cfg, newNeighbor[0], newNeighbor[1]);
-  const degree = neighborOffsets.length;
-  const targetFace = neighborOffsets.findIndex(([dx, dy]) => newNeighbor[0] + dx === point[0] && newNeighbor[1] + dy === point[1]);
+  const degree = faceNeighborCells(cfg, newNeighbor).length;
+  const targetFace = faceIndexTo(cfg, newNeighbor, point);
 
   if (targetFace !== -1) {
     const existing = selectExistingFaceOwner(candidates, newNeighbor, targetFace, edges, cfg, nodes);
@@ -494,10 +491,8 @@ export function rotateSplitPointBreaksNeighborShape(
   const after = applyRotatedNodesToEdges(edges, point, level, nodes, rotatedNodes);
   if (after === undefined) return false; // rotation couldn't resolve its own original node — same as a no-op
 
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const levelSplitPoints = recordOnLevel(splitPoints, level);
-  for (const [dx, dy] of offsets) {
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+  for (const neighbor of faceNeighborCells(cfg, point)) {
     const neighborSlots = levelSplitPoints[`${neighbor[0]},${neighbor[1]}`] ?? [];
     const neighborOriginal = nodeAt(nodes, neighbor, level, 0);
     const neighborEndpoints: PostEditEndpoint[] = [
