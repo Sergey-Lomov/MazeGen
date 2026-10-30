@@ -62,7 +62,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   /** Corridor network tiles, below `corridors` (see `updateCorridorTiles`). */
   private readonly corridorTiles = new CorridorTileLayer();
   private readonly corridors: Graphics;
-  /** One permanent top-level layer (sibling of `corridorsContainer`) holding every special split
+  /** Split connectors and the other lines the split shapes draw on the corridor layer: in the overlay, below
+   *  `splitShapesLayer`, so a shifted cut copy's corridors never cover a split line's caps (GitHub issue #888). */
+  private readonly splitLines: Graphics;
+  /** One permanent overlay layer (above `corridorsContainer` and `splitLines`) holding every special split
    *  shape's (bridge/diagonal) own throwaway per-tile `Graphics` for this frame, in draw order —
    *  each `clipViewAt()` call appends its own `gapView` (background-colored gap patch) immediately
    *  followed by its own `clipView` (connector line/ribbon), so every node's own patch sits directly
@@ -155,14 +158,18 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
   constructor(root: Container) {
     this.backgroundGrid = new BackgroundGridLayer(root);
-    const container = this.backgroundGrid.content;
+    // Only the corridors are content; everything else sits in the overlay, above the corridors of every cut copy (GitHub issue #888).
+    const container = this.backgroundGrid.overlay;
 
     this.corridorsContainer = new Container();
-    container.addChild(this.corridorsContainer);
+    this.backgroundGrid.content.addChild(this.corridorsContainer);
 
     this.corridorsContainer.addChild(this.corridorTiles.container);
     this.corridors = new Graphics();
     this.corridorsContainer.addChild(this.corridors);
+
+    this.splitLines = new Graphics();
+    container.addChild(this.splitLines);
 
     this.splitShapesLayer = new Container();
     container.addChild(this.splitShapesLayer);
@@ -234,6 +241,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const visible = state.openCard === "image_export";
     this.backgroundGrid.setVisible(visible);
     this.corridorsContainer.visible = visible;
+    this.splitLines.visible = visible;
     this.splitShapesLayer.visible = visible;
     this.markerWidenContainer.visible = visible;
     this.teleportContainer.visible = visible;
@@ -281,9 +289,15 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
     const cellBounds = cellCenterBounds(floorNodes, state.activeFieldConfig);
     return measureContentMargin(
-      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
+      [this.corridorsContainer, this.splitLines, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
+  }
+
+  readonly hasOverlay = true;
+
+  get layers(): ModeRenderer["layers"] {
+    return this.backgroundGrid;
   }
 
   setRenderPass(pass: RenderPass): void {
@@ -371,6 +385,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Corridor network (GitHub issue #736): one tile per cell, shared per tile shape — see
     // `updateCorridorTiles`. Everything drawn into `corridors` below sits on top of the tiles.
     this.corridors.clear();
+    this.splitLines.clear();
     this.corridorFaceLimit(state, cfg);
     this.updateCorridorTiles(settings, this.geometryCache.segments);
 
@@ -687,7 +702,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       cap: settings.oneWayJoin === "miter" ? ("square" as const) : ("round" as const),
     };
 
-    const drawConnectorLine = (from: { x: number; y: number }, to: { x: number; y: number }, color: number, oneWayOut: boolean | undefined, width: number = settings.thickness, target: Graphics = this.corridors, capOverride?: "butt" | "round" | "square"): void => {
+    const drawConnectorLine = (from: { x: number; y: number }, to: { x: number; y: number }, color: number, oneWayOut: boolean | undefined, width: number = settings.thickness, target: Graphics = this.splitLines, capOverride?: "butt" | "round" | "square"): void => {
       target.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({ width, color, cap: capOverride ?? cap, join: settings.join });
       if (oneWayOut === undefined) return;
       const dx = to.x - from.x, dy = to.y - from.y;
@@ -793,8 +808,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       if (segments.length === 0) continue;
       const contour = buildCorridorContour(segments, this.contourWidth(settings), settings.junctionRadius);
       if (contour.length === 0) continue;
-      traceCorridorContour(this.corridors, contour);
-      this.corridors.fill(settings.color);
+      traceCorridorContour(this.splitLines, contour);
+      this.splitLines.fill(settings.color);
     }
   }
 
@@ -806,7 +821,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const passage of passages) {
       for (const segment of passage.wallSegments) {
         const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
-        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
+        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.splitLines);
       }
     }
   }
@@ -971,19 +986,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               if (settings.splitGapWidth > 0 && outerTurn.length === 2) {
                 const gridInset = 0.5 / (this.viewport.scale || 1);
                 const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, settings.junctionRadius));
-                this.corridors.fill(settings.background);
+                traceCorridorContour(this.splitLines, buildCorridorContour(outerTurn, gapWidth, settings.junctionRadius));
+                this.splitLines.fill(settings.background);
               }
-              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, this.contourWidth(settings), settings.junctionRadius));
-              this.corridors.fill(settings.color);
+              traceCorridorContour(this.splitLines, buildCorridorContour(outerContourSegments, this.contourWidth(settings), settings.junctionRadius));
+              this.splitLines.fill(settings.color);
               if (outerTurn.length === 2) {
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, this.contourWidth(settings), settings.junctionRadius));
-                this.corridors.fill(settings.color);
+                traceCorridorContour(this.splitLines, buildCorridorContour(outerTurn, this.contourWidth(settings), settings.junctionRadius));
+                this.splitLines.fill(settings.color);
               }
               break;
             }
             // Miter join from here on: the round join drew the whole node above and broke out.
-            drawConnectorLine(junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors, "butt");
+            drawConnectorLine(junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.splitLines, "butt");
 
             // Patch the seam between this angled split ray and the ordinary corridor continuing
             // beyond the hex face. Both strokes are butt-cut at `segment.center`; the two-ray
@@ -1009,11 +1024,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             const inwardWedge = selectInwardJunctionWedge(rays, inward);
             if (inwardWedge) {
               const wedge = inwardWedge;
-              this.corridors.moveTo(segment.center.x + wedge.points[0].x, segment.center.y + wedge.points[0].y);
+              this.splitLines.moveTo(segment.center.x + wedge.points[0].x, segment.center.y + wedge.points[0].y);
               for (let i = 1; i < wedge.points.length; i++) {
-                this.corridors.lineTo(segment.center.x + wedge.points[i].x, segment.center.y + wedge.points[i].y);
+                this.splitLines.lineTo(segment.center.x + wedge.points[i].x, segment.center.y + wedge.points[i].y);
               }
-              this.corridors.closePath().fill(settings.color);
+              this.splitLines.closePath().fill(settings.color);
             }
           }
         });
@@ -1190,7 +1205,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           if (!junction) return;
           for (const segment of passage.wallSegments) {
             drawConnectorLine(
-              junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors,
+              junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.splitLines,
               settings.join === "miter" ? "butt" : "round",
             );
 
@@ -1220,11 +1235,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             const inwardWedge = selectInwardJunctionWedge(rays, inward);
             if (inwardWedge) {
               const wedge = inwardWedge;
-              this.corridors.moveTo(segment.center.x + wedge.points[0].x, segment.center.y + wedge.points[0].y);
+              this.splitLines.moveTo(segment.center.x + wedge.points[0].x, segment.center.y + wedge.points[0].y);
               for (let i = 1; i < wedge.points.length; i++) {
-                this.corridors.lineTo(segment.center.x + wedge.points[i].x, segment.center.y + wedge.points[i].y);
+                this.splitLines.lineTo(segment.center.x + wedge.points[i].x, segment.center.y + wedge.points[i].y);
               }
-              this.corridors.closePath().fill(settings.color);
+              this.splitLines.closePath().fill(settings.color);
             }
           }
         });
@@ -1349,6 +1364,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.backgroundGrid.destroy();
     this.corridorTiles.destroy();
     this.corridors.destroy();
+    this.splitLines.destroy();
     this.corridorsContainer.destroy();
     for (const g of this.splitClipScratch) g.destroy();
     this.splitShapesLayer.destroy();

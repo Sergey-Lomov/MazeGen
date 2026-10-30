@@ -7,6 +7,18 @@ import { SeamArrowLayer } from "../seamArrowSync";
 import { seamArrowsShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
 
+type CopyLayer = "content" | "overlay";
+const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay"];
+
+/** One shifted copy of the mode's picture on the cut sheet: a renderer building the geometry once, whose content and
+ *  overlay layers sit in the sheet's shared layers, each inside its own holder that carries the copy's offset. */
+interface SheetCopy {
+  /** Detached: only holds the copy's backdrop, which is never shown. */
+  root: Container;
+  renderer: ModeRenderer;
+  holders: Container[];
+}
+
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
 /** What the cut sheet is built from: when none of these changed, the plan is the same. */
@@ -28,18 +40,20 @@ function cutInputs(state: MazeState): unknown[] {
  *
  * With cut lines (GitHub issue #859) the canvas shows the sheet as it will be exported: the active
  * mode's own renderer draws only the backdrop (background and grid) over the whole canvas, and its
- * content is drawn once per `CutPlan` offset by further instances of the same mode renderer, shifted
- * and clipped to the plan's region.
+ * content and then its overlay are drawn once per `CutPlan` offset by further instances of the same mode
+ * renderer, shifted and clipped to the plan's region, all contents below all overlays (GitHub issue #888).
  * It also owns the seam arrow layer, above everything: the glues of the active floor, shown only
  * while the export topology panel is open and never part of an exported image. */
 export class ImageExportRenderer implements ViewportListener {
   private readonly container: Container;
-  /** The content copies of the cut sheet, masked by the cut region. */
+  /** The copies of the cut sheet, masked by the cut region. */
   private readonly sheet = new Container();
+  /** One layer per kind, stacked in order, each holding that layer of every copy: all contents below all overlays (GitHub issue #888). */
+  private readonly layers: Record<CopyLayer, Container> = { content: new Container(), overlay: new Container() };
   private readonly mask = new Graphics();
   private readonly modeContainers = new Map<RenderModeId, Container>();
   private readonly modeRenderers = new Map<RenderModeId, ModeRenderer>();
-  private copies: { container: Container; renderer: ModeRenderer }[] = [];
+  private copies: SheetCopy[] = [];
   private copiesMode: RenderModeId | null = null;
   /** The mode whose own renderer is currently reduced to the backdrop. */
   private cutMode: RenderModeId | null = null;
@@ -52,6 +66,7 @@ export class ImageExportRenderer implements ViewportListener {
   constructor(container: Container) {
     this.container = container;
     this.container.addChild(this.sheet);
+    for (const layer of COPY_LAYERS) this.sheet.addChild(this.layers[layer]);
     this.container.addChild(this.mask);
     this.container.addChild(this.seamArrowContainer);
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
@@ -90,7 +105,8 @@ export class ImageExportRenderer implements ViewportListener {
   private destroyCopies(): void {
     for (const copy of this.copies) {
       copy.renderer.destroy();
-      copy.container.destroy({ children: true });
+      for (const holder of copy.holders) holder.destroy({ children: true });
+      copy.root.destroy({ children: true });
     }
     this.copies = [];
     this.copiesMode = null;
@@ -103,6 +119,22 @@ export class ImageExportRenderer implements ViewportListener {
     renderer.setRenderPass("full");
     const { x, y, w, h, scale } = this.lastViewport;
     renderer.onViewportChanged(x, y, w, h, scale);
+  }
+
+  /** A copy of `mode`'s picture without its backdrop, whose content and overlay are moved into the sheet's shared layers. */
+  private createCopy(mode: RenderModeId): SheetCopy {
+    const root = new Container();
+    const renderer = createModeRenderer(mode, root);
+    renderer.setRenderPass("foreground");
+    const { x, y, w, h, scale } = this.lastViewport;
+    renderer.onViewportChanged(x, y, w, h, scale);
+    const holders = COPY_LAYERS.map((layer) => {
+      const holder = new Container();
+      holder.addChild(renderer.layers[layer]);
+      this.layers[layer].addChild(holder);
+      return holder;
+    });
+    return { root, renderer, holders };
   }
 
   /** Brings the canvas in line with the cut plan: the region mask and the shifted content copies of the
@@ -134,18 +166,10 @@ export class ImageExportRenderer implements ViewportListener {
 
     if (this.copiesMode !== mode || this.copies.length !== plan.offsets.length) {
       this.destroyCopies();
-      for (let i = 0; i < plan.offsets.length; i++) {
-        const container = new Container();
-        this.sheet.addChild(container);
-        const renderer = createModeRenderer(mode, container);
-        renderer.setRenderPass("content");
-        const { x, y, w, h, scale } = this.lastViewport;
-        renderer.onViewportChanged(x, y, w, h, scale);
-        this.copies.push({ container, renderer });
-      }
+      for (let i = 0; i < plan.offsets.length; i++) this.copies.push(this.createCopy(mode));
       this.copiesMode = mode;
     }
-    plan.offsets.forEach(([dx, dy], i) => this.copies[i].container.position.set(dx, dy));
+    this.copies.forEach((copy, i) => copy.holders.forEach((holder) => holder.position.set(...plan.offsets[i])));
   }
 
   private subscribe(): void {
@@ -182,6 +206,6 @@ export class ImageExportRenderer implements ViewportListener {
     for (const modeContainer of this.modeContainers.values()) modeContainer.destroy();
     this.sheet.mask = null;
     this.mask.destroy();
-    this.sheet.destroy();
+    this.sheet.destroy({ children: true });
   }
 }
