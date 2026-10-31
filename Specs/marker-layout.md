@@ -9,7 +9,7 @@ A **host** is one node position (`hostKey`, from `buildNodePositions`, so a spli
 is its own host). Markers sharing a host get distinct **slots**, in this order:
 
 1. start / finish markers (`buildMazeMarkers`),
-2. the teleport point (all teleport edges touching that node share ONE slot and move together; with `teleportMergeMode` off, `mergeTeleports: false`, every teleport end gets its own slot and index labels are paired to those slots by order, best-effort),
+2. the teleport point (all teleport edges touching that node share ONE slot and move together; with `teleportMergeMode` off, `mergeTeleports: false`, every teleport end gets its own slot),
 3. vertical-connection markers (`vertical_passage` / `elevator`).
 
 A host with a single marker is untouched. Cross-floor teleport **badge** ends are never laid out — they
@@ -88,4 +88,4 @@ Limits: slot radii in the layout ignore the adaptation factor, and corridor brid
 Marker index labels on a split-tile node (hub point ≠ cell center) are not shifted.
 Teleport connector routing keeps its clearance around a shrunken point at the full marker radius (no visible effect). In
 `"overlap"` mode the `teleport_waypoint_overlap` warning still fires for stacked markers (nothing separates them).
-Same-kind vertical markers on one host share a `shiftKey`; repeats get a `#n` suffix and are matched to index labels by order, which is a best-effort pairing. The `teleport_waypoint_overlap` warning lays out only start/finish and teleport points (no vertical markers, and start/finish slots omit their gap), so it can differ slightly from the drawn layout.
+Index labels are paired with laid-out markers by `shiftKey(kind, nodeId)` (`MarkerIndexLabel.nodeId`; vertical markers use `fromNode`, teleport ends `fromNode`/`toNode`), not by position or order. With merged teleports every end node on the host shares the slot's shift; unmerged teleport ends are additionally keyed by the partner node (`MarkerIndexLabel.partnerId`) so several teleports on one node keep separate labels; a label without a partner match falls back to the bare node key (first end wins). The `teleport_waypoint_overlap` warning lays out only start/finish and teleport points (no vertical markers, and start/finish slots omit their gap), so it can differ slightly from the drawn layout.

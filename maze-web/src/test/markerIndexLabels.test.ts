@@ -84,6 +84,13 @@ describe("buildMarkerIndexLabels — pairing", () => {
     expect(floor1.labels.map((l) => l.label)).toEqual(["1"]);
   });
 
+  it("tags each label with its node and the link's other endpoint", () => {
+    const nodes = [n(0, 1, 1, 0), n(1, 1, 1, 1)];
+    const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "teleport" }];
+    expect(build(nodes, edges, cfg, 0, style()).labels.map((l) => [l.nodeId, l.partnerId])).toEqual([[0, 1]]);
+    expect(build(nodes, edges, cfg, 1, style()).labels.map((l) => [l.nodeId, l.partnerId])).toEqual([[1, 0]]);
+  });
+
   it("collapses one-way vertical passage + reverse directed edge into one link", () => {
     const nodes = [n(0, 2, 2, 0), n(1, 2, 2, 1)];
     const oneWay: EdgeDto[] = [{ from: 0, to: 1, kind: "vertical_passage" }];

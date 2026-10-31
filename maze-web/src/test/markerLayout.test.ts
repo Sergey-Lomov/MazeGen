@@ -64,12 +64,12 @@ describe("buildSplitHostKeys", () => {
 });
 
 describe("shiftMarkerIndexLabels", () => {
-  const label = (pos: [number, number], kind: "teleport" | "vertical" | "elevator") =>
-    ({ pos, kind, label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 });
+  const label = (pos: [number, number], kind: "teleport" | "vertical" | "elevator", nodeId = 1) =>
+    ({ pos, nodeId, kind, label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 });
 
   it("moves and scales only labels with a matching shift", () => {
-    const shifts = new Map([[shiftKey("teleport", [5, 5]), [3, -2] as [number, number]]]);
-    const scales = new Map([[shiftKey("teleport", [5, 5]), 0.5]]);
+    const shifts = new Map([[shiftKey("teleport", 1), [3, -2] as [number, number]]]);
+    const scales = new Map([[shiftKey("teleport", 1), 0.5]]);
     const labels = [label([5, 5], "teleport"), label([5, 5], "vertical")];
     const out = shiftMarkerIndexLabels(labels, shifts, scales);
     expect(out[0].pos).toEqual([8, 3]);
@@ -176,7 +176,7 @@ describe("applyMarkerLayout", () => {
     const r = applyMarkerLayout({ markers: [mk([5, 5])], teleportEdges: [], verticalMarkers: [vert([5, 5], "elevator")], teleportRadius: 4, verticalRadius: () => 4 }, opts);
     expect(r.verticalMarkers[0].pos).not.toEqual([5, 5]);
     const labels = shiftMarkerIndexLabels(
-      [{ pos: [5, 5], kind: "elevator", label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 }],
+      [{ pos: [5, 5], nodeId: 1, kind: "elevator", label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 }],
       r.shifts,
     );
     expect(labels[0].pos).toEqual(r.verticalMarkers[0].pos);
@@ -184,7 +184,7 @@ describe("applyMarkerLayout", () => {
 
   it("passes the shrink factor to the index label of a scaled marker", () => {
     const r = applyMarkerLayout({ markers: [mk([5, 5])], teleportEdges: [], verticalMarkers: [vert([5, 5], "elevator")], teleportRadius: 4, verticalRadius: () => 4 }, { ...opts, scale: 0.5 });
-    const label = { pos: [5, 5] as [number, number], kind: "elevator" as const, label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 };
+    const label = { pos: [5, 5] as [number, number], nodeId: 1, kind: "elevator" as const, label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 };
     expect(shiftMarkerIndexLabels([label], r.shifts, r.scales)[0].scale).toBe(0.5);
     expect(shiftMarkerIndexLabels([label], r.shifts)[0].scale).toBeUndefined();
   });
@@ -275,17 +275,76 @@ describe("buildGroupBridgeMarkers", () => {
   });
 });
 
-describe("same-kind vertical markers on one host", () => {
-  it("each keeps its own label shift", () => {
+describe("same-kind markers on one host", () => {
+  const base = { pos: [10, 10] as [number, number], label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 };
+
+  it("vertical markers: each label follows its own node regardless of label order", () => {
     const r = applyMarkerLayout(
-      { markers: [], teleportEdges: [], verticalMarkers: [vert([10, 10]), vert([10, 10])], teleportRadius: 4, verticalRadius: () => 4 },
+      { markers: [], teleportEdges: [], verticalMarkers: [{ ...vert([10, 10]), fromNode: 7 }, { ...vert([10, 10]), fromNode: 8 }], teleportRadius: 4, verticalRadius: () => 4 },
       { mode: "row", spacing: 2 },
     );
-    const label = { pos: [10, 10] as [number, number], kind: "vertical" as const, label: "1", markerOuterRadius: 4, markerBorderWidth: 0, borderMatchColor: 0 };
-    const [a, b] = shiftMarkerIndexLabels([label, label], r.shifts);
-    expect(a.pos).toEqual(r.verticalMarkers[0].pos);
-    expect(b.pos).toEqual(r.verticalMarkers[1].pos);
+    const [a, b] = shiftMarkerIndexLabels([
+      { ...base, nodeId: 8, kind: "vertical" as const },
+      { ...base, nodeId: 7, kind: "vertical" as const },
+    ], r.shifts);
+    expect(a.pos).toEqual(r.verticalMarkers[1].pos);
+    expect(b.pos).toEqual(r.verticalMarkers[0].pos);
     expect(a.pos).not.toEqual(b.pos);
+  });
+
+  it("unmerged teleport ends: each label follows its own node regardless of label order", () => {
+    const edges: TeleportEdge[] = [
+      { from: [10, 10], to: [200, 0], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [10, 10], to: [0, 200], oneWay: false, fromNode: 3, toNode: 4 },
+    ];
+    const r = applyMarkerLayout(
+      { markers: [], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, mergeTeleports: false },
+      { mode: "row", spacing: 2 },
+    );
+    const [a, b] = shiftMarkerIndexLabels([
+      { ...base, nodeId: 3, kind: "teleport" as const },
+      { ...base, nodeId: 1, kind: "teleport" as const },
+    ], r.shifts);
+    expect(a.pos).toEqual(r.teleportEdges[1].from);
+    expect(b.pos).toEqual(r.teleportEdges[0].from);
+  });
+
+  it("unmerged teleports: a node with three teleports gets three distinct label positions", () => {
+    const edges: TeleportEdge[] = [2, 3, 4].map((to) => ({ from: [10, 10], to: [to * 100, 0], oneWay: false, fromNode: 1, toNode: to }));
+    const r = applyMarkerLayout(
+      { markers: [], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, mergeTeleports: false },
+      { mode: "row", spacing: 2 },
+    );
+    const out = shiftMarkerIndexLabels([4, 2, 3].map((to) => ({ ...base, nodeId: 1, partnerId: to, kind: "teleport" as const })), r.shifts);
+    expect(out[0].pos).toEqual(r.teleportEdges[2].from);
+    expect(out[1].pos).toEqual(r.teleportEdges[0].from);
+    expect(out[2].pos).toEqual(r.teleportEdges[1].from);
+    expect(new Set(out.map((l) => l.pos.join())).size).toBe(3);
+  });
+
+  it("a label whose partner has no matching end falls back to the node's shift", () => {
+    const edges: TeleportEdge[] = [{ from: [10, 10], to: [200, 0], oneWay: false, fromNode: 1, toNode: 2 }];
+    const r = applyMarkerLayout(
+      { markers: [mk([10, 10])], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, mergeTeleports: false },
+      { mode: "row", spacing: 2, scale: 0.5 },
+    );
+    const [out] = shiftMarkerIndexLabels([{ ...base, nodeId: 1, partnerId: 99, kind: "teleport" as const }], r.shifts, r.scales);
+    expect(out.pos).toEqual(r.teleportEdges[0].from);
+    expect(out.scale).toBe(0.5);
+  });
+
+  it("merged teleport point: every node on the host follows the shared slot", () => {
+    const edges: TeleportEdge[] = [
+      { from: [10, 10], to: [200, 0], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [10, 10], to: [0, 200], oneWay: false, fromNode: 3, toNode: 4 },
+    ];
+    const r = applyMarkerLayout(
+      { markers: [mk([10, 10])], teleportEdges: edges, verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 },
+      { mode: "row", spacing: 2 },
+    );
+    const out = shiftMarkerIndexLabels([1, 3].map((nodeId) => ({ ...base, nodeId, kind: "teleport" as const })), r.shifts);
+    expect(out[0].pos).toEqual(r.teleportEdges[0].from);
+    expect(out[1].pos).toEqual(r.teleportEdges[0].from);
   });
 });
 

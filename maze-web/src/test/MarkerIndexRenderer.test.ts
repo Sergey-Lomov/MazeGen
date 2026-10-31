@@ -93,6 +93,7 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
 
 const label = (patch: Partial<MarkerIndexLabel> = {}): MarkerIndexLabel => ({
   pos: [100, 200],
+  nodeId: 1,
   kind: "teleport",
   label: "1",
   markerOuterRadius: 10,

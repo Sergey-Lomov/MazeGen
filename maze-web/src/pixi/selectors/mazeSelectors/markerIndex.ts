@@ -46,6 +46,10 @@ export type ResolveMarkerEndpointVisual = (
  *  `style.offset` below it); `borderMatchColor` feeds `borderColorFromMarker`. */
 export interface MarkerIndexLabel {
   pos: [number, number];
+  /** Node this label is anchored on — pairs the label with its laid-out marker (`shiftKey`). */
+  nodeId: number;
+  /** Other endpoint of a two-node link — tells apart several links ending on one node. */
+  partnerId?: number;
   /** Which link kind this label annotates — lets the marker layout (GitHub issue #735) move it with its marker. */
   kind: MarkerIndexLinkKind;
   label: string;
@@ -223,6 +227,8 @@ export function buildMarkerIndexLabels(
       const factor = scaler.factorAt(pos, visual.sizeAdaptation);
       labels.push({
         pos,
+        nodeId: id,
+        ...(link.nodeIds.length === 2 ? { partnerId: link.nodeIds[0] === id ? link.nodeIds[1] : link.nodeIds[0] } : {}),
         kind: link.kind,
         label,
         markerOuterRadius: visual.scalesAsWhole ? visual.outerRadius * factor : visual.outerRadius + visual.fillRadius * (factor - 1),
