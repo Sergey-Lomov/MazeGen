@@ -152,13 +152,14 @@ describe("marker_index_covers_stop_line", () => {
   });
 
   it("counts a plate of another link in the same cell, not only the passage's own", () => {
-    // The passage itself is not indexed; a cross-floor teleport sharing its cell is.
+    // The passage itself is not indexed; a cross-floor teleport sharing its cell is. Both nodes sit
+    // on their own split hub points (#896), so the plate must be large enough to reach the other hub's stop line.
     const nodes = [...crossNodes, n(2, 0, 0, 0), n(3, 1, 0, 1)];
     const edges: EdgeDto[] = [...oneWayEdges, { from: 2, to: 3, kind: "teleport" }, { from: 3, to: 2, kind: "teleport" }];
     const coverage = { ...DEFAULT_MARKER_INDEX_SETTINGS.coverage, verticalPassage: false };
     const run = (crossFloorTeleport: boolean) => computeVectorByWallsWarningsAcrossFloors(
       nodes, edges, [{ id: "f0" }, { id: "f1" }], squareCfg,
-      baseSettings({ markerIndex: index({ offset: 0, coverage: { ...coverage, crossFloorTeleport } }) }), null, null,
+      baseSettings({ markerIndex: index({ offset: 0, width: 30, height: 30, coverage: { ...coverage, crossFloorTeleport } }) }), null, null,
     ).filter((w) => w.id === ID);
     expect(run(true).flatMap((w) => w.nodes)).toContain(0);
     expect(run(false)).toHaveLength(0);
