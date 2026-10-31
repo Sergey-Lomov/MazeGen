@@ -40,6 +40,8 @@ floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?
 | Shape | Parameters |
 |---|---|
 | `rect` | `cols`, `rows` (square: width/height in cells; tri: pairs of opposite triangles per column; Cairo: fundamental 4×4 squares) |
+| `cylinder` | `cols`, `rows`, `axis` (select: glued left and right, or top and bottom); a rectangle with one pair of opposite sides glued. Every tessellation with a translation lattice that has axis-aligned vectors offers it (all but radial and Voronoi; the snub square one is turned with its lattice); on snub square, snub hexagonal, rhombitrihexagonal, truncated hexagonal and truncated trihexagonal `cols`/`rows` count lattice periods (not cell pitches as `rect` does) (`Specs/topology.md`, "Rectangle gluing"). Only sizes that close up are allowed: a typed size is moved to the nearest one that does. |
+| `torus` | `cols`, `rows`; both pairs of opposite sides glued, same size rule as `cylinder`. |
 | `parallelogram` | `cols`, `rows` |
 | `circle` | `radius` |
 | `triangle` | `side` |

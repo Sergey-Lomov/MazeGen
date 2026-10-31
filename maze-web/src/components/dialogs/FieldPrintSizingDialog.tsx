@@ -222,6 +222,8 @@ export function configSizeDescription(config: FieldConfig): string {
   const { shape } = config;
   switch (shape.shape) {
     case "rect":
+    case "cylinder":
+    case "torus":
     case "parallelogram": return m["field.print_sizing.result_size"]({ size: `${shape.cols} × ${shape.rows}` });
     case "circle":
     case "hexagon": return m["field.print_sizing.result_radius"]({ size: String(shape.radius) });
@@ -281,6 +283,8 @@ function printFieldShapeLabel(config: FieldConfig): string {
     case "circle": return m["field.shape.circle"]();
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
+    case "cylinder": return m["field.shape.cylinder"]();
+    case "torus": return m["field.shape.torus"]();
     case "hexagon": return m["field.shape.hexagon"]();
     case "box": return m["field.shape.box"]();
     case "tetrahedron": return m["field.shape.tetrahedron"]();
@@ -294,6 +298,8 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
   const { shape } = config;
   switch (shape.shape) {
     case "rect":
+    case "cylinder":
+    case "torus":
     case "parallelogram": return `${shape.cols} × ${shape.rows}`;
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;

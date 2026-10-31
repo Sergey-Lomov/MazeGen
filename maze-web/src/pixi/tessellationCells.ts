@@ -1,5 +1,5 @@
 import { getFieldPreset, getFieldPresetExtents, type FieldOpError } from "../wasm/mazeService";
-import { type FieldConfig, type ResolvedField } from "../fieldConfig";
+import { type FieldConfig, type ResolvedField, requiresExactCells } from "../fieldConfig";
 import { presetParams } from "./fieldOps";
 import { normalizeCells } from "./primitiveGeometry";
 
@@ -13,6 +13,7 @@ export function configAllCells(cfg: FieldConfig, smooth = false): [number, numbe
   const { shape: preset, ...params } = shape;
   // Core rejects sizes below 1; an unset (0) dimension is an empty field.
   if (belowMinimum(cfg, preset, params)) return [];
+  if (requiresExactCells(shape)) smooth = false;
   const key = JSON.stringify([cfg.tessellation, preset, params]);
   const cached = presetCache.get(key);
   if (cached) return smooth ? smoothPreset(copyCells(cached), cfg) : copyCells(cached);

@@ -3,6 +3,7 @@ import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
 import { compactNetOf, presetParams } from "./fieldOps";
+import { snapRectToClose, withRectGluing, withoutRectGluing } from "./rectGluing";
 import { presetShapeExtents } from "./tessellationCells";
 import { displayTransform } from "./tessellationGeometry";
 import { printRectSizingOf, TESSELLATION_UI } from "./geometry/tessellationUi";
@@ -71,8 +72,11 @@ export function calculatePrintFieldConfig(
 ): PrintFieldSizingResult | null {
   // Floors of one shape kind ask the same question, and the dialog re-asks it on every render.
   // The answer does not depend on the current size, only on the shape kind; a box or polyhedron also depends
-  // on everything it is made of (proportions, net, mode), as the sizing keeps them.
-  const shape = isSwitchedShape(current.shape) ? current.shape : current.shape.shape;
+  // on everything it is made of (proportions, net, mode), as the sizing keeps them, and a cylinder or
+  // torus on which sides it glues.
+  const shape = isSwitchedShape(current.shape) ? current.shape
+    : current.shape.shape === "cylinder" ? { shape: "cylinder", axis: current.shape.axis }
+    : current.shape.shape;
   const key = JSON.stringify([{ ...current, shape }, input]);
   if (!sizingCache.has(key)) {
     if (sizingCache.size >= SIZING_CACHE_LIMIT) sizingCache.delete(sizingCache.keys().next().value!);
@@ -100,12 +104,17 @@ function computePrintFieldConfig(
   if (usableWidthMm <= 0 || usableHeightMm <= 0) return null;
 
   const cellSideMm = printMeasureToCellSideMm(current, input.cellSizeMm);
-  const config = sizingStrategyFor(current).calculate({
-    current: packedForSheet(current, usableWidthMm, usableHeightMm),
+  // A cylinder or torus is sized as the plane, then moved down to a size that closes up (GitHub issue #894).
+  const plane = withoutRectGluing(current) as PredefinedFieldConfig;
+  const planeConfig = sizingStrategyFor(plane).calculate({
+    current: packedForSheet(plane, usableWidthMm, usableHeightMm),
     usableWidthMm,
     usableHeightMm,
     cellSizeMm: cellSideMm,
   });
+  if (!planeConfig) return null;
+  const closed = plane === current ? planeConfig : closingSize(current, planeConfig);
+  const config = closed && plane !== current ? withinSheet(closed, usableWidthMm, usableHeightMm, cellSideMm) : closed;
   if (!config) return null;
 
   const bounds = boundsInCellSides(config);
@@ -117,6 +126,47 @@ function computePrintFieldConfig(
     usableHeightMm,
   };
 }
+
+/** `sized` (a plane) glued as `current` is, at the nearest smaller size that closes up. */
+function closingSize(current: PredefinedFieldConfig, sized: FieldConfig): FieldConfig | null {
+  return snapRectToClose(withRectGluing(sized, current), "both", "down");
+}
+
+/**
+ * `config` (a cylinder or torus) made smaller until it fits the sheet. The plane it was sized from is
+ * measured in cell pitches, a gluing that is made of lattice periods can be much bigger than that.
+ */
+function withinSheet(config: FieldConfig, usableWidthMm: number, usableHeightMm: number, cellSideMm: number): FieldConfig | null {
+  let sized = config;
+  for (let step = 0; step < MAX_SHRINK_STEPS; step++) {
+    const bounds = boundsInCellSides(sized);
+    const tooWide = bounds.width * cellSideMm > usableWidthMm;
+    const tooHigh = bounds.height * cellSideMm > usableHeightMm;
+    if (!tooWide && !tooHigh) return sized;
+    if (sized.shape.shape !== "cylinder" && sized.shape.shape !== "torus") return null;
+    const { cols, rows } = sized.shape;
+    // A size core refuses is cut in half, otherwise the sheet over the field decides how much to cut.
+    const smaller = (size: number, over: boolean, usable: number, extent: number) =>
+      !over ? size : Math.max(1, Math.min(size - 1, Number.isFinite(extent) ? Math.floor((size * usable) / extent) : Math.floor(size / 2)));
+    const next = snapRectToClose(
+      {
+        ...sized,
+        shape: {
+          ...sized.shape,
+          cols: smaller(cols, tooWide, usableWidthMm, bounds.width * cellSideMm),
+          rows: smaller(rows, tooHigh, usableHeightMm, bounds.height * cellSideMm),
+        },
+      },
+      "both",
+      "down",
+    );
+    if (!next || (next.shape as { cols: number }).cols < 1 || (next.shape as { rows: number }).rows < 1) return null;
+    sized = next;
+  }
+  return null;
+}
+
+const MAX_SHRINK_STEPS = 64;
 
 const AXIS_ALIGNED_STRATEGY: PrintFieldSizingStrategy = {
   matches: (current) => current.shape.shape === "rect" && TESSELLATION_UI[current.tessellation.kind].editor.axisAlignedGrid,

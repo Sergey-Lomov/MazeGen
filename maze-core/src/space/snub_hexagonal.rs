@@ -20,8 +20,8 @@
 
 use super::field_ops::Inclusion;
 use super::multi_shape::{
-    AnchoredPoint, CellFace, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind,
-    is_opposite_face, lattice_rect_cells, polygon_faces, preset_cells, regular_cell_shape,
+    AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
+    is_opposite_face, polygon_faces, preset_cells, rect_or_period_cells, regular_cell_shape,
     regular_polygon_area, regular_shapes,
 };
 use super::square::cell_range;
@@ -325,7 +325,7 @@ impl Tessellation for SnubHexagonalTessellation {
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
-        &PRESETS
+        &TOPOLOGY_PRESETS
     }
 
     fn build_preset(
@@ -336,7 +336,14 @@ impl Tessellation for SnubHexagonalTessellation {
         let origin = self.center(SnubHexagonalPoint::hexagon(0, 0));
         // `cols × rows` hexagon pitches, centered on the origin hexagon.
         let mut cells = preset_cells(self, key, params, origin, Inclusion::WholeCell, || {
-            lattice_rect_cells(self, params, origin, Point::new(PITCH, PITCH))
+            rect_or_period_cells(
+                self,
+                key,
+                params,
+                origin,
+                Point::new(PITCH, PITCH),
+                GLUED_PHASE,
+            )
         })?;
         cells.sort();
         Ok(cells)
@@ -346,6 +353,9 @@ impl Tessellation for SnubHexagonalTessellation {
         regular_polygon_area(self.faces_of(cell).len())
     }
 }
+
+/// Where the rectangle of a cylinder or torus starts: the position with the least jagged outline.
+const GLUED_PHASE: Point = Point::new(0.1079, 5.2589);
 
 /// Center distance of neighboring hexagons, `√7`.
 const PITCH: f64 = 2.645_751_311_064_590_7;

@@ -3,7 +3,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Circle, ClipboardPaste, Copy, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
+import { BOX_NET_COMPACT, POLYHEDRON_SHAPES, isSwitchedShape, requiresExactCells, type FieldConfig, type FieldShape, type PolyhedronShapeName, type PresetFieldShapeName } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
@@ -13,6 +13,7 @@ import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
 import { Switch } from "../Switch";
+import { Tooltip } from "../Tooltip";
 import { Stack, Inline } from "../Layout";
 import { InfoIconButton } from "../InfoIconButton";
 import { ToggleRow } from "../ToggleRow";
@@ -24,6 +25,8 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
+import type { InputNormalizationReason } from "../inputNormalization";
+import { snapRectToClose } from "../../pixi/rectGluing";
 import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronFaceCount, polyhedronNetCount, presetParams } from "../../pixi/fieldOps";
 import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
@@ -92,11 +95,17 @@ export function FieldSetupFeature() {
     ? fieldConfig
     : null;
 
-  function setField(field: string, value: number) {
+  function setField(field: string, value: number): InputNormalizationReason | void {
     // The compact layout of a box or polyhedron is always by faces.
     const { shape } = fieldConfig;
     const forced = isSwitchedShape(shape) && field === "net" && value === compactNetOf(fieldConfig.tessellation, shape) ? { mode: 1 } : {};
-    setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value, ...forced } as FieldShape });
+    const next = { ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value, ...forced } as FieldShape };
+    // A cylinder or torus only exists at sizes that close up (GitHub issue #894): move to the nearest one.
+    const closing = snapRectToClose(next, field === "rows" ? "rows" : "cols");
+    if (!closing) return;
+    setFieldConfig(closing);
+    if (closing === next || (closing.shape.shape !== "cylinder" && closing.shape.shape !== "torus")) return;
+    return { kind: "rounded_to_gluing", shape: closing.shape.shape, value: String((closing.shape as unknown as Record<string, number>)[field]) };
   }
 
   function handleSwitchToDefault() {
@@ -157,13 +166,16 @@ export function FieldSetupFeature() {
   }
 
   function renderSmoothingToggle() {
+    const exactCells = requiresExactCells(fieldConfig.shape);
     return (
       <div style={styles.originRow}>
         <span style={styles.smoothingLabelGroup}>
           <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
           <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
         </span>
-        <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
+        <Tooltip content={exactCells ? m["field.smoothing_unavailable"]() : undefined}>
+          <Switch checked={smoothPrimitives && !exactCells} onChange={setSmoothPrimitives} disabled={fieldEditLocked || exactCells} />
+        </Tooltip>
       </div>
     );
   }
@@ -205,7 +217,7 @@ export function FieldSetupFeature() {
         return (
           <label key={name} style={styles.label}>
             {paramLabel(tessellationKind, shape.shape, name)}
-            <select style={styles.select} value={compactBox && name === "mode" ? 1 : values[name]} name={`field-${name}`}
+            <select style={styles.select} value={compactBox && name === "mode" ? 1 : values[name] ?? 0} name={`field-${name}`}
               disabled={fieldEditLocked || (compactBox && name === "mode")}
               onChange={(e) => setField(name, Number(e.target.value))}>
               {choices.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
@@ -600,6 +612,8 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
     case "triangle": return m["field.shape.triangle"]();
     case "parallelogram": return m["field.shape.parallelogram"]();
     case "hexagon": return m["field.shape.hexagon"]();
+    case "cylinder": return m["field.shape.cylinder"]();
+    case "torus": return m["field.shape.torus"]();
     case "box": return m["field.shape.box"]();
     case "tetrahedron": return m["field.shape.tetrahedron"]();
     case "octahedron": return m["field.shape.octahedron"]();
@@ -607,13 +621,18 @@ function shapeLabel(kind: TessellationKind, shape: PresetFieldShapeName): string
   }
 }
 
+/** A rectangle, possibly glued into a cylinder or a torus: labelled and sized like a rectangle. */
+function isRectLike(shape: PresetFieldShapeName): boolean {
+  return shape === "rect" || shape === "cylinder" || shape === "torus";
+}
+
 /** The box side params, shown as one row of inputs under a single caption. */
 const BOX_SIZES = ["width", "height", "depth"];
 
 function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: string): string {
   switch (name) {
-    case "cols": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.width"]() : m["field.cols"]();
-    case "rows": return shape === "rect" && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
+    case "cols": return isRectLike(shape) && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.width"]() : m["field.cols"]();
+    case "rows": return isRectLike(shape) && TESSELLATION_UI[kind].editor.axisAlignedGrid ? m["field.height"]() : m["field.rows"]();
     case "radius": return m["field.radius"]();
     case "side": return m["field.side"]();
     case "width": return m["field.width"]();
@@ -621,12 +640,19 @@ function paramLabel(kind: TessellationKind, shape: PresetFieldShapeName, name: s
     case "depth": return m["field.depth"]();
     case "mode": return m["field.box.mode"]();
     case "net": return m["field.box.net"]();
+    case "axis": return m["field.topology.axis"]();
     default: return name;
   }
 }
 
 /** Switch-like params (core publishes them as `0..max` integers) rendered as a select, not a number input. */
 function paramChoices(tessellation: FieldConfig["tessellation"], shape: PresetFieldShapeName, name: string): { value: number; label: string }[] | null {
+  if (shape === "cylinder") {
+    return name === "axis" ? [
+      { value: 0, label: m["field.topology.axis.left_right"]() },
+      { value: 1, label: m["field.topology.axis.top_bottom"]() },
+    ] : null;
+  }
   const polyhedron = (POLYHEDRON_SHAPES as readonly string[]).includes(shape);
   if (shape !== "box" && !polyhedron) return null;
   if (name === "net" && polyhedron) return polyhedronNetChoices(tessellation, shape as PolyhedronShapeName);
@@ -700,6 +726,8 @@ export function configCellCount(cfg: FieldConfig): number {
   switch (shape.shape) {
     case "custom": return 0;
     case "rect":
+    case "cylinder":
+    case "torus":
       return ui.rectCellsPerUnit === null ? configAllCells(cfg).length : ui.rectCellsPerUnit * shape.cols * shape.rows;
     case "parallelogram": return shape.cols * shape.rows;
     case "hexagon":
@@ -718,6 +746,8 @@ function configSizeLabel(cfg: FieldConfig): string {
   const { shape } = cfg;
   switch (shape.shape) {
     case "rect":
+    case "cylinder":
+    case "torus":
     case "parallelogram": return `${shape.cols}\u00D7${shape.rows}`;
     case "circle":
     case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;

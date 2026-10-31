@@ -56,3 +56,22 @@ describe("validateFieldShape — polyhedra", () => {
     expect(() => validateFieldShape({ shape: "icosahedron" }, "s")).toThrow(/side/);
   });
 });
+
+describe("validateFieldShape — cylinder and torus", () => {
+  const size = { cols: 5, rows: 4 };
+
+  it("round-trips a cylinder with its axis and a torus without one", () => {
+    const cylinder = { shape: "cylinder", ...size, axis: 1 };
+    expect(validateFieldShape(JSON.parse(JSON.stringify(cylinder)), "s")).toEqual(cylinder);
+    const torus = { shape: "torus", ...size };
+    expect(validateFieldShape({ ...torus, axis: 1 }, "s")).toEqual(torus);
+  });
+
+  it("defaults the axis of a cylinder to left and right", () => {
+    expect(validateFieldShape({ shape: "cylinder", ...size }, "s")).toEqual({ shape: "cylinder", ...size, axis: 0 });
+  });
+
+  it.each([{ axis: 2 }, { axis: -1 }, { axis: 0.5 }])("rejects the cylinder %j", (bad) => {
+    expect(() => validateFieldShape({ shape: "cylinder", ...size, ...bad }, "s")).toThrow();
+  });
+});

@@ -8,6 +8,7 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, rect_wraps, validate_rect_topology};
 use super::{
     CellShape, CellType, CellTypeId, FieldOpError, Point, PresetDescriptor, PresetParams, Segment,
     ShapeDescriptor, Tessellation, validate_preset,
@@ -256,10 +257,17 @@ impl Tessellation for SquareOctagonTessellation {
         validate_preset(&PRESETS, key, params)?;
         let origin = self.center(SquareOctagonPoint { x: 0, y: 0 });
         match key {
-            "rect" => Ok(centered_rect(
-                param(params, "cols") as i32,
-                param(params, "rows") as i32,
-            )),
+            "rect" | "cylinder" | "torus" => {
+                let (wrap_x, wrap_y) = rect_wraps(key, params)?;
+                let cells = centered_rect(
+                    param(params, "cols") as i32,
+                    param(params, "rows") as i32,
+                    wrap_x,
+                    wrap_y,
+                );
+                validate_rect_topology(self, &cells, key, params)?;
+                Ok(cells)
+            }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
             _ => Err(FieldOpError::Unavailable),
@@ -335,18 +343,27 @@ fn parity_counts(range: &std::ops::RangeInclusive<i32>) -> (i64, i64) {
 }
 
 /// Preset field shapes of the 4.8.8 tiling, in UI order.
-const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+const PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// `cols × rows` octagons with the squares between them (the origin octagon at `size / 2`,
 /// rounded down, of each axis).
-fn centered_rect(cols: i32, rows: i32) -> Vec<SquareOctagonPoint> {
+/// `cols` x `rows` octagons with a square in every gap between them. A glued side (`wrap_x`,
+/// `wrap_y`) gets the squares of the seam too, so one side of the gluing ends with octagons only
+/// and the opposite one with the squares that fill the gap to them.
+fn centered_rect(cols: i32, rows: i32, wrap_x: bool, wrap_y: bool) -> Vec<SquareOctagonPoint> {
     let (ox, oy) = (cols / 2, rows / 2);
     let mut cells: Vec<SquareOctagonPoint> = (0..rows)
         .flat_map(|row| (0..cols).map(move |col| (col, row)))
         .flat_map(|(col, row)| {
             let (x, y) = (2 * (col - ox), 2 * (row - oy));
             let octagon = SquareOctagonPoint { x, y };
-            let square = (col + 1 < cols && row + 1 < rows)
+            let square = ((col + 1 < cols || wrap_x) && (row + 1 < rows || wrap_y))
                 .then_some(SquareOctagonPoint { x: x + 1, y: y + 1 });
             std::iter::once(octagon).chain(square)
         })

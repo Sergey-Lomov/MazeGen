@@ -41,6 +41,27 @@ describe("field print sizing", () => {
     expect(result?.usableHeightMm).toBe(287);
   });
 
+  it("sizes a cylinder or torus as the plane, then moves down to a size that closes up", () => {
+    const plane = calculatePrintFieldConfig(fieldOf("hex", { shape: "rect", cols: 5, rows: 5 }, "flat_top"), printInput);
+    const torus = calculatePrintFieldConfig(fieldOf("hex", { shape: "torus", cols: 5, rows: 5 }, "flat_top"), printInput);
+    expect(plane?.config.shape).toMatchObject({ shape: "rect" });
+    const planeShape = plane!.config.shape as { cols: number; rows: number };
+    const torusShape = torus!.config.shape as { shape: string; cols: number; rows: number };
+    expect(torusShape.shape).toBe("torus");
+    expect(torusShape.cols % 2).toBe(0);
+    expect(torusShape.cols).toBeLessThanOrEqual(planeShape.cols);
+    expect(torusShape.rows).toBeLessThanOrEqual(planeShape.rows);
+    expect(torus!.fieldWidthMm).toBeLessThanOrEqual(torus!.usableWidthMm + 1e-9);
+  });
+
+  it("keeps a torus made of lattice periods on the sheet", () => {
+    // Its size counts periods, many cell pitches each: the size of the plane would overshoot the sheet.
+    const result = calculatePrintFieldConfig(fieldOf("snub_hexagonal", { shape: "torus", cols: 2, rows: 2 }), printInput);
+    expect(result?.config.shape).toMatchObject({ shape: "torus" });
+    expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  }, 60_000);
+
   it("uses the selected paper orientation when calculating a square field", () => {
     const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), {
       ...printInput,

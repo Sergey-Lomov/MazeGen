@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { sharedStyles } from "../../styles/shared";
 import { useFieldHint } from "../FieldHint";
-import { inputHintReason, type NormalizerResult } from "../inputNormalization";
+import { inputHintReason, type InputNormalizationReason, type NormalizerResult } from "../inputNormalization";
 
 interface SizeParamProps {
   label: string;
   value: number;
   min: number;
   max: number;
-  onCommit: (v: number) => void;
+  /** May answer with the adjustment it made to `v`: the input then shows that value and explains why. */
+  onCommit: (v: number) => InputNormalizationReason | void;
   /** Step of the number input (default: the browser's, 1). */
   step?: number;
   /** Only whole numbers are accepted. */
@@ -40,7 +41,11 @@ export function SizeParam({ label, value, min, max, onCommit, step, integer = fa
       setLocal(String(result.value));
       hint.show(inputHintReason(result.reason));
     } else {
-      onCommit(result.value);
+      const adjusted = onCommit(result.value);
+      if (adjusted) {
+        if ("value" in adjusted) setLocal(adjusted.value);
+        hint.show(inputHintReason(adjusted));
+      }
     }
   }
 

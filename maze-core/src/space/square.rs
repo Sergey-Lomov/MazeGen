@@ -1,6 +1,9 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, rect_folds, rect_param_max_of, validate_rect_topology,
+};
 use super::square_box::{BOX_PRESET, box_cells, box_folds, box_param_max};
 use super::{
     CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
@@ -127,10 +130,14 @@ impl Tessellation for SquareTessellation {
         validate_preset(&SQUARE_PRESETS, key, params)?;
         let origin = self.center(SquarePoint { x: 0, y: 0 });
         match key {
-            "rect" => Ok(centered_square_rect(
-                param(params, "cols") as usize,
-                param(params, "rows") as usize,
-            )),
+            "rect" | "cylinder" | "torus" => {
+                let cells = centered_square_rect(
+                    param(params, "cols") as usize,
+                    param(params, "rows") as usize,
+                );
+                validate_rect_topology(self, &cells, key, params)?;
+                Ok(cells)
+            }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
             "box" => box_cells(params),
@@ -139,7 +146,10 @@ impl Tessellation for SquareTessellation {
     }
 
     fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
-        if key == "box" { box_param_max(name) } else { None }
+        match key {
+            "box" => box_param_max(name),
+            _ => rect_param_max_of(self.presets(), key, name),
+        }
     }
 
     fn build_preset_folds(
@@ -150,6 +160,9 @@ impl Tessellation for SquareTessellation {
         validate_preset(&SQUARE_PRESETS, key, params)?;
         match key {
             "box" => box_folds(params),
+            "rect" | "cylinder" | "torus" => {
+                rect_folds(self, &self.build_preset(key, params)?, key, params)
+            }
             _ => Ok(Vec::new()),
         }
     }
@@ -195,8 +208,14 @@ pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
 }
 
 /// Preset field shapes of the square grid, in UI order.
-const SQUARE_PRESETS: [PresetDescriptor; 4] =
-    [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET, BOX_PRESET];
+const SQUARE_PRESETS: [PresetDescriptor; 6] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    BOX_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// `square_rect` shifted so the origin cell sits at `size / 2` (rounded down) of each axis.
 fn centered_square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

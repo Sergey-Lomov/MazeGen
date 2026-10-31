@@ -17,6 +17,7 @@ pub mod hex;
 pub mod multi_level;
 mod multi_shape;
 pub mod radial;
+mod rect_topology;
 pub mod rhombitrihexagonal;
 pub mod shape;
 pub mod snub_hexagonal;
@@ -28,8 +29,8 @@ pub mod square_octagon;
 pub(crate) mod test_support;
 pub mod topology;
 pub mod topology_edit;
-pub mod triangle;
 mod tri_polyhedron;
+pub mod triangle;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
 pub mod truncated_trihexagonal;
@@ -173,8 +174,8 @@ pub trait Tessellation: Send + Sync + 'static {
 
     /// Upper bound of preset parameter `name` of preset `key` on this instance, when the
     /// tessellation is finite or otherwise limits it; `None` leaves the parameter unbounded.
-    fn preset_param_max(&self, _key: &str, _name: &str) -> Option<u32> {
-        None
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        rect_topology::rect_param_max_of(self.presets(), key, name)
     }
 
     /// The cells of preset `key` built from `params` (named per the preset's schema), centered
@@ -197,8 +198,14 @@ pub trait Tessellation: Send + Sync + 'static {
         &self,
         key: &str,
         params: PresetParams<'_>,
-    ) -> Result<Vec<Vec<NewFold<Self::CellId>>>, FieldOpError> {
+    ) -> Result<Vec<Vec<NewFold<Self::CellId>>>, FieldOpError>
+    where
+        Self: Sized,
+    {
         validate_preset(self.presets(), key, params)?;
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            return rect_topology::rect_folds(self, &self.build_preset(key, params)?, key, params);
+        }
         Ok(Vec::new())
     }
 
@@ -751,3 +758,7 @@ mod square_box_tests;
 #[cfg(test)]
 #[path = "tri_polyhedron_tests.rs"]
 mod tri_polyhedron_tests;
+
+#[cfg(test)]
+#[path = "rect_topology_tests.rs"]
+mod rect_topology_tests;

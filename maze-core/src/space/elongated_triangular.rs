@@ -15,7 +15,7 @@
 use super::exact_tiling::{Template, Tiling, Vertex};
 use super::field_ops::{Inclusion, convex_cells, param};
 use super::multi_shape::{
-    AnchoredPoint, CellFace, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind,
+    AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
     is_opposite_face, polygon_faces, preset_cells, regular_cell_shape, regular_polygon_area,
     regular_shapes,
 };
@@ -217,7 +217,7 @@ impl Tessellation for ElongatedTriangularTessellation {
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
-        &PRESETS
+        &TOPOLOGY_PRESETS
     }
 
     fn build_preset(

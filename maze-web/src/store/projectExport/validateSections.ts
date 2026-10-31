@@ -14,7 +14,7 @@ import type {
   ProjectFileQuality,
 } from "./types";
 import { availablePresetKeys, polyhedronNetCount } from "../../pixi/fieldOps";
-import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
+import { tessellationConfigOf, BOX_DEFAULT_ASPECT, BOX_NET_COMPACT, type BoxMode, type BoxNet, type FieldShape, type PresetFieldShape, type RectAxis, type TessellationKind } from "../../fieldConfig";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray,
   assertStringRecord, assertStringRecordRecord, optEnum, optNumber, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
@@ -48,8 +48,11 @@ export function validateFieldShape(v: unknown, path: string): FieldShape {
   const shape = assertString(obj.shape, `${path}.shape`);
   switch (shape) {
     case "rect":
+    case "torus":
     case "parallelogram":
       return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`) };
+    case "cylinder":
+      return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`), axis: assertSwitch<RectAxis>(obj.axis, `${path}.axis`, 1) };
     case "circle":
     case "hexagon":
       return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };

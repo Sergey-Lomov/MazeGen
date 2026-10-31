@@ -1,6 +1,9 @@
 use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, rect_folds, rect_param_max_of, validate_rect_topology,
+};
 use super::square::{cell_range, grid_candidates};
 use super::tri_polyhedron::{
     ICOSAHEDRON_PRESET, OCTAHEDRON_PRESET, TETRAHEDRON_PRESET, is_polyhedron, polyhedron_cells,
@@ -156,7 +159,9 @@ impl Tessellation for TriTessellation {
     ) -> Result<Vec<TriPoint>, FieldOpError> {
         validate_preset(&TRI_PRESETS, key, params)?;
         let mut cells = match key {
-            "rect" => centered_tri_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "rect" | "cylinder" | "torus" => {
+                centered_tri_rect(param(params, "cols") as i32, param(params, "rows") as i32)
+            }
             "triangle" => centered_on_lattice(tri_triangle(param(params, "side") as usize)),
             "hexagon" => centered_on_lattice(tri_hexagon(param(params, "radius") as usize)),
             "circle" => {
@@ -167,11 +172,14 @@ impl Tessellation for TriTessellation {
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            validate_rect_topology(self, &cells, key, params)?;
+        }
         Ok(cells)
     }
 
     fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
-        polyhedron_param_max(key, name)
+        polyhedron_param_max(key, name).or_else(|| rect_param_max_of(self.presets(), key, name))
     }
 
     fn build_preset_folds(
@@ -181,6 +189,9 @@ impl Tessellation for TriTessellation {
     ) -> Result<Vec<Vec<NewFold<TriPoint>>>, FieldOpError> {
         validate_preset(&TRI_PRESETS, key, params)?;
         match key {
+            "rect" | "cylinder" | "torus" => {
+                rect_folds(self, &self.build_preset(key, params)?, key, params)
+            }
             _ if is_polyhedron(key) => polyhedron_folds(key, params),
             _ => Ok(Vec::new()),
         }
@@ -263,7 +274,7 @@ pub fn tri_hexagon(radius: usize) -> Vec<TriPoint> {
 }
 
 /// Preset field shapes of the triangle grid, in UI order.
-const TRI_PRESETS: [PresetDescriptor; 7] = [
+const TRI_PRESETS: [PresetDescriptor; 9] = [
     RECT_PRESET,
     TRIANGLE_PRESET,
     HEXAGON_PRESET,
@@ -271,6 +282,8 @@ const TRI_PRESETS: [PresetDescriptor; 7] = [
     TETRAHEDRON_PRESET,
     OCTAHEDRON_PRESET,
     ICOSAHEDRON_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
 ];
 
 /// Each configured column is a pair of adjacent opposite-orientation triangles, so a rectangle

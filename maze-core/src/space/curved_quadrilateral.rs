@@ -12,6 +12,7 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, validate_rect_topology};
 use super::square::{cell_range, grid_candidates};
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
@@ -208,10 +209,14 @@ impl Tessellation for CurvedQuadrilateralTessellation {
         validate_preset(&PRESETS, key, params)?;
         let origin = self.center(CurvedQuadrilateralPoint { x: 0, y: 0 });
         match key {
-            "rect" => Ok(centered_rect(
-                param(params, "cols") as usize,
-                param(params, "rows") as usize,
-            )),
+            "rect" | "cylinder" | "torus" => {
+                let cells = centered_rect(
+                    param(params, "cols") as usize,
+                    param(params, "rows") as usize,
+                );
+                validate_rect_topology(self, &cells, key, params)?;
+                Ok(cells)
+            }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => triangle_cells(self, origin, param(params, "side"), Inclusion::Center),
             _ => Err(FieldOpError::Unavailable),
@@ -225,7 +230,13 @@ impl Tessellation for CurvedQuadrilateralTessellation {
 }
 
 /// Preset field shapes of the curved quadrilateral tessellation, in UI order.
-const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+const PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// A `width × height` block of cells with the origin cell at `size / 2` (rounded down) of each
 /// axis, sorted by id.
