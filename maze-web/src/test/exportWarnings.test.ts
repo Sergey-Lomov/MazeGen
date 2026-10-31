@@ -878,6 +878,19 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(new Set(merged[0].cells?.map((c) => c.floorIndex))).toEqual(new Set([0, 1]));
   });
 
+  it("feeds the project teleport groups into marker index text-fit: a group shares one index (GitHub issue #871)", () => {
+    // Teleports 0->1 and 0->2 share the endpoint node 0, so merged they form one group.
+    const groupNodes = [n(0, 0, 0, 0), n(1, 3, 3, 0), n(2, 5, 5, 0)];
+    const groupEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0), teleport(0, 2), teleport(2, 0)];
+    const index = baseSettings().markerIndex;
+    const markerIndex = { ...index, enabled: true, labelStyle: "arabic" as const, coverage: { ...index.coverage, singleFloorTeleport: true } };
+    const texts = (teleportMergeMode: boolean) => computeTextFitItemsAcrossFloors(
+      groupNodes, groupEdges, [{ id: "f0" }], squareCfg, baseSettings({ teleportMergeMode, markerIndex }), null, null,
+    ).markerIndex.map((item) => item.text);
+    expect(new Set(texts(true))).toEqual(new Set(["1"]));
+    expect(new Set(texts(false))).toEqual(new Set(["1", "2"]));
+  });
+
   it("collects labels across floors per size control for auto-fit", () => {
     const settings = baseSettings({ startMarker: marker({}), finishMarker: marker({ text: "" }) });
     const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);

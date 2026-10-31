@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildProjectTeleportGroups, mergeTeleportGroupsAcrossFloors, resolveFloorGroupOverrides, resolveRendererGroupOverrides } from "../pixi/selectors/projectTeleportGroups";
+import { buildProjectTeleportGroups, getProjectTeleportGroups, mergeTeleportGroupsAcrossFloors, resolveFloorGroupOverrides, resolveRendererGroupOverrides } from "../pixi/selectors/projectTeleportGroups";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import type { TeleportGroup } from "../pixi/selectors/teleportGroups";
 import { fieldOf } from "./fieldConfigFixtures";
+import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
+import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 
 // Cell centers resolve through wasm, unavailable in unit tests — canonical square formula.
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -93,5 +95,21 @@ describe("cross-floor teleports on a real two-floor maze (GitHub issue #727 foll
   it("returns the overrides untouched when there are none", () => {
     const empty = {};
     expect(resolveRendererGroupOverrides([], empty, args)).toBe(empty);
+  });
+
+  it("getProjectTeleportGroups reuses the result for equal inputs, floors compared by id", () => {
+    const first = getProjectTeleportGroups(args);
+    expect(getProjectTeleportGroups({ ...args, floors: floors.map((f) => ({ ...f })) })).toBe(first);
+    expect(getProjectTeleportGroups({ ...args, mergeTeleports: false })).not.toBe(first);
+  });
+
+  it("marker index gives the whole cross-floor group one index; merge off gives one per teleport", () => {
+    const style = { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: true, labelStyle: "arabic" as const, coverage: { ...DEFAULT_MARKER_INDEX_SETTINGS.coverage, singleFloorTeleport: true } };
+    const visual = () => ({ outerRadius: 10, fillRadius: 7, sizeAdaptation: 0, borderWidth: 3, borderMatchColor: 0 });
+    const merged = buildMarkerIndexLabels(nodes, edges, cfg, 0, style, visual, undefined, buildProjectTeleportGroups(args));
+    expect(merged.allLabelStrings).toEqual(["1"]);
+    expect(merged.labels.map((l) => l.label)).toEqual(["1", "1"]);
+    const split = buildMarkerIndexLabels(nodes, edges, cfg, 0, style, visual, undefined, buildProjectTeleportGroups({ ...args, mergeTeleports: false }));
+    expect(split.allLabelStrings).toEqual(["1", "2", "3"]);
   });
 });

@@ -11,6 +11,8 @@ import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVertical
 import { oneWayStopLineShape, stopLineOverlapsRoundedRect } from "../renderers/verticalConnectionGeometry";
 import type { VerticalConnectionStyle } from "../renderers/types";
 import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
+import type { TeleportGroup } from "./teleportGroups";
+import { getProjectTeleportGroups } from "./projectTeleportGroups";
 import { buildColorVisibility, visibleColor, type ColorVisibilityContext, type ColorVisibilityMaze } from "./colorFieldRegistry";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { computeTeleportConnectorCoversOneWayWarning } from "./teleportOneWayCoverage";
@@ -262,6 +264,18 @@ function buildFloorContext(nodes: NodeDto[], edges: EdgeDto[], floors: WarningFl
   };
 }
 
+/** Project-wide teleport groups the marker index numbers by (GitHub issue #871); empty when the
+ *  index is off, so nothing is built needlessly. */
+function projectGroupsForMarkerIndex(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
+  settings: VectorByWallsSettings | VectorByCorridorsSettings, start: number | null, finish: number | null,
+): TeleportGroup[] {
+  if (!settings.markerIndex.enabled) return [];
+  return getProjectTeleportGroups({
+    nodes, edges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start, finish, mergeTeleports: settings.teleportMergeMode,
+  });
+}
+
 /** Floors with an export cut line (GitHub issue #859), by id: the argument of the `*AcrossFloors` passes. */
 const NO_CUT_FLOORS: ReadonlySet<string> = new Set();
 
@@ -270,10 +284,11 @@ export function computeVectorByWallsWarningsAcrossFloors(
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
 ): ExportWarning[] {
+  const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id));
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id), teleportGroups);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -284,10 +299,11 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
 ): ExportWarning[] {
   const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
+  const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id));
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id), teleportGroups);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -317,6 +333,7 @@ function computeMarkerIndexStopLineWarning(
   teleportEdges: TeleportEdge[],
   displayFloorIndex: number,
   unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
+  teleportGroups: TeleportGroup[],
 ): ExportWarning | null {
   const index = settings.markerIndex;
   if (!index.enabled) return null;
@@ -335,7 +352,7 @@ function computeMarkerIndexStopLineWarning(
   const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
     teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, mergeTeleports: settings.teleportMergeMode, groupOverrides: {}, verticalStyle,
   });
-  const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual);
+  const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual, undefined, teleportGroups);
   const plates = labels.map((label) => {
     const box = markerIndexPlateBox(label, index);
     const border = box.borderWidth;
@@ -362,6 +379,7 @@ export function computeVectorByWallsWarnings(
   teleportFloorContext?: TeleportFloorContext,
   displayFloorTitle?: string,
   highlightSeamMirrors = true,
+  teleportGroups: TeleportGroup[] = [],
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -532,12 +550,14 @@ export function computeVectorByWallsWarnings(
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
     displayFloorTitle,
+    teleportGroups,
   ));
 
   const stopLineCovered = computeMarkerIndexStopLineWarning(
     nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.floorColor, settings), teleportEdges,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    teleportGroups,
   );
   if (stopLineCovered) warnings.push(stopLineCovered);
 
@@ -571,6 +591,7 @@ export function computeVectorByCorridorsWarnings(
   displayFloorTitle?: string,
   maxCorridorFace?: number,
   highlightSeamMirrors = true,
+  teleportGroups: TeleportGroup[] = [],
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -716,12 +737,14 @@ export function computeVectorByCorridorsWarnings(
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
     displayFloorTitle,
+    teleportGroups,
   ));
 
   const stopLineCovered = computeMarkerIndexStopLineWarning(
     nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.color), teleportEdges,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
+    teleportGroups,
   );
   if (stopLineCovered) warnings.push(stopLineCovered);
 

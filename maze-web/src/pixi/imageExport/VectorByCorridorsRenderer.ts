@@ -14,7 +14,7 @@ import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
-import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
+import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -551,7 +551,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler);
+      const projectGroups = getProjectTeleportGroups({
+        nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
+        avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+        mergeTeleports: settings.teleportMergeMode,
+      });
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: settings.markerIndex, floorColor: settings.color });
     } else {
       this.markerIndex.clear();

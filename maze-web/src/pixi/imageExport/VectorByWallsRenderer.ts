@@ -26,7 +26,7 @@ import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
-import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
+import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
@@ -750,7 +750,12 @@ export class VectorByWallsRenderer {
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler);
+      const projectGroups = getProjectTeleportGroups({
+        nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
+        avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+        mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+      });
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: state.vectorByWallsSettings.markerIndex, floorColor });
     } else {
       this.markerIndex.clear();

@@ -246,3 +246,50 @@ describe("buildMarkerIndexLabels — coverage", () => {
     expect(set.allLabelStrings).toEqual(["1", "2"]);
   });
 });
+
+describe("buildMarkerIndexLabels — teleport groups (GitHub issue #871)", () => {
+  // Teleports 0-1 and 2-3 share the cell (1,1) on floor 0; 4-5 is unrelated.
+  const nodes = [n(0, 1, 1, 0), n(1, 3, 3, 1), n(2, 1, 1, 0), n(3, 5, 5, 1), n(4, 6, 6, 0), n(5, 6, 6, 1)];
+  const edges: EdgeDto[] = [
+    { from: 0, to: 1, kind: "teleport" },
+    { from: 2, to: 3, kind: "teleport" },
+    { from: 4, to: 5, kind: "teleport" },
+  ];
+  const group = (edgeKeys: string[]) => ({ key: edgeKeys.join("|"), edgeKeys, points: [] as [number, number][], links: [] });
+  const groups = [group(["0-1", "2-3"]), group(["4-5"])];
+  const withGroups = (floor: number, s = style({ labelStyle: "arabic" }), g = groups) =>
+    buildMarkerIndexLabels(nodes, edges, cfg, floor, s, resolveVisual, undefined, g);
+
+  it("gives every teleport of one group the same index and numbers per group", () => {
+    const set = withGroups(1);
+    expect(set.allLabelStrings).toEqual(["1", "2"]);
+    expect(set.labels.map((l) => l.label)).toEqual(["1", "1", "2"]);
+  });
+
+  it("draws one plate per cell for a group whose teleports share an endpoint cell", () => {
+    expect(withGroups(0).labels.map((l) => l.label)).toEqual(["1", "2"]);
+  });
+
+  it("numbers every pair separately when no groups are given", () => {
+    const set = build(nodes, edges, cfg, 1, style({ labelStyle: "arabic" }));
+    expect(set.allLabelStrings).toEqual(["1", "2", "3"]);
+  });
+
+  it("keeps merge-off teleports on their own indices (one group per pair)", () => {
+    const set = withGroups(1, undefined, [group(["0-1"]), group(["2-3"]), group(["4-5"])]);
+    expect(set.allLabelStrings).toEqual(["1", "2", "3"]);
+  });
+
+  it("numbers groups before vertical passages and elevators", () => {
+    const n2 = [...nodes, n(6, 0, 0, 0), n(7, 0, 0, 1), n(8, 7, 7, 0), n(9, 7, 7, 1)];
+    const e2: EdgeDto[] = [...edges, { from: 6, to: 7, kind: "vertical_passage" }, { from: 8, to: 9, kind: "elevator" }];
+    const set = buildMarkerIndexLabels(n2, e2, cfg, 1, style({ labelStyle: "arabic" }), resolveVisual, undefined, groups);
+    expect(set.allLabelStrings).toEqual(["1", "2", "3", "4"]);
+    expect(set.labels.map((l) => [l.kind, l.label])).toEqual([["teleport", "1"], ["teleport", "1"], ["teleport", "2"], ["vertical", "3"], ["elevator", "4"]]);
+  });
+
+  it("drops a group from the numbering when coverage filters all its teleports out", () => {
+    const set = withGroups(1, style({ labelStyle: "arabic", coverage: { ...DEFAULT_MARKER_INDEX_SETTINGS.coverage, crossFloorTeleport: false } }));
+    expect(set.allLabelStrings).toEqual([]);
+  });
+});

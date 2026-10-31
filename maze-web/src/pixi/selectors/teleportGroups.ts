@@ -9,15 +9,19 @@ export function coordKey(x: number, y: number): string {
   return `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
 }
 
+/** Order-independent node-id pair key: the `teleportEdgeKey` of a teleport with node ids. Shared by
+ *  every caller that maps a raw teleport `EdgeDto` onto a group's `edgeKeys`. */
+export function teleportNodePairKey(a: number, b: number): string {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+
 /** Stable per-edge identity for a `TeleportEdge` produced by `buildTeleportEdges` — the sorted pair
  *  of its endpoint node ids (order-independent, since `buildTeleportEdges` already collapses a
  *  two-way teleport's forward/backward `EdgeDto`s into one `TeleportEdge`). Falls back to a
  *  position-based key when `fromNode`/`toNode` are absent (non-`VectorByWallsRenderer` callers
  *  never build groups, but the fallback keeps this total). */
 export function teleportEdgeKey(edge: TeleportEdge): string {
-  if (edge.fromNode !== undefined && edge.toNode !== undefined) {
-    return edge.fromNode < edge.toNode ? `${edge.fromNode}-${edge.toNode}` : `${edge.toNode}-${edge.fromNode}`;
-  }
+  if (edge.fromNode !== undefined && edge.toNode !== undefined) return teleportNodePairKey(edge.fromNode, edge.toNode);
   return edge.from[0] < edge.to[0] || (edge.from[0] === edge.to[0] && edge.from[1] < edge.to[1])
     ? `${coordKey(edge.from[0], edge.from[1])}~${coordKey(edge.to[0], edge.to[1])}`
     : `${coordKey(edge.to[0], edge.to[1])}~${coordKey(edge.from[0], edge.from[1])}`;
