@@ -169,7 +169,7 @@ export function dispatchPresetElevatorPlacement(
 }
 
 export const REMOVE_ENDPOINT_NODE_REJECTED = "preset_connections.remove_endpoint_node_rejected";
-registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { category: "notice", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
+registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { severity: "warning", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
 
 export function applyDefaultEdgeState(
   state: MazeState,

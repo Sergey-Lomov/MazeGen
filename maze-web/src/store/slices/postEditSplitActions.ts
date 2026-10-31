@@ -17,7 +17,7 @@ import { notify } from "../../notifications/notificationStore";
 import { notifyEditRefusal, SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD } from "../../notifications/editRefusalNotifications";
 
 const REMOVE_ENDPOINT_NODE_REJECTED = "post_edit.remove_endpoint_node_rejected";
-registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { category: "notice", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
+registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { severity: "warning", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
 
 type Creator = StateCreator<MazeStore, [], [], PostEditState & PostEditActions>;
 type CreatorSet = Parameters<Creator>[0];

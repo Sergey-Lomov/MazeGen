@@ -39,7 +39,7 @@ const PROJECT_LOAD_CODES = {
   visualPreset: "project.load_error_visual_preset",
 } as const;
 for (const code of Object.values(PROJECT_LOAD_CODES)) {
-  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+  registerNotificationCode(code, { severity: "error", message: () => m[code]() });
 }
 
 export function computeFieldStatus(

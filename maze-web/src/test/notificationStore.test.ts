@@ -20,18 +20,18 @@ import { resetAnnouncer, useAnnouncerStore } from "../notifications/announcer";
 const SHORT = "Rejected!!";
 const SHORT_MS = 4500;
 
-registerNotificationCode("test.notice", { category: "notice", message: () => SHORT });
+registerNotificationCode("test.notice", { severity: "warning", message: () => SHORT });
 registerNotificationCode("test.notice_at", {
-  category: "notice",
+  severity: "warning",
   message: (p) => `At ${p.x}`,
 });
 registerNotificationCode("test.notice_by_floor", {
-  category: "notice",
+  severity: "warning",
   message: (p) => `Floor ${p.floor} ${p.x}`,
   dedupParams: ["floor"],
 });
-registerNotificationCode("test.error", { category: "error", message: (p) => `Failed ${p.n ?? ""}` });
-registerNotificationCode("test.error_b", { category: "error", message: () => "Other failure" });
+registerNotificationCode("test.error", { severity: "error", message: (p) => `Failed ${p.n ?? ""}` });
+registerNotificationCode("test.error_b", { severity: "error", message: () => "Other failure" });
 
 const state = () => useNotificationStore.getState();
 const announced = (politeness: "polite" | "assertive") =>
@@ -123,7 +123,7 @@ describe("notice zone", () => {
   });
 
   it("drops a queued notice not updated for 10 s; a repeat refreshes its update time", () => {
-    registerNotificationCode("test.long", { category: "notice", message: () => "x".repeat(200) });
+    registerNotificationCode("test.long", { severity: "warning", message: () => "x".repeat(200) });
     for (let i = 0; i < 3; i++) notify({ source: `l${i}`, code: "test.long" });
     noticeN(3);
     noticeN(4);

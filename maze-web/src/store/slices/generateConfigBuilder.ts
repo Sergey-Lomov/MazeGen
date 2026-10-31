@@ -21,8 +21,8 @@ import * as m from "~/paraglide/messages";
 
 const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
 const GENERATION_RUN_FAILED = "generation.run_failed";
-registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { category: "error", message: () => m["generation.error_free_field_too_small"]() });
-registerNotificationCode(GENERATION_RUN_FAILED, { category: "error", message: () => m[GENERATION_RUN_FAILED]() });
+registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { severity: "error", message: () => m["generation.error_free_field_too_small"]() });
+registerNotificationCode(GENERATION_RUN_FAILED, { severity: "error", message: () => m[GENERATION_RUN_FAILED]() });
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;

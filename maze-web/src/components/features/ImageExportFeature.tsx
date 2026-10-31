@@ -25,7 +25,7 @@ const VISUAL_PRESET_LOAD_CODES = {
   qualityPreset: "image_export.visual_preset.load_error_quality_preset",
 } as const;
 for (const code of Object.values(VISUAL_PRESET_LOAD_CODES)) {
-  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+  registerNotificationCode(code, { severity: "error", message: () => m[code]() });
 }
 
 export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: PngExportSettings) => Promise<Blob | null> }) {

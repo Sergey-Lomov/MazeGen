@@ -59,7 +59,7 @@ const QUALITY_PRESET_LOAD_CODES = {
   visualPreset: "quality.preset.load_error_visual_preset",
 } as const;
 for (const code of Object.values(QUALITY_PRESET_LOAD_CODES)) {
-  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+  registerNotificationCode(code, { severity: "error", message: () => m[code]() });
 }
 
 export function QualityFeature() {

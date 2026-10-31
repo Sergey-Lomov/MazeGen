@@ -278,7 +278,7 @@ export function notify(input: NotifyInput): void {
     console.error(`notify: unregistered notification code "${input.code}"`);
     return;
   }
-  if (def.category === "error") addError(input);
+  if (def.severity === "error") addError(input);
   else addNotice(input, def.dedupParams);
 }
 

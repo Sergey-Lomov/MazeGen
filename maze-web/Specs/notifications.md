@@ -1,6 +1,7 @@
 # Toast notifications
 
-Toast channel for rejected actions (`notice`) and failed operations (`error`). Design source:
+Toast channel with three levels: `info` (plain facts), `warning` (rejected actions that need attention)
+and `error` (failed operations). `info` and `warning` are timed notice toasts; `error` is a persistent card. Design source:
 GitHub epic #766; infrastructure: #767.
 
 ## Modules
@@ -15,9 +16,9 @@ GitHub epic #766; infrastructure: #767.
 
 ```ts
 registerNotificationCode("feature.code", {
-  category: "notice",                       // or "error"
+  severity: "warning",                      // "info" | "warning" | "error"
   message: (p) => m["feature.code"]({ x: p.x as number }),
-  dedupParams: ["floor"],                   // notice only; default []
+  dedupParams: ["floor"],                   // info/warning only; default []
 });
 
 notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, details: "…" });
@@ -32,23 +33,25 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 
 ## Integrations (GitHub issue #769)
 
-| Source | Code | Category | Trigger |
+| Source | Code | Level | Trigger |
 |---|---|---|---|
 | `generation` | `generation.registry_load_failed` | error | `loadRegistry` failed (details: message) |
 | `generation` | `generation.free_field_too_small`, `generation.run_failed` | error | generation cannot start / generation execution failed (details: message for the latter) |
 | `post_edit` | `post_edit.refresh_failed` | error | `confirmPostEdit` analytics refresh failed (details: message) |
-| `post_edit` | `post_edit.remove_endpoint_node_rejected` | notice | removing a split node assigned as start/finish |
-| `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | notice | removing a preset split node assigned as start/finish/gen-source |
-| `post_edit` / `preset_connections` | `edit_refusal.split_boundary_face` | notice | clicking a split-dialog face at the field boundary |
-| `post_edit` / `preset_connections` | `edit_refusal.split_rotation_outside_field` | notice | rotating a split would move a connection outside the field |
-| `post_edit` | `edit_refusal.split_face_owner_ambiguous` | notice | rotating a connection onto a split face with no unambiguous owner |
-| `post_edit` | `edit_refusal.split_connection_reset` | notice | resetting a split connection through the edge branch |
-| `post_edit` | `edit_refusal.unconfirmed_split_node` | notice | assigning a vertex element to an unconfirmed split node |
-| `preset_connections` | `edit_refusal.teleport_outside_field` | notice | placing a teleport endpoint outside the field |
-| `post_edit` / `preset_connections` | `vertical_drag.failed_passage`, `vertical_drag.failed_elevator` | notice | a vertical drag cannot resolve the matching point on another floor |
+| `post_edit` | `post_edit.remove_endpoint_node_rejected` | warning | removing a split node assigned as start/finish |
+| `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | warning | removing a preset split node assigned as start/finish/gen-source |
+| `post_edit` / `preset_connections` | `edit_refusal.split_boundary_face` | info | clicking a split-dialog face at the field boundary |
+| `post_edit` / `preset_connections` | `edit_refusal.split_rotation_outside_field` | warning | rotating a split would move a connection outside the field |
+| `post_edit` | `edit_refusal.split_face_owner_ambiguous` | info | rotating a connection onto a split face with no unambiguous owner |
+| `post_edit` | `edit_refusal.split_connection_reset` | info | resetting a split connection through the edge branch |
+| `post_edit` | `edit_refusal.unconfirmed_split_node` | warning | assigning a vertex element to an unconfirmed split node |
+| `preset_connections` | `edit_refusal.teleport_outside_field` | warning | placing a teleport endpoint outside the field |
+| `post_edit` / `preset_connections` | `vertical_drag.failed_passage`, `vertical_drag.failed_elevator` | warning | a vertical drag cannot resolve the matching point on another floor |
 | `project_load` / `quality_preset_load` / `visual_preset_load` | `file_load.read_failed`, `file_load.invalid_json` | error | `readJsonFile` I/O or JSON syntax failure |
-| `field_setup` | `field_edit.auto_fill_preview_active` | notice | canvas click (not a pan gesture) during the background auto-fill preview (#772) |
-| `field_setup` | `field_edit.nothing_selected`, `field_edit.nothing_copied`, `field_edit.clipboard_unavailable` | notice (info) | Copy shortcut with no selection / Paste shortcut with an empty clipboard / either shortcut in a tessellation without translation symmetry (#880) |
+| `post_edit` / `preset_connections` | `vertical_passage.no_adjacent_cell` | warning | adding a vertical passage where no neighbouring floor has a cell |
+| `topology` | `topology.folds_inactive` | warning | a field edit left more of a floor's glued pairs inactive (#839) |
+| `field_setup` | `field_edit.auto_fill_preview_active` | warning | canvas click (not a pan gesture) during the background auto-fill preview (#772) |
+| `field_setup` | `field_edit.nothing_selected`, `field_edit.nothing_copied`, `field_edit.clipboard_unavailable` | info | Copy shortcut with no selection / Paste shortcut with an empty clipboard / either shortcut in a tessellation without translation symmetry (#880) |
 | `project_load` | `project.load_error`, `project.load_error_quality_preset`, `project.load_error_visual_preset` | error | invalid project file / file of another kind |
 | `quality_preset_load` | `quality.preset.load_error`, `quality.preset.load_error_project_file`, `quality.preset.load_error_visual_preset` | error | invalid quality preset / file of another kind |
 | `visual_preset_load` | `image_export.visual_preset.load_error`, `image_export.visual_preset.load_error_project_file`, `image_export.visual_preset.load_error_quality_preset` | error | invalid style preset / file of another kind |
@@ -59,8 +62,9 @@ repeat updates the coordinates in place instead of creating another toast.
 
 ## Notice zone
 
-A notice code may set `severity: "info"` in its registration (default `warning`); the toast then uses
-the info palette. Info is for plain facts such as an empty clipboard, not refusals.
+A notice code registers `severity: "info"` or `"warning"`; the toast uses the matching palette. Info is
+for plain facts and explanations (empty clipboard, a side with no neighbour), warning for refusals
+that need the user's attention.
 
 | Rule | Value |
 |---|---|
@@ -97,7 +101,7 @@ the info palette. Info is for plain facts such as an empty clipboard, not refusa
 - Error zone above notice zone; new items appended at the bottom.
 - Every toast/card has a close button; "Close all" per zone, below its items, when the zone has
   2+ items (visible + queued).
-- Colors only from `notificationPalette` (as `WarningBubble`): notices `warning` (every notice is a refused user action), errors `critical`;
+- Colors only from `notificationPalette` (as `WarningBubble`): `info` toasts use the `info` palette, `warning` toasts `warning`, errors `critical`;
   dark palette background, palette text color for text and border. Everything inside a toast
   (buttons, counter, details, countdown line) inherits the text color. Box style is
   `embeddedNotificationStyle`. "Close all" and "N more errors" are bubbles in their zone's palette.
