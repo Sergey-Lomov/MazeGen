@@ -492,7 +492,9 @@ Field-editing operations work on cell sets and live in core (`space/field_ops.rs
   symmetry;
 - **preset field shapes** built from named integer params: `rect`, `parallelogram`, `circle`,
   `triangle` and `hexagon` (the ported `square_rect`, `hex_hexagon`, `tri_*`, `cairo_rect` and the
-  web generators from `storeHelpers`/`fieldConfig`).
+  web generators from `storeHelpers`/`fieldConfig`); the square tessellation also offers `box` and the triangle tessellation `tetrahedron`, `octahedron` and `icosahedron`, whose
+  nets come with gluings (`Tessellation::build_preset_folds`, default empty: one `Vec<NewFold>`
+  per fold group; see `topology.md`, "Topology presets").
 
 Availability is separate from execution. `Tessellation::field_operations` lists the supported
 operations and `Tessellation::presets` its preset list, each `PresetDescriptor { key, params }`
@@ -541,7 +543,7 @@ rectangle) are built from lattice coordinates; `circle` (the tri circle takes wh
 cell geometry. The hex rectangle has screen-aligned sides on the flat-top lattice core uses.
 
 Wire (`maze-runner::runner::field_ops`, exported by `maze-wasm`): `field_capabilities`,
-`field_preset`, `field_preset_extents`, `field_translate_cells`, `field_reflect_cells`; failures are
+`field_preset`, `field_preset_topology` (the fold groups of a preset, empty for shape-only presets), `field_preset_extents`, `field_translate_cells`, `field_reflect_cells`; failures are
 `{ kind, message? }` with `kind` one of the reasons above (`invalid_request` for a malformed
 request; also returned for non-finite vector or axis coordinates). `field_preset_extents` takes a preset plus two world directions and returns the `[min, max]` extent of the shape's cell boundaries along each, without shipping the cells (print-fit sizing evaluates many candidate sizes); it flattens only the cells whose centers lie within twice the cell reach (centre-to-farthest-boundary-point distance) of the center limits. The reach is the maximum over the cells at the limits and the first cell of every distinct shape descriptor, so a tessellation of mixed sizes (a dodecagon beside a triangle in 3.12.12, a dodecagon beside a square in 4.6.12) is not underestimated; cells of one shape are assumed near-uniform. Future extension: let a tessellation choose its extent mode (for example a core-supplied upper bound of cell reach, or an exact full scan when none is given), with a shared test comparing every mode against the full scan on small fields. The web `configAllCells` treats
 `invalid_preset` as an empty field and caches built presets by tessellation, key and params.

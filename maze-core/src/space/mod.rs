@@ -17,16 +17,19 @@ pub mod hex;
 pub mod multi_level;
 mod multi_shape;
 pub mod radial;
+mod rect_topology;
 pub mod rhombitrihexagonal;
 pub mod shape;
 pub mod snub_hexagonal;
 pub mod snub_square;
 pub mod square;
+mod square_box;
 pub mod square_octagon;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod topology;
 pub mod topology_edit;
+mod tri_polyhedron;
 pub mod triangle;
 pub mod trihexagonal;
 pub mod truncated_hexagonal;
@@ -171,8 +174,8 @@ pub trait Tessellation: Send + Sync + 'static {
 
     /// Upper bound of preset parameter `name` of preset `key` on this instance, when the
     /// tessellation is finite or otherwise limits it; `None` leaves the parameter unbounded.
-    fn preset_param_max(&self, _key: &str, _name: &str) -> Option<u32> {
-        None
+    fn preset_param_max(&self, key: &str, name: &str) -> Option<u32> {
+        rect_topology::rect_param_max_of(self.presets(), key, name)
     }
 
     /// The cells of preset `key` built from `params` (named per the preset's schema), centered
@@ -185,6 +188,25 @@ pub trait Tessellation: Send + Sync + 'static {
     ) -> Result<Vec<Self::CellId>, FieldOpError> {
         validate_preset(self.presets(), key, params)?;
         Err(FieldOpError::Unavailable)
+    }
+
+    /// The fold groups preset `key` defines together with its cells (GitHub issue #858): a
+    /// topology preset, such as a box net, shapes the field and glues it in one piece. Each inner
+    /// vector is one `FoldGroup`. Empty for a preset that is only a shape. Same errors as
+    /// `build_preset`.
+    fn build_preset_folds(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<Vec<NewFold<Self::CellId>>>, FieldOpError>
+    where
+        Self: Sized,
+    {
+        validate_preset(self.presets(), key, params)?;
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            return rect_topology::rect_folds(self, &self.build_preset(key, params)?, key, params);
+        }
+        Ok(Vec::new())
     }
 
     /// Every cell type of this instance, each listed once with a unique key. Never empty. Defaults
@@ -728,3 +750,15 @@ mod space_tests;
 #[cfg(test)]
 #[path = "field_ops_tests.rs"]
 mod field_ops_tests;
+
+#[cfg(test)]
+#[path = "square_box_tests.rs"]
+mod square_box_tests;
+
+#[cfg(test)]
+#[path = "tri_polyhedron_tests.rs"]
+mod tri_polyhedron_tests;
+
+#[cfg(test)]
+#[path = "rect_topology_tests.rs"]
+mod rect_topology_tests;

@@ -7,6 +7,9 @@ use super::field_ops::{
     CIRCLE_PRESET, Inclusion, RECT_PRESET, TRIANGLE_PRESET, circle_cells, convex_cells, param,
     triangle_cells,
 };
+use super::rect_topology::{
+    CYLINDER_PRESET, TORUS_PRESET, period_rect_cells, validate_rect_topology,
+};
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, ShapeDescriptor, Tessellation,
     validate_preset,
@@ -200,8 +203,14 @@ pub(super) fn anchor_cells<T>(
     )
 }
 
-/// Preset field shapes, in UI order.
-pub(super) const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+/// Preset field shapes, in UI order: the rectangle is also glued into a cylinder or torus.
+pub(super) const TOPOLOGY_PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// Cells of the `rect`, `circle` or `triangle` preset around `origin`; `rect` builds its own
 /// cells, `triangle` uses `triangle_inclusion`.
@@ -213,9 +222,13 @@ pub(super) fn preset_cells<T: Tessellation>(
     triangle_inclusion: Inclusion,
     rect: impl FnOnce() -> Result<Vec<T::CellId>, FieldOpError>,
 ) -> Result<Vec<T::CellId>, FieldOpError> {
-    validate_preset(&PRESETS, key, params)?;
+    validate_preset(tessellation.presets(), key, params)?;
     match key {
-        "rect" => rect(),
+        "rect" | "cylinder" | "torus" => {
+            let cells = rect()?;
+            validate_rect_topology(tessellation, &cells, key, params)?;
+            Ok(cells)
+        }
         "circle" => circle_cells(
             tessellation,
             origin,
@@ -257,6 +270,24 @@ pub(super) fn lattice_rect_cells<T: Tessellation>(
         half.x.hypot(half.y),
         Inclusion::WholeCell,
     )
+}
+
+/// The cells of the `rect`, `cylinder` or `torus` preset: `rect` is `lattice_rect_cells`, a
+/// cylinder or torus is made of whole lattice periods starting at `phase` (`period_rect_cells`),
+/// so it closes up.
+pub(super) fn rect_or_period_cells<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: PresetParams<'_>,
+    origin: Point,
+    pitch: Point,
+    phase: Point,
+) -> Result<Vec<T::CellId>, FieldOpError> {
+    if key == "rect" {
+        lattice_rect_cells(tessellation, params, origin, pitch)
+    } else {
+        period_rect_cells(tessellation, params, origin, phase)
+    }
 }
 
 /// Keeps the anchor cells and every other cell bordering a kept anchor cell: one cut off from all

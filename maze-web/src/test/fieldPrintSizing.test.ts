@@ -41,6 +41,27 @@ describe("field print sizing", () => {
     expect(result?.usableHeightMm).toBe(287);
   });
 
+  it("sizes a cylinder or torus as the plane, then moves down to a size that closes up", () => {
+    const plane = calculatePrintFieldConfig(fieldOf("hex", { shape: "rect", cols: 5, rows: 5 }, "flat_top"), printInput);
+    const torus = calculatePrintFieldConfig(fieldOf("hex", { shape: "torus", cols: 5, rows: 5 }, "flat_top"), printInput);
+    expect(plane?.config.shape).toMatchObject({ shape: "rect" });
+    const planeShape = plane!.config.shape as { cols: number; rows: number };
+    const torusShape = torus!.config.shape as { shape: string; cols: number; rows: number };
+    expect(torusShape.shape).toBe("torus");
+    expect(torusShape.cols % 2).toBe(0);
+    expect(torusShape.cols).toBeLessThanOrEqual(planeShape.cols);
+    expect(torusShape.rows).toBeLessThanOrEqual(planeShape.rows);
+    expect(torus!.fieldWidthMm).toBeLessThanOrEqual(torus!.usableWidthMm + 1e-9);
+  });
+
+  it("keeps a torus made of lattice periods on the sheet", () => {
+    // Its size counts periods, many cell pitches each: the size of the plane would overshoot the sheet.
+    const result = calculatePrintFieldConfig(fieldOf("snub_hexagonal", { shape: "torus", cols: 2, rows: 2 }), printInput);
+    expect(result?.config.shape).toMatchObject({ shape: "torus" });
+    expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  }, 60_000);
+
   it("uses the selected paper orientation when calculating a square field", () => {
     const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), {
       ...printInput,
@@ -224,6 +245,61 @@ describe("field print sizing", () => {
         }
       },
     );
+  });
+});
+
+describe("print sizing of a box", () => {
+  const box = (net: 0 | 1 | 2, mode: 0 | 1) =>
+    fieldOf("square", { shape: "box", width: 10, height: 10, depth: 10, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    // The nets are asked one after another with the same paper: none may get another's answer.
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 0], [0, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(box(net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "box", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet", () => {
+    const portrait = calculatePrintFieldConfig(box(2, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(box(2, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    expect(portrait.fieldHeightMm).toBeGreaterThan(portrait.fieldWidthMm);
+    expect(landscape.fieldWidthMm).toBeGreaterThan(landscape.fieldHeightMm);
+  });
+
+  it("keeps the proportions of the sides and fits the paper", () => {
+    const input = fieldOf("square", { shape: "box", width: 4, height: 2, depth: 2, net: 0, mode: 0, aspect: 100 }) as PredefinedFieldConfig;
+    const result = calculatePrintFieldConfig(input, printInput)!;
+    const shape = result.config.shape as { width: number; height: number; depth: number };
+    expect(shape.width).toBe(2 * shape.height);
+    expect(shape.height).toBe(shape.depth);
+    expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+    expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+  });
+});
+
+describe("print sizing of a polyhedron", () => {
+  const polyhedron = (shape: "tetrahedron" | "octahedron" | "icosahedron", net: number, mode: 0 | 1) =>
+    fieldOf("tri", { shape, side: 6, net, mode, aspect: 100 }) as PredefinedFieldConfig;
+
+  it("keeps the net and the mode of the field it was asked for", () => {
+    for (const [net, mode] of [[2, 1], [0, 0], [1, 1], [2, 1]] as const) {
+      const result = calculatePrintFieldConfig(polyhedron("octahedron", net, mode), printInput);
+      expect(result?.config.shape).toMatchObject({ shape: "octahedron", net, mode: net === 2 ? 1 : mode });
+    }
+  });
+
+  it("packs the compact layout for the shape of the sheet and fits the paper", () => {
+    const portrait = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), printInput)!;
+    const landscape = calculatePrintFieldConfig(polyhedron("icosahedron", 1, 1), { ...printInput, orientation: "landscape" })!;
+    expect((portrait.config.shape as { aspect: number }).aspect).toBe(Math.round(200 / 287 * 100));
+    expect((landscape.config.shape as { aspect: number }).aspect).toBe(Math.round(287 / 200 * 100));
+    for (const result of [portrait, landscape]) {
+      expect(result.fieldWidthMm).toBeLessThanOrEqual(result.usableWidthMm + 1e-9);
+      expect(result.fieldHeightMm).toBeLessThanOrEqual(result.usableHeightMm + 1e-9);
+    }
   });
 });
 

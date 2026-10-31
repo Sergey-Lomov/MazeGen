@@ -2,6 +2,7 @@ use super::field_ops::{
     CIRCLE_PRESET, HEXAGON_PRESET, Inclusion, PARALLELOGRAM_PRESET, RECT_PRESET, TRIANGLE_PRESET,
     circle_cells, param, triangle_cells,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, validate_rect_topology};
 use super::square::cell_range;
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
@@ -167,7 +168,9 @@ impl Tessellation for HexTessellation {
         validate_preset(&HEX_PRESETS, key, params)?;
         let origin = self.center(HexPoint { q: 0, r: 0 });
         let mut cells = match key {
-            "rect" => centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32),
+            "rect" | "cylinder" | "torus" => {
+                centered_hex_rect(param(params, "cols") as i32, param(params, "rows") as i32)
+            }
             "parallelogram" => centered_hex_parallelogram(
                 param(params, "cols") as i32,
                 param(params, "rows") as i32,
@@ -178,6 +181,9 @@ impl Tessellation for HexTessellation {
             _ => return Err(FieldOpError::Unavailable),
         };
         cells.sort();
+        if matches!(key, "rect" | "cylinder" | "torus") {
+            validate_rect_topology(self, &cells, key, params)?;
+        }
         Ok(cells)
     }
 
@@ -218,12 +224,14 @@ pub fn hex_hexagon(radius: usize) -> Vec<HexPoint> {
 }
 
 /// Preset field shapes of the hex grid, in UI order.
-const HEX_PRESETS: [PresetDescriptor; 5] = [
+const HEX_PRESETS: [PresetDescriptor; 7] = [
     RECT_PRESET,
     PARALLELOGRAM_PRESET,
     HEXAGON_PRESET,
     CIRCLE_PRESET,
     TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
 ];
 
 /// An axial rectangle: each parameter runs along one grid axis; the origin cell sits at

@@ -18,21 +18,56 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 /** Display-only orientation; never part of the tessellation config or the field shape. */
 export type DisplayOrientation = HexOrientation | TriOrientation;
 
+/** Box preset switches (core publishes them as small integer params): the faces stay joined as a net
+ * (`0`) or become six separate rectangles glued along all twelve edges (`1`). */
+export type BoxMode = 0 | 1;
+/** Default `aspect` of a box: the compact layout is packed for a square area. */
+export const BOX_DEFAULT_ASPECT = 100;
+/** The compact box net: always by faces, packed for the printed sheet. */
+export const BOX_NET_COMPACT = 2;
+/** Box net: cross (`0`), T-shaped (`1`) or the compact print layout (`2`, always by faces). */
+export type BoxNet = 0 | 1 | 2;
+
+/** The pair of sides a cylinder glues (GitHub issue #894): left and right (`0`) or top and bottom (`1`). */
+export type RectAxis = 0 | 1;
+
+/** Polyhedra of the triangle tessellation (GitHub issue #892): the faces are triangles of `side` cells
+ * along an edge, laid out as a net (`mode` 0) or as separate triangles (`mode` 1). */
+export const POLYHEDRON_SHAPES = ["tetrahedron", "octahedron", "icosahedron"] as const;
+export type PolyhedronShapeName = typeof POLYHEDRON_SHAPES[number];
+
 /**
  * A floor's field shape, independent of the tessellation kind. Which preset shapes a tessellation
  * offers is decided by core (`field_capabilities`); `custom` carries the cell list directly.
  */
 export type FieldShape =
   | { shape: "rect"; cols: number; rows: number }
+  | { shape: "cylinder"; cols: number; rows: number; axis: RectAxis }
+  | { shape: "torus"; cols: number; rows: number }
   | { shape: "parallelogram"; cols: number; rows: number }
   | { shape: "circle"; radius: number }
   | { shape: "triangle"; side: number }
   | { shape: "hexagon"; radius: number }
+  | { shape: "box"; width: number; height: number; depth: number; net: BoxNet; mode: BoxMode; aspect: number }
+  | { shape: PolyhedronShapeName; side: number; net: number; mode: BoxMode; aspect: number }
   | { shape: "custom"; points: [number, number][] };
 
 export type FieldShapeName = FieldShape["shape"];
 export type PresetFieldShape = Exclude<FieldShape, { shape: "custom" }>;
 export type PresetFieldShapeName = PresetFieldShape["shape"];
+
+/** A topology preset with the switches `net`, `mode` and `aspect`: a box or a polyhedron. */
+export type SwitchedFieldShape = Extract<FieldShape, { net: number }>;
+
+export function isSwitchedShape(shape: FieldShape): shape is SwitchedFieldShape {
+  return shape.shape === "box" || (POLYHEDRON_SHAPES as readonly string[]).includes(shape.shape);
+}
+
+/** A shape whose cells must keep their exact form because its gluings address them (a box, a polyhedron,
+ * a cylinder, a torus): smoothing would cut cells off the net and break the seams. */
+export function requiresExactCells(shape: FieldShape): boolean {
+  return isSwitchedShape(shape) || shape.shape === "cylinder" || shape.shape === "torus";
+}
 
 /**
  * A floor field as runtime code consumes it: the maze-wide tessellation config, its maze-wide

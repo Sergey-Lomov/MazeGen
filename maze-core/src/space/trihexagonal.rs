@@ -7,17 +7,16 @@
 //! is the lower-left hexagon of the lattice triangle it sits in. Every hexagon has six triangle
 //! neighbors, every triangle three hexagon neighbors.
 
-use super::field_ops::{Inclusion, param};
+use super::field_ops::{Inclusion, convex_cells, param};
 use super::multi_shape::{
-    AnchoredPoint, PRESETS, SQRT_3, anchor_cells, expanded_box, impl_cell_kind, preset_cells,
-    regular_cell_shape, regular_polygon_area, regular_shapes,
+    AnchoredPoint, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
+    preset_cells, regular_cell_shape, regular_polygon_area, regular_shapes,
 };
 use super::square::cell_range;
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
     Tessellation,
 };
-use std::collections::HashSet;
 use std::sync::LazyLock;
 
 /// What a cell is: a hexagon, or a triangle pointing up or down.
@@ -245,7 +244,7 @@ impl Tessellation for TrihexagonalTessellation {
     }
 
     fn presets(&self) -> &[PresetDescriptor] {
-        &PRESETS
+        &TOPOLOGY_PRESETS
     }
 
     fn build_preset(
@@ -255,10 +254,11 @@ impl Tessellation for TrihexagonalTessellation {
     ) -> Result<Vec<TrihexagonalPoint>, FieldOpError> {
         let origin = self.center(TrihexagonalPoint::hexagon(0, 0));
         let mut cells = preset_cells(self, key, params, origin, Inclusion::WholeCell, || {
-            Ok(centered_rect(
+            centered_rect(
+                self,
                 param(params, "cols") as i32,
                 param(params, "rows") as i32,
-            ))
+            )
         })?;
         cells.sort();
         Ok(cells)
@@ -302,28 +302,39 @@ fn vertex(cell: TrihexagonalPoint, k: usize) -> Point {
     Point::new(x_unit * (ci + di) as f64, y_unit * (cj + dj) as f64)
 }
 
-/// `cols × rows` hexagons in screen-aligned rows (every row shifted by half a hexagon pitch
-/// relative to its neighbor) plus every triangle whose three hexagons are all in the set. The
-/// origin hexagon sits at `size / 2`, rounded down, of each axis.
-fn centered_rect(cols: i32, rows: i32) -> Vec<TrihexagonalPoint> {
+/// The cells whose centers lie in a world rectangle `cols` hexagon pitches wide and `rows` hexagon
+/// rows high, like the rectangle tool picks them. Every row holds `cols` hexagons (rows are shifted
+/// by half a pitch), and the triangles above the top row and below the bottom one are cells too, so
+/// the top and bottom edges are straight. The rectangle is exactly one period wide (and, for an even
+/// `rows`, high), so it holds one cell of every class of a glued side: a cylinder or torus needs no
+/// extra cells. The origin hexagon sits at `size / 2`, rounded down, of each axis.
+fn centered_rect(
+    tessellation: &TrihexagonalTessellation,
+    cols: i32,
+    rows: i32,
+) -> Result<Vec<TrihexagonalPoint>, FieldOpError> {
     let (ox, oy) = (cols / 2, rows / 2);
-    let hexagons: Vec<TrihexagonalPoint> = (0..rows)
-        .flat_map(|row| {
-            let r = row - oy;
-            (0..cols).map(move |col| TrihexagonalPoint::hexagon(col - ox - r.div_euclid(2), r))
-        })
-        .collect();
-    let members: HashSet<TrihexagonalPoint> = hexagons.iter().copied().collect();
-    let has = |q: i32, r: i32| members.contains(&TrihexagonalPoint::hexagon(q, r));
-    let triangles = hexagons.iter().flat_map(|&h| {
-        let (q, r) = (h.q, h.r);
-        // `h` is the anchor of a down triangle and the upper-left hexagon of an up triangle.
-        let down = (has(q + 1, r) && has(q, r + 1)).then_some(TrihexagonalPoint::down(q, r));
-        let up = (has(q + 1, r - 1) && has(q + 1, r)).then_some(TrihexagonalPoint::up(q, r - 1));
-        down.into_iter().chain(up)
-    });
-    let mut cells: Vec<TrihexagonalPoint> = hexagons.iter().copied().chain(triangles).collect();
+    // Hexagon centers are 2 apart in a row and `√3` between rows; the triangles above and below a
+    // row sit `1/√3` from it. The edges lie half a row from the outer rows, so no center lies on
+    // them and the triangles of the outer rows are cells.
+    let left = -2.0 * f64::from(ox) - 0.5;
+    let right = left + 2.0 * f64::from(cols);
+    let bottom = (-f64::from(oy) - 0.5) * SQRT_3;
+    let top = bottom + f64::from(rows) * SQRT_3;
+    let corners = [
+        Point::new(left, bottom),
+        Point::new(right, bottom),
+        Point::new(right, top),
+        Point::new(left, top),
+    ];
+    let reach = 2.0 * f64::from(cols) + f64::from(rows) * SQRT_3 + 4.0;
+    let mut cells = convex_cells(
+        tessellation,
+        Point::default(),
+        &corners,
+        reach,
+        Inclusion::Center,
+    )?;
     cells.sort();
-    cells.dedup();
-    cells
+    Ok(cells)
 }

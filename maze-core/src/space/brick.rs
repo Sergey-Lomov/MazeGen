@@ -8,6 +8,7 @@
 use super::field_ops::{
     CIRCLE_PRESET, Inclusion, MAX_PRESET_SIZE, RECT_PRESET, TRIANGLE_PRESET, circle_cells, param,
 };
+use super::rect_topology::{CYLINDER_PRESET, TORUS_PRESET, validate_rect_topology};
 use super::square::{cell_range, grid_candidates};
 use super::{
     CellShape, FieldOpError, Point, PresetDescriptor, PresetParams, Segment, ShapeDescriptor,
@@ -166,10 +167,12 @@ impl Tessellation for BrickTessellation {
         validate_preset(&PRESETS, key, params)?;
         let origin = self.center(BrickPoint { x: 0, y: 0 });
         match key {
-            "rect" => Ok(centered_rect(
-                param(params, "cols") as i32,
-                param(params, "rows") as i32,
-            )),
+            "rect" | "cylinder" | "torus" => {
+                let cells =
+                    centered_rect(param(params, "cols") as i32, param(params, "rows") as i32);
+                validate_rect_topology(self, &cells, key, params)?;
+                Ok(cells)
+            }
             "circle" => circle_cells(self, origin, param(params, "radius"), Inclusion::Center),
             "triangle" => pyramid(param(params, "side")),
             _ => Err(FieldOpError::Unavailable),
@@ -193,7 +196,13 @@ fn corner(cell: BrickPoint, dx: i64, dy: i64) -> Point {
 /// `triangle` is a pyramid rather than an equilateral triangle: a half-cell row shift makes the
 /// sides rise at `atan(2)` (about 63.4°), which an equilateral triangle's 60° cannot follow without
 /// a ragged edge. `side` is the number of bricks in the bottom row.
-const PRESETS: [PresetDescriptor; 3] = [RECT_PRESET, CIRCLE_PRESET, TRIANGLE_PRESET];
+const PRESETS: [PresetDescriptor; 5] = [
+    RECT_PRESET,
+    CIRCLE_PRESET,
+    TRIANGLE_PRESET,
+    CYLINDER_PRESET,
+    TORUS_PRESET,
+];
 
 /// `cols × rows` cells with the origin cell at `size / 2` (rounded down) of each axis.
 fn centered_rect(cols: i32, rows: i32) -> Vec<BrickPoint> {

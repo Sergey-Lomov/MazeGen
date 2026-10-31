@@ -21,6 +21,18 @@ pub fn field_preset(request: JsValue) -> Result<JsValue, JsValue> {
     cells_result(runner_field_ops::build_preset(&request))
 }
 
+/// The wire topology a preset defines together with its cells (`null` for a preset that is only a
+/// shape), e.g. the `box` net's seven gluings. The error is `{ kind, message? }`
+/// (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_preset_topology(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PresetRequest = decode(request)?;
+    match runner_field_ops::preset_topology(&request) {
+        Ok(topology) => Ok(serde_wasm_bindgen::to_value(&topology).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions
 /// (`directions`, each `[x, y]`). The error is `{ kind, message? }` (`FieldOpWireError`).
 #[wasm_bindgen]

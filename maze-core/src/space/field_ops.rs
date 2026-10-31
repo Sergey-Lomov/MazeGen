@@ -106,6 +106,9 @@ pub(super) const HEXAGON_PRESET: PresetDescriptor = PresetDescriptor {
 /// every coordinate far from `i32` overflow.
 pub(super) const MAX_PRESET_SIZE: u64 = 1_000_000;
 
+/// Switches a preset may leave out (they default to `0`) and that do not count toward its size.
+const OPTIONAL_PARAMS: [&str; 1] = ["axis"];
+
 /// Checks `params` against the schema of preset `key` among `presets`: the preset must exist and
 /// every parameter must be present exactly once, known and at least its minimum, and the product
 /// of the values must stay within `MAX_PRESET_SIZE`.
@@ -131,7 +134,11 @@ pub fn validate_preset(
             )));
         }
     }
-    let size: u64 = params.iter().map(|&(_, value)| u64::from(value)).product();
+    let size: u64 = params
+        .iter()
+        .filter(|(name, _)| !OPTIONAL_PARAMS.contains(name))
+        .map(|&(_, value)| u64::from(value))
+        .product();
     if size > MAX_PRESET_SIZE {
         return Err(FieldOpError::InvalidPreset(
             "preset is too large".to_string(),
@@ -142,7 +149,8 @@ pub fn validate_preset(
             .iter()
             .filter(|(name, _)| *name == schema.name)
             .count();
-        if count != 1 {
+        let optional = OPTIONAL_PARAMS.contains(&schema.name);
+        if count > 1 || (count == 0 && !optional) {
             return Err(FieldOpError::InvalidPreset(format!(
                 "parameter \"{}\" must be given exactly once",
                 schema.name
@@ -159,6 +167,15 @@ pub(super) fn param(params: PresetParams<'_>, name: &str) -> u32 {
         .find(|(n, _)| *n == name)
         .map(|&(_, value)| value)
         .expect("params validated against the preset schema")
+}
+
+/// The value of the optional switch `name` (`0` when left out) in params already accepted by
+/// `validate_preset`.
+pub(super) fn optional_param(params: PresetParams<'_>, name: &str) -> u32 {
+    params
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map_or(0, |&(_, value)| value)
 }
 
 /// Half-size (world units) of the window probed when deciding whether a map is a symmetry. It

@@ -198,6 +198,31 @@ impl<T: Tessellation> Topology<T> {
         self.add_group(field, current, folds)
     }
 
+    /// A topology of `groups`, ids `0..`, fold ids in group order. Not validated, like
+    /// `Topology::new`: callers (presets) validate against the field they install it on.
+    pub fn from_groups(
+        fingerprint: TessellationFingerprint,
+        groups: Vec<Vec<NewFold<T::CellId>>>,
+    ) -> Self {
+        let mut folds = Vec::new();
+        let mut fold_groups = Vec::new();
+        for (index, new_folds) in groups.into_iter().enumerate() {
+            let id = FoldGroupId(index as u32);
+            let first = folds.len();
+            folds.extend(new_folds.into_iter().map(|new| Fold {
+                a: new.a,
+                b: new.b,
+                twist: new.twist,
+                group: id,
+            }));
+            fold_groups.push(FoldGroup {
+                id,
+                folds: (first..folds.len()).map(FoldId).collect(),
+            });
+        }
+        Self::new(fingerprint, folds, fold_groups)
+    }
+
     /// Adds `folds` as a new group and returns its id. Transactional.
     pub fn add_group(
         &mut self,
