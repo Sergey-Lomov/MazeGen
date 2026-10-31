@@ -184,6 +184,10 @@ export function oneWayVerticalPassageEdges(edges: EdgeDto[], allEdges: EdgeDto[]
   return vertical.filter((edge) => !pairs.has(`${edge.to}->${edge.from}`));
 }
 
+export type SplitContrastData = {
+  colors: (VisibleColor | null)[]; keys: string[]; nodes: number[]; nodesByColor: number[][];
+};
+
 export function splitContrastData(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -192,37 +196,59 @@ export function splitContrastData(
   /// Whether a share mirrored onto a seam partner (`SplitPassage.mirrored`) highlights the partner's
   /// node. Off when a cut line separates the two sides in the exported image.
   highlightSeamMirrors: boolean,
-): { colors: (VisibleColor | null)[]; keys: string[]; nodes: number[] } {
-  if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [] };
+): SplitContrastData {
+  if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [], nodesByColor: [] };
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const effectiveColors = buildEffectiveSplitNodeColors(ctx.settings.splitNodeColors, maxSplitNodeCount(nodes));
-  const { passages } = buildSplitPassages(nodes, edges, cfg, new Set(), {}, {}, effectiveColors);
+  const { passages, specialShapes } = buildSplitPassages(nodes, edges, cfg, new Set(), {}, {}, effectiveColors);
+  // Points drawn as a special shape (bridge/diagonal) do not use the slot line colors. With the
+  // special shapes toggle off they draw as plain splits and are checked like any other.
+  const specialPointKeys = ctx.settings.splitSpecialShapes
+    ? new Set(specialShapes.map((shape) => shape.pointKey))
+    : new Set<string>();
   const colors: (VisibleColor | null)[] = [];
   const keys: string[] = [];
-  const seen = new Set<string>();
-  const ids = new Set<number>();
+  // Nodes to highlight per color, parallel to `colors`: a node is flagged for a color only when
+  // one of that color's own shares lands on it.
+  const nodesByColor: Set<number>[] = [];
+  const indexByKey = new Map<string, number>();
+  const nodeIdsByPoint = new Map<string, number[]>();
+  for (const node of nodeById.values()) {
+    const pointKey = `${node.x},${node.y}`;
+    const list = nodeIdsByPoint.get(pointKey);
+    if (list) list.push(node.id); else nodeIdsByPoint.set(pointKey, [node.id]);
+  }
   for (const passage of passages) {
+    if (specialPointKeys.has(passage.pointKey) || (ctx.settings.splitSpecialShapes && passage.mirroredFromSpecial)) continue;
     const key = passage.nodeIndex === undefined ? `color:${passage.color}` : `slot:${passage.nodeIndex}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    let index = indexByKey.get(key);
+    if (index === undefined) {
+      index = colors.length;
+      indexByKey.set(key, index);
       // A slot's color is edited in that slot's own split-node field; a passage with no slot has
       // no owning field.
       colors.push(passage.nodeIndex === undefined ? unownedColor(passage.color) : visibleColor(ctx, splitNodeKey(passage.nodeIndex)));
-      keys.push(String(key));
+      keys.push(key);
+      nodesByColor.push(new Set());
     }
     if (passage.mirrored && !highlightSeamMirrors) continue;
-    for (const node of nodeById.values()) {
-      if (`${node.x},${node.y}` === passage.pointKey) ids.add(node.id);
-    }
+    for (const id of nodeIdsByPoint.get(passage.pointKey) ?? []) nodesByColor[index].add(id);
   }
-  return { colors, keys, nodes: Array.from(ids) };
+  const all = new Set<number>();
+  for (const set of nodesByColor) for (const id of set) all.add(id);
+  return { colors, keys, nodes: Array.from(all), nodesByColor: nodesByColor.map((set) => Array.from(set)) };
+}
+
+/** One entry per split color against `background`, each flagging only the nodes that use it. */
+export function splitColorEntries(split: SplitContrastData, background: VisibleColor | null): ContrastEntry[] {
+  return split.colors.map((foreground, i) => ({ foreground, background, nodes: split.nodesByColor[i] }));
 }
 
 export function pushSplitPairwiseWarning(
   warnings: ExportWarning[],
-  split: { colors: readonly (VisibleColor | null)[]; keys: readonly string[]; nodes: readonly number[] },
+  split: SplitContrastData,
 ): void {
-  const { colors, keys, nodes } = split;
+  const { colors, keys, nodesByColor } = split;
   // This is one visual problem — split colors are not distinguishable from each other — even
   // when several slot pairs happen to trip the same contrast check. Keep one warning for the
   // whole split palette (key = id, so floors merge into it); the first offending pair feeds the
@@ -230,6 +256,7 @@ export function pushSplitPairwiseWarning(
   // shows it.
   let first: { colorValues: [number, number]; colorFields?: [ColorFieldKey, ColorFieldKey] } | undefined;
   const fields = new Set<ColorFieldKey>();
+  const nodes = new Set<number>();
   for (let i = 0; i < colors.length; i++) {
     for (let j = i + 1; j < colors.length; j++) {
       const [first_, second_] = [colors[i], colors[j]];
@@ -237,6 +264,8 @@ export function pushSplitPairwiseWarning(
       const [a, b] = [first_.field, second_.field];
       if (a) fields.add(a);
       if (b) fields.add(b);
+      for (const id of nodesByColor[i]) nodes.add(id);
+      for (const id of nodesByColor[j]) nodes.add(id);
       first ??= { colorValues: [first_.value, second_.value], colorFields: a && b ? [a, b] : undefined };
     }
   }
@@ -244,7 +273,7 @@ export function pushSplitPairwiseWarning(
   warnings.push({
     id: "split_colors_low_contrast_each_other",
     key: "split_colors_low_contrast_each_other",
-    nodes: [...nodes],
+    nodes: Array.from(nodes),
     edges: [],
     colorValues: first.colorValues,
     colorFields: first.colorFields,

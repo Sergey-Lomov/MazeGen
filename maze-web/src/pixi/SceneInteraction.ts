@@ -166,7 +166,7 @@ export class SceneInteraction {
           return;
         }
         const hoverCell = (field.fieldPrimitive === "polygon"
-          || field.fieldPrimitive === "symmetry")
+          || field.fieldPrimitive === "mirror")
           ? null
           : field.fieldPrimitive === "magic_wand"
             ? fieldEditController.getMagicWandPreview(e.globalX, e.globalY)
@@ -197,7 +197,7 @@ export class SceneInteraction {
       if (!(st.openCard === "field_setup"
         && field.fieldEditMode === "custom"
         && (field.fieldPrimitive === "polygon"
-          || (field.fieldPrimitive === "symmetry" && st.symmetryAxisPoints.length === 2 && st.symmetryScope === "polygon")))) return;
+          || (field.fieldPrimitive === "mirror" && st.mirrorAxisPoints.length === 2 && st.mirrorScope === "polygon")))) return;
       getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
     });
 

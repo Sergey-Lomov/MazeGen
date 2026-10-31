@@ -29,7 +29,7 @@ export interface ModeRenderer extends ViewportListener {
   /** The content and the overlay as separate containers, so a caller drawing several shifted copies can stack the
    * content of all copies below the overlay of all copies without the mode building its geometry twice. They start
    * as children of the container given to `createModeRenderer`, and may be moved elsewhere (GitHub issue #888). */
-  readonly layers: { readonly content: Container; readonly overlay: Container };
+  readonly layers: { readonly content: Container; readonly overlay: Container; readonly highlight: Container };
   /** Whether the mode puts anything in its `"overlay"` pass; a cut export skips the empty pass. */
   readonly hasOverlay: boolean;
   destroy(): void;

@@ -13,16 +13,15 @@ import { overlay } from "../styles/theme";
 import { useMazeStore } from "../store/mazeStore";
 
 registerNotificationCode("host.notice", {
-  category: "notice",
+  severity: "warning",
   message: (p) => (getLocale() === "ru" ? `Отказ ${p.x ?? ""}` : `Rejected ${p.x ?? ""}`).trim(),
 });
 registerNotificationCode("host.info", {
-  category: "notice",
   severity: "info",
   message: () => "Just so you know",
 });
 registerNotificationCode("host.error", {
-  category: "error",
+  severity: "error",
   message: (p) => `Failed ${p.n}`,
 });
 

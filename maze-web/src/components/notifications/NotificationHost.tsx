@@ -95,13 +95,13 @@ function NoticeZone({ notices, queuedCount }: { notices: NoticeItem[]; queuedCou
       onMouseLeave={() => setNoticeZonePaused(false)}
     >
       {notices.map((n) => (
-        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle(getNotificationCode(n.code)?.severity ?? "warning") }}>
+        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle(noticeSeverity(n.code)) }}>
           <span style={styles.message}>{notificationMessage(n.code, n.params)}</span>
           <CloseButton onClick={() => closeNotice(n.id)} />
           <CountdownBar key={n.expiresAt} notice={n} paused={paused} />
         </div>
       ))}
-      {notices.length + queuedCount >= 2 && <CloseAllButton severity="warning" onClick={closeAllNotices} />}
+      {notices.length + queuedCount >= 2 && <CloseAllButton severity={notices.every((n) => noticeSeverity(n.code) === "info") ? "info" : "warning"} onClick={closeAllNotices} />}
     </section>
   );
 }
@@ -278,7 +278,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical"; onClick: () => void }) {
+function CloseAllButton({ severity, onClick }: { severity: NotificationSeverity; onClick: () => void }) {
   return (
     <div style={styles.zoneHeader}>
       <button type="button" className="hoverable" style={{ ...styles.closeAll, ...paletteStyle(severity) }} onClick={onClick}>
@@ -286,6 +286,10 @@ function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical
       </button>
     </div>
   );
+}
+
+function noticeSeverity(code: string): NotificationSeverity {
+  return getNotificationCode(code)?.severity === "info" ? "info" : "warning";
 }
 
 /** Same pairing as `WarningBubble`: dark palette background, light palette text and border.

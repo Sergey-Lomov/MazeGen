@@ -26,7 +26,7 @@ tessellation does not support translation, so triangle parity and mixed-cell tes
 
 The mode and tool buttons use accessible tooltips. A mode tooltip renders its selection hotkey
 right-aligned as a muted keycap badge (for example, `Add` with `+`). A separate tertiary-colored line explains any
-keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Symmetry alone adds
+keyboard-modified behavior, prefixed by its keycap (for example, `Shift` then `Move vertices freely.`). Mirror alone adds
 `Unavailable in Select mode.` while Select is active, because that operation cannot reflect cells.
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
@@ -55,7 +55,7 @@ Which preset shapes a tessellation offers comes from `maze-core` (GitHub issue #
 operations (`translate`, `reflect`) it supports. `pixi/fieldOps.ts` caches the capabilities per
 tessellation. The shape selector lists exactly the offered presets; each preset's parameter form is
 built from its schema (one input per param, lower bound `min`). A tool whose operation is not
-offered is hidden (the Symmetry tool needs `reflect`; moving a selection needs `translate`). The
+offered is hidden (the Mirror tool needs `reflect`; moving a selection needs `translate`). The
 current table, for reference:
 
 | Kind | Preset shapes |
@@ -259,7 +259,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
 | `floorFields[floorId].fieldOperation` | Active primitive operation: `"add"`, `"remove"`, or `"select"`, per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"` \| `"magic_wand"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"mirror"` \| `"magic_wand"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
@@ -267,7 +267,8 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].fieldConfig` | That floor's current `FieldConfig`; a preset shape in default mode, `custom` shape in free-draw mode |
 | `floorFields[floorId].savedShapes` | That floor's saved size params per preset shape, restored on shape/mode switch |
 | `floorTopology[floorId]` | That floor's fold groups (GitHub issue #839, `Specs/topology.md`, "Web authoring"); edited in the `TopologyPanel` side panel (opened from a button in the custom-field card; `GlueEditorPanel` adds a glue), kept across field edits (activity recomputed), discarded with the maze whenever its active folds change; a floor's glues are dropped when it leaves custom editing for a standard shape (`setFieldEditMode("default")`, a standard config via `setFieldConfig*`, or a standard field copied onto it), copied/synced with "Copy floor" / "Synchronize floors" (see `Specs/floors.md`) |
-| `fieldOpError` | The last refused symmetry preview/apply (`{kind, message?}`), shown in the symmetry panel status; cleared when the preview succeeds |
+| `smoothInverted` | Transient: true while the smoothing hotkey (`S`) is held in the custom editor. Primitives are drawn with `smoothPrimitives` inverted, and the toolbar switch shows the inverted state; the persistent `smoothPrimitives` is not changed. Reset on key release, window blur, controller destroy and project load |
+| `fieldOpError` | The last refused mirror preview/apply (`{kind, message?}`), shown in the mirror panel status; cleared when the preview succeeds |
 
 `fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.
 
@@ -336,11 +337,11 @@ shape variant.
 The Modes section above Tools controls the operation for every primitive. Add inserts the
 primitive's cells, Remove deletes them, and Select previews only the existing field cells without
 changing the field. In Add and Remove modes, the right mouse button performs the opposite
-operation; right mouse input is ignored in Select mode. The Symmetry tool remains visible
+operation; right mouse input is ignored in Select mode. The Mirror tool remains visible
 but is disabled in Select mode because it only adds or removes reflected cells. Entering Select
-mode from another mode resets the active tool to Rectangle and clears any pending Symmetry
+mode from another mode resets the active tool to Rectangle and clears any pending Mirror
 axis/polygon state; re-selecting Select while it is already active keeps the current tool. Paste
-also enters Select mode but keeps the current tool (Rectangle if it was Symmetry). The polygon tool is a single tool;
+also enters Select mode but keeps the current tool (Rectangle if it was Mirror). The polygon tool is a single tool;
 its operation also comes from the active mode.
 
 Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`.
@@ -379,7 +380,7 @@ candidate set is collapsed to existing field cells and replaced by a filled cont
 the field is not changed and the selection remains visible until another gesture, tool, mode, or
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
-The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Symmetry uses `S`.
+The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select. The eight figure tools use `1` through `8` in visible-list order (Point, Rectangle, Circle, right triangle, equilateral triangle, Hexagon, Parallelogram, Polygon); Connected Area uses `A`, and Mirror uses `M`. Holding `S` inverts the smoothing setting for the shape being drawn: the preview re-renders at once and the committed cells match it, while the persistent toolbar setting stays unchanged. The hold is dropped when the key is released or the window loses focus.
 The tool works with square, hexagonal, triangular, and Cairo tessellations and normalizes its
 cells with the shared `normalizeCells` routine like every other tool. Cairo primitive inclusion considers only the valid
 four orientation classes in its periodic 4×4 coordinate model.
@@ -400,7 +401,7 @@ While a point selection already exists, holding Shift and dragging creates anoth
 unioned with the current selection; only filled cells are retained when that zone is released. The
 selected-cell hover highlight is hidden while the persistent selection is active. During a move,
 the source cells are hidden and only the temporary translated cells are shown; pointerup restores
-the source until confirmation. The symmetry polygon uses the same white dashed outline and vertex
+the source until confirmation. The mirror polygon uses the same white dashed outline and vertex
 markers.
 
 ### Shape primitives
@@ -410,8 +411,8 @@ markers.
 | `rectangle` | all | rectangular drag area |
 | `circle` | all | ellipse fitted to the drag area, or symmetric ellipse with Shift |
 | `triangle` | all | right triangle formed by the drag rectangle's diagonal, or centered directional triangle with Shift |
-| `equilateral_triangle` | all | equilateral triangle fitted to the drag frame and oriented with the triangle tessellation; on a triangular tessellation its apex softly snaps to one of six normals of the three edge families |
-| `hexagon` | all | hexagon fitted to the drag area in the orientation opposite to the tessellation, or centered hexagon with Shift |
+| `equilateral_triangle` | all | directed drag, see "Directed equilateral shapes" below |
+| `hexagon` | all | directed drag, see "Directed equilateral shapes" below |
 
 `parallelogram` is not a drag primitive; it is built from three clicks (see below).
 
@@ -439,6 +440,22 @@ Zoom-dependent by design: same pixel drag → same number of cells regardless of
 
 With Ctrl held, the frame's width and height are constrained to the same value. Ctrl therefore
 restores square proportions; Shift+Ctrl makes that square grow symmetrically from the start cell.
+
+### Directed equilateral shapes
+
+`equilateral_triangle` and `hexagon` do not use the shared drag frame above, and Ctrl has no effect
+on them. Both are measured in world coordinates from the drag start to the pointer, and the
+pointer direction softly snaps (within 6°) to the lattice directions (`equilateralSnap` of the
+tessellation, turned by the display orientation) or stays free otherwise. With no pointer movement
+the triangle points up, and the hexagon uses the orientation of a hexagon of cells.
+
+| Primitive | Without Shift | With Shift |
+|---|---|---|
+| `equilateral_triangle` | the start is the center of the base, the pointer is the apex | the start is the centroid, the pointer is the apex |
+| `hexagon` | the start and the pointer are opposite vertices, so the shape grows to one side | the start is the center, the pointer is a vertex |
+
+The minimum size is one cell (triangle height, hexagon diameter or circumradius respectively).
+Cells are selected by their center.
 
 ### Parallelogram tool (GitHub issue #867)
 
@@ -542,7 +559,7 @@ the in-memory clipboard (`fieldClipboard` in the store). It is disabled while no
 
 **Paste** is disabled while the clipboard is empty; the shortcut then shows `field_edit.nothing_copied`.
 It never commits to the field directly. It aborts every unfinished tool process (polygon,
-half-placed parallelogram, symmetry axis/polygon, topology pick, shape drag), commits an existing
+half-placed parallelogram, mirror axis/polygon, topology pick, shape drag), commits an existing
 pending selection move, switches the operation to Select and shows the clipboard as a pending
 selection move (`FieldEditController.pasteMode`). The top-left copied cell (closest to the top-left
 corner of the cells' bounds) is placed under the cursor, or at the center of the canvas when the
@@ -644,11 +661,11 @@ Square/hex: rectangular row/column lookup.
 
 Triangle: nearest-centroid among `col0-1, col0, col0+1` candidates. Each centroid position depends on parity:
 
-## Symmetry tool (GitHub issue #654)
+## Mirror tool (GitHub issue #654)
 
-Custom mode includes a Symmetry tool. It collects two snapped or free points for an infinite
-symmetry axis, previews the reflected cells, and changes the field only when the user confirms.
-The right-side symmetry panel uses toggle buttons for Cell centers/Cell corners/Free snapping and
+Custom mode includes a Mirror tool. It collects two snapped or free points for an infinite
+mirror axis, previews the reflected cells, and changes the field only when the user confirms.
+The right-side mirror panel uses toggle buttons for Cell centers/Cell corners/Free snapping and
 Everything/One side/Polygon processing. One side is the default scope. Add/remove is selected in
 the field editor's Modes section.
 Only active cells are used as the source.
@@ -665,10 +682,10 @@ Axis, arrow, and polygon-outline strokes keep a minimum 1.25px
 screen-space thickness at every zoom level. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes
-an unfinished polygon; when the symmetry status is ready, Enter confirms the operation. The
+an unfinished polygon; when the mirror status is ready, Enter confirms the operation. The
 operation applies the selected scope to the active cells in the current custom field, then merges
-or removes the reflected cells according to the active field-editor mode. After confirmation, the symmetry geometry is cleared and the normal
-point tool is restored; the symmetry settings remain unchanged.
+or removes the reflected cells according to the active field-editor mode. After confirmation, the mirror geometry is cleared and the normal
+point tool is restored; the mirror settings remain unchanged.
 
 The reflected cells come from core's `field_reflect_cells` (GitHub issue #762); the axis is passed
 in core world space. Core accepts only axes that are true reflection symmetries of the tessellation.
@@ -678,7 +695,7 @@ A free axis that is not one is not applied: the preview shows no mirrored cells 
 
 ### Field operation errors
 
-The symmetry panel keeps the Apply button with the other action buttons; below them is the status
+The mirror panel keeps the Apply button with the other action buttons; below them is the status
 area, which shows at most one bubble. A ready configuration shows nothing. When the user still has
 to act (build the axis, build or finish the polygon) it shows an info bubble. A refusal of core's
 reflection (`FieldOpError`: `unavailable`, `not_a_symmetry`, `outside_tessellation`) shows a warning bubble with the message (strings `field.op_error.*`), says

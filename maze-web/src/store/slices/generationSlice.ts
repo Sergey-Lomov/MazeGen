@@ -15,7 +15,7 @@ import { notify } from "../../notifications/notificationStore";
 import * as m from "~/paraglide/messages";
 
 const REGISTRY_LOAD_FAILED = "generation.registry_load_failed";
-registerNotificationCode(REGISTRY_LOAD_FAILED, { category: "error", message: () => m[REGISTRY_LOAD_FAILED]() });
+registerNotificationCode(REGISTRY_LOAD_FAILED, { severity: "error", message: () => m[REGISTRY_LOAD_FAILED]() });
 
 /** In-flight `loadRegistry` call, shared by overlapping callers (React StrictMode runs the mount
  *  effect twice in dev) so one failure is reported once, not as a second toast occurrence. */

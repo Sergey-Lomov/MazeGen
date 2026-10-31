@@ -28,10 +28,6 @@ export interface EditorUi {
   /// Closed-form cell counts of the hexagon (radius) and triangle (side) presets, else ask core.
   hexagonCellCount: ((radius: number) => number) | null;
   triangleCellCount: ((side: number) => number) | null;
-  /// Exact lattice rasterization of the equilateral-triangle primitive.
-  latticeTriangle: boolean;
-  /// Exact lattice rasterization of the hexagon primitive on the named lattice.
-  latticeHexagon: "hex" | "tri" | null;
   /// Which cells a circle primitive takes: by center, or only those fully inside.
   circleInclusion: "center" | "contained";
   /// Cell-size label of the print dialogs and of the PNG result: edge length or diameter.
@@ -45,8 +41,6 @@ const AXIS_ALIGNED: EditorUi = {
   rectCellsPerUnit: 1,
   hexagonCellCount: null,
   triangleCellCount: null,
-  latticeTriangle: false,
-  latticeHexagon: null,
   circleInclusion: "center",
   printCellSize: "side",
   pngCellSize: "side",
@@ -190,8 +184,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       rectCellsPerUnit: null,
       hexagonCellCount: (r) => 3 * r * r + 3 * r + 1,
       triangleCellCount: null,
-      latticeTriangle: false,
-      latticeHexagon: "hex",
       circleInclusion: "center",
       printCellSize: "diameter",
       pngCellSize: "diameter",
@@ -218,8 +210,6 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       rectCellsPerUnit: 2,
       hexagonCellCount: null,
       triangleCellCount: (n) => n * n,
-      latticeTriangle: true,
-      latticeHexagon: "tri",
       circleInclusion: "contained",
       printCellSize: "diameter",
       pngCellSize: "diameter",

@@ -6,19 +6,19 @@ import { reflectFieldCells, type FieldOpError } from "../wasm/mazeService";
 import { asFieldOpError } from "./fieldOps";
 import { cellsInsidePolygon } from "./polygonGeometry";
 
-export type SymmetrySnapMode = "centers" | "corners" | "free";
-export type SymmetryScope = "everything" | "one_side" | "polygon";
-export type SymmetryPoint = { x: number; y: number };
-export type SymmetryAxisPoints = SymmetryPoint[];
+export type MirrorSnapMode = "centers" | "corners" | "free";
+export type MirrorScope = "everything" | "one_side" | "polygon";
+export type MirrorPoint = { x: number; y: number };
+export type MirrorAxisPoints = MirrorPoint[];
 
-export interface SymmetryOptions {
-  scope: SymmetryScope;
+export interface MirrorOptions {
+  scope: MirrorScope;
   sourceSide: -1 | 1;
-  axis: [SymmetryPoint, SymmetryPoint];
-  polygon: SymmetryPoint[];
+  axis: [MirrorPoint, MirrorPoint];
+  polygon: MirrorPoint[];
 }
 
-export interface SymmetryPreview {
+export interface MirrorPreview {
   sourceCells: [number, number][];
   mirroredCells: [number, number][];
   /** Why core refused the reflection; `mirroredCells` is empty then. */
@@ -29,25 +29,25 @@ export interface SymmetryPreview {
 const AXIS_EPSILON = 1e-6;
 
 /** Signed side of a point relative to the directed axis. Positive means left of A→B; 0 on the axis. */
-export function sideOfAxis(point: SymmetryPoint, axis: [SymmetryPoint, SymmetryPoint], axisLength?: number): number {
+export function sideOfAxis(point: MirrorPoint, axis: [MirrorPoint, MirrorPoint], axisLength?: number): number {
   const [a, b] = axis;
   const cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
   const length = axisLength ?? Math.hypot(b.x - a.x, b.y - a.y);
   return length === 0 || Math.abs(cross) / length < AXIS_EPSILON ? 0 : Math.sign(cross);
 }
 
-export function worldPointForCell(cell: [number, number], cfg: FieldConfig): SymmetryPoint {
+export function worldPointForCell(cell: [number, number], cfg: FieldConfig): MirrorPoint {
   const screen = makeProjection(cfg).gridToScreen(cell[0], cell[1]);
   return { x: screen.x, y: -screen.y };
 }
 
-export function cellForWorldPoint(point: SymmetryPoint, cfg: FieldConfig): [number, number] {
+export function cellForWorldPoint(point: MirrorPoint, cfg: FieldConfig): [number, number] {
   const grid = makeProjection(cfg).screenToGrid(point.x, -point.y);
   return [grid.x, grid.y];
 }
 
 /** Snap a world point using the same grid projection used by field editing. */
-export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, cfg: FieldConfig): SymmetryPoint {
+export function snapMirrorPoint(point: MirrorPoint, mode: MirrorSnapMode, cfg: FieldConfig): MirrorPoint {
   if (mode === "free") return { ...point };
   if (mode === "centers") return worldPointForCell(cellForWorldPoint(point, cfg), cfg);
 
@@ -65,25 +65,25 @@ export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, 
   return best;
 }
 
-/** The axis in `maze-core` world units: symmetry space is y-up display space. */
-function axisInCoreSpace(axis: [SymmetryPoint, SymmetryPoint], cfg: FieldConfig): [[number, number], [number, number]] {
+/** The axis in `maze-core` world units: mirror space is y-up display space. */
+function axisInCoreSpace(axis: [MirrorPoint, MirrorPoint], cfg: FieldConfig): [[number, number], [number, number]] {
   const inverse = invertTransform(displayTransform(cfg));
-  const toCore = (point: SymmetryPoint) => applyTransform(inverse, [point.x, -point.y]);
+  const toCore = (point: MirrorPoint) => applyTransform(inverse, [point.x, -point.y]);
   return [toCore(axis[0]), toCore(axis[1])];
 }
 
 /**
- * Computes the cells shown by the symmetry preview. Sources are the filled cells selected by the
+ * Computes the cells shown by the mirror preview. Sources are the filled cells selected by the
  * scope; their mirror image comes from `maze-core`, which refuses axes that are not true
  * reflection symmetries of the tessellation (`error`, with no mirrored cells).
  */
-export function computeSymmetryPreview(
+export function computeMirrorPreview(
   filledCells: Set<number>,
   cfg: FieldConfig,
-  options: SymmetryOptions,
+  options: MirrorOptions,
   encode: (x: number, y: number) => number,
   decode: (key: number) => [number, number],
-): SymmetryPreview {
+): MirrorPreview {
   const sourceCells: [number, number][] = [];
   const axisLength = Math.hypot(options.axis[1].x - options.axis[0].x, options.axis[1].y - options.axis[0].y);
   if (axisLength === 0) return { sourceCells, mirroredCells: [], error: null };
@@ -108,11 +108,11 @@ export function computeSymmetryPreview(
   }
 }
 
-function cellVertices(x: number, y: number, cfg: FieldConfig): SymmetryPoint[] {
+function cellVertices(x: number, y: number, cfg: FieldConfig): MirrorPoint[] {
   return getCellVertices(x, y, cfg).map((point) => ({ x: point.x, y: -point.y }));
 }
 
-export function symmetryStatus(options: Pick<SymmetryOptions, "axis" | "scope" | "polygon"> | { axisPoints: SymmetryAxisPoints; scope: SymmetryScope; polygon: SymmetryPoint[]; polygonFinished?: boolean }): "axis" | "polygon" | "ready" {
+export function mirrorStatus(options: Pick<MirrorOptions, "axis" | "scope" | "polygon"> | { axisPoints: MirrorAxisPoints; scope: MirrorScope; polygon: MirrorPoint[]; polygonFinished?: boolean }): "axis" | "polygon" | "ready" {
   const axis = "axisPoints" in options ? options.axisPoints : options.axis;
   if (axis.length < 2 || (axis.length === 2 && axis[0].x === axis[1].x && axis[0].y === axis[1].y)) return "axis";
   const polygonFinished = !("polygonFinished" in options) || options.polygonFinished === true;

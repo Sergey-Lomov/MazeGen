@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { FieldSetupFeature, fieldSetupSubtitle } from "../components/features/FieldSetupFeature";
 import { configSizeDescription } from "../components/dialogs/FieldPrintSizingDialog";
 import type { FieldConfig } from "../fieldConfig";
@@ -316,7 +316,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
 
-    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    expect(screen.getAllByText("Smoothing").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     expect(screen.getByText(/removes cells that touch the rest of the selected shape by only one side/)).toBeInTheDocument();
   });
@@ -324,11 +324,33 @@ describe("FieldSetupFeature — Copy floor button", () => {
   it("shows and updates primitive smoothing for a standard field", () => {
     render(<FieldSetupFeature />);
 
-    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    expect(screen.getAllByText("Smoothing").length).toBeGreaterThan(0);
     const smoothing = screen.getByRole("checkbox");
     expect(smoothing).toBeChecked();
     fireEvent.click(smoothing);
     expect(useMazeStore.getState().smoothPrimitives).toBe(false);
+  });
+
+  it("mentions the hold hotkey in the tooltip only for the custom editor", () => {
+    const hint = m["field.smooth_hold_hint"]();
+    const { unmount } = render(<FieldSetupFeature />);
+    expect(screen.queryAllByText(hint)).toHaveLength(0);
+    unmount();
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }) },
+    });
+    render(<FieldSetupFeature />);
+    expect(screen.queryAllByText(hint).length).toBeGreaterThan(0);
+  });
+
+  it("shows the inverted smoothing state while the hotkey is held", () => {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    render(<FieldSetupFeature />);
+    const smoothing = screen.getByRole("checkbox");
+    expect(smoothing).toBeChecked();
+    act(() => useMazeStore.getState().setSmoothInverted(true));
+    expect(smoothing).not.toBeChecked();
+    expect(useMazeStore.getState().smoothPrimitives).toBe(true);
   });
 
   it("offers one polygon tool whose operation follows the active mode", () => {
@@ -345,13 +367,13 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
-    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
-    expect(symmetryTool).toBeDisabled();
-    const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
-    expect(symmetryDescription).toHaveTextContent("SymmetrySUnavailable in Select mode.");
+    const mirrorTool = screen.getByRole("button", { name: /Mirror/ });
+    expect(mirrorTool).toBeDisabled();
+    const mirrorDescription = document.getElementById(mirrorTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(mirrorDescription).toHaveTextContent("MirrorMUnavailable in Select mode.");
   });
 
-  it("keeps the symmetry tool visible but disabled where core offers no reflection", () => {
+  it("keeps the mirror tool visible but disabled where core offers no reflection", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
@@ -363,9 +385,9 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
 
-    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
-    expect(symmetryTool).toBeDisabled();
-    const description = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    const mirrorTool = screen.getByRole("button", { name: /Mirror/ });
+    expect(mirrorTool).toBeDisabled();
+    const description = document.getElementById(mirrorTool.parentElement?.getAttribute("aria-describedby")!);
     expect(description).toHaveTextContent("Unavailable in this tessellation.");
   });
 

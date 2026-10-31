@@ -579,6 +579,8 @@ exports them as `geometry_snapshot`, `geometry_cell_at`, `geometry_cells_in_regi
 `field_version` is echoed from the request — the web owns the version counter (#761). An invalid
 cell or a polyline request with a non-positive tolerance is an error.
 
+Status (GitHub issue #890): the snapshot wire is trimmed for load speed. A third boundary request, `{ kind: "faces" }`, returns `BoundaryDto::Faces` and no boundary data: the faces' segments chain in `faces_of` order, so the caller rebuilds the path (`MoveTo` the first segment's start, then one command per segment); `getGeometrySnapshot` in the web does this for `{ kind: "path" }` (`pathCommandsOfFaces`) and its tests pin it equal to core's `geometry_outlines`. A cell's `allowed_group` is an index into the snapshot's `allowed_groups`, which holds each distinct group once; the web resolves the index back to the permutation list, so consumers still read `CellGeometry.allowed_group` as before.
+
 Status (GitHub issue #833): the request may carry `topology_version` and `topology`
 (`{ field_cells, folds: [{ a, b, twist, group }], groups }`, cells as `[x, y]` and `face_idx` a position in
 `faces_of`). `field_cells` is the floor's whole cell set, which decides fold activity (the requested `cells` may be a
@@ -598,7 +600,7 @@ Status (GitHub issue #761, first step): `maze-web/src/pixi/cartesianCache.ts` is
 access layer. It holds the snapshot of the current field's cells, invalidated by the tessellation
 instance (the serialized config) and a web-owned field version (bumped when the cell set or the
 instance changes) — never by the display transform. Reads (`getCellGeometry`, `getCartesian`) are
-synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. Point and region queries
+synchronous; a cell outside the field costs one single-cell snapshot call and lives in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`); field cells are never evicted. A caller about to read many outside cells (auto-lock over other floors, the wall renderer's border neighbors) calls `prefetchCellGeometries`, which loads the uncached ones in snapshot calls of at most 1000 cells instead of one call per cell (GitHub issue #890). Point and region queries
 (`cellAtWorldPoint`, `cellsInWorldRegion`) are scoped to the field's cells by default, so a selection
 over a zoomed-out canvas never reaches `MAX_REGION_CANDIDATES`; `CellId` is a branded tuple. The web
 test suite requires the wasm build (`tools/require-wasm.mjs`; `scripts/test.sh`/`scripts/windows/test.ps1` rebuild it).
@@ -638,7 +640,7 @@ branch cut cannot reorder them.
 
 Status (GitHub issue #762): the field editor is built on core's geometry and field operations.
 Selection, editor primitives, nearest-cell lookup and print layout use the snapshot geometry;
-moving a selection, the symmetry tool and the preset shapes call `field_translate_cells`,
+moving a selection, the mirror tool and the preset shapes call `field_translate_cells`,
 `field_reflect_cells` and `field_preset`. `field_capabilities` decides which shapes, parameter
 forms and tools the editor offers (a tool whose operation is unavailable is hidden). Refusals
 (`FieldOpError`) are shown to the user. The web does no arithmetic on `CellId`s outside the geometry
@@ -714,7 +716,7 @@ Status (GitHub issue #792): `space::trihexagonal` (`TrihexagonalTessellation`, k
 Status (GitHub issue #793): `space::snub_hexagonal` (`SnubHexagonalTessellation`, kind `snub_hexagonal`, no params) is the snub trihexagonal tiling: regular hexagons and equilateral triangles of edge length 1, four triangles and one hexagon around every vertex. Per hexagon there are eight triangles: six share an edge with it (one per hexagon face) and two border only triangles. Hexagon area `3√3 / 2`, triangle area `√3 / 4`, so `cell_scale` differs between the two. The split editor consumes its arc faces through the faces' flattened polylines (GitHub issue #800, `Specs/split-blueprints.md`).
 
 - **Construction.** Vertices are the points `a + b·ω` (`ω = e^{iπ/3}`, written `(a, b)`, world position `x = a + b/2`, `y = b·√3/2`) of the unit triangular lattice minus the index-7 sublattice `L = { a ≡ 2b (mod 7) }`. Each removed point is a hexagon center (its six lattice neighbors are the hexagon's vertices); every lattice triangle touching no removed point is a triangle cell. `L` is spanned by `(2, 1)` and `(-1, 3)` (hexagon center distance `√7`) and is closed under 60° rotation, so the tiling has the full `p6` symmetry about a hexagon center and the two lattice translations.
-- **Handedness.** The tiling is chiral. The fixed form is counter-clockwise (y up): the lattice vector `(2, 1)` points `atan(√3 / 5) ≈ 19.1°` counter-clockwise from the hexagon's vertex axis. The mirror image (`a ≡ 4b (mod 7)`) is not offered. The tiling has no mirror symmetry, so the kind lists only `Translate` in `field_operations` and `reflect_cells` is `Unavailable` (the web Symmetry tool stays visible but disabled, tooltip "Unavailable in this tessellation"); translation works for lattice vectors only (`q·(5/2, √3/2) + r·(1/2, 3√3/2)`).
+- **Handedness.** The tiling is chiral. The fixed form is counter-clockwise (y up): the lattice vector `(2, 1)` points `atan(√3 / 5) ≈ 19.1°` counter-clockwise from the hexagon's vertex axis. The mirror image (`a ≡ 4b (mod 7)`) is not offered. The tiling has no mirror symmetry, so the kind lists only `Translate` in `field_operations` and `reflect_cells` is `Unavailable` (the web Mirror tool stays visible but disabled, tooltip "Unavailable in this tessellation"); translation works for lattice vectors only (`q·(5/2, √3/2) + r·(1/2, 3√3/2)`).
 - **Cell ids.** `SnubHexagonalPoint { q, r, kind }`, `kind` one of `Hexagon`, `Edge0 … Edge5`, `Inner0`, `Inner1` (`SnubHexagonalKind::ALL`, wire order). `(q, r)` names the hexagon with center `q·(2, 1) + r·(-1, 3)` (lattice units). `Edge k` is the triangle across face `k` of that hexagon; `Inner0`/`Inner1` are the nearest translates of the two triangle classes that border no hexagon (a triangle is the kind's template translated to its anchor). Every id is a valid cell. Wire encoding: `[x, y] = [9q + kind index, r]` (`to_xy`/`from_xy`; `q` beyond `±i32::MAX / 9` wraps).
 - **Faces.** `SnubHexagonalFace` is the position in `faces_of`: counter-clockwise from the cell's first vertex, a hexagon `0..6` (face `k` runs from the vertex at `60°·k` to the next; `regular:6`), a triangle `0..3` (`regular:3`; an edge triangle's face `0` is the one shared with its anchor hexagon). The opposite face is not a function of the face: `neighbor` returns it, found as the cell on the other side of the same unit lattice edge.
 - **Neighbors.** `neighbor(cell, face)` is `None` only when the neighbor's `q` or `r` leave `i32`. Hexagon faces lead to its edge triangles; an edge triangle has one hexagon neighbor and two triangle neighbors; an inner triangle has three triangle neighbors.

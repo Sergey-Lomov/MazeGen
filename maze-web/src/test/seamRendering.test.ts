@@ -832,7 +832,21 @@ describe("seam split mirror", () => {
     expect(splitContrastData(splitNodes, splitEdges, field, ctx, false).nodes).toContain(600);
   });
 
-  it("mirrors nothing for a point drawn as a bridge", () => {
+  it("highlights the mirror partner only for the color whose share lands on it (GitHub issue #893)", () => {
+    warm(cylinder);
+    const { splitNodes, splitEdges } = splitEast(1);
+    const west = idOf([COLUMNS - 2, 1]);
+    const edges = [...splitEdges, { from: idOf([COLUMNS - 1, 1]), to: west, kind: "basic" as const }, { from: west, to: idOf([COLUMNS - 1, 1]), kind: "basic" as const }];
+    const ctx = { settings: { splitNodeColors: [0xff0000, 0x00ff00] }, mode: "corridors", slotCount: 2 } as unknown as ColorVisibilityContext;
+    const data = splitContrastData(splitNodes, edges, field, ctx, true);
+    const partner = idOf([0, 1]);
+    const slot0 = data.nodesByColor[data.keys.indexOf("slot:0")];
+    const slot1 = data.nodesByColor[data.keys.indexOf("slot:1")];
+    expect(slot1).toContain(partner);
+    expect(slot0).not.toContain(partner);
+  });
+
+  it("tags the mirrors of a point drawn as a bridge so they hide while special shapes are on", () => {
     warm(cylinder);
     const x = COLUMNS - 1;
     const bridgeNodes: NodeDto[] = [...nodes.filter((node) => !(node.x === x && node.y === 1)), { id: 600, x, y: 1, i: 1 }, { id: 601, x, y: 1, i: 1 }];
@@ -841,7 +855,9 @@ describe("seam split mirror", () => {
     const bridgeEdges = [...link(600, idOf([x - 1, 1])), ...link(600, idOf([0, 1])), ...link(601, idOf([x, 2])), ...link(601, idOf([x, 0]))];
     const { passages, specialShapes } = buildSplitPassages(bridgeNodes, bridgeEdges, field);
     expect(specialShapes.map((shape) => shape.pointKey)).toEqual([`${x},1`]);
-    expect(passages.some((p) => p.mirrored)).toBe(false);
+    const mirrors = passages.filter((p) => p.mirrored);
+    expect(mirrors.length).toBeGreaterThan(0);
+    expect(mirrors.every((p) => p.mirroredFromSpecial)).toBe(true);
   });
 
   it("mirrors nothing when the partner is split too", () => {

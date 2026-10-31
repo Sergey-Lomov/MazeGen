@@ -10,7 +10,7 @@ import { floorTopologyInfo, inactiveFoldCount } from "./topologyInfo";
 export const TOPOLOGY_FOLDS_INACTIVE = "topology.folds_inactive";
 
 registerNotificationCode(TOPOLOGY_FOLDS_INACTIVE, {
-  category: "notice",
+  severity: "warning",
   message: (params) => m[TOPOLOGY_FOLDS_INACTIVE]({ floor: String(params.floor), count: Number(params.count) }),
   dedupParams: ["floor"],
 });

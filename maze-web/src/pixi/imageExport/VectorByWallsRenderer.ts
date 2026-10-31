@@ -26,7 +26,7 @@ import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
-import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
+import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
@@ -246,6 +246,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   /** Everything that must stay above the content of every cut copy (the `"overlay"` pass), so a later copy's
    *  corridors never cover an earlier copy's top-layer shapes. Stacked directly above `content`. */
   readonly overlay: Container;
+  /** The export warning hover highlight, above the overlay of every cut copy so a later copy never
+   *  covers or crops an earlier copy's highlight. Shown in the `"full"` and `"foreground"` passes only. */
+  readonly highlight: Container;
 
   constructor(container: Container) {
     this.backgroundContainer = new Container();
@@ -262,6 +265,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
 
     this.overlay = new Container();
     container.addChild(this.overlay);
+
+    this.highlight = new Container();
+    container.addChild(this.highlight);
   }
 
   setVisible(visible: boolean): void {
@@ -277,6 +283,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   private applyVisibility(): void {
     this.content.visible = this.pass === "full" || this.pass === "content" || this.pass === "foreground";
     this.overlay.visible = this.pass === "full" || this.pass === "overlay" || this.pass === "foreground";
+    this.highlight.visible = this.pass === "full" || this.pass === "foreground";
     const visible = this.shown && (this.pass === "full" || this.pass === "backdrop");
     this.backgroundContainer.visible = visible;
     this.gridContainer.visible = visible && this.showGrid;
@@ -417,7 +424,7 @@ export class VectorByWallsRenderer {
     container.addChild(this.markerIndexBodyContainer);
     container.addChild(this.floorLabelContainer);
     this.warningHighlightContainer = new Container();
-    container.addChild(this.warningHighlightContainer);
+    this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
 
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
@@ -743,7 +750,12 @@ export class VectorByWallsRenderer {
         groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
-      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler);
+      const projectGroups = getProjectTeleportGroups({
+        nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
+        avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+        mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
+      });
+      const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: state.vectorByWallsSettings.markerIndex, floorColor });
     } else {
       this.markerIndex.clear();

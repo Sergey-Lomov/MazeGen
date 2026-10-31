@@ -17,12 +17,14 @@ import { floorLabelText } from "../renderers/FloorLabelRenderer";
 import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import type { ExportWarning, ExportWarningId, WarningFloor } from "./exportWarnings";
+import type { TeleportGroup } from "./teleportGroups";
+import { getProjectTeleportGroups } from "./projectTeleportGroups";
 
 /** Which size control a text label belongs to — one per independent font-size field (GitHub issue
  *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
 export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex" | "floorLabel";
 
-export type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex" | "floorLabel">;
+export type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex" | "floorLabel" | "teleportMergeMode" | "teleportAvoidFieldExit">;
 
 export type TextFitEntry = TextFitItem & {
   kind: TextFitKind;
@@ -48,6 +50,7 @@ export function collectTextFitEntries(
   displayFloorIndex: number,
   unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
   displayFloorTitle?: string,
+  teleportGroups: TeleportGroup[] = [],
 ): TextFitEntry[] {
   const entries: TextFitEntry[] = [];
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
@@ -94,7 +97,7 @@ export function collectTextFitEntries(
   // Marker-index plates (GitHub issue #725): fixed-size rectangles, labels of the displayed floor.
   const index = settings.markerIndex;
   if (index.enabled) {
-    const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, NO_ENDPOINT_VISUAL);
+    const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, NO_ENDPOINT_VISUAL, undefined, teleportGroups);
     for (const label of labels) {
       const [x, y] = nearestCellCoord(label.pos[0], label.pos[1], cfg);
       entries.push({
@@ -162,6 +165,9 @@ export function computeTextFitItemsAcrossFloors(
 ): Record<TextFitKind, TextFitItem[]> {
   const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [], floorLabel: [] };
   const resolveNodeLevel = selectNodeLevelResolver(nodes);
+  const teleportGroups = settings.markerIndex.enabled
+    ? getProjectTeleportGroups({ nodes, edges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start, finish, mergeTeleports: settings.teleportMergeMode })
+    : [];
   for (const [index, floor] of floors.entries()) {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext: TeleportFloorContext = {
@@ -173,7 +179,7 @@ export function computeTextFitItemsAcrossFloors(
     };
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
-    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title)) {
+    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title, teleportGroups)) {
       result[entry.kind].push({
         text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
         plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,

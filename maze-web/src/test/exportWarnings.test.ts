@@ -878,6 +878,19 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(new Set(merged[0].cells?.map((c) => c.floorIndex))).toEqual(new Set([0, 1]));
   });
 
+  it("feeds the project teleport groups into marker index text-fit: a group shares one index (GitHub issue #871)", () => {
+    // Teleports 0->1 and 0->2 share the endpoint node 0, so merged they form one group.
+    const groupNodes = [n(0, 0, 0, 0), n(1, 3, 3, 0), n(2, 5, 5, 0)];
+    const groupEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0), teleport(0, 2), teleport(2, 0)];
+    const index = baseSettings().markerIndex;
+    const markerIndex = { ...index, enabled: true, labelStyle: "arabic" as const, coverage: { ...index.coverage, singleFloorTeleport: true } };
+    const texts = (teleportMergeMode: boolean) => computeTextFitItemsAcrossFloors(
+      groupNodes, groupEdges, [{ id: "f0" }], squareCfg, baseSettings({ teleportMergeMode, markerIndex }), null, null,
+    ).markerIndex.map((item) => item.text);
+    expect(new Set(texts(true))).toEqual(new Set(["1"]));
+    expect(new Set(texts(false))).toEqual(new Set(["1", "2"]));
+  });
+
   it("collects labels across floors per size control for auto-fit", () => {
     const settings = baseSettings({ startMarker: marker({}), finishMarker: marker({ text: "" }) });
     const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
@@ -918,14 +931,35 @@ describe("warnings reference color fields by key (GitHub issue #717)", () => {
   });
 
   it("attaches a split warning to the slot's own split-node field", () => {
-    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa });
+    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
     const warning = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
       .find((w) => w.id === "split_low_contrast_floor");
     expect(warning?.colorFields).toEqual(["splitNode:0", "tilesFloor"]);
   });
 
+  it("skips special-shape splits in the split/floor contrast check unless special shapes are off (issue #893)", () => {
+    const base = { floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa };
+    const on = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, baseSettings({ ...base, splitSpecialShapes: true }), null, null)
+      .find((w) => w.id === "split_low_contrast_floor");
+    expect(on).toBeUndefined();
+    const off = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, baseSettings({ ...base, splitSpecialShapes: false }), null, null)
+      .find((w) => w.id === "split_low_contrast_floor");
+    expect(off).toBeDefined();
+  });
+
+  it("flags only the split points whose own slot color clashes (GitHub issue #893)", () => {
+    // Point A (1,1) connects through slot 0 (clashing with the floor), point B (3,3) through slot 1.
+    const nodes = [n(0, 1, 1), n(1, 1, 1), n(2, 2, 1), n(3, 3, 3), n(4, 3, 3), n(5, 4, 3)];
+    const edges = [e(0, 2), e(2, 0), e(4, 5), e(5, 4)];
+    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
+    const warning = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null).find((w) => w.id === "split_low_contrast_floor");
+    expect(warning?.nodes).toEqual(expect.arrayContaining([0, 1]));
+    expect(warning?.nodes).not.toContain(3);
+    expect(warning?.nodes).not.toContain(4);
+  });
+
   it("lists every offending slot on the single pairwise split warning", () => {
-    const settings = baseSettings({ floorColor: 0xffffff, splitNodeColors: [0x123456, 0x123457], background: 0xffffff, gridColor: 0xaaaaaa });
+    const settings = baseSettings({ floorColor: 0xffffff, splitNodeColors: [0x123456, 0x123457], background: 0xffffff, gridColor: 0xaaaaaa, splitSpecialShapes: false });
     const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
       .filter((w) => w.id === "split_colors_low_contrast_each_other");
     expect(warnings).toHaveLength(1);

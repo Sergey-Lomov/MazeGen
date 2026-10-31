@@ -37,6 +37,19 @@ describe("routeRadialConnectors", () => {
     expect(withMarker.points.slice(2, 4)).toEqual([120, 0]);
   });
 
+  it("runs the longer leg into a cross-floor badge end, whichever end it is (GitHub issue #897)", () => {
+    const marker: [number, number] = [80, 0];
+    const badge: [number, number] = [0, 120];
+    // Badge as `to`: the arc at the badge radius is the long final leg, so the corner is at (120, 0).
+    const toBadge = routeRadialConnectors([{ ...edge(marker, badge), toFloor: 1 }])[0];
+    expect(toBadge.points.slice(2, 4)).toEqual([120, 0]);
+    // Badge as `from`: the arc at the badge radius is the long first leg, so the route follows it from the badge.
+    const fromBadge = routeRadialConnectors([{ ...edge(badge, marker), fromFloor: 1 }])[0];
+    expect(fromBadge.points.slice(0, 2)).toEqual(badge);
+    expect(Math.hypot(fromBadge.points[2], fromBadge.points[3])).toBeCloseTo(120);
+    expect(Object.keys(fromBadge)).toEqual(["points"]);
+  });
+
   it("keeps a connector touching the center as a direct radial line", () => {
     expect(routeRadialConnectors([edge([0, 0], [0, 10])])).toEqual([{ points: [0, 0, 0, 10] }]);
   });

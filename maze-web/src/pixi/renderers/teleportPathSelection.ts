@@ -20,7 +20,14 @@ export type Segment = { axis: Axis; fixed: number; lo: number; hi: number };
  *  corner point between them; `from`/`to` are its own connector's original endpoints (kept here,
  *  not just the segments, so `countCollisions` can check whether an *other* path's overlap with
  *  `candidate` lands on that other connector's own endpoint — see `ENDPOINT_COLLISION_WEIGHT`). */
-export type OrthogonalPath = { segments: [Segment, Segment]; bend: [number, number]; from: [number, number]; to: [number, number] };
+export type OrthogonalPath = {
+  segments: [Segment, Segment];
+  bend: [number, number];
+  from: [number, number];
+  to: [number, number];
+  /** Which end is a cross-floor badge rather than a teleport marker (GitHub issue #897). */
+  badgeEnd?: "from" | "to";
+};
 
 function makeSegment(axis: Axis, pa: [number, number], pb: [number, number]): Segment {
   const la = alongAxis(axis, pa[0], pa[1]);
@@ -66,6 +73,16 @@ export function segmentsOverlap(a: Segment, b: Segment): boolean {
 
 export function pathLength(path: OrthogonalPath): number {
   return (path.segments[0].hi - path.segments[0].lo) + (path.segments[1].hi - path.segments[1].lo);
+}
+
+/** Length of the leg that ends at the badge (0 when the path has no badge end). A marker displaced by
+ *  the marker layout sits off its cell center, while the badge sits on a cell center: of two equally
+ *  long candidates, the one whose longer leg runs through the badge's center enters the badge cleanly,
+ *  instead of running along the marker's displaced line past the badge's edge (GitHub issue #897). */
+function badgeLegLength(path: OrthogonalPath): number {
+  if (path.badgeEnd === undefined) return 0;
+  const seg = path.segments[path.badgeEnd === "from" ? 0 : 1];
+  return seg.hi - seg.lo;
 }
 
 /** Whether any point along `candidate`'s own two segments (`from`->`bend`, `bend`->`to`) — or
@@ -205,12 +222,19 @@ function bestAgainst(
   let best = ownCandidates[0];
   let bestCollisions = Infinity;
   let bestLength = Infinity;
+  let bestBadgeLeg = -Infinity;
   for (const candidate of ownCandidates) {
     const collisions = countCollisions(candidate, others, endpointRadius, waypoints, avoidFieldExit, cellPolygons, fieldExitHalfWidth);
     const length = pathLength(candidate);
-    if (collisions < bestCollisions || (collisions === bestCollisions && length < bestLength)) {
+    const badgeLeg = badgeLegLength(candidate);
+    const equalLength = Math.abs(length - bestLength) < AXIS_EPSILON;
+    if (
+      collisions < bestCollisions ||
+      (collisions === bestCollisions && (length < bestLength - AXIS_EPSILON || (equalLength && badgeLeg > bestBadgeLeg + AXIS_EPSILON)))
+    ) {
       bestCollisions = collisions;
       bestLength = length;
+      bestBadgeLeg = badgeLeg;
       best = candidate;
     }
   }
@@ -244,7 +268,11 @@ export function chooseOrthogonalPaths(
   cellPolygons: Pos[][],
   fieldExitHalfWidth: number,
 ): OrthogonalPath[] {
-  const candidates = edges.map((e) => candidatePaths(e.from, e.to, axes));
+  const candidates = edges.map((e) => {
+    const badgeEnd: OrthogonalPath["badgeEnd"] = e.toFloor !== undefined ? "to" : e.fromFloor !== undefined ? "from" : undefined;
+    const paths = candidatePaths(e.from, e.to, axes);
+    return badgeEnd === undefined ? paths : paths.map((p) => ({ ...p, badgeEnd }));
+  });
 
   let chosen = candidates.map((ownCandidates, i) => {
     const othersCandidates = candidates.filter((_, j) => j !== i).flat();

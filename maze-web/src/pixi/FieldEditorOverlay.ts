@@ -16,7 +16,7 @@ import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
 import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
-import { computeSymmetryPreview, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
+import { computeMirrorPreview, type MirrorAxisPoints, type MirrorPoint } from "./mirror";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
 import type { FieldOpError } from "../wasm/mazeService";
@@ -25,11 +25,11 @@ import { controlLineWidth } from "./controlLineWidth";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
-const SYMMETRY_POLYGON_COLOR = 0xffffff;
-const SYMMETRY_POLYGON_ALPHA = 0.9;
-const SYMMETRY_POLYGON_WIDTH = 1.25;
-const SYMMETRY_POLYGON_DASH_LENGTH = TILE_SIZE * 0.35;
-const SYMMETRY_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
+const MIRROR_POLYGON_COLOR = 0xffffff;
+const MIRROR_POLYGON_ALPHA = 0.9;
+const MIRROR_POLYGON_WIDTH = 1.25;
+const MIRROR_POLYGON_DASH_LENGTH = TILE_SIZE * 0.35;
+const MIRROR_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
@@ -39,7 +39,7 @@ export class FieldEditorOverlay {
   private readonly fieldBoundaryContainer: Container;
   private readonly topologyContainer: Container;
   private readonly floorContainer: Container;
-  private readonly symmetryContainer: Container;
+  private readonly mirrorContainer: Container;
   private readonly originContainer: Container;
   private readonly hoverContainer: Container;
 
@@ -50,8 +50,8 @@ export class FieldEditorOverlay {
   private readonly fieldBoundary: WallRenderer;
   private readonly topologyBands: TopologyBandRenderer;
   private readonly floor: CellFillRenderer;
-  private readonly symmetryCells: CellFillRenderer;
-  private readonly symmetryGraphics: Graphics;
+  private readonly mirrorCells: CellFillRenderer;
+  private readonly mirrorGraphics: Graphics;
   private readonly origin: OriginRenderer;
   private readonly hover: CellFillRenderer;
 
@@ -69,14 +69,14 @@ export class FieldEditorOverlay {
     this.fieldBoundaryContainer = new Container();
     this.topologyContainer = new Container();
     this.floorContainer = new Container();
-    this.symmetryContainer = new Container();
+    this.mirrorContainer = new Container();
     this.originContainer = new Container();
     this.hoverContainer = new Container();
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
     this.root.addChild(this.paperLayoutContainer);
-    this.root.addChild(this.symmetryContainer);
+    this.root.addChild(this.mirrorContainer);
     this.root.addChild(this.originContainer);
     // Above every layer of the maze itself, below only the highlights.
     this.root.addChild(this.seamArrowContainer);
@@ -92,9 +92,9 @@ export class FieldEditorOverlay {
     });
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
-    this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
-    this.symmetryGraphics = new Graphics();
-    this.symmetryContainer.addChild(this.symmetryGraphics);
+    this.mirrorCells = new CellFillRenderer(this.mirrorContainer);
+    this.mirrorGraphics = new Graphics();
+    this.mirrorContainer.addChild(this.mirrorGraphics);
     this.fieldBoundary = new WallRenderer(this.fieldBoundaryContainer);
     this.origin = new OriginRenderer(this.originContainer);
     this.hover = new CellFillRenderer(this.hoverContainer);
@@ -169,18 +169,18 @@ export class FieldEditorOverlay {
 
       if (isOpen && field.fieldPrimitive !== prevField.fieldPrimitive) {
         this.updateHover(null, field.fieldConfig);
-        this.redrawSymmetry(state);
+        this.redrawMirror(state);
       }
 
       if (isOpen && (field.fieldPoints !== prevField.fieldPoints
         || field.fieldOperation !== prevField.fieldOperation
-        || state.symmetrySnapMode !== prev.symmetrySnapMode
-        || state.symmetryScope !== prev.symmetryScope
-        || state.symmetryAxisPoints !== prev.symmetryAxisPoints
-        || state.symmetrySourceSide !== prev.symmetrySourceSide
-        || state.symmetryPolygon !== prev.symmetryPolygon
-        || state.symmetryPolygonFinished !== prev.symmetryPolygonFinished)) {
-        this.redrawSymmetry(state);
+        || state.mirrorSnapMode !== prev.mirrorSnapMode
+        || state.mirrorScope !== prev.mirrorScope
+        || state.mirrorAxisPoints !== prev.mirrorAxisPoints
+        || state.mirrorSourceSide !== prev.mirrorSourceSide
+        || state.mirrorPolygon !== prev.mirrorPolygon
+        || state.mirrorPolygonFinished !== prev.mirrorPolygonFinished)) {
+        this.redrawMirror(state);
       }
 
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
@@ -216,14 +216,14 @@ export class FieldEditorOverlay {
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
-    this.lastSymmetryDraw = null;
+    this.lastMirrorDraw = null;
     if (this.root.visible) {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
       this.grid.render({ viewport: this.viewport }, field.fieldConfig);
       this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
       this.redrawPaperLayout(state);
-      this.redrawSymmetry(state);
+      this.redrawMirror(state);
       this.redrawTopology(state);
     }
   }
@@ -237,7 +237,7 @@ export class FieldEditorOverlay {
     this.redrawTopology(state);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
     this.redrawPaperLayout(state);
-    this.redrawSymmetry(state);
+    this.redrawMirror(state);
   }
 
   private redrawFloor(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -322,23 +322,23 @@ export class FieldEditorOverlay {
     );
   }
 
-  updateSymmetryPreview(axisOverride?: SymmetryAxisPoints, polygonOverride?: SymmetryPoint[]): void {
-    this.redrawSymmetry(useMazeStore.getState(), axisOverride, polygonOverride);
+  updateMirrorPreview(axisOverride?: MirrorAxisPoints, polygonOverride?: MirrorPoint[]): void {
+    this.redrawMirror(useMazeStore.getState(), axisOverride, polygonOverride);
   }
 
-  private pendingSymmetry: { axis?: SymmetryAxisPoints; polygon?: SymmetryPoint[] } | null = null;
-  private symmetryFrameRequested = false;
+  private pendingMirror: { axis?: MirrorAxisPoints; polygon?: MirrorPoint[] } | null = null;
+  private mirrorFrameRequested = false;
 
   /** Pointer-driven preview updates: pointer events can outpace the frame rate, so only the latest
-   * one per frame is drawn. Any other symmetry redraw supersedes a pending one. */
-  scheduleSymmetryPreview(axisOverride?: SymmetryAxisPoints, polygonOverride?: SymmetryPoint[]): void {
-    this.pendingSymmetry = { axis: axisOverride, polygon: polygonOverride };
-    if (this.symmetryFrameRequested) return;
-    this.symmetryFrameRequested = true;
+   * one per frame is drawn. Any other mirror redraw supersedes a pending one. */
+  scheduleMirrorPreview(axisOverride?: MirrorAxisPoints, polygonOverride?: MirrorPoint[]): void {
+    this.pendingMirror = { axis: axisOverride, polygon: polygonOverride };
+    if (this.mirrorFrameRequested) return;
+    this.mirrorFrameRequested = true;
     requestAnimationFrame(() => {
-      this.symmetryFrameRequested = false;
-      const pending = this.pendingSymmetry;
-      if (pending) this.redrawSymmetry(useMazeStore.getState(), pending.axis, pending.polygon);
+      this.mirrorFrameRequested = false;
+      const pending = this.pendingMirror;
+      if (pending) this.redrawMirror(useMazeStore.getState(), pending.axis, pending.polygon);
     });
   }
 
@@ -348,46 +348,46 @@ export class FieldEditorOverlay {
     if (JSON.stringify(store.fieldOpError) !== JSON.stringify(error)) store.setFieldOpError(error);
   }
 
-  /** Inputs of the last drawn symmetry preview; an identical redraw (a pointer move that snaps to
+  /** Inputs of the last drawn mirror preview; an identical redraw (a pointer move that snaps to
    * the same point) is skipped, since the preview costs a core call and a cell re-render. */
-  private lastSymmetryDraw: { objects: unknown[]; shape: string } | null = null;
+  private lastMirrorDraw: { objects: unknown[]; shape: string } | null = null;
 
-  private redrawSymmetry(
+  private redrawMirror(
     state: ReturnType<typeof useMazeStore.getState>,
-    axisOverride?: SymmetryAxisPoints,
-    polygonOverride?: SymmetryPoint[],
+    axisOverride?: MirrorAxisPoints,
+    polygonOverride?: MirrorPoint[],
   ): void {
-    this.pendingSymmetry = null;
+    this.pendingMirror = null;
     const field = state.floorFields[state.activeFloorId];
     const visible = state.openCard === "field_setup"
       && field.fieldEditMode === "custom"
-      && field.fieldPrimitive === "symmetry";
-    this.symmetryContainer.visible = visible;
-    const axisPoints = axisOverride ?? state.symmetryAxisPoints;
-    const polygon = polygonOverride ?? state.symmetryPolygon;
+      && field.fieldPrimitive === "mirror";
+    this.mirrorContainer.visible = visible;
+    const axisPoints = axisOverride ?? state.mirrorAxisPoints;
+    const polygon = polygonOverride ?? state.mirrorPolygon;
     const color = field.fieldOperation === "remove"
       ? canvas.fieldEditor.previewRemove
       : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
-    const objects = [color, visible, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.symmetryScope, state.symmetrySourceSide, state.symmetryPolygonFinished];
+    const objects = [color, visible, field.fieldPoints, field.fieldConfig, field.fieldOperation, state.mirrorScope, state.mirrorSourceSide, state.mirrorPolygonFinished];
     const shape = JSON.stringify([axisPoints, polygon, polygonOverride !== undefined]);
-    const last = this.lastSymmetryDraw;
+    const last = this.lastMirrorDraw;
     if (last && last.shape === shape && last.objects.every((value, index) => value === objects[index])) return;
-    this.lastSymmetryDraw = { objects, shape };
-    this.symmetryGraphics.clear();
+    this.lastMirrorDraw = { objects, shape };
+    this.mirrorGraphics.clear();
     if (!visible) {
-      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
+      this.mirrorCells.render({ cells: [], color: 0, alpha: 0 }, field.fieldConfig);
       this.reportFieldOpError(null);
       return;
     }
 
     if (axisPoints.length === 2) {
-      const axis: [SymmetryPoint, SymmetryPoint] = [axisPoints[0], axisPoints[1]];
-      const preview = computeSymmetryPreview(
+      const axis: [MirrorPoint, MirrorPoint] = [axisPoints[0], axisPoints[1]];
+      const preview = computeMirrorPreview(
         field.fieldPoints,
         field.fieldConfig,
         {
-          scope: state.symmetryScope,
-          sourceSide: state.symmetrySourceSide,
+          scope: state.mirrorScope,
+          sourceSide: state.mirrorSourceSide,
           axis,
           polygon,
         },
@@ -395,7 +395,7 @@ export class FieldEditorOverlay {
         decodePoint,
       );
       this.reportFieldOpError(preview.error);
-      this.symmetryCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.fieldConfig);
+      this.mirrorCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.fieldConfig);
       const dx = axis[1].x - axis[0].x;
       const dy = axis[1].y - axis[0].y;
       const length = Math.hypot(dx, dy);
@@ -404,63 +404,63 @@ export class FieldEditorOverlay {
         const uy = dy / length;
         const mx = (axis[0].x + axis[1].x) / 2;
         const my = (axis[0].y + axis[1].y) / 2;
-        this.symmetryGraphics.moveTo(mx - ux * 100000, -my + uy * 100000);
-        this.symmetryGraphics.lineTo(mx + ux * 100000, -my - uy * 100000);
-        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: this.strokeWidth(1.5) });
-        this.symmetryGraphics.circle(axis[0].x, -axis[0].y, TILE_SIZE * 0.14);
-        this.symmetryGraphics.circle(axis[1].x, -axis[1].y, TILE_SIZE * 0.14);
-        this.symmetryGraphics.fill({ color, alpha: 0.95 });
+        this.mirrorGraphics.moveTo(mx - ux * 100000, -my + uy * 100000);
+        this.mirrorGraphics.lineTo(mx + ux * 100000, -my - uy * 100000);
+        this.mirrorGraphics.stroke({ color, alpha: 0.9, width: this.strokeWidth(1.5) });
+        this.mirrorGraphics.circle(axis[0].x, -axis[0].y, TILE_SIZE * 0.14);
+        this.mirrorGraphics.circle(axis[1].x, -axis[1].y, TILE_SIZE * 0.14);
+        this.mirrorGraphics.fill({ color, alpha: 0.95 });
 
-        if (state.symmetryScope === "one_side") {
-          const normalX = -uy * -state.symmetrySourceSide;
-          const normalY = ux * -state.symmetrySourceSide;
+        if (state.mirrorScope === "one_side") {
+          const normalX = -uy * -state.mirrorSourceSide;
+          const normalY = ux * -state.mirrorSourceSide;
           const from = { x: mx - normalX * TILE_SIZE * 0.7, y: my - normalY * TILE_SIZE * 0.7 };
           const to = { x: mx + normalX * TILE_SIZE * 0.7, y: my + normalY * TILE_SIZE * 0.7 };
-          this.symmetryGraphics.moveTo(from.x, -from.y);
-          this.symmetryGraphics.lineTo(to.x, -to.y);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
+          this.mirrorGraphics.moveTo(from.x, -from.y);
+          this.mirrorGraphics.lineTo(to.x, -to.y);
+          this.mirrorGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
           const head = TILE_SIZE * 0.18;
-          this.symmetryGraphics.moveTo(to.x - normalX * head + normalY * head, -to.y + normalY * head + normalX * head);
-          this.symmetryGraphics.lineTo(to.x, -to.y);
-          this.symmetryGraphics.lineTo(to.x - normalX * head - normalY * head, -to.y + normalY * head - normalX * head);
-          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
+          this.mirrorGraphics.moveTo(to.x - normalX * head + normalY * head, -to.y + normalY * head + normalX * head);
+          this.mirrorGraphics.lineTo(to.x, -to.y);
+          this.mirrorGraphics.lineTo(to.x - normalX * head - normalY * head, -to.y + normalY * head - normalX * head);
+          this.mirrorGraphics.stroke({ color, alpha: 0.95, width: this.strokeWidth(2) });
         }
       }
     } else {
-      this.symmetryCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
+      this.mirrorCells.render({ cells: [], color, alpha: 0 }, field.fieldConfig);
       this.reportFieldOpError(null);
       if (axisPoints.length === 1) {
-        this.symmetryGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
-        this.symmetryGraphics.fill({ color, alpha: 0.95 });
+        this.mirrorGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
+        this.mirrorGraphics.fill({ color, alpha: 0.95 });
       }
     }
-    if (state.symmetryScope === "polygon" && polygon.length > 0) {
+    if (state.mirrorScope === "polygon" && polygon.length > 0) {
       const hasCursorPoint = polygonOverride !== undefined
-        && polygon.length > state.symmetryPolygon.length
-        && !state.symmetryPolygonFinished;
-      const confirmedVertexCount = state.symmetryPolygon.length;
+        && polygon.length > state.mirrorPolygon.length
+        && !state.mirrorPolygonFinished;
+      const confirmedVertexCount = state.mirrorPolygon.length;
       const solidPointCount = hasCursorPoint
         ? (confirmedVertexCount >= 2 ? polygon.length : 0)
         : (confirmedVertexCount >= 3 ? polygon.length : 0);
       if (solidPointCount >= 2) {
         for (let i = 1; i < solidPointCount; i++) {
           drawDashedSegment(
-            this.symmetryGraphics,
+            this.mirrorGraphics,
             { x: polygon[i - 1].x, y: -polygon[i - 1].y },
             { x: polygon[i].x, y: -polygon[i].y },
-            SYMMETRY_POLYGON_COLOR,
-            this.strokeWidth(SYMMETRY_POLYGON_WIDTH),
+            MIRROR_POLYGON_COLOR,
+            this.strokeWidth(MIRROR_POLYGON_WIDTH),
           );
         }
       }
       if (polygon.length >= 2) {
         const last = { x: polygon[polygon.length - 1].x, y: -polygon[polygon.length - 1].y };
         const first = { x: polygon[0].x, y: -polygon[0].y };
-        drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR, this.strokeWidth(SYMMETRY_POLYGON_WIDTH));
+        drawDashedSegment(this.mirrorGraphics, last, first, MIRROR_POLYGON_COLOR, this.strokeWidth(MIRROR_POLYGON_WIDTH));
       }
-      for (const point of state.symmetryPolygon) {
-        this.symmetryGraphics.circle(point.x, -point.y, TILE_SIZE * 0.12);
-        this.symmetryGraphics.fill({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA });
+      for (const point of state.mirrorPolygon) {
+        this.mirrorGraphics.circle(point.x, -point.y, TILE_SIZE * 0.12);
+        this.mirrorGraphics.fill({ color: MIRROR_POLYGON_COLOR, alpha: MIRROR_POLYGON_ALPHA });
       }
     }
   }
@@ -475,8 +475,8 @@ export class FieldEditorOverlay {
     this.fieldBoundary.destroy();
     this.topologyBands.destroy();
     this.floor.destroy();
-    this.symmetryCells.destroy();
-    this.symmetryGraphics.destroy();
+    this.mirrorCells.destroy();
+    this.mirrorGraphics.destroy();
     this.origin.destroy();
     this.hover.destroy();
     this.gridContainer.destroy();
@@ -485,7 +485,7 @@ export class FieldEditorOverlay {
     this.fieldBoundaryContainer.destroy();
     this.topologyContainer.destroy();
     this.floorContainer.destroy();
-    this.symmetryContainer.destroy();
+    this.mirrorContainer.destroy();
     this.originContainer.destroy();
     this.hoverContainer.destroy();
   }
@@ -508,12 +508,12 @@ function drawDashedSegment(
   if (length === 0) return;
   const ux = dx / length;
   const uy = dy / length;
-  const step = SYMMETRY_POLYGON_DASH_LENGTH + SYMMETRY_POLYGON_GAP_LENGTH;
+  const step = MIRROR_POLYGON_DASH_LENGTH + MIRROR_POLYGON_GAP_LENGTH;
   for (let travelled = 0; travelled < length; travelled += step) {
-    const dashEnd = Math.min(travelled + SYMMETRY_POLYGON_DASH_LENGTH, length);
+    const dashEnd = Math.min(travelled + MIRROR_POLYGON_DASH_LENGTH, length);
     graphics.moveTo(start.x + ux * travelled, start.y + uy * travelled);
     graphics.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
-    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width });
+    graphics.stroke({ color, alpha: MIRROR_POLYGON_ALPHA, width });
   }
 }
 

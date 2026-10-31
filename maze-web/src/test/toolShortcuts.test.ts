@@ -3,10 +3,10 @@ import { canActivateFieldPrimitive } from "../pixi/fieldPrimitiveShortcuts";
 import { blurActiveElement, postEditToolForShortcut, postEditToolShortcut, presetToolForShortcut, presetToolShortcut } from "../pixi/toolShortcuts";
 
 describe("canActivateFieldPrimitive", () => {
-  it("blocks the symmetry tool in Select mode and where reflect is unavailable, and every tool while locked", () => {
-    expect(canActivateFieldPrimitive("symmetry", "add", false, true)).toBe(true);
-    expect(canActivateFieldPrimitive("symmetry", "select", false, true)).toBe(false);
-    expect(canActivateFieldPrimitive("symmetry", "add", false, false)).toBe(false);
+  it("blocks the mirror tool in Select mode and where reflect is unavailable, and every tool while locked", () => {
+    expect(canActivateFieldPrimitive("mirror", "add", false, true)).toBe(true);
+    expect(canActivateFieldPrimitive("mirror", "select", false, true)).toBe(false);
+    expect(canActivateFieldPrimitive("mirror", "add", false, false)).toBe(false);
     expect(canActivateFieldPrimitive("point", "add", false, false)).toBe(true);
     expect(canActivateFieldPrimitive("point", "add", true, true)).toBe(false);
   });

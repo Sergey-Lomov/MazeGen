@@ -152,36 +152,26 @@ export interface MarkerLayoutResult {
   /** Hosts that ended up with 2+ markers: laid-out centers + footprints, for the corridor widen's
    *  bridge patches (`buildGroupBridgeMarkers`). */
   groups: { host: [number, number]; items: { pos: [number, number]; radius: number }[] }[];
-  /** Applied offset per `shiftKey(kind, original position)` — lets the marker index labels (which
+  /** Applied offset per `shiftKey(kind, node id)` — lets the marker index labels (which
    *  anchor on the plain node position) follow the marker they annotate (`shiftMarkerIndexLabels`). */
   shifts: Map<string, [number, number]>;
   /** Shrink factor per `shiftKey` (only entries with scale < 1) — lets the index plate shrink with its marker. */
   scales: Map<string, number>;
 }
 
-/** Key into `MarkerLayoutResult.shifts` — `kind` is a marker-index link kind. */
-export function shiftKey(kind: MarkerIndexLinkKind, pos: [number, number]): string {
-  return `${kind}:${hostKey(pos)}`;
-}
-
-/** Same-kind markers on one host share a `shiftKey`; the n-th repeat (in marker/label order) gets a
- *  `#n` suffix so each keeps its own shift. The first occurrence keeps the bare key. */
-function nextOccurrence(): (key: string) => string {
-  const seen = new Map<string, number>();
-  return (key) => {
-    const n = seen.get(key) ?? 0;
-    seen.set(key, n + 1);
-    return n === 0 ? key : `${key}#${n}`;
-  };
+/** Key into `MarkerLayoutResult.shifts` — `kind` is a marker-index link kind, `nodeId` the node the
+ *  marker (and its index label) belongs to. */
+export function shiftKey(kind: MarkerIndexLinkKind, nodeId: number, partnerId?: number): string {
+  return partnerId === undefined ? `${kind}:${nodeId}` : `${kind}:${nodeId}>${partnerId}`;
 }
 
 /** Moves each marker index label by its marker's layout offset (see `MarkerLayoutResult.shifts`).
  *  Labels with no matching shifted marker are returned unchanged. */
 export function shiftMarkerIndexLabels(labels: MarkerIndexLabel[], shifts: Map<string, [number, number]>, scales?: Map<string, number>): MarkerIndexLabel[] {
   if (shifts.size === 0) return labels;
-  const nth = nextOccurrence();
   return labels.map((l) => {
-    const key = nth(shiftKey(l.kind, l.pos));
+    const pairKey = l.partnerId !== undefined ? shiftKey(l.kind, l.nodeId, l.partnerId) : undefined;
+    const key = pairKey !== undefined && shifts.has(pairKey) ? pairKey : shiftKey(l.kind, l.nodeId);
     const d = shifts.get(key);
     if (!d) return l;
     const scale = scales?.get(key);
@@ -243,12 +233,26 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
   const teleportScale = new Map<string, number>();
   const endShift = new Map<number, [number, number]>();
   const endScale = new Map<number, number>();
-  const nthTeleport = nextOccurrence();
   const groups: MarkerLayoutResult["groups"] = [];
   const shifts = new Map<string, [number, number]>();
   const scales = new Map<string, number>();
 
-  const nthVertical = nextOccurrence();
+  const teleportNodesByHost = new Map<string, number[]>();
+  if (mergeTeleports) {
+    for (const { edge, end } of teleportEnds) {
+      const e = input.teleportEdges[edge];
+      const node = end === "from" ? e.fromNode : e.toNode;
+      if (node === undefined) continue;
+      const k = hostKey(e[end]);
+      const list = teleportNodesByHost.get(k);
+      if (list) list.push(node); else teleportNodesByHost.set(k, [node]);
+    }
+  }
+  const setShift = (sk: string, dx: number, dy: number, scale: number) => {
+    if (shifts.has(sk)) return;
+    shifts.set(sk, [dx, dy]);
+    if (scale < 1) scales.set(sk, scale);
+  };
   const baseScale = Math.min(Math.max(opts.scale ?? 1, 0.01), 1);
   for (const [key, host] of hosts) {
     if (host.slots.length < 2 || opts.mode === "overlap") continue;
@@ -276,20 +280,23 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
       else if (slot.kind === "vertical") {
         const vm = input.verticalMarkers[slot.index];
         verticalMarkers[slot.index] = scale < 1 ? { ...vm, pos, scale } : { ...vm, pos };
-        const sk = nthVertical(shiftKey(vm.kind === "elevator" ? "elevator" : "vertical", host.pos));
-        shifts.set(sk, [dx, dy]);
-        if (scale < 1) scales.set(sk, scale);
+        setShift(shiftKey(vm.kind === "elevator" ? "elevator" : "vertical", vm.fromNode), dx, dy, scale);
       } else if (mergeTeleports) {
         teleportShift.set(key, [dx, dy]);
         if (scale < 1) teleportScale.set(key, scale);
-        shifts.set(shiftKey("teleport", host.pos), [dx, dy]);
-        if (scale < 1) scales.set(shiftKey("teleport", host.pos), scale);
+        // One shared slot: every teleport end node on this host follows it.
+        for (const node of teleportNodesByHost.get(key) ?? []) setShift(shiftKey("teleport", node), dx, dy, scale);
       } else {
         endShift.set(slot.index, [dx, dy]);
         if (scale < 1) endScale.set(slot.index, scale);
-        const sk = nthTeleport(shiftKey("teleport", host.pos));
-        shifts.set(sk, [dx, dy]);
-        if (scale < 1) scales.set(sk, scale);
+        const { edge, end } = teleportEnds[slot.index];
+        const e = input.teleportEdges[edge];
+        const node = end === "from" ? e.fromNode : e.toNode;
+        const partner = end === "from" ? e.toNode : e.fromNode;
+        if (node !== undefined) {
+          if (partner !== undefined) setShift(shiftKey("teleport", node, partner), dx, dy, scale);
+          setShift(shiftKey("teleport", node), dx, dy, scale);
+        }
       }
     });
     groups.push({ host: host.pos, items });

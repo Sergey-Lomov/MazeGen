@@ -414,7 +414,7 @@ Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as 
 
 `lockedNodes: Map<PresetEndpointKey, NodeLockKind>` stores explicitly locked nodes. `NodeLockKind` is `"in" | "out" | "both"`. Lock tools open the split-node picker on a split point, so the selected original node or slot is locked explicitly.
 
-`autoLockedNodes: Set<"x,y">` is recomputed whenever `presetConnections` changes (if `autoLock` is enabled). A node is auto-locked when all its interior edges have a preset entry with `state !== "undefined"`. Edges with `state: "undefined"` are treated as undecided and prevent auto-lock. Auto-locked nodes always use `"both"` kind.
+`autoLockedNodes: Set<"x,y">` is recomputed whenever `presetConnections` changes (if `autoLock` is enabled). A node is auto-locked when all its interior edges have a preset entry with `state !== "undefined"`. Edges with `state: "undefined"` are treated as undecided and prevent auto-lock. Auto-locked nodes always use `"both"` kind. Only cells mentioned as an endpoint of some preset entry on that floor can lock, so `computeAutoLockedNodes` examines those cells and not the whole field; their neighbor geometry is loaded in one `prefetchCellGeometries` batch (GitHub issue #890).
 
 For a declared split point (see "Split nodes" below), auto-lock checks **every one of its nodes** (the original node plus each declared slot), not just the original's own edges — `computeAutoLockedNodes` takes an extra `presetSplitPoints` parameter for this. A split point auto-locks only once every one of its nodes has every interior face decided; then an exact key is emitted for each node, so generation locks all split nodes. One node with an undecided/missing face on any side keeps the whole split unlocked.
 

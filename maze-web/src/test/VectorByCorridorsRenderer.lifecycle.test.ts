@@ -70,8 +70,15 @@ describe("VectorByCorridorsRenderer lifecycle and rendering", () => {
   it("shows the content, the overlay and the backdrop according to the render pass (GitHub issue #888)", () => {
     mockStore.current = baseState({ vectorByCorridorsSettings: settingsB });
     const renderer = makeRenderer();
-    const grid = (renderer as unknown as { backgroundGrid: { content: { visible: boolean }; overlay: { visible: boolean } } }).backgroundGrid;
+    const grid = (renderer as unknown as { backgroundGrid: { content: { visible: boolean }; overlay: { visible: boolean }; highlight: { visible: boolean } } }).backgroundGrid;
     const shown = () => [grid.content.visible, grid.overlay.visible];
+    // The warning highlight sits above every copy's overlay and only shows in a whole picture.
+    renderer.setRenderPass("overlay");
+    expect(grid.highlight.visible).toBe(false);
+    renderer.setRenderPass("foreground");
+    expect(grid.highlight.visible).toBe(true);
+    renderer.setRenderPass("full");
+    expect(grid.highlight.visible).toBe(true);
     renderer.setRenderPass("content");
     expect(shown()).toEqual([true, false]);
     renderer.setRenderPass("overlay");
@@ -91,6 +98,7 @@ describe("VectorByCorridorsRenderer lifecycle and rendering", () => {
     expect(renderer.hasOverlay).toBe(true);
     expect(renderer.layers.content).toBe(grid.content);
     expect(renderer.layers.overlay).toBe(grid.overlay);
+    expect(renderer.layers.highlight).toBe((grid as { highlight?: unknown }).highlight);
   });
 
   it("getBackgroundColor resolves to the mode's own configurable background (GitHub issue #309)", () => {

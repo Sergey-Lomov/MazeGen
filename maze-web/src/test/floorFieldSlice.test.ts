@@ -37,15 +37,15 @@ describe("setFieldOperation", () => {
     expect(field.fieldPrimitive).toBe("rectangle");
   });
 
-  it("clears pending symmetry state when entering select mode from the symmetry tool", () => {
-    setActiveField({ fieldOperation: "add", fieldPrimitive: "symmetry" });
-    useMazeStore.setState({ symmetryAxisPoints: [{ x: 0, y: 0 }], symmetryPolygon: [{ x: 0, y: 0 }], symmetryPolygonFinished: true });
+  it("clears pending mirror state when entering select mode from the mirror tool", () => {
+    setActiveField({ fieldOperation: "add", fieldPrimitive: "mirror" });
+    useMazeStore.setState({ mirrorAxisPoints: [{ x: 0, y: 0 }], mirrorPolygon: [{ x: 0, y: 0 }], mirrorPolygonFinished: true });
     useMazeStore.getState().setFieldOperation("select");
     const state = useMazeStore.getState();
     expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("rectangle");
-    expect(state.symmetryAxisPoints).toEqual([]);
-    expect(state.symmetryPolygon).toEqual([]);
-    expect(state.symmetryPolygonFinished).toBe(false);
+    expect(state.mirrorAxisPoints).toEqual([]);
+    expect(state.mirrorPolygon).toEqual([]);
+    expect(state.mirrorPolygonFinished).toBe(false);
   });
 
   it("keeps the primitive when select mode is already active", () => {
@@ -339,13 +339,13 @@ describe("core-backed field operations", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toBe(field.fieldPoints);
   });
 
-  it("applySymmetry reports a free axis instead of changing the field", () => {
+  it("applyMirror reports a free axis instead of changing the field", () => {
     useMazeStore.setState({
       floorFields: { ...useMazeStore.getState().floorFields, [TEST_FLOOR_ID]: customSquare([[1, 0]]) },
-      symmetryScope: "everything",
-      symmetryAxisPoints: [{ x: -100, y: -100 }, { x: 100, y: -60 }],
+      mirrorScope: "everything",
+      mirrorAxisPoints: [{ x: -100, y: -100 }, { x: 100, y: -60 }],
     });
-    useMazeStore.getState().applySymmetry();
+    useMazeStore.getState().applyMirror();
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints.size).toBe(1);
     expect(useMazeStore.getState().fieldOpError).toMatchObject({ kind: "not_a_symmetry" });
   });

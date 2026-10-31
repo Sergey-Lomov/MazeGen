@@ -668,6 +668,21 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(hovered()).toBeNull();
     });
 
+    it("opening a group color picker clears the canvas highlight (GitHub issue #877)", () => {
+      twoWayTeleportState();
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const hovered = () => useMazeStore.getState().hoveredTeleportNodeIds;
+      fireEvent.mouseEnter(screen.getByText("#1"));
+      expect(hovered()).toEqual([0, 1]);
+      // The group cell is the nearest ancestor of the "#1" title that also holds the swatches.
+      let cell: HTMLElement = screen.getByText("#1");
+      while (!cell.querySelector('div[role="button"]')) cell = cell.parentElement!;
+      const swatch = Array.from(cell.querySelectorAll<HTMLElement>('div[role="button"]')).find((el) => el.style.width === "40px")!;
+      fireEvent.click(swatch);
+      expect(hovered()).toBeNull();
+    });
+
     it("Teleports subsections are collapsed by default", () => {
       twoWayTeleportState();
       render(<VectorByWallsSettingsPanel />);

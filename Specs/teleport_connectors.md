@@ -64,6 +64,10 @@ Selection is **greedy**, not a global optimum:
 
 "Best" candidate = fewest weighted collisions (see below), ties broken toward shorter total path length, remaining ties toward axis-pair order (earlier pairing wins).
 
+## Badge end tie-break (GitHub issue #897)
+
+A cross-floor badge end (`TeleportEdge.toFloor`/`fromFloor`) is recorded on every candidate as `OrthogonalPath.badgeEnd`. A marker displaced by the marker layout sits off its cell center while the badge sits exactly on one, so two candidates of equal length can differ in where the long leg runs. After collision count and total length, `bestAgainst` prefers the candidate whose leg ending at the badge is longer (`badgeLegLength`), so that leg runs through the badge center instead of along the displaced marker line past the badge edge. Collisions and length still win over this tie-break. The badge flag is part of the router cache key. Radial orthogonal routing (`routeRadialConnectors`) applies the same preference, but ranks it above total length (its two candidates never tie on length): collisions first, then the longer badge-end leg, then length. Straight and curved connectors are unaffected.
+
 ## Collision weighting
 
 Two segments (from possibly-different connectors) collide when they share an axis, the same perpendicular offset from the origin (within floating-point epsilon), and their spans along that axis overlap. Each such overlap counts as 1 collision.

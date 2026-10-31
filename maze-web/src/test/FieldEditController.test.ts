@@ -14,7 +14,7 @@ const activeControllers: FieldEditController[] = [];
 function makeController() {
   const updates: PrimitiveWorldGeometry[] = [];
   const previewCells: [number, number][][] = [];
-  const symmetryUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
+  const mirrorUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
   const selectionMovePreviews: { source: [number, number][]; temporary: [number, number][] }[] = [];
   const selectionMoves: { cells: [number, number][]; vector: [number, number] }[] = [];
@@ -42,12 +42,12 @@ function makeController() {
         selectionMoves.push({ cells, vector });
         return true;
       },
-      onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
+      onMirrorPreviewUpdate: (axis, polygon) => mirrorUpdates.push({ axis, polygon }),
       onSizeReadout: (readout) => readouts.push(readout),
     },
   );
   activeControllers.push(controller);
-  return { controller, updates, previewCells, symmetryUpdates, commits, selectionMoves, selectionMovePreviews, previewClear, readouts };
+  return { controller, updates, previewCells, mirrorUpdates, commits, selectionMoves, selectionMovePreviews, previewClear, readouts };
 }
 
 function click(controller: FieldEditController, x: number, y: number, button = 0): void {
@@ -84,6 +84,68 @@ afterEach(() => {
   activeControllers.length = 0;
 });
 
+describe("FieldEditController smoothing hotkey", () => {
+  function startCircleDrag() {
+    useMazeStore.setState({ smoothPrimitives: true, smoothInverted: false });
+    useMazeStore.getState().setFieldPrimitive("circle");
+    const harness = makeController();
+    harness.controller.onPointerDown(245, -245, 0);
+    harness.controller.onPointerMove(245, -85);
+    return harness;
+  }
+  const key = (type: "keydown" | "keyup") => window.dispatchEvent(new KeyboardEvent(type, { code: "KeyS" }));
+
+  it("inverts smoothing while held, re-renders the preview at once and commits what was previewed", () => {
+    const { controller, previewCells, commits } = startCircleDrag();
+    const smoothed = previewCells.at(-1)!;
+
+    key("keydown");
+    const raw = previewCells.at(-1)!;
+    expect(raw.length).toBeGreaterThan(smoothed.length);
+
+    controller.onPointerUp();
+    expect(commits.at(-1)!.cells).toEqual(raw);
+    expect(useMazeStore.getState().smoothPrimitives).toBe(true);
+  });
+
+  it("restores the persistent smoothing preview on release", () => {
+    const { previewCells } = startCircleDrag();
+    const smoothed = previewCells.at(-1)!;
+    key("keydown");
+    key("keyup");
+    expect(previewCells.at(-1)).toEqual(smoothed);
+  });
+
+  it("works while Shift is held and leaves the tool unchanged", () => {
+    startCircleDrag();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS", shiftKey: true }));
+    expect(useMazeStore.getState().smoothInverted).toBe(true);
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("circle");
+  });
+
+  it("drops the inversion when the window loses focus", () => {
+    startCircleDrag();
+    key("keydown");
+    window.dispatchEvent(new Event("blur"));
+    expect(useMazeStore.getState().smoothInverted).toBe(false);
+  });
+
+  it("drops the inversion when the controller is destroyed", () => {
+    const { controller } = startCircleDrag();
+    key("keydown");
+    controller.destroy();
+    expect(useMazeStore.getState().smoothInverted).toBe(false);
+  });
+
+  it("ignores the hotkey outside the custom field editor", () => {
+    useMazeStore.setState({ smoothInverted: false });
+    useMazeStore.getState().setFieldEditMode("default");
+    makeController();
+    key("keydown");
+    expect(useMazeStore.getState().smoothInverted).toBe(false);
+  });
+});
+
 describe("FieldEditController primitive shortcuts", () => {
   it("selects field figures in list order and assigns mnemonic keys to special tools", () => {
     makeController();
@@ -100,16 +162,16 @@ describe("FieldEditController primitive shortcuts", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("magic_wand");
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("mirror");
   });
 
-  it("does not select the disabled symmetry tool in select mode", () => {
+  it("does not select the disabled mirror tool in select mode", () => {
     makeController();
     useMazeStore.getState().setFieldOperation("select");
     useMazeStore.getState().setFieldPrimitive("point");
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM" }));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
   });
@@ -660,48 +722,48 @@ describe("FieldEditController select interaction", () => {
   });
 });
 
-describe("FieldEditController symmetry interaction", () => {
+describe("FieldEditController mirror interaction", () => {
   it("allows dragging either defining axis point", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 100 }],
-      symmetryScope: "everything",
+      mirrorAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 100 }],
+      mirrorScope: "everything",
       floorFields: {
-        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "mirror" },
       },
     });
-    const { controller, symmetryUpdates } = makeController();
+    const { controller, mirrorUpdates } = makeController();
     controller.onPointerDown(20, -20, 0);
     controller.onPointerMove(60, -20, 1);
     controller.onPointerUp();
 
-    expect(useMazeStore.getState().symmetryAxisPoints).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
-    expect(symmetryUpdates.at(-1)?.axis).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
+    expect(useMazeStore.getState().mirrorAxisPoints).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
+    expect(mirrorUpdates.at(-1)?.axis).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
   });
 
   it("finishes a processing polygon with Enter", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
-      symmetryScope: "polygon",
-      symmetryPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      mirrorScope: "polygon",
+      mirrorPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
+      mirrorPolygonFinished: false,
       floorFields: {
-        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "mirror" },
       },
     });
     const { controller } = makeController();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
-    expect(useMazeStore.getState().symmetryPolygonFinished).toBe(true);
+    expect(useMazeStore.getState().mirrorPolygonFinished).toBe(true);
     controller.destroy();
   });
 
-  it("applies a ready symmetry with Enter", () => {
+  it("applies a ready mirror with Enter", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
-      symmetryScope: "everything",
+      mirrorAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      mirrorScope: "everything",
       floorFields: {
         [TEST_FLOOR_ID]: {
           ...useMazeStore.getState().floorFields[TEST_FLOOR_ID],
-          fieldPrimitive: "symmetry",
+          fieldPrimitive: "mirror",
           fieldPoints: new Set([encodePoint(0, 0)]),
         },
       },
@@ -710,19 +772,19 @@ describe("FieldEditController symmetry interaction", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
-    expect(useMazeStore.getState().symmetryAxisPoints).toEqual([]);
+    expect(useMazeStore.getState().mirrorAxisPoints).toEqual([]);
     controller.destroy();
   });
 
   it("allows dragging a finished processing polygon vertex", () => {
     useMazeStore.setState({
-      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
-      symmetryScope: "polygon",
-      symmetrySnapMode: "free",
-      symmetryPolygon: [{ x: 40, y: 40 }, { x: 80, y: 40 }, { x: 40, y: 80 }],
-      symmetryPolygonFinished: true,
+      mirrorAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      mirrorScope: "polygon",
+      mirrorSnapMode: "free",
+      mirrorPolygon: [{ x: 40, y: 40 }, { x: 80, y: 40 }, { x: 40, y: 80 }],
+      mirrorPolygonFinished: true,
       floorFields: {
-        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "mirror" },
       },
     });
     const { controller } = makeController();
@@ -730,7 +792,7 @@ describe("FieldEditController symmetry interaction", () => {
     controller.onPointerMove(80, -80, 1);
     controller.onPointerUp();
 
-    expect(useMazeStore.getState().symmetryPolygon[0]).toEqual({ x: 80, y: 80 });
+    expect(useMazeStore.getState().mirrorPolygon[0]).toEqual({ x: 80, y: 80 });
   });
 });
 

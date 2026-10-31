@@ -30,7 +30,7 @@ import { createPostEditSplitActions } from "./postEditSplitActions";
 import { createPostEditVerticalActions } from "./postEditVerticalActions";
 
 const REFRESH_FAILED = "post_edit.refresh_failed";
-registerNotificationCode(REFRESH_FAILED, { category: "error", message: () => m[REFRESH_FAILED]() });
+registerNotificationCode(REFRESH_FAILED, { severity: "error", message: () => m[REFRESH_FAILED]() });
 
 function endpointTouchesPoint(
   endpoint: PostEditEndpoint,

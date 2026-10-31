@@ -67,6 +67,9 @@ pub struct FoldGroupRequest {
 pub enum BoundaryRequest {
     /// Exact drawing commands, arcs included; the caller decides how to flatten them.
     Path,
+    /// No boundary: the caller assembles the path from the faces' segments (they chain in
+    /// `faces_of` order, `MoveTo` the first start, then one command per segment).
+    Faces,
     /// The boundary flattened at `tolerance` (world units).
     Polyline { tolerance: f64 },
 }
@@ -79,7 +82,25 @@ pub struct GeometrySnapshot {
     pub field_version: u64,
     /// Echo of the request's `topology_version`.
     pub topology_version: u64,
+    /// The distinct allowed transform groups; a cell's `allowed_group` indexes this list.
+    pub allowed_groups: Vec<Vec<Vec<usize>>>,
     pub cells: Vec<CellGeometry>,
+}
+
+/// Interns allowed transform groups: cells of a shape share one entry instead of carrying a copy.
+#[derive(Default)]
+struct GroupTable {
+    groups: Vec<Vec<Vec<usize>>>,
+}
+
+impl GroupTable {
+    fn intern(&mut self, group: Vec<Vec<usize>>) -> usize {
+        if let Some(index) = self.groups.iter().position(|known| *known == group) {
+            return index;
+        }
+        self.groups.push(group);
+        self.groups.len() - 1
+    }
 }
 
 fn allowed_group(shape: maze_core::space::shape::CellShape) -> Vec<Vec<usize>> {
@@ -98,10 +119,11 @@ pub struct CellGeometry {
     /// The key of the cell's shape template (`ShapeDescriptor::key`); `None` for a cell without
     /// one.
     pub shape: Option<String>,
-    /// The cell's allowed transform group: one permutation of canonical face indices per allowed
-    /// transform (`CellShape::allowed_transforms` resolved through `ShapeDescriptor::group`),
-    /// identity first; `None` for a cell without a shape template.
-    pub allowed_group: Option<Vec<Vec<usize>>>,
+    /// Index into `GeometrySnapshot::allowed_groups` of the cell's allowed transform group: one
+    /// permutation of canonical face indices per allowed transform (`CellShape::allowed_transforms`
+    /// resolved through `ShapeDescriptor::group`), identity first; `None` for a cell without a
+    /// shape template.
+    pub allowed_group: Option<usize>,
     pub boundary: BoundaryDto,
     /// One entry per face, in `faces_of` order.
     pub faces: Vec<FaceGeometry>,
@@ -115,6 +137,8 @@ pub enum BoundaryDto {
     Path { commands: Vec<PathCommandDto> },
     /// The boundary flattened at the requested tolerance, first point not repeated.
     Polyline { points: Vec<[f64; 2]> },
+    /// Nothing: the faces' segments carry the boundary.
+    Faces,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -230,11 +254,12 @@ pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySn
             return Err(format!("tolerance must be positive, got {tolerance}"));
         }
     }
-    let cells = build_tessellation(&request.tessellation, Snapshot { request })??;
+    let (cells, allowed_groups) = build_tessellation(&request.tessellation, Snapshot { request })??;
     Ok(GeometrySnapshot {
         instance: instance_key(&request.tessellation),
         field_version: request.field_version,
         topology_version: request.topology_version,
+        allowed_groups,
         cells,
     })
 }
@@ -308,7 +333,7 @@ struct Snapshot<'a> {
 }
 
 impl TessellationVisitor for Snapshot<'_> {
-    type Output = Result<Vec<CellGeometry>, String>;
+    type Output = Result<(Vec<CellGeometry>, Vec<Vec<Vec<usize>>>), String>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         let field = match &self.request.topology {
@@ -320,6 +345,12 @@ impl TessellationVisitor for Snapshot<'_> {
         // Edge geometry is computed once per canonical edge key, and only for the requested cells.
         let mut edges: HashMap<EdgeKey<T>, (Vec<Segment>, Point)> = HashMap::new();
         let mut out = Vec::with_capacity(self.request.cells.len());
+        let mut groups = GroupTable::default();
+        // The shape key and interned group of a template, computed once per distinct template and
+        // allowed transform set instead of once per cell.
+        let mut shape_info: HashMap<(&str, &[usize]), (String, usize)> = HashMap::new();
+        // Only a path or polyline boundary needs the cell's segment chains assembled.
+        let needs_path = self.request.boundary != BoundaryRequest::Faces;
         for cell in codec.decode_valid(&*tessellation, &self.request.cells)? {
             let mut faces = Vec::new();
             let mut face_segments = Vec::new();
@@ -334,10 +365,15 @@ impl TessellationVisitor for Snapshot<'_> {
                     let contact = chain_midpoint(&segments);
                     (segments, contact)
                 });
-                let segments: Vec<Segment> = if key.0 == cell {
-                    owner_segments.clone()
+                let owned = key.0 == cell;
+                let segment_dtos = if owned {
+                    owner_segments.iter().map(segment_dto).collect()
                 } else {
-                    owner_segments.iter().rev().map(Segment::reversed).collect()
+                    owner_segments
+                        .iter()
+                        .rev()
+                        .map(|segment| segment_dto(&segment.reversed()))
+                        .collect()
                 };
                 faces.push(FaceGeometry {
                     neighbor: tessellation
@@ -345,26 +381,49 @@ impl TessellationVisitor for Snapshot<'_> {
                         .map(|(neighbor, _)| wire(neighbor, codec)),
                     canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
                     contact_point: xy(*contact),
-                    segments: segments.iter().map(segment_dto).collect(),
+                    segments: segment_dtos,
                     fold: field.as_ref().and_then(|field| {
                         fold_face_dto(field, &mut fold_classes, cell, face, codec)
                     }),
                 });
-                face_segments.push(segments);
+                if needs_path {
+                    face_segments.push(if owned {
+                        owner_segments.clone()
+                    } else {
+                        owner_segments.iter().rev().map(Segment::reversed).collect()
+                    });
+                }
             }
-            // Same chain as `boundary_path(cell)`, assembled from the cached edge geometry.
-            let path = BoundaryPath::new(face_segments);
+            let boundary = if needs_path {
+                // Same chain as `boundary_path(cell)`, assembled from the cached edge geometry.
+                boundary_dto(&BoundaryPath::new(face_segments), self.request.boundary)
+            } else {
+                BoundaryDto::Faces
+            };
+            let (shape_key, allowed_group) = match shape {
+                Some(shape) => {
+                    let id = (shape.descriptor().key(), shape.allowed_transforms());
+                    let (key, group) = shape_info.entry(id).or_insert_with(|| {
+                        (
+                            shape.descriptor().key().to_string(),
+                            groups.intern(allowed_group(shape)),
+                        )
+                    });
+                    (Some(key.clone()), Some(*group))
+                }
+                None => (None, None),
+            };
             out.push(CellGeometry {
                 cell: wire(cell, codec),
                 center: xy(tessellation.center(cell)),
                 cell_scale: tessellation.cell_scale(cell),
-                shape: shape.map(|shape| shape.descriptor().key().to_string()),
-                allowed_group: shape.map(allowed_group),
-                boundary: boundary_dto(&path, self.request.boundary),
+                shape: shape_key,
+                allowed_group,
+                boundary,
                 faces,
             });
         }
-        Ok(out)
+        Ok((out, groups.groups))
     }
 }
 
@@ -455,6 +514,7 @@ fn boundary_dto(path: &BoundaryPath, request: BoundaryRequest) -> BoundaryDto {
         BoundaryRequest::Path => BoundaryDto::Path {
             commands: path.path_commands().iter().map(command_dto).collect(),
         },
+        BoundaryRequest::Faces => BoundaryDto::Faces,
         BoundaryRequest::Polyline { tolerance } => BoundaryDto::Polyline {
             points: path.flatten(tolerance).into_iter().map(xy).collect(),
         },
@@ -658,10 +718,7 @@ mod tests {
         assert_eq!(cell.center, [0.5, 0.5]);
         assert_eq!(cell.cell_scale, 1.0);
         assert_eq!(cell.shape.as_deref(), Some("regular:4"));
-        let group = cell
-            .allowed_group
-            .as_ref()
-            .expect("square cell has a group");
+        let group = &snapshot.allowed_groups[cell.allowed_group.expect("square cell has a group")];
         assert_eq!(group.len(), 8);
         assert_eq!(group[0], vec![0, 1, 2, 3]);
         let BoundaryDto::Polyline { points } = &cell.boundary else {
@@ -692,6 +749,7 @@ mod tests {
 
         fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
             let mut cells = Vec::new();
+            let mut groups = GroupTable::default();
             for y in -3..=3 {
                 for x in -3..=3 {
                     let cell = (codec.from_xy)(x, y);
@@ -723,7 +781,7 @@ mod tests {
                         center: xy(tessellation.center(cell)),
                         cell_scale: tessellation.cell_scale(cell),
                         shape: shape.map(|shape| shape.descriptor().key().to_string()),
-                        allowed_group: shape.map(allowed_group),
+                        allowed_group: shape.map(|shape| groups.intern(allowed_group(shape))),
                         boundary: BoundaryDto::Polyline {
                             points: path.flatten(0.01).into_iter().map(xy).collect(),
                         },
@@ -750,6 +808,23 @@ mod tests {
     }
 
     #[test]
+    fn faces_boundary_carries_no_geometry_and_groups_are_shared() {
+        let cells = vec![[0, 0], [1, 0], [2, 0]];
+        let snapshot = geometry_snapshot(&request_with(
+            TessellationKind::Square,
+            cells,
+            BoundaryRequest::Faces,
+        ))
+        .unwrap();
+        assert!(snapshot
+            .cells
+            .iter()
+            .all(|cell| cell.boundary == BoundaryDto::Faces));
+        assert_eq!(snapshot.allowed_groups.len(), 1);
+        assert!(snapshot.cells.iter().all(|cell| cell.allowed_group == Some(0)));
+    }
+
+    #[test]
     fn snapshot_equals_the_core_per_cell_geometry() {
         for kind in [
             TessellationKind::Square,
@@ -771,6 +846,62 @@ mod tests {
             let cells = expected.iter().map(|cell| cell.cell).collect();
             let snapshot = geometry_snapshot(&request(kind, cells)).unwrap();
             assert_eq!(snapshot.cells, expected, "{kind:?}");
+        }
+    }
+
+    /// The web rebuilds a path boundary from the faces' segments; it must be core's own path.
+    #[test]
+    fn path_boundary_equals_the_chain_of_the_faces_segments() {
+        for kind in [
+            TessellationKind::Square,
+            TessellationKind::Hex,
+            TessellationKind::Tri,
+            TessellationKind::Cairo,
+            TessellationKind::SquareOctagon,
+            TessellationKind::Brick,
+            TessellationKind::CurvedQuadrilateral,
+        ] {
+            let cells = build_tessellation(&config(kind), CoreGeometry)
+                .unwrap()
+                .iter()
+                .map(|cell| cell.cell)
+                .collect();
+            let snapshot =
+                geometry_snapshot(&request_with(kind, cells, BoundaryRequest::Path)).unwrap();
+            for cell in &snapshot.cells {
+                let mut commands = Vec::new();
+                for segment in cell.faces.iter().flat_map(|face| &face.segments) {
+                    if commands.is_empty() {
+                        commands.push(PathCommandDto::MoveTo {
+                            to: match segment {
+                                SegmentDto::Line { from, .. } | SegmentDto::Arc { from, .. } => *from,
+                            },
+                        });
+                    }
+                    commands.push(match segment {
+                        SegmentDto::Line { to, .. } => PathCommandDto::LineTo { to: *to },
+                        SegmentDto::Arc {
+                            center,
+                            radius,
+                            start_angle,
+                            sweep,
+                            ..
+                        } => PathCommandDto::ArcTo {
+                            center: *center,
+                            radius: *radius,
+                            start_angle: *start_angle,
+                            end_angle: start_angle + sweep,
+                            ccw: *sweep > 0.0,
+                        },
+                    });
+                }
+                assert_eq!(
+                    cell.boundary,
+                    BoundaryDto::Path { commands },
+                    "{kind:?} {:?}",
+                    cell.cell
+                );
+            }
         }
     }
 

@@ -1,22 +1,23 @@
 /** Code registry for the toast channel (GitHub issue #767, epic #766).
  *
- * Every `notify()` code is registered once by the integration that emits it: its category, a
- * paraglide message function of the call's `params`, and — for `notice` codes — `dedupParams`, the
+ * Every `notify()` code is registered once by the integration that emits it: its severity, a
+ * paraglide message function of the call's `params`, and — for `info`/`warning` codes — `dedupParams`, the
  * param names that are part of the dedup key. Text is never stored; it is rebuilt from
  * `code + params` at render time, so a language switch re-translates visible toasts in place. */
 
-export type NotificationCategory = "notice" | "error";
+/** User-facing level of a toast. `info` and `warning` are `notice` toasts (timed, queued, deduped by
+ *  params); `error` is a persistent aggregated card. */
+export type NotificationLevel = "info" | "warning" | "error";
 
 export type NotificationParamValue = string | number | boolean | null;
 export type NotificationParams = Readonly<Record<string, NotificationParamValue>>;
 
 export interface NotificationCodeDef {
-  category: NotificationCategory;
-  /** `notice` only: toast palette; defaults to `warning`. `info` is for plain facts, not refusals. */
-  severity?: "info" | "warning";
+  /** `info`: plain fact. `warning`: refused action that needs attention. `error`: failed operation. */
+  severity: NotificationLevel;
   /** Paraglide message function of the call's `params` — called at render time. */
   message: (params: NotificationParams) => string;
-  /** `notice` only: params that are part of the dedup key. Defaults to none — the key is then
+  /** `info`/`warning` only: params that are part of the dedup key. Defaults to none — the key is then
    *  `source + code` and a repeat replaces the visible params in place. Ignored for `error`,
    *  which always aggregates by `source + code`. */
   dedupParams?: readonly string[];

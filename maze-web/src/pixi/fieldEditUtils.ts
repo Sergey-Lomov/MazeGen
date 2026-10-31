@@ -1,6 +1,7 @@
 import { makeProjection, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
 import { resolveFaceNeighbors } from "./faceNeighbors";
+import { prefetchCellGeometries } from "./cartesianCache";
 import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
@@ -379,10 +380,25 @@ export function computeAutoLockedNodes(
   presetSplitPoints: Record<string, number[]> = {},
 ): Set<string> {
   const result = new Set<string>();
+  // A cell locks only when every interior face has an entry, and each entry names the cell as an
+  // endpoint, so the candidates are the cells the entries mention, not the whole field.
+  const mentioned = new Map<number, Map<string, [number, number]>>();
+  for (const { from, to } of presetConnections.values()) {
+    for (const { point, level } of [from, to]) {
+      const floor = level ?? 0;
+      let cells = mentioned.get(floor);
+      if (!cells) mentioned.set(floor, (cells = new Map()));
+      cells.set(`${point[0]},${point[1]}`, point);
+    }
+  }
   for (const { level, cfg, customPoints, smooth } of fields) {
-    const cells = resolveCells(cfg, customPoints, smooth);
+    const candidates = mentioned.get(level ?? 0);
+    if (!candidates) continue;
     const cellSet = new Set<string>();
-    for (const [x, y] of cells) cellSet.add(`${x},${y}`);
+    for (const [x, y] of resolveCells(cfg, customPoints, smooth)) cellSet.add(`${x},${y}`);
+    const cells = [...candidates.values()].filter(([x, y]) => cellSet.has(`${x},${y}`));
+    // Floors share one warmed snapshot; the others' cells load here in one batch, not one by one.
+    prefetchCellGeometries(cells, cfg);
 
     for (const [x, y] of cells) {
       const neighbors = resolveFaceNeighbors(cfg, [x, y], cellSet);

@@ -10,12 +10,12 @@ const ORDERED_PRIMITIVES: readonly FieldPrimitive[] = [
   "parallelogram",
   "polygon",
   "magic_wand",
-  "symmetry",
+  "mirror",
 ];
 
 export function fieldPrimitiveShortcut(primitive: FieldPrimitive): string {
   if (primitive === "magic_wand") return "A";
-  if (primitive === "symmetry") return "S";
+  if (primitive === "mirror") return "M";
   return String(ORDERED_PRIMITIVES.indexOf(primitive) + 1);
 }
 
@@ -23,7 +23,7 @@ export function fieldPrimitiveForShortcut(code: string): FieldPrimitive | undefi
   const match = /^(?:Digit|Numpad)([1-8])$/.exec(code);
   if (match) return ORDERED_PRIMITIVES[Number(match[1]) - 1];
   if (code === "KeyA") return "magic_wand";
-  if (code === "KeyS") return "symmetry";
+  if (code === "KeyM") return "mirror";
   return undefined;
 }
 
@@ -34,5 +34,5 @@ export function canActivateFieldPrimitive(
   reflectAvailable: boolean,
 ): boolean {
   return !fieldEditLocked
-    && !(primitive === "symmetry" && (operation === "select" || !reflectAvailable));
+    && !(primitive === "mirror" && (operation === "select" || !reflectAvailable));
 }

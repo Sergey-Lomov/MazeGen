@@ -126,7 +126,7 @@ function appendArc(points: number[], radius: number, fromAngle: number, angleDel
  * those two candidates before path length breaks a tie. */
 export function routeRadialConnectors(edges: TeleportEdge[], markerRadius = 0, waypoints: [number, number][] = []): RoutedConnector[] {
   const markers = [...waypoints, ...edges.flatMap((edge) => [edge.from, edge.to])];
-  return edges.map(({ from, to }) => {
+  return edges.map(({ from, to, fromFloor, toFloor }) => {
     const [fromX, fromY] = from;
     const [toX, toY] = to;
     const fromRadius = Math.hypot(fromX, fromY);
@@ -147,7 +147,16 @@ export function routeRadialConnectors(edges: TeleportEdge[], markerRadius = 0, w
     const arcThenRadial: number[] = [fromX, fromY];
     appendArc(arcThenRadial, fromRadius, fromAngle, angleDelta);
     appendPoint(arcThenRadial, toX, toY);
-    const candidates = [{ points: radialThenArc }, { points: arcThenRadial }];
+    // Leg lengths per candidate, in draw order: spoke then arc, or arc then spoke.
+    const spokeLength = Math.abs(toRadius - fromRadius);
+    const candidates = [
+      { points: radialThenArc, legs: [spokeLength, toRadius * Math.abs(angleDelta)] },
+      { points: arcThenRadial, legs: [fromRadius * Math.abs(angleDelta), spokeLength] },
+    ];
+    // GitHub issue #897: a cross-floor badge end sits on a cell center while the marker at the other
+    // end may be displaced by the marker layout — prefer the candidate whose leg ending at the badge
+    // is longer, so that leg runs through the badge center.
+    const badgeLeg = (legs: number[]) => (toFloor !== undefined ? legs[1] : fromFloor !== undefined ? legs[0] : 0);
     const ownPoint = (point: [number, number]) =>
       (point[0] === fromX && point[1] === fromY) || (point[0] === toX && point[1] === toY);
     const penalty = (routed: RoutedConnector) => {
@@ -156,11 +165,15 @@ export function routeRadialConnectors(edges: TeleportEdge[], markerRadius = 0, w
       for (let i = 0; i + 3 < routed.points.length; i += 2) length += Math.hypot(routed.points[i + 2] - routed.points[i], routed.points[i + 3] - routed.points[i + 1]);
       return [collisions, length] as const;
     };
-    return candidates.reduce((best, candidate) => {
+    const chosen = candidates.reduce((best, candidate) => {
       const [bestCollisions, bestLength] = penalty(best);
       const [candidateCollisions, candidateLength] = penalty(candidate);
-      return candidateCollisions < bestCollisions || (candidateCollisions === bestCollisions && candidateLength < bestLength) ? candidate : best;
+      if (candidateCollisions !== bestCollisions) return candidateCollisions < bestCollisions ? candidate : best;
+      const legDiff = badgeLeg(candidate.legs) - badgeLeg(best.legs);
+      if (Math.abs(legDiff) > 1e-6) return legDiff > 0 ? candidate : best;
+      return candidateLength < bestLength ? candidate : best;
     });
+    return { points: chosen.points };
   });
 }
 

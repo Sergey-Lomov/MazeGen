@@ -643,11 +643,12 @@ export function buildSplitPassagesCore<Id>(
     // it, so each share is mirrored onto the partner's own copy of the face (`Specs/topology.md`,
     // "Seam rendering model"); a split partner draws its own nodes' shares itself.
     // Only the colored share on the face is drawn there (no connector toward the partner's center:
-    // the split is not inside that cell). A point drawn as a special shape (bridge, divider) has no
-    // per-node shares to mirror.
+    // the split is not inside that cell). A point recognized as a special shape (bridge, divider)
+    // is mirrored too, tagged `mirroredFromSpecial`: consumers drop those when the special-shapes
+    // toggle is on (the shape has no per-node shares) and keep them when it is off.
     faceLayouts.forEach((layout, faceIndex) => {
       const half = halfByFace[faceIndex];
-      if (!half || specialShapeKind !== null) return;
+      if (!half) return;
       const partner = seams.partnerOf(half);
       const partnerKey = `${partner.cell[0]},${partner.cell[1]}`;
       if (byPoint.get(partnerKey)?.length !== 1) return;
@@ -669,6 +670,7 @@ export function buildSplitPassagesCore<Id>(
           nodeIndex: s.nodeIndex,
           pointKey: partnerKey,
           mirrored: true,
+          mirroredFromSpecial: specialShapeKind !== null ? true : undefined,
           center: mid,
           wallSegments: [{
             v0: polyline[0],

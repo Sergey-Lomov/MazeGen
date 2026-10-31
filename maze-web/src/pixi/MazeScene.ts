@@ -274,8 +274,8 @@ export class MazeScene {
           this.fieldSizeReadout = readout;
           this.fieldSizeCallback?.(readout);
         },
-        onSymmetryPreviewUpdate: (axis, polygon) => {
-          this.fieldEditorOverlay.scheduleSymmetryPreview(axis, polygon);
+        onMirrorPreviewUpdate: (axis, polygon) => {
+          this.fieldEditorOverlay.scheduleMirrorPreview(axis, polygon);
         },
       },
     );
@@ -321,7 +321,7 @@ export class MazeScene {
   /** Resolves the active hover provider for the current card. Currently every card uses the same
    * generic cell-lookup provider; a future per-feature override (e.g. edge hit-testing) would
    * branch on st.openCard here the same way getController() does. `st` is unused today — kept for
-   * signature symmetry with getController() and because that future branch will need it. */
+   * signature mirror with getController() and because that future branch will need it. */
   private getHoverProvider(st: ReturnType<typeof useMazeStore.getState>): HoverProvider {
     void st;
     return this.hoverProvider;

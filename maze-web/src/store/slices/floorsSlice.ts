@@ -53,9 +53,9 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       floors: next,
       floorFields: nextFloorFields,
       floorTopology: nextFloorTopology,
-      symmetryAxisPoints: [],
-      symmetryPolygon: [],
-      symmetryPolygonFinished: false,
+      mirrorAxisPoints: [],
+      mirrorPolygon: [],
+      mirrorPolygonFinished: false,
       // The active floor may be the one just removed — fall back to the bottom floor rather than
       // leaving `activeFloorId` pointing at a floor that no longer exists.
       activeFloorId: activeFloorId === id ? next[0].id : activeFloorId,
@@ -97,7 +97,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   setActiveFloorId: (id) => {
     const { floors } = get();
     if (!floors.some((f) => f.id === id)) return;
-    set({ activeFloorId: id, symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false });
+    set({ activeFloorId: id, mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false });
   },
   };
 };

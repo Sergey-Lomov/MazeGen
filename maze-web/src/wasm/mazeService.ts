@@ -394,14 +394,52 @@ export function getGeometrySnapshot(config: {
   topologyVersion?: number;
   topology?: TopologyRequest;
 }): GeometrySnapshot {
-  return getWasm().geometry_snapshot({
+  // A path boundary is not sent: it is the faces' segments chained, rebuilt here.
+  const wasPath = config.boundary.kind === "path";
+  const raw = getWasm().geometry_snapshot({
     tessellation: config.tessellation,
     cells: config.cells,
-    boundary: config.boundary,
+    boundary: wasPath ? { kind: "faces" } : config.boundary,
     field_version: config.fieldVersion,
     topology_version: config.topologyVersion ?? 0,
     topology: config.topology ?? null,
-  }) as GeometrySnapshot;
+  }) as WireGeometrySnapshot;
+  return restoreSnapshot(raw, wasPath);
+}
+
+/// A snapshot as the wire carries it: allowed groups interned in a shared list, no boundary
+/// when the faces carry it (`runner::geometry::GeometrySnapshot`).
+type WireGeometrySnapshot = Omit<GeometrySnapshot, "cells"> & {
+  allowed_groups: number[][][];
+  cells: (Omit<CellGeometry, "allowed_group" | "boundary"> & { allowed_group: number | null; boundary: PolylineBoundary | { kind: "faces" } })[];
+};
+
+function restoreSnapshot(raw: WireGeometrySnapshot, pathBoundary: boolean): GeometrySnapshot {
+  const { allowed_groups, cells, ...rest } = raw;
+  return {
+    ...rest,
+    cells: cells.map((cell) => ({
+      ...cell,
+      allowed_group: cell.allowed_group === null ? null : allowed_groups[cell.allowed_group],
+      boundary: pathBoundary ? { kind: "path", commands: pathCommandsOfFaces(cell.faces) } : (cell.boundary as PolylineBoundary),
+    })),
+  };
+}
+
+/// `MoveTo` the first segment's start, then one command per segment (`BoundaryPath::path_commands`).
+export function pathCommandsOfFaces(faces: readonly FaceGeometry[]): PathCommand[] {
+  const commands: PathCommand[] = [];
+  for (const face of faces) {
+    for (const segment of face.segments) {
+      if (commands.length === 0) commands.push({ op: "move_to", to: segment.from });
+      commands.push(
+        segment.kind === "line"
+          ? { op: "line_to", to: segment.to }
+          : { op: "arc_to", center: segment.center, radius: segment.radius, start_angle: segment.start_angle, end_angle: segment.start_angle + segment.sweep, ccw: segment.sweep > 0 },
+      );
+    }
+  }
+  return commands;
 }
 
 /// A cell's boundary and nothing else (`geometry_outlines`).
