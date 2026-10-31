@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerIndexSettings } from "../../../store/imageExportTypes";
-import { getCellCenter } from "../../tessellationGeometry";
+import { getCellCenter, buildNodePositions } from "../../tessellationGeometry";
 import { formatIndexLabel } from "../../renderers/indexLabel";
 import { elevatorComponent } from "../../postEditVerticalUtils";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../../markerScale";
@@ -41,8 +41,8 @@ export type ResolveMarkerEndpointVisual = (
   oneWay?: boolean,
 ) => MarkerEndpointVisual;
 
-/** One index label to draw on the active floor. `pos` is the world-space center of the anchor
- *  cell; `markerOuterRadius` is that endpoint marker's visual outer radius (the plate center sits
+/** One index label to draw on the active floor. `pos` is the world-space anchor of the node (cell center, or hub
+ *  point on a split tile, GitHub issue #896); `markerOuterRadius` is that endpoint marker's visual outer radius (the plate center sits
  *  `style.offset` below it); `borderMatchColor` feeds `borderColorFromMarker`. */
 export interface MarkerIndexLabel {
   pos: [number, number];
@@ -211,6 +211,14 @@ export function buildMarkerIndexLabels(
   // --- Labels for the active floor ---
   const labels: MarkerIndexLabel[] = [];
   const dedup = new Set<string>();
+  // Split-tile nodes sit on their hub point, not the cell center (GitHub issue #896); positions are
+  // resolved per floor since `buildNodePositions` groups by tile only.
+  const floorNodes = nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
+  const nodePos = buildNodePositions(
+    floorNodes,
+    cfg,
+    edges.filter((e) => e.kind !== "teleport").map(({ from, to }) => ({ from, to })),
+  );
   keyed.forEach(({ link }, i) => {
     const label = formatIndexLabel(i, style.labelStyle);
     for (const id of link.nodeIds) {
@@ -221,9 +229,9 @@ export function buildMarkerIndexLabels(
         if (dedup.has(cellKey)) continue;
         dedup.add(cellKey);
       }
-      const center = getCellCenter(node.x, node.y, cfg);
+      const anchor = nodePos.get(id) ?? getCellCenter(node.x, node.y, cfg);
       const visual = resolveEndpointVisual(id, link.kind, link.oneWay);
-      const pos: [number, number] = [center.x, center.y];
+      const pos: [number, number] = [anchor.x, anchor.y];
       const factor = scaler.factorAt(pos, visual.sizeAdaptation);
       labels.push({
         pos,

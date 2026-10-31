@@ -12,6 +12,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
 
 import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
 import type { ResolveMarkerEndpointVisual } from "../pixi/selectors/mazeSelectors/markerIndex";
+import { getCellCenter, buildNodePositions } from "../pixi/tessellationGeometry";
 import { formatIndexLabel } from "../pixi/renderers/indexLabel";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
@@ -48,6 +49,32 @@ const shuffle = <T,>(a: T[], seed: number): T[] => {
   }
   return r;
 };
+
+const cellCenterOf = (x: number, y: number): [number, number] => {
+  const c = getCellCenter(x, y, cfg);
+  return [c.x, c.y];
+};
+
+describe("buildMarkerIndexLabels — split-tile anchor (#896)", () => {
+  it("anchors split-tile labels on the node hub point, not the cell center", () => {
+    const nodes = [n(0, 2, 2, 0), n(1, 2, 2, 0), n(2, 5, 5, 0), n(3, 5, 5, 1)];
+    const edges: EdgeDto[] = [
+      { from: 0, to: 3, kind: "teleport" },
+      { from: 1, to: 3, kind: "teleport" },
+      { from: 2, to: 3, kind: "vertical_passage" },
+    ];
+    const { labels } = build(nodes, edges, cfg, 0, style());
+    const hubA = labels.find((l) => l.nodeId === 0)!;
+    const hubB = labels.find((l) => l.nodeId === 1)!;
+    const hubs = buildNodePositions(nodes.filter((nd) => nd.level === 0), cfg, edges.map(({ from, to }) => ({ from, to })));
+    expect(hubA.pos).toEqual([hubs.get(0)!.x, hubs.get(0)!.y]);
+    expect(hubB.pos).toEqual([hubs.get(1)!.x, hubs.get(1)!.y]);
+    expect(hubA.pos).not.toEqual(cellCenterOf(2, 2));
+    expect(hubA.pos).not.toEqual(hubB.pos);
+    const plain = labels.find((l) => l.nodeId === 2)!;
+    expect(plain.pos).toEqual(cellCenterOf(5, 5));
+  });
+});
 
 describe("buildMarkerIndexLabels — determinism", () => {
   const nodes = [n(0, 0, 0, 0), n(1, 0, 0, 1), n(2, 3, 3, 0), n(3, 3, 3, 1), n(4, 5, 5, 0), n(5, 5, 5, 1)];
@@ -150,7 +177,7 @@ describe("buildMarkerIndexLabels — labelStyle", () => {
 });
 
 describe("buildMarkerIndexLabels — collision policy", () => {
-  it("stacks distinct links sharing a cell without crashing", () => {
+  it("distinct links on split-tile siblings get separate hub anchors", () => {
     const nodes = [n(0, 2, 2, 0), n(1, 2, 2, 1), n(2, 2, 2, 0), n(3, 2, 2, 1)];
     const edges: EdgeDto[] = [
       { from: 0, to: 1, kind: "teleport" },
@@ -158,7 +185,7 @@ describe("buildMarkerIndexLabels — collision policy", () => {
     ];
     const set = build(nodes, edges, cfg, 0, style());
     expect(set.labels).toHaveLength(2);
-    expect(set.labels[0].pos).toEqual(set.labels[1].pos);
+    expect(set.labels[0].pos).not.toEqual(set.labels[1].pos);
   });
 });
 
