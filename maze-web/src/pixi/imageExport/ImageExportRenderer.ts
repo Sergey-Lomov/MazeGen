@@ -7,8 +7,8 @@ import { SeamArrowLayer } from "../seamArrowSync";
 import { seamArrowsShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
 
-type CopyLayer = "content" | "overlay";
-const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay"];
+type CopyLayer = "content" | "overlay" | "highlight";
+const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay", "highlight"];
 
 /** One shifted copy of the mode's picture on the cut sheet: a renderer building the geometry once, whose content and
  *  overlay layers sit in the sheet's shared layers, each inside its own holder that carries the copy's offset. */
@@ -49,7 +49,7 @@ export class ImageExportRenderer implements ViewportListener {
   /** The copies of the cut sheet, masked by the cut region. */
   private readonly sheet = new Container();
   /** One layer per kind, stacked in order, each holding that layer of every copy: all contents below all overlays (GitHub issue #888). */
-  private readonly layers: Record<CopyLayer, Container> = { content: new Container(), overlay: new Container() };
+  private readonly layers: Record<CopyLayer, Container> = { content: new Container(), overlay: new Container(), highlight: new Container() };
   private readonly mask = new Graphics();
   private readonly modeContainers = new Map<RenderModeId, Container>();
   private readonly modeRenderers = new Map<RenderModeId, ModeRenderer>();

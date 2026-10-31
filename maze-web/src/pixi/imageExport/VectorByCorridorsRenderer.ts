@@ -18,7 +18,7 @@ import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroup
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
+import { isHiddenSpecialMirror, type Viewport, type TeleportEdge, type SplitPassage, type SplitSpecialShape, type VerticalConnectionMarker } from "../renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
 import { buildCorridorContour, buildCorridorContourInstances, traceCorridorContour, type CorridorShapeCache } from "./vectorByCorridorsContour";
 import { buildCorridorLineTiles, traceCorridorLineTile } from "./vectorByCorridorsLineTiles";
@@ -203,7 +203,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
 
     this.warningHighlightContainer = new Container();
-    container.addChild(this.warningHighlightContainer);
+    this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByCorridorsWarnings);
 
     this.syncVisibility(useMazeStore.getState());
@@ -647,6 +647,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
+    passages = passages.filter((passage) => !isHiddenSpecialMirror(passage, settings.splitSpecialShapes));
     if (settings.renderStyle === "legacy_line") {
       this.drawSplitPassagesLegacy(settings, passages, specialShapes, cfg);
       return;

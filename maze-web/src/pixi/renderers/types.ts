@@ -93,6 +93,9 @@ export type SplitPassage = {
   /** Set on a share a split node on the other side of a seam mirrors onto this (unsplit) cell's
    *  own copy of the glued face. `pointKey` is then the unsplit cell, which holds no split hub. */
   mirrored?: boolean;
+  /** With `mirrored`: the source split point is recognized as a special shape. Drop the share
+   *  while special shapes are drawn (see `isHiddenSpecialMirror`); draw it when they are off. */
+  mirroredFromSpecial?: boolean;
   /** The split point's own tile center (GitHub issue #314 follow-up) — `VectorByCorridorsRenderer`
    *  draws each of this node's face shares as a straight line from here (never `connectors`' hub
    *  fan-out/2-share-straightening — every share always runs to the point's own center, since a
@@ -549,3 +552,8 @@ export type VerticalConnectionStyle = {
    *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
   elevatorBadges: ElevatorBadgeSettings;
 };
+
+/** A mirrored share whose source point is drawn as a special shape — it must not draw then. */
+export function isHiddenSpecialMirror(passage: SplitPassage, specialShapesOn: boolean): boolean {
+  return specialShapesOn && passage.mirroredFromSpecial === true;
+}

@@ -18,7 +18,7 @@ import { collectTextFitEntries, pushTextOverflowWarnings } from "./exportTextFit
 export { computeTextFitItemsAcrossFloors } from "./exportTextFit";
 export type { TextFitKind } from "./exportTextFit";
 import { type ColorFieldKey } from "../colorFieldKeys";
-import { pushContrastWarningEntries, ContrastPair, pushContrastWarning, teleportConnectorEntries, splitContrastData, pushSplitPairwiseWarning, addCommonContrastWarnings } from "./exportContrastWarnings";
+import { pushContrastWarningEntries, pushContrastWarning, teleportConnectorEntries, splitContrastData, splitColorEntries, pushSplitPairwiseWarning, addCommonContrastWarnings } from "./exportContrastWarnings";
 import { computeTeleportWarnings, computeElevatorIndistinguishableWarning } from "./exportTeleportWarnings";
 import { computeMarkerExtensionHitsCorridorWarning } from "./exportCorridorWarnings";
 
@@ -399,7 +399,7 @@ export function computeVectorByWallsWarnings(
     }
   }
   const splitFloor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
-  pushContrastWarning(warnings, "split_low_contrast_floor", splitFloor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "tilesFloor")]), splitFloor.nodes);
+  pushContrastWarningEntries(warnings, "split_low_contrast_floor", splitColorEntries(splitFloor, visibleColor(ctx, "tilesFloor")));
   pushSplitPairwiseWarning(warnings, splitFloor);
 
   // Split points recognized as a dedicated "special shape" (bridge/diagonal, `SplitSpecialShapeKind`)
@@ -625,8 +625,8 @@ export function computeVectorByCorridorsWarnings(
     }
   }
   const splitCorridor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
-  pushContrastWarning(warnings, "split_low_contrast_corridor", splitCorridor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "corridorFill")]), splitCorridor.nodes);
-  pushContrastWarning(warnings, "split_low_contrast_background", splitCorridor.colors.map((color): ContrastPair => [color, visibleColor(ctx, "bgFill")]), splitCorridor.nodes);
+  pushContrastWarningEntries(warnings, "split_low_contrast_corridor", splitColorEntries(splitCorridor, visibleColor(ctx, "corridorFill")));
+  pushContrastWarningEntries(warnings, "split_low_contrast_background", splitColorEntries(splitCorridor, visibleColor(ctx, "bgFill")));
   pushSplitPairwiseWarning(warnings, splitCorridor);
 
   if (settings.thickness + 2 * settings.splitGapWidth > 40) {

@@ -137,6 +137,17 @@ const bridgeShape = {
 };
 
 describe("SplitJunctionRenderer.render special shapes", () => {
+  it("GitHub issue #893: a seam mirror of a special-shape point draws only while special shapes are off", () => {
+    const mirror = { ...passage("9,9", 0xaaaaaa), mirrored: true, mirroredFromSpecial: true, connectors: [] };
+    const strokes = (override?: { specialShapes: boolean }) => {
+      const renderer = new SplitJunctionRenderer(new Container());
+      renderer.render({ passages: [mirror], wallFaces: [], specialShapes: [bridgeShape] }, undefined, override);
+      return graphicsOf(renderer).calls.filter((c) => c.fn === "stroke").length;
+    };
+    expect(strokes()).toBe(0);
+    expect(strokes({ specialShapes: false })).toBeGreaterThan(0);
+  });
+
   it("defaults on (no splitStyleOverride at all) — a recognized point's ordinary passage is skipped, matching every non-VectorByWalls feature-renderer that never passes an override", () => {
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render({ passages: [passage("0,0", 0xaaaaaa)], wallFaces: [], specialShapes: [bridgeShape] });
