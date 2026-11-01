@@ -24,7 +24,9 @@ fn capabilities_list_operations_and_preset_schemas() {
     .unwrap();
     assert_eq!(capabilities.operations, ["translate", "reflect"]);
     let keys: Vec<_> = capabilities.presets.iter().map(|p| p.key).collect();
-    assert_eq!(keys, ["rect", "circle", "triangle", "box"]);
+    // The first four are pinned (the box schema below is read by index); later presets may grow.
+    assert_eq!(keys[..4], ["rect", "circle", "triangle", "box"]);
+    assert!(keys.contains(&"cylinder") && keys.contains(&"torus"));
     assert_eq!(
         capabilities.presets[3].params,
         [

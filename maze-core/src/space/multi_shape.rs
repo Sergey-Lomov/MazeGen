@@ -319,6 +319,21 @@ pub(super) fn retain_attached<T: Tessellation>(
     Ok(())
 }
 
+/// `retain_attached` for the presets that need it: every preset except `cylinder` and `torus`,
+/// which are made of whole lattice periods and so hold every cell their gluing needs. Keeping this
+/// decision in one place stops a tessellation from applying the check to `rect` only.
+pub(super) fn retain_attached_for_preset<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    cells: &mut Vec<T::CellId>,
+    is_anchor_cell: impl Fn(T::CellId) -> bool,
+) -> Result<(), FieldOpError> {
+    if matches!(key, "cylinder" | "torus") {
+        return Ok(());
+    }
+    retain_attached(tessellation, cells, is_anchor_cell)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,5 +481,30 @@ mod tests {
 
         let mut lonely = vec![far];
         assert!(retain_attached(&t, &mut lonely, |c| c.is_dodecagon()).is_err());
+    }
+
+    #[test]
+    fn retain_attached_for_preset_skips_only_the_glued_presets() {
+        use crate::space::{
+            TruncatedHexagonalKind as K, TruncatedHexagonalPoint as P,
+            TruncatedHexagonalTessellation,
+        };
+        let t = TruncatedHexagonalTessellation;
+        let far = P::new(9, 9, K::TriangleUp);
+        let all = vec![P::dodecagon(0, 0), far];
+        for key in ["rect", "circle", "triangle"] {
+            let mut cells = all.clone();
+            retain_attached_for_preset(&t, key, &mut cells, |c| c.is_dodecagon()).unwrap();
+            assert_eq!(
+                cells,
+                vec![P::dodecagon(0, 0)],
+                "{key} drops detached cells"
+            );
+        }
+        for key in ["cylinder", "torus"] {
+            let mut cells = all.clone();
+            retain_attached_for_preset(&t, key, &mut cells, |c| c.is_dodecagon()).unwrap();
+            assert_eq!(cells, all, "{key} keeps whole periods untouched");
+        }
     }
 }
