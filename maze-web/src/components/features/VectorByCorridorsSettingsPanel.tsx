@@ -65,6 +65,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesGlueColor);
   const setCutLinesColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesColor);
   const setCreases = useMazeStore((s) => s.setVectorByCorridorsCreases);
+  const setGlueTabs = useMazeStore((s) => s.setVectorByCorridorsGlueTabs);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
@@ -1173,6 +1174,12 @@ export function VectorByCorridorsSettingsPanel() {
         creaseDefaultColor={D.creases.color}
         creasePriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
         onCreasesChange={setCreases}
+        glueTabsExpanded={isExpanded("glueTabs")}
+        onToggleGlueTabs={() => toggleSection("glueTabs")}
+        glueTabStyle={settings.glueTabs}
+        glueTabDefaults={D.glueTabs}
+        glueTabPriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
+        onGlueTabsChange={setGlueTabs}
       />
 
     </div>

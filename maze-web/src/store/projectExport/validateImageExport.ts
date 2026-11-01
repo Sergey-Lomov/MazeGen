@@ -1,12 +1,12 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -525,6 +525,26 @@ function creaseStyle(obj: Record<string, unknown> | null, d: CreaseExportStyle):
   };
 }
 
+/** Lenient like `creaseStyle`: the section is absent from files saved before GitHub issue #901. */
+function glueTabStyle(obj: Record<string, unknown> | null, d: GlueTabStyle): GlueTabStyle {
+  let o: Record<string, unknown> | null = null;
+  try {
+    o = obj && obj.glueTabs != null ? assertObject(obj.glueTabs, "glueTabs") : null;
+  } catch {
+    o = null;
+  }
+  return {
+    showTabs: optBool(o, "showTabs", d.showTabs),
+    inset: clampTo(GLUE_TAB_INSET_RANGE, optNumber(o, "inset", d.inset)),
+    width: clampTo(GLUE_TAB_WIDTH_RANGE, optNumber(o, "width", d.width)),
+    alternate: optBool(o, "alternate", d.alternate),
+    fillColor: optNumber(o, "fillColor", d.fillColor),
+    lineColor: optNumber(o, "lineColor", d.lineColor),
+    lineStyle: optEnum(o, "lineStyle", ["dashed", "solid"] as const, d.lineStyle),
+    lineWidth: clampTo(GLUE_TAB_LINE_WIDTH_RANGE, optNumber(o, "lineWidth", d.lineWidth)),
+  };
+}
+
 export function validateVectorByWallsSettings(v: unknown, path: string, links: ParamLink<VectorByWallsParamPath>[]): VectorByWallsSettings {
   const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
   if (v == null) return { ...d, links };
@@ -542,6 +562,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     innerGridColor: optNumber(obj, "innerGridColor", d.innerGridColor),
     ...cutLineStyle(obj, d),
     creases: creaseStyle(obj, d.creases),
+    glueTabs: glueTabStyle(obj, d.glueTabs),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
@@ -740,6 +761,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     ...cutLineStyle(obj, d),
     creases: creaseStyle(obj, d.creases),
+    glueTabs: glueTabStyle(obj, d.glueTabs),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),

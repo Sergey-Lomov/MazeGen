@@ -288,6 +288,16 @@ their effective border width is greater than zero. When the border width is zero
 checks the badge fill color against the active surface instead. Group customization uses the
 group's secondary color for the visible badge fill/border in both cases.
 
+### Glue tab contrast (GitHub issue #901)
+
+Both checks apply only while the glue tabs show (`glueTabs.showTabs`; the floor's glues are not checked):
+
+- `glue_tab_outline_low_contrast_fill` — outline colour vs fill colour, only when the outline thickness is above zero;
+- `glue_tab_fill_low_contrast_background` — fill colour vs background colour, only when the outline thickness is zero
+  (with an outline, the outline sets the tab apart).
+
+Fields: `glueTabFill`, `glueTabLine` (the latter hidden without an outline).
+
 ## Explicitly out of scope
 
 The following are not part of this warning set:

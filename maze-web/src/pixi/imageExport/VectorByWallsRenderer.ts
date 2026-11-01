@@ -28,6 +28,8 @@ import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
+import { selectExportGlueTabs } from "./glueTabExport";
+import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
@@ -235,6 +237,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
   private readonly background: Graphics;
   private readonly gridContainer: Container;
   private readonly grid: GridRenderer;
+  /** Glue tabs' layer (GitHub issue #901): above the grid, below the content, so walls and corridors draw over them.
+   *  Part of the backdrop: shown with it, drawn once over the whole frame. */
+  readonly glueTabs: Container;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private shown = true;
@@ -259,6 +264,9 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
     this.gridContainer = new Container();
     container.addChild(this.gridContainer);
     this.grid = new GridRenderer(this.gridContainer);
+
+    this.glueTabs = new Container();
+    container.addChild(this.glueTabs);
 
     this.content = new Container();
     container.addChild(this.content);
@@ -287,6 +295,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
     const visible = this.shown && (this.pass === "full" || this.pass === "backdrop");
     this.backgroundContainer.visible = visible;
     this.gridContainer.visible = visible && this.showGrid;
+    this.glueTabs.visible = visible;
   }
 
   /** Redraws the background rect + (if `showGrid`) the grid against the current viewport — call on
@@ -313,6 +322,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
     this.backgroundContainer.destroy();
     this.grid.destroy();
     this.gridContainer.destroy();
+    this.glueTabs.destroy();
   }
 }
 
@@ -349,6 +359,7 @@ export class VectorByWallsRenderer {
   private readonly innerGrid: GridRenderer;
   private innerGridCells: readonly [number, number][] = [];
 
+  private readonly glueTabRenderer: GlueTabRenderer;
   private readonly backgroundGrid: BackgroundGridLayer<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
@@ -426,6 +437,7 @@ export class VectorByWallsRenderer {
     this.warningHighlightContainer = new Container();
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
 
+    this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.innerGrid = new GridRenderer(this.innerGridContainer);
@@ -457,7 +469,9 @@ export class VectorByWallsRenderer {
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
         state.activeFieldConfig !== prev.activeFieldConfig ||
         state.activeFloorId !== prev.activeFloorId ||
-        state.floors !== prev.floors;
+        state.floors !== prev.floors ||
+        state.floorTopology !== prev.floorTopology ||
+        state.pngExportSettings.cuts !== prev.pngExportSettings.cuts;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
       if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
@@ -592,6 +606,7 @@ export class VectorByWallsRenderer {
     if (state.vectorByWallsSettings.showInnerGrid) {
       this.innerGrid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor }, cfg, this.innerGridCells);
     }
+    this.glueTabRenderer.render(selectExportGlueTabs(state, state.vectorByWallsSettings.glueTabs), state.vectorByWallsSettings.glueTabs);
     this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
     // Resolves a `vertical_passage`/`elevator` edge's `to` node's own floor (GitHub issue #347) —
     // built from the *unscoped* node list, since `to` never survives the floor-scoping above.
@@ -812,6 +827,7 @@ export class VectorByWallsRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();

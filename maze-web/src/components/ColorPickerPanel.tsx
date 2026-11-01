@@ -15,6 +15,7 @@ import { Tooltip } from "./Tooltip";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
+import { hasAnyGlue } from "../pixi/selectors/colorFieldRegistry";
 import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { ExportWarningBubble } from "./features/ExportWarningBubble";
 import { resolveExportWarningsSectionTitle } from "./features/exportWarningsI18n";
@@ -103,6 +104,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const nodes = useMazeStore((s: MazeState) => s.nodes);
   const edges = useMazeStore((s: MazeState) => s.edges);
   const floors = useMazeStore((s: MazeState) => s.floors);
+  const floorTopology = useMazeStore((s: MazeState) => s.floorTopology);
   const showColorWarnings = useMazeStore((s: MazeState) => s.showColorWarnings);
   const cfg = useMazeStore((s: MazeState) => s.activeFieldConfig);
   const start = useMazeStore((s: MazeState) => s.start);
@@ -115,6 +117,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
       nodes,
       edges,
       floors,
+      floorTopology,
     } as MazeState);
     // Drop the edited field's own row.
     const isSelf = (key: string) => field !== undefined && key === field.key;
@@ -128,19 +131,20 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
       ? [{ key: DEFAULT_ROW_KEY, name: m["color_picker.project_colors_default"](), color: defaultColor }, ...priority]
       : priority;
     return buildProjectColorGroups(withDefault, all.filter((e) => !isSelf(e.key)));
-  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, priorityColors, defaultColor, field]);
+  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, priorityColors, defaultColor, field]);
 
   const colorWarnings = useMemo(() => {
     if (!showColorWarnings || !field || !openMode) return [];
-    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeFieldConfig: cfg, start, finish } as MazeState;
+    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, floorTopology, activeFieldConfig: cfg, start, finish } as MazeState;
     const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
+    const hasGlues = hasAnyGlue(floorTopology);
     const warnings = openMode === "vector_by_walls"
-      ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish)
-      : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish);
+      ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish, undefined, hasGlues)
+      : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish, undefined, hasGlues);
     // The preview ran with the working color, so any warning attached to this field is about it.
     return warnings.filter((warning) => warning.fields?.includes(field.key));
-  }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
+  }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish, working]);
 
   /** The color in effect when the picker opened. Captured once — with live preview (#513) the
    *  `color` prop tracks each previewed change (the call site's `onChange` also writes the store),

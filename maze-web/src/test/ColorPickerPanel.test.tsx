@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ColorPickerPanel } from "../components/ColorPickerPanel";
@@ -34,7 +34,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0x000000, showGrid: true, gridColor: 0x000000, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
+    background: 0x000000, showGrid: true, gridColor: 0x000000, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,

@@ -37,6 +37,10 @@ export interface ColorVisibilityContext {
   innerGrid: boolean;
   /** `cutLinesColor` — shown only for lines drawn in their own single colour. */
   cutLines: boolean;
+  /** `glueTabs.fillColor` — shown while the glue tabs are, and some floor has a glue to carry them. */
+  glueTabs: boolean;
+  /** `glueTabs.lineColor` — shown while the glue tabs have an outline. */
+  glueTabLine: boolean;
   oneWayIndicator: boolean;
   teleports: boolean;
   crossFloorTeleports: boolean;
@@ -86,6 +90,13 @@ export interface ColorVisibilityMaze {
   nodes: MazeState["nodes"];
   edges: EdgeDto[];
   floors: MazeState["floors"];
+  /** Whether some floor has a glue (GitHub issue #901); the glue tab fields are hidden without one. Unknown counts as yes. */
+  hasGlues?: boolean;
+}
+
+/** Whether some floor has a glue (GitHub issue #901): the `hasGlues` input of {@link buildColorVisibility}. */
+export function hasAnyGlue(floorTopology: MazeState["floorTopology"]): boolean {
+  return Object.values(floorTopology).some((topology) => topology.groups.length > 0);
 }
 
 export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: ExportSettings): ColorVisibilityContext {
@@ -94,6 +105,7 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
   const walls = "verticalStyle" in s;
   const teleports = maze.edges.some((e) => e.kind === "teleport");
   const markerIndexAvailable = teleports || elevators || maze.edges.some((e) => e.kind === "vertical_passage");
+  const glueTabsShown = s.glueTabs.showTabs && (maze.hasGlues ?? true);
   return {
     settings: s,
     mode: walls ? "walls" : "corridors",
@@ -101,6 +113,8 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     grid: s.showGrid,
     innerGrid: "showInnerGrid" in s && s.showInnerGrid,
     cutLines: s.showCutLines && !s.cutLinesGlueColor,
+    glueTabs: glueTabsShown,
+    glueTabLine: glueTabsShown && s.glueTabs.lineWidth > 0,
     wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
     oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
     teleports,
@@ -173,6 +187,9 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
   },
 
   cutLines: { visible: (c) => c.cutLines, get: (s) => s.cutLinesColor, set: (s, v) => { s.cutLinesColor = v; } },
+
+  glueTabFill: { visible: (c) => c.glueTabs, get: (s) => s.glueTabs.fillColor, set: (s, v) => { s.glueTabs.fillColor = v; } },
+  glueTabLine: { visible: (c) => c.glueTabLine, get: (s) => s.glueTabs.lineColor, set: (s, v) => { s.glueTabs.lineColor = v; } },
 
   corridorFill: {
     visible: (c) => c.mode === "corridors",
@@ -301,7 +318,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
  *  appears in exactly one table — enforced by a test. */
 export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
   [
-    "bgFill", "bgGrid", "innerGrid", "cutLines", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
+    "bgFill", "bgGrid", "innerGrid", "cutLines", "glueTabFill", "glueTabLine", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
     "sharedMarkerFill", "sharedMarkerBorder",
     "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText",
     "teleportEdge", "teleportEdgeBorder", "teleportConnector",

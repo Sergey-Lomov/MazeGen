@@ -4,7 +4,7 @@ import {
   type ColorFieldKey, type StaticColorFieldKey, type TeleportGroupColorRole,
 } from "../colorFieldKeys";
 import {
-  buildColorVisibility, isColorFieldVisible, visibleColor, writeColorField, STATIC_FIELD_DEFS, STATIC_FIELD_ORDER,
+  buildColorVisibility, hasAnyGlue, isColorFieldVisible, visibleColor, writeColorField, STATIC_FIELD_DEFS, STATIC_FIELD_ORDER,
   type ColorVisibilityContext, type ExportSettings, type Visible,
 } from "./colorFieldRegistry";
 
@@ -47,6 +47,8 @@ type RoleKey =
   | "grid"
   | "inner_grid"
   | "cut_line"
+  | "glue_tab_fill"
+  | "glue_tab_line"
   | "floor"
   | "wall"
   | "one_way_line"
@@ -90,6 +92,8 @@ const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   grid: m["color_picker.entry.role.grid"],
   inner_grid: m["color_picker.entry.role.inner_grid"],
   cut_line: m["color_picker.entry.role.cut_line"],
+  glue_tab_fill: m["color_picker.entry.role.glue_tab_fill"],
+  glue_tab_line: m["color_picker.entry.role.glue_tab_line"],
   floor: m["color_picker.entry.role.floor"],
   wall: m["color_picker.entry.role.wall"],
   one_way_line: m["color_picker.entry.role.one_way_line"],
@@ -153,6 +157,8 @@ const STATIC_FIELDS = defineFields({
   bgGrid: [["background"], "grid"],
   innerGrid: [["background"], "inner_grid"],
   cutLines: [["topology"], "cut_line"],
+  glueTabFill: [["topology"], "glue_tab_fill"],
+  glueTabLine: [["topology"], "glue_tab_line"],
 
   corridorFill: [["corridor"], "fill"],
 
@@ -312,7 +318,7 @@ function profileColors(ctx: ColorVisibilityContext): ProjectColorEntry[] {
 export function selectActiveProfileColors(state: MazeState): ProjectColorEntry[] {
   const settings = activeProfileSettings(state);
   if (!settings) return [];
-  return profileColors(buildColorVisibility(state, settings));
+  return profileColors(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology) }, settings));
 }
 
 /** The export profile whose settings panel is open beside the canvas, or `null`. */
@@ -334,6 +340,6 @@ export function overrideActiveProfileColor(
   const source = activeProfileSettings(state);
   if (!source) return null;
   const settings = structuredClone(source);
-  writeColorField(buildColorVisibility(state, source), settings, fieldKey, color);
+  writeColorField(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology) }, source), settings, fieldKey, color);
   return settings;
 }

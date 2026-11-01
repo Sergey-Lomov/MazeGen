@@ -11,7 +11,7 @@ import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/text
 import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { hasCellAreaSpread } from "../../pixi/markerScale";
 import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
-import type { ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
+import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
 import type { TextFitContextValue } from "./TextFitContext";
 import { useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
@@ -27,7 +27,7 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   registry: Record<P, ParamDescriptor>,
   computeWarnings: (
     nodes: NodeDto[], edges: EdgeDto[], floors: FloorEntry[], cfg: FieldConfig,
-    settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>,
+    settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
   ) => ExportWarning[],
 ) {
   const rawNodes = useMazeStore((s) => s.nodes);
@@ -54,9 +54,11 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     () => floorIdsWithCut(floors, cfg, floorTopology, cuts),
     [floors, cfg, floorTopology, cuts],
   );
+  // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
+  const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
   const exportWarnings = useMemo(
-    () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds),
-    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds],
+    () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
+    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues],
   );
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
@@ -84,8 +86,8 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   // One visibility context for the whole panel (GitHub issue #717): section gates, priority color
   // lists and the "Project colors" list all derive from it, so they cannot drift.
   const colorVisibility = useMemo(
-    () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors }, settings),
-    [rawNodes, rawEdges, floors, settings],
+    () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors, hasGlues }, settings),
+    [rawNodes, rawEdges, floors, settings, hasGlues],
   );
   const hasOneWays = colorVisibility.oneWayIndicator;
   const hasTeleports = colorVisibility.teleports;
