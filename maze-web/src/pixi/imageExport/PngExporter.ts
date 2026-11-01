@@ -9,6 +9,7 @@ import { resolveContentBoundsBasis } from "./exportMargins";
 import { resolveCutPlan, resolveExportContent } from "./exportContent";
 import { cutLineColors, cutLineStyleOf } from "./cutLineStyle";
 import type { CutPlan } from "./cutLines";
+import { creaseStyleOf, drawExportCreases, selectExportCreases } from "./creaseExport";
 import type { PngExportSettings } from "../../store/storeTypes";
 
 /** On-screen length of one dash of a drawn cut line, and of its gap, in export pixels. */
@@ -49,6 +50,7 @@ export class PngExporter {
     const exportContainer = new Container();
     const sceneRoot = new Container();
     const guides = new Graphics();
+    const creaseGraphics = new Graphics();
     const modeRenderer = createModeRenderer(mode, exportContainer);
     let renderTexture: RenderTexture | null = null;
     try {
@@ -80,10 +82,15 @@ export class PngExporter {
       renderTexture = RenderTexture.create({ width: fit.width, height: fit.height });
       const style = cutLineStyleOf(state, mode);
       const showLines = style.showCutLines;
+      const creaseStyle = creaseStyleOf(state, mode);
+      const creases = selectExportCreases(state, creaseStyle);
+      const hasCreases = creases.length > 0;
+      if (hasCreases) drawExportCreases(creaseGraphics, creases, creaseStyle);
       if (plan) {
-        this.renderCutSheet(sceneRoot, exportContainer, modeRenderer, renderTexture, plan, modeRenderer.getBackgroundColor(), showLines ? cutLineColors(style, state.activeFieldConfig, state.floorTopology[state.activeFloorId]) : null, guides, fit);
+        this.renderCutSheet(sceneRoot, exportContainer, modeRenderer, renderTexture, plan, modeRenderer.getBackgroundColor(), showLines ? cutLineColors(style, state.activeFieldConfig, state.floorTopology[state.activeFloorId]) : null, guides, hasCreases ? creaseGraphics : null, fit);
       } else {
         this.app.renderer.render({ container: sceneRoot, target: renderTexture, clearColor: 0x00000000 });
+        if (hasCreases) this.renderCreases(sceneRoot, exportContainer, renderTexture, creaseGraphics, [[0, 0]], null);
       }
 
       const canvas = this.app.renderer.extract.canvas(renderTexture);
@@ -92,12 +99,39 @@ export class PngExporter {
       renderTexture?.destroy(true);
       modeRenderer.destroy();
       guides.destroy();
+      creaseGraphics.destroy();
       sceneRoot.destroy({ children: true });
     }
   }
 
+  /** The creases over the finished picture (GitHub issue #900), once per offset like the content: shifted with each copy
+   * and, for a cut sheet, clipped to the region by the same `mask`. Only the creases are drawn, the scene is hidden meanwhile. */
+  private renderCreases(
+    sceneRoot: Container,
+    scene: Container,
+    target: RenderTexture,
+    creaseGraphics: Graphics,
+    offsets: readonly (readonly [number, number])[],
+    mask: Graphics | null,
+  ): void {
+    const holder = new Container();
+    holder.addChild(creaseGraphics);
+    holder.mask = mask;
+    sceneRoot.addChild(holder);
+    scene.visible = false;
+    for (const [dx, dy] of offsets) {
+      creaseGraphics.position.set(dx, dy);
+      this.app.renderer.render({ container: sceneRoot, target, clear: false });
+    }
+    scene.visible = true;
+    holder.mask = null;
+    sceneRoot.removeChild(holder);
+    holder.removeChild(creaseGraphics);
+    holder.destroy();
+  }
+
   /** The mode's backdrop (background and grid) over the whole frame, then its content and then its
-   * overlay, each once per plan offset clipped to the region, then the cut lines when asked for. */
+   * overlay, each once per plan offset clipped to the region, then the creases and the cut lines when asked for. */
   private renderCutSheet(
     sceneRoot: Container,
     scene: Container,
@@ -107,6 +141,7 @@ export class PngExporter {
     background: number,
     lineColor: ((group: number) => number) | null,
     guides: Graphics,
+    creaseGraphics: Graphics | null,
     fit: { width: number; height: number; scale: number },
   ): void {
     const { renderer } = this.app;
@@ -133,6 +168,7 @@ export class PngExporter {
     modeRenderer.setRenderPass("full");
     scene.mask = null;
     scene.position.set(0, 0);
+    if (creaseGraphics) this.renderCreases(sceneRoot, scene, target, creaseGraphics, plan.offsets, mask);
     sceneRoot.removeChild(mask);
     mask.destroy();
 

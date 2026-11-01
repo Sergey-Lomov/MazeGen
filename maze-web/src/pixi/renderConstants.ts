@@ -28,4 +28,8 @@ export const FLOOR_LABEL_WIDTH_RANGE = { min: 20, max: 250, step: 1 } as const;
 /** Text margin (px): how far a label's glyph ink must stay from its plate edge. Drives the overflow
  *  warnings and auto-fit for every text; shared by all label-bearing consumers. */
 export const DEFAULT_TEXT_MARGIN = 1;
+/** Ranges of the export crease style (GitHub issue #900): the settings sliders and the project-file validator share them. */
+export const CREASE_LINE_WIDTH_RANGE = { min: 1, max: 20 } as const;
+export const CREASE_MARK_SIZE_RANGE = { min: 2, max: 20 } as const;
+export const CREASE_MARK_TIP_LENGTH_RANGE = { min: 0, max: 40 } as const;
 export const TEXT_MARGIN_RANGE = { min: 0, max: 10, step: 0.5 } as const;

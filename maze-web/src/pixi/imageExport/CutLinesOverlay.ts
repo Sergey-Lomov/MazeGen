@@ -1,6 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ViewportListener } from "../sceneTypes";
+import { watchStoreInputs } from "../storeWatch";
+import type { MazeStore } from "../../store/storeTypes";
 import { glueColor } from "../renderers/SeamArrowRenderer";
 import { selectActiveSeamArrows } from "../selectors/seamHop";
 import { selectSeamArrowData } from "../seamArrowSync";
@@ -16,6 +18,16 @@ const GAP_PX = 6;
 /** Colour of a cut line whose glue has no arrow to take a colour from. */
 const FALLBACK_COLOR = 0x888888;
 
+/** What the overlay is drawn from: it redraws only when one of these changes. */
+function cutLinesOverlayInputs(st: MazeStore): readonly unknown[] {
+  const mode = st.activeRenderMode;
+  return [
+    cutEditingActive(st), st.openCard, st.nodes, st.floors, mode, mode ? cutLineStyleOf(st, mode) : null,
+    st.activeFloorId, st.activeFieldConfig, st.floorFields[st.activeFloorId], st.floorTopology,
+    st.pngExportSettings.cuts, st.seamHover, st.topologyHover,
+  ];
+}
+
 /** Draws the cut lines of the active floor on the editor canvas (GitHub issue #859): dashed, on both sides of the seam so
  * it reads how the sheet glues. While the export topology panel is open they take the colour of their glue; otherwise they
  * appear as the render mode's cut-line style draws them on the image. Lives in a viewport-synced layer, so it draws in display space. */
@@ -26,8 +38,7 @@ export class CutLinesOverlay implements ViewportListener {
 
   constructor(container: Container) {
     container.addChild(this.graphics);
-    this.unsubscribe = useMazeStore.subscribe(() => this.redraw());
-    this.redraw();
+    this.unsubscribe = watchStoreInputs(cutLinesOverlayInputs, () => this.redraw());
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {

@@ -62,10 +62,23 @@ fn is_vertical_passage<T: Tessellation>(maze: &Maze<T>, id: EdgeId) -> bool {
 /// being "wasted" on a cycle that's already broken, and is meant to stay the general mechanism
 /// for dropping cycles from the pending set regardless of why a cycle stops needing a cut.
 pub(super) fn edge_to_cycles_map<C: AsRef<[EdgeId]>>(all: &[C]) -> HashMap<EdgeId, Vec<usize>> {
+    edge_to_cycles_subset_map(all, 0..all.len())
+}
+
+/// Like [`edge_to_cycles_map`], restricted to the cycles at `indices` (out-of-range indices are
+/// skipped). Enough whenever only those cycles can ever be pending, and avoids indexing the rest.
+pub(super) fn edge_to_cycles_subset_map<C: AsRef<[EdgeId]>>(
+    all: &[C],
+    indices: impl IntoIterator<Item = usize>,
+) -> HashMap<EdgeId, Vec<usize>> {
     let mut map: HashMap<EdgeId, Vec<usize>> = HashMap::new();
-    for (idx, cycle) in all.iter().enumerate() {
+    for idx in indices {
+        let Some(cycle) = all.get(idx) else { continue };
         for &eid in cycle.as_ref() {
-            map.entry(eid).or_default().push(idx);
+            let owned = map.entry(eid).or_default();
+            if owned.last() != Some(&idx) {
+                owned.push(idx);
+            }
         }
     }
     map
@@ -146,6 +159,15 @@ mod tests {
         assert_eq!(map.get(&2), Some(&vec![0, 1]));
         assert_eq!(map.get(&3), Some(&vec![0, 1]));
         assert_eq!(map.get(&4), Some(&vec![1]));
+    }
+
+    #[test]
+    fn edge_to_cycles_subset_map_indexes_only_the_given_cycles() {
+        let all = vec![vec![1, 2], vec![2, 3], vec![3, 4]];
+        let map = edge_to_cycles_subset_map(&all, [0, 2, 9]);
+        assert_eq!(map.get(&2), Some(&vec![0]));
+        assert_eq!(map.get(&3), Some(&vec![2]));
+        assert_eq!(map.get(&1), Some(&vec![0]));
     }
 
     #[test]

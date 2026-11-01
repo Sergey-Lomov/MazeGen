@@ -15,6 +15,7 @@ import type {
   FloorLabelMode,
   FloorState,
   CutLineStyleFields,
+  CreaseExportStyle,
 } from "../storeTypes";
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
@@ -293,6 +294,9 @@ export const DEFAULT_MARKER_LAYOUT: MarkerLayoutSettingsFields = { markerLayout:
 /** Cut lines are drawn by default, in the colour of their glue; grey when a single colour is chosen. */
 export const DEFAULT_CUT_LINE_STYLE: CutLineStyleFields = { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080 };
 
+/** Crease lines are hidden by default; once shown they are dashed grey lines. */
+export const DEFAULT_CREASE_STYLE: CreaseExportStyle = { showCreases: false, mode: "lines", lineStyle: "dashed", lineWidth: 2, markSize: 12, markTipLength: 10, color: 0x808080, markColor: 0x808080 };
+
 export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate(
   {
     background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
@@ -301,6 +305,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     showInnerGrid: false,
     innerGridColor: 0x3a3a3a,
     ...DEFAULT_CUT_LINE_STYLE,
+    creases: DEFAULT_CREASE_STYLE,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
     randomWallColorMode: "off",
@@ -369,6 +374,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     showGrid: false,
     gridColor: canvas.grid.line,
     ...DEFAULT_CUT_LINE_STYLE,
+    creases: DEFAULT_CREASE_STYLE,
     color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
     junctionRadius: 4,

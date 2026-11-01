@@ -64,6 +64,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setShowCutLines = useMazeStore((s) => s.setVectorByCorridorsShowCutLines);
   const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesGlueColor);
   const setCutLinesColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesColor);
+  const setCreases = useMazeStore((s) => s.setVectorByCorridorsCreases);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
@@ -1166,6 +1167,12 @@ export function VectorByCorridorsSettingsPanel() {
         onShow={setShowCutLines}
         onGlueColor={setCutLinesGlueColor}
         onColor={setCutLinesColor}
+        creasesExpanded={isExpanded("creases")}
+        onToggleCreases={() => toggleSection("creases")}
+        creaseStyle={settings.creases}
+        creaseDefaultColor={D.creases.color}
+        creasePriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
+        onCreasesChange={setCreases}
       />
 
     </div>

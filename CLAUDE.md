@@ -56,6 +56,10 @@ Compile from `maze-web`: `npx paraglide-js compile --project ./project.inlang --
 
 `npm run dev`, `npm run build`, `npm test`, and `npm run test:watch` run `tools/prepare-paraglide.mjs` first. It fingerprints the translation files, `project.inlang/settings.json`, the package manifests, and the installed Paraglide package. When the fingerprint changes, it regenerates `generated/paraglide` with the command above and clears `node_modules/.vite`; otherwise it reuses the generated output. Both generated output and the preparation marker remain untracked.
 
+## Export
+
+- Cut transfers (GitHub issue #859, `PngExporter.renderCutSheet`): unless a feature's spec says otherwise, everything drawn on the image takes part in them — it is drawn once per `CutPlan` offset, clipped to the cut region, like the content. A new export element that is drawn once over the whole frame must say so in `Specs/image-export.md`.
+
 ## Specs
 
 `Specs/` — markdown descriptions of systems and data structures, authoritative source of intent. Check before implementing or modifying a feature.

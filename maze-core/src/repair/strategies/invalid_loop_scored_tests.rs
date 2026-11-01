@@ -33,7 +33,7 @@ mod valid_cycle_basis_indices_tests {
         // exercises the dense remap) — both independent, neither zero-invalid.
         let all: Vec<Vec<EdgeId>> = vec![vec![10, 11, 12], vec![20, 21, 22]];
         let invalid_set = std::collections::HashSet::new();
-        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set, None);
         assert_eq!(basis_indices, [0, 1].into_iter().collect());
     }
 
@@ -48,7 +48,7 @@ mod valid_cycle_basis_indices_tests {
             vec![1, 3, 4, 5], // A, C, D, E (= cycle0 XOR cycle1)
         ];
         let invalid_set = std::collections::HashSet::new();
-        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set, None);
         assert_eq!(
             basis_indices.len(),
             2,
@@ -64,18 +64,55 @@ mod valid_cycle_basis_indices_tests {
     fn invalid_indices_are_never_considered() {
         let all: Vec<Vec<EdgeId>> = vec![vec![1, 2, 3], vec![1, 2, 3]];
         let invalid_set: std::collections::HashSet<usize> = [0, 1].into_iter().collect();
-        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+        let basis_indices = valid_cycle_basis_indices(&all, &invalid_set, None);
         assert!(
             basis_indices.is_empty(),
             "both indices are invalid, so neither is a candidate for the valid basis"
         );
     }
 
+    /// Pruning to the components touching `relevant` must not change basis membership for any
+    /// cycle it keeps, and must drop cycles in components that share no edge with `relevant`.
+    #[test]
+    fn relevant_pruning_matches_full_basis_on_kept_cycles() {
+        let all: Vec<Vec<EdgeId>> = vec![
+            vec![1, 2, 3],  // component A
+            vec![100, 101], // component B (disjoint, irrelevant)
+            vec![2, 3, 4],  // A
+            vec![1, 4],     // A (= 0 XOR 2, dependent)
+            vec![100, 102], // B
+            vec![200, 201], // invalid, skipped
+        ];
+        let invalid_set: std::collections::HashSet<usize> = [5].into_iter().collect();
+        let relevant: std::collections::HashSet<EdgeId> = [1].into_iter().collect();
+
+        let full = valid_cycle_basis_indices(&all, &invalid_set, None);
+        let pruned = valid_cycle_basis_indices(&all, &invalid_set, Some(&relevant));
+
+        assert_eq!(pruned, [0, 2].into_iter().collect());
+        let kept = [0usize, 2, 3];
+        for idx in kept {
+            assert_eq!(pruned.contains(&idx), full.contains(&idx), "cycle {idx}");
+        }
+        assert!(
+            !pruned.contains(&1) && !pruned.contains(&4),
+            "component B pruned"
+        );
+    }
+
+    #[test]
+    fn relevant_edge_absent_from_valid_cycles_prunes_everything() {
+        let all: Vec<Vec<EdgeId>> = vec![vec![1, 2], vec![3, 4]];
+        let relevant: std::collections::HashSet<EdgeId> = [99].into_iter().collect();
+        let basis = valid_cycle_basis_indices(&all, &Default::default(), Some(&relevant));
+        assert!(basis.is_empty());
+    }
+
     #[test]
     fn empty_valid_subset_yields_empty_basis() {
         let all: Vec<Vec<EdgeId>> = vec![];
         let invalid_set = std::collections::HashSet::new();
-        assert!(valid_cycle_basis_indices(&all, &invalid_set).is_empty());
+        assert!(valid_cycle_basis_indices(&all, &invalid_set, None).is_empty());
     }
 }
 
