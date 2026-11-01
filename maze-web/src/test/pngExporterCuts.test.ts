@@ -17,7 +17,7 @@ interface FakeNode {
   destroy(): void;
 }
 
-const renders: { offset: [number, number]; masked: boolean; clear: boolean | undefined; strokes: number; pass: string }[] = [];
+const renders: { offset: [number, number]; masked: boolean; clear: boolean | undefined; strokes: number; pass: string; crease?: { offset: [number, number]; masked: boolean } }[] = [];
 const pass = { current: "full", log: [] as string[] };
 const mode = { hasOverlay: true };
 const drawn = { fills: [] as unknown[], strokes: 0, polys: [] as number[][] };
@@ -78,7 +78,10 @@ const app = {
   renderer: {
     render: vi.fn((options: { container: FakeNode; clear?: boolean }) => {
       const scene = options.container.children[0];
+      // The crease pass puts a holder (with the crease graphic as its only child) on the root.
+      const holder = options.container.children.find((c) => c.children.length === 1);
       renders.push({
+        crease: holder ? { offset: [holder.children[0].position.x, holder.children[0].position.y], masked: !!holder.mask } : undefined,
         offset: scene ? [scene.position.x, scene.position.y] : [0, 0],
         masked: !!scene?.mask,
         clear: options.clear,
@@ -166,5 +169,22 @@ describe("PngExporter cut sheet", () => {
     await new PngExporter(app as never).export(setState(lines, true));
     expect(drawn.strokes).toBeGreaterThan(0);
     expect(renders.length).toBe(withoutGuides + 1);
+  });
+
+  it("draws the creases once per plan offset, clipped by the same region, over the finished sheet", async () => {
+    const lines = { [TEST_FLOOR_ID]: { 0: { mode: "auto" as const, offset: 0 } } };
+    const settings = setState(lines);
+    const walls = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      vectorByWallsSettings: { ...walls, creases: { ...walls.creases, showCreases: true } },
+      floorCreases: { [TEST_FLOOR_ID]: [{ id: 0, a: [0, 0], b: [2, 0] }] },
+    } as never);
+    await new PngExporter(app as never).export(settings);
+    // Backdrop and fill, content and overlay copies, then one masked crease pass per offset.
+    expect(renders).toHaveLength(8);
+    const creasePasses = renders.slice(6);
+    expect(creasePasses.every((p) => p.crease?.masked === true && p.clear === false)).toBe(true);
+    expect(renders.slice(0, 6).every((p) => p.crease === undefined)).toBe(true);
+    expect(creasePasses.map((p) => p.crease?.offset)).toEqual(renders.slice(2, 4).map((p) => p.offset));
   });
 });

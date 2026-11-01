@@ -1,3 +1,4 @@
+import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -37,7 +38,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -173,7 +174,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,

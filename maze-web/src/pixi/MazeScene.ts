@@ -27,6 +27,7 @@ import { BackgroundImageController } from "./BackgroundImageController";
 import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
 import { CutLineDragController, hasManualCutLine } from "./imageExport/CutLineDragController";
 import { CutLinesOverlay } from "./imageExport/CutLinesOverlay";
+import { CreaseExportOverlay } from "./imageExport/CreaseExportOverlay";
 import { RenderScheduler } from "./renderScheduler";
 import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
@@ -102,6 +103,7 @@ export class MazeScene {
   private floorLabelDragController: FloorLabelDragController;
   private cutLineDragController: CutLineDragController;
   private cutLinesOverlay: CutLinesOverlay;
+  private creaseExportOverlay: CreaseExportOverlay;
   private cutLinesContainer: Container;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
@@ -189,9 +191,14 @@ export class MazeScene {
       end: () => this.interaction.defaultPan.end(),
     });
     this.cutLinesOverlay = new CutLinesOverlay(this.cutLinesContainer);
+    this.creaseExportOverlay = new CreaseExportOverlay(this.cutLinesContainer, () => {
+      const mode = useMazeStore.getState().activeRenderMode;
+      return (mode ? this.imageExportRenderer.getModeRenderer(mode)?.getRequiredExportMargin() : undefined) ?? NO_MARGIN;
+    });
 
     this.viewportListeners = [
       this.cutLinesOverlay,
+      this.creaseExportOverlay,
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
@@ -677,6 +684,7 @@ export class MazeScene {
     this.imageExportRenderer.destroy();
     this.exportFrameOverlay.destroy();
     this.cutLinesOverlay.destroy();
+    this.creaseExportOverlay.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

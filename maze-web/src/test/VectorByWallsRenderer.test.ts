@@ -1,3 +1,4 @@
+import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
@@ -161,7 +162,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
-    gridColor: 0x222222, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080,
+    gridColor: 0x222222, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
     showInnerGrid: false,
     innerGridColor: 0x222222,
     floorColor: 0x333333,

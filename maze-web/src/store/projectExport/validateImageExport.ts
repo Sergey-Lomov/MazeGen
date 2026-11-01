@@ -1,12 +1,12 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -501,6 +501,30 @@ function cutLineStyle(obj: Record<string, unknown> | null, d: CutLineStyleFields
   };
 }
 
+function clampTo(range: { min: number; max: number }, value: number): number {
+  return Math.min(range.max, Math.max(range.min, value));
+}
+
+/** Lenient like `cutLineStyle`: the section is absent from files saved before GitHub issue #900. */
+function creaseStyle(obj: Record<string, unknown> | null, d: CreaseExportStyle): CreaseExportStyle {
+  let o: Record<string, unknown> | null = null;
+  try {
+    o = obj && obj.creases != null ? assertObject(obj.creases, "creases") : null;
+  } catch {
+    o = null;
+  }
+  return {
+    showCreases: optBool(o, "showCreases", d.showCreases),
+    mode: optEnum(o, "mode", ["lines", "marks"] as const, d.mode),
+    lineStyle: optEnum(o, "lineStyle", ["dashed", "solid"] as const, d.lineStyle),
+    lineWidth: clampTo(CREASE_LINE_WIDTH_RANGE, optNumber(o, "lineWidth", d.lineWidth)),
+    markSize: clampTo(CREASE_MARK_SIZE_RANGE, optNumber(o, "markSize", d.markSize)),
+    markTipLength: clampTo(CREASE_MARK_TIP_LENGTH_RANGE, optNumber(o, "markTipLength", d.markTipLength)),
+    color: optNumber(o, "color", d.color),
+    markColor: optNumber(o, "markColor", d.markColor),
+  };
+}
+
 export function validateVectorByWallsSettings(v: unknown, path: string, links: ParamLink<VectorByWallsParamPath>[]): VectorByWallsSettings {
   const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
   if (v == null) return { ...d, links };
@@ -517,6 +541,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     showInnerGrid: optBool(obj, "showInnerGrid", d.showInnerGrid),
     innerGridColor: optNumber(obj, "innerGridColor", d.innerGridColor),
     ...cutLineStyle(obj, d),
+    creases: creaseStyle(obj, d.creases),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
@@ -714,6 +739,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     ...cutLineStyle(obj, d),
+    creases: creaseStyle(obj, d.creases),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),

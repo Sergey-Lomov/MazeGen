@@ -109,6 +109,32 @@ export interface CutLineStyleFields {
   cutLinesColor: number;
 }
 
+/** How the export shows topological crease lines (GitHub issue #900): as lines, or as pairs of marks whose tips point at each other. */
+export type CreaseDisplayMode = "lines" | "marks";
+export type CreaseLineStyle = "dashed" | "solid";
+
+/** Crease display on the image (GitHub issue #900, `Specs/image-export.md`, "Crease lines"). Sizes are in display
+ * units, so they zoom with the field. */
+export interface CreaseExportStyle {
+  showCreases: boolean;
+  mode: CreaseDisplayMode;
+  lineStyle: CreaseLineStyle;
+  lineWidth: number;
+  /** Base width of one mark. */
+  markSize: number;
+  /** Length of one mark from its base to its tip. */
+  markTipLength: number;
+  /** Line colour (`"lines"` mode). */
+  color: number;
+  /** Mark colour (`"marks"` mode). */
+  markColor: number;
+}
+
+/** Both render modes carry the crease style. */
+export interface CreaseStyleFields {
+  creases: CreaseExportStyle;
+}
+
 /** Cut-line export settings (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). */
 export interface CutExportSettings {
   /** Per floor, then per glue (group id); a missing entry means no cut. An edit that removes a glue drops its entry. */
@@ -623,7 +649,7 @@ export interface MarkerLayoutSettingsFields {
   markerScale: number;
 }
 
-export interface VectorByWallsSettings extends CutLineStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
@@ -746,7 +772,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends CutLineStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
@@ -941,6 +967,7 @@ export interface ImageExportActions {
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;
+  setVectorByCorridorsCreases: (patch: Partial<CreaseExportStyle>) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
@@ -1030,6 +1057,7 @@ export interface ImageExportActions {
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
+  setVectorByWallsCreases: (patch: Partial<CreaseExportStyle>) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;
