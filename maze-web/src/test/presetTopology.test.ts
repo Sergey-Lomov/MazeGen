@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { initialTopologyState } from "../store/slices/topologySlice";
 import { clearTopologyInfoMemo, floorTopologyInfo } from "../store/topologyInfo";
-import { getFieldPresetTopology } from "../wasm/mazeService";
+import { getFieldPresetCreases, getFieldPresetTopology } from "../wasm/mazeService";
 import { tessellationConfigOf } from "../fieldConfig";
-import { presetTopologyOf } from "../store/presetTopology";
+import { presetCreasesOf, presetTopologyOf } from "../store/presetTopology";
 import { fieldOf } from "./fieldConfigFixtures";
 import { baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
@@ -14,6 +14,7 @@ vi.mock("../wasm/mazeService", async (importActual) => {
   return {
     getFieldPreset: actual.getFieldPreset,
     getFieldPresetTopology: actual.getFieldPresetTopology,
+    getFieldPresetCreases: actual.getFieldPresetCreases,
     getFieldCapabilities: actual.getFieldCapabilities,
     translateFieldCells: actual.translateFieldCells,
     reflectFieldCells: actual.reflectFieldCells,
@@ -144,5 +145,53 @@ describe("presetTopologyOf", () => {
   it("shares one object between calls for the same shape", () => {
     const cfg = fieldOf("square", { shape: "box", width: 4, height: 4, depth: 4, net: 0, mode: 0, aspect: 100 });
     expect(presetTopologyOf(cfg)).toBe(presetTopologyOf(cfg));
+  });
+});
+
+describe("crease presets over wasm", () => {
+  const tri = tessellationConfigOf("tri");
+
+  it("a net joins five box edges, the by-faces modes and shape-only presets have none", () => {
+    const box = (net: number, mode: number) => getFieldPresetCreases(square, "box", { width: 3, height: 3, depth: 3, net, mode, aspect: 100 });
+    expect(box(0, 0)).toHaveLength(5);
+    expect(box(1, 0)).toHaveLength(5);
+    expect(box(1, 1)).toHaveLength(0);
+    expect(box(2, 1)).toHaveLength(0);
+    expect(getFieldPresetCreases(square, "rect", { cols: 3, rows: 2 })).toHaveLength(0);
+  });
+
+  it.each([
+    ["tetrahedron", 3],
+    ["octahedron", 7],
+    ["icosahedron", 19],
+  ])("the %s net has %i creases", (shape, count) => {
+    expect(getFieldPresetCreases(tri, shape, { side: 2, net: 0, mode: 0, aspect: 100 })).toHaveLength(count);
+    expect(getFieldPresetCreases(tri, shape, { side: 2, net: 0, mode: 1, aspect: 100 })).toHaveLength(0);
+  });
+});
+
+describe("a floor on a crease preset", () => {
+  const creasesOf = () => get().floorCreases[TEST_FLOOR_ID];
+
+  it("takes the shape's creases with the shape and drops them on another shape", () => {
+    get().setSelectedShape("box");
+    expect(creasesOf()).toHaveLength(5);
+    expect(creasesOf().map((c) => c.id)).toEqual([0, 1, 2, 3, 4]);
+    get().setSelectedShape("rect");
+    expect(creasesOf()).toBeUndefined();
+  });
+
+  it("follows the parameters and keeps the creases when the field becomes custom", () => {
+    get().setFieldConfig(fieldOf("square", { shape: "box", width: 2, height: 2, depth: 2, net: 0, mode: 1, aspect: 100 }));
+    expect(creasesOf()).toBeUndefined();
+    get().setFieldConfig(fieldOf("square", { shape: "box", width: 2, height: 2, depth: 2, net: 0, mode: 0, aspect: 100 }));
+    const creases = creasesOf();
+    expect(creases).toHaveLength(5);
+    get().setFieldEditMode("custom");
+    expect(creasesOf()).toBe(creases);
+  });
+
+  it("presetCreasesOf is undefined for a custom field", () => {
+    expect(presetCreasesOf(fieldOf("square", { shape: "custom", points: [[0, 0]] }))).toBeUndefined();
   });
 });

@@ -33,6 +33,17 @@ pub fn field_preset_topology(request: JsValue) -> Result<JsValue, JsValue> {
     }
 }
 
+/// The crease lines a preset defines, world-unit segments `[[x, y], [x, y]]` (empty for a preset
+/// without any). The error is `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_preset_creases(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PresetRequest = decode(request)?;
+    match runner_field_ops::preset_creases(&request) {
+        Ok(creases) => Ok(serde_wasm_bindgen::to_value(&creases).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions
 /// (`directions`, each `[x, y]`). The error is `{ kind, message? }` (`FieldOpWireError`).
 #[wasm_bindgen]
