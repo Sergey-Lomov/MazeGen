@@ -135,6 +135,32 @@ export interface CreaseStyleFields {
   creases: CreaseExportStyle;
 }
 
+/** Glue-tab display on the image (GitHub issue #901, `Specs/image-export.md`, "Glue tabs"). Sizes are in display units,
+ * so they zoom with the field. */
+export interface GlueTabStyle {
+  showTabs: boolean;
+  /** Distance from each end of a straight glued stretch to the start of its tab. */
+  inset: number;
+  /** How far the tab reaches out from the edge. */
+  width: number;
+  /** On a glue with a broken edge, every second straight stretch gets its tab on side B instead of side A. */
+  alternate: boolean;
+  /** Linked to the background colour by default. */
+  fillColor: number;
+  /** Outline colour, linked to the outer grid colour by default. Used while `lineWidth` is above zero. */
+  lineColor: number;
+  lineStyle: GlueTabLineStyle;
+  /** Outline thickness; zero draws no outline. */
+  lineWidth: number;
+}
+
+export type GlueTabLineStyle = "dashed" | "solid";
+
+/** Both render modes carry the glue-tab style. */
+export interface GlueTabStyleFields {
+  glueTabs: GlueTabStyle;
+}
+
 /** Cut-line export settings (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). */
 export interface CutExportSettings {
   /** Per floor, then per glue (group id); a missing entry means no cut. An edit that removes a glue drops its entry. */
@@ -650,7 +676,7 @@ export interface MarkerLayoutSettingsFields {
   markerScale: number;
 }
 
-export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
@@ -773,7 +799,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
@@ -969,6 +995,7 @@ export interface ImageExportActions {
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsCreases: (patch: Partial<CreaseExportStyle>) => void;
+  setVectorByCorridorsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
@@ -1059,6 +1086,7 @@ export interface ImageExportActions {
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
   setVectorByWallsCreases: (patch: Partial<CreaseExportStyle>) => void;
+  setVectorByWallsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;

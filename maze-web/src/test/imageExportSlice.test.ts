@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -38,7 +38,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -174,7 +174,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -225,6 +225,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(0x123456);
     expect(settings.showGrid).toBe(true);
     expect(settings.gridColor).toBe(canvas.grid.line);
+  });
+
+  it("glue tab fill and outline follow the background and the grid until edited", () => {
+    const { setVectorByWallsBackground, setVectorByWallsGridColor, setVectorByWallsGlueTabs } = useMazeStore.getState();
+    setVectorByWallsBackground(0x123456);
+    setVectorByWallsGridColor(0xabcdef);
+    expect(useMazeStore.getState().vectorByWallsSettings.glueTabs).toMatchObject({ fillColor: 0x123456, lineColor: 0xabcdef });
+    setVectorByWallsGlueTabs({ fillColor: 0x111111 });
+    setVectorByWallsBackground(0x222222);
+    expect(useMazeStore.getState().vectorByWallsSettings.glueTabs).toMatchObject({ fillColor: 0x111111, lineColor: 0xabcdef });
   });
 
   it("setVectorByWallsShowGrid toggles grid visibility", () => {

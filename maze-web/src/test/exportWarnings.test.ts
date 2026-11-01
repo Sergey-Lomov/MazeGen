@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
@@ -34,7 +34,7 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
@@ -60,7 +60,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE,
+    background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
     color: 0, thickness: 4, junctionRadius: 4, join: "round", renderStyle: "contour",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
@@ -135,6 +135,34 @@ describe("elevator_indistinguishable (GitHub issue #471)", () => {
 });
 
 describe("computeVectorByWallsWarnings", () => {
+  describe("glue tab contrast", () => {
+    const tabs = (patch: Partial<typeof DEFAULT_GLUE_TAB_STYLE>) => baseSettings({ background: 0xffffff, glueTabs: { ...DEFAULT_GLUE_TAB_STYLE, showTabs: true, fillColor: 0x202020, lineColor: 0x202020, lineWidth: 1, ...patch } });
+    const ids = (settings: VectorByWallsSettings) => computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null).map((warning) => warning.id);
+
+    it("warns when the outline matches the fill, but not about the background", () => {
+      expect(ids(tabs({}))).toContain("glue_tab_outline_low_contrast_fill");
+      expect(ids(tabs({ fillColor: 0xffffff }))).not.toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("warns about a fill matching the background only without an outline", () => {
+      const noLine = ids(tabs({ lineWidth: 0, fillColor: 0xffffff }));
+      expect(noLine).toContain("glue_tab_fill_low_contrast_background");
+      expect(noLine).not.toContain("glue_tab_outline_low_contrast_fill");
+      expect(ids(tabs({ lineWidth: 1, lineColor: 0, fillColor: 0xffffff }))).not.toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("stays silent when no floor has a glue", () => {
+      const settings = tabs({ lineWidth: 0, fillColor: 0xffffff });
+      const withoutGlues = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null, undefined, undefined, undefined, true, [], false);
+      expect(withoutGlues.some((warning) => warning.id.startsWith("glue_tab"))).toBe(false);
+      expect(ids(settings)).toContain("glue_tab_fill_low_contrast_background");
+    });
+
+    it("stays silent while the tabs are hidden", () => {
+      expect(ids(tabs({ showTabs: false, lineWidth: 0, fillColor: 0xffffff })).some((id) => id.startsWith("glue_tab"))).toBe(false);
+    });
+  });
+
   describe("inner grid contrast", () => {
     it("checks the independent inner-grid color against both floor and wall surfaces", () => {
       const settings = baseSettings({ showInnerGrid: true, innerGridColor: 0, floorColor: 0, wallColor: 0 });

@@ -55,11 +55,13 @@ function descriptor(type: ParamType, label: () => string, group: () => string[],
             ? formatTeleportCurveDirection
           : type === "labelFontWeight"
             ? formatElevatorBadgesFontWeight
-            : type === "number"
-              ? formatNumber
-              : type === "color"
-                ? formatColor
-                : String;
+            : type === "glueTabLineStyle"
+              ? formatGlueTabLineStyle
+              : type === "number"
+                ? formatNumber
+                : type === "color"
+                  ? formatColor
+                  : String;
   return {
     type,
     equals: Object.is,
@@ -129,6 +131,12 @@ function formatVerticalArrowStyle(value: unknown): string {
  *  `format` can't pick the right set, so the default (elevator-badges wording) covers the more
  *  common case and `markerIndex.*` descriptors pass their own via `descriptor()`'s `format`
  *  override. */
+function formatGlueTabLineStyle(value: unknown): string {
+  if (value === "dashed") return m["image_export.glue_tabs.line_style_dashed"]();
+  if (value === "solid") return m["image_export.glue_tabs.line_style_solid"]();
+  return String(value);
+}
+
 function formatElevatorBadgesFontWeight(value: unknown): string {
   if (value === "regular") return m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]();
   if (value === "bold") return m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]();
@@ -170,6 +178,7 @@ const G = {
   teleportConnector: () => [m["image_export.vector_by_walls.section_teleports"](), m["image_export.vector_by_walls.teleport_subsection_connector"]()],
   markerIndex: () => [m["image_export.vector_by_walls.section_marker_index"]()],
   topology: () => [m["topology.title"]()],
+  glueTabs: () => [m["topology.title"](), m["image_export.glue_tabs.title"]()],
 
   verticalRoot: () => [m["image_export.vector_by_walls.section_vertical"]()],
   // `replaceTwoFloorElevatorsWithStairs`/`elevatorBadges.*` render identically regardless of
@@ -210,6 +219,18 @@ const CUT_LINE_PARAMS = {
   showCutLines: descriptor("boolean", () => m["image_export.topology.show_cut_lines"](), G.topology, formatBoolean),
   cutLinesGlueColor: descriptor("boolean", () => m["image_export.topology.cut_lines_glue_color"](), G.topology, formatBoolean),
   cutLinesColor: descriptor("color", () => m["image_export.topology.cut_lines_color"](), G.topology),
+};
+
+/** The glue-tab style (GitHub issue #901): the same parameters in both render modes. */
+const GLUE_TAB_PARAMS = {
+  "glueTabs.showTabs": descriptor("boolean", () => m["image_export.glue_tabs.show"](), G.glueTabs, formatBoolean),
+  "glueTabs.inset": descriptor("number", () => m["image_export.glue_tabs.inset"](), G.glueTabs),
+  "glueTabs.width": descriptor("number", () => m["image_export.glue_tabs.width"](), G.glueTabs),
+  "glueTabs.alternate": descriptor("boolean", () => m["image_export.glue_tabs.alternate"](), G.glueTabs, formatBoolean),
+  "glueTabs.fillColor": descriptor("color", () => m["image_export.glue_tabs.fill_color"](), G.glueTabs),
+  "glueTabs.lineWidth": descriptor("number", () => m["image_export.glue_tabs.line_width"](), G.glueTabs),
+  "glueTabs.lineStyle": descriptor("glueTabLineStyle", () => m["image_export.glue_tabs.line_style"](), G.glueTabs),
+  "glueTabs.lineColor": descriptor("color", () => m["image_export.glue_tabs.line_color"](), G.glueTabs),
 };
 
 /** "Vector by walls" mode's linkable parameter registry (GitHub issue #643) — one entry per field
@@ -393,6 +414,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
   ...CUT_LINE_PARAMS,
+  ...GLUE_TAB_PARAMS,
   innerGridColor: descriptor("color", () => m["image_export.vector_by_walls.inner_grid_color"](), G.background),
   floorColor: descriptor("color", () => m["image_export.vector_by_walls.floor_color"](), G.tiles),
   wallColor: descriptor("color", () => m["image_export.vector_by_walls.wall_color"](), G.tiles),
@@ -606,6 +628,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
   ...CUT_LINE_PARAMS,
+  ...GLUE_TAB_PARAMS,
   color: descriptor("color", () => m["image_export.vector_by_corridors.color"](), G.cells),
   thickness: descriptor("number", () => m["image_export.vector_by_corridors.thickness"](), G.cells),
   junctionRadius: descriptor("number", () => m["image_export.vector_by_corridors.junction_radius"](), G.cells),

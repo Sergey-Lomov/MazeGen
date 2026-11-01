@@ -288,6 +288,34 @@ their effective border width is greater than zero. When the border width is zero
 checks the badge fill color against the active surface instead. Group customization uses the
 group's secondary color for the visible badge fill/border in both cases.
 
+### Glue tab contrast (GitHub issue #901)
+
+Both checks apply only while the glue tabs show (`glueTabs.showTabs`; the floor's glues are not checked):
+
+- `glue_tab_outline_low_contrast_fill` — outline colour vs fill colour, only when the outline thickness is above zero;
+- `glue_tab_fill_low_contrast_background` — fill colour vs background colour, only when the outline thickness is zero
+  (with an outline, the outline sets the tab apart).
+
+Fields: `glueTabFill`, `glueTabLine` (the latter hidden without an outline).
+
+### Glue tab geometry (GitHub issue #913)
+
+The checks look at the glue tabs of the active floor (`selectExportGlueTabs`) and apply only while the tabs show. They are
+computed by `computeGlueTabWarnings` (`glueTabWarnings.ts`), outside the per-mode `compute*Warnings` (which have no tab
+geometry), and appended to the mode's list by the panel (`useExportPanelModel`) and by the hover highlight of both renderers.
+None carries nodes, edges or cells; the first two carry `polygons` (the offending tabs, display space), the third `bands`.
+
+- `glue_tabs_overlap` — two tabs overlap by more than a negligible depth (convex separating-axis test; touching edges or
+  corners do not count). Highlights every tab that overlaps another.
+- `glue_tab_too_thin` — the base of a tab (the part of the edge between the insets) is shorter than 10 display units (pixels at
+  scale 1, `MIN_TAB_BASE`), independent of the output mode. An inset that leaves no tab at all has nothing to highlight and is not
+  reported there (see `glue_tab_missing`). Highlights the thin tabs.
+- `glue_tab_missing` — the inset leaves nothing of a glued stretch, so it gets no tab (`glueTabOn` is `null`; stretches
+  that get none because a face is curved are not reported). Highlights the whole stretch the tab should have been on as
+  `bands`: the faces of the side the tab would be drawn on (`selectExportGlueTabLayout`'s `missingEnds`, side B for the
+  alternated ones), merged into one polyline per touching run by `mergedFacePolylines`, the glue editor's merging; for a
+  glue with a cut line, the swallowed line span itself (`missingLines`).
+
 ## Explicitly out of scope
 
 The following are not part of this warning set:

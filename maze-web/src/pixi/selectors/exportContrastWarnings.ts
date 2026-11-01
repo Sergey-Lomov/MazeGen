@@ -317,6 +317,9 @@ export function addCommonContrastWarnings(
   pushContrastWarning(warnings, "grid_low_contrast_background", [[color("bgGrid"), color("bgFill")]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_floor", [[color("innerGrid"), base]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_wall", [[color("innerGrid"), color("tilesWall")]]);
+  pushContrastWarning(warnings, "glue_tab_outline_low_contrast_fill", [[color("glueTabLine"), color("glueTabFill")]]);
+  // Without an outline the fill alone sets the tab apart from the background.
+  if (settings.glueTabs.lineWidth === 0) pushContrastWarning(warnings, "glue_tab_fill_low_contrast_background", [[color("glueTabFill"), color("bgFill")]]);
   pushContrastWarning(warnings, floorLabelFillWarningId, [[color("floorLabelFill"), base]]);
   pushContrastWarning(warnings, floorLabelBorderWarningId, [[color("floorLabelBorder"), base]]);
   pushContrastWarning(warnings, "floor_label_text_low_contrast", [[color("floorLabelText"), color("floorLabelFill") ?? base]]);

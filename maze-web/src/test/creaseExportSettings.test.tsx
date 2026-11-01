@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
 import { creaseDisplayPoint } from "../pixi/creaseGeometry";
 import { creaseStyleOf, selectExportCreases } from "../pixi/imageExport/creaseExport";
-import { DEFAULT_CREASE_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from "../store/projectExport/validateImageExport";
 import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../pixi/renderConstants";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -120,6 +120,7 @@ describe("TopologySettingsSection with creases", () => {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
     creasesExpanded: true, onToggleCreases: () => {}, creaseStyle: shown, creaseDefaultColor: 0, creasePriorityColors: [], onCreasesChange: () => {},
+    glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
   it("renders nothing for a floor with neither glues nor creases", () => {

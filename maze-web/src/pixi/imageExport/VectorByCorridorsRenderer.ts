@@ -29,6 +29,9 @@ import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import { selectExportGlueTabs } from "./glueTabExport";
+import { computeGlueTabWarnings } from "../selectors/glueTabWarnings";
+import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
 
 type SplitPoint = { x: number; y: number };
@@ -57,6 +60,7 @@ type SplitOneWayStyle = { color: number; thickness: number; width: number; join:
  * skipped entirely — their own follow-up sub-issue, same as `VectorByCorridorsSettings`' own doc
  * comment. */
 export class VectorByCorridorsRenderer implements ModeRenderer {
+  private readonly glueTabRenderer: GlueTabRenderer;
   private readonly backgroundGrid: BackgroundGridLayer<VectorByCorridorsSettings>;
   private readonly corridorsContainer: Container;
   /** Corridor network tiles, below `corridors` (see `updateCorridorTiles`). */
@@ -158,6 +162,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
   constructor(root: Container) {
     this.backgroundGrid = new BackgroundGridLayer(root);
+    this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     // Only the corridors are content; everything else sits in the overlay, above the corridors of every cut copy (GitHub issue #888).
     const container = this.backgroundGrid.overlay;
 
@@ -225,7 +230,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
         state.activeFieldConfig !== prev.activeFieldConfig ||
         state.activeFloorId !== prev.activeFloorId ||
-        state.floors !== prev.floors;
+        state.floors !== prev.floors ||
+        state.floorTopology !== prev.floorTopology ||
+        state.pngExportSettings.cuts !== prev.pngExportSettings.cuts;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
       if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
@@ -312,6 +319,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.activeFieldConfig;
 
+    this.glueTabRenderer.render(selectExportGlueTabs(state, state.vectorByCorridorsSettings.glueTabs), state.vectorByCorridorsSettings.glueTabs);
     this.backgroundGrid.render(state.vectorByCorridorsSettings, cfg);
 
     // Scoped to `activeFloorId` (GitHub issue #348, parity follow-up to #347) — see
@@ -1361,13 +1369,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const warnings = computeVectorByCorridorsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
-    );
+    ).concat(computeGlueTabWarnings(state, state.vectorByCorridorsSettings.glueTabs));
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }
 
   destroy(): void {
     this.unsubscribe?.();
+    this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();
     this.corridorTiles.destroy();
     this.corridors.destroy();

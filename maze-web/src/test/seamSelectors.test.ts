@@ -115,7 +115,9 @@ describe("hops in the graph and bodies at an angle", () => {
 
   it("draws the body of an arrow leaving its wall at an angle clear of the head's base", () => {
     // Base along the x axis, body at 45 degrees: the square end of a width 2 stroke would stick out past the base.
-    const head: [number, number][] = [[10, 10], [-3, 0], [3, 0]];
+    // A curved contour head has intermediate points between its two base corners; tucking still
+    // uses the complete base, not an arbitrary intermediate point.
+    const head: [number, number][] = [[10, 10], [-3, 0], [0, 1], [3, 0]];
     const [start] = tuckEnds([[0, 0], [10, 10]], head, [[10, 10], [3, 3], [3, 3]], 2);
     expect(start[0]).toBeCloseTo(Math.SQRT1_2, 6);
     expect(start[1]).toBeCloseTo(Math.SQRT1_2, 6);

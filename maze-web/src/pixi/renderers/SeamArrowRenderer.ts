@@ -66,7 +66,9 @@ export function tuckEnds(path: Point[], headA: Point[], headB: Point[], width: n
   if (path.length < 2) return path;
   const out = path.map((point): Point => [point[0], point[1]]);
   const tuck = (end: number, next: number, head: Point[]): void => {
-    const [tip, left, right] = head;
+    const tip = head[0];
+    const left = head[1];
+    const right = head[head.length - 1];
     const dx = out[next][0] - out[end][0];
     const dy = out[next][1] - out[end][1];
     const length = Math.hypot(dx, dy);
