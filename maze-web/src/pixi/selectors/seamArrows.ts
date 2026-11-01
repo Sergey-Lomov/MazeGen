@@ -7,13 +7,9 @@ import { getSeamModel, type HalfEdge, type Seam } from "./seams";
 import { pointToSegmentDistance as distanceToSegment } from "../renderers/teleportGeometryUtils";
 import { boundsOf, distance, insidePolygon, pathLength, pointAtLength, portAxes, routeAll, routePair, unitOf, type Point, type Port } from "./seamRouting";
 
-/// Share of the face length the arrowhead spans across, and of it the head's length.
-const HEAD_WIDTH_SHARE = 0.5;
-const HEAD_LENGTH_SHARE = 0.8;
-/// The body's own width, relative to the face length.
-const BODY_WIDTH_SHARE = 0.16;
-/// Gap between a face and the arrow standing off it (head and body alike), relative to the head length.
-const HEAD_GAP_SHARE = 0.35;
+/// Fixed arrowhead dimensions, matching a seam on the square tessellation (a 40 px cell side).
+const HEAD_WIDTH = 20;
+const HEAD_LENGTH = 16;
 /// The contour of a glue run longer than one face repeats the faces' own shape. Its distance from the
 /// faces and its stroke width are its own, not tied to the wall thickness.
 export const BRACE_OFFSET = 12;
@@ -22,10 +18,9 @@ export const BRACE_WIDTH = 6;
 /// overshoot of two runs meeting at a corner. A longer stretch is a crossing of its own and stays.
 const MAX_CORNER_CUT = 3;
 /// The share of a segment the arrowhead may take: both heads of a straight body share one segment, so each takes
-/// less. A head never shrinks below `MIN_HEAD_SCALE` of its nominal size.
+/// less. A head shrinks only when the route would otherwise make its two ends overlap.
 const HEAD_FIT_SHARE = 0.9;
 const HEAD_SHARED_SHARE = 0.45;
-const MIN_HEAD_SCALE = 0.35;
 /// A route leaving its wall at a flatter angle than this (cosine to the wall's normal) gets an ordinary head, perpendicular to the body.
 const MIN_OBLIQUE_COS = 0.35;
 
@@ -41,18 +36,17 @@ export interface SeamArrow {
   /// The glue's group id, or `null` for a fold outside any group.
   group: number | null;
   twist: boolean;
-  /// The route between the middles of the two contours (or, for a single face, a gap off each face): the base of the head
-  /// at each end is its first and last point.
+  /// The route between the middles of the two contours; the base of the head at each end is its
+  /// first and last point.
   path: Point[];
   /// The body as drawn: the pieces of `path` (always the whole of it).
   bodies: Point[][];
-  /// The contours of the two runs (none for a run of one face) and their stroke width.
+  /// The contours of the two runs and their stroke width.
   braces: Point[][];
   braceWidth: number;
   /// Which run each contour belongs to: 0 for run A, 1 for run B.
   braceSides: (0 | 1)[];
-  /// The route of each glued pair on its own, for showing where one face of a run leads (empty when the
-  /// runs are single faces: the arrow itself is then the pair).
+  /// The route of each glued pair on its own, for showing where one face of a run leads.
   pairs: SeamPair[];
   /// Body stroke width and head size.
   width: number;
@@ -156,18 +150,15 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
   const box = boundsOf(polygons, built.flatMap((item) => [item.a.port.contact, item.b.port.contact]));
 
   const arrows: SeamArrow[] = built.map((item, i) => {
-    const faceLength = (item.a.faceLength + item.b.faceLength) / 2;
-    const headWidth = faceLength * HEAD_WIDTH_SHARE;
-    const headLength = headWidth * HEAD_LENGTH_SHARE;
+    const headWidth = HEAD_WIDTH;
+    const headLength = HEAD_LENGTH;
     const path = standOff(routes[i], item.a.standOff, item.b.standOff);
     const ending = endings(path, headLength, headWidth, [item.a.port.out, item.b.port.out], [item.a.brace, item.b.brace]);
     const braceRuns = [item.a, item.b].map((run, side) => ({ run, side: side as 0 | 1 })).filter(({ run }) => run.brace !== null);
     const pairs = item.glue.seams.map((seam, k): SeamPair => {
-      // A single face is its own pair; the faces of a run each get a route fitted among the other
-      // glues' arrows, so it neither crosses nor runs along them.
-      const route = item.a.brace === null
-        ? path
-        : standOff(routePair([item.a.ports[k], item.b.ports[k]], routes.filter((_, j) => j !== i), polygons, box, unit, axes, contours), item.a.standOff, item.b.standOff);
+      // Each face gets a route fitted among the other glues' arrows, so it neither crosses nor
+      // runs along them.
+      const route = standOff(routePair([item.a.ports[k], item.b.ports[k]], routes.filter((_, j) => j !== i), polygons, box, unit, axes, contours), item.a.standOff, item.b.standOff);
       const anchor = (run: Run): Point => [
         run.ports[k].contact[0] + run.ports[k].out[0] * run.standOff,
         run.ports[k].contact[1] + run.ports[k].out[1] * run.standOff,
@@ -198,7 +189,8 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
       braceWidth: BRACE_WIDTH,
       braceSides: braceRuns.map(({ side }) => side),
       pairs,
-      width: faceLength * BODY_WIDTH_SHARE,
+      // Keep the connector body and both contours equally legible across every tessellation.
+      width: BRACE_WIDTH,
       headWidth,
       headLength,
       headA: ending.headA,
@@ -304,7 +296,7 @@ function endings(
   const endDir = unitOf(end, path[path.length - 2]);
   const cosStart = obliqueCos(startDir, outs[0]);
   const cosEnd = obliqueCos(endDir, outs[1]);
-  const scale = Math.max(MIN_HEAD_SCALE, Math.min(1, (first * share * cosStart) / nominalLength, (last * share * cosEnd) / nominalLength));
+  const scale = Math.min(1, (first * share * cosStart) / nominalLength, (last * share * cosEnd) / nominalLength);
   const headLength = nominalLength * scale;
   const headWidth = nominalWidth * scale;
   const { at, dir } = pointAtHalf(path);
@@ -352,11 +344,25 @@ function buildRun(halves: readonly HalfEdge[], cfg: FieldConfig): Run | null {
   const lengths = items.map(({ face }) => polylineLength(face.polyline.map(([x, y]) => [x, y] as Point)));
   const faceLength = lengths.reduce((sum, length) => sum + length, 0) / lengths.length;
   if (faceLength === 0) return null;
-  const headLength = faceLength * HEAD_WIDTH_SHARE * HEAD_LENGTH_SHARE;
-
   const outOf = ({ face, center }: (typeof items)[number]): Point | null => {
-    const length = Math.hypot(face.contact.x - center.x, face.contact.y - center.y);
-    return length === 0 ? null : [(face.contact.x - center.x) / length, (face.contact.y - center.y) / length];
+    const polyline = face.polyline.map(([x, y]) => [x, y] as Point);
+    const contact: Point = [face.contact.x, face.contact.y];
+    const hit = closestPointOnPolyline(polyline, contact);
+    if (hit) {
+      const from = polyline[hit.segmentIndex];
+      const to = polyline[hit.segmentIndex + 1];
+      const dx = to[0] - from[0];
+      const dy = to[1] - from[1];
+      const length = Math.hypot(dx, dy);
+      if (length > 0) {
+        let out: Point = [-dy / length, dx / length];
+        const towardContact: Point = [contact[0] - center.x, contact[1] - center.y];
+        if (out[0] * towardContact[0] + out[1] * towardContact[1] < 0) out = [-out[0], -out[1]];
+        return out;
+      }
+    }
+    const length = Math.hypot(contact[0] - center.x, contact[1] - center.y);
+    return length === 0 ? null : [(contact[0] - center.x) / length, (contact[1] - center.y) / length];
   };
   // The hover zone of a face is centred on its contour: from the face out to twice the contour offset.
   const zones = items.map((item) => {
@@ -372,13 +378,19 @@ function buildRun(halves: readonly HalfEdge[], cfg: FieldConfig): Run | null {
     const out = outOf(items[0]);
     if (!out) return null;
     const port: Port = { contact: [items[0].face.contact.x, items[0].face.contact.y], out };
+    const polyline = items[0].face.polyline.map(([x, y]) => [x, y] as Point);
+    const tangent: Point = [polyline[1][0] - polyline[0][0], polyline[1][1] - polyline[0][1]];
+    const left: Point = [-tangent[1], tangent[0]];
+    const side = left[0] * out[0] + left[1] * out[1] >= 0 ? 1 : -1;
     return {
       faceLength,
       port,
       ports: [port],
       zones,
-      brace: null,
-      standOff: headLength * HEAD_GAP_SHARE,
+      // A one-pair glue still needs two short, independent contours. They make the two copies
+      // visible at a staggered torus corner and give its route the same outline as every other glue.
+      brace: offsetPolyline(polyline, side * BRACE_OFFSET).map(([x, y]): Point => [x, y]),
+      standOff: BRACE_OFFSET,
     };
   }
 

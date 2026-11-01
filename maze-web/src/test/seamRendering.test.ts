@@ -20,6 +20,7 @@ import type { Graphics } from "pixi.js";
 import { getCellCenter, getCellVertices, getFaceEdgeSegment } from "../pixi/tessellationGeometry";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
 import { fieldOf } from "./fieldConfigFixtures";
+import { presetTopologyOf } from "../store/presetTopology";
 import { buildRegionGeometry } from "../pixi/selectors/issueHighlightSelectors";
 import { splitContrastData } from "../pixi/selectors/exportContrastWarnings";
 import type { ColorVisibilityContext } from "../pixi/selectors/colorFieldRegistry";
@@ -55,6 +56,7 @@ const mobiusFolds = range(ROWS).map((y) => ({ a: { cell: [COLUMNS - 1, y] as [nu
 const cylinder = topologyOf(cylinderFolds);
 const torus = groupedTopology([cylinderFolds, wrapFolds]);
 const mobius = topologyOf(mobiusFolds);
+const brickTorus = fieldOf("brick", { shape: "torus", cols: 4, rows: 4 });
 const eachFoldAlone = (folds: FoldInput[]): WireTopology => groupedTopology(folds.map((fold) => [fold]));
 
 const nodes: NodeDto[] = cells.map(([x, y], id) => ({ id, x, y, i: 0 }));
@@ -275,6 +277,33 @@ describe("seam hit-testing and edge highlight", () => {
 });
 
 describe("seam arrows", () => {
+  it("keeps brick-torus seam arrows orthogonal, uniform, and outlined at corners", () => {
+    const topology = presetTopologyOf(brickTorus)!;
+    warmCartesianCache(brickTorus, topology);
+    const arrows = buildSeamArrows(brickTorus, topology);
+    expect(arrows).toHaveLength(3); // Left-right, top-bottom, and the staggered corner seam.
+    expect(new Set(arrows.map((arrow) => arrow.width))).toHaveLength(1);
+    for (const arrow of arrows) {
+      expect(arrow.width).toBe(arrow.braceWidth);
+      expect(arrow.headWidth).toBe(20);
+      expect(arrow.headLength).toBe(16);
+      expect(arrow.braces).toHaveLength(2);
+      for (let i = 1; i < arrow.path.length; i++) {
+        const [from, to] = [arrow.path[i - 1], arrow.path[i]];
+        expect(Math.abs(from[0] - to[0]) < 1e-6 || Math.abs(from[1] - to[1]) < 1e-6).toBe(true);
+      }
+      for (const pair of arrow.pairs) {
+        for (const slot of pair.slots) {
+          const face = getFaceEdgeSegment(slot.cell, slot.faceIdx, brickTorus)!;
+          const tangent: Point = [face.v1.x - face.v0.x, face.v1.y - face.v0.y];
+          const offset: Point = [slot.at[0] - face.contact.x, slot.at[1] - face.contact.y];
+          // A connector leaves a face through its normal, including a brick's half-edge.
+          expect(tangent[0] * offset[0] + tangent[1] * offset[1]).toBeCloseTo(0, 6);
+        }
+      }
+    }
+  });
+
   type P = [number, number];
   const polygons = cells.map(([x, y]) => getCellVertices(x, y, field).map((v): P => [v.x, v.y]));
   /// Points along a path.
@@ -492,7 +521,7 @@ describe("seam arrows", () => {
     }
   });
 
-  it("goes straight, with no brackets, when the way between single faces is clear", () => {
+  it("keeps both outlines when the way between single faces is clear", () => {
     // Two cells with nothing between them: the straight line crosses no cell.
     const gapField = fieldOf("square", { shape: "custom", points: [[0, 0], [3, 0]] });
     const topology = topologyOf([{ a: { cell: [0, 0], face_idx: 0 }, b: { cell: [3, 0], face_idx: 2 }, twist: false }]);
@@ -500,7 +529,7 @@ describe("seam arrows", () => {
     const arrows = buildSeamArrows(gapField, topology);
     expect(arrows).toHaveLength(1);
     expect(arrows[0].path).toHaveLength(2);
-    expect(arrows[0].braces).toHaveLength(0);
+    expect(arrows[0].braces).toHaveLength(2);
   });
 
   it("marks a twisted glue and puts its middle on the route", () => {
