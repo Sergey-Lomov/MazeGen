@@ -102,6 +102,7 @@ function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLine
     connectorColor: 0x333,
     connectorWidth: 3,
     connectorStyle: "none",
+    connectorCornerStyle: "miter",
     arrowMode: "none",
     arrowPeriod: 5,
     arrowSize: 10,
@@ -372,6 +373,19 @@ describe("TeleportRenderer.render draw order", () => {
 // collision-radius fix (GitHub issue #302 follow-up: `edgeGapWidth` folded into `markerBorderWidth`)
 // touched, so it needs its own coverage independent of the draw-order assertions.
 describe("TeleportRenderer.render orthogonal connector routing", () => {
+  it("strokes angled bends with the shared corner style", () => {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: false }],
+      waypoints: [],
+      lineStyle: baseLineStyle({ connectorStyle: "orthogonal", connectorCornerStyle: "round", edgeGapWidth: 0 }),
+    });
+
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
+    const connectorStroke = g.calls.find((call) => call.fn === "stroke" && (call.args[0] as { color: number }).color === 0x333);
+    expect(connectorStroke?.args[0]).toMatchObject({ cap: "round", join: "round" });
+  });
+
   it("folds edgeGapWidth into the endpointStyle passed to TeleportConnectorRouter.route, so the marker's true visual footprint (fill + border + gap) is what routing avoids cutting through", () => {
     const routeSpy = vi.spyOn(TeleportConnectorRouter.prototype, "route");
     const renderer = new TeleportRenderer(new Container());

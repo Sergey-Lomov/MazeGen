@@ -363,7 +363,7 @@ export class TeleportRenderer {
       pieces.forEach((pts, pieceIdx) => {
         g.moveTo(pts[0], pts[1]);
         for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
-        g.stroke({ width, color: drawColor, cap: "round" });
+        g.stroke({ width, color: drawColor, cap: "round", join: style.connectorCornerStyle });
         for (const p of placements[pieceIdx]) {
           drawDirectionArrow(g, p.x, p.y, p.dx, p.dy, arrowSize, drawColor);
         }

@@ -13,7 +13,7 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 ## Connector styles
 
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
-- `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below).
+- `"orthogonal"` — a single-bend polyline (3 points: start, bend, end), bending along one of the active tessellation's own face normals. Collisions between connectors sharing a corridor are avoided via offsetting (see below). Its bend join has its own **Corner style** field, linked to the export mode's shared Corner style by default; it can be overridden without changing the shared style or other dependents.
 - `"curved"` — a sampled quadratic Bézier center-to-center connector. `teleportCurveDirection`
   selects `"inward"` or `"outward"` relative to the field origin and
   `teleportCurveStrength` (0..1) sets the control-point offset as a fraction of the endpoint
