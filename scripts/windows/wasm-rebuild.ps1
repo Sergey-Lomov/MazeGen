@@ -6,9 +6,6 @@ $root = Split-Path (Split-Path $PSScriptRoot)
 $wasmPkg = "$root\maze-wasm\pkg"
 $webPkg  = "$root\maze-web\src\wasm\pkg"
 
-# Force Cargo to recompile on Windows (bash `touch` does not update NTFS mtime)
-(Get-Item "$root\maze-wasm\src\lib.rs").LastWriteTime = Get-Date
-
 Write-Host "Building WASM..." -ForegroundColor Cyan
 $mode = if ($Release) { "--release" } else { "--dev" }
 wasm-pack build "$root\maze-wasm" --target web $mode
@@ -23,5 +20,8 @@ Copy-Item "$wasmPkg\maze_wasm_bg.wasm.d.ts" "$webPkg\maze_wasm_bg.wasm.d.ts" -Fo
 
 # Touch the JS entry point so Vite's HMR watcher picks up the new WASM binary
 (Get-Item "$webPkg\maze_wasm.js").LastWriteTime = Get-Date
+
+node "$root\scripts\wasm-state.mjs" --verify
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Done." -ForegroundColor Green

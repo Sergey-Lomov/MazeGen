@@ -5,12 +5,35 @@ Helper scripts for local development. Run them from any directory: each one reso
 | Task | macOS / Linux | Windows (PowerShell) |
 |------|---------------|----------------------|
 | Start the web dev server | `scripts/dev.sh` | `scripts/windows/dev.ps1` |
-| Run all Rust tests, rebuild WASM, run web tests | `scripts/test.sh` | `scripts/windows/test.ps1` |
+| Run all Rust tests and web tests | `scripts/test.sh` | `scripts/windows/test.ps1` |
 | Rebuild WASM and copy it to `maze-web/src/wasm/pkg` | `scripts/wasm-rebuild.sh` | `scripts/windows/wasm-rebuild.ps1` |
 | Remove stale Cargo artifacts from `target/` | `scripts/clean-stale.sh` | `scripts/windows/clean-stale.ps1` |
 | Schedule periodic stale-artifact cleanup | n/a (use cron) | `scripts/windows/register-clean-task.ps1` |
 
 Cross-platform logic lives next to the shell wrappers (`clean-stale.mjs`, run with Node). The `windows/` folder holds only PowerShell equivalents and Windows-only tooling (Task Scheduler).
+
+## Tests
+
+The full-test scripts print a timing line for every phase. They always run all Rust and web
+tests, first validate the WASM-package decision logic, and then reuse the existing WASM package
+when it is synchronized and none of its Rust inputs
+has changed. Changes in `maze-core`, `maze-core-macros`, `maze-runner`, `maze-wasm`, or their
+Cargo manifests and lockfile automatically trigger one WASM rebuild before the web tests.
+
+For focused work, avoid the full workflow:
+
+| Scope | Command |
+| --- | --- |
+| One Rust crate | `cargo test -p maze-core` |
+| One Rust test | `cargo test -p maze-core --test field_test` |
+| One web test file | `cd maze-web && npm test -- src/test/fieldOpsWasm.test.ts` |
+| Web tests while iterating | `cd maze-web && npm run test:watch` |
+
+The focused web commands require an existing WASM package. Run a WASM rebuild after modifying
+Rust/WASM code, or let the full-test command do it once.
+
+For the cold-versus-warm measurement protocol and CI behavior, see
+[`Specs/test-performance.md`](../Specs/test-performance.md).
 
 ## Stale artifact cleanup
 

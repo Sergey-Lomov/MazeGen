@@ -23,4 +23,6 @@ done
 # Touch the JS entry point so Vite's HMR watcher picks up the new WASM binary
 touch "$web_pkg/maze_wasm.js"
 
+node "$root/scripts/wasm-state.mjs" --verify
+
 echo "Done."
