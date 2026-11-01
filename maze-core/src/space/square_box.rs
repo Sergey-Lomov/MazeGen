@@ -201,8 +201,15 @@ fn spread(fold: &[Rect; 6], gap: i32) -> [Placed; 6] {
 /// (`beside`) or one above the other.
 #[derive(Clone)]
 enum Packing {
-    Face { face: usize, turns: u8 },
-    Pair { beside: bool, a: Rc<Sized>, b: Rc<Sized> },
+    Face {
+        face: usize,
+        turns: u8,
+    },
+    Pair {
+        beside: bool,
+        a: Rc<Sized>,
+        b: Rc<Sized>,
+    },
 }
 
 #[derive(Clone)]
@@ -307,7 +314,10 @@ fn compact(fold: &[Rect; 6], aspect: i64) -> [Placed; 6] {
     // The smallest area of the requested aspect that holds the layout (a long strip wastes a
     // sheet however small its own area), then the least empty space, then the outline closest to
     // that aspect.
-    let (w100, h100) = (|c: &Sized| i64::from(c.w) * 100, |c: &Sized| i64::from(c.h) * aspect);
+    let (w100, h100) = (
+        |c: &Sized| i64::from(c.w) * 100,
+        |c: &Sized| i64::from(c.h) * aspect,
+    );
     let chosen = best[(1 << 6) - 1]
         .iter()
         .min_by_key(|c| {
@@ -519,7 +529,8 @@ pub(super) fn box_folds(
         for side in SIDES {
             let (start, dir, len) = rect.side(side);
             let end = (start.0 + dir.0 * len, start.1 + dir.1 * len);
-            let corner = |c: (i32, i32)| frames[index].apply([i64::from(c.0), i64::from(c.1), 0], 1);
+            let corner =
+                |c: (i32, i32)| frames[index].apply([i64::from(c.0), i64::from(c.1), 0], 1);
             let (a, b) = (corner(start), corner(end));
             let key = if a <= b { [a, b] } else { [b, a] };
             let cells = (0..len)
@@ -560,8 +571,7 @@ pub(super) fn box_folds(
         {
             continue;
         }
-        let at: HashMap<[i64; 3], FoldEnd<SquarePoint>> =
-            second.cells.iter().copied().collect();
+        let at: HashMap<[i64; 3], FoldEnd<SquarePoint>> = second.cells.iter().copied().collect();
         groups.push(
             first
                 .cells
@@ -587,12 +597,19 @@ pub(super) fn box_creases(params: PresetParams<'_>) -> Result<Vec<[Point; 2]>, F
     }
     // The faces touch, so `fold` is also where they lie in the field, up to the centering offset.
     let world = |(x, y): (i32, i32)| {
-        Point::new(f64::from(x - options.offset.0), f64::from(y - options.offset.1))
+        Point::new(
+            f64::from(x - options.offset.0),
+            f64::from(y - options.offset.1),
+        )
     };
     let mut creases = Vec::new();
     for (a, face) in options.fold.iter().enumerate() {
         for side in SIDES {
-            let Some(b) = options.fold.iter().position(|&other| face.joins(side, other)) else {
+            let Some(b) = options
+                .fold
+                .iter()
+                .position(|&other| face.joins(side, other))
+            else {
                 continue;
             };
             if a < b {

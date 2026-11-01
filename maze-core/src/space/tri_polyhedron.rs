@@ -153,7 +153,10 @@ const STRIP_3: [Step; 3] = strip();
 const STRIP_5: [Step; 5] = strip();
 const STRIP_9: [Step; 9] = strip();
 
-const fn concat<const A: usize, const B: usize, const N: usize>(a: [Step; A], b: [Step; B]) -> [Step; N] {
+const fn concat<const A: usize, const B: usize, const N: usize>(
+    a: [Step; A],
+    b: [Step; B],
+) -> [Step; N] {
     let mut steps = [(0, 0); N];
     let mut i = 0;
     while i < A {
@@ -252,7 +255,11 @@ fn unfold(polyhedron: &Polyhedron, net: &[Step], side: i64, by_faces: bool) -> L
     let mut joined = HashSet::new();
     for &(parent, edge) in net {
         let (face, vertices, rot) = unit[parent];
-        let (a, b, c) = (vertices[edge], vertices[(edge + 1) % 3], vertices[(edge + 2) % 3]);
+        let (a, b, c) = (
+            vertices[edge],
+            vertices[(edge + 1) % 3],
+            vertices[(edge + 2) % 3],
+        );
         let apex = (a.0 + b.0 - c.0, a.1 + b.1 - c.1);
         let (other, other_edge) = polyhedron.neighbour(face, (edge + rot) % 3);
         joined.insert((face, (edge + rot) % 3));
@@ -322,8 +329,14 @@ fn cross(a: Axial, b: Axial, c: Axial) -> i64 {
 /// The cells of a macro triangle: those with all three vertices on or inside its sides.
 fn face_cells(vertices: [Axial; 3]) -> Vec<TriPoint> {
     let ij = vertices.map(to_ij);
-    let (imin, imax) = (ij.iter().map(|v| v.0).min().unwrap(), ij.iter().map(|v| v.0).max().unwrap());
-    let (jmin, jmax) = (ij.iter().map(|v| v.1).min().unwrap(), ij.iter().map(|v| v.1).max().unwrap());
+    let (imin, imax) = (
+        ij.iter().map(|v| v.0).min().unwrap(),
+        ij.iter().map(|v| v.0).max().unwrap(),
+    );
+    let (jmin, jmax) = (
+        ij.iter().map(|v| v.1).min().unwrap(),
+        ij.iter().map(|v| v.1).max().unwrap(),
+    );
     let mut cells = Vec::new();
     for row in -jmax..=-jmin {
         for col in (imin - 1).div_euclid(2) - 1..=(imax - 1).div_euclid(2) + 1 {
@@ -389,8 +402,9 @@ fn compact(faces: usize, side: i64, aspect: i64) -> Layout {
         (w100.max(h100), w * h, (w100 - h100).abs())
     };
     // One layout per number of rows (the rows are filled evenly from the top).
-    let per_row_options: std::collections::BTreeSet<usize> =
-        (1..=faces).map(|row_count| faces.div_ceil(row_count)).collect();
+    let per_row_options: std::collections::BTreeSet<usize> = (1..=faces)
+        .map(|row_count| faces.div_ceil(row_count))
+        .collect();
     let placed = per_row_options
         .into_iter()
         .map(|per_row| rows(faces, per_row, side))
@@ -415,10 +429,16 @@ struct Options {
 
 fn options(key: &str, params: PresetParams<'_>) -> Result<Options, FieldOpError> {
     let polyhedron = polyhedron(key).ok_or(FieldOpError::Unavailable)?;
-    validate_preset(&[TETRAHEDRON_PRESET, OCTAHEDRON_PRESET, ICOSAHEDRON_PRESET], key, params)?;
+    validate_preset(
+        &[TETRAHEDRON_PRESET, OCTAHEDRON_PRESET, ICOSAHEDRON_PRESET],
+        key,
+        params,
+    )?;
     let side = param(params, "side");
     if side > MAX_SIDE {
-        return Err(FieldOpError::InvalidPreset("preset is too large".to_string()));
+        return Err(FieldOpError::InvalidPreset(
+            "preset is too large".to_string(),
+        ));
     }
     let aspect = param(params, "aspect");
     if aspect > MAX_ASPECT {
@@ -496,7 +516,11 @@ pub(super) fn polyhedron_cells(
     params: PresetParams<'_>,
 ) -> Result<Vec<TriPoint>, FieldOpError> {
     let options = options(key, params)?;
-    let mut cells: Vec<TriPoint> = options.cells.iter().map(|&cell| options.shift(cell)).collect();
+    let mut cells: Vec<TriPoint> = options
+        .cells
+        .iter()
+        .map(|&cell| options.shift(cell))
+        .collect();
     cells.sort();
     Ok(cells)
 }
@@ -504,7 +528,10 @@ pub(super) fn polyhedron_cells(
 /// The end of a fold at cell `k` (counter-clockwise) along plane edge `edge` of `placed`.
 fn fold_end(options: &Options, placed: &Placed, edge: usize, k: i64) -> FoldEnd<TriPoint> {
     let (from, to) = (placed.vertices[edge], placed.vertices[(edge + 1) % 3]);
-    let step = ((to.0 - from.0) / options.side, (to.1 - from.1) / options.side);
+    let step = (
+        (to.0 - from.0) / options.side,
+        (to.1 - from.1) / options.side,
+    );
     let start = (from.0 + step.0 * k, from.1 + step.1 * k);
     let end = (start.0 + step.0, start.1 + step.1);
     // The third vertex of the cell inside (to the left of) the directed side: the step turned
@@ -530,7 +557,8 @@ pub(super) fn polyhedron_folds(
 ) -> Result<Vec<Vec<NewFold<TriPoint>>>, FieldOpError> {
     let options = options(key, params)?;
     let polyhedron = options.polyhedron;
-    let by_face: HashMap<usize, &Placed> = options.layout.placed.iter().map(|p| (p.face, p)).collect();
+    let by_face: HashMap<usize, &Placed> =
+        options.layout.placed.iter().map(|p| (p.face, p)).collect();
     let plane_edge = |face: usize, edge: usize| (edge + 3 - by_face[&face].rot) % 3;
     let mut groups = Vec::new();
     for face in 0..polyhedron.faces.len() {
@@ -570,7 +598,8 @@ pub(super) fn polyhedron_creases(
         return Ok(Vec::new());
     }
     let polyhedron = options.polyhedron;
-    let by_face: HashMap<usize, &Placed> = options.layout.placed.iter().map(|p| (p.face, p)).collect();
+    let by_face: HashMap<usize, &Placed> =
+        options.layout.placed.iter().map(|p| (p.face, p)).collect();
     let (x_unit, y_unit) = tri_units();
     let world = |vertex: Axial| {
         let (i, j) = to_ij(vertex);
@@ -583,12 +612,16 @@ pub(super) fn polyhedron_creases(
     for face in 0..polyhedron.faces.len() {
         for edge in 0..3 {
             let (other, other_edge) = polyhedron.neighbour(face, edge);
-            if (face, edge) > (other, other_edge) || !options.layout.joined.contains(&(face, edge)) {
+            if (face, edge) > (other, other_edge) || !options.layout.joined.contains(&(face, edge))
+            {
                 continue;
             }
             let placed = by_face[&face];
             let plane_edge = (edge + 3 - placed.rot) % 3;
-            let (from, to) = (placed.vertices[plane_edge], placed.vertices[(plane_edge + 1) % 3]);
+            let (from, to) = (
+                placed.vertices[plane_edge],
+                placed.vertices[(plane_edge + 1) % 3],
+            );
             creases.push([world(from), world(to)]);
         }
     }

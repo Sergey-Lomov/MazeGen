@@ -105,11 +105,23 @@ fn box_has_the_cells_of_its_six_faces_in_every_variant() {
 fn net_mode_is_one_piece_and_by_faces_mode_is_six_separate_rectangles() {
     for size in BOXES {
         for net in [0, 1] {
-            assert_eq!(component_count(&cells_of(size, net, 0)), 1, "{size:?} net {net}");
-            assert_eq!(component_count(&cells_of(size, net, 1)), 6, "{size:?} net {net}");
+            assert_eq!(
+                component_count(&cells_of(size, net, 0)),
+                1,
+                "{size:?} net {net}"
+            );
+            assert_eq!(
+                component_count(&cells_of(size, net, 1)),
+                6,
+                "{size:?} net {net}"
+            );
         }
         for mode in [0, 1] {
-            assert_eq!(component_count(&cells_of(size, 2, mode)), 6, "{size:?} compact");
+            assert_eq!(
+                component_count(&cells_of(size, 2, mode)),
+                6,
+                "{size:?} compact"
+            );
         }
     }
 }
@@ -126,7 +138,11 @@ fn a_net_glues_seven_edges_and_separate_faces_glue_all_twelve() {
         for (net, mode) in VARIANTS {
             let groups = folds(net, mode);
             let by_faces = mode == 1 || net == 2;
-            assert_eq!(groups.len(), if by_faces { 12 } else { 7 }, "{size:?} net {net}");
+            assert_eq!(
+                groups.len(),
+                if by_faces { 12 } else { 7 },
+                "{size:?} net {net}"
+            );
             assert!(groups.iter().flatten().all(|fold| !fold.twist));
             let total: usize = groups.iter().map(Vec::len).sum();
             if by_faces {
@@ -248,8 +264,16 @@ fn box_rejects_oversized_and_unknown_parameters() {
             .build_preset("box", &params((408, 1, 409), 0, 0))
             .is_err()
     );
-    assert!(tessellation.build_preset("box", &params((2, 2, 2), 0, 2)).is_err());
-    assert!(tessellation.build_preset("box", &params((2, 2, 2), 3, 0)).is_err());
+    assert!(
+        tessellation
+            .build_preset("box", &params((2, 2, 2), 0, 2))
+            .is_err()
+    );
+    assert!(
+        tessellation
+            .build_preset("box", &params((2, 2, 2), 3, 0))
+            .is_err()
+    );
     assert!(tessellation.build_preset("box", &[("width", 2)]).is_err());
     assert!(tessellation.build_preset("box", &[("size", 2)]).is_err());
     for side in ["width", "height", "depth"] {
@@ -389,11 +413,14 @@ fn every_layout_of_a_box_has_the_same_loops() {
         };
         let reference = spectrum(0, 1);
         for (net, mode) in VARIANTS {
-            assert_eq!(spectrum(net, mode), reference, "{size:?} net {net} mode {mode}");
+            assert_eq!(
+                spectrum(net, mode),
+                reference,
+                "{size:?} net {net} mode {mode}"
+            );
         }
     }
 }
-
 
 /// The compact layout follows the aspect of the sheet it is packed for: six equal faces lie
 /// three by two for a landscape sheet and two by three for a portrait one.
@@ -457,9 +484,16 @@ fn creases_lie_on_edges_between_neighbouring_cells() {
         assert!(a.x == b.x || a.y == b.y, "axis-aligned");
         // The cells on both sides of the first unit of the segment.
         let (x, y) = (a.x.min(b.x) as i32, a.y.min(b.y) as i32);
-        let sides = if a.x == b.x { [(x - 1, y), (x, y)] } else { [(x, y - 1), (x, y)] };
+        let sides = if a.x == b.x {
+            [(x - 1, y), (x, y)]
+        } else {
+            [(x, y - 1), (x, y)]
+        };
         for (cx, cy) in sides {
-            assert!(cells.contains(&SquarePoint { x: cx, y: cy }), "({cx}, {cy}) beside {a:?}-{b:?}");
+            assert!(
+                cells.contains(&SquarePoint { x: cx, y: cy }),
+                "({cx}, {cy}) beside {a:?}-{b:?}"
+            );
         }
     }
 }

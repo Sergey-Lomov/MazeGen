@@ -1,6 +1,7 @@
 use super::cycle_cut_set::{
     PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_NEUTRAL, VERTICAL_PASSAGE_PRIORITY_OPTIONS,
-    apply_vertical_passage_priority, candidate_edges, discard_cycles_with_edge, edge_to_cycles_map,
+    apply_vertical_passage_priority, candidate_edges, discard_cycles_with_edge,
+    edge_to_cycles_subset_map,
 };
 use crate::Maze;
 use crate::generation::PresetState;
@@ -13,7 +14,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
 use crate::space::Tessellation;
 use rand::{Rng, RngCore};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub const PARAM_INVALID_OVERLAP_WEIGHT: &str = "invalid_overlap_weight";
 pub const PARAM_VALID_OVERLAP_WEIGHT: &str = "valid_overlap_weight";
@@ -109,13 +110,32 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
         };
 
         // edge -> (how many invalid cycles contain it, how many *basis* valid cycles contain it)
-        let invalid_set: std::collections::HashSet<usize> = invalid.iter().copied().collect();
-        let valid_basis_indices = valid_cycle_basis_indices(all, &invalid_set);
+        let invalid_set: HashSet<usize> = invalid.iter().copied().collect();
+        // Only edges of the cycles being cut (and their reverse legs) are ever looked up, so the
+        // overlap map, the valid basis and the owners map are all restricted to that neighbourhood.
+        let mut relevant: HashSet<EdgeId> = HashSet::new();
+        for &idx in invalid {
+            for &eid in all.get(idx).map(|c| &c[..]).unwrap_or(&[]) {
+                relevant.insert(eid);
+                let reverse = maze
+                    .graph
+                    .edge(eid)
+                    .and_then(|edge| maze.graph.edge_between(edge.to, edge.from));
+                relevant.extend(reverse);
+            }
+        }
+        let valid_basis_indices = valid_cycle_basis_indices(all, &invalid_set, Some(&relevant));
         let mut overlap: HashMap<EdgeId, (u32, u32)> = HashMap::new();
         for (idx, cycle) in all.iter().enumerate() {
             let is_invalid = invalid_set.contains(&idx);
             let is_valid_basis_member = !is_invalid && valid_basis_indices.contains(&idx);
+            if !is_invalid && !is_valid_basis_member {
+                continue;
+            }
             for &eid in cycle.iter() {
+                if !relevant.contains(&eid) {
+                    continue;
+                }
                 let entry = overlap.entry(eid).or_insert((0, 0));
                 if is_invalid {
                     entry.0 += 1;
@@ -126,9 +146,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
             }
         }
 
-        let owners = edge_to_cycles_map(all);
+        // `pending` only ever holds invalid indices, so owners of other cycles are never consulted.
+        let owners = edge_to_cycles_subset_map(all, invalid.iter().copied());
         let mut pending: Vec<usize> = invalid.to_vec();
-        let mut already_cut: std::collections::HashSet<EdgeId> = std::collections::HashSet::new();
+        let mut already_cut: HashSet<EdgeId> = HashSet::new();
         let mut commands = Vec::new();
 
         while let Some(idx) = pending.pop() {
@@ -176,13 +197,22 @@ crate::impl_erased_repair_strategy!(InvalidLoopScoredStrategy, InvalidLoopIssue)
 /// nav-edge-index basis — this domain is base-`Graph` `EdgeId`s, where a forward and reverse
 /// edge are already two distinct `EdgeId`s with no automatic pairing, and the penalty is about
 /// concrete cut `EdgeId`s, not physical corridors, so no such merging is needed or wanted here.
+///
+/// With `relevant = Some(edges)`, only valid cycles in an edge-sharing component that touches one
+/// of `edges` are processed (in original order). Independence of a cycle depends only on earlier
+/// cycles of its own component, so their basis membership is identical to the full computation.
 fn valid_cycle_basis_indices<C: AsRef<[EdgeId]>>(
     all: &[C],
-    invalid_set: &std::collections::HashSet<usize>,
-) -> std::collections::HashSet<usize> {
+    invalid_set: &HashSet<usize>,
+    relevant: Option<&HashSet<EdgeId>>,
+) -> HashSet<usize> {
+    let keep = relevant.map(|relevant| relevant_component_cycles(all, invalid_set, relevant));
+    let skip = |idx: usize| {
+        invalid_set.contains(&idx) || keep.as_ref().is_some_and(|keep| !keep.contains(&idx))
+    };
     let mut remap: HashMap<EdgeId, usize> = HashMap::new();
     for (idx, cycle) in all.iter().enumerate() {
-        if invalid_set.contains(&idx) {
+        if skip(idx) {
             continue;
         }
         for &eid in cycle.as_ref() {
@@ -194,9 +224,9 @@ fn valid_cycle_basis_indices<C: AsRef<[EdgeId]>>(
     let bit_count = remap.len().max(1);
     let words_per_row = bit_count.div_ceil(64).max(1);
     let mut gf2 = GF2Basis::new(bit_count);
-    let mut basis_indices = std::collections::HashSet::new();
+    let mut basis_indices = HashSet::new();
     for (idx, cycle) in all.iter().enumerate() {
-        if invalid_set.contains(&idx) {
+        if skip(idx) {
             continue;
         }
         let bits = set_bit(words_per_row, cycle.as_ref().iter().map(|eid| remap[eid]));
@@ -205,6 +235,63 @@ fn valid_cycle_basis_indices<C: AsRef<[EdgeId]>>(
         }
     }
     basis_indices
+}
+
+/// Indices of valid cycles whose edge-sharing component (union-find over shared `EdgeId`s)
+/// contains at least one `relevant` edge.
+fn relevant_component_cycles<C: AsRef<[EdgeId]>>(
+    all: &[C],
+    invalid_set: &HashSet<usize>,
+    relevant: &HashSet<EdgeId>,
+) -> HashSet<usize> {
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    let mut node_of: HashMap<EdgeId, usize> = HashMap::new();
+    let mut parent: Vec<usize> = Vec::new();
+    for (idx, cycle) in all.iter().enumerate() {
+        if invalid_set.contains(&idx) {
+            continue;
+        }
+        let mut first: Option<usize> = None;
+        for &eid in cycle.as_ref() {
+            let next = parent.len();
+            let node = *node_of.entry(eid).or_insert(next);
+            if node == next {
+                parent.push(next);
+            }
+            match first {
+                None => first = Some(node),
+                Some(f) => {
+                    let (a, b) = (find(&mut parent, f), find(&mut parent, node));
+                    parent[a] = b;
+                }
+            }
+        }
+    }
+    let mut hot_roots: HashSet<usize> = HashSet::new();
+    for eid in relevant {
+        if let Some(&node) = node_of.get(eid) {
+            hot_roots.insert(find(&mut parent, node));
+        }
+    }
+    let mut keep = HashSet::new();
+    for (idx, cycle) in all.iter().enumerate() {
+        if invalid_set.contains(&idx) {
+            continue;
+        }
+        if let Some(&eid) = cycle.as_ref().first() {
+            let root = find(&mut parent, node_of[&eid]);
+            if hot_roots.contains(&root) {
+                keep.insert(idx);
+            }
+        }
+    }
+    keep
 }
 
 /// Pure scoring formula, kept standalone so new terms can be unit-tested in isolation as the
@@ -236,7 +323,7 @@ fn apply_cut<T: Tessellation>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
-    already_cut: &std::collections::HashSet<EdgeId>,
+    already_cut: &HashSet<EdgeId>,
     vertical_priority: &str,
     commands: &mut Vec<MutationCommand>,
 ) -> Option<(EdgeId, Option<EdgeId>)> {
