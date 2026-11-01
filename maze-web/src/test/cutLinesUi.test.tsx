@@ -186,6 +186,30 @@ describe("ExportTopologyPanel", () => {
     expect(screen.queryByRole("slider")).toBeNull();
   });
 
+  it("shows the manual shift in pixels of the digital export, in a label wide enough for both ends of the range", () => {
+    setState(cylinder(), { [TEST_FLOOR_ID]: { 0: { mode: "manual", offset: 0 } } });
+    useMazeStore.setState((st) => ({ pngExportSettings: { ...st.pngExportSettings, outputMode: "digital", digital: { ...st.pngExportSettings.digital, scale: 2 } } }));
+    render(<ExportTopologyPanel />);
+    const slider = screen.getByRole("slider") as HTMLInputElement;
+    const value = () => screen.getByText(/ px$/);
+    expect(value().textContent).toBe("0 px");
+    fireEvent.change(slider, { target: { value: slider.max } });
+    expect(value().textContent).toMatch(/^\+\d+ px$/);
+    const widest = Math.max("0 px".length, value().textContent!.length, `-${value().textContent!.slice(1)}`.length);
+    // Both ends of the range fit the label's width, so it never wraps or moves the slider.
+    expect((value() as HTMLElement).style.width).toBe(`${widest + 1}ch`);
+    fireEvent.change(slider, { target: { value: slider.min } });
+    expect(value().textContent).toMatch(/^-\d+ px$/);
+    expect((value() as HTMLElement).style.width).toBe(`${widest + 1}ch`);
+  });
+
+  it("shows the manual shift in millimetres in print mode", () => {
+    setState(cylinder(), { [TEST_FLOOR_ID]: { 0: { mode: "manual", offset: 0 } } });
+    useMazeStore.setState((st) => ({ pngExportSettings: { ...st.pngExportSettings, outputMode: "print" } }));
+    render(<ExportTopologyPanel />);
+    expect(screen.getByText("0 mm")).toBeTruthy();
+  });
+
   it("hovers the glue of the card under the pointer, like the field editor's panel", () => {
     setState(cylinder(), { [TEST_FLOOR_ID]: { 0: { mode: "auto", offset: 0 } } });
     render(<ExportTopologyPanel />);

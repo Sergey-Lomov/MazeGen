@@ -29,16 +29,20 @@ export interface GroupCut {
   origin: Vec2;
   /// Unit direction of the run, which every cut line of the glue must follow.
   direction: Vec2;
-  /// Range of the manual offset (fraction of the period, `0` is the automatic line): the line stays between the
-  /// borders of the cells the automatic line runs through.
+  /// Range of the manual offset (fraction of the period, `0` is the automatic line): the line stays within the band the
+  /// run's cells cover across it.
   minOffset: number;
   maxOffset: number;
+  /// Display-space distance the line moves, across itself, per unit of offset: converts the offset to the length the slider shows.
+  distancePerOffset: number;
 }
 
 export type GroupCutAvailability = ({ ok: true } & GroupCut) | { ok: false; group: number; reason: CutUnavailableReason };
 
 /// Translation parts tolerated as zero, in world units / unitless matrix entries.
 const TRANSLATION_EPS = 1e-6;
+/// Share of the run's band that a manual line keeps away from each end of it.
+const BAND_INSET = 0.01;
 /// A cut line may not be closer to the period direction than this (sine of the angle).
 const MIN_CROSS = 0.2;
 
@@ -198,12 +202,13 @@ export function resolveGroupCuts(cfg: FieldConfig, topology: WireTopology | null
     const heights = centersA.map((center) => dot(center, normal));
     const outermost = across >= 0 ? Math.min(...heights) : Math.max(...heights);
     const origin = add(centerA, scale(normal, outermost - dot(centerA, normal)));
-    // The cells the automatic line runs through: the outermost level of the run. A manual line moves within their extent.
-    const reach = heightsOf(sides.filter((_, i) => Math.abs(heights[i] - outermost) < LEVEL_EPS).map((side) => side.near.cell), cfg, normal);
-    const range = across === 0 ? [0, 0] : [(reach[0] - outermost) / across, (reach[1] - outermost) / across];
-    const minOffset = Math.min(0, ...range);
-    const maxOffset = Math.max(0, ...range);
-    return { ok: true, group: group.id, period: oriented, origin, direction, minOffset, maxOffset };
+    // A manual line may lie anywhere in the band the run's cells cover across the line (all of them, not only the outermost
+    // level: in a skewed tiling the run is a staircase, and the line crosses a different part of it at each position). The
+    // band's ends are only touched by a vertex, where the line would have nothing to draw, so it stays a little inside them.
+    const [low, high] = heightsOf(sides.map((side) => side.near.cell), cfg, normal);
+    const inset = (high - low) * BAND_INSET;
+    const bounds = across === 0 ? [0, 0] : [(low + inset - outermost) / across, (high - inset - outermost) / across];
+    return { ok: true, group: group.id, period: oriented, origin, direction, minOffset: Math.min(0, ...bounds), maxOffset: Math.max(0, ...bounds), distancePerOffset: Math.abs(across) };
   });
 }
 
@@ -303,29 +308,30 @@ export function lineInside(polygon: Vec2[], point: Vec2, direction: Vec2): [Vec2
   return [add(point, scale(direction, lo)), add(point, scale(direction, hi))];
 }
 
-/// The stretch of the infinite line (`point`, unit `direction`) from the first tile it enters to the last it leaves: one
-/// unbroken line across the field, whatever gaps the tiles leave along it. Empty when it crosses no tile.
-/// A tile may be any simple polygon: the line enters and leaves it in pairs.
+/// The stretch of the infinite line (`point`, unit `direction`) across the field: one unbroken line as long as the tiles
+/// extend along it, whatever gaps they leave and however few of them the line meets (a skewed edge is a staircase, so a
+/// line near it meets fewer tiles, but it is still the same cut across the sheet). Empty when the line meets no tile; a
+/// tile it only touches (along a border, or at a vertex: the extreme manual offsets) counts as met.
 export function lineSpans(tiles: Vec2[][], point: Vec2, direction: Vec2): [Vec2, Vec2][] {
   const normal: Vec2 = [-direction[1], direction[0]];
-  const intervals: [number, number][] = [];
+  let met = false;
+  let from = Infinity;
+  let to = -Infinity;
   for (const tile of tiles) {
-    const heights = tile.map((p) => dot(sub(p, point), normal));
-    if (Math.min(...heights) > 0 || Math.max(...heights) < 0) continue;
-    const crossings: number[] = [];
-    for (let i = 0; i < tile.length; i++) {
-      const j = (i + 1) % tile.length;
-      if (heights[i] <= 0 === heights[j] <= 0) continue;
-      const at = heights[i] / (heights[i] - heights[j]);
-      crossings.push(dot(sub(add(tile[i], scale(sub(tile[j], tile[i]), at)), point), direction));
+    let low = Infinity;
+    let high = -Infinity;
+    for (const vertex of tile) {
+      const offset = sub(vertex, point);
+      const height = dot(offset, normal);
+      const along = dot(offset, direction);
+      low = Math.min(low, height);
+      high = Math.max(high, height);
+      from = Math.min(from, along);
+      to = Math.max(to, along);
     }
-    crossings.sort((p, q) => p - q);
-    for (let i = 0; i + 1 < crossings.length; i += 2) intervals.push([crossings[i], crossings[i + 1]]);
+    if (low <= LEVEL_EPS && high >= -LEVEL_EPS) met = true;
   }
-  if (intervals.length === 0) return [];
-  // Not `Math.min(...)`: a large field gives more intervals than a call can take as arguments.
-  const from = intervals.reduce((least, interval) => Math.min(least, interval[0]), Infinity);
-  const to = intervals.reduce((most, interval) => Math.max(most, interval[1]), -Infinity);
+  if (!met) return [];
   return [[add(point, scale(direction, from)), add(point, scale(direction, to))]];
 }
 
