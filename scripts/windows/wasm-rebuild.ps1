@@ -15,6 +15,7 @@ wasm-pack build "$root\maze-wasm" --target web $mode
 if ($LASTEXITCODE -ne 0) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "Copying artifacts to $webPkg..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Path $webPkg -Force | Out-Null
 Copy-Item "$wasmPkg\maze_wasm_bg.wasm"      "$webPkg\maze_wasm_bg.wasm"      -Force
 Copy-Item "$wasmPkg\maze_wasm.js"           "$webPkg\maze_wasm.js"           -Force
 Copy-Item "$wasmPkg\maze_wasm.d.ts"         "$webPkg\maze_wasm.d.ts"         -Force
