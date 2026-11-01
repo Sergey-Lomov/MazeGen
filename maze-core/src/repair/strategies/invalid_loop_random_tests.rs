@@ -449,7 +449,7 @@ fn apply_does_not_cut_a_preset_protected_edge() {
     );
     let issue = issues.into_iter().next().unwrap();
 
-    let cycle = issue.all[issue.invalid[0]].clone();
+    let cycle = issue.all[issue.invalid[0]].to_vec();
     // Protect all but the last edge in the cycle from removal.
     let mut preset_state = PresetState::empty();
     for &edge_id in &cycle[..cycle.len() - 1] {
@@ -509,7 +509,7 @@ fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
     );
     let issue = issues.into_iter().next().unwrap();
 
-    let cycle = issue.all[issue.invalid[0]].clone();
+    let cycle = issue.all[issue.invalid[0]].to_vec();
     let mut preset_state = PresetState::empty();
     for &edge_id in &cycle {
         let edge = maze.graph.edge(edge_id).unwrap();

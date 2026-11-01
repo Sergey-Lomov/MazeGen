@@ -77,8 +77,8 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for Recorder {
     ) -> (RepairResult, Vec<MutationCommand>) {
         let target = issue.all[issue.invalid[0]].clone();
         self.calls.borrow_mut().push(Call {
-            target: target.clone(),
-            all: issue.all.clone(),
+            target: target.to_vec(),
+            all: issue.all.iter().map(|c| c.to_vec()).collect(),
             invalid: issue.invalid.clone(),
         });
         if self.cuts {
@@ -520,6 +520,191 @@ fn apply_is_deterministic_for_fixed_seed() {
         maze.graph.edges().map(|e| e.id).collect::<Vec<_>>()
     };
     assert_eq!(run_once(), run_once());
+}
+
+/// `count` distinct synthetic cycles of `len` edge ids each, drawn deterministically from a pool of
+/// `pool` ids so neighbouring cycles share edges. Ids need not exist in the maze graph.
+fn synthetic_cycles(count: usize, len: usize, pool: usize) -> Vec<Cycle> {
+    (0..count)
+        .map(|i| {
+            (0..len)
+                .map(|j| ((i * 7 + j * 13 + (i * j) % 5) % pool) as EdgeId)
+                .collect::<Cycle>()
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// `(target, others, valid)` of one nested call.
+type LoggedCall = (Cycle, Vec<Cycle>, Vec<Cycle>);
+
+/// Full call log of one large pass: `(target, others, valid)` per nested call, plus commands.
+fn large_pass(
+    mode: &str,
+    seed: u64,
+    cycles: &[Cycle],
+    valid: &[Cycle],
+) -> (Vec<LoggedCall>, Vec<MutationCommand>) {
+    let (maze, ..) = maze_with_two_disjoint_loops();
+    let issue = group_issue_with_valid(cycles.to_vec(), valid.to_vec());
+    let (calls, rec) = recorder(true);
+    let (result, commands) = run(
+        &issue,
+        &maze,
+        &params_with(&[(PARAM_SELECTION_MODE, mode)]),
+        &nested_with(rec),
+        seed,
+    );
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    let log = calls
+        .borrow()
+        .iter()
+        .map(|c| {
+            let others_end = c.all.len() - valid.len();
+            (
+                c.target.clone(),
+                c.all[1..others_end].to_vec(),
+                c.all[others_end..].to_vec(),
+            )
+        })
+        .collect();
+    (log, commands)
+}
+
+#[test]
+fn large_pass_is_reproducible_and_keeps_nested_context_invariants() {
+    let cycles = synthetic_cycles(400, 10, 900);
+    let valid = vec![vec![5000, 5001, 5002], vec![5003, 5004, 5005]];
+    for mode in [SELECTION_RANDOM, SELECTION_LONGEST, SELECTION_SHORTEST] {
+        let (log, commands) = large_pass(mode, 7, &cycles, &valid);
+        assert_eq!(
+            large_pass(mode, 7, &cycles, &valid),
+            (log.clone(), commands.clone())
+        );
+        assert!(
+            log.len() > 10,
+            "{mode}: scenario must exercise many nested calls"
+        );
+
+        // Replays the pass: each call's `others` must be exactly the ascending, still-unbroken
+        // cycles other than the target, and `valid` must be passed through untouched.
+        let mut removed: HashSet<EdgeId> = HashSet::new();
+        let mut visited: HashSet<Cycle> = HashSet::new();
+        for (target, others, call_valid) in &log {
+            assert!(
+                visited.insert(target.clone()),
+                "{mode}: target visited twice"
+            );
+            assert_eq!(call_valid, &valid);
+            assert!(!others.contains(target));
+            assert!(
+                others.windows(2).all(|w| w[0] < w[1]),
+                "{mode}: others not ascending"
+            );
+            for other in others {
+                assert!(
+                    !other.iter().any(|e| removed.contains(e)),
+                    "{mode}: already-broken cycle leaked into `others`"
+                );
+            }
+            removed.insert(target[0]);
+        }
+        // The Recorder cuts `target[0]` only, so every cycle ends up either visited or broken by
+        // a cut of one of its edges.
+        for cycle in &cycles {
+            assert!(
+                visited.contains(cycle) || cycle.iter().any(|e| removed.contains(e)),
+                "{mode}: a flagged cycle was neither fixed nor invalidated"
+            );
+        }
+        assert_eq!(commands.len(), log.len());
+    }
+}
+
+/// Manual timing of the candidate pass at scale (GitHub issue #904): the nested stub does O(1)
+/// work, so the time is the engine's own `others`/invalidation cost.
+/// `cargo test -p maze-core --release --lib candidate_pass_scale -- --ignored --nocapture`
+#[test]
+#[ignore = "manual profiling aid"]
+fn candidate_pass_scale_timing() {
+    let cycles = synthetic_cycles(5000, 10, 20_000);
+    let start = std::time::Instant::now();
+    let (log, _) = large_pass(SELECTION_RANDOM, 1, &cycles, &[]);
+    println!(
+        "cycles={} nested_calls={} elapsed={:?}",
+        cycles.len(),
+        log.len(),
+        start.elapsed()
+    );
+}
+
+/// `side x side` grid with one directed ring per unit square, all flagged invalid -- a realistic
+/// graph for the real nested strategies (`(side - 1)^2` cycles of 4 edges, adjacent rings sharing
+/// a corridor in opposite directions).
+fn ring_grid(side: i32) -> (Maze<SquareTessellation>, Vec<Cycle>) {
+    use crate::space::SquarePoint;
+    let mut ids = IdGenerator::new();
+    let field = crate::space::MultiLevelField::single_level(
+        Arc::default(),
+        square_rect(side as usize, side as usize),
+        &mut ids,
+    )
+    .unwrap();
+    let level = field.single_level_id();
+    let mut g = Graph::new();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let node = |x: i32, y: i32| field.node_at(level, SquarePoint { x, y }).unwrap();
+    let mut edge_ids: HashMap<(i32, i32, i32, i32), EdgeId> = HashMap::new();
+    let mut edge = |g: &mut Graph, a: (i32, i32), b: (i32, i32)| {
+        *edge_ids
+            .entry((a.0, a.1, b.0, b.1))
+            .or_insert_with(|| g.add_edge(node(a.0, a.1), node(b.0, b.1), EdgeKind::Basic))
+    };
+    let mut cycles = Vec::new();
+    for y in 0..side - 1 {
+        for x in 0..side - 1 {
+            let ring = [(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1), (x, y)];
+            cycles.push(
+                ring.windows(2)
+                    .map(|w| edge(&mut g, w[0], w[1]))
+                    .collect::<Cycle>(),
+            );
+        }
+    }
+    (Maze::new(field, g), cycles)
+}
+
+/// Manual timing of the whole pass with the REAL nested strategy (GitHub issue #904), to split the
+/// cost between the engine and `InvalidLoopScoredStrategy`'s own overlap computation. Compare with
+/// `candidate_pass_scale_timing` (O(1) nested stub, same cycle count).
+/// `cargo test -p maze-core --release --lib candidate_pass_real_nested -- --ignored --nocapture`
+#[test]
+#[ignore = "manual profiling aid"]
+fn candidate_pass_real_nested_timing() {
+    let (maze, cycles) = ring_grid(72);
+    let issue = group_issue(cycles.clone());
+    for (label, nested) in [
+        (
+            "scored",
+            nested_with(Box::new(
+                crate::repair::strategies::InvalidLoopScoredStrategy,
+            )),
+        ),
+        ("random", cut_target_nested()),
+    ] {
+        let start = std::time::Instant::now();
+        let (result, commands) = run(&issue, &maze, &no_params(), &nested, 1);
+        println!(
+            "nested={label} cycles={} fixed={} commands={} elapsed={:?}",
+            cycles.len(),
+            matches!(result, RepairResult::Fixed { .. }),
+            commands.len(),
+            start.elapsed()
+        );
+    }
 }
 
 #[test]

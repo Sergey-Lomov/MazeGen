@@ -114,15 +114,16 @@ pub fn order_by_priority<E: Clone + Eq + std::hash::Hash>(
 /// (`OneWayGroupSelectStrategy` excludes route-protected edges when its own param is set), this
 /// function only ever calls it, never interprets it.
 #[allow(clippy::too_many_arguments)]
-pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
+pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind, P>(
     issue: &InvalidGroupIssue<K>,
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     nested: &NestedStrategyConfig<T>,
     element_allowed: impl Fn(&K::Element) -> bool,
-    build_nested_issue: impl Fn(&str, &K::Element, &[K::Element]) -> Box<dyn Issue>,
-    element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
+    build_nested_issue: impl Fn(&str, &K::Element, &[&K::Element]) -> Box<dyn Issue>,
+    prepare_invalidation: impl Fn(&[MutationCommand], &Maze<T>) -> P,
+    element_invalidated: impl Fn(&P, &K::Element) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
 ) -> (RepairResult, Vec<MutationCommand>) {
     let nested_params = crate::repair::params::build_params(
@@ -135,7 +136,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
     // the engine, with `wholly_protected_auto_resolve: true`, treats exactly as the old
     // `element_allowed` reject path did (zero the group's budget up front, auto-resolve a
     // wholly-protected group).
-    run_group_candidate_pass::<T, K>(
+    run_group_candidate_pass::<T, K, P>(
         &issue.groups,
         &issue.invalid_sources,
         maze,
@@ -151,6 +152,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
                 build_nested_issue("group_select", element, others),
             ))
         },
+        prepare_invalidation,
         element_invalidated,
         order_candidates,
         true,
@@ -184,7 +186,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
 /// Result: `Fixed` iff at least one nested call returned `Fixed`; `Failed` otherwise. A
 /// wholly-protected group never counts as a success on its own.
 #[allow(clippy::too_many_arguments)]
-pub fn multi_target_group_select_apply<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
+pub fn multi_target_group_select_apply<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind, P>(
     groups: &[(Vec<K::Element>, u32)],
     invalid_sources: &HashMap<Vec<K::Element>, Vec<String>>,
     maze: &Maze<T>,
@@ -192,23 +194,25 @@ pub fn multi_target_group_select_apply<'a, T: Tessellation + 'a, K: InvalidGroup
     preset_state: &PresetState,
     nested_for: impl Fn(
         &K::Element,
-        &[K::Element],
+        &[&K::Element],
     ) -> Option<(
         &'a NestedStrategyConfig<T>,
         &'a StrategyParams,
         Box<dyn Issue>,
     )>,
-    element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
+    prepare_invalidation: impl Fn(&[MutationCommand], &Maze<T>) -> P,
+    element_invalidated: impl Fn(&P, &K::Element) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
 ) -> (RepairResult, Vec<MutationCommand>) {
-    run_group_candidate_pass::<T, K>(
+    run_group_candidate_pass::<T, K, P>(
         groups,
         invalid_sources,
         maze,
         rng,
         preset_state,
         nested_for,
+        prepare_invalidation,
         element_invalidated,
         order_candidates,
         wholly_protected_auto_resolve,
@@ -224,7 +228,7 @@ pub fn multi_target_group_select_apply<'a, T: Tessellation + 'a, K: InvalidGroup
 /// per-group attribution hook has it without another plumbing change) — the `to_remove` budget
 /// and membership come entirely from `groups`.
 #[allow(clippy::too_many_arguments)]
-fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
+fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind, P>(
     groups: &[(Vec<K::Element>, u32)],
     _invalid_sources: &HashMap<Vec<K::Element>, Vec<String>>,
     maze: &Maze<T>,
@@ -232,13 +236,14 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
     preset_state: &PresetState,
     nested_for: impl Fn(
         &K::Element,
-        &[K::Element],
+        &[&K::Element],
     ) -> Option<(
         &'a NestedStrategyConfig<T>,
         &'a StrategyParams,
         Box<dyn Issue>,
     )>,
-    element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
+    prepare_invalidation: impl Fn(&[MutationCommand], &Maze<T>) -> P,
+    element_invalidated: impl Fn(&P, &K::Element) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
 ) -> (RepairResult, Vec<MutationCommand>) {
@@ -262,7 +267,7 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
     let mut remaining: Vec<u32> = groups.iter().map(|(_, to_remove)| *to_remove).collect();
 
     // Reverse index: element -> every group (by index into `groups`/`remaining`) that still
-    // lists it as a candidate. Built once; an element is removed from every entry the moment
+    // lists it as a candidate. Built once; an element is retired (`alive[i] = false`) the moment
     // it's fixed (or immediately if `nested_for` rejects it), so later lookups never revisit a
     // resolved element.
     let mut groups_by_element: HashMap<K::Element, Vec<usize>> = HashMap::new();
@@ -287,44 +292,59 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
         }
     }
 
+    // Every candidate lives once, in ascending order, in `elements`; the rest of the pass works on
+    // indices into it, so building a call's `others` is a scan over cheap flags plus a vector of
+    // references, never a clone or a sort of the elements themselves. `HashMap::keys()`'s own
+    // iteration order is seeded per-instance (not per-process), so sorting here is what keeps the
+    // baseline order -- and with it the whole call -- reproducible for a fixed `rng` seed
+    // (`K::Element: Ord` is already required for `canonical_group_key`).
+    let mut elements: Vec<K::Element> = groups_by_element.keys().cloned().collect();
+    elements.sort_unstable();
+    let index_of: HashMap<K::Element, usize> = elements
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.clone(), i))
+        .collect();
+    let groups_of: Vec<Vec<usize>> = elements
+        .iter()
+        .map(|e| groups_by_element.remove(e).unwrap_or_default())
+        .collect();
+    // `alive[i]`: element `i` is still a key of the (conceptual) reverse index -- not yet fixed,
+    // invalidated, or dropped as unactionable.
+    let mut alive = vec![true; elements.len()];
+    let needed = |remaining: &[u32], i: usize| groups_of[i].iter().any(|&gi| remaining[gi] > 0);
+
     // One global candidate order instead of a per-group scan -- each candidate is tried at most
-    // once per call, in whatever order `order_candidates` puts them in. `HashMap::keys()`'s own
-    // iteration order is seeded per-instance (not per-process), so two `groups_by_element`
-    // instances built from identical input can still iterate in different orders within the same
-    // process -- sorted here first so `order_candidates`'s shuffle/sort always starts from the
-    // same baseline order for the same input, keeping the whole call reproducible for a fixed
-    // `rng` seed (`K::Element: Ord` is already required for `canonical_group_key`).
-    let mut candidates: Vec<K::Element> = groups_by_element.keys().cloned().collect();
-    candidates.sort_unstable();
+    // once per call, in whatever order `order_candidates` puts them in.
+    let mut candidates: Vec<K::Element> = elements.clone();
     order_candidates(&mut candidates, &membership, rng);
 
     let mut commands = Vec::new();
     let mut any_succeeded = false;
 
     for target in candidates {
-        let still_needed = groups_by_element
-            .get(&target)
-            .is_some_and(|gs| gs.iter().any(|&gi| remaining[gi] > 0));
-        if !still_needed {
+        let Some(&target_idx) = index_of.get(&target) else {
+            continue;
+        };
+        if !alive[target_idx] || !needed(&remaining, target_idx) {
             continue;
         }
 
         // Only elements still actually needed by some group (`remaining[gi] > 0`) count as "other
-        // still-live candidates" -- an element whose every group already hit its budget stays a
-        // `groups_by_element` key until it's itself picked or invalidated, but it's not a live
-        // candidate anymore and must not leak stale context into `nested_for`.
-        let mut others: Vec<K::Element> = groups_by_element
-            .iter()
-            .filter(|(id, gs)| **id != target && gs.iter().any(|&gi| remaining[gi] > 0))
-            .map(|(id, _)| id.clone())
+        // still-live candidates" -- an element whose every group already hit its budget stays
+        // alive until it's itself picked or invalidated, but it's not a live candidate anymore
+        // and must not leak stale context into `nested_for`. `elements` is ascending, so
+        // `others` comes out ascending too.
+        let other_idx: Vec<usize> = (0..elements.len())
+            .filter(|&i| i != target_idx && alive[i] && needed(&remaining, i))
             .collect();
-        others.sort_unstable();
+        let others: Vec<&K::Element> = other_idx.iter().map(|&i| &elements[i]).collect();
 
         let Some((cfg, params, synthetic)) = nested_for(&target, &others) else {
             // `nested_for` went from `Some` (during index build) to `None` now — an earlier fix
             // in this same pass changed the maze out from under this element. Drop it; it can't
             // be acted on anymore.
-            groups_by_element.remove(&target);
+            alive[target_idx] = false;
             continue;
         };
         let (nested_result, nested_commands) = cfg.strategy.apply(
@@ -340,17 +360,21 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
             any_succeeded = true;
             // The target itself always counts as invalidated, even when the nested strategy
             // converted rather than removed it (e.g. `OneWayToPassageStrategy`) -- plus every
-            // other still-live candidate `element_invalidated` flags from this fix's own commands.
-            // A shared/overlapping candidate can retire budget in several groups from a single fix.
-            let mut invalidated: Vec<K::Element> = vec![target.clone()];
+            // other still-live candidate `element_invalidated` flags from this fix's own commands
+            // (the per-fix data is computed once by `prepare_invalidation`, not once per
+            // candidate). A shared/overlapping candidate can retire budget in several groups from
+            // a single fix.
+            let prepared = prepare_invalidation(&nested_commands, maze);
+            let mut invalidated: Vec<usize> = vec![target_idx];
             invalidated.extend(
-                others
-                    .into_iter()
-                    .filter(|id| element_invalidated(id, &nested_commands, maze)),
+                other_idx
+                    .iter()
+                    .copied()
+                    .filter(|&i| element_invalidated(&prepared, &elements[i])),
             );
-            for id in &invalidated {
-                if let Some(group_ids) = groups_by_element.remove(id) {
-                    for gi in group_ids {
+            for i in invalidated {
+                if std::mem::replace(&mut alive[i], false) {
+                    for &gi in &groups_of[i] {
                         if remaining[gi] > 0 {
                             remaining[gi] -= 1;
                         }
@@ -362,7 +386,7 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
             // Failed -- this element never succeeds again within the same call (the maze it's
             // evaluated against doesn't change), so drop it everywhere rather than leaving it to
             // be retried from another group.
-            groups_by_element.remove(&target);
+            alive[target_idx] = false;
         }
     }
 

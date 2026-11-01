@@ -47,8 +47,9 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createFloorsSlice(...a),
   ...createTopologySlice(...a),
 
-  loadProject: (file) => {
+  loadProject: async (file) => {
     const [set, get] = a;
+    const targetOpenCard = file.ui.openCard;
     const { kind, params, hexOrientation, triOrientation } = file.tessellation;
     const tessellation = { kind, params };
     const previewState = buildPreviewState(tessellation, hexOrientation, triOrientation);
@@ -259,7 +260,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       mirrorPolygon: [],
       mirrorPolygonFinished: false,
       fieldOpError: null,
-      openCard: file.ui.openCard,
+      // Do not let a feature renderer draw the regenerated maze before the saved post-edit
+      // commands have been restored and confirmed below. Switching to the requested card only
+      // after that confirmation makes the first maze frame match the loaded project.
+      openCard: "basic_config",
       // clear transient UI flags
       highlightInvalidPresets: false,
       highlightIsolatedNodes: false,
@@ -293,7 +297,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     generateWithSeed(file.generation.seed, get, set, file.generation.qcExperiment);
 
     // Only proceed with post-edit and analytics if generation succeeded
-    if (get().generationStatus !== "done") return;
+    if (get().generationStatus !== "done") {
+      set({ openCard: targetOpenCard });
+      return;
+    }
 
     // After generation: if postEdit was saved, replay it over the freshly-built baseline
     // (GitHub issue #543) — fail-closed: if a single command doesn't resolve (corrupted file, or a
@@ -356,15 +363,22 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       mazeDirty: file.dirtyFlags.maze,
     }));
 
-    // confirmPostEdit to compute analytics over restored state
-    void get().confirmPostEdit();
-
     // If debug mode: restore the saved step, clamped to the freshly (re)generated arena's range —
     // generateWithSeed above already set debugStep to the last step of the new run.
     if (file.debug.debugMode) {
       const maxStep = get().debugStep;
       set({ debugStep: Math.min(file.debug.debugStep, maxStep) });
     }
+
+    // Confirm post-edit before revealing the saved feature card. This avoids an intermediate
+    // frame of the freshly generated maze without its restored post-edit result.
+    const confirmationRequestId = get()._postEditRequestId + 1;
+    await get().confirmPostEdit();
+
+    // A later load (or post-edit action) supersedes this confirmation. It owns the selected card,
+    // so an older async load must not reveal its own saved card over the newer state.
+    if (get()._postEditRequestId !== confirmationRequestId) return;
+    set({ openCard: targetOpenCard });
   },
 }));
 

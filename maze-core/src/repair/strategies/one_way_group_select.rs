@@ -107,19 +107,22 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
         let element_allowed = |edge: &EdgeId| !protect_route || !is_edge_on_route(maze, *edge);
         let build_nested_issue = |source_check: &str,
                                   target: &EdgeId,
-                                  _others: &[EdgeId]|
+                                  _others: &[&EdgeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidOneWayIssue::new_from_check(
                 source_check,
                 vec![*target],
             ))
         };
+        let prepare_invalidation = |nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+            crate::repair::removed_edge_ids(nested_commands)
+                .into_iter()
+                .collect::<std::collections::HashSet<EdgeId>>()
+        };
         let element_invalidated =
-            |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
-                crate::repair::removed_edge_ids(nested_commands).contains(edge)
-            };
+            |removed: &std::collections::HashSet<EdgeId>, edge: &EdgeId| removed.contains(edge);
 
-        group_select_apply::<T, OneWayGroupKind>(
+        group_select_apply::<T, OneWayGroupKind, _>(
             issue,
             maze,
             rng,
@@ -127,6 +130,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
             fix_target,
             element_allowed,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )

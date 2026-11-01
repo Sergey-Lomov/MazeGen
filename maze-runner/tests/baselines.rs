@@ -122,6 +122,7 @@ baseline_tests! {
     hex_qc_repair_split => "baseline-hex-qc",
     tri_qc_repair_split => "baseline-tri-qc",
     cairo_qc_repair_split => "baseline-cairo-qc",
+    square_qc_group_select => "baseline-square-groups-qc",
 }
 
 /// Every rule with a strategy must have that strategy dispatched during repair in at least one QC
@@ -135,8 +136,14 @@ fn every_rule_strategy_is_dispatched_somewhere() {
     };
     let mut configured = std::collections::BTreeSet::new();
     let mut dispatched = std::collections::BTreeSet::new();
-    for tess in ["square", "hex", "tri", "cairo"] {
-        let name = format!("baseline-{tess}-qc");
+    for name in [
+        "baseline-square-qc",
+        "baseline-hex-qc",
+        "baseline-tri-qc",
+        "baseline-cairo-qc",
+        "baseline-square-groups-qc",
+    ] {
+        let name = name.to_string();
         let config = read(FIXTURE_DIR, &name);
         for stage in config["stages"].as_array().unwrap() {
             for rule in stage["rules"].as_array().unwrap() {

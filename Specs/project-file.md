@@ -47,6 +47,11 @@ rejects the file instead of falling back to `square`. Failures are
 `loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
 
+During a successful project load, feature maze canvases remain hidden while the saved post-edit
+command log is replayed and its analytics snapshot is recomputed. The saved feature card is opened
+only after that work completes, so the first visible maze frame includes the restored post-edit
+result rather than briefly exposing the regenerated baseline.
+
 ## Topology (`floorTopology`)
 
 GitHub issue #836. Optional section `floorTopology?: Record<floorId, WireTopology>` (`types.ts`); a

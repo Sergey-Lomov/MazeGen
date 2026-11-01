@@ -61,10 +61,10 @@ fn is_vertical_passage<T: Tessellation>(maze: &Maze<T>, id: EdgeId) -> bool {
 /// in O(1), which other pending cycles become moot once a given edge is cut — keeps a cut from
 /// being "wasted" on a cycle that's already broken, and is meant to stay the general mechanism
 /// for dropping cycles from the pending set regardless of why a cycle stops needing a cut.
-pub(super) fn edge_to_cycles_map(all: &[Vec<EdgeId>]) -> HashMap<EdgeId, Vec<usize>> {
+pub(super) fn edge_to_cycles_map<C: AsRef<[EdgeId]>>(all: &[C]) -> HashMap<EdgeId, Vec<usize>> {
     let mut map: HashMap<EdgeId, Vec<usize>> = HashMap::new();
     for (idx, cycle) in all.iter().enumerate() {
-        for &eid in cycle {
+        for &eid in cycle.as_ref() {
             map.entry(eid).or_default().push(idx);
         }
     }

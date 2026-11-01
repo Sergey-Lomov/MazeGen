@@ -17,7 +17,7 @@ use std::collections::HashMap;
 pub struct LoopGroupKind;
 
 impl InvalidGroupIssueKind for LoopGroupKind {
-    type Element = Vec<EdgeId>;
+    type Element = super::invalid_loop::SharedCycle;
     const KIND: IssueKind = INVALID_LOOP_GROUP;
     const NESTED_KIND: IssueKind = INVALID_LOOP;
     const NESTED_SLOT_ID: &'static str = "cut_target";

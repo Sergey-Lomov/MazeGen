@@ -83,7 +83,7 @@ fn apply_succeeds_on_empty_groups() {
         param_overrides: HashMap::new(),
         nested: vec![],
     };
-    let (result, commands) = group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = group_select_apply::<SquareTessellation, TestKind, _>(
         &issue,
         &maze,
         &mut rng,
@@ -93,11 +93,12 @@ fn apply_succeeds_on_empty_groups() {
         |check, target, others| {
             Box::new(InvalidOneWayIssue::new_from_check(check, {
                 let mut v = vec![*target];
-                v.extend_from_slice(others);
+                v.extend(others.iter().map(|&&e| e));
                 v
             }))
         },
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
     );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -154,7 +155,7 @@ fn others_passed_to_build_nested_issue_excludes_already_resolved_elements() {
         param_overrides: HashMap::new(),
         nested: vec![],
     };
-    let (result, _commands) = group_select_apply::<SquareTessellation, TestKind>(
+    let (result, _commands) = group_select_apply::<SquareTessellation, TestKind, _>(
         &issue,
         &maze,
         &mut rng,
@@ -164,11 +165,12 @@ fn others_passed_to_build_nested_issue_excludes_already_resolved_elements() {
         |check, target, others| {
             Box::new(InvalidOneWayIssue::new_from_check(check, {
                 let mut v = vec![*target];
-                v.extend_from_slice(others);
+                v.extend(others.iter().map(|&&e| e));
                 v
             }))
         },
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
     );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -237,9 +239,9 @@ fn remove_first_config() -> NestedStrategyConfig<SquareTessellation> {
     }
 }
 
-fn one_way_issue(check: &str, target: &EdgeId, others: &[EdgeId]) -> Box<dyn Issue> {
+fn one_way_issue(check: &str, target: &EdgeId, others: &[&EdgeId]) -> Box<dyn Issue> {
     let mut v = vec![*target];
-    v.extend_from_slice(others);
+    v.extend(others.iter().map(|&&e| e));
     Box::new(InvalidOneWayIssue::new_from_check(check, v))
 }
 
@@ -254,7 +256,7 @@ fn multi_target_empty_groups_makes_no_nested_call() {
         nested: vec![],
     };
     let params = crate::repair::params::build_params(&[], None);
-    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &[],
         &HashMap::new(),
         &maze,
@@ -267,7 +269,8 @@ fn multi_target_empty_groups_makes_no_nested_call() {
                 Box::new(InvalidOneWayIssue::new_from_check("c", vec![0])),
             ))
         },
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         false,
     );
@@ -284,7 +287,7 @@ fn multi_target_wholly_protected_group_fails_when_auto_resolve_is_false() {
     let cfg = remove_first_config();
     let params = crate::repair::params::build_params(&[], None);
     let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
-    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &groups,
         &HashMap::new(),
         &maze,
@@ -294,7 +297,8 @@ fn multi_target_wholly_protected_group_fails_when_auto_resolve_is_false() {
             let _ = (&cfg, &params);
             None
         },
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         false,
     );
@@ -311,14 +315,15 @@ fn multi_target_wholly_protected_group_auto_resolves_when_flag_is_true() {
     let maze = empty_maze();
     let mut rng = MazeRng::seed_from_u64(1);
     let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
-    let (result, _commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, _commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &groups,
         &HashMap::new(),
         &maze,
         &mut rng,
         &PresetState::empty(),
         |_, _| None,
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         true,
     );
@@ -334,7 +339,7 @@ fn multi_target_mixed_issue_fixes_the_actionable_group_and_leaves_the_protected_
     let cfg = remove_first_config();
     let params = crate::repair::params::build_params(&[], None);
     let groups = vec![(vec![0_usize, 1_usize], 1_u32), (vec![2_usize], 1_u32)];
-    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &groups,
         &HashMap::new(),
         &maze,
@@ -347,7 +352,8 @@ fn multi_target_mixed_issue_fixes_the_actionable_group_and_leaves_the_protected_
                 None
             }
         },
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         false,
     );
@@ -370,7 +376,7 @@ fn multi_target_shared_element_across_two_groups_is_fixed_once_and_resolves_both
         (vec![0_usize, 1_usize], 1_u32),
         (vec![0_usize, 2_usize], 1_u32),
     ];
-    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &groups,
         &HashMap::new(),
         &maze,
@@ -385,7 +391,8 @@ fn multi_target_shared_element_across_two_groups_is_fixed_once_and_resolves_both
         // e0 removed => e1 and e2 (the "others") are NOT auto-invalidated by edge id here;
         // the shared-membership retirement must come from `groups_by_element` bookkeeping,
         // not from `element_invalidated`.
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         false,
     );
@@ -439,17 +446,353 @@ fn multi_target_falls_through_to_next_candidate_when_first_nested_call_fails() {
         nested: vec![],
     };
     let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
-    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
         &groups,
         &HashMap::new(),
         &maze,
         &mut rng,
         &PresetState::empty(),
         |e, others| Some((&cfg, &params, one_way_issue("c", e, others))),
-        |_, _, _| false,
+        |_, _| (),
+        |_, _| false,
         no_order,
         false,
     );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert_eq!(commands, vec![MutationCommand::RemoveEdge { id: 1 }]);
+}
+
+// ---- candidate-pass characterization -----------------------------------------------------
+//
+// These pin the observable contract of `run_group_candidate_pass` (which nested calls happen, in
+// what order, with which `others`, and which candidates `element_invalidated` is offered), so an
+// internal change of how `others` is built or how invalidation is computed cannot silently alter
+// behavior for any of the strategies built on the pass.
+
+type Trace = Rc<RefCell<Vec<(EdgeId, Vec<EdgeId>)>>>;
+type HookCall = (EdgeId, Vec<MutationCommand>);
+
+/// Records `(target, others)` for every call. Fails for ids in `fail`; on success removes the
+/// target plus any ids listed for it in `extra`.
+struct RecordingStrategy {
+    trace: Trace,
+    fail: Vec<EdgeId>,
+    extra: HashMap<EdgeId, Vec<EdgeId>>,
+}
+impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for RecordingStrategy {
+    fn strategy_id(&self) -> &'static str {
+        "recording_stub"
+    }
+    fn apply(
+        &self,
+        issue: &InvalidOneWayIssue,
+        _maze: &Maze<T>,
+        _rng: &mut dyn RngCore,
+        _params: &StrategyParams,
+        _preset_state: &PresetState,
+        _nested: &[NestedStrategyConfig<T>],
+    ) -> (RepairResult, Vec<MutationCommand>) {
+        let target = issue.invalid[0];
+        self.trace
+            .borrow_mut()
+            .push((target, issue.invalid[1..].to_vec()));
+        if self.fail.contains(&target) {
+            return (RepairResult::Failed, vec![]);
+        }
+        let mut commands = vec![MutationCommand::RemoveEdge { id: target }];
+        for id in self.extra.get(&target).into_iter().flatten() {
+            commands.push(MutationCommand::RemoveEdge { id: *id });
+        }
+        (RepairResult::Fixed { score: None }, commands)
+    }
+}
+crate::impl_erased_repair_strategy!(RecordingStrategy, InvalidOneWayIssue);
+
+fn recording_config(
+    fail: Vec<EdgeId>,
+    extra: Vec<(EdgeId, Vec<EdgeId>)>,
+) -> (Trace, NestedStrategyConfig<SquareTessellation>) {
+    let trace: Trace = Rc::new(RefCell::new(Vec::new()));
+    let cfg = NestedStrategyConfig {
+        slot: &TEST_SLOT,
+        strategy: Box::new(RecordingStrategy {
+            trace: trace.clone(),
+            fail,
+            extra: extra.into_iter().collect(),
+        }),
+        param_overrides: HashMap::new(),
+        nested: vec![],
+    };
+    (trace, cfg)
+}
+
+fn removed_ids(commands: &[MutationCommand], _maze: &Maze<SquareTessellation>) -> Vec<EdgeId> {
+    crate::repair::removed_edge_ids(commands)
+}
+
+#[allow(clippy::ptr_arg)]
+fn removes_edge(removed: &Vec<EdgeId>, id: &EdgeId) -> bool {
+    removed.contains(id)
+}
+
+/// Runs the single-slot pass with `removes_edge` invalidation.
+fn run_pass(
+    groups: Vec<(Vec<EdgeId>, u32)>,
+    cfg: &NestedStrategyConfig<SquareTessellation>,
+    seed: u64,
+    element_allowed: impl Fn(&EdgeId) -> bool,
+    order: impl Fn(&mut Vec<EdgeId>, &HashMap<EdgeId, usize>, &mut dyn RngCore),
+) -> (RepairResult, Vec<MutationCommand>) {
+    let maze = empty_maze();
+    let issue = TestIssue::new_from_check("test_check", groups);
+    let mut rng = MazeRng::seed_from_u64(seed);
+    group_select_apply::<SquareTessellation, TestKind, _>(
+        &issue,
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        cfg,
+        element_allowed,
+        one_way_issue,
+        removed_ids,
+        removes_edge,
+        order,
+    )
+}
+
+#[test]
+fn exact_call_sequence_on_small_overlapping_input() {
+    // A = [0,1,2,3] to_remove=2, B = [3,4,5] to_remove=1. Fixing 0 also removes 1 (budget of A
+    // 2 -> 0). 1 and 2 are then skipped (spent / not needed); 3 is still needed by B, and its
+    // `others` exclude 2 (only in the exhausted group A) but keep 4 and 5.
+    let (trace, cfg) = recording_config(vec![], vec![(0, vec![1])]);
+    let (result, commands) = run_pass(
+        vec![(vec![0, 1, 2, 3], 2), (vec![3, 4, 5], 1)],
+        &cfg,
+        1,
+        |_| true,
+        no_order,
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    assert_eq!(
+        *trace.borrow(),
+        vec![(0, vec![1, 2, 3, 4, 5]), (3, vec![4, 5])]
+    );
+    assert_eq!(
+        commands,
+        vec![
+            MutationCommand::RemoveEdge { id: 0 },
+            MutationCommand::RemoveEdge { id: 1 },
+            MutationCommand::RemoveEdge { id: 3 },
+        ]
+    );
+}
+
+#[test]
+fn others_are_sorted_and_never_contain_the_target() {
+    // Visiting order is reversed, `others` must still come out ascending and exclude the target.
+    let (trace, cfg) = recording_config(vec![], vec![]);
+    let reverse = |c: &mut Vec<EdgeId>, _m: &HashMap<EdgeId, usize>, _r: &mut dyn RngCore| {
+        c.sort_unstable_by(|a, b| b.cmp(a));
+    };
+    let (result, _) = run_pass(vec![(vec![5, 1, 9, 3], 1)], &cfg, 1, |_| true, reverse);
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    assert_eq!(*trace.borrow(), vec![(9, vec![1, 3, 5])]);
+}
+
+#[test]
+fn failed_target_is_dropped_from_later_others_and_never_retried() {
+    let (trace, cfg) = recording_config(vec![0], vec![]);
+    let (result, commands) = run_pass(vec![(vec![0, 1, 2], 1)], &cfg, 1, |_| true, no_order);
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    assert_eq!(*trace.borrow(), vec![(0, vec![1, 2]), (1, vec![2])]);
+    assert_eq!(commands, vec![MutationCommand::RemoveEdge { id: 1 }]);
+}
+
+#[test]
+fn all_candidates_failing_yields_failed_with_no_commands() {
+    let (trace, cfg) = recording_config(vec![0, 1, 2], vec![]);
+    let (result, commands) = run_pass(vec![(vec![0, 1, 2], 1)], &cfg, 1, |_| true, no_order);
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(commands.is_empty());
+    // Each candidate tried exactly once; later calls no longer see the failed ones.
+    assert_eq!(
+        *trace.borrow(),
+        vec![(0, vec![1, 2]), (1, vec![2]), (2, vec![])]
+    );
+}
+
+#[test]
+fn disallowed_element_is_neither_a_target_nor_in_others() {
+    let (trace, cfg) = recording_config(vec![], vec![]);
+    let (result, _) = run_pass(vec![(vec![0, 1, 2], 1)], &cfg, 1, |e| *e != 1, no_order);
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    assert_eq!(*trace.borrow(), vec![(0, vec![2])]);
+}
+
+#[test]
+fn invalidation_hook_sees_only_others_with_the_nested_commands() {
+    let (_trace, cfg) = recording_config(vec![], vec![(0, vec![2])]);
+    let seen: Rc<RefCell<Vec<HookCall>>> = Rc::new(RefCell::new(vec![]));
+    let seen_hook = seen.clone();
+    let maze = empty_maze();
+    let issue = TestIssue::new_from_check("test_check", vec![(vec![0, 1, 2], 1)]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let (result, _) = group_select_apply::<SquareTessellation, TestKind, _>(
+        &issue,
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        &cfg,
+        |_| true,
+        one_way_issue,
+        |commands, _maze| commands.to_vec(),
+        move |commands: &Vec<MutationCommand>, id| {
+            seen_hook.borrow_mut().push((*id, commands.clone()));
+            false
+        },
+        no_order,
+    );
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    // Never offered the target (0); offered every other live candidate once, ascending, each
+    // time with the full command list of the single nested fix.
+    let expected_commands = vec![
+        MutationCommand::RemoveEdge { id: 0 },
+        MutationCommand::RemoveEdge { id: 2 },
+    ];
+    assert_eq!(
+        *seen.borrow(),
+        vec![(1, expected_commands.clone()), (2, expected_commands)]
+    );
+}
+
+#[test]
+fn invalidated_shared_element_retires_budget_in_every_group_once() {
+    // A=[0,1], B=[1,2], C=[3], all to_remove=1. Fixing 0 also removes 1: A is retired by 0 (and
+    // not double-decremented by 1), B is retired by 1. So 2 is never tried; 3 still is.
+    let (trace, cfg) = recording_config(vec![], vec![(0, vec![1])]);
+    let (result, commands) = run_pass(
+        vec![(vec![0, 1], 1), (vec![1, 2], 1), (vec![3], 1)],
+        &cfg,
+        1,
+        |_| true,
+        no_order,
+    );
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    assert_eq!(*trace.borrow(), vec![(0, vec![1, 2, 3]), (3, vec![])]);
+    assert_eq!(
+        commands,
+        vec![
+            MutationCommand::RemoveEdge { id: 0 },
+            MutationCommand::RemoveEdge { id: 1 },
+            MutationCommand::RemoveEdge { id: 3 },
+        ]
+    );
+}
+
+#[test]
+fn nested_for_turning_none_mid_pass_drops_the_candidate() {
+    // `nested_for` accepts 0 in the up-front probe (empty `others`) but rejects it once it is
+    // actually visited (non-empty `others`): 0 must be dropped silently and 1 fixed instead.
+    let maze = empty_maze();
+    let mut rng = MazeRng::seed_from_u64(1);
+    let (trace, cfg) = recording_config(vec![], vec![]);
+    let params = crate::repair::params::build_params(&[], None);
+    let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
+    let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind, _>(
+        &groups,
+        &HashMap::new(),
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        |e, others| {
+            if *e == 0 && !others.is_empty() {
+                return None;
+            }
+            Some((&cfg, &params, one_way_issue("c", e, others)))
+        },
+        removed_ids,
+        removes_edge,
+        no_order,
+        false,
+    );
+    assert!(matches!(result, RepairResult::Fixed { .. }));
+    assert_eq!(*trace.borrow(), vec![(1, vec![])]);
+    assert_eq!(commands, vec![MutationCommand::RemoveEdge { id: 1 }]);
+}
+
+#[test]
+fn fully_spent_group_stops_the_pass_early() {
+    // to_remove=2 over 4 candidates: exactly two nested calls, the other two are never tried.
+    let (trace, cfg) = recording_config(vec![], vec![]);
+    let (_, commands) = run_pass(vec![(vec![0, 1, 2, 3], 2)], &cfg, 1, |_| true, no_order);
+    assert_eq!(*trace.borrow(), vec![(0, vec![1, 2, 3]), (1, vec![2, 3])]);
+    assert_eq!(commands.len(), 2);
+}
+
+#[test]
+fn trace_is_reproducible_for_a_fixed_seed_with_shuffled_priority_order() {
+    // 60 elements across overlapping groups; `order_by_priority` shuffles with the seeded rng.
+    // `HashMap` iteration order differs between instances, so two runs only agree if the pass
+    // normalizes it (sorted baseline + sorted `others`).
+    let groups: Vec<(Vec<EdgeId>, u32)> = (0..20)
+        .map(|g| ((g * 3..g * 3 + 9).map(|e| e % 60).collect(), 2))
+        .collect();
+    let params = crate::repair::params::build_params(&[], None);
+    let run = |seed: u64| {
+        let (trace, cfg) = recording_config(vec![7, 13], vec![(0, vec![1, 2]), (30, vec![31])]);
+        let order = order_by_priority::<EdgeId>(&params);
+        let (result, commands) = run_pass(groups.clone(), &cfg, seed, |_| true, order);
+        let trace = trace.borrow().clone();
+        (
+            matches!(result, RepairResult::Fixed { .. }),
+            commands,
+            trace,
+        )
+    };
+    let first = run(42);
+    for _ in 0..5 {
+        assert_eq!(run(42), first);
+    }
+    assert_ne!(
+        run(43).2,
+        first.2,
+        "a different seed should change the visit order"
+    );
+    assert!(
+        first.2.len() > 5,
+        "scenario must exercise many nested calls"
+    );
+}
+
+/// Manual timing of the pass engine alone (GitHub issue #904): 5000 single-edge candidates in one
+/// group, nested stub and issue builder both O(1), so what is measured is the pass bookkeeping
+/// (`others` construction, invalidation), not any per-candidate payload cloning.
+/// `cargo test -p maze-core --release --lib engine_overhead -- --ignored --nocapture`
+#[test]
+#[ignore = "manual profiling aid"]
+fn engine_overhead_timing() {
+    let cfg = remove_first_config();
+    let group: Vec<EdgeId> = (0..5000).collect();
+    let start = std::time::Instant::now();
+    let maze = empty_maze();
+    let issue = TestIssue::new_from_check("test_check", vec![(group, 5000)]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let (_, commands) = group_select_apply::<SquareTessellation, TestKind, _>(
+        &issue,
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        &cfg,
+        |_| true,
+        |check, target, _others| one_way_issue(check, target, &[]),
+        removed_ids,
+        removes_edge,
+        no_order,
+    );
+    println!(
+        "candidates=5000 nested_calls={} elapsed={:?}",
+        commands.len(),
+        start.elapsed()
+    );
 }
