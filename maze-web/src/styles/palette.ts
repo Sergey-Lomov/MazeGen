@@ -165,4 +165,7 @@ export const base = {
   topologySeamArrowHover: "#5299e0",
   // The twist icon on the disc in the middle of a twisted glue.
   topologySeamTwistIcon: "#ffffff",
+  // Crease lines (topology editor): a dashed line clear of the glue hues; the hover colour is lighter.
+  topologyCrease: "#d9822b",
+  topologyCreaseHover: "#f2a65a",
 } as const;

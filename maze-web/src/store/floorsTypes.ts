@@ -39,6 +39,10 @@ export interface FloorsState {
    * Authored for the tessellation config current when it was set, so every kind/params change
    * clears it. Sent to wasm as the `topology` key and saved in the project file's `floorTopology`. */
   floorTopology: Record<string, import("../wasm/types").WireTopology>;
+  /** Per-floor topological crease lines (GitHub issue #898), keyed by floor id; a floor without creases has no entry.
+   * Free segments in world units: they do not affect generation, so editing them never discards the maze. Cleared
+   * with the topology by a tessellation change; saved in the project file's `floorCreases`. */
+  floorCreases: Record<string, import("./creases").Crease[]>;
 }
 
 export interface FloorsActions {

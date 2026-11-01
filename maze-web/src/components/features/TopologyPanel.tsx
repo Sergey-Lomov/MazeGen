@@ -7,7 +7,8 @@ import { SidePanel } from "../SidePanel";
 import { GlueEditorPanel } from "./GlueEditorPanel";
 import { GlueCell, glueDotColors } from "./GlueCell";
 import { TopologyProblemBubble } from "./TopologyProblemBubble";
-import { Stack } from "../Layout";
+import { CreaseList } from "./CreaseList";
+import { Inline, Stack } from "../Layout";
 import { typography, disabled, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -28,6 +29,8 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const setHover = useMazeStore((s) => s.setTopologyHover);
   const panelError = useMazeStore((s) => s.topologyPanelError);
+  const mode = useMazeStore((s) => s.topologyMode);
+  const setMode = useMazeStore((s) => s.setTopologyMode);
 
   function close() {
     setHover(null);
@@ -35,9 +38,34 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
+  const modeSwitch = (
+    <Inline gap="itemGap" style={styles.panelBody}>
+      {(["gluings", "creases"] as const).map((option) => (
+        <Button
+          key={option}
+          variant={mode === option ? "toggle-selected" : "toggle"}
+          layoutStyle={{ flex: 1 }}
+          onClick={() => setMode(option)}
+        >
+          {m[option === "gluings" ? "topology.mode_gluings" : "topology.mode_creases"]()}
+        </Button>
+      ))}
+    </Inline>
+  );
+
+  if (mode === "creases") {
+    return (
+      <SidePanel title={m["topology.title"]()} stackKey="topology" onClose={close}>
+        {modeSwitch}
+        <CreaseList />
+      </SidePanel>
+    );
+  }
+
   if (!result.ok) {
     return (
       <SidePanel title={m["topology.title"]()} stackKey="topology" onClose={close}>
+        {modeSwitch}
         <Stack gap="groupGap" style={styles.panelBody}>
           <TopologyProblemBubble problem={{ code: "internal", message: result.error }} cfg={fieldConfig} />
         </Stack>
@@ -51,6 +79,7 @@ export function TopologyPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
     <SidePanel title={m["topology.title"]()} stackKey="topology" onClose={close}>
+      {modeSwitch}
       {panelError !== null && (
         <Stack gap="groupGap" style={styles.panelBody}>
           <TopologyProblemBubble problem={panelError} cfg={fieldConfig} />

@@ -5,6 +5,7 @@ import { buildResetDownstreamState, debugStaleOf, withActiveFloorField } from ".
 import { floorTopologyInfo, floorTopologyRequest, selectionRun } from "../topologyInfo";
 import type { WireFoldEnd } from "../../wasm/types";
 import type { TopologyActions, TopologyState } from "../topologyTypes";
+import { withCrease, type Crease } from "../creases";
 
 const CLEARED_EDITOR = {
   topologyRunA: null,
@@ -15,10 +16,13 @@ const CLEARED_EDITOR = {
   topologyFlagged: [],
   topologySideHover: null,
   seamHover: null,
+  creaseDraft: null,
+  creaseHover: null,
 } as const;
 
 export const initialTopologyState: TopologyState = {
   ...CLEARED_EDITOR,
+  topologyMode: "gluings",
   topologyTwist: false,
   topologyGlueError: null,
   topologyPanelError: null,
@@ -135,7 +139,65 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
     }
     set(committedTopology(state, floorId, null));
   },
+
+  setTopologyMode: (mode) => {
+    if (get().topologyMode === mode) return;
+    set({ topologyMode: mode, topologyGlueEditor: null, topologyPanelError: null, ...CLEARED_EDITOR });
+  },
+
+  setCreaseHover: (id) => {
+    if (get().creaseHover !== id) set({ creaseHover: id });
+  },
+
+  startCreaseDraft: (replace) => {
+    if (get().backgroundAutoFillPreview !== null) return;
+    set({ creaseDraft: { replace: replace ?? null, a: null, cursor: null }, creaseHover: null });
+  },
+
+  cancelCreaseDraft: () => {
+    if (get().creaseDraft !== null) set({ creaseDraft: null });
+  },
+
+  setCreaseCursor: (point) => {
+    const draft = get().creaseDraft;
+    if (draft === null || draft.cursor === point) return;
+    if (draft.cursor !== null && point !== null && draft.cursor[0] === point[0] && draft.cursor[1] === point[1]) return;
+    set({ creaseDraft: { ...draft, cursor: point } });
+  },
+
+  placeCreasePoint: (point) => {
+    const state = get();
+    const draft = state.creaseDraft;
+    if (draft === null) return;
+    if (draft.a === null) {
+      set({ creaseDraft: { ...draft, a: point } });
+      return;
+    }
+    const floorId = state.activeFloorId;
+    const next = withCrease(state.floorCreases[floorId] ?? [], draft.a, point, draft.replace);
+    // Equal ends: keep waiting for a distinct second point.
+    if (next === null) return;
+    set({ floorCreases: { ...state.floorCreases, [floorId]: next }, creaseDraft: null });
+  },
+
+  removeCrease: (id) => {
+    const state = get();
+    const floorId = state.activeFloorId;
+    const next = (state.floorCreases[floorId] ?? []).filter((crease) => crease.id !== id);
+    set({ floorCreases: withFloorCreases(state.floorCreases, floorId, next), creaseHover: null });
+  },
+
+  clearCreases: () => {
+    const state = get();
+    set({ floorCreases: withFloorCreases(state.floorCreases, state.activeFloorId, []), creaseHover: null, creaseDraft: null });
+  },
 });
+
+/** `floorCreases` with the floor's list replaced; an empty list removes the entry. */
+function withFloorCreases(floorCreases: MazeStore["floorCreases"], floorId: string, creases: Crease[]): MazeStore["floorCreases"] {
+  const { [floorId]: _previous, ...others } = floorCreases;
+  return creases.length === 0 ? others : { ...others, [floorId]: creases };
+}
 
 /** Store update of an accepted edit of the floor's topology (`null`: no folds left). Changing the set of active
  * folds discards the maze and analytics, like a tessellation kind change does (Specs/topology.md, "Web authoring"). */

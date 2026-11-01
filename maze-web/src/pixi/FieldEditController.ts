@@ -24,6 +24,7 @@ import { blurActiveElement } from "./toolShortcuts";
 import { EMPTY_FIELD_SIZE_READOUT, measureCells, measureShape, mergeFieldSizeReadout, type FieldSizeReadout } from "./fieldSizeReadout";
 import { dragRun, floorTopologyInfo } from "../store/topologyInfo";
 import { nearestContourFace } from "./topologyGeometry";
+import { CREASE_SNAP_RADIUS_PX, creasePointAt } from "./creaseGeometry";
 import type { TopologyPickTarget } from "../store/topologyTypes";
 import { isTypingTarget } from "./domUtils";
 import { fieldClipboardSupported, registerFieldClipboardHost } from "./fieldClipboard";
@@ -181,6 +182,11 @@ export class FieldEditController {
       this.cancelGesture();
       this.topologyDrag = null;
       if (state.topologyPick !== null) state.startTopologyPick(null);
+      // Cancelling a crease draft is all Escape does then: the claim keeps the side panel open.
+      if (state.creaseDraft !== null) {
+        e.preventDefault();
+        state.cancelCreaseDraft();
+      }
     }
     if (e.code === "Backspace" || e.code === "Delete") {
       const state = useMazeStore.getState();
@@ -260,6 +266,10 @@ export class FieldEditController {
     this.lastPointerCanvas = { x: canvasX, y: canvasY };
     const s = useMazeStore.getState();
     const field = s.floorFields[s.activeFloorId];
+    if (s.openCard === "field_setup" && s.creaseDraft !== null && button === 0 && !this.spaceHeld) {
+      s.placeCreasePoint(this.creasePointAt(canvasX, canvasY, _shiftKey === true));
+      return;
+    }
     if (s.openCard === "field_setup" && s.topologyPick !== null && button === 0 && !this.spaceHeld) {
       this.beginTopologyDrag(canvasX, canvasY);
       return;
@@ -429,6 +439,10 @@ export class FieldEditController {
     }
     if (this.topologyDrag !== null) {
       this.updateTopologyDrag(canvasX, canvasY);
+      return;
+    }
+    if (useMazeStore.getState().creaseDraft !== null) {
+      useMazeStore.getState().setCreaseCursor(this.creasePointAt(canvasX, canvasY, this.shiftHeld));
       return;
     }
     const s = useMazeStore.getState();
@@ -796,6 +810,15 @@ export class FieldEditController {
     const maxDistance = contour === undefined ? TOPOLOGY_PICK_RADIUS_PX / viewport.scale.x : Infinity;
     const hit = nearestContourFace(contour === undefined ? contours : contours.map((faces, i) => (i === contour ? faces : [])), point, cfg, maxDistance);
     return hit ? { contour: hit.contour, face: hit.face, length: contours[hit.contour].length } : null;
+  }
+
+  /** The world point a crease end takes at the pointer: the nearest cell corner or center, or the exact pointer
+   * position when `free` (Shift) is held or none is within `CREASE_SNAP_RADIUS_PX`. */
+  private creasePointAt(canvasX: number, canvasY: number, free: boolean): [number, number] {
+    const state = useMazeStore.getState();
+    const viewport = this.getViewport();
+    const point: [number, number] = [(canvasX - viewport.x) / viewport.scale.x, (canvasY - viewport.y) / viewport.scale.y];
+    return creasePointAt(point, state.floorFields[state.activeFloorId].fieldConfig, CREASE_SNAP_RADIUS_PX / viewport.scale.x, free);
   }
 
   /** Tracks the boundary face under the pointer while a run is being edited (highlighted as an edge). */
@@ -1451,6 +1474,7 @@ export class FieldEditController {
     this.topologyDrag = null;
     const state = useMazeStore.getState();
     if (state.topologyPick !== null) state.startTopologyPick(null);
+    state.cancelCreaseDraft();
     if (state.mirrorAxisPoints.length > 0 || state.mirrorPolygon.length > 0) {
       state.resetMirrorAxis();
       state.resetMirrorPolygon();

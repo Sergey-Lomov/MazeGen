@@ -113,6 +113,7 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
     floorTopology: {},
+    floorCreases: {},
     showColorWarnings: true,
     linkIconVisibility: "linked",
   };

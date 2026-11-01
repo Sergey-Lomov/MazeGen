@@ -14,6 +14,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   nextFloorNumber: 2,
   activeFloorId: initialFloor.id,
   floorTopology: {},
+  floorCreases: {},
   // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
   // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
   floorFields: { [initialFloor.id]: defaultFloorFieldConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
@@ -44,6 +45,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const nextFloorFields: Record<string, FloorFieldConfig> = { ...floorFields };
     delete nextFloorFields[id];
     const { [id]: _removedTopology, ...nextFloorTopology } = state.floorTopology;
+    const { [id]: _removedCreases, ...nextFloorCreases } = state.floorCreases;
     // Presets on the removed floor are dropped entirely; presets on every floor above it shift
     // their `level` down by one to keep tracking the same floor's new array position (GitHub
     // issue #340) — mirrors `nextFloorFields` deleting the removed id's own entry above.
@@ -53,6 +55,9 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       floors: next,
       floorFields: nextFloorFields,
       floorTopology: nextFloorTopology,
+      floorCreases: nextFloorCreases,
+      creaseDraft: null,
+      creaseHover: null,
       mirrorAxisPoints: [],
       mirrorPolygon: [],
       mirrorPolygonFinished: false,
@@ -97,7 +102,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   setActiveFloorId: (id) => {
     const { floors } = get();
     if (!floors.some((f) => f.id === id)) return;
-    set({ activeFloorId: id, mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false });
+    set({ activeFloorId: id, mirrorAxisPoints: [], mirrorPolygon: [], mirrorPolygonFinished: false, creaseDraft: null, creaseHover: null });
   },
   };
 };
