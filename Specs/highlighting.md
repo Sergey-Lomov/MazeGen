@@ -352,6 +352,11 @@ same pass. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTar
   - Vector by Walls: boundary highlight, band as wide as the live one-way indicator (`oneWayIndicatorSpan`);
   - Vector by Corridors: merged inward-inset region for each warning `from/to` endpoint
     pair;
+- warning `polygons` (GitHub issue #913; arbitrary display-space polygons, e.g. the glue tabs of `glue_tabs_overlap` /
+  `glue_tab_too_thin`): filled in the warning colour (alpha 0.25) with an opaque 3 px outline, like the cell highlight, as a closed contour with rounded corners (`roundShape`, radius 3), by the highlight's own `Graphics`, cleared on every render;
+- warning `bands` (GitHub issue #913; display-space polylines, e.g. the stretch of `glue_tab_missing`): drawn with
+  `TopologyBandRenderer`, the boundary band of the glue editor's runs, in the warning colour, by a renderer owned by the
+  highlight and cleared on every render;
 - warning `cells` for targets without node ids, such as cross-floor teleport badge cells:
   independent cell highlights using the warning's inset/outset style, without region merge;
 - elevator badge warnings point at the affected marker cell; floor-navigation badges are

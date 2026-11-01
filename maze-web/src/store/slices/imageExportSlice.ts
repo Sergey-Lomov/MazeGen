@@ -98,6 +98,8 @@ const wallsPatch =
   (s: MazeStore) => ({
     vectorByWallsSettings: applyLinkedPatch(s.vectorByWallsSettings, build(s.vectorByWallsSettings), rootPatch, overridable),
   });
+/** Every glue-tab parameter is linkable; an edit detaches its own link (GitHub issue #901). */
+const GLUE_TAB_PATHS = ["glueTabs.showTabs", "glueTabs.inset", "glueTabs.width", "glueTabs.alternate", "glueTabs.fillColor", "glueTabs.lineWidth", "glueTabs.lineStyle", "glueTabs.lineColor"] as const;
 const corridorsPatch =
   (rootPatch: object, overridable: readonly VectorByCorridorsParamPath[], build: (cur: MazeStore["vectorByCorridorsSettings"]) => MazeStore["vectorByCorridorsSettings"]) =>
   (s: MazeStore) => ({
@@ -332,6 +334,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsBackground: (color) => set(corridorsParam("background", color)),
   setVectorByCorridorsShowGrid: (v) => set(corridorsParam("showGrid", v)),
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
+  setVectorByCorridorsGlueTabs: (patch) => set(corridorsPatch({ glueTabs: patch }, GLUE_TAB_PATHS, (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
   setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources<VectorByCorridorsParamPath, VectorByCorridorsSettings>({ ...s.vectorByCorridorsSettings, creases: { ...s.vectorByCorridorsSettings.creases, ...patch } }, []) })),
   setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
   setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
@@ -430,6 +433,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsBackground: (color) => set(wallsParam("background", color)),
   setVectorByWallsShowGrid: (v) => set(wallsParam("showGrid", v)),
   setVectorByWallsGridColor: (color) => set(wallsParam("gridColor", color)),
+  setVectorByWallsGlueTabs: (patch) => set(wallsPatch({ glueTabs: patch }, GLUE_TAB_PATHS, (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
   setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: propagateLinkedSources<VectorByWallsParamPath, VectorByWallsSettings>({ ...s.vectorByWallsSettings, creases: { ...s.vectorByWallsSettings.creases, ...patch } }, []) })),
   setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
   setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),

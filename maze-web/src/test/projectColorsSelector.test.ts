@@ -17,6 +17,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     nodes: [] as NodeDto[],
     edges: [] as EdgeDto[],
     floors: [{ id: "floor_1", title: "Floor 1" }],
+    floorTopology: {},
     openRenderModeSettings: null,
     vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -528,5 +529,20 @@ describe("field visibility predicate (GitHub issue #717)", () => {
         else if (PC[key].isVisible(ctx)) expect(["startText", "finishText"]).toContain(key);
       }
     }
+  });
+});
+
+describe("glue tab colors", () => {
+  const glued = { floor_1: { fingerprint: "", folds: [], groups: [{ id: 0, folds: [] }] } };
+  const tabs = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, glueTabs: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.glueTabs, showTabs: true } };
+  const names = (floorTopology: MazeState["floorTopology"]) =>
+    selectActiveProfileColors(makeState({ openRenderModeSettings: "vector_by_walls", vectorByWallsSettings: tabs, floorTopology })).map((entry) => entry.name);
+
+  it("lists them while the tabs show and some floor has a glue", () => {
+    expect(names(glued).length).toBeGreaterThan(names({}).length);
+  });
+
+  it("hides them when no floor has a glue", () => {
+    expect(names({})).toEqual(names(glued).filter((name) => names({}).includes(name)));
   });
 });

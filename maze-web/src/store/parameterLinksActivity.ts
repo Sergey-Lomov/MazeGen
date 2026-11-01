@@ -35,6 +35,7 @@ export interface ParamActivitySettings {
   showInnerGrid?: boolean;
   showCutLines?: boolean;
   cutLinesGlueColor?: boolean;
+  glueTabs?: { showTabs: boolean; lineWidth: number };
   elevatorBadges?: { enabled: boolean };
   markerIndex?: { enabled: boolean };
   startMarker?: { textEnabled?: boolean };
@@ -115,6 +116,9 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
   if (p === "gridColor") return settings.showGrid !== false;
   if (p === "cutLinesGlueColor") return settings.showCutLines !== false;
   if (p === "cutLinesColor") return settings.showCutLines !== false && settings.cutLinesGlueColor === false;
+  if (p === "glueTabs.showTabs") return true;
+  if (p === "glueTabs.lineStyle" || p === "glueTabs.lineColor") return settings.glueTabs?.showTabs !== false && (settings.glueTabs?.lineWidth ?? 1) > 0;
+  if (p.startsWith("glueTabs.")) return settings.glueTabs?.showTabs !== false;
   if (p === "innerGridColor") return settings.showGrid !== false && settings.showInnerGrid !== false;
 
   if (p.startsWith("twoWayPassageMarker.") || TWO_WAY_ABSTRACT_PATHS.has(p)) {

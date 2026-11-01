@@ -18,9 +18,9 @@ already carry their own collision relocation (issue #480).
 ## Settings
 
 A flat field on both `VectorByWallsSettings` and `VectorByCorridorsSettings` (`MarkerLayoutSettingsFields`),
-shown in each panel's "Shared style" section, sub-section "Marker overlap" (`MarkerLayoutRows`):
+shown in each panel's "Shared style" section, sub-section "Marker merging" (`MarkerLayoutRows`):
 
-- `markerLayout`: `"auto" | "row" | "grid" | "radial" | "overlap"` (default `"radial"`; `"overlap"` skips the layer entirely — markers stack as before, no scaling). Plain enum, not link-registered.
+- `markerLayout`: `"auto" | "row" | "grid" | "radial"` (default `"auto"`). A saved project holding any other value (e.g. the removed `"overlap"`) falls back to the default on load, no migration. Plain enum, not link-registered.
 - `markerScale`: number in 0..1 (default `0.6`, link-registered in `parameterLinksRegistry`; `markerLayout` is in `WALLS_PLAIN_PATHS`/`CORRIDORS_PLAIN_PATHS`). Shrink factor for every marker in a host with 2+
   markers; lone markers are untouched. All components scale together: fill, border, gap, caption text
   (baked into `MarkerData`), vertical-marker arrows/badges/hit area (`VerticalConnectionMarker.scale`, drawn
@@ -66,7 +66,7 @@ monotonic in it (GitHub issue #869).
 
 `GenerationRenderer`, `PostEditRenderer` and `MazeOverlayRenderer` run the same layer through
 `layoutEditorMarkers`; `PresetConnectionsRenderer` (no `NodeDto` graph) uses `layoutEditorMarkersOnHosts` with split-node host keys from `buildPresetSplitHostKeys` (`presetSelectors.ts`) (`pixi/editorMarkerLayout.ts`) with fixed defaults (`DEFAULT_MARKER_LAYOUT_MODE` =
-`"radial"`, `DEFAULT_MARKER_SCALE` = 0.6) — no settings there. Slot sizes come from the fixed editor teleport and
+`"auto"`, `DEFAULT_MARKER_SCALE` = 0.6) — no settings there. Slot sizes come from the fixed editor teleport and
 vertical styles; the laid-out copies feed the renderers and the teleport-connector avoidance waypoints.
 
 ## Export warnings
@@ -83,6 +83,5 @@ Limits: slot radii in the layout ignore the adaptation factor, and corridor brid
 
 ## Known limits
 
-Teleport connector routing keeps its clearance around a shrunken point at the full marker radius (no visible effect). In
-`"overlap"` mode the `teleport_waypoint_overlap` warning still fires for stacked markers (nothing separates them).
+Teleport connector routing keeps its clearance around a shrunken point at the full marker radius (no visible effect).
 Index labels anchor on the node's position from `buildNodePositions` (hub point on split tiles, GitHub issue #896), then take the layout shift. Index labels are paired with laid-out markers by `shiftKey(kind, nodeId)` (`MarkerIndexLabel.nodeId`; vertical markers use `fromNode`, teleport ends `fromNode`/`toNode`), not by position or order. With merged teleports every end node on the host shares the slot's shift; unmerged teleport ends are additionally keyed by the partner node (`MarkerIndexLabel.partnerId`) so several teleports on one node keep separate labels; a label without a partner match falls back to the bare node key (first end wins). The `teleport_waypoint_overlap` warning lays out only start/finish and teleport points (no vertical markers, and start/finish slots omit their gap), so it can differ slightly from the drawn layout.

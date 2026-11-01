@@ -32,4 +32,8 @@ export const DEFAULT_TEXT_MARGIN = 1;
 export const CREASE_LINE_WIDTH_RANGE = { min: 1, max: 20 } as const;
 export const CREASE_MARK_SIZE_RANGE = { min: 2, max: 20 } as const;
 export const CREASE_MARK_TIP_LENGTH_RANGE = { min: 0, max: 40 } as const;
+/** Ranges of the export glue-tab style (GitHub issue #901): the settings sliders and the project-file validator share them. */
+export const GLUE_TAB_INSET_RANGE = { min: 0, max: 40 } as const;
+export const GLUE_TAB_WIDTH_RANGE = { min: 2, max: 80 } as const;
+export const GLUE_TAB_LINE_WIDTH_RANGE = { min: 0, max: 10 } as const;
 export const TEXT_MARGIN_RANGE = { min: 0, max: 10, step: 0.5 } as const;

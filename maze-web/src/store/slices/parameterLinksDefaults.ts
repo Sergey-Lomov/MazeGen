@@ -145,6 +145,8 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("verticalDecorativeSizeAdaptation", "decorativeElevator.sizeAdaptation", false),
   link("verticalDecorativeArrowSize", "decorativeStairsArrowSize", false),
   link("verticalDecorativeArrowSize", "decorativeStairsOneWayArrowSize", false),
+  link("background", "glueTabs.fillColor"),
+  link("gridColor", "glueTabs.lineColor"),
 ];
 
 /** Same role as `DEFAULT_VECTOR_BY_WALLS_LINKS`, for "Vector by corridors" — `join` instead of
@@ -267,4 +269,6 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("verticalArrowCornerStyle", "twoWayArrowCornerStyle", false),
   link("verticalArrowCornerStyle", "oneWayArrowCornerStyle", false),
   link("verticalArrowCornerStyle", "elevatorArrowCornerStyle", false),
+  link("background", "glueTabs.fillColor"),
+  link("gridColor", "glueTabs.lineColor"),
 ];

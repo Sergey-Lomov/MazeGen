@@ -241,7 +241,7 @@ is a `Record` over the key union, a field without a predicate, getter or setter 
 (a floor switch never changes the answer) plus the settings that gate rows. Predicates cover: mode
 (`tilesFloor`/`tilesWall`/`innerGrid`/decorative fields exist only in Vector by walls, `corridorFill`
 only in Vector by corridors); grid color when `showGrid` off; `Ячейки: Стена` when
-`randomWallColorMode !== "off"`; one-way indicator color with no directional edge; every teleport
+`randomWallColorMode !== "off"`; glue-tab fill (`glueTabFill`) while the tabs are off, the outline (`glueTabLine`) also at zero outline thickness; one-way indicator color with no directional edge; every teleport
 color when no `teleport` edge; connector color when `teleportConnectorStyle === "none"`; floor-badge
 colors without a cross-floor teleport; split slot `i` when `i >= slotCount`; per-group teleport
 overrides unless `teleportGroupCustomization`; vertical colors per two-way/one-way/elevator presence

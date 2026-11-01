@@ -7,9 +7,9 @@ import type { MarkerIndexLabel, MarkerIndexLinkKind } from "./markerIndex";
 
 /** Marker positioning layer (GitHub issue #735) — arranges several markers hosted by the same cell
  *  (or the same split-tile node) so they no longer stack on one point. See `Specs/marker-layout.md`. */
-export type MarkerLayoutMode = "auto" | "row" | "grid" | "radial" | "overlap";
+export type MarkerLayoutMode = "auto" | "row" | "grid" | "radial";
 
-export const MARKER_LAYOUT_MODES: readonly MarkerLayoutMode[] = ["auto", "row", "grid", "radial", "overlap"];
+export const MARKER_LAYOUT_MODES: readonly MarkerLayoutMode[] = ["auto", "row", "grid", "radial"];
 
 /** Fixed gap (px) between the outer edges of neighboring laid-out markers — deliberately not a user
  *  setting: markers are rarely small enough for it to matter. */
@@ -17,7 +17,7 @@ export const MARKER_LAYOUT_SPACING = 2;
 
 /** Defaults for the layout mode / shrink factor — used by the export settings defaults and, as fixed
  *  values, by the editor canvases (which expose no layout settings). */
-export const DEFAULT_MARKER_LAYOUT_MODE: MarkerLayoutMode = "radial";
+export const DEFAULT_MARKER_LAYOUT_MODE: MarkerLayoutMode = "auto";
 export const DEFAULT_MARKER_SCALE = 0.6;
 
 export interface MarkerLayoutOptions {
@@ -55,7 +55,7 @@ export function computeLayoutOffsets(
   maxExtent: number = Infinity,
 ): [number, number][] {
   const n = radii.length;
-  if (n <= 1 || mode === "overlap") return radii.map(() => [0, 0]);
+  if (n <= 1) return radii.map(() => [0, 0]);
   const pitch = 2 * Math.max(...radii) + Math.max(spacing, 0);
   const resolved = resolveLayoutMode(mode, n);
   let offsets: [number, number][];
@@ -254,7 +254,7 @@ export function applyMarkerLayout(input: MarkerLayoutInput, opts: MarkerLayoutOp
   };
   const scale = Math.min(Math.max(opts.scale ?? 1, 0.01), 1);
   for (const [key, host] of hosts) {
-    if (host.slots.length < 2 || opts.mode === "overlap") continue;
+    if (host.slots.length < 2) continue;
     const extent = input.splitHostKeys?.has(key) ? HOST_EXTENT_SPLIT_NODE : HOST_EXTENT_CELL;
     // A group that doesn't fit its host never shrinks its markers further: only the centers are
     // squeezed together, so the marker size depends on `markerScale` alone. Centers are laid out

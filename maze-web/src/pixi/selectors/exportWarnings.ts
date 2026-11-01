@@ -111,6 +111,14 @@ export type ExportWarningId =
   | "teleport_connector_low_contrast_wall"
   | "split_low_contrast_floor"
   | "grid_low_contrast_background"
+  | "glue_tab_outline_low_contrast_fill"
+  | "glue_tab_fill_low_contrast_background"
+  /** Both vector modes (GitHub issue #913) — glue tabs of the active floor overlap each other. Highlights the overlapping tabs as `polygons`. */
+  | "glue_tabs_overlap"
+  /** Both vector modes (GitHub issue #913) — the inset leaves less than `MIN_TAB_BASE` (10 display units) of an edge for its glue tab. Highlights those tabs as `polygons`. */
+  | "glue_tab_too_thin"
+  /** Both vector modes (GitHub issue #913) — the inset leaves nothing of a glued stretch, so it gets no tab at all. Highlights the stretch as `bands`. */
+  | "glue_tab_missing"
   | "inner_grid_low_contrast_floor"
   | "inner_grid_low_contrast_wall"
   | "marker_fill_low_contrast"
@@ -184,6 +192,10 @@ export type ExportWarning = {
    *  machinery, which has no node id to resolve here. Omitted (or empty) for every other warning
    *  id — no bubbles drawn. */
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+  /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
+  polygons?: [number, number][][];
+  /** Display-space polylines (active floor) the hover highlight draws as boundary bands, like the glue editor's runs (GitHub issue #913). */
+  bands?: [number, number][][];
 };
 
 /** Filters `nodeIds` down to those sitting on one of `specialSplitPointKeys` — shared by
@@ -283,12 +295,13 @@ export function computeVectorByWallsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
+  hasGlues = true,
 ): ExportWarning[] {
   const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id), teleportGroups);
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id), teleportGroups, hasGlues);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -297,13 +310,14 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
+  hasGlues = true,
 ): ExportWarning[] {
   const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
   const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
   const warningLists = floors.map((floor) => {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
     const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id), teleportGroups);
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id), teleportGroups, hasGlues);
   });
   return mergeWarningsAcrossFloors(warningLists, nodes);
 }
@@ -312,10 +326,10 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
  *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor); the
  *  per-floor data conditions (does this floor have such an edge) stay with the callers. A minimal
  *  floor array preserves project-wide visibility for the floor-label colors. */
-function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings, floorCount?: number): ColorVisibilityContext {
+function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings, floorCount?: number, hasGlues = true): ColorVisibilityContext {
   const count = floorCount ?? new Set(nodes.map((node) => node.level ?? 0)).size;
   const floors = Array.from({ length: count }, (_, i) => ({ id: String(i) })) as unknown as ColorVisibilityMaze["floors"];
-  return buildColorVisibility({ nodes, edges, floors }, settings);
+  return buildColorVisibility({ nodes, edges, floors, hasGlues }, settings);
 }
 
 /** `marker_index_covers_stop_line` (GitHub issue #744): on the displayed floor, every one-way
@@ -380,6 +394,7 @@ export function computeVectorByWallsWarnings(
   displayFloorTitle?: string,
   highlightSeamMirrors = true,
   teleportGroups: TeleportGroup[] = [],
+  hasGlues = true,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -404,7 +419,7 @@ export function computeVectorByWallsWarnings(
   });
   if (coversOneWay) warnings.push(coversOneWay);
 
-  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
+  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount, hasGlues);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
@@ -592,6 +607,7 @@ export function computeVectorByCorridorsWarnings(
   maxCorridorFace?: number,
   highlightSeamMirrors = true,
   teleportGroups: TeleportGroup[] = [],
+  hasGlues = true,
 ): ExportWarning[] {
   const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
@@ -616,7 +632,7 @@ export function computeVectorByCorridorsWarnings(
   });
   if (coversOneWay) warnings.push(coversOneWay);
 
-  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
+  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount, hasGlues);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
