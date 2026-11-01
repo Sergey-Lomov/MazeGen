@@ -31,9 +31,13 @@ impl InvalidDeadEndIssue {
         }
     }
 
-    pub fn new_from_group_select(source_check: &str, target: NodeId, others: &[NodeId]) -> Self {
+    pub fn new_from_group_select(
+        source_check: &str,
+        target: NodeId,
+        others: impl IntoIterator<Item = NodeId>,
+    ) -> Self {
         let mut issue = Self::new_from_check(source_check, vec![target]);
-        issue.reported_candidates.extend_from_slice(others);
+        issue.reported_candidates.extend(others);
         issue.reported_candidates.sort_unstable();
         issue.reported_candidates.dedup();
         issue

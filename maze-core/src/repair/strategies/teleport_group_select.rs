@@ -129,7 +129,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
             |edge: &EdgeId| !protect_route || !is_teleport_route_protected(maze, *edge);
         let build_nested_issue = |source_check: &str,
                                   target: &EdgeId,
-                                  _others: &[EdgeId]|
+                                  _others: &[&EdgeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidTeleportIssue::new_from_check(
                 source_check,
@@ -141,16 +141,23 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
         // counterpart (read from `maze`, the pre-mutation snapshot) of any edge the call removed
         // -- `removed_edge_ids` alone never recognizes a `RemoveTeleportWithReverse` command's
         // reverse id (GitHub issue #171's known gap).
-        let element_invalidated =
-            |edge: &EdgeId, nested_commands: &[MutationCommand], maze: &Maze<T>| {
-                let removed = crate::repair::removed_edge_ids(nested_commands);
-                removed.contains(edge)
-                    || removed
-                        .iter()
-                        .any(|&id| maze.graph.teleport_reverse(id) == Some(*edge))
-            };
+        let prepare_invalidation = |nested_commands: &[MutationCommand], maze: &Maze<T>| {
+            let mut invalidated = crate::repair::removed_edge_ids(nested_commands)
+                .into_iter()
+                .collect::<std::collections::HashSet<EdgeId>>();
+            let reverses: Vec<EdgeId> = invalidated
+                .iter()
+                .filter_map(|&id| maze.graph.teleport_reverse(id))
+                .collect();
+            invalidated.extend(reverses);
+            invalidated
+        };
+        let element_invalidated = |invalidated: &std::collections::HashSet<EdgeId>,
+                                   edge: &EdgeId| {
+            invalidated.contains(edge)
+        };
 
-        group_select_apply::<T, TeleportGroupKind>(
+        group_select_apply::<T, TeleportGroupKind, _>(
             issue,
             maze,
             rng,
@@ -158,6 +165,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
             fix_target,
             element_allowed,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )

@@ -36,14 +36,15 @@ pub(super) fn edge_pair(graph: &Graph, eid: crate::ids::EdgeId) -> Option<[u32; 
 /// different `Issue` types. `cycles` yields each flagged cycle's edges — for `InvalidLoopIssue`
 /// that's `all[idx]` per `invalid` index, for `InvalidLoopGroupIssue` `invalid` already holds the
 /// cycles directly (no index indirection).
-pub(super) fn resolve_cycle_payload<'a>(
-    cycles: impl Iterator<Item = &'a Vec<crate::ids::EdgeId>>,
+pub(super) fn resolve_cycle_payload<'a, C: AsRef<[crate::ids::EdgeId]> + 'a>(
+    cycles: impl Iterator<Item = &'a C>,
     invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
     graph: &Graph,
     preset_state: &PresetState,
 ) -> Option<IssuePayload> {
     let mut edges: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
-    for loop_edges in cycles {
+    for cycle in cycles {
+        let loop_edges = cycle.as_ref();
         let edge_pairs: Vec<[u32; 2]> = loop_edges
             .iter()
             .filter_map(|&eid| edge_pair(graph, eid))

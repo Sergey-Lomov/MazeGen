@@ -92,7 +92,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorStopGroupIssue>
 
         let build_nested_issue = |source_check: &str,
                                   target: &NodeId,
-                                  _others: &[NodeId]|
+                                  _others: &[&NodeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidElevatorStopIssue::new_from_check(
                 source_check,
@@ -103,10 +103,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorStopGroupIssue>
         // removing one stop only touches edges incident to that stop, never another stop's own
         // edges to the rest of the elevator (or to a different elevator entirely). Mirrors
         // `ElevatorGroupSelectStrategy`'s identical reasoning for whole elevators.
-        let element_invalidated =
-            |_stop: &NodeId, _nested_commands: &[MutationCommand], _maze: &Maze<T>| false;
+        let prepare_invalidation = |_nested_commands: &[MutationCommand], _maze: &Maze<T>| {};
+        let element_invalidated = |_: &(), _stop: &NodeId| false;
 
-        group_select_apply::<T, ElevatorStopGroupKind>(
+        group_select_apply::<T, ElevatorStopGroupKind, _>(
             issue,
             maze,
             rng,
@@ -114,6 +114,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorStopGroupIssue>
             fix_target,
             |_| true,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )

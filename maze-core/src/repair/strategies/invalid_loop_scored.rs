@@ -115,7 +115,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
         for (idx, cycle) in all.iter().enumerate() {
             let is_invalid = invalid_set.contains(&idx);
             let is_valid_basis_member = !is_invalid && valid_basis_indices.contains(&idx);
-            for &eid in cycle {
+            for &eid in cycle.iter() {
                 let entry = overlap.entry(eid).or_insert((0, 0));
                 if is_invalid {
                     entry.0 += 1;
@@ -176,8 +176,8 @@ crate::impl_erased_repair_strategy!(InvalidLoopScoredStrategy, InvalidLoopIssue)
 /// nav-edge-index basis — this domain is base-`Graph` `EdgeId`s, where a forward and reverse
 /// edge are already two distinct `EdgeId`s with no automatic pairing, and the penalty is about
 /// concrete cut `EdgeId`s, not physical corridors, so no such merging is needed or wanted here.
-fn valid_cycle_basis_indices(
-    all: &[Vec<EdgeId>],
+fn valid_cycle_basis_indices<C: AsRef<[EdgeId]>>(
+    all: &[C],
     invalid_set: &std::collections::HashSet<usize>,
 ) -> std::collections::HashSet<usize> {
     let mut remap: HashMap<EdgeId, usize> = HashMap::new();
@@ -185,7 +185,7 @@ fn valid_cycle_basis_indices(
         if invalid_set.contains(&idx) {
             continue;
         }
-        for &eid in cycle {
+        for &eid in cycle.as_ref() {
             let next = remap.len();
             remap.entry(eid).or_insert(next);
         }
@@ -199,7 +199,7 @@ fn valid_cycle_basis_indices(
         if invalid_set.contains(&idx) {
             continue;
         }
-        let bits = set_bit(words_per_row, cycle.iter().map(|eid| remap[eid]));
+        let bits = set_bit(words_per_row, cycle.as_ref().iter().map(|eid| remap[eid]));
         if gf2.try_insert(bits) {
             basis_indices.insert(idx);
         }

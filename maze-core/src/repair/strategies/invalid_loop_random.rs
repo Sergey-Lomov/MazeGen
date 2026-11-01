@@ -83,7 +83,7 @@ crate::impl_erased_repair_strategy!(InvalidLoopRandomStrategy, InvalidLoopIssue)
 /// reverse), standing in for what an earlier cut's real mutation would otherwise have made
 /// observable through `maze.graph.edge`/`edge_between` under the old in-place contract.
 fn apply_cuts<T: Tessellation>(
-    all: &[Vec<EdgeId>],
+    all: &[std::sync::Arc<[EdgeId]>],
     short: &[usize],
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
