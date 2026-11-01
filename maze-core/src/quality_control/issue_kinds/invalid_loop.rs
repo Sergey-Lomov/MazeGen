@@ -5,6 +5,12 @@ use crate::quality_control::issue::{
     INVALID_LOOP, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
+
+/// One cycle's edge set, shared by reference count: the repair pipeline hands the same cycles to
+/// many nested issues (one per candidate in `InvalidLoopGroupSelectStrategy`), so building each
+/// issue clones pointers, not edge lists.
+pub type SharedCycle = Arc<[EdgeId]>;
 
 /// Produced by any check that flags cycles invalid for a check-specific reason (currently
 /// `MinLoopLengthCheck`/`MaxLoopLengthCheck`; future checks may flag cycles invalid for other
@@ -18,7 +24,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InvalidLoopIssue {
     meta: IssueMeta,
-    pub all: Vec<Vec<EdgeId>>,
+    pub all: Vec<SharedCycle>,
     pub invalid: Vec<usize>,
     /// Per-cycle check provenance, keyed by `canonical_cycle_key` (not by index into `all`) —
     /// indices are re-mapped on every merge, but a cycle's canonical key is stable across merges,
@@ -32,6 +38,21 @@ impl InvalidLoopIssue {
     pub fn new_from_check(
         source_check: &str,
         all: Vec<Vec<EdgeId>>,
+        invalid: Vec<usize>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
+    ) -> Self {
+        Self::new_from_shared(
+            source_check,
+            all.into_iter().map(SharedCycle::from).collect(),
+            invalid,
+            invalid_sources,
+        )
+    }
+
+    /// Same as [`Self::new_from_check`] for callers that already hold shared cycles.
+    pub fn new_from_shared(
+        source_check: &str,
+        all: Vec<SharedCycle>,
         invalid: Vec<usize>,
         invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
     ) -> Self {

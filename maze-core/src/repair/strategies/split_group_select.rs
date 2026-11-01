@@ -123,7 +123,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGro
 
         let build_nested_issue = |source_check: &str,
                                   target: &SplitTileNodes,
-                                  _others: &[SplitTileNodes]|
+                                  _others: &[&SplitTileNodes]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidSplitTileIssue::new_from_check(
                 source_check,
@@ -170,10 +170,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGro
         // different points' node sets, so they never overlap. `group_select_apply`'s own
         // "target always counts as invalidated" rule already retires this tile's own budget --
         // this hook has nothing left to add.
-        let element_invalidated =
-            |_tile: &SplitTileNodes, _nested_commands: &[MutationCommand], _maze: &Maze<T>| false;
+        let prepare_invalidation = |_nested_commands: &[MutationCommand], _maze: &Maze<T>| {};
+        let element_invalidated = |_: &(), _tile: &SplitTileNodes| false;
 
-        group_select_apply::<T, SplitGroupKind>(
+        group_select_apply::<T, SplitGroupKind, _>(
             issue,
             maze,
             rng,
@@ -181,6 +181,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGro
             fix_target,
             |_| true,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             order_candidates,
         )

@@ -339,6 +339,9 @@ fn not_glueable() -> FieldOpError {
     FieldOpError::InvalidPreset("the rectangle cannot be glued seamlessly at this size".to_string())
 }
 
+/// The folds gluing one direction, plus the step vector between the glued sides.
+type DirectionGlue<T> = (Vec<NewFold<<T as Tessellation>::CellId>>, Point);
+
 /// The folds that glue the two sides of `cells` across `direction`.
 fn glue_direction<T: Tessellation>(
     tessellation: &T,
@@ -346,7 +349,7 @@ fn glue_direction<T: Tessellation>(
     set: &HashSet<T::CellId>,
     direction: Direction,
     glued: &HashSet<(T::CellId, usize)>,
-) -> Result<(Vec<NewFold<T::CellId>>, Point), FieldOpError> {
+) -> Result<DirectionGlue<T>, FieldOpError> {
     let basis = tessellation.translation_basis().ok_or_else(not_glueable)?;
     let step = shortest_vector(basis, direction).ok_or_else(not_glueable)?;
     let step_len = direction.along(step);

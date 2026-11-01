@@ -7,7 +7,7 @@ use super::rect_topology::{
 use super::square::{cell_range, grid_candidates};
 use super::tri_polyhedron::{
     ICOSAHEDRON_PRESET, OCTAHEDRON_PRESET, TETRAHEDRON_PRESET, is_polyhedron, polyhedron_cells,
-    polyhedron_folds, polyhedron_param_max,
+    polyhedron_creases, polyhedron_folds, polyhedron_param_max,
 };
 use super::{
     CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
@@ -197,6 +197,19 @@ impl Tessellation for TriTessellation {
         }
     }
 
+    fn build_preset_creases(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<[Point; 2]>, FieldOpError> {
+        validate_preset(&TRI_PRESETS, key, params)?;
+        if is_polyhedron(key) {
+            polyhedron_creases(key, params)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     fn area(&self, _cell: TriPoint) -> f64 {
         1.0
     }
@@ -204,7 +217,7 @@ impl Tessellation for TriTessellation {
 
 /// World units of the triangle lattice: side `s` with `sqrt(3)/4·s² = 1`; `x = s/4 · i`,
 /// `y = s·sqrt(3)/2 · j`. Every vertex sits on integer `(i, j)`, so shared vertices are identical.
-fn tri_units() -> (f64, f64) {
+pub(super) fn tri_units() -> (f64, f64) {
     let side = 2.0 / 3f64.sqrt().sqrt();
     (side / 4.0, side * 3f64.sqrt() / 2.0)
 }

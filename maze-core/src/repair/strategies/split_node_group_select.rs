@@ -122,18 +122,24 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeGroupIssue>
         };
         let build_nested_issue = |source_check: &str,
                                   target: &NodeId,
-                                  _others: &[NodeId]|
+                                  _others: &[&NodeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidSplitNodeIssue::new_from_check(
                 source_check,
                 vec![*target],
             ))
         };
-        let element_invalidated = |node: &NodeId,
-                                   nested_commands: &[MutationCommand],
-                                   _maze: &Maze<T>| {
-            nested_commands.iter().any(|cmd| matches!(cmd, MutationCommand::RemoveNode { node: removed } if removed == node))
+        let prepare_invalidation = |nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+            nested_commands
+                .iter()
+                .filter_map(|cmd| match cmd {
+                    MutationCommand::RemoveNode { node } => Some(*node),
+                    _ => None,
+                })
+                .collect::<std::collections::HashSet<NodeId>>()
         };
+        let element_invalidated =
+            |removed: &std::collections::HashSet<NodeId>, node: &NodeId| removed.contains(node);
         let order_candidates = |candidates: &mut Vec<NodeId>,
                                 _membership: &HashMap<NodeId, usize>,
                                 rng: &mut dyn RngCore| {
@@ -154,7 +160,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeGroupIssue>
             }
         };
 
-        group_select_apply::<T, SplitNodeGroupKind>(
+        group_select_apply::<T, SplitNodeGroupKind, _>(
             issue,
             maze,
             rng,
@@ -162,6 +168,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeGroupIssue>
             fix_target,
             element_allowed,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             order_candidates,
         )

@@ -88,7 +88,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorGroupIssue> for ElevatorG
 
         let build_nested_issue = |source_check: &str,
                                   target: &ElevatorNodes,
-                                  _others: &[ElevatorNodes]|
+                                  _others: &[&ElevatorNodes]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidElevatorIssue::new_from_check(
                 source_check,
@@ -101,11 +101,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorGroupIssue> for ElevatorG
         // removing/converting one never touches another's identity. `group_select_apply`'s own
         // "target always counts as invalidated" rule already retires this elevator's own budget --
         // this hook has nothing left to add, mirrors `SplitGroupSelectStrategy`'s identical case.
-        let element_invalidated = |_elevator: &ElevatorNodes,
-                                   _nested_commands: &[MutationCommand],
-                                   _maze: &Maze<T>| false;
+        let prepare_invalidation = |_nested_commands: &[MutationCommand], _maze: &Maze<T>| {};
+        let element_invalidated = |_: &(), _elevator: &ElevatorNodes| false;
 
-        group_select_apply::<T, ElevatorGroupKind>(
+        group_select_apply::<T, ElevatorGroupKind, _>(
             issue,
             maze,
             rng,
@@ -113,6 +112,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorGroupIssue> for ElevatorG
             fix_target,
             |_| true,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )

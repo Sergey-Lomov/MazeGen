@@ -12,7 +12,7 @@ import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint"
 import type {
   MazeState, TessellationKind, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";
-import { withPresetTopology } from "./presetTopology";
+import { withPresetCreases, withPresetTopology } from "./presetTopology";
 
 /** The active floor's own field-shape state — the per-floor scoping point every field-editing
  * helper below reads/writes through (GitHub issue #338). */
@@ -680,6 +680,7 @@ export function setSelectedShapeState(shape: PresetFieldShapeName) {
     return {
       ...withActiveFloorField(state, { selectedShape: shape, fieldConfig: cfg, fieldDirty: true }),
       floorTopology: withPresetTopology(state.floorTopology, state.activeFloorId, cfg),
+      floorCreases: withPresetCreases(state.floorCreases, state.activeFloorId, cfg),
       ...buildResetDownstreamState(),
       error: null,
       debugStale: debugStaleOf(state),

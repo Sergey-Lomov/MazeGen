@@ -328,7 +328,7 @@ mod tests {
             .add_bidirectional_edge(nodes[2], nodes[3], EdgeKind::Basic);
         let mut rng = MazeRng::seed_from_u64(3);
         let (_, priority) = DeadEndToTeleportStrategy.apply(
-            &InvalidDeadEndIssue::new_from_group_select("group", nodes[0], &[nodes[2]]),
+            &InvalidDeadEndIssue::new_from_group_select("group", nodes[0], [nodes[2]]),
             &maze,
             &mut rng,
             &params(&[

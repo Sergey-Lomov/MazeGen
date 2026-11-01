@@ -80,34 +80,47 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndGroupIssue> for DeadEndGro
 
         let build_nested_issue = |source_check: &str,
                                   target: &NodeId,
-                                  others: &[NodeId]|
+                                  others: &[&NodeId]|
          -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidDeadEndIssue::new_from_group_select(
                 source_check,
                 *target,
-                others,
+                others.iter().map(|&&node| node),
             ))
         };
-        let element_invalidated = |node: &NodeId, commands: &[MutationCommand], _maze: &Maze<T>| {
-            commands.iter().any(|command| match command {
-                // A directed addition only gives its source a new outgoing edge. Its destination
-                // can still be a dead end, so it must remain eligible for a later repair.
-                MutationCommand::AddDirectedEdge { from, .. }
-                | MutationCommand::AddDirectedTeleport { from, .. }
-                | MutationCommand::AddDirectedVerticalPassage { from, .. } => node == from,
-                MutationCommand::AddBidirectionalEdge { a, b }
-                | MutationCommand::AddBidirectionalTeleport { a, b }
-                | MutationCommand::AddBidirectionalVerticalPassage { a, b } => {
-                    node == a || node == b
+        // The set of nodes the fix's commands resolve, computed once per fix.
+        let prepare_invalidation = |commands: &[MutationCommand], _maze: &Maze<T>| {
+            let mut resolved = std::collections::HashSet::<NodeId>::new();
+            for command in commands {
+                match command {
+                    // A directed addition only gives its source a new outgoing edge. Its
+                    // destination can still be a dead end, so it must remain eligible for a later
+                    // repair.
+                    MutationCommand::AddDirectedEdge { from, .. }
+                    | MutationCommand::AddDirectedTeleport { from, .. }
+                    | MutationCommand::AddDirectedVerticalPassage { from, .. } => {
+                        resolved.insert(*from);
+                    }
+                    MutationCommand::AddBidirectionalEdge { a, b }
+                    | MutationCommand::AddBidirectionalTeleport { a, b }
+                    | MutationCommand::AddBidirectionalVerticalPassage { a, b } => {
+                        resolved.insert(*a);
+                        resolved.insert(*b);
+                    }
+                    // Replacing a point removes its old node id, so a different reported dead end
+                    // at that point is no longer live and must consume its group's budget as well.
+                    MutationCommand::ReplacePointNodes { at, .. } => {
+                        resolved.insert(*at);
+                    }
+                    _ => {}
                 }
-                // Replacing a point removes its old node id, so a different reported dead end at
-                // that point is no longer live and must consume its group's budget as well.
-                MutationCommand::ReplacePointNodes { at, .. } => node == at,
-                _ => false,
-            })
+            }
+            resolved
         };
+        let element_invalidated =
+            |resolved: &std::collections::HashSet<NodeId>, node: &NodeId| resolved.contains(node);
 
-        group_select_apply::<T, DeadEndGroupKind>(
+        group_select_apply::<T, DeadEndGroupKind, _>(
             issue,
             maze,
             rng,
@@ -115,6 +128,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidDeadEndGroupIssue> for DeadEndGro
             fix_target,
             |_| true,
             build_nested_issue,
+            prepare_invalidation,
             element_invalidated,
             crate::repair::strategies::group_select::order_by_priority(params),
         )

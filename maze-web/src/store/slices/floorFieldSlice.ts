@@ -8,7 +8,7 @@ import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeMirrorPreview } from "../../pixi/mirror";
 import { tessellationFingerprint } from "../topologyWire";
-import { withPresetTopology } from "../presetTopology";
+import { withPresetCreases, withPresetTopology } from "../presetTopology";
 import { creasesCopiedTo } from "../creases";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
@@ -96,12 +96,17 @@ function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, Fi
     tessellationFingerprint(state.tessellationKind, state.tessellationParams);
   // A floor on a standard shape holds exactly the topology that shape defines (box), or none.
   let floorTopology = configChanged ? {} : withoutFloorTopology(state.floorTopology, leftCustomIds);
+  let floorCreases = configChanged ? {} : state.floorCreases;
   for (const id of targetIds) {
     const cfg = configs[id];
-    if (cfg && !floorFields[id].isEditingField) floorTopology = withPresetTopology(floorTopology, id, cfg);
+    if (cfg && !floorFields[id].isEditingField) {
+      floorTopology = withPresetTopology(floorTopology, id, cfg);
+      floorCreases = withPresetCreases(floorCreases, id, cfg);
+    }
   }
   return {
     floorTopology,
+    floorCreases,
     tessellationKind: derivedForActive.kind,
     tessellationParams: derivedForActive.params,
     hexOrientation: derivedForActive.hexOrientation,
@@ -189,6 +194,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       floorTopology: withPresetTopology(state.floorTopology, state.activeFloorId, cfg),
+      floorCreases: withPresetCreases(state.floorCreases, state.activeFloorId, cfg),
       ...buildResetDownstreamState(),
       backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),

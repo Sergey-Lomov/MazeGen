@@ -112,7 +112,14 @@ pub fn build_preset(request: &PresetRequest) -> Result<Vec<[i32; 2]>, FieldOpWir
 /// "Topology presets"): `None` for a preset that is only a shape. The fingerprint is that of
 /// `request.tessellation`, so the result installs on any floor of the same config.
 pub fn preset_topology(request: &PresetRequest) -> Result<Option<TopologyDto>, FieldOpWireError> {
-    build_tessellation(&request.tessellation, PresetTopology { request }).map_err(invalid_request)?
+    build_tessellation(&request.tessellation, PresetTopology { request })
+        .map_err(invalid_request)?
+}
+
+/// The crease lines a preset defines (GitHub issue #899, `Specs/topology.md`, "Topology presets"),
+/// as world-unit segments `[[x, y], [x, y]]`; empty for a preset without any.
+pub fn preset_creases(request: &PresetRequest) -> Result<Vec<[[f64; 2]; 2]>, FieldOpWireError> {
+    build_tessellation(&request.tessellation, PresetCreases { request }).map_err(invalid_request)?
 }
 
 /// Extent of a preset shape's cell boundaries along two world directions: for direction `d`, the
@@ -250,6 +257,28 @@ impl TessellationVisitor for PresetTopology<'_> {
             groups,
         );
         Ok(Some(encode_topology(&topology, |cell| (codec.to_xy)(cell))))
+    }
+}
+
+struct PresetCreases<'a> {
+    request: &'a PresetRequest,
+}
+
+impl TessellationVisitor for PresetCreases<'_> {
+    type Output = Result<Vec<[[f64; 2]; 2]>, FieldOpWireError>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, _codec: CellCodec<T>) -> Self::Output {
+        let params: Vec<(&str, u32)> = self
+            .request
+            .params
+            .iter()
+            .map(|(name, &value)| (name.as_str(), value))
+            .collect();
+        let creases = tessellation.build_preset_creases(&self.request.preset, &params)?;
+        Ok(creases
+            .into_iter()
+            .map(|[a, b]| [[a.x, a.y], [b.x, b.y]])
+            .collect())
     }
 }
 

@@ -63,7 +63,7 @@ pub use invalid_elevator::{ElevatorNodes, InvalidElevatorIssue};
 pub use invalid_elevator_group::{ElevatorGroupKind, InvalidElevatorGroupIssue};
 pub use invalid_elevator_stop::InvalidElevatorStopIssue;
 pub use invalid_elevator_stop_group::{ElevatorStopGroupKind, InvalidElevatorStopGroupIssue};
-pub use invalid_loop::{InvalidLoopIssue, InvalidLoopRequirement};
+pub use invalid_loop::{InvalidLoopIssue, InvalidLoopRequirement, SharedCycle};
 pub use invalid_loop_group::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement, LoopGroupKind};
 pub use invalid_one_way::InvalidOneWayIssue;
 pub use invalid_one_way_group::{InvalidOneWayGroupIssue, OneWayGroupKind};
@@ -128,20 +128,20 @@ pub fn canonical_cycle_key(cycle: &[crate::ids::EdgeId]) -> Vec<crate::ids::Edge
 ///    caller type for a useful message) rather than panicking the whole repair pipeline.
 /// 3. `invalid_sources` — keyed by canonical key, no remap needed — union directly, deduplicating
 ///    per-check-id within each cycle's source list.
-pub(crate) fn merge_cycle_sets(
+pub(crate) fn merge_cycle_sets<C: AsRef<[crate::ids::EdgeId]> + Clone>(
     context: &'static str,
-    self_all: &mut Vec<Vec<crate::ids::EdgeId>>,
+    self_all: &mut Vec<C>,
     self_invalid: &mut Vec<usize>,
     self_invalid_sources: &mut HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
-    other_all: Vec<Vec<crate::ids::EdgeId>>,
+    other_all: Vec<C>,
     other_invalid: Vec<usize>,
     other_invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
 ) {
     let mut canonical_to_new_index: HashMap<Vec<crate::ids::EdgeId>, usize> = HashMap::new();
-    let mut merged_all: Vec<Vec<crate::ids::EdgeId>> = Vec::new();
+    let mut merged_all: Vec<C> = Vec::new();
     let mut existing_old_to_new: Vec<usize> = Vec::with_capacity(self_all.len());
     for cycle in self_all.iter() {
-        let key = canonical_cycle_key(cycle);
+        let key = canonical_cycle_key(cycle.as_ref());
         let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
             merged_all.push(cycle.clone());
             merged_all.len() - 1
@@ -150,7 +150,7 @@ pub(crate) fn merge_cycle_sets(
     }
     let mut incoming_old_to_new: Vec<usize> = Vec::with_capacity(other_all.len());
     for cycle in other_all.into_iter() {
-        let key = canonical_cycle_key(&cycle);
+        let key = canonical_cycle_key(cycle.as_ref());
         let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
             merged_all.push(cycle);
             merged_all.len() - 1

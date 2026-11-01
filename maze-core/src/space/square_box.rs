@@ -8,7 +8,7 @@
 
 use super::field_ops::{PresetDescriptor, PresetParam, param};
 use super::square::SquarePoint;
-use super::{FieldOpError, FoldEnd, NewFold, PresetParams, validate_preset};
+use super::{FieldOpError, FoldEnd, NewFold, Point, PresetParams, validate_preset};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -575,4 +575,32 @@ pub(super) fn box_folds(
         );
     }
     Ok(groups)
+}
+
+/// The crease lines of the box (GitHub issue #899): one segment on the shared edge of each pair of
+/// faces the net joins. None in the by-faces layouts (every face works on its own there), the
+/// compact one included.
+pub(super) fn box_creases(params: PresetParams<'_>) -> Result<Vec<[Point; 2]>, FieldOpError> {
+    let options = options(params)?;
+    if options.by_faces {
+        return Ok(Vec::new());
+    }
+    // The faces touch, so `fold` is also where they lie in the field, up to the centering offset.
+    let world = |(x, y): (i32, i32)| {
+        Point::new(f64::from(x - options.offset.0), f64::from(y - options.offset.1))
+    };
+    let mut creases = Vec::new();
+    for (a, face) in options.fold.iter().enumerate() {
+        for side in SIDES {
+            let Some(b) = options.fold.iter().position(|&other| face.joins(side, other)) else {
+                continue;
+            };
+            if a < b {
+                let (start, dir, len) = face.side(side);
+                let end = (start.0 + dir.0 * len, start.1 + dir.1 * len);
+                creases.push([world(start), world(end)]);
+            }
+        }
+    }
+    Ok(creases)
 }

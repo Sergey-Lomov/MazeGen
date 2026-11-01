@@ -166,6 +166,40 @@ fn removes_exactly_one_node_of_the_group() {
 }
 
 #[test]
+fn shared_node_is_removed_once_and_retires_both_groups() {
+    // `extra2` is in both groups. Selection is random here, so either `extra2` goes first (one
+    // removal retires both budgets) or a different node goes first and the other group is then
+    // served separately: never fewer than 1 or more than 2 removals, and always reproducible.
+    let (_, slot0, extra1, extra2) = maze_with_three_node_split();
+    let issue = group_issue(vec![(vec![extra1, extra2], 1), (vec![extra2, slot0], 1)]);
+    let nested = fix_target_nested();
+    let run = |seed: u64| {
+        // Fresh maze per run; ids are deterministic so `issue` stays valid.
+        let (mut maze, ..) = maze_with_three_node_split();
+        let mut rng = MazeRng::seed_from_u64(seed);
+        let result = apply_and_commit(
+            &SplitNodeGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[("selection", "random")]),
+            &PresetState::empty(),
+            &nested,
+        );
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        [slot0, extra1, extra2]
+            .into_iter()
+            .filter(|&n| maze.field.cell_of(n).is_none())
+            .collect::<Vec<NodeId>>()
+    };
+    for seed in 0..8 {
+        let removed = run(seed);
+        assert!((1..=2).contains(&removed.len()), "seed {seed}: {removed:?}");
+        assert_eq!(removed, run(seed), "seed {seed} must be reproducible");
+    }
+}
+
+#[test]
 fn apply_fixes_to_remove_multiple_nodes_from_a_single_group_in_one_call() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
