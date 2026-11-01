@@ -2822,7 +2822,7 @@
   "image_export.cuts.mode_none": "Нет",
   "image_export.cuts.mode_auto": "Авто",
   "image_export.cuts.mode_manual": "Вручную",
-  "image_export.cuts.position": "Положение",
+  "image_export.cuts.position": "Сдвиг",
   "image_export.topology.show_cut_lines": "Отображать линии реза",
   "image_export.topology.cut_lines_glue_color": "Линии реза в цвет склейки",
   "image_export.topology.cut_lines_color": "Цвет линий реза",

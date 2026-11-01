@@ -9,6 +9,7 @@ import { GlueCell, glueDotColors } from "./GlueCell";
 import { TopologyProblemBubble } from "./TopologyProblemBubble";
 import { floorGroupCuts } from "../../pixi/imageExport/exportContent";
 import { type CutMode, type CutUnavailableReason, type GroupCutAvailability } from "../../pixi/imageExport/cutLines";
+import { formatCutShift } from "../../pixi/imageExport/cutShift";
 import { typography, muted, disabled, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -31,6 +32,11 @@ const UNAVAILABLE_MESSAGE: Record<CutUnavailableReason, () => string> = {
 export function CutLineEditor({ floorId, cut }: { floorId: string; cut: GroupCutAvailability }) {
   const setting = useMazeStore((s) => s.pngExportSettings.cuts.lines[floorId]?.[cut.group]);
   const setCutLine = useMazeStore((s) => s.setCutLine);
+  const outputMode = useMazeStore((s) => s.pngExportSettings.outputMode);
+  const digital = useMazeStore((s) => s.pngExportSettings.digital);
+  const print = useMazeStore((s) => s.pngExportSettings.print);
+  const distancePerOffset = cut.ok ? cut.distancePerOffset : 0;
+  const formatShiftValue = (v: number): string => formatCutShift(v, distancePerOffset, outputMode === "print" ? { mode: "print", print } : { mode: "digital", digital });
   const mode: CutMode = cut.ok ? (setting?.mode ?? "none") : "none";
   return (
     <Stack gap="elementsGap">
@@ -50,7 +56,8 @@ export function CutLineEditor({ floorId, cut }: { floorId: string; cut: GroupCut
           min={cut.minOffset}
           max={cut.maxOffset}
           step={(cut.maxOffset - cut.minOffset) / 200 || 0.01}
-          format={(v) => `${Math.round(v * 100)}%`}
+          format={formatShiftValue}
+          valueWidth={`${Math.max(formatShiftValue(cut.minOffset).length, formatShiftValue(cut.maxOffset).length) + 1}ch`}
         />
       )}
     </Stack>

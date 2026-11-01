@@ -52,9 +52,11 @@ describe("resolveGroupCuts", () => {
     expect(Math.hypot(...cut.period)).toBeCloseTo(COLUMNS * cellWidth, 6);
     // The run is vertical, so the line is perpendicular to the period.
     expect(Math.abs(cut.direction[0] * cut.period[0] + cut.direction[1] * cut.period[1])).toBeLessThan(1e-6);
-    // A manual line moves within the cells the automatic one runs through: half a cell either way.
-    expect(cut.maxOffset).toBeCloseTo(0.5 / COLUMNS, 6);
-    expect(cut.minOffset).toBeCloseTo(-0.5 / COLUMNS, 6);
+    // A manual line moves within the band of the run's cells: half a cell either way, less the inset kept from the ends.
+    expect(cut.maxOffset).toBeCloseTo(0.5 / COLUMNS, 2);
+    expect(cut.maxOffset).toBeLessThan(0.5 / COLUMNS);
+    expect(cut.minOffset).toBeCloseTo(-0.5 / COLUMNS, 2);
+    expect(cut.minOffset).toBeGreaterThan(-0.5 / COLUMNS);
   });
 
   it("puts the automatic line through the centres of one run's cells", () => {
@@ -211,6 +213,26 @@ describe("lineSpans and clipSpans", () => {
     expect(lineSpans([square(0, 0)], [0, 5], [1, 0])).toEqual([]);
   });
 
+  it("is as long as the tiles are along the line, wherever the line meets them", () => {
+    // A staircase: the line at y = 0.5 meets only the first tile, yet runs over the whole stair.
+    const stair = [square(0, 0), square(1, 1), square(2, 2)];
+    expect(lineSpans(stair, [0, 0.5], [1, 0])).toEqual([[[0, 0.5], [3, 0.5]]]);
+    expect(lineSpans(stair, [0, 2.5], [1, 0])).toEqual([[[0, 2.5], [3, 2.5]]]);
+    expect(lineSpans(stair, [0, 3.5], [1, 0])).toEqual([]);
+  });
+
+  it("counts a tile the line only touches at a vertex", () => {
+    expect(lineSpans([square(0, 0)], [0, 1], [1, 0])).toEqual([[[0, 1], [1, 1]]]);
+    const diamond: [number, number][] = [[1, 0], [2, 1], [1, 2], [0, 1]];
+    expect(lineSpans([diamond], [0, 2], [1, 0])).toEqual([[[0, 2], [2, 2]]]);
+  });
+
+  it("keeps a line lying along the border of the tiles (the extreme manual offset)", () => {
+    const tiles = [square(0, 0), square(1, 0)];
+    expect(lineSpans(tiles, [0, 1], [1, 0])).toEqual([[[0, 1], [2, 1]]]);
+    expect(lineSpans(tiles, [0, 0], [1, 0])).toEqual([[[0, 0], [2, 0]]]);
+  });
+
   it("keeps the dent of a tile the line enters twice inside the one line", () => {
     const u: [number, number][] = [[0, 0], [3, 0], [3, 3], [2, 3], [2, 1], [1, 1], [1, 3], [0, 3]];
     expect(lineSpans([u], [0, 2], [1, 0])).toEqual([[[0, 2], [3, 2]]]);
@@ -233,6 +255,25 @@ describe("lineSpans and clipSpans", () => {
     expect(span(plan.guides)).toBeCloseTo(2 * cellWidth, 6);
     expect(span(all.guides)).toBeGreaterThan(span(plan.guides));
     expect(plan.guides).toHaveLength(2);
+  });
+});
+
+describe("manual offset range", () => {
+  it("keeps the line over the field at every offset of a glue's range, ends included", () => {
+    const cut = availableCut(cylinder());
+    const tiles = cells.map(([x, y]): [number, number][] => getCellVertices(x, y, field).map((v): [number, number] => [v.x, v.y]));
+    for (let i = 0; i <= 20; i++) {
+      const offset = cut.minOffset + ((cut.maxOffset - cut.minOffset) * i) / 20;
+      const line = cutLineOf({ ok: true, ...cut }, { mode: "manual", offset })!;
+      expect(lineSpans(tiles, line.point, cut.direction), `offset ${offset}`).toHaveLength(1);
+    }
+  });
+
+  it("reaches both ways from the automatic line and converts to a distance", () => {
+    const cut = availableCut(cylinder());
+    expect(cut.minOffset).toBeLessThan(0);
+    expect(cut.maxOffset).toBeGreaterThan(0);
+    expect(cut.distancePerOffset).toBeCloseTo(COLUMNS * cellWidth, 6);
   });
 });
 
@@ -281,11 +322,14 @@ describe("hex zigzag edge", () => {
     expect(cut.period[1]).toBeGreaterThan(0);
   });
 
-  it("lets a manual line move over the extent of those cells only", () => {
+  it("lets a manual line move over the band of the run's cells only, staying just inside its ends", () => {
     const cut = cutOf();
-    const highest = topCells.filter((c) => Math.abs(centre(c).y - cut.origin[1]) < 1e-4);
-    const tops = highest.flatMap((c) => getCellVertices(c[0], c[1], hexField).map((v) => v.y));
-    expect(cut.origin[1] + cut.minOffset * cut.period[1]).toBeCloseTo(Math.min(...tops), 6);
-    expect(cut.origin[1] + cut.maxOffset * cut.period[1]).toBeCloseTo(Math.max(...tops), 6);
+    const tops = topCells.flatMap((c) => getCellVertices(c[0], c[1], hexField).map((v) => v.y));
+    const width = Math.max(...tops) - Math.min(...tops);
+    const at = (offset: number) => cut.origin[1] + offset * cut.period[1];
+    expect(at(cut.minOffset)).toBeGreaterThan(Math.min(...tops));
+    expect(at(cut.minOffset)).toBeLessThan(Math.min(...tops) + 0.02 * width);
+    expect(at(cut.maxOffset)).toBeLessThan(Math.max(...tops));
+    expect(at(cut.maxOffset)).toBeGreaterThan(Math.max(...tops) - 0.02 * width);
   });
 });
