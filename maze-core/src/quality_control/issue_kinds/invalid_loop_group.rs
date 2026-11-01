@@ -1,9 +1,27 @@
 use super::canonical_cycle_key;
 use crate::ids::EdgeId;
 use crate::quality_control::issue::{
-    INVALID_LOOP_GROUP, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+    INVALID_LOOP, INVALID_LOOP_GROUP, IssueKind, IssueKindConst, IssueMerge, IssueMeta,
+    IssueRequirement,
 };
+use crate::quality_control::issue_kinds::group_issue::InvalidGroupIssueKind;
 use std::collections::HashMap;
+
+/// Marker wiring one `INVALID_LOOP_GROUP` onto the shared group candidate pass
+/// (`group_select_apply`): every flagged cycle is a candidate element (identified by its edge
+/// list), and the whole issue is one group resolved once every flagged cycle is fixed or
+/// invalidated. `InvalidLoopGroupSelectStrategy` delegates each selected cycle to an
+/// `INVALID_LOOP` nested repair. Not an `InvalidGroupIssue<LoopGroupKind>` alias:
+/// `InvalidLoopGroupIssue` keeps its own `invalid`/`valid` shape, and the strategy converts at the
+/// call site.
+pub struct LoopGroupKind;
+
+impl InvalidGroupIssueKind for LoopGroupKind {
+    type Element = Vec<EdgeId>;
+    const KIND: IssueKind = INVALID_LOOP_GROUP;
+    const NESTED_KIND: IssueKind = INVALID_LOOP;
+    const NESTED_SLOT_ID: &'static str = "cut_target";
+}
 
 /// Produced by any check that flags cycles as part of a group-level decision across every loop on
 /// the field (currently only `MaxLoopDensityCheck`'s excess field-density) — pairs with

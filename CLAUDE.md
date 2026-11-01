@@ -73,6 +73,15 @@ Compile from `maze-web`: `npx paraglide-js compile --project ./project.inlang --
 
 `MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`, `graph` (final post-repair `Graph` — inspect edge kinds/directionality).
 
+## Pre-commit test coverage
+
+`cargo test -p maze-core --lib` alone is not enough: integration tests in `maze-core/tests/*.rs` and the whole `maze-runner` crate are separate targets, and a change under `maze-core/src/` can break them while lib tests stay green. Before proposing a commit of any change under `maze-core/` or `maze-runner/`, run once, after all edits:
+
+- `cargo test -p maze-core --tests` (every test target, lib unit tests and integration tests);
+- `cargo test -p maze-runner`.
+
+Add `--no-fail-fast` so one failing target doesn't hide the rest. `maze-wasm` is wasm-only and does not build natively, so don't include it in `--workspace` runs. A web change also needs `npx vitest run` from `maze-web/` against a fresh wasm build. If a test fails, check `git stash` first to tell a regression from a pre-existing failure, and report which it is.
+
 ## Testing debug event logs (`EventLog`/`DebugTape`)
 
 When instrumenting an algorithm with `EventLog` (see `Specs/event_log.md`), don't write one exact-sequence test per event variant — it breaks on every narration reword. Instead:

@@ -302,8 +302,6 @@ export const PARAM_IDS = [
   "region_class",
   "reserve_percent",
   "same_type_only",
-  "sample_mode",
-  "sample_size",
   "search_mode",
   "selection",
   "selection_mode",

@@ -64,7 +64,7 @@ pub use invalid_elevator_group::{ElevatorGroupKind, InvalidElevatorGroupIssue};
 pub use invalid_elevator_stop::InvalidElevatorStopIssue;
 pub use invalid_elevator_stop_group::{ElevatorStopGroupKind, InvalidElevatorStopGroupIssue};
 pub use invalid_loop::{InvalidLoopIssue, InvalidLoopRequirement};
-pub use invalid_loop_group::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+pub use invalid_loop_group::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement, LoopGroupKind};
 pub use invalid_one_way::InvalidOneWayIssue;
 pub use invalid_one_way_group::{InvalidOneWayGroupIssue, OneWayGroupKind};
 pub use invalid_split_node::InvalidSplitNodeIssue;

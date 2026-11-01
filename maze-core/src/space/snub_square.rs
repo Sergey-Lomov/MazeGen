@@ -21,7 +21,7 @@ use super::field_ops::Inclusion;
 use super::multi_shape::{
     AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
     is_opposite_face, polygon_faces, preset_cells, rect_or_period_cells, regular_cell_shape,
-    regular_polygon_area, regular_shapes, retain_attached,
+    regular_polygon_area, regular_shapes, retain_attached_for_preset,
 };
 use super::square::cell_range;
 use super::{
@@ -277,9 +277,7 @@ impl Tessellation for SnubSquareTessellation {
                 GLUED_PHASE,
             )
         })?;
-        if key == "rect" {
-            retain_attached(self, &mut cells, |c| c.is_square())?;
-        }
+        retain_attached_for_preset(self, key, &mut cells, |c| c.is_square())?;
         cells.sort();
         Ok(cells)
     }
