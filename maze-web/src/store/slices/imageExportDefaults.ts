@@ -302,7 +302,7 @@ export const DEFAULT_CREASE_STYLE: CreaseExportStyle = { showCreases: false, mod
 /** Glue tabs are hidden by default; once shown they are trapezoids filled like the background with a solid outline in
  *  the outer grid colour (both linked, so `background` and `gridColor` are the mode's own defaults). */
 function glueTabStyleFor(background: number, gridColor: number): GlueTabStyle {
-  return { showTabs: false, inset: 0, width: 35, alternate: true, fillColor: background, lineColor: gridColor, lineStyle: "solid", lineWidth: 1 };
+  return { showTabs: false, inset: 0, width: 30, alternate: true, fillColor: background, lineColor: gridColor, lineStyle: "solid", lineWidth: 1 };
 }
 
 export const DEFAULT_GLUE_TAB_STYLE: GlueTabStyle = glueTabStyleFor(DEFAULT_MAZE_RENDER_STYLE.backgroundColor, DEFAULT_MAZE_RENDER_STYLE.grid.color);

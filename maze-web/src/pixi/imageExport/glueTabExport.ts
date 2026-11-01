@@ -1,6 +1,6 @@
 import type { GlueTabStyle } from "../../store/imageExportTypes";
 import type { MazeState } from "../../store/storeTypes";
-import type { WireTopology } from "../../wasm/types";
+import type { WireFoldEnd, WireTopology } from "../../wasm/types";
 import { getSeamModel } from "../selectors/seams";
 import { displayTransform } from "../tessellationGeometry";
 import { applyTransform } from "../geometry/worldTransform";
@@ -13,6 +13,16 @@ import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
 
 /// A tab: the four corners of its trapezoid, the base (on the edge) first.
 export type GlueTab = readonly [Vec2, Vec2, Vec2, Vec2];
+
+/// The tabs of the active floor and the stretches that got none because the inset leaves nothing of them (GitHub issue #913):
+/// as fold faces for a glue seen from its cells, as plain display-space lines for a cut glue.
+export interface GlueTabLayout {
+  tabs: GlueTab[];
+  missingEnds: WireFoldEnd[];
+  missingLines: Vec2[][];
+}
+
+const NO_LAYOUT: GlueTabLayout = { tabs: [], missingEnds: [], missingLines: [] };
 
 /// Points closer than this (display units) are one point.
 const EPS = 1e-6;
@@ -126,17 +136,17 @@ function tabAway(edge: Edge, style: Pick<GlueTabStyle, "inset" | "width">): Glue
 
 /// The tabs of a glue that is not cut: on every straight stretch of its side A, away from the cells. With `alternate`, every
 /// second stretch of a broken edge goes on side B instead (the same folds, seen from their B faces).
-function groupTabs(topology: WireTopology, group: WireTopology["groups"][number], cfg: MazeState["activeFieldConfig"], style: Pick<GlueTabStyle, "inset" | "width" | "alternate">): GlueTab[] {
-  const tabs: GlueTab[] = [];
+function groupTabs(topology: WireTopology, group: WireTopology["groups"][number], cfg: MazeState["activeFieldConfig"], style: Pick<GlueTabStyle, "inset" | "width" | "alternate">, layout: GlueTabLayout): void {
   sideEdges(topology, group.folds, "a", cfg).forEach((stretch, i) => {
     const onB = style.alternate && i % 2 === 1;
+    const side = onB ? "b" : "a";
     const edges = onB ? sideEdges(topology, stretch.folds, "b", cfg) : [stretch];
     for (const edge of edges) {
       const tab = tabAway(edge, style);
-      if (tab) tabs.push(tab);
+      if (tab) layout.tabs.push(tab);
+      else layout.missingEnds.push(...edge.folds.flatMap((fold) => topology.folds[fold]?.[side] ?? []));
     }
   });
-  return tabs;
 }
 
 /// The tabs of the active floor (GitHub issue #901), or none while the style hides them. A glue with a cut line gets its tab
@@ -145,36 +155,44 @@ export function selectExportGlueTabs(
   state: Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "pngExportSettings" | "nodes" | "floors">,
   style: Pick<GlueTabStyle, "showTabs" | "inset" | "width" | "alternate">,
 ): GlueTab[] {
-  if (!style.showTabs) return [];
-  // The renderers ask on every settings change (a colour, a wall width); the tabs change only with these inputs.
-  const inputs = [state.activeFloorId, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts, state.nodes, state.floors, style.inset, style.width, style.alternate];
-  if (lastTabs && lastTabs.inputs.every((input, i) => Object.is(input, inputs[i]))) return lastTabs.tabs;
-  const tabs = computeGlueTabs(state, style);
-  // An empty answer may only mean the seam geometry is not warmed yet: ask again next time.
-  lastTabs = tabs.length > 0 ? { inputs, tabs } : null;
-  return tabs;
+  return selectExportGlueTabLayout(state, style).tabs;
 }
 
-let lastTabs: { inputs: readonly unknown[]; tabs: GlueTab[] } | null = null;
+/// The tabs together with the stretches the inset left without one (GitHub issue #913); same memoisation as the tabs.
+export function selectExportGlueTabLayout(
+  state: Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "pngExportSettings" | "nodes" | "floors">,
+  style: Pick<GlueTabStyle, "showTabs" | "inset" | "width" | "alternate">,
+): GlueTabLayout {
+  if (!style.showTabs) return NO_LAYOUT;
+  // The renderers ask on every settings change (a colour, a wall width); the tabs change only with these inputs.
+  const inputs = [state.activeFloorId, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts, state.nodes, state.floors, style.inset, style.width, style.alternate];
+  if (lastTabs && lastTabs.inputs.every((input, i) => Object.is(input, inputs[i]))) return lastTabs.layout;
+  const layout = computeGlueTabs(state, style);
+  // An empty answer may only mean the seam geometry is not warmed yet: ask again next time.
+  lastTabs = layout.tabs.length > 0 || layout.missingEnds.length > 0 || layout.missingLines.length > 0 ? { inputs, layout } : null;
+  return layout;
+}
+
+let lastTabs: { inputs: readonly unknown[]; layout: GlueTabLayout } | null = null;
 
 function computeGlueTabs(
   state: Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "pngExportSettings" | "nodes" | "floors">,
   style: Pick<GlueTabStyle, "inset" | "width" | "alternate">,
-): GlueTab[] {
+): GlueTabLayout {
   const floorId = state.activeFloorId;
   const topology = state.floorTopology[floorId];
-  if (!topology || topology.groups.length === 0) return [];
+  if (!topology || topology.groups.length === 0) return NO_LAYOUT;
   const cfg = state.activeFieldConfig;
   const cuts = new Map(floorGroupCuts({ cfg, topology }).flatMap((cut) => {
     const line = cutLineOf(cut, cutSettingOf(state.pngExportSettings.cuts, floorId, cut.group));
     return line ? [[cut.group, line] as const] : [];
   }));
   let tiles: Vec2[][] | null = null;
-  const tabs: GlueTab[] = [];
+  const layout: GlueTabLayout = { tabs: [], missingEnds: [], missingLines: [] };
   for (const group of topology.groups) {
     const line = cuts.get(group.id);
     if (!line) {
-      tabs.push(...groupTabs(topology, group, cfg, style));
+      groupTabs(topology, group, cfg, style, layout);
       continue;
     }
     tiles ??= tilePolygons(selectFloorScopedMaze(state.nodes, [], state.floors, floorId).nodes, cfg);
@@ -184,8 +202,9 @@ function computeGlueTabs(
     const normal: Vec2 = across[0] * period[0] + across[1] * period[1] > 0 ? [-across[0], -across[1]] : across;
     for (const [from, to] of lineSpans(tiles, line.point, direction)) {
       const tab = glueTabOn(from, to, normal, style);
-      if (tab) tabs.push(tab);
+      if (tab) layout.tabs.push(tab);
+      else layout.missingLines.push([from, to]);
     }
   }
-  return tabs;
+  return layout;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from "../store/projectExport/validateImageExport";
-import { glueTabOn, selectExportGlueTabs, type GlueTab } from "../pixi/imageExport/glueTabExport";
+import { glueTabOn, selectExportGlueTabLayout, selectExportGlueTabs, type GlueTab } from "../pixi/imageExport/glueTabExport";
+import { computeGlueTabWarnings } from "../pixi/selectors/glueTabWarnings";
 import { DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import type { GlueTabStyle } from "../store/imageExportTypes";
 import type { MazeState } from "../store/storeTypes";
@@ -119,6 +120,31 @@ describe("selectExportGlueTabs on a cylinder", () => {
     // The sheet lies on the other side of the line from where the tab reaches.
     const sheetSide = Math.sign(baseX - (minX + maxX) / 2) || 1;
     expect(Math.sign(reach)).toBe(sheetSide === 0 ? 1 : Math.sign(reach));
+  });
+
+  it("reports the stretch whose tab the inset swallowed, with its faces", () => {
+    warmCartesianCache(cfg, topology);
+    const layout = selectExportGlueTabLayout(stateWith(null), style({ inset: 1000 }));
+    expect(layout.tabs).toEqual([]);
+    expect(layout.missingEnds).toEqual(topology.folds.map((fold) => fold.a));
+    expect(selectExportGlueTabLayout(stateWith(null), style({ inset: 0 })).missingEnds).toEqual([]);
+  });
+
+  it("turns the swallowed stretch into one merged band of the missing-tab warning", () => {
+    warmCartesianCache(cfg, topology);
+    const warnings = computeGlueTabWarnings(stateWith(null), style({ inset: 1000 }));
+    expect(warnings.map((w) => w.id)).toEqual(["glue_tab_missing"]);
+    // The five faces of the stretch touch end to end: one polyline along the whole east side.
+    expect(warnings[0].bands).toHaveLength(1);
+    const ys = warnings[0].bands![0].map(([, y]) => y);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(Math.max(...cells.flatMap(([x, y]) => getCellVertices(x, y, cfg).map((v) => v.y))) - Math.min(...cells.flatMap(([x, y]) => getCellVertices(x, y, cfg).map((v) => v.y))));
+  });
+
+  it("reports a cut glue's swallowed span as a line", () => {
+    warmCartesianCache(cfg, topology);
+    const layout = selectExportGlueTabLayout(stateWith({ mode: "auto", offset: 0 }), style({ inset: 1000 }));
+    expect(layout.tabs).toEqual([]);
+    expect(layout.missingLines).toHaveLength(1);
   });
 
   it("returns the same tabs while the inputs are unchanged", () => {

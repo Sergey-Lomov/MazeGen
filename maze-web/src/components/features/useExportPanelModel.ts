@@ -11,6 +11,7 @@ import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/text
 import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { hasCellAreaSpread } from "../../pixi/markerScale";
 import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { computeGlueTabWarnings } from "../../pixi/selectors/glueTabWarnings";
 import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
 import type { TextFitContextValue } from "./TextFitContext";
@@ -56,10 +57,20 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   );
   // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
   const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
-  const exportWarnings = useMemo(
+  const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
+  const modeWarnings = useMemo(
     () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues],
   );
+  // Glue tab geometry warnings (GitHub issue #913) need the tabs themselves, so they are computed apart from the mode's list.
+  const glueTabWarnings = useMemo(
+    () => computeGlueTabWarnings(
+      { activeFloorId, activeFieldConfig: cfg, floorTopology, pngExportSettings, nodes: rawNodes, floors },
+      settings.glueTabs,
+    ),
+    [activeFloorId, cfg, floorTopology, pngExportSettings, rawNodes, floors, settings.glueTabs],
+  );
+  const exportWarnings = useMemo(() => [...modeWarnings, ...glueTabWarnings], [modeWarnings, glueTabWarnings]);
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
   // size control, so `fitAll` only covers the shared style label controls.

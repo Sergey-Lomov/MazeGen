@@ -113,6 +113,12 @@ export type ExportWarningId =
   | "grid_low_contrast_background"
   | "glue_tab_outline_low_contrast_fill"
   | "glue_tab_fill_low_contrast_background"
+  /** Both vector modes (GitHub issue #913) — glue tabs of the active floor overlap each other. Highlights the overlapping tabs as `polygons`. */
+  | "glue_tabs_overlap"
+  /** Both vector modes (GitHub issue #913) — the inset leaves less than `MIN_TAB_BASE` (10 display units) of an edge for its glue tab. Highlights those tabs as `polygons`. */
+  | "glue_tab_too_thin"
+  /** Both vector modes (GitHub issue #913) — the inset leaves nothing of a glued stretch, so it gets no tab at all. Highlights the stretch as `bands`. */
+  | "glue_tab_missing"
   | "inner_grid_low_contrast_floor"
   | "inner_grid_low_contrast_wall"
   | "marker_fill_low_contrast"
@@ -186,6 +192,10 @@ export type ExportWarning = {
    *  machinery, which has no node id to resolve here. Omitted (or empty) for every other warning
    *  id — no bubbles drawn. */
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+  /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
+  polygons?: [number, number][][];
+  /** Display-space polylines (active floor) the hover highlight draws as boundary bands, like the glue editor's runs (GitHub issue #913). */
+  bands?: [number, number][][];
 };
 
 /** Filters `nodeIds` down to those sitting on one of `specialSplitPointKeys` — shared by

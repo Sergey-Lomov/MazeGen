@@ -38,7 +38,7 @@ describe("glue-tab parameter links (GitHub issue #901)", () => {
     expect(active("glueTabs.lineStyle", { showTabs: true, lineWidth: 2 })).toBe(true);
   });
 
-  it("defaults to a solid 1-unit outline, no inset, a 35-unit width and alternation", () => {
-    expect(DEFAULT_GLUE_TAB_STYLE).toMatchObject({ lineStyle: "solid", lineWidth: 1, inset: 0, width: 35, alternate: true });
+  it("defaults to a solid 1-unit outline, no inset, a 30-unit width and alternation", () => {
+    expect(DEFAULT_GLUE_TAB_STYLE).toMatchObject({ lineStyle: "solid", lineWidth: 1, inset: 0, width: 30, alternate: true });
   });
 });
