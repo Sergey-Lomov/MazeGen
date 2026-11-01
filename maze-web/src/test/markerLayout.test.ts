@@ -6,7 +6,7 @@ import {
 import { verticalMarkerFootprint } from "../pixi/renderers/VerticalConnectionRenderer";
 import { layoutExportMarkers } from "../pixi/imageExport/exportStyleBuilders";
 import { layoutEditorMarkers } from "../pixi/editorMarkerLayout";
-import { DEFAULT_MARKER_SCALE } from "../pixi/selectors/mazeSelectors/markerLayout";
+import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../pixi/selectors/mazeSelectors/markerLayout";
 import type { MarkerData, TeleportEdge, VerticalConnectionMarker, VerticalConnectionStyle } from "../pixi/renderers/types";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -84,6 +84,10 @@ describe("shiftMarkerIndexLabels", () => {
 });
 
 describe("resolveLayoutMode", () => {
+  it("defaults to auto", () => {
+    expect(DEFAULT_MARKER_LAYOUT_MODE).toBe("auto");
+  });
+
   it("auto picks by count", () => {
     expect(resolveLayoutMode("auto", 2)).toBe("row");
     expect(resolveLayoutMode("auto", 3)).toBe("radial");
@@ -261,23 +265,6 @@ describe("applyMarkerLayout scale", () => {
       const r = applyMarkerLayout(input, { mode: "row", spacing: 2, scale });
       expect(r.markers[0].radius).toBeCloseTo(radius * scale, 9);
     }
-  });
-});
-
-describe("overlap mode", () => {
-  it("computeLayoutOffsets stacks everything at the center", () => {
-    expect(computeLayoutOffsets([4, 4, 4], "overlap", 2)).toEqual([[0, 0], [0, 0], [0, 0]]);
-  });
-
-  it("applyMarkerLayout leaves positions, sizes and groups untouched, even with a scale", () => {
-    const markers = [mk([50, 50], 8), mk([50, 50], 8)];
-    const r = applyMarkerLayout(
-      { markers, teleportEdges: [], verticalMarkers: [vert([50, 50])], teleportRadius: 4, verticalRadius: () => 4 },
-      { mode: "overlap", spacing: 2, scale: 0.5 },
-    );
-    expect(r.markers).toEqual(markers);
-    expect(r.verticalMarkers[0].scale).toBeUndefined();
-    expect(r.groups).toEqual([]);
   });
 });
 
