@@ -167,6 +167,11 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportMarker: validateMarkerSettings(obj?.teleportMarker, `${path}.teleportMarker`, d.teleportMarker),
     teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
     teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
+    teleportConnectorCornerStyle: optCornerStyle(
+      obj,
+      "teleportConnectorCornerStyle",
+      optCornerStyle(obj, "cornerStyle", d.teleportConnectorCornerStyle ?? d.teleportMarker.cornerStyle),
+    ),
     teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
     teleportCurveDirection: optTeleportCurveDirection(obj, "teleportCurveDirection", d.teleportCurveDirection ?? "inward"),
     teleportCurveStrength: Math.min(1, Math.max(0, optNumber(obj, "teleportCurveStrength", d.teleportCurveStrength ?? 0.25))),
@@ -488,6 +493,14 @@ export function validateLinks<P extends string>(v: unknown, path: string, fallba
     return fallback;
   }
   return links;
+}
+
+/** Extends a persisted custom graph with a newly introduced default target without changing an
+ * existing user link. Projects using the current defaults already carry the target. */
+function ensureDefaultLink<P extends string>(links: ParamLink<P>[], defaults: ParamLink<P>[], target: P): ParamLink<P>[] {
+  if (links.some((link) => link.target === target)) return links;
+  const defaultLink = defaults.find((link) => link.target === target);
+  return defaultLink ? [...links, defaultLink] : links;
 }
 
 /** Lenient — every field falls back to its own default when absent or malformed, same recovery
@@ -829,8 +842,16 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       obj = null;
     }
   }
-  const vectorByWallsLinks = validateLinks<VectorByWallsParamPath>(obj?.vectorByWallsLinks, `${path}.vectorByWallsLinks`, DEFAULT_VECTOR_BY_WALLS_LINKS, VECTOR_BY_WALLS_PARAM_REGISTRY);
-  const vectorByCorridorsLinks = validateLinks<VectorByCorridorsParamPath>(obj?.vectorByCorridorsLinks, `${path}.vectorByCorridorsLinks`, DEFAULT_VECTOR_BY_CORRIDORS_LINKS, VECTOR_BY_CORRIDORS_PARAM_REGISTRY);
+  const vectorByWallsLinks = ensureDefaultLink(
+    validateLinks<VectorByWallsParamPath>(obj?.vectorByWallsLinks, `${path}.vectorByWallsLinks`, DEFAULT_VECTOR_BY_WALLS_LINKS, VECTOR_BY_WALLS_PARAM_REGISTRY),
+    DEFAULT_VECTOR_BY_WALLS_LINKS,
+    "teleportConnectorCornerStyle",
+  );
+  const vectorByCorridorsLinks = ensureDefaultLink(
+    validateLinks<VectorByCorridorsParamPath>(obj?.vectorByCorridorsLinks, `${path}.vectorByCorridorsLinks`, DEFAULT_VECTOR_BY_CORRIDORS_LINKS, VECTOR_BY_CORRIDORS_PARAM_REGISTRY),
+    DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
+    "teleportConnectorCornerStyle",
+  );
   return {
     activeRenderMode: optRenderModeId(obj, "activeRenderMode"),
     openRenderModeSettings: optRenderModeId(obj, "openRenderModeSettings"),

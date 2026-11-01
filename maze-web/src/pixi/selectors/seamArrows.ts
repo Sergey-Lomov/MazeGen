@@ -1,7 +1,7 @@
 import type { FieldConfig } from "../../fieldConfig";
 import { configAllCells } from "../tessellationCells";
 import { getCellCenter, getCellVertices, getFaceEdgeSegment } from "../tessellationGeometry";
-import { offsetPolyline, polylineLength } from "../geometry/polylineOps";
+import { closestPointOnPolyline, fractionAlong, offsetPolyline, polylineLength } from "../geometry/polylineOps";
 import type { WireTopology } from "../../wasm/types";
 import { getSeamModel, type HalfEdge, type Seam } from "./seams";
 import { pointToSegmentDistance as distanceToSegment } from "../renderers/teleportGeometryUtils";
@@ -58,7 +58,8 @@ export interface SeamArrow {
   width: number;
   headWidth: number;
   headLength: number;
-  /// Closed triangles, one at each end: tip further from the run than the base.
+  /// Closed head polygons, one at each end: tip further from the run than the base. A curved
+  /// contour contributes a sampled arc as the base instead of a straight chord.
   headA: Point[];
   headB: Point[];
   /// Middle of the route and the unit direction of the flow there: where a twisted seam shows its icon.
@@ -159,7 +160,7 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
     const headWidth = faceLength * HEAD_WIDTH_SHARE;
     const headLength = headWidth * HEAD_LENGTH_SHARE;
     const path = standOff(routes[i], item.a.standOff, item.b.standOff);
-    const ending = endings(path, headLength, headWidth, [item.a.port.out, item.b.port.out]);
+    const ending = endings(path, headLength, headWidth, [item.a.port.out, item.b.port.out], [item.a.brace, item.b.brace]);
     const braceRuns = [item.a, item.b].map((run, side) => ({ run, side: side as 0 | 1 })).filter(({ run }) => run.brace !== null);
     const pairs = item.glue.seams.map((seam, k): SeamPair => {
       // A single face is its own pair; the faces of a run each get a route fitted among the other
@@ -177,7 +178,15 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
         at: anchor(run),
       });
       const slots: [SeamSlot, SeamSlot] = [slot(item.a, item.halvesA[k]), slot(item.b, item.halvesB[k])];
-      return { seam: seam.a.seam, fold: seam.fold, anchors: [slots[0].at, slots[1].at], zones: [item.a.zones[k], item.b.zones[k]], slots, path: route, ...endings(route, headLength, headWidth, [item.a.ports[k].out, item.b.ports[k].out]) };
+      return {
+        seam: seam.a.seam,
+        fold: seam.fold,
+        anchors: [slots[0].at, slots[1].at],
+        zones: [item.a.zones[k], item.b.zones[k]],
+        slots,
+        path: route,
+        ...endings(route, headLength, headWidth, [item.a.ports[k].out, item.b.ports[k].out], [item.a.brace, item.b.brace]),
+      };
     });
     return {
       seams: item.glue.seams.map((seam) => seam.a.seam),
@@ -279,7 +288,13 @@ function segmentCrossing(a1: Point, a2: Point, b1: Point, b2: Point): { t: numbe
 /// The heads at the two ends of `path` and the middle of it, where a twisted glue shows its icon. `outs` are the unit
 /// normals out of the two walls the route starts and ends at: a head's base lies along its wall, so a route leaving it at
 /// an angle gets a skewed triangle (its height off the wall stays the nominal length), not a crooked one over the contour.
-function endings(path: Point[], nominalLength: number, nominalWidth: number, outs: [Point, Point]): Pick<SeamPair, "headA" | "headB" | "mid" | "midDir"> {
+function endings(
+  path: Point[],
+  nominalLength: number,
+  nominalWidth: number,
+  outs: [Point, Point],
+  contours: [Point[] | null, Point[] | null],
+): Pick<SeamPair, "headA" | "headB" | "mid" | "midDir"> {
   // A short route (two runs meeting in a corner) shrinks the heads so they stay on their own segments.
   const first = distance(path[0], path[1]);
   const last = distance(path[path.length - 1], path[path.length - 2]);
@@ -294,8 +309,8 @@ function endings(path: Point[], nominalLength: number, nominalWidth: number, out
   const headWidth = nominalWidth * scale;
   const { at, dir } = pointAtHalf(path);
   return {
-    headA: wallHead(path[0], startDir, outs[0], cosStart, headLength, headWidth),
-    headB: wallHead(end, endDir, outs[1], cosEnd, headLength, headWidth),
+    headA: wallHead(path[0], startDir, outs[0], cosStart, headLength, headWidth, contours[0]),
+    headB: wallHead(end, endDir, outs[1], cosEnd, headLength, headWidth, contours[1]),
     mid: at,
     midDir: dir,
   };
@@ -451,16 +466,38 @@ function obliqueCos(dir: Point, out: Point): number {
 
 /// The head at the start `base` of a route leaving along `dir`: its base lies along the wall (across `out`), its tip is on
 /// the body and `length` off the wall. With a body along `out` it is the isosceles `headPolygon`.
-function wallHead(base: Point, dir: Point, out: Point, cos: number, length: number, width: number): Point[] {
+function wallHead(base: Point, dir: Point, out: Point, cos: number, length: number, width: number, contour: Point[] | null): Point[] {
   const flat = dir[0] * out[0] + dir[1] * out[1] < MIN_OBLIQUE_COS;
   if (flat) return headPolygon([base[0] + dir[0] * length, base[1] + dir[1] * length], dir, length, width);
   const reach = length / cos;
   const half = width / 2;
-  return [
-    [base[0] + dir[0] * reach, base[1] + dir[1] * reach],
+  const tip: Point = [base[0] + dir[0] * reach, base[1] + dir[1] * reach];
+  const curvedBase = contourBase(contour, base, width);
+  return curvedBase ? [tip, ...curvedBase] : [
+    tip,
     [base[0] - out[1] * half, base[1] + out[0] * half],
     [base[0] + out[1] * half, base[1] - out[0] * half],
   ];
+}
+
+/** The head's base follows its contour rather than cutting a straight chord across a curved one. */
+function contourBase(contour: Point[] | null, base: Point, width: number): Point[] | null {
+  if (!contour || contour.length < 2) return null;
+  const hit = closestPointOnPolyline(contour, base);
+  if (!hit || hit.distance > BRACE_WIDTH) return null;
+  const total = polylineLength(contour);
+  const middle = fractionAlong(contour, hit) * total;
+  const from = Math.max(0, middle - width / 2);
+  const to = Math.min(total, middle + width / 2);
+  if (to - from < 1e-6) return null;
+  const points: Point[] = [pointAtLength(contour, from).at];
+  let walked = 0;
+  for (let i = 1; i < contour.length; i++) {
+    walked += distance(contour[i - 1], contour[i]);
+    if (walked > from + 1e-9 && walked < to - 1e-9) points.push(contour[i]);
+  }
+  points.push(pointAtLength(contour, to).at);
+  return points;
 }
 
 /// A triangle with its tip at `tip`, pointing along `dir`.

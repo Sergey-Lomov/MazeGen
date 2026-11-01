@@ -134,6 +134,7 @@ const TELEPORT_OVERRIDABLE = [
   "teleportMarker.borderWidth",
   "teleportMarker.gapWidth",
   "teleportConnectorColor",
+  "teleportConnectorCornerStyle",
   "teleportConnectorGapWidth",
   "teleportFloorBadge.shape",
   "teleportFloorBadge.fillColor",

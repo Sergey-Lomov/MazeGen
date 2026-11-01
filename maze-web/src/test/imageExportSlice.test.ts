@@ -297,6 +297,18 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.sizeAdaptation).toBe(0.9);
   });
 
+  it("angled teleport connector corners follow the shared style until individually overridden in both modes", () => {
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ cornerStyle: "round" });
+    useMazeStore.getState().patchVectorByCorridorsSharedStyle({ cornerStyle: "round" });
+    expect(useMazeStore.getState().vectorByWallsSettings.teleportConnectorCornerStyle).toBe("round");
+    expect(useMazeStore.getState().vectorByCorridorsSettings.teleportConnectorCornerStyle).toBe("round");
+
+    useMazeStore.getState().patchVectorByWallsTeleportSettings({ teleportConnectorCornerStyle: "miter" });
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ cornerStyle: "round" });
+    expect(useMazeStore.getState().vectorByWallsSettings.teleportConnectorCornerStyle).toBe("miter");
+    expect(useMazeStore.getState().vectorByCorridorsSettings.teleportConnectorCornerStyle).toBe("round");
+  });
+
   it("patchVectorByWallsSharedStyle updates only the shared marker adaptation field", () => {
     useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSizeAdaptation: 0.6 });
     const settings = useMazeStore.getState().vectorByWallsSettings;

@@ -2,9 +2,9 @@ import type { FieldConfig } from "../../fieldConfig";
 import type { WireTopology } from "../../wasm/types";
 import type { CutExportSettings, CutMode } from "../../store/imageExportTypes";
 import { exactCellBounds, getCellVertices } from "../tessellationGeometry";
-import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
+import { createFloorNodesSelector } from "../selectors/mazeSelectors";
 import type { MazeStore } from "../../store/storeTypes";
-import { buildCutPlan, cutLineOf, cutSettingOf, resolveGroupCuts, type CutPlan, type GroupCut, type GroupCutAvailability, type Vec2 } from "./cutLines";
+import { buildCutPlan, type Box, cutLineOf, cutSettingOf, resolveGroupCuts, type CutPlan, type GroupCut, type GroupCutAvailability, type Vec2 } from "./cutLines";
 import type { ContentBoundsBasis } from "./contentBounds";
 import type { ExportMargin } from "./exportMargins";
 
@@ -25,6 +25,32 @@ export interface CutInputs {
 /// The cells' polygons in display space: where the image is, so where a cut line has something to cut.
 export function tilePolygons(nodes: { x: number; y: number }[], cfg: FieldConfig): Vec2[][] {
   return nodes.map((node) => getCellVertices(node.x, node.y, cfg).map((vertex): Vec2 => [vertex.x, vertex.y]));
+}
+
+/// What a cut sheet measures from the field alone: it does not change with a cut line's position, so a slider drag
+/// (which resolves the plan on every step, for several consumers) must not rebuild it. Keyed on the identity of the
+/// nodes array and the config, which `activeFloorNodes` keeps stable.
+export interface FieldGeometry {
+  tiles: Vec2[][];
+  bounds: Box;
+}
+
+let lastGeometry: { nodes: { x: number; y: number }[]; cfg: FieldConfig; geometry: FieldGeometry } | null = null;
+
+export function fieldGeometry(nodes: { x: number; y: number; id: number }[], cfg: FieldConfig): FieldGeometry {
+  if (lastGeometry?.nodes !== nodes || lastGeometry.cfg !== cfg) {
+    lastGeometry = { nodes, cfg, geometry: { tiles: tilePolygons(nodes, cfg), bounds: exactCellBounds(nodes, cfg) } };
+  }
+  return lastGeometry.geometry;
+}
+
+// Built on first use, not at import: modules that mock the selectors need not provide it unless the cut sheet is asked for.
+let floorNodesSelector: ReturnType<typeof createFloorNodesSelector> | null = null;
+
+/// The active floor's nodes, the same array while the nodes, floors and active floor are unchanged.
+export function activeFloorNodes(state: Pick<MazeStore, "nodes" | "floors" | "activeFloorId">): MazeStore["nodes"] {
+  floorNodesSelector ??= createFloorNodesSelector();
+  return floorNodesSelector(state.nodes, state.floors, state.activeFloorId);
 }
 
 export const NO_MARGIN: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -82,7 +108,8 @@ export function resolveCutPlan(inputs: CutInputs): CutPlan | null {
   });
   // Nothing cut: skip the O(cells) bounds pass, this runs on every store update with the panel open.
   if (entries.length === 0) return null;
-  return buildCutPlan(exactCellBounds(inputs.floorNodes, inputs.cfg), entries, inputs.margin?.(), tilePolygons(inputs.floorNodes, inputs.cfg));
+  const geometry = fieldGeometry(inputs.floorNodes, inputs.cfg);
+  return buildCutPlan(geometry.bounds, entries, inputs.margin?.(), geometry.tiles);
 }
 
 /// The cut sheet of the active floor while the export card is open, or `null` for the plain maze.
@@ -96,7 +123,7 @@ export function resolveActiveCutPlan(
     floorId: state.activeFloorId,
     topology: state.floorTopology[state.activeFloorId],
     cuts: state.pngExportSettings.cuts,
-    floorNodes: selectFloorScopedMaze(state.nodes, [], state.floors, state.activeFloorId).nodes,
+    floorNodes: activeFloorNodes(state),
     margin,
   });
 }

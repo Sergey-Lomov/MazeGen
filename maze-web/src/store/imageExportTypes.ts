@@ -400,6 +400,8 @@ export interface TeleportSettingsFields {
    *  `teleportConnection*` ("connector" is the settings panel's own term for it). */
   teleportConnectorColor: number;
   teleportConnectorWidth: number;
+  /** Corner join for an angled connector. Linked to the shared corner style by default. */
+  teleportConnectorCornerStyle?: CornerStyle;
   /** `"none"` (no connector), `"straight"` (direct center-to-center) or `"orthogonal"`
    *  (single-bend, axis-aligned, with a local collision offset — see `teleportConnectorRouting.ts`). */
   teleportConnectorStyle: TeleportConnectorStyle;

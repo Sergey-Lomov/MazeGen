@@ -409,6 +409,8 @@ export type TeleportLineStyle = {
   connectorColor: number;
   connectorWidth: number;
   connectorStyle: TeleportConnectorStyle;
+  /** Corner join for an angled connector, linked to the export mode's shared Corner style by default. */
+  connectorCornerStyle: CornerStyle;
   curveDirection?: TeleportCurveDirection;
   /** Quadratic-curve control-point offset as a fraction of the endpoint span (0..1). */
   curveStrength?: number;

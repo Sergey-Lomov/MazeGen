@@ -424,3 +424,16 @@ describe("validateTeleportSettingsFields merge mode", () => {
     expect(validateTeleportSettingsFields({ teleportMergeMode: false }, "path", DEFAULT_TELEPORT_SETTINGS).teleportMergeMode).toBe(false);
   });
 });
+
+describe("validateTeleportSettingsFields angled connector corners", () => {
+  it("uses the saved shared corner style when loading a project from before the connector field", () => {
+    expect(validateTeleportSettingsFields({ cornerStyle: "miter" }, "path", DEFAULT_TELEPORT_SETTINGS).teleportConnectorCornerStyle).toBe("miter");
+  });
+
+  it("adds the new default target to an older custom link graph", () => {
+    const legacyLinks = DEFAULT_VECTOR_BY_WALLS_LINKS.filter((link) => link.target !== "teleportConnectorCornerStyle");
+    const result = validateImageExport({ vectorByWallsLinks: legacyLinks }, "imageExport");
+    expect(result.vectorByWallsSettings.links.find((link) => link.target === "teleportConnectorCornerStyle"))
+      .toMatchObject({ source: "cornerStyle", enabled: true });
+  });
+});

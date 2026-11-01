@@ -15,6 +15,7 @@ import { pickEdgeAtPosition } from "../pixi/edgeHitTesting";
 import { hopPieces, seamHopPieces, type SeamHopContext } from "../pixi/graphSeams";
 import { buildPairedRenderEdges, buildPathRenderEdges } from "../pixi/BaseGraphRenderer";
 import { drawCellBoundaryHighlight } from "../pixi/renderers/wallUtils";
+import { closestPointOnPolyline } from "../pixi/geometry/polylineOps";
 import type { Graphics } from "pixi.js";
 import { getCellCenter, getCellVertices, getFaceEdgeSegment } from "../pixi/tessellationGeometry";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
@@ -568,6 +569,29 @@ describe("seam arrows", () => {
       expect(along(head[1], end, dir)).toBeCloseTo(0, 6);
       expect(along(head[2], end, dir)).toBeCloseTo(0, 6);
       expect(along(head[0], end, dir)).toBeCloseTo(arrow.headLength, 6);
+    }
+  });
+
+  it("uses the curved torus contour as each connector head's base", () => {
+    const curved = fieldOf("curved_quadrilateral", { shape: "rect", cols: 4, rows: 4 });
+    const curvedFolds = [
+      ...range(4).map((y) => ({ a: { cell: [3, y] as [number, number], face_idx: 0 }, b: { cell: [0, y] as [number, number], face_idx: 2 }, twist: false, group: 0 })),
+      ...range(4).map((x) => ({ a: { cell: [x, 3] as [number, number], face_idx: 1 }, b: { cell: [x, 0] as [number, number], face_idx: 3 }, twist: false, group: 1 })),
+    ];
+    const curvedTopology: WireTopology = {
+      fingerprint: "curved_quadrilateral{}",
+      folds: curvedFolds,
+      groups: [{ id: 0, folds: range(4) }, { id: 1, folds: range(4).map((i) => i + 4) }],
+    };
+    warmCartesianCache(curved, curvedTopology);
+    for (const arrow of buildSeamArrows(curved, curvedTopology)) {
+      for (const head of [arrow.headA, arrow.headB]) {
+        // The triangular tip is followed by a sampled arc, not a straight two-point base.
+        expect(head.length).toBeGreaterThan(3);
+        for (const point of head.slice(1)) {
+          expect(Math.min(...arrow.braces.map((brace) => closestPointOnPolyline(brace, point)?.distance ?? Infinity))).toBeLessThan(1e-6);
+        }
+      }
     }
   });
 

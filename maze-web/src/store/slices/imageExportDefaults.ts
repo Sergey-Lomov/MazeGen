@@ -146,6 +146,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   },
   teleportConnectorColor: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorColor,
   teleportConnectorWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorWidth,
+  teleportConnectorCornerStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorCornerStyle,
   teleportConnectorStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorStyle,
   teleportCurveDirection: DEFAULT_MAZE_RENDER_STYLE.teleport.curveDirection,
   teleportCurveStrength: DEFAULT_MAZE_RENDER_STYLE.teleport.curveStrength,

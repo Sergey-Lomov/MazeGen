@@ -2,7 +2,7 @@ import { useColorVisibility } from "../ColorVisibilityContext";
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode } from "../../pixi/renderers/types";
+import type { CornerStyle, MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
@@ -315,6 +315,7 @@ export function TeleportSettingsSection<P extends string>({
     edgeBorderWidth: P | null;
     edgeGapWidth: P | null;
     connectorStyle: P | null;
+    connectorCornerStyle: P | null;
     avoidFieldExit: P | null;
     throughSeams: P | null;
     curveDirection: P | null;
@@ -437,12 +438,24 @@ export function TeleportSettingsSection<P extends string>({
           linkTarget={linkTargets.connectorStyle}
         />
         {settings.teleportConnectorStyle === "orthogonal" && (
-          <LinkedToggleRow
-            label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
-            checked={settings.teleportAvoidFieldExit}
-            onChange={(v) => onChange({ teleportAvoidFieldExit: v })}
-            linkTarget={linkTargets.avoidFieldExit}
-          />
+          <>
+            <LinkedSelectRow
+              label={m["image_export.vector_by_walls.marker_corner_style"]()}
+              value={settings.teleportConnectorCornerStyle ?? settings.teleportMarker.cornerStyle}
+              options={[
+                { value: "miter" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+                { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
+              ]}
+              onChange={(teleportConnectorCornerStyle) => onChange({ teleportConnectorCornerStyle })}
+              linkTarget={linkTargets.connectorCornerStyle}
+            />
+            <LinkedToggleRow
+              label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
+              checked={settings.teleportAvoidFieldExit}
+              onChange={(v) => onChange({ teleportAvoidFieldExit: v })}
+              linkTarget={linkTargets.avoidFieldExit}
+            />
+          </>
         )}
         {hasSeams && (
           <LinkedToggleRow

@@ -491,9 +491,31 @@ describe("VectorByWallsSettingsPanel", () => {
     it("changing the corner style updates the store", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
+      const select = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]())[0];
       fireEvent.change(select, { target: { value: "round" } });
       expect(useMazeStore.getState().vectorByWallsSettings.teleportMarker.cornerStyle).toBe("round");
+    });
+
+    it("shows the angled connector corner style only for angled connectors and overrides its shared-style link", () => {
+      const sharedCornerStyle = useMazeStore.getState().vectorByWallsSettings.cornerStyle;
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const connectorStyle = screen.getByText(m["image_export.vector_by_walls.teleport_connector_style"]())
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorStyle, { target: { value: "orthogonal" } });
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())).toHaveLength(2);
+
+      fireEvent.change(connectorStyle, { target: { value: "straight" } });
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())).toHaveLength(1);
+
+      fireEvent.change(connectorStyle, { target: { value: "orthogonal" } });
+      const connectorCorner = screen.getAllByText(m["image_export.vector_by_walls.marker_corner_style"]())[1]
+        .parentElement!.querySelector("select")!;
+      fireEvent.change(connectorCorner, { target: { value: "round" } });
+      const settings = useMazeStore.getState().vectorByWallsSettings;
+      expect(settings.teleportConnectorCornerStyle).toBe("round");
+      expect(settings.cornerStyle).toBe(sharedCornerStyle);
+      expect(settings.links.find((link) => link.target === "teleportConnectorCornerStyle")?.enabled).toBe(false);
     });
 
     it("changing the marker size updates the store", () => {

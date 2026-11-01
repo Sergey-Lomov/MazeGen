@@ -2816,7 +2816,7 @@
   "image_export.cuts.mode_none": "None",
   "image_export.cuts.mode_auto": "Auto",
   "image_export.cuts.mode_manual": "Manual",
-  "image_export.cuts.position": "Position",
+  "image_export.cuts.position": "Shift",
   "image_export.topology.show_cut_lines": "Show cut lines",
   "image_export.topology.cut_lines_glue_color": "Cut lines in glue colour",
   "image_export.topology.cut_lines_color": "Cut line colour",
