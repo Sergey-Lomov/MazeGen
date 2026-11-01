@@ -183,14 +183,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.vertical_passage_priority.label"] as MessageFn,
     description: m["param.vertical_passage_priority.description"] as MessageFn,
   },
-  sample_mode: {
-    label: m["param.sample_mode.label"] as MessageFn,
-    description: m["param.sample_mode.description"] as MessageFn,
-  },
-  sample_size: {
-    label: m["param.sample_size.label"] as MessageFn,
-    description: m["param.sample_size.description"] as MessageFn,
-  },
   distance: {
     label: m["param.distance.label"] as MessageFn,
     description: m["param.distance.description"] as MessageFn,
@@ -629,8 +621,6 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "vertical_passage_priority.prioritized": m["param.vertical_passage_priority.option.prioritized"] as MessageFn,
   "vertical_passage_priority.neutral": m["param.vertical_passage_priority.option.neutral"] as MessageFn,
   "vertical_passage_priority.protected": m["param.vertical_passage_priority.option.protected"] as MessageFn,
-  "sample_mode.count": m["param.sample_mode.option.count"] as MessageFn,
-  "sample_mode.percent": m["param.sample_mode.option.percent"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start"] as MessageFn,
   "waypoint.finish": m["param.waypoint.option.finish"] as MessageFn,
   "waypoint.any": m["param.waypoint.option.any"] as MessageFn,
@@ -758,8 +748,6 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "vertical_passage_priority.prioritized": m["param.vertical_passage_priority.option.prioritized.explanation"] as MessageFn,
   "vertical_passage_priority.neutral": m["param.vertical_passage_priority.option.neutral.explanation"] as MessageFn,
   "vertical_passage_priority.protected": m["param.vertical_passage_priority.option.protected.explanation"] as MessageFn,
-  "sample_mode.count": m["param.sample_mode.option.count.explanation"] as MessageFn,
-  "sample_mode.percent": m["param.sample_mode.option.percent.explanation"] as MessageFn,
   "src_mode.random": m["param.src_mode.option.random.explanation"] as MessageFn,
   "src_mode.dead_end_priority": m["param.src_mode.option.dead_end_priority.explanation"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start.explanation"] as MessageFn,

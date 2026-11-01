@@ -721,7 +721,7 @@ User-facing strategy `label`s (`maze-web/messages/{en,ru}.json`, `strategy.<id>.
 **nominalized** — an action-as-noun phrase, matching how rules/checks are named — not an
 imperative verb phrase. E.g. "Remove teleport", not "Remove the teleport" or "Removes teleport".
 Cardinality in the label must match what the strategy actually does: a strategy that can act on
-several items in one call (e.g. `InvalidLoopGroupSelectStrategy` sampling multiple cycles) uses a
+several items in one call (e.g. `InvalidLoopGroupSelectStrategy` breaking every flagged cycle) uses a
 plural/generic noun ("Loop selection and break"), not a singular one ("...one loop") that
 overclaims a 1:1 guarantee.
 
@@ -877,23 +877,23 @@ Same candidate filtering (existence + preset-protection), same cut mechanics (`t
 
 ### InvalidLoopGroupSelectStrategy
 
-Handles `INVALID_LOOP_GROUP` — see GitHub issue #183. `MaxLoopDensityCheck`/`MaxLoopsCountCheck` (`quality_control.md`) both flag their *entire* field-wide cycle set `invalid` at once (no per-check subset selection); this strategy is where the actual "which loops to break, and how many this pass" decision lives. It picks a *sample* of the flagged cycles (sized by `sample_mode`/`sample_size`, ordered by `selection_mode`) and resolves them one at a time by delegating to a nested `RepairStrategy<T, InvalidLoopIssue>` (typically `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`) filling the `cut_target` nested slot (`kind: INVALID_LOOP`, `min: 1`, `max: Some(1)`).
+Handles `INVALID_LOOP_GROUP` — see GitHub issues #183 and #852. `MaxLoopDensityCheck`/`MaxLoopsCountCheck` (`quality_control.md`) both flag their *entire* field-wide cycle set `invalid` at once (no per-check subset selection); this strategy decides which of those loops to actually cut. It runs one shared group candidate pass (`group_select_apply`) over the complete live set of flagged cycles and delegates each selected cycle to a nested `RepairStrategy<T, InvalidLoopIssue>` (typically `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`) filling the `cut_target` nested slot (`kind: INVALID_LOOP`, `min: 1`, `max: Some(1)`).
 
 **Parameters:**
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `selection_mode` | Enum | `random` | `random`, `shortest`, `longest` | Which flagged cycles enter the sample first, and the tie-break/pick criterion within it |
-| `sample_mode` | Enum | `count` | `count`, `percent` | Whether `sample_size` below is an absolute cycle count or a percentage of `issue.invalid.len()` |
-| `sample_size` | Float | `1.0` | `[0, 100_000]` | Sample size, interpreted per `sample_mode` |
+| `selection_mode` | Enum | `random` | `random`, `shortest`, `longest` | Global candidate order for the pass |
 
-**Sample sizing**: `count` mode takes `sample_size` cycles literally (rounded up via `ceil`); `percent` mode takes `ceil(sample_size / 100 * issue.invalid.len())`. Either way the result is clamped to `[1, issue.invalid.len()]` — at least 1 (there is always something to do when `issue.invalid` is non-empty, the only case `apply` reaches this far for) and never more than what's actually flagged.
+There is no per-apply batch limit: every flagged cycle is a candidate. (The former `sample_mode`/`sample_size` parameters were removed in #852.)
 
-`issue.invalid`'s indices are first reordered by `selection_mode` — `shortest`/`longest` sort by edge count (ties broken by ascending original index, for determinism), `random` does a seeded Fisher-Yates shuffle through the strategy's `rng` — then the first `sample_size` (after sizing) become the sample; the rest of `issue.invalid`, plus all of `issue.valid`, become `valid`-context for every synthetic issue built this call.
+**Candidate pass**: the issue is mapped to one group whose elements are the distinct flagged cycles (identified by edge list) and whose `to_remove` budget equals their count. `selection_mode` is the pass's `order_candidates` hook: `shortest`/`longest` stable-sort by edge count (ties keep the pass's deterministic baseline order), `random` shuffles through the strategy's `rng`.
 
-**Queue processing**: the sample is a `VecDeque`. Each iteration pops the front cycle as the nested strategy's target and synthesizes an `InvalidLoopIssue` where every *other* still-pending sample cycle is `invalid` context (so the nested strategy's own overlap-scoring, if any, sees the rest of the batch) and every non-sampled cycle is `valid` context — then delegates via the nested strategy's `apply`. After each nested call, `removed_edge_ids` (see `repair::command`) extracts every `EdgeId` the call reported removing, and any remaining queued cycle (in the sample queue or the valid-context list) sharing one of those edges is dropped entirely — it's already broken by the same cut, so it is neither re-offered as a future target nor kept around as context, distinct from a cycle that simply wasn't sampled this round. `removed_edge_ids` only recognizes `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` (not `RemoveEdgeBetween`, which addresses by node pair, not `EdgeId`) — this is treated as a heuristic, not a guarantee; a cycle missed by this dedup just gets re-offered to the nested strategy later and discovered already-broken there (e.g. via `candidate_edges`'s own already-removed filtering), never causing incorrect behavior.
+**Nested issue**: for each selected cycle, an `InvalidLoopIssue` is built whose `all` holds the selected cycle first, then every other still-live flagged cycle, then the original `issue.valid` cycles; `invalid` is `[0]` (the selected cycle is the only target, so the nested strategy cuts exactly one cycle per call and its overlap scoring sees the rest as context). `issue.valid` is never pruned during the pass.
 
-The loop ends when the sample queue empties. Returns `Fixed` (with every nested call's commands concatenated, in order — "parent, then nested" per this section's own command-concatenation rule) if **at least one** nested call in the batch succeeded, even if a later cycle in the same batch failed; returns `Failed` (no commands) only if **every** nested call in the batch failed. A mix of successes and failures within one sample is not itself surfaced beyond "at least one worked."
+**Invalidation**: after a successful nested repair, every still-live candidate containing a removed `EdgeId` is invalidated (retires budget, never offered again) — this covers cycles resolved incidentally by the same cut, with no duplicate nested repair. The removed set is `removed_edge_ids` (primary ids of `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse`/`RemoveVerticalPassageWithReverse`) plus, for each `*WithReverse` command, the opposite-direction leg resolved against the pre-mutation maze (`edge_between(to, from)`, `teleport_reverse`, `vertical_passage_reverse`; `cycle_broken_by`), so a cycle traversing the same corridor in the opposite direction is invalidated too. `RemoveEdgeBetween` (addressed by node pair) is not recognized; a cycle missed that way is simply offered to the nested strategy later and discovered already broken there. A failed candidate is dropped from the pass and never retried within the same apply.
+
+**Result**: `Fixed` (with every successful nested call's commands, in order) only if at least one nested repair succeeded; `Failed` (no commands) if every nested call failed or no `cut_target` nested strategy is configured. An empty `invalid` list returns `Fixed` with no commands, even without a nested strategy.
 
 Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
 
@@ -1638,7 +1638,7 @@ A group is resolved once its `to_remove` reaches zero. If the candidate pass run
 
 Returns `Fixed` if at least one nested call across the whole call succeeded, `Failed` if every nested call failed *or there was no nested call to make at all* (e.g. every group in the issue is wholly-protected). A wholly-protected group's own auto-resolve (above) never counts as "worked" on its own.
 
-**Not used by `InvalidLoopGroupSelectStrategy`** — see that strategy's own section below for why loop-group cutting doesn't fit this per-candidate-per-nested-call contract (GitHub issue #210 explored and reverted the migration).
+`InvalidLoopGroupSelectStrategy` (GitHub issue #852) also runs on `group_select_apply`; see its section below.
 
 **`multi_target_group_select_apply` (GitHub issue #376)** — the multi-slot generalization. Every mechanic above (candidate pass, per-group `to_remove` budget, reverse index keyed by `K::Element` identity, `order_candidates`, resolution loop, `Fixed` iff some nested call succeeded) is unchanged; both `group_select_apply` and `multi_target_group_select_apply` are now thin wrappers over one shared `run_group_candidate_pass` core. Two differences:
 

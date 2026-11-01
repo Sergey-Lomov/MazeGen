@@ -156,6 +156,7 @@ pub use issue_kinds::{
     InvalidDeadEndIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
     InvalidElevatorStopGroupIssue, InvalidElevatorStopIssue, InvalidGroupIssue,
     InvalidGroupIssueKind, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, InvalidLoopIssue,
+    LoopGroupKind,
     InvalidLoopRequirement, InvalidOneWayGroupIssue, InvalidOneWayIssue,
     InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeConnectionIssue,
     InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue, InvalidSplitRouteIssue,
