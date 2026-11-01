@@ -4,7 +4,7 @@ use super::field_ops::{
 use super::rect_topology::{
     CYLINDER_PRESET, TORUS_PRESET, rect_folds, rect_param_max_of, validate_rect_topology,
 };
-use super::square_box::{BOX_PRESET, box_cells, box_folds, box_param_max};
+use super::square_box::{BOX_PRESET, box_cells, box_creases, box_folds, box_param_max};
 use super::{
     CellShape, FieldOpError, NewFold, Point, PresetDescriptor, PresetParams, Segment,
     ShapeDescriptor, Tessellation, validate_preset,
@@ -163,6 +163,18 @@ impl Tessellation for SquareTessellation {
             "rect" | "cylinder" | "torus" => {
                 rect_folds(self, &self.build_preset(key, params)?, key, params)
             }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn build_preset_creases(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<[Point; 2]>, FieldOpError> {
+        validate_preset(&SQUARE_PRESETS, key, params)?;
+        match key {
+            "box" => box_creases(params),
             _ => Ok(Vec::new()),
         }
     }

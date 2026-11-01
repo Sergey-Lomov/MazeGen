@@ -333,3 +333,73 @@ fn polyhedra_reject_oversized_and_unknown_parameters() {
         assert_eq!(tessellation.preset_param_max(key, "radius"), None);
     }
 }
+
+/// The net joins `faces - 1` edges; each gets one crease as long as the polyhedron edge, in the net
+/// mode. By faces (the compact layout included) every face works on its own: no creases.
+#[test]
+fn creases_follow_the_edges_the_net_joins() {
+    let edge = 2.0 / 3f64.sqrt().sqrt();
+    for (key, faces, _, nets) in POLYHEDRA {
+        for side in SIDES {
+            for (net, mode) in variants(nets) {
+                let creases = TriTessellation
+                    .build_preset_creases(key, &params(side, net, mode, 100))
+                    .unwrap();
+                if mode == 1 || net == nets {
+                    assert!(creases.is_empty(), "{key} side {side} net {net} mode {mode}");
+                    continue;
+                }
+                assert_eq!(creases.len(), faces - 1, "{key} side {side} net {net}");
+                for [a, b] in creases {
+                    let length = ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt();
+                    assert!((length - edge * f64::from(side)).abs() < 1e-9, "{key} side {side} net {net}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn shapes_without_folds_have_no_creases_on_the_triangle_grid() {
+    let creases = TriTessellation
+        .build_preset_creases("cylinder", &[("cols", 4), ("rows", 4), ("axis", 0)])
+        .unwrap();
+    assert!(creases.is_empty());
+}
+
+/// In the net mode a crease is the edge two faces share: exactly `2 * side` cell sides (`side` of
+/// each face) lie along it.
+#[test]
+fn creases_lie_on_the_sides_of_the_cells_of_both_faces() {
+    use crate::space::Segment;
+    let tessellation = TriTessellation;
+    for (key, _, _, _) in POLYHEDRA {
+        for side in [1u32, 3] {
+            let p = params(side, 0, 0, 100);
+            let cells = tessellation.build_preset(key, &p).unwrap();
+            let on_line = |[a, b]: [crate::space::Point; 2], from: crate::space::Point, to: crate::space::Point| {
+                let cross = |q: crate::space::Point| (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
+                let within = |q: crate::space::Point| {
+                    let t = ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y))
+                        / ((b.x - a.x).powi(2) + (b.y - a.y).powi(2));
+                    (-1e-9..=1.0 + 1e-9).contains(&t)
+                };
+                [from, to].iter().all(|&q| cross(q).abs() < 1e-9 && within(q))
+            };
+            for crease in tessellation.build_preset_creases(key, &p).unwrap() {
+                let along = cells
+                    .iter()
+                    .flat_map(|&cell| {
+                        tessellation
+                            .faces_of(cell)
+                            .iter()
+                            .flat_map(move |&face| tessellation.face_segments(cell, face))
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|segment| matches!(segment, Segment::Line { from, to } if on_line(crease, *from, *to)))
+                    .count();
+                assert_eq!(along, 2 * side as usize, "{key} side {side}");
+            }
+        }
+    }
+}

@@ -209,6 +209,19 @@ pub trait Tessellation: Send + Sync + 'static {
         Ok(Vec::new())
     }
 
+    /// The crease lines preset `key` defines (GitHub issue #899): world-unit segments along the
+    /// net edges that join two faces of a folded shape. Empty for a preset without folds, in
+    /// the by-faces layouts (the compact one included) and for cylinders and tori. Same errors as
+    /// `build_preset`.
+    fn build_preset_creases(
+        &self,
+        key: &str,
+        params: PresetParams<'_>,
+    ) -> Result<Vec<[Point; 2]>, FieldOpError> {
+        validate_preset(self.presets(), key, params)?;
+        Ok(Vec::new())
+    }
+
     /// Every cell type of this instance, each listed once with a unique key. Never empty. Defaults
     /// to the single type `cell`. Types classify cells for consumers (QC, generator) and are
     /// independent of `shape_descriptors`: a type may depend on the cell's position in the pattern,

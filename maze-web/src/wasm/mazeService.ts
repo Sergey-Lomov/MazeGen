@@ -623,6 +623,16 @@ export function getFieldPresetTopology(
   return (getWasm().field_preset_topology({ tessellation, preset, params }) as WireTopology | undefined) ?? null;
 }
 
+/// The crease lines a preset shape defines (`field_preset_creases`, GitHub issue #899): world-unit
+/// segments `[[x, y], [x, y]]`, empty for a preset without any. Throws the wire `FieldOpError`.
+export function getFieldPresetCreases(
+  tessellation: WasmTessellationConfig,
+  preset: string,
+  params: Record<string, number>,
+): [[number, number], [number, number]][] {
+  return getWasm().field_preset_creases({ tessellation, preset, params }) as [[number, number], [number, number]][];
+}
+
 /// `[[min, max], [min, max]]` of a preset shape's cell boundaries along two world directions.
 export function getFieldPresetExtents(
   tessellation: WasmTessellationConfig,

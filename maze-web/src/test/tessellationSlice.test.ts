@@ -9,6 +9,7 @@ import { fakeTessellationShapes } from "./tessellationShapesFake";
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
   getFieldPresetTopology: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPresetTopology,
+  getFieldPresetCreases: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPresetCreases,
   getFieldCapabilities: (await importActual<typeof import("../wasm/mazeService")>()).getFieldCapabilities,
   translateFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).translateFieldCells,
   reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,

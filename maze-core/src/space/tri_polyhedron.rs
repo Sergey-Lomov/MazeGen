@@ -13,8 +13,8 @@
 //! vertices of `triangle::tri_vertices`, whose `(i, j)` map to `(p, q) = ((i - 2j - 3) / 4, j)`.
 
 use super::field_ops::{PresetDescriptor, PresetParam, param};
-use super::triangle::TriPoint;
-use super::{FieldOpError, FoldEnd, NewFold, PresetParams, validate_preset};
+use super::triangle::{TriPoint, tri_units};
+use super::{FieldOpError, FoldEnd, NewFold, Point, PresetParams, validate_preset};
 use std::collections::{HashMap, HashSet};
 
 /// The polyhedron edge length, in cells.
@@ -556,4 +556,41 @@ pub(super) fn polyhedron_folds(
         }
     }
     Ok(groups)
+}
+
+/// The crease lines of the polyhedron (GitHub issue #899): one segment on the shared edge of each
+/// pair of faces the net joins. None in the by-faces layouts, where every face works on its own,
+/// the compact one included.
+pub(super) fn polyhedron_creases(
+    key: &str,
+    params: PresetParams<'_>,
+) -> Result<Vec<[Point; 2]>, FieldOpError> {
+    let options = options(key, params)?;
+    if options.layout.by_faces {
+        return Ok(Vec::new());
+    }
+    let polyhedron = options.polyhedron;
+    let by_face: HashMap<usize, &Placed> = options.layout.placed.iter().map(|p| (p.face, p)).collect();
+    let (x_unit, y_unit) = tri_units();
+    let world = |vertex: Axial| {
+        let (i, j) = to_ij(vertex);
+        Point::new(
+            x_unit * (i - 2 * i64::from(options.offset.0)) as f64,
+            y_unit * (j + i64::from(options.offset.1)) as f64,
+        )
+    };
+    let mut creases = Vec::new();
+    for face in 0..polyhedron.faces.len() {
+        for edge in 0..3 {
+            let (other, other_edge) = polyhedron.neighbour(face, edge);
+            if (face, edge) > (other, other_edge) || !options.layout.joined.contains(&(face, edge)) {
+                continue;
+            }
+            let placed = by_face[&face];
+            let plane_edge = (edge + 3 - placed.rot) % 3;
+            let (from, to) = (placed.vertices[plane_edge], placed.vertices[(plane_edge + 1) % 3]);
+            creases.push([world(from), world(to)]);
+        }
+    }
+    Ok(creases)
 }

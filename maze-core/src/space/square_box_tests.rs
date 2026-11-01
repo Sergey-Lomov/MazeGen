@@ -414,3 +414,70 @@ fn compact_layout_follows_the_requested_aspect() {
     assert!(span(&landscape, |c| c.x) > span(&landscape, |c| c.y));
     assert!(span(&portrait, |c| c.x) < span(&portrait, |c| c.y));
 }
+
+fn crease_length([a, b]: [crate::space::Point; 2]) -> f64 {
+    ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+}
+
+/// The net joins five of the box edges; each gets one crease as long as the edge, in the net mode.
+/// By faces (the compact layout included) every face works on its own: no creases.
+#[test]
+fn creases_follow_the_edges_the_net_joins() {
+    for size in BOXES {
+        let (w, h, d) = (f64::from(size.0), f64::from(size.1), f64::from(size.2));
+        for (net, total) in [(0, 3.0 * h + 2.0 * w), (1, 3.0 * h + 2.0 * d)] {
+            let creases = SquareTessellation
+                .build_preset_creases("box", &params(size, net, 0))
+                .unwrap();
+            assert_eq!(creases.len(), 5, "{size:?} net {net}");
+            let length: f64 = creases.iter().copied().map(crease_length).sum();
+            assert!((length - total).abs() < 1e-9, "{size:?} net {net}");
+        }
+        for (net, mode) in [(0, 1), (1, 1), (2, 0), (2, 1)] {
+            let by_faces = SquareTessellation
+                .build_preset_creases("box", &params(size, net, mode))
+                .unwrap();
+            assert!(by_faces.is_empty(), "{size:?} net {net} mode {mode}");
+        }
+    }
+}
+
+/// A crease lies on the shared edge of two touching cells: axis-aligned between cell corners, with
+/// the cells on both sides of it neighbours across that edge.
+#[test]
+fn creases_lie_on_edges_between_neighbouring_cells() {
+    let tessellation = SquareTessellation;
+    let cells: HashSet<SquarePoint> = cells_of((3, 2, 4), 0, 0).into_iter().collect();
+    let creases = tessellation
+        .build_preset_creases("box", &params((3, 2, 4), 0, 0))
+        .unwrap();
+    for [a, b] in creases {
+        assert_eq!(a.x.fract(), 0.0);
+        assert_eq!(a.y.fract(), 0.0);
+        assert!(a.x == b.x || a.y == b.y, "axis-aligned");
+        // The cells on both sides of the first unit of the segment.
+        let (x, y) = (a.x.min(b.x) as i32, a.y.min(b.y) as i32);
+        let sides = if a.x == b.x { [(x - 1, y), (x, y)] } else { [(x, y - 1), (x, y)] };
+        for (cx, cy) in sides {
+            assert!(cells.contains(&SquarePoint { x: cx, y: cy }), "({cx}, {cy}) beside {a:?}-{b:?}");
+        }
+    }
+}
+
+#[test]
+fn shapes_without_folds_have_no_creases() {
+    let tessellation = SquareTessellation;
+    assert!(
+        tessellation
+            .build_preset_creases("rect", &[("cols", 3), ("rows", 2)])
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        tessellation
+            .build_preset_creases("cylinder", &[("cols", 4), ("rows", 3), ("axis", 0)])
+            .unwrap()
+            .is_empty()
+    );
+    assert!(tessellation.build_preset_creases("box", &[]).is_err());
+}
