@@ -107,6 +107,8 @@ export const canvas = {
     seamArrow: hexToNumber(base.topologySeamArrow),
     seamArrowHover: hexToNumber(base.topologySeamArrowHover),
     seamTwistIcon: hexToNumber(base.topologySeamTwistIcon),
+    crease: hexToNumber(base.topologyCrease),
+    creaseHover: hexToNumber(base.topologyCreaseHover),
     // Sides a problem points at, drawn over the run highlight.
     flagged: hexToNumber(base.error),
   },

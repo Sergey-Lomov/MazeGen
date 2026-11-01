@@ -2,6 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { TopologyBandRenderer } from "./renderers/TopologyBandRenderer";
 import { selectTopologyBands } from "./selectors/topologyBands";
+import { CreaseRenderer } from "./renderers/CreaseRenderer";
+import { selectCreaseLines } from "./selectors/creaseLines";
 import { SeamArrowLayer } from "./seamArrowSync";
 import { decodePoint, encodePoint, makeProjection } from "./tessellationProjection";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
@@ -49,6 +51,7 @@ export class FieldEditorOverlay {
   private readonly paperLayout: PaperLayoutRenderer;
   private readonly fieldBoundary: WallRenderer;
   private readonly topologyBands: TopologyBandRenderer;
+  private readonly creases: CreaseRenderer;
   private readonly floor: CellFillRenderer;
   private readonly mirrorCells: CellFillRenderer;
   private readonly mirrorGraphics: Graphics;
@@ -103,6 +106,7 @@ export class FieldEditorOverlay {
     // The glue editor's highlights lie right above the boundary walls they mark.
     this.root.addChild(this.topologyContainer);
     this.topologyBands = new TopologyBandRenderer(this.topologyContainer);
+    this.creases = new CreaseRenderer(this.topologyContainer);
 
     this.root.visible = false;
 
@@ -122,6 +126,9 @@ export class FieldEditorOverlay {
       if (isOpen && (
         state.activeFloorId !== prev.activeFloorId
         || state.floorTopology !== prev.floorTopology
+        || state.floorCreases !== prev.floorCreases
+        || state.creaseDraft !== prev.creaseDraft
+        || state.creaseHover !== prev.creaseHover
         || state.topologyRunA !== prev.topologyRunA
         || state.topologyRunB !== prev.topologyRunB
         || state.topologyFaceHover !== prev.topologyFaceHover
@@ -271,6 +278,7 @@ export class FieldEditorOverlay {
 
   private redrawTopology(state: ReturnType<typeof useMazeStore.getState>): void {
     this.topologyBands.render(selectTopologyBands(state));
+    this.creases.render(selectCreaseLines(state));
   }
 
   private visibleFieldCells(state: ReturnType<typeof useMazeStore.getState>): [number, number][] {
@@ -474,6 +482,7 @@ export class FieldEditorOverlay {
     this.paperLayout.destroy();
     this.fieldBoundary.destroy();
     this.topologyBands.destroy();
+    this.creases.destroy();
     this.floor.destroy();
     this.mirrorCells.destroy();
     this.mirrorGraphics.destroy();

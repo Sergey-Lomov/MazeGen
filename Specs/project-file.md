@@ -65,6 +65,17 @@ structural violations (face glued to itself or in two folds, a fold in no or sev
 group or fold references, malformed ends), each naming the fold or group. Cell validity and face
 ranges need the tessellation and are checked by core when the topology is installed on a floor.
 
+## Creases (`floorCreases`)
+
+GitHub issue #898. Optional section `floorCreases?: Record<floorId, Crease[]>` (`types.ts`): the floor's
+topological crease lines, each `{ id, a: [x, y], b: [x, y] }` in core world units
+(`Specs/topology.md`, "Creases"). A floor without creases has no entry, and a file saved before this
+section loads with none, so `CURRENT_VERSION` is unchanged. Not tied to the tessellation fingerprint:
+a crease refers to no cell. On load `validateCreases` rejects a non-array entry, a non-integer or
+duplicate `id`, a non-numeric end and equal ends, naming the path; entries of unknown floors are dropped.
+The store keeps it as `floorCreases` and clears it with the topology when the tessellation kind or
+params change.
+
 ## Visual preset (style file)
 
 GitHub issue #750. A standalone file with only the visual configuration, so a tuned style can be

@@ -1,5 +1,6 @@
 import type { FieldShape, PresetFieldShape, TessellationKind } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern, WireTopology } from "../../wasm/types";
+import type { Crease } from "../creases";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
@@ -198,6 +199,9 @@ export interface ProjectFile {
    * Optional on disk: absent in files saved before this issue, meaning no topology anywhere. Each
    * entry's `fingerprint` must equal the file's tessellation fingerprint or the file is rejected. */
   floorTopology?: Record<string, WireTopology>;
+  /** One entry per floor id that has crease lines (GitHub issue #898): free segments in world units. Optional on
+   * disk: absent in files saved before this issue, meaning no creases anywhere. */
+  floorCreases?: Record<string, Crease[]>;
   generation: {
     seed: number;
     randomSeed: boolean;

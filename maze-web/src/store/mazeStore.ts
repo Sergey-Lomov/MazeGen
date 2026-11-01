@@ -131,6 +131,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       triOrientation,
       floorFields,
       floorTopology: file.floorTopology ?? {},
+      floorCreases: file.floorCreases ?? {},
       fieldClipboard: null,
       ...initialTopologyState,
       activeFieldConfig: resolveFieldConfig(cfg),

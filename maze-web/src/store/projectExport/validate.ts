@@ -16,6 +16,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { TessellationKind } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig, WireTopology } from "../../wasm/types";
 import { tessellationFingerprint, validateWireTopology } from "../topologyWire";
+import { validateCreases, type Crease } from "../creases";
 import type { FeatureId } from "../mazeStore";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertBoolRecord,
@@ -267,11 +268,22 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     if (raw != null) floorTopology[floor.id] = validateWireTopology(raw, `floorTopology.${floor.id}`, fingerprint);
   }
 
+  // floorCreases (GitHub issue #898) — optional; entries for unknown floors are dropped.
+  const floorCreasesObj = migrated.floorCreases != null ? assertObject(migrated.floorCreases, "floorCreases") : {};
+  const floorCreases: Record<string, Crease[]> = {};
+  for (const floor of floors.floors) {
+    const raw = floorCreasesObj[floor.id];
+    if (raw == null) continue;
+    const creases = validateCreases(raw, `floorCreases.${floor.id}`);
+    if (creases.length > 0) floorCreases[floor.id] = creases;
+  }
+
   return {
     version: CURRENT_VERSION,
     tessellation: { kind, params, hexOrientation, triOrientation },
     floorFields,
     floorTopology,
+    ...(Object.keys(floorCreases).length > 0 ? { floorCreases } : {}),
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
     quality,
     presets: {

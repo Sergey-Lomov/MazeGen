@@ -55,6 +55,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     },
     floorFields,
     floorTopology: state.floorTopology,
+    ...(Object.keys(state.floorCreases).length > 0 ? { floorCreases: state.floorCreases } : {}),
     generation: {
       seed: state.seed,
       randomSeed: state.randomSeed,

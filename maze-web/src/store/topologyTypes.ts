@@ -2,6 +2,7 @@ import type { WireFoldEnd } from "../wasm/types";
 import type { TopologyOp } from "../wasm/mazeService";
 import type { TopologyRunSelection } from "./topologyInfo";
 import type { TopologyProblem } from "./topologyProblem";
+import type { CreaseDraft, TopologyMode } from "./creases";
 
 /** Which of the two runs of a new glue the next canvas drag draws (GitHub issue #839). */
 export type TopologyPickTarget = "a" | "b";
@@ -49,6 +50,12 @@ export interface TopologyState {
   topologySideHover: { a: readonly WireFoldEnd[]; b: readonly WireFoldEnd[] } | null;
   /** Sides a hovered problem bubble points at; drawn red over the run highlight. */
   topologyFlagged: readonly WireFoldEnd[];
+  /** Whether the topology panel lists glues or creases (GitHub issue #898). */
+  topologyMode: TopologyMode;
+  /** The crease being drawn by canvas clicks; `null` when the canvas is not picking crease ends. */
+  creaseDraft: CreaseDraft | null;
+  /** The crease hovered in the panel list; highlighted on the canvas. */
+  creaseHover: number | null;
 }
 
 export interface TopologyActions {
@@ -74,4 +81,15 @@ export interface TopologyActions {
   removeTopologyGroup: (id: number) => void;
   /** Removes every glue of the active floor. */
   clearTopologyGroups: () => void;
+  /** Switches the panel between glues and creases; leaving a mode drops its unfinished picks. */
+  setTopologyMode: (mode: TopologyMode) => void;
+  setCreaseHover: (id: number | null) => void;
+  /** Starts drawing a new crease, or redrawing the crease `replace`. */
+  startCreaseDraft: (replace?: number) => void;
+  cancelCreaseDraft: () => void;
+  setCreaseCursor: (point: readonly [number, number] | null) => void;
+  /** A canvas click at `point`: the first sets end `a`, the second ends the draft and stores the crease. */
+  placeCreasePoint: (point: readonly [number, number]) => void;
+  removeCrease: (id: number) => void;
+  clearCreases: () => void;
 }

@@ -9,6 +9,7 @@ import { translateFieldCells } from "../../wasm/mazeService";
 import { computeMirrorPreview } from "../../pixi/mirror";
 import { tessellationFingerprint } from "../topologyWire";
 import { withPresetTopology } from "../presetTopology";
+import { creasesCopiedTo } from "../creases";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
@@ -367,6 +368,9 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         : activeFloorField(state).isEditingField && !source.isEditingField
           ? withoutFloorTopology(state.floorTopology, [state.activeFloorId])
           : state.floorTopology,
+      ...(includeTopology
+        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, [state.activeFloorId]), creaseDraft: null, creaseHover: null }
+        : {}),
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
@@ -381,6 +385,13 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         state.activeFloorId,
         state.floors.map((floor) => floor.id).filter((id) => id !== state.activeFloorId),
       ),
+      floorCreases: creasesCopiedTo(
+        state.floorCreases,
+        state.activeFloorId,
+        state.floors.map((floor) => floor.id).filter((id) => id !== state.activeFloorId),
+      ),
+      creaseDraft: null,
+      creaseHover: null,
       floorFields: Object.fromEntries(state.floors.map((floor) => [
         floor.id,
         floor.id === state.activeFloorId
