@@ -189,14 +189,14 @@ describe("applyMarkerLayout", () => {
     expect(shiftMarkerIndexLabels([label], r.shifts)[0].scale).toBeUndefined();
   });
 
-  it("shrinks markers on a tight split host instead of piling them up", () => {
+  it("keeps marker size on a tight split host and squeezes only the centers", () => {
     const markers = [mk([0, 0], 8), mk([0, 0], 8), mk([0, 0], 8)];
     const r = applyMarkerLayout(
       { markers, teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, splitHostKeys: new Set([hostKey([0, 0])]) },
       { mode: "radial", spacing: 2 },
     );
-    expect(r.markers[0].radius).toBeLessThan(8);
-    expect(dist(r.markers[0].pos, r.markers[1].pos)).toBeGreaterThanOrEqual(r.markers[0].radius + r.markers[1].radius - 1e-9);
+    expect(r.markers[0].radius).toBe(8);
+    for (const m of r.markers) expect(Math.hypot(...m.pos) + m.radius).toBeLessThanOrEqual(HOST_EXTENT_SPLIT_NODE + 1e-9);
   });
 
   it("bounds a split-tile node's group to the smaller split extent", () => {
@@ -205,7 +205,7 @@ describe("applyMarkerLayout", () => {
       { markers, teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4, splitHostKeys: new Set([hostKey([0, 0])]) },
       { mode: "radial", spacing: 10 },
     );
-    for (const m of r.markers) expect(Math.hypot(...m.pos) + 3).toBeLessThanOrEqual(HOST_EXTENT_SPLIT_NODE + 1e-9);
+    for (const m of r.markers) expect(Math.hypot(...m.pos) + m.radius).toBeLessThanOrEqual(HOST_EXTENT_SPLIT_NODE + 1e-9);
   });
 });
 
@@ -226,11 +226,27 @@ describe("applyMarkerLayout scale", () => {
     expect(r.verticalMarkers[0].scale).toBe(0.5);
   });
 
-  it("packs shrunken markers closer together", () => {
+  it("packs markers closer together at a smaller scale", () => {
     const two = { ...input(), teleportEdges: [], verticalMarkers: [] };
     const full = applyMarkerLayout(two, opts);
     const half = applyMarkerLayout(two, { ...opts, scale: 0.5 });
     expect(dist(half.markers[0].pos, half.markers[1].pos)).toBeLessThan(dist(full.markers[0].pos, full.markers[1].pos));
+  });
+
+  it("keeps centers fixed below the minimum layout scale and spreads them above it", () => {
+    const two = { ...input(), teleportEdges: [], verticalMarkers: [] };
+    const at = (scale: number) => applyMarkerLayout(two, { ...opts, scale }).markers.map((m) => m.pos);
+    expect(at(0.2)).toEqual(at(0.5));
+    expect(dist(at(0.8)[0], at(0.8)[1])).toBeGreaterThan(dist(at(0.5)[0], at(0.5)[1]));
+  });
+
+  it("keeps a tight group inside its host at a scale above the minimum layout scale", () => {
+    const radius = HOST_EXTENT_CELL * 0.9;
+    const r = applyMarkerLayout(
+      { markers: [mk([0, 0], radius), mk([0, 0], radius), mk([0, 0], radius)], teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 },
+      { mode: "radial", spacing: 2, scale: 0.8 },
+    );
+    for (const m of r.markers) expect(Math.hypot(...m.pos) + m.radius).toBeLessThanOrEqual(HOST_EXTENT_CELL + 1e-9);
   });
 
   it("leaves a lone marker unscaled", () => {
@@ -238,14 +254,13 @@ describe("applyMarkerLayout scale", () => {
     expect(r.markers[0].radius).toBe(8);
   });
 
-  it("keeps an explicitly full-scale marker at its full size when the group needs fitting", () => {
+  it("sizes markers by the scale alone, even when the group needs fitting (#869)", () => {
     const radius = HOST_EXTENT_CELL * 0.9;
-    const r = applyMarkerLayout(
-      { markers: [mk([0, 0], radius), mk([0, 0], radius)], teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 },
-      { mode: "row", spacing: 2, scale: 1 },
-    );
-    expect(r.markers.map((m) => m.radius)).toEqual([radius, radius]);
-    expect(r.markers[0].pos).not.toEqual(r.markers[1].pos);
+    const input = { markers: [mk([0, 0], radius), mk([0, 0], radius)], teleportEdges: [], verticalMarkers: [], teleportRadius: 4, verticalRadius: () => 4 };
+    for (const scale of [0.3, 0.65, 0.7, 0.75, 0.8, 0.95, 1]) {
+      const r = applyMarkerLayout(input, { mode: "row", spacing: 2, scale });
+      expect(r.markers[0].radius).toBeCloseTo(radius * scale, 9);
+    }
   });
 });
 

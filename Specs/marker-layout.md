@@ -25,13 +25,13 @@ shown in each panel's "Shared style" section, sub-section "Marker overlap" (`Mar
   markers; lone markers are untouched. All components scale together: fill, border, gap, caption text
   (baked into `MarkerData`), vertical-marker arrows/badges/hit area (`VerticalConnectionMarker.scale`, drawn
   inside a holder `Container` scaled about the marker position), teleport point border/gap
-  (`TeleportEdge.fromScale`/`toScale`). Scaled radii feed the layout slots, the corridor widen patches and the
+  (`TeleportEdge.fromScale`/`toScale`). Scaled radii feed the corridor widen patches and the
   `teleport_waypoint_overlap` warning. Marker index plates shrink with their marker too (`MarkerIndexLabel.scale`: plate size, offset, border, gap, corner radius and text).
 The gap between neighboring markers is fixed (`MARKER_LAYOUT_SPACING` = 2 px) — not a setting.
 
 ## Arrangements (`computeLayoutOffsets`)
 
-Pitch = `2 * maxFootprintRadius + MARKER_LAYOUT_SPACING`. `auto`: 2 → row, 3–4 → radial, 5+ → grid.
+Pitch = `2 * maxFootprintRadius + MARKER_LAYOUT_SPACING`, with radii taken at `max(markerScale, MIN_LAYOUT_SCALE)` (0.5): below 0.5 the centers stay where they are at 0.5 and only the markers shrink; above it they spread out. `auto`: 2 → row, 3–4 → radial, 5+ → grid.
 
 - **row** — horizontal, centered.
 - **grid** — `ceil(sqrt(n))` columns, rows centered (a short last row is centered on its own).
@@ -58,11 +58,9 @@ the group.
 ## Fitting a host
 
 A host bounds its group: `HOST_EXTENT_CELL` = 0.5 · tile, `HOST_EXTENT_SPLIT_NODE` = 0.35 · tile (measured from the
-host center to the outer edge of the farthest marker). A group that does not fit first shrinks its markers further
-(×0.9 steps, down to 0.3 of the requested scale), and only then are the centers squeezed together.
-
-An explicitly configured `markerScale` of `1` is an exception: it preserves the markers' full size and squeezes only
-their centers, so scale `1` matches the unscaled representation.
+host center to the outer edge of the farthest marker, with radii taken at `max(markerScale, MIN_LAYOUT_SCALE)`). A group that does not fit never shrinks its markers further:
+only the centers are squeezed together (markers may overlap), so the marker size depends on `markerScale` alone and is
+monotonic in it (GitHub issue #869).
 
 ## Editor canvases
 
