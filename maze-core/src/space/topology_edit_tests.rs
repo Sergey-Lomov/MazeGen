@@ -41,7 +41,11 @@ fn horizontal_sides(
 ) -> (Vec<FoldEnd<SquarePoint>>, Vec<FoldEnd<SquarePoint>>) {
     let faces = &boundary_contours(field).unwrap()[0].faces;
     let side = |idx: usize, dir: i32| {
-        let mut run: Vec<_> = faces.iter().copied().filter(|f| f.face_idx == idx).collect();
+        let mut run: Vec<_> = faces
+            .iter()
+            .copied()
+            .filter(|f| f.face_idx == idx)
+            .collect();
         run.sort_by_key(|f| dir * f.cell.y);
         run
     };
@@ -232,9 +236,13 @@ fn a_group_can_be_removed_while_other_groups_are_inactive() {
         vec![ghost_fold(0, 0), ghost_fold(1, 1)],
         vec![group(0), group(1)],
     );
-    topology.remove_group(&field, &fp(), FoldGroupId(0)).unwrap();
+    topology
+        .remove_group(&field, &fp(), FoldGroupId(0))
+        .unwrap();
     assert_eq!(topology.groups().len(), 1);
-    topology.remove_group(&field, &fp(), FoldGroupId(1)).unwrap();
+    topology
+        .remove_group(&field, &fp(), FoldGroupId(1))
+        .unwrap();
     assert!(topology.is_empty());
 }
 
@@ -242,12 +250,10 @@ fn a_group_can_be_removed_while_other_groups_are_inactive() {
 fn glue_pairs_untwisted_reversed_and_twisted_in_order() {
     let a = [end(0, 0, 2), end(0, 1, 2)];
     let b = [end(3, 0, 0), end(3, 1, 0)];
-    let straight =
-        Topology::<SquareTessellation>::glue_folds(&a, &b, false).unwrap();
+    let straight = Topology::<SquareTessellation>::glue_folds(&a, &b, false).unwrap();
     assert_eq!(straight[0].b, b[1]);
     assert_eq!(straight[1].b, b[0]);
-    let twisted =
-        Topology::<SquareTessellation>::glue_folds(&a, &b, true).unwrap();
+    let twisted = Topology::<SquareTessellation>::glue_folds(&a, &b, true).unwrap();
     assert_eq!(twisted[0].b, b[0]);
     assert!(twisted.iter().all(|f| f.twist));
 }

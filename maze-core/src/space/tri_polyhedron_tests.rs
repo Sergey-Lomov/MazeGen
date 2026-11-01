@@ -25,7 +25,12 @@ fn variants(nets: u32) -> Vec<(u32, u32)> {
 }
 
 fn params(side: u32, net: u32, mode: u32, aspect: u32) -> Vec<(&'static str, u32)> {
-    vec![("side", side), ("net", net), ("mode", mode), ("aspect", aspect)]
+    vec![
+        ("side", side),
+        ("net", net),
+        ("mode", mode),
+        ("aspect", aspect),
+    ]
 }
 
 fn cells_of(key: &str, side: u32, net: u32, mode: u32) -> Vec<TriPoint> {
@@ -88,7 +93,10 @@ fn polyhedra_have_the_cells_of_their_faces_in_every_variant() {
                     faces * (side * side) as usize,
                     "{key} side {side} net {net} mode {mode}"
                 );
-                assert!(cells.windows(2).all(|w| w[0] < w[1]), "{key}: sorted, distinct");
+                assert!(
+                    cells.windows(2).all(|w| w[0] < w[1]),
+                    "{key}: sorted, distinct"
+                );
             }
         }
     }
@@ -131,7 +139,11 @@ fn a_net_glues_the_edges_it_does_not_join_and_separate_faces_glue_all() {
                     .unwrap();
                 let by_faces = mode == 1 || net == nets;
                 let expected = if by_faces { edges } else { edges - (faces - 1) };
-                assert_eq!(groups.len(), expected, "{key} side {side} net {net} mode {mode}");
+                assert_eq!(
+                    groups.len(),
+                    expected,
+                    "{key} side {side} net {net} mode {mode}"
+                );
                 assert!(groups.iter().all(|g| g.len() == side as usize));
                 assert!(groups.iter().flatten().all(|fold| !fold.twist));
             }
@@ -170,7 +182,9 @@ fn every_cell_has_three_reciprocal_neighbours() {
                 for &cell in &cells_of(key, side, net, mode) {
                     for &face in TriTessellation.faces_of(cell) {
                         let crossing = field.neighbor_via(cell, face).unwrap_or_else(|| {
-                            panic!("{key} side {side} net {net} mode {mode}: {cell:?} {face:?} is open")
+                            panic!(
+                                "{key} side {side} net {net} mode {mode}: {cell:?} {face:?} is open"
+                            )
                         });
                         assert!(field.contains(crossing.cell));
                         let back = field.neighbor_via(crossing.cell, crossing.face).unwrap();
@@ -227,7 +241,11 @@ fn every_layout_of_a_polyhedron_has_the_same_loops() {
             };
             let reference = spectrum(0, 1);
             for (net, mode) in variants(nets) {
-                assert_eq!(spectrum(net, mode), reference, "{key} side {side} net {net} mode {mode}");
+                assert_eq!(
+                    spectrum(net, mode),
+                    reference,
+                    "{key} side {side} net {net} mode {mode}"
+                );
             }
         }
     }
@@ -238,7 +256,11 @@ fn every_layout_of_a_polyhedron_has_the_same_loops() {
 /// (3 for the tetrahedron, 4 for the octahedron, 5 for the icosahedron).
 #[test]
 fn the_shortest_loops_run_around_a_vertex() {
-    for (key, nets, degree) in [("tetrahedron", 2, 3), ("octahedron", 2, 4), ("icosahedron", 1, 5)] {
+    for (key, nets, degree) in [
+        ("tetrahedron", 2, 3),
+        ("octahedron", 2, 4),
+        ("icosahedron", 1, 5),
+    ] {
         let field = field_of(key, 1, nets, 1);
         let shortest = cells_of(key, 1, nets, 1)
             .iter()
@@ -318,13 +340,41 @@ fn shape_presets_define_no_folds() {
 fn polyhedra_reject_oversized_and_unknown_parameters() {
     let tessellation = TriTessellation;
     for (key, _, _, nets) in POLYHEDRA {
-        assert!(tessellation.build_preset(key, &params(0, 0, 0, 100)).is_err());
-        assert!(tessellation.build_preset(key, &params(201, 0, 0, 100)).is_err());
-        assert!(tessellation.build_preset_folds(key, &params(201, 0, 0, 100)).is_err());
-        assert!(tessellation.build_preset(key, &params(200, 0, 0, 100)).is_ok());
-        assert!(tessellation.build_preset(key, &params(2, 0, 2, 100)).is_err());
-        assert!(tessellation.build_preset(key, &params(2, nets + 1, 0, 100)).is_err());
-        assert!(tessellation.build_preset(key, &params(2, nets, 1, 1001)).is_err());
+        assert!(
+            tessellation
+                .build_preset(key, &params(0, 0, 0, 100))
+                .is_err()
+        );
+        assert!(
+            tessellation
+                .build_preset(key, &params(201, 0, 0, 100))
+                .is_err()
+        );
+        assert!(
+            tessellation
+                .build_preset_folds(key, &params(201, 0, 0, 100))
+                .is_err()
+        );
+        assert!(
+            tessellation
+                .build_preset(key, &params(200, 0, 0, 100))
+                .is_ok()
+        );
+        assert!(
+            tessellation
+                .build_preset(key, &params(2, 0, 2, 100))
+                .is_err()
+        );
+        assert!(
+            tessellation
+                .build_preset(key, &params(2, nets + 1, 0, 100))
+                .is_err()
+        );
+        assert!(
+            tessellation
+                .build_preset(key, &params(2, nets, 1, 1001))
+                .is_err()
+        );
         assert!(tessellation.build_preset(key, &[("side", 2)]).is_err());
         assert_eq!(tessellation.preset_param_max(key, "side"), Some(200));
         assert_eq!(tessellation.preset_param_max(key, "mode"), Some(1));
@@ -346,13 +396,19 @@ fn creases_follow_the_edges_the_net_joins() {
                     .build_preset_creases(key, &params(side, net, mode, 100))
                     .unwrap();
                 if mode == 1 || net == nets {
-                    assert!(creases.is_empty(), "{key} side {side} net {net} mode {mode}");
+                    assert!(
+                        creases.is_empty(),
+                        "{key} side {side} net {net} mode {mode}"
+                    );
                     continue;
                 }
                 assert_eq!(creases.len(), faces - 1, "{key} side {side} net {net}");
                 for [a, b] in creases {
                     let length = ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt();
-                    assert!((length - edge * f64::from(side)).abs() < 1e-9, "{key} side {side} net {net}");
+                    assert!(
+                        (length - edge * f64::from(side)).abs() < 1e-9,
+                        "{key} side {side} net {net}"
+                    );
                 }
             }
         }
@@ -377,14 +433,19 @@ fn creases_lie_on_the_sides_of_the_cells_of_both_faces() {
         for side in [1u32, 3] {
             let p = params(side, 0, 0, 100);
             let cells = tessellation.build_preset(key, &p).unwrap();
-            let on_line = |[a, b]: [crate::space::Point; 2], from: crate::space::Point, to: crate::space::Point| {
-                let cross = |q: crate::space::Point| (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
+            let on_line = |[a, b]: [crate::space::Point; 2],
+                           from: crate::space::Point,
+                           to: crate::space::Point| {
+                let cross =
+                    |q: crate::space::Point| (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
                 let within = |q: crate::space::Point| {
                     let t = ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y))
                         / ((b.x - a.x).powi(2) + (b.y - a.y).powi(2));
                     (-1e-9..=1.0 + 1e-9).contains(&t)
                 };
-                [from, to].iter().all(|&q| cross(q).abs() < 1e-9 && within(q))
+                [from, to]
+                    .iter()
+                    .all(|&q| cross(q).abs() < 1e-9 && within(q))
             };
             for crease in tessellation.build_preset_creases(key, &p).unwrap() {
                 let along = cells
