@@ -20,6 +20,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("cornerStyle", "startMarker.cornerStyle"),
   link("cornerStyle", "finishMarker.cornerStyle"),
   link("cornerStyle", "teleportMarker.cornerStyle"),
+  link("cornerStyle", "teleportConnectorCornerStyle"),
   link("cornerStyle", "verticalCornerStyle", false),
   link("cornerStyle", "elevatorBadges.cornerStyle", false),
 
@@ -156,6 +157,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("cornerStyle", "startMarker.cornerStyle"),
   link("cornerStyle", "finishMarker.cornerStyle"),
   link("cornerStyle", "teleportMarker.cornerStyle"),
+  link("cornerStyle", "teleportConnectorCornerStyle"),
   link("cornerStyle", "verticalCornerStyle", false),
   link("cornerStyle", "elevatorBadges.cornerStyle", false),
 

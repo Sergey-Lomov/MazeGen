@@ -96,6 +96,7 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
     if (!ctx.hasTeleports) return false;
     if (p.startsWith(CROSS_FLOOR_TELEPORT_PREFIX) && !ctx.hasCrossFloorTeleports) return false;
     if (p === "teleportThroughSeams") return ctx.hasSeams !== false;
+    if (p === "teleportConnectorCornerStyle") return settings.teleportConnectorStyle === "orthogonal";
     if (p.startsWith("teleportCurve")) return settings.teleportConnectorStyle === "curved";
     return true;
   }

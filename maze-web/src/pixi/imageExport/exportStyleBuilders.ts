@@ -78,6 +78,7 @@ export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorCo
     connectorColor: settings.teleportConnectorColor,
     connectorWidth: settings.teleportConnectorWidth,
     connectorStyle: settings.teleportConnectorStyle,
+    connectorCornerStyle: settings.teleportConnectorCornerStyle ?? settings.teleportMarker.cornerStyle,
     curveDirection: settings.teleportCurveDirection ?? "inward",
     curveStrength: settings.teleportCurveStrength ?? 0.25,
     arrowMode: settings.teleportArrowMode,

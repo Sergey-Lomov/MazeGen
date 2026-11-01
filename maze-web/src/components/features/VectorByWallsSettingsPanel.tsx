@@ -528,6 +528,7 @@ export function VectorByWallsSettingsPanel() {
                 edgeBorderWidth: "teleportMarker.borderWidth",
                 edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
+                connectorCornerStyle: "teleportConnectorCornerStyle",
                 avoidFieldExit: "teleportAvoidFieldExit",
                 throughSeams: "teleportThroughSeams",
                 curveDirection: "teleportCurveDirection",
