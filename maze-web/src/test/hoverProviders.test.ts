@@ -304,6 +304,38 @@ describe("zoom reset controls", () => {
     expect(pngExporter.export).toHaveBeenCalledOnce();
   });
 
+  it("skips the WASM-backed hover lookup while the default viewport pan is active", () => {
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const getHoverInfo = vi.fn(() => ({ x: 2, y: 3 }));
+    const onHoverChanged = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: { addEventListener: vi.fn(), removeEventListener: vi.fn(), getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo }),
+      onHoverChanged,
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointerdown({ globalX: 10, globalY: 10, button: 1 });
+    stageHandlers.pointermove({ globalX: 20, globalY: 20, buttons: 4 });
+
+    expect(getHoverInfo).not.toHaveBeenCalled();
+    expect(onHoverChanged).toHaveBeenLastCalledWith(null);
+    interaction.destroy();
+  });
+
   it("does not highlight a hover cell for the polygon field tool", () => {
     const stageHandlers: Record<string, (event?: any) => void> = {};
     const state = useMazeStore.getState();

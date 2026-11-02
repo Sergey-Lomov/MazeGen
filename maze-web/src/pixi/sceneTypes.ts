@@ -25,6 +25,8 @@ export interface PointerHandler {
   onPointerUp(button?: number): void;
   cancelPointerGesture(): void;
   clearHover?(): void;
+  /** True while this controller owns a viewport pan rather than an editing gesture. */
+  readonly isViewportPanning?: boolean;
 }
 
 /** Shared drag-to-pan math, reused for the default viewport pan and as FieldEditController's pan callback target. */

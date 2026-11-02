@@ -19,6 +19,10 @@ export abstract class BaseController {
     this.onViewportPan = onViewportPan;
   }
 
+  get isViewportPanning(): boolean {
+    return this.isPanning;
+  }
+
   protected toViewport(canvasX: number, canvasY: number): { x: number; y: number } {
     return toViewportCoordinates(canvasX, canvasY, this.getViewport());
   }

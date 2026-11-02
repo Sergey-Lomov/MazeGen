@@ -302,7 +302,7 @@ Fields: `glueTabFill`, `glueTabLine` (the latter hidden without an outline).
 
 The checks look at the glue tabs of the active floor (`selectExportGlueTabs`) and apply only while the tabs show. They are
 computed by `computeGlueTabWarnings` (`glueTabWarnings.ts`), outside the per-mode `compute*Warnings` (which have no tab
-geometry), and appended to the mode's list by the panel (`useExportPanelModel`) and by the hover highlight of both renderers.
+geometry), and, together with the edge mark warnings, appended to the mode's list by the panel (`useExportPanelModel`) through `computeTopologyWarnings` (`topologyWarnings.ts`).
 None carries nodes, edges or cells; the first two carry `polygons` (the offending tabs, display space), the third `bands`.
 
 - `glue_tabs_overlap` — two tabs overlap by more than a negligible depth (convex separating-axis test; touching edges or
@@ -315,6 +315,17 @@ None carries nodes, edges or cells; the first two carry `polygons` (the offendin
   `bands`: the faces of the side the tab would be drawn on (`selectExportGlueTabLayout`'s `missingEnds`, side B for the
   alternated ones), merged into one polyline per touching run by `mergedFacePolylines`, the glue editor's merging; for a
   glue with a cut line, the swallowed line span itself (`missingLines`).
+
+### Edge alignment markers (GitHub issue #902)
+
+Both checks look at the markers of the active floor (`selectExportEdgeMarkers`), with colours resolved through the parameter links for that floor (`edgeMarkerStyleOf`) and apply only while they show (`edgeMarkers.mode` is not `"hidden"`). They are computed by `computeEdgeMarkerWarnings` (`edgeMarkerWarnings.ts`), outside the per-mode `compute*Warnings`, and appended to the mode's list by `useExportPanelModel`. Neither carries nodes or edges; both carry `polygons` (the square around each offending marker, display space).
+
+### Highlight of the topology warnings
+
+The hover highlight of the glue tab and edge mark warnings (`polygons`, `bands`) is not drawn by the mode renderers but by `TopologyWarningHighlight` (`pixi/imageExport/`, mounted by `MazeScene` in the layer above the cut sheet, after the crease overlay): these warnings concern the net itself, so the highlight is drawn in display space and never clipped to the cut region. It follows the cut transfer, though: the shape is drawn once per cut-plan offset whose shifted copy has its centre inside the plan's region (the copies the markers and tabs themselves are drawn in), so a half mark moved onto its twin line is highlighted there, not on the empty spot it came from. Without a cut plan the shape is drawn as is. It redraws from `computeTopologyWarnings` for the active mode when the hovered warning, the floor's geometry or the settings change. The mode renderers keep the maze highlights (nodes, cells, boundaries).
+
+- `edge_marker_colors_similar` — two markers with different keys have the same shape and colours that are too close (`hasLowContrast`); a different shape alone avoids it. The cards of the markers show the same check. The two halves of a glue's marker share a key, so they are never compared. Highlights every indistinguishable marker with a rounded square (half side = marker radius + 4); a half marker gets only the half of it on its face's side of the edge.
+- `edge_marker_low_contrast_background` — a marker's colour is too close to the mode's background colour. Highlights those markers with the same rounded square.
 
 ## Explicitly out of scope
 

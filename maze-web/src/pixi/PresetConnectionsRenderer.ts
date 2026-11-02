@@ -170,7 +170,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
 
-    this.grid           = new GridRenderer(this.gridContainer);
+    this.grid           = new GridRenderer(this.gridContainer, "preset connections");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
     this.backgroundImage = new BackgroundImageHost({

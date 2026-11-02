@@ -52,6 +52,15 @@ pub fn geometry_cells_in_region(request: JsValue) -> Result<JsValue, JsValue> {
     Ok(serde_wasm_bindgen::to_value(&cells).unwrap())
 }
 
+/// Region query and boundary-path serialization in one call, for viewport grid painters.
+#[wasm_bindgen]
+pub fn geometry_region_outlines(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellsInRegionRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|e| JsValue::from_str(&format!("invalid request: {e}")))?;
+    let outlines = runner_geometry::region_outlines(&request).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&outlines).unwrap())
+}
+
 /// Wire shape for the per-point tessellation queries (`tessellation_shapes`,
 /// `tessellation_cell_types`): the tessellation to build and the points to query. Every point must
 /// be a cell of it, otherwise the query returns an error naming the point.

@@ -110,7 +110,7 @@ export class AnalyticsRenderer {
     container.addChild(this.seamArrowContainer);
     container.addChild(this.issueHighlightContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "analytics");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.mazeOverlay = new MazeOverlayRenderer({
       floor: this.floorContainer,

@@ -85,7 +85,7 @@ export class FieldEditorOverlay {
     this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.hoverContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "field editor");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,

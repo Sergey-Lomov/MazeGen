@@ -15,6 +15,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   activeFloorId: initialFloor.id,
   floorTopology: {},
   floorCreases: {},
+  edgeMarkerOrder: {},
   // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
   // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
   floorFields: { [initialFloor.id]: defaultFloorFieldConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },

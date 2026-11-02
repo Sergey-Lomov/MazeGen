@@ -28,6 +28,7 @@ import { FloorLabelDragController } from "./imageExport/FloorLabelDragController
 import { CutLineDragController, hasManualCutLine } from "./imageExport/CutLineDragController";
 import { CutLinesOverlay } from "./imageExport/CutLinesOverlay";
 import { CreaseExportOverlay } from "./imageExport/CreaseExportOverlay";
+import { TopologyWarningHighlight } from "./imageExport/TopologyWarningHighlight";
 import { RenderScheduler } from "./renderScheduler";
 import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
@@ -104,6 +105,7 @@ export class MazeScene {
   private cutLineDragController: CutLineDragController;
   private cutLinesOverlay: CutLinesOverlay;
   private creaseExportOverlay: CreaseExportOverlay;
+  private topologyWarningHighlight: TopologyWarningHighlight;
   private cutLinesContainer: Container;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
@@ -191,14 +193,19 @@ export class MazeScene {
       end: () => this.interaction.defaultPan.end(),
     });
     this.cutLinesOverlay = new CutLinesOverlay(this.cutLinesContainer);
-    this.creaseExportOverlay = new CreaseExportOverlay(this.cutLinesContainer, () => {
+    const activeModeMargin = () => {
       const mode = useMazeStore.getState().activeRenderMode;
       return (mode ? this.imageExportRenderer.getModeRenderer(mode)?.getRequiredExportMargin() : undefined) ?? NO_MARGIN;
-    });
+    };
+    this.creaseExportOverlay = new CreaseExportOverlay(this.cutLinesContainer, activeModeMargin);
+
+    // After the crease overlay, which draws the marks the highlight frames: above them, and unclipped by the cut region.
+    this.topologyWarningHighlight = new TopologyWarningHighlight(this.cutLinesContainer, activeModeMargin);
 
     this.viewportListeners = [
       this.cutLinesOverlay,
       this.creaseExportOverlay,
+      this.topologyWarningHighlight,
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
@@ -685,6 +692,7 @@ export class MazeScene {
     this.exportFrameOverlay.destroy();
     this.cutLinesOverlay.destroy();
     this.creaseExportOverlay.destroy();
+    this.topologyWarningHighlight.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

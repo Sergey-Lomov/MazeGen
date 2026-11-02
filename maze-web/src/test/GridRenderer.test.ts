@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const pixi = vi.hoisted(() => ({
-  graphics: [] as Array<{ clear: ReturnType<typeof vi.fn> }>,
+  graphics: [] as Array<{ clear: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> }>,
 }));
 
 vi.mock("pixi.js", () => {
@@ -25,6 +25,8 @@ import {
   GridRenderer,
   MAX_VIEWPORT_GRID_CELLS,
   shouldRenderViewportGrid,
+  VIEWPORT_GRID_REBUILD_DELAY_MS,
+  viewportGridMaxChordAngle,
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -48,7 +50,14 @@ describe("viewport grid density", () => {
     expect(shouldRenderViewportGrid(bounds)).toBe(false);
   });
 
-  it("reuses geometry while panning inside the same grid bounds, but redraws for zoom", () => {
+  it("reduces curve detail only while zoomed out", () => {
+    expect(viewportGridMaxChordAngle(1)).toBeCloseTo(Math.PI / 16);
+    expect(viewportGridMaxChordAngle(0.5)).toBeCloseTo(Math.PI / 8);
+    expect(viewportGridMaxChordAngle(0.01)).toBeCloseTo(Math.PI / 4);
+  });
+
+  it("reuses geometry while panning inside the same grid bounds, then rebuilds after zoom settles", () => {
+    vi.useFakeTimers();
     pixi.graphics.length = 0;
     const renderer = new GridRenderer({ addChild: vi.fn() } as never);
     const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
@@ -59,11 +68,35 @@ describe("viewport grid density", () => {
     expect(graphics.clear).toHaveBeenCalledOnce();
 
     renderer.render({ viewport: { x: -6, y: -6, w: 100, h: 100, scale: 1.1 } }, cfg);
+    expect(graphics.clear).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(VIEWPORT_GRID_REBUILD_DELAY_MS);
     expect(graphics.clear).toHaveBeenCalledTimes(2);
     renderer.destroy();
+    vi.useRealTimers();
   });
 
-  it("reuses geometry for a pan inside the drawn margin and redraws once the viewport leaves it", () => {
+  it("coalesces repeated viewport rebuilds until navigation becomes idle", () => {
+    vi.useFakeTimers();
+    pixi.graphics.length = 0;
+    const renderer = new GridRenderer({ addChild: vi.fn() } as never);
+    const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
+    const graphics = pixi.graphics[0];
+
+    renderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1 } }, cfg);
+    renderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1.1 } }, cfg);
+    vi.advanceTimersByTime(VIEWPORT_GRID_REBUILD_DELAY_MS - 1);
+    renderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1.2 } }, cfg);
+    vi.advanceTimersByTime(VIEWPORT_GRID_REBUILD_DELAY_MS - 1);
+    expect(graphics.clear).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1);
+    expect(graphics.clear).toHaveBeenCalledTimes(2);
+
+    renderer.destroy();
+    vi.useRealTimers();
+  });
+
+  it("reuses geometry for a pan inside the drawn margin and rebuilds after a pan leaves it", () => {
+    vi.useFakeTimers();
     pixi.graphics.length = 0;
     const renderer = new GridRenderer({ addChild: vi.fn() } as never);
     const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
@@ -75,8 +108,11 @@ describe("viewport grid density", () => {
     expect(graphics.clear).toHaveBeenCalledOnce();
 
     renderer.render({ viewport: { x: -500, y: 0, ...size } }, cfg);
+    expect(graphics.clear).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(VIEWPORT_GRID_REBUILD_DELAY_MS);
     expect(graphics.clear).toHaveBeenCalledTimes(2);
     renderer.destroy();
+    vi.useRealTimers();
   });
 
   it("draws explicit cells once regardless of panning and redraws for a different cell set", () => {

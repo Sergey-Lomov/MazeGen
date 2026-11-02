@@ -30,7 +30,6 @@ import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { selectExportGlueTabs } from "./glueTabExport";
-import { computeGlueTabWarnings } from "../selectors/glueTabWarnings";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
 
@@ -1369,7 +1368,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const warnings = computeVectorByCorridorsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
-    ).concat(computeGlueTabWarnings(state, state.vectorByCorridorsSettings.glueTabs));
+    );
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }

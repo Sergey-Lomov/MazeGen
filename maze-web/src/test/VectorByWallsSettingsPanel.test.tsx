@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { VectorByWallsSettingsPanel } from "../components/features/VectorByWallsSettingsPanel";
@@ -56,7 +56,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
-      gridColor: 0xffffff, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
+      gridColor: 0xffffff, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0xffffff,
       floorColor: 0x2a2a2a,
@@ -187,7 +187,7 @@ describe("VectorByWallsSettingsPanel", () => {
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
-        background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
+        background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },

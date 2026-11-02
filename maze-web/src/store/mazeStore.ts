@@ -13,6 +13,7 @@ import { createFloorsSlice } from "./slices/floorsSlice";
 import { createTopologySlice, initialTopologyState } from "./slices/topologySlice";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
+import { installEdgeMarkerSync } from "./edgeMarkerSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
@@ -384,3 +385,4 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
 
 installTopologySync(useMazeStore);
 installFieldClipboardSync(useMazeStore);
+installEdgeMarkerSync(useMazeStore);

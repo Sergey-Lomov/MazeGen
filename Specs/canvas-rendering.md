@@ -19,6 +19,14 @@ Owned by `MazeScene` (created first in its constructor, destroyed right before `
 
 Requests coalesce: at most one `app.render()` per animation frame. Nothing renders while nothing changes, so idle CPU/GPU use is near zero. During continuous interaction (panning, dragging, hover) the rate stays at most one render per frame, as before.
 
+**Viewport grid density.** `GridRenderer` omits a grid whose viewport contains more than 50,000 cells. Curvilinear quadrilateral grid paths adapt from 8 chords per quarter arc at 100% zoom down to 2 chords at the lowest scales, where extra detail is below a screen pixel.
+
+**Viewport interaction.** The existing grid follows the viewport transform during pan and zoom. If the grid would need a geometry rebuild (new coverage or a screen-space line-width change), `GridRenderer` waits 120 ms after the most recent viewport update, then rebuilds once. A field/configuration change and the first grid draw are immediate. This applies to every tessellation and avoids synchronous WASM region queries and Pixi `Graphics` rebuilds in the interaction hot path.
+
+**Viewport geometry query.** When a grid rebuild needs a new cached chunk, `geometry_region_outlines` performs the generic core region query and serializes its path outlines in one WASM call. The web never derives tessellation candidates itself; core therefore remains authoritative for every lattice, including sparse and irregular coordinate systems.
+
+**Profiling.** Development builds emit Chrome User Timing entries named `Maze grid (<owner>): viewport bounds`, `Maze grid (<owner>): core region and outlines`, `Maze grid (<owner>): trace paths`, and `Maze grid (<owner>): Pixi stroke` for every actual grid rebuild. The owner distinguishes concurrently alive editor, preview, analytics, and export grids. The first two phases cover synchronous core/WASM and cache work, the latter two cover JavaScript command creation and Pixi submission. GPU execution is asynchronous and must be assessed from the surrounding WebGL frame in the same trace.
+
 **`app.render` is routed through the scheduler.** Pixi's own synchronous renders (the resize plugin) go through the same path and consume an already-queued frame. Notifications fired while a render is in progress are ignored — they are Pixi's bookkeeping for the frame being drawn, not new content.
 
 **Suspension.** `setSuspended(true)` while the Quality card hides the canvas (`MazeScene.subscribeToQualityOpen`, see `Specs/quality-feature.md`): no renders at all, including the resize plugin's. `setSuspended(false)` triggers one render that draws everything changed meanwhile.

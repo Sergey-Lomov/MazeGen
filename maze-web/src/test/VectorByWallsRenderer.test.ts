@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
@@ -162,7 +162,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
-    gridColor: 0x222222, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
+    gridColor: 0x222222, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
     showInnerGrid: false,
     innerGridColor: 0x222222,
     floorColor: 0x333333,
@@ -325,7 +325,7 @@ describe("buildTeleportLineStyle", () => {
     }), 0x999);
     expect(style).toEqual({
       shape: "star", cornerStyle: "round", size: 0.4, sizeAdaptation: 0, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
-      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal", curveDirection: "inward", curveStrength: 0.25,
+      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal", connectorCornerStyle: "round", curveDirection: "inward", curveStrength: 0.25,
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
       floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: 0.16, sizeAdaptation: 0, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
     });

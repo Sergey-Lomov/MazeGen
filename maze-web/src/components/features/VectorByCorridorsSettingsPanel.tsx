@@ -66,6 +66,9 @@ export function VectorByCorridorsSettingsPanel() {
   const setCutLinesColor = useMazeStore((s) => s.setVectorByCorridorsCutLinesColor);
   const setCreases = useMazeStore((s) => s.setVectorByCorridorsCreases);
   const setGlueTabs = useMazeStore((s) => s.setVectorByCorridorsGlueTabs);
+  const setEdgeMarkers = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkers);
+  const setEdgeMarkerOverride = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkerOverride);
+  const setEdgeMarkerOverrides = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkerOverrides);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
@@ -1181,6 +1184,14 @@ export function VectorByCorridorsSettingsPanel() {
         glueTabDefaults={D.glueTabs}
         glueTabPriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
         onGlueTabsChange={setGlueTabs}
+        edgeMarkersExpanded={isExpanded("edgeMarkers")}
+        onToggleEdgeMarkers={() => toggleSection("edgeMarkers")}
+        edgeMarkerStyle={settings.edgeMarkers}
+        edgeMarkerDefaultColor={D.edgeMarkers.color}
+        edgeMarkerPriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
+        onEdgeMarkersChange={setEdgeMarkers}
+        onEdgeMarkerOverride={setEdgeMarkerOverride}
+        onEdgeMarkerOverrides={setEdgeMarkerOverrides}
       />
 
     </div>

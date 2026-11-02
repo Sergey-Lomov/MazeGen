@@ -63,6 +63,9 @@ export function VectorByWallsSettingsPanel() {
   const setCutLinesColor = useMazeStore((s) => s.setVectorByWallsCutLinesColor);
   const setCreases = useMazeStore((s) => s.setVectorByWallsCreases);
   const setGlueTabs = useMazeStore((s) => s.setVectorByWallsGlueTabs);
+  const setEdgeMarkers = useMazeStore((s) => s.setVectorByWallsEdgeMarkers);
+  const setEdgeMarkerOverride = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverride);
+  const setEdgeMarkerOverrides = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverrides);
   const setShowInnerGrid = useMazeStore((s) => s.setVectorByWallsShowInnerGrid);
   const setInnerGridColor = useMazeStore((s) => s.setVectorByWallsInnerGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
@@ -1352,6 +1355,14 @@ export function VectorByWallsSettingsPanel() {
         glueTabDefaults={D.glueTabs}
         glueTabPriorityColors={[background, floor, wall]}
         onGlueTabsChange={setGlueTabs}
+        edgeMarkersExpanded={isExpanded("edgeMarkers")}
+        onToggleEdgeMarkers={() => toggleSection("edgeMarkers")}
+        edgeMarkerStyle={settings.edgeMarkers}
+        edgeMarkerDefaultColor={D.edgeMarkers.color}
+        edgeMarkerPriorityColors={[wall]}
+        onEdgeMarkersChange={setEdgeMarkers}
+        onEdgeMarkerOverride={setEdgeMarkerOverride}
+        onEdgeMarkerOverrides={setEdgeMarkerOverrides}
       />
 
     </div>

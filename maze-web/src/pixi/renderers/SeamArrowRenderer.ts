@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { canvas } from "../colorTokens";
-import { colorToHsl, hslToColor } from "../../store/colorMath";
+import { distributeHueGroups } from "../../store/colorMath";
+import { AUTO_HUE_BASE_COLOR, GLUE_HOVER_LIGHTNESS } from "../renderConstants";
 import type { SeamArrow, SeamPair } from "../selectors/seamArrows";
 
 type Point = [number, number];
@@ -52,11 +53,21 @@ const REFRESH_CW: Point[][] = (() => {
   return [...half(false), ...half(true)];
 })();
 
-/// The colour of glue `index` of `count`: the palette's seam arrow colour with its hue spread evenly
-/// round the wheel, so every glue has its own colour in the same muted gamut.
+/// The colour of glue `index` of `count`: `AUTO_HUE_BASE_COLOR` with its hue spread evenly round the wheel in lightness
+/// groups (`distributeHueGroups`), so every glue has its own colour. A hovered glue is lighter.
 export function glueColor(index: number, count: number, hovered: boolean): number {
-  const { h, s, l } = colorToHsl(hovered ? canvas.topology.seamArrowHover : canvas.topology.seamArrow);
-  return hslToColor({ h: h + (360 * index) / Math.max(count, 1), s, l });
+  const total = Math.max(count, 1);
+  return glueColors(total, hovered)[Math.min(index, total - 1)];
+}
+
+/// The colours of `count` glues, cached per `hovered` (a redraw asks for the same two distributions once per arrow).
+const cachedGlueColors: [{ count: number; colors: number[] } | null, { count: number; colors: number[] } | null] = [null, null];
+function glueColors(count: number, hovered: boolean): number[] {
+  const slot = hovered ? 1 : 0;
+  if (cachedGlueColors[slot]?.count !== count) {
+    cachedGlueColors[slot] = { count, colors: distributeHueGroups(AUTO_HUE_BASE_COLOR, count, hovered ? GLUE_HOVER_LIGHTNESS : 0) };
+  }
+  return cachedGlueColors[slot]!.colors;
 }
 
 /// The body with its two ends moved inward just far enough for the square end of the stroke to stay behind the base of the

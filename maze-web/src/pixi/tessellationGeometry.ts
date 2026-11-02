@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { cellAtSpacePoint, getCellGeometry, getCellOutline, type CellGeometryEntry } from "./cartesianCache";
+import { cellAtSpacePoint, getCellGeometry, getCellOutline, prefetchRegionOutlines, type CellGeometryEntry } from "./cartesianCache";
 import { getCellsInRegion, type RegionMode } from "../wasm/mazeService";
 import type { PathCommand } from "../wasm/mazeService";
 import { rotationTransform, splitShapeBinding } from "./splitShape";
@@ -306,9 +306,9 @@ const NEAR_RECT_CHUNK_CELLS = 32;
 const rectChunkCache = new Map<string, [number, number][]>();
 
 /// A superset of `cellsInDisplayRect(rect, "intersects")`: the cells of every fixed, grid-aligned
-/// chunk the rectangle overlaps. Each chunk is queried once and kept, so a painter that redraws a
-/// slowly moving rectangle (the viewport grid) only pays core for the newly exposed chunks. Without
-/// duplicates, in no particular order.
+/// chunk the rectangle overlaps. Each chunk is queried once through core's combined region-outline
+/// endpoint and kept, so a painter that redraws a slowly moving rectangle (the viewport grid) only
+/// pays one WASM crossing for newly exposed chunks. Without duplicates, in no particular order.
 export function cellsNearDisplayRect(
   rect: { minX: number; minY: number; maxX: number; maxY: number },
   cfg: FieldConfig,
@@ -325,12 +325,19 @@ export function cellsNearDisplayRect(
       if (cells) {
         rectChunkCache.delete(key);
       } else {
-        cells = cellsInDisplayRect({
+        const displayRect = {
           minX: column * chunk,
           maxX: (column + 1) * chunk,
           minY: row * chunk,
           maxY: (row + 1) * chunk,
-        }, "intersects", cfg);
+        };
+        const inverse = invertTransform(displayTransform(cfg));
+        cells = prefetchRegionOutlines([
+          applyTransform(inverse, [displayRect.minX, displayRect.minY]),
+          applyTransform(inverse, [displayRect.maxX, displayRect.minY]),
+          applyTransform(inverse, [displayRect.maxX, displayRect.maxY]),
+          applyTransform(inverse, [displayRect.minX, displayRect.maxY]),
+        ], cfg);
       }
       rectChunkCache.set(key, cells);
       for (const cell of cells) found.set(`${cell[0]},${cell[1]}`, cell);

@@ -175,4 +175,24 @@ describe("dynamic color field keys (GitHub issue #717)", () => {
     expect(s.splitNodeColors.every((c) => typeof c === "number")).toBe(true);
     expect(writeColorField(ctx, s, "nope", 1)).toBe(false);
   });
+
+  it("edge marker colour fields address a floor's marker by key and break the colour link", () => {
+    const s = settings();
+    s.edgeMarkers = { ...s.edgeMarkers, mode: "gluings", overrides: { f: { "g2:0": { color: 0x222222 }, "g1:0": { shape: "star" } } } };
+    const ctx = buildColorVisibility(emptyMaze, s);
+    expect(parseColorFieldKey("edgeMarker:f|g2:0")).toEqual({ kind: "edgeMarker", floorId: "f", markerKey: "g2:0" });
+    expect(visibleColor(ctx, "edgeMarker:f|g2:0")?.value).toBe(0x222222);
+    expect(visibleColor(ctx, "edgeMarker:f|g1:0")).toBeNull(); // no colour of its own
+    expect(writeColorField(ctx, s, "edgeMarker:f|g1:0", 0xabcdef)).toBe(true);
+    expect(s.edgeMarkers.overrides.f["g1:0"]).toMatchObject({ color: 0xabcdef, linkBroken: { color: true } });
+    expect(writeColorField(ctx, s, "edgeMarker:f|g7:0", 1)).toBe(false);
+    expect(writeColorField(ctx, s, "edgeMarker:other|g1:0", 1)).toBe(false);
+  });
+
+  it("edge marker colour fields are hidden while the markers are", () => {
+    const s = settings();
+    s.edgeMarkers = { ...s.edgeMarkers, mode: "hidden", overrides: { f: { a: { color: 1 } } } };
+    expect(visibleColor(buildColorVisibility(emptyMaze, s), "edgeMarker:f|a")).toBeNull();
+    expect(visibleColor(buildColorVisibility(emptyMaze, s), "edgeMarker")).toBeNull();
+  });
 });

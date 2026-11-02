@@ -15,7 +15,7 @@ export class TessellationRenderer {
     this.root = container;
     this.gridContainer = new Container();
     this.root.addChild(this.gridContainer);
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "tessellation preview");
 
     this.root.visible = false;
 

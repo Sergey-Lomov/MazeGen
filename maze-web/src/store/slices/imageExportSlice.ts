@@ -9,7 +9,8 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
-import type { MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import type { EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
 import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
@@ -100,6 +101,24 @@ const wallsPatch =
   });
 /** Every glue-tab parameter is linkable; an edit detaches its own link (GitHub issue #901). */
 const GLUE_TAB_PATHS = ["glueTabs.showTabs", "glueTabs.inset", "glueTabs.width", "glueTabs.alternate", "glueTabs.fillColor", "glueTabs.lineWidth", "glueTabs.lineStyle", "glueTabs.lineColor"] as const;
+/** The shared edge marker parameters are linkable; an edit detaches its own link (GitHub issue #902). */
+const EDGE_MARKER_PATHS = ["edgeMarkers.shape", "edgeMarkers.color"] as const;
+
+/** The edge marker style with one marker of one floor merged with `patch` (GitHub issue #902); `null` drops it. A floor left
+ *  without overrides is dropped too. */
+function withEdgeMarkerOverride(style: EdgeMarkerStyle, floorId: string, key: string, patch: EdgeMarkerOverride | null): EdgeMarkerStyle {
+  const { [floorId]: floorOverrides, ...otherFloors } = style.overrides;
+  const { [key]: current, ...rest } = floorOverrides ?? {};
+  const next = patch === null ? null : mergeEdgeMarkerOverridePatch(current, patch);
+  const floor = next ? { ...rest, [key]: next } : rest;
+  return { ...style, overrides: Object.keys(floor).length > 0 ? { ...otherFloors, [floorId]: floor } : otherFloors };
+}
+
+/** `withEdgeMarkerOverride` for every key of `patches` in turn. */
+function withEdgeMarkerOverrides(style: EdgeMarkerStyle, floorId: string, patches: Record<string, EdgeMarkerOverride | null>): EdgeMarkerStyle {
+  return Object.entries(patches).reduce((acc, [key, patch]) => withEdgeMarkerOverride(acc, floorId, key, patch), style);
+}
+
 const corridorsPatch =
   (rootPatch: object, overridable: readonly VectorByCorridorsParamPath[], build: (cur: MazeStore["vectorByCorridorsSettings"]) => MazeStore["vectorByCorridorsSettings"]) =>
   (s: MazeStore) => ({
@@ -335,6 +354,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsShowGrid: (v) => set(corridorsParam("showGrid", v)),
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
   setVectorByCorridorsGlueTabs: (patch) => set(corridorsPatch({ glueTabs: patch }, GLUE_TAB_PATHS, (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
+  setVectorByCorridorsEdgeMarkers: (patch) => set(corridorsPatch({ edgeMarkers: patch }, EDGE_MARKER_PATHS, (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
+  setVectorByCorridorsEdgeMarkerOverride: (floorId, key, patch) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
+  setVectorByCorridorsEdgeMarkerOverrides: (floorId, patches) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
   setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources<VectorByCorridorsParamPath, VectorByCorridorsSettings>({ ...s.vectorByCorridorsSettings, creases: { ...s.vectorByCorridorsSettings.creases, ...patch } }, []) })),
   setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
   setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
@@ -434,6 +456,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsShowGrid: (v) => set(wallsParam("showGrid", v)),
   setVectorByWallsGridColor: (color) => set(wallsParam("gridColor", color)),
   setVectorByWallsGlueTabs: (patch) => set(wallsPatch({ glueTabs: patch }, GLUE_TAB_PATHS, (cur) => ({ ...cur, glueTabs: { ...cur.glueTabs, ...patch } }))),
+  setVectorByWallsEdgeMarkers: (patch) => set(wallsPatch({ edgeMarkers: patch }, EDGE_MARKER_PATHS, (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
+  setVectorByWallsEdgeMarkerOverride: (floorId, key, patch) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
+  setVectorByWallsEdgeMarkerOverrides: (floorId, patches) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
   setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: propagateLinkedSources<VectorByWallsParamPath, VectorByWallsSettings>({ ...s.vectorByWallsSettings, creases: { ...s.vectorByWallsSettings.creases, ...patch } }, []) })),
   setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
   setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),
