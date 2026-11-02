@@ -36,6 +36,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   const active = !!content;
   const [open, setOpen] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressDismissed = useRef(false);
   const { refs, floatingStyles } = useFeedbackFloating(placement);
 
   const clearHoverTimer = () => {
@@ -88,10 +89,31 @@ export function Tooltip({ content, children, placement = "bottom", block = false
         setOpen(false);
       }}
       onPointerDown={(e) => {
-        if (active && e.pointerType === "touch") setOpen(true);
+        if (!active) return;
+        if (e.pointerType === "touch") {
+          setOpen(true);
+          return;
+        }
+        // Mouse/pen press activates the anchor (it may open a picker or menu): dismiss now and
+        // keep the focus the press causes from re-showing the bubble.
+        clearHoverTimer();
+        pressDismissed.current = true;
+        setOpen(false);
       }}
-      onFocus={() => active && setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onPointerUp={() => {
+        pressDismissed.current = false;
+      }}
+      onFocus={() => {
+        if (pressDismissed.current) {
+          pressDismissed.current = false;
+          return;
+        }
+        if (active) setOpen(true);
+      }}
+      onBlur={() => {
+        pressDismissed.current = false;
+        setOpen(false);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
           e.stopPropagation();

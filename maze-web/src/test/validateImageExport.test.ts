@@ -379,9 +379,14 @@ describe("marker layout settings validation (GitHub issue #735)", () => {
 
   it("recovers an unknown / missing layout to the defaults", () => {
     const walls = validateVectorByWallsSettings({ markerLayout: "spiral" }, "path", []);
-    expect(walls.markerLayout).toBe("radial");
+    expect(walls.markerLayout).toBe("auto");
     const corridors = validateVectorByCorridorsSettings({}, "path", []);
-    expect(corridors.markerLayout).toBe("radial");
+    expect(corridors.markerLayout).toBe("auto");
+  });
+
+  it("recovers the removed \"overlap\" mode to the default", () => {
+    expect(validateVectorByWallsSettings({ markerLayout: "overlap" }, "path", []).markerLayout).toBe("auto");
+    expect(validateVectorByCorridorsSettings({ markerLayout: "overlap" }, "path", []).markerLayout).toBe("auto");
   });
 });
 

@@ -2137,7 +2137,6 @@
   "image_export.vector_by_corridors.marker_widen_shape_match_marker": "По маркеру",
   "image_export.marker_layout.scale": "Масштаб",
   "image_export.marker_layout.section": "Совмещение маркеров",
-  "image_export.marker_layout.overlap": "Перекрытие",
   "image_export.marker_layout.layout": "Раскладка",
   "image_export.marker_layout.auto": "Авто",
   "image_export.marker_layout.row": "Ряд",

@@ -707,8 +707,7 @@ export interface MarkerIndexCoverage {
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
 /** Marker positioning layer (GitHub issue #735) shared by both vector renderers — arranges several
  *  markers (start/finish, teleport points, vertical-connection markers) hosted by one cell or one
- *  split-tile node. `markerLayout`: `"auto"` picks by count (2 row, 3-4 radial, 5+ grid), `"overlap"` skips the layer (markers stack, no
- *  shrink), the others force that arrangement; the gap between markers is fixed (`MARKER_LAYOUT_SPACING`). A host with a single marker is unaffected. See `Specs/marker-layout.md`. */
+ *  split-tile node. `markerLayout`: `"auto"` picks by count (2 row, 3-4 radial, 5+ grid), the others force that arrangement; the gap between markers is fixed (`MARKER_LAYOUT_SPACING`). A host with a single marker is unaffected. See `Specs/marker-layout.md`. */
 export interface MarkerLayoutSettingsFields {
   markerLayout: MarkerLayoutMode;
   /** Shrink factor in (0, 1] for every marker in a host with 2+ markers; all marker components
