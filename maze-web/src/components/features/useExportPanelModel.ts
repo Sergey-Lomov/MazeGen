@@ -11,7 +11,7 @@ import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/text
 import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { hasCellAreaSpread } from "../../pixi/markerScale";
 import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
-import { computeGlueTabWarnings } from "../../pixi/selectors/glueTabWarnings";
+import { computeTopologyWarnings } from "../../pixi/selectors/topologyWarnings";
 import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorFieldRegistry";
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
 import type { TextFitContextValue } from "./TextFitContext";
@@ -62,15 +62,17 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues],
   );
-  // Glue tab geometry warnings (GitHub issue #913) need the tabs themselves, so they are computed apart from the mode's list.
-  const glueTabWarnings = useMemo(
-    () => computeGlueTabWarnings(
-      { activeFloorId, activeFieldConfig: cfg, floorTopology, pngExportSettings, nodes: rawNodes, floors },
-      settings.glueTabs,
+  // Warnings about the glue tabs (GitHub issue #913) and edge alignment marks (GitHub issue #902) need the tabs and marks themselves,
+  // so they are computed apart from the mode's list.
+  const floorCreases = useMazeStore((s) => s.floorCreases);
+  const topologyWarnings = useMemo(
+    () => computeTopologyWarnings(
+      { activeFloorId, activeFieldConfig: cfg, floorTopology, floorCreases, pngExportSettings, nodes: rawNodes, floors },
+      settings,
     ),
-    [activeFloorId, cfg, floorTopology, pngExportSettings, rawNodes, floors, settings.glueTabs],
+    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, floors, settings.glueTabs, settings.edgeMarkers, settings.links, settings.background],
   );
-  const exportWarnings = useMemo(() => [...modeWarnings, ...glueTabWarnings], [modeWarnings, glueTabWarnings]);
+  const exportWarnings = useMemo(() => [...modeWarnings, ...topologyWarnings], [modeWarnings, topologyWarnings]);
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
   // size control, so `fitAll` only covers the shared style label controls.

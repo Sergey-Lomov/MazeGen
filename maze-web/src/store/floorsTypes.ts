@@ -43,6 +43,10 @@ export interface FloorsState {
    * Free segments in world units: they do not affect generation, so editing them never discards the maze. Cleared
    * with the topology by a tessellation change; saved in the project file's `floorCreases`. */
   floorCreases: Record<string, import("./creases").Crease[]>;
+  /** The edge alignment markers' keys of each floor in their display order (GitHub issue #902), keyed by floor id: a marker's
+   * number on its floor is its position here. Not persisted: `edgeMarkerSync` refreshes the active floor's entry, the only
+   * floor whose seam geometry exists. */
+  edgeMarkerOrder: Record<string, string[]>;
 }
 
 export interface FloorsActions {

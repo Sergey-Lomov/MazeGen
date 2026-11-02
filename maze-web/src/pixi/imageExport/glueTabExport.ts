@@ -29,7 +29,7 @@ const EPS = 1e-6;
 /// A direction counts as the same one when the sine of the angle between them is below this.
 const PARALLEL_EPS = 1e-6;
 
-interface Edge {
+export interface Edge {
   from: Vec2;
   to: Vec2;
   /// The centre of the cell the edge belongs to: the tab reaches away from it.
@@ -106,7 +106,7 @@ export function glueTabOn(from: Vec2, to: Vec2, normal: Vec2, style: Pick<GlueTa
 }
 
 /// The straight edges of one side (`"a"` or `"b"`) of the given folds, as far as they continue each other.
-function sideEdges(topology: WireTopology, folds: readonly number[], side: "a" | "b", cfg: MazeState["activeFieldConfig"]): Edge[] {
+export function sideEdges(topology: WireTopology, folds: readonly number[], side: "a" | "b", cfg: MazeState["activeFieldConfig"]): Edge[] {
   const model = getSeamModel(cfg);
   const transform = displayTransform(cfg);
   const toDisplay = (p: readonly [number, number]): Vec2 => applyTransform(transform, [p[0], p[1]]) as Vec2;

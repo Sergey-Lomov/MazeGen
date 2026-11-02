@@ -10,6 +10,7 @@ import { resolveCutPlan, resolveExportContent } from "./exportContent";
 import { cutLineColors, cutLineStyleOf } from "./cutLineStyle";
 import type { CutPlan } from "./cutLines";
 import { creaseStyleOf, drawExportCreases, selectExportCreases } from "./creaseExport";
+import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers } from "./edgeMarkerExport";
 import type { PngExportSettings } from "../../store/storeTypes";
 
 /** On-screen length of one dash of a drawn cut line, and of its gap, in export pixels. */
@@ -84,8 +85,11 @@ export class PngExporter {
       const showLines = style.showCutLines;
       const creaseStyle = creaseStyleOf(state, mode);
       const creases = selectExportCreases(state, creaseStyle);
-      const hasCreases = creases.length > 0;
-      if (hasCreases) drawExportCreases(creaseGraphics, creases, creaseStyle);
+      const markerStyle = edgeMarkerStyleOf(state, mode);
+      const markers = selectExportEdgeMarkers(state, markerStyle);
+      const hasCreases = creases.length > 0 || markers.length > 0;
+      if (creases.length > 0) drawExportCreases(creaseGraphics, creases, creaseStyle);
+      drawExportEdgeMarkers(creaseGraphics, markers, markerStyle);
       if (plan) {
         this.renderCutSheet(sceneRoot, exportContainer, modeRenderer, renderTexture, plan, modeRenderer.getBackgroundColor(), showLines ? cutLineColors(style, state.activeFieldConfig, state.floorTopology[state.activeFloorId]) : null, guides, hasCreases ? creaseGraphics : null, fit);
       } else {

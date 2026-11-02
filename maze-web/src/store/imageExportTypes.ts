@@ -161,6 +161,45 @@ export interface GlueTabStyleFields {
   glueTabs: GlueTabStyle;
 }
 
+/** Which edge alignment markers the export shows (GitHub issue #902). */
+export type EdgeMarkerMode = "hidden" | "gluings" | "all";
+
+/** The two parameters of a marker's own look. */
+export type EdgeMarkerRole = "color" | "shape";
+
+/** One marker's own look (the same model as `TeleportGroupOverride`): a value set here wins; otherwise the marker follows the
+ * incoming link of the shared parameter, rebound to the marker, else the shared value itself. `linkBroken` marks a role whose
+ * inherited link is cut for this marker. */
+export interface EdgeMarkerOverride {
+  shape?: MarkerShape;
+  color?: number;
+  linkBroken?: Partial<Record<EdgeMarkerRole, boolean>>;
+}
+
+/** Edge alignment markers on the image (GitHub issue #902, `Specs/image-export.md`, "Edge alignment markers"): marks on
+ * matching edges that show how faces connect during assembly. Sizes are in display units, so they zoom with the field. */
+export interface EdgeMarkerStyle {
+  mode: EdgeMarkerMode;
+  /** Diameter of a marker. */
+  size: number;
+  /** The shape every marker has unless its override says otherwise. */
+  shape: MarkerShape;
+  /** The colour every marker has unless its override says otherwise. */
+  color: number;
+  /** Per floor id, then per marker (`EdgeMarker.key`): the keys come from a floor's own geometry, so they only mean something on that floor. */
+  overrides: Record<string, Record<string, EdgeMarkerOverride>>;
+}
+
+/** The style as one floor sees it: the overrides of that floor alone (what the export, the overlay and the warnings read). */
+export interface FloorEdgeMarkerStyle extends Omit<EdgeMarkerStyle, "overrides"> {
+  overrides: Record<string, EdgeMarkerOverride>;
+}
+
+/** Both render modes carry the edge marker style. */
+export interface EdgeMarkerStyleFields {
+  edgeMarkers: EdgeMarkerStyle;
+}
+
 /** Cut-line export settings (GitHub issue #859, `Specs/image-export.md`, "Cut lines"). */
 export interface CutExportSettings {
   /** Per floor, then per glue (group id); a missing entry means no cut. An edit that removes a glue drops its entry. */
@@ -677,7 +716,7 @@ export interface MarkerLayoutSettingsFields {
   markerScale: number;
 }
 
-export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, EdgeMarkerStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
@@ -800,7 +839,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+export interface VectorByCorridorsSettings extends CutLineStyleFields, CreaseStyleFields, GlueTabStyleFields, EdgeMarkerStyleFields, MarkerLayoutSettingsFields, TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
@@ -997,6 +1036,9 @@ export interface ImageExportActions {
   setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsCreases: (patch: Partial<CreaseExportStyle>) => void;
   setVectorByCorridorsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
+  setVectorByCorridorsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
+  /** Sets one marker's own look; `null` drops the override. */
+  setVectorByCorridorsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
@@ -1088,6 +1130,9 @@ export interface ImageExportActions {
   setVectorByWallsGridColor: (color: number) => void;
   setVectorByWallsCreases: (patch: Partial<CreaseExportStyle>) => void;
   setVectorByWallsGlueTabs: (patch: Partial<GlueTabStyle>) => void;
+  setVectorByWallsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
+  /** Sets one marker's own look; `null` drops the override. */
+  setVectorByWallsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;

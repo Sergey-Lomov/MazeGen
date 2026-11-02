@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
 import { creaseDisplayPoint } from "../pixi/creaseGeometry";
 import { creaseStyleOf, selectExportCreases } from "../pixi/imageExport/creaseExport";
-import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from "../store/projectExport/validateImageExport";
 import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../pixi/renderConstants";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -13,6 +13,8 @@ const { useMazeStore } = await import("../store/mazeStore");
 const { baseStoreState, TEST_FLOOR_ID } = await import("./storeTestHelpers");
 const { TopologySettingsSection } = await import("../components/features/TopologySettingsSection");
 const { CreaseSettingsSubsection } = await import("../components/features/CreaseSettingsSubsection");
+const { LinkContextProvider } = await import("../components/features/LinkContext");
+const linkContext = { links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, activePaths: new Set<string>() };
 
 // Export crease style (GitHub issue #900): selection, store actions, validation and the settings UI.
 
@@ -120,19 +122,53 @@ describe("TopologySettingsSection with creases", () => {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
     creasesExpanded: true, onToggleCreases: () => {}, creaseStyle: shown, creaseDefaultColor: 0, creasePriorityColors: [], onCreasesChange: () => {},
+    edgeMarkersExpanded: true, onToggleEdgeMarkers: () => {}, edgeMarkerStyle: DEFAULT_EDGE_MARKER_STYLE, edgeMarkerDefaultColor: 0, edgeMarkerPriorityColors: [], onEdgeMarkersChange: () => {}, onEdgeMarkerOverride: () => {},
     glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
   it("renders nothing for a floor with neither glues nor creases", () => {
     setCreases([]);
-    const { container } = render(<TopologySettingsSection {...props} />);
+    const { container } = render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
     expect(container.textContent).toBe("");
   });
 
   it("shows the creases subsection but no cut-line rows for a floor with creases only", () => {
     setCreases([crease]);
-    render(<TopologySettingsSection {...props} />);
+    render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
     expect(screen.getByText(m["image_export.creases.title"]())).toBeTruthy();
     expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
+  });
+});
+
+describe("EdgeMarkerSettingsSubsection cards", () => {
+  it("renders a card with link icons for a crease marker under the real registry", async () => {
+    const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    setCreases([crease]);
+    const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;
+    render(
+      <LinkContextProvider value={context}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all" }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} />
+      </LinkContextProvider>,
+    );
+    expect(screen.getByText(m["image_export.edge_markers.crease_marker"]({ id: "1" }))).toBeTruthy();
+  });
+});
+
+describe("EdgeMarkerSettingsSubsection linked", () => {
+  it.each(["walls", "corridors"] as const)("renders with an incoming link and an override (%s)", async (mode) => {
+    const reg = await import("../store/parameterLinksRegistry");
+    const registry = mode === "walls" ? reg.VECTOR_BY_WALLS_PARAM_REGISTRY : reg.VECTOR_BY_CORRIDORS_PARAM_REGISTRY;
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    setCreases([crease]);
+    const { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } = await import("../store/slices/parameterLinksDefaults");
+    const links = mode === "walls" ? DEFAULT_VECTOR_BY_WALLS_LINKS : DEFAULT_VECTOR_BY_CORRIDORS_LINKS;
+    const context = { ...linkContext, links, registry } as unknown as typeof linkContext;
+    render(
+      <LinkContextProvider value={context}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all", overrides: { [useMazeStore.getState().activeFloorId]: { c0: { shape: "star", linkBroken: { shape: true } } } } }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} />
+      </LinkContextProvider>,
+    );
+    expect(screen.getByText(m["image_export.edge_markers.crease_marker"]({ id: "1" }))).toBeTruthy();
   });
 });

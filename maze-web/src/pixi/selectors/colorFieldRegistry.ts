@@ -1,5 +1,6 @@
 import type { MazeState } from "../../store/storeTypes";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
+import { withResolvedEdgeMarkerFloors } from "../../store/edgeMarkerLinks";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/imageExportTypes";
 import type { EdgeDto } from "../../wasm/types";
 import { splitSlotColor } from "../colorUtils";
@@ -41,6 +42,12 @@ export interface ColorVisibilityContext {
   glueTabs: boolean;
   /** `glueTabs.lineColor` — shown while the glue tabs have an outline. */
   glueTabLine: boolean;
+  /** `edgeMarkers.color` and the per-marker colours (GitHub issue #902) — shown while the markers are. */
+  edgeMarkers: boolean;
+  /** Each floor's edge marker keys in display order: the number of a marker's colour field (see {@link ColorVisibilityMaze}). */
+  edgeMarkerOrder: MazeState["edgeMarkerOrder"];
+  /** The floor ids bottom to top: a floor's level is its position. */
+  floorIds: string[];
   oneWayIndicator: boolean;
   teleports: boolean;
   crossFloorTeleports: boolean;
@@ -92,6 +99,8 @@ export interface ColorVisibilityMaze {
   floors: MazeState["floors"];
   /** Whether some floor has a glue (GitHub issue #901); the glue tab fields are hidden without one. Unknown counts as yes. */
   hasGlues?: boolean;
+  /** Each floor's edge marker keys in display order (`MazeState.edgeMarkerOrder`, GitHub issue #902): a marker's number on its floor. */
+  edgeMarkerOrder?: MazeState["edgeMarkerOrder"];
 }
 
 /** Whether some floor has a glue (GitHub issue #901): the `hasGlues` input of {@link buildColorVisibility}. */
@@ -100,7 +109,8 @@ export function hasAnyGlue(floorTopology: MazeState["floorTopology"]): boolean {
 }
 
 export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: ExportSettings): ColorVisibilityContext {
-  const s = withResolvedGroupOverrides(rawSettings);
+  const grouped = withResolvedGroupOverrides(rawSettings);
+  const s = { ...grouped, edgeMarkers: withResolvedEdgeMarkerFloors(grouped.edgeMarkers, grouped.links) } as typeof grouped;
   const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs);
   const walls = "verticalStyle" in s;
   const teleports = maze.edges.some((e) => e.kind === "teleport");
@@ -115,6 +125,9 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     cutLines: s.showCutLines && !s.cutLinesGlueColor,
     glueTabs: glueTabsShown,
     glueTabLine: glueTabsShown && s.glueTabs.lineWidth > 0,
+    edgeMarkers: s.edgeMarkers.mode !== "hidden",
+    edgeMarkerOrder: maze.edgeMarkerOrder ?? {},
+    floorIds: maze.floors.map((floor) => floor.id),
     wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
     oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
     teleports,
@@ -190,6 +203,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
 
   glueTabFill: { visible: (c) => c.glueTabs, get: (s) => s.glueTabs.fillColor, set: (s, v) => { s.glueTabs.fillColor = v; } },
   glueTabLine: { visible: (c) => c.glueTabLine, get: (s) => s.glueTabs.lineColor, set: (s, v) => { s.glueTabs.lineColor = v; } },
+  edgeMarker: { visible: (c) => c.edgeMarkers, get: (s) => s.edgeMarkers.color, set: (s, v) => { s.edgeMarkers.color = v; } },
 
   corridorFill: {
     visible: (c) => c.mode === "corridors",
@@ -318,7 +332,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
  *  appears in exactly one table — enforced by a test. */
 export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
   [
-    "bgFill", "bgGrid", "innerGrid", "cutLines", "glueTabFill", "glueTabLine", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
+    "bgFill", "bgGrid", "innerGrid", "cutLines", "glueTabFill", "glueTabLine", "edgeMarker", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
     "sharedMarkerFill", "sharedMarkerBorder",
     "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText",
     "teleportEdge", "teleportEdgeBorder", "teleportConnector",
@@ -368,6 +382,7 @@ function rawValue(ctx: ColorVisibilityContext, key: ColorFieldKey): number | und
       const override = s.teleportGroupOverrides[sortedGroupKeys(ctx)[parsed.index]];
       return parsed.role === "fill" ? override?.fillColor : override?.borderColor;
     }
+    case "edgeMarker": return s.edgeMarkers.overrides[parsed.floorId]?.[parsed.markerKey]?.color;
     case "static": return STATIC_FIELD_DEFS[parsed.key]?.get(s);
   }
 }
@@ -378,6 +393,7 @@ export function isColorFieldVisible(key: ColorFieldKey, ctx: ColorVisibilityCont
   switch (parsed.kind) {
     case "split": return parsed.index < ctx.slotCount;
     case "teleportGroup": return ctx.teleports && ctx.teleportGroupOverrides;
+    case "edgeMarker": return ctx.edgeMarkers;
     case "static": {
       const def = STATIC_FIELD_DEFS[parsed.key];
       return def !== undefined && def.visible(ctx);
@@ -416,6 +432,13 @@ export function writeColorField(ctx: ColorVisibilityContext, settings: ExportSet
       const role = parsed.role === "fill" ? "fillColor" : "borderColor";
       override[role] = color;
       override.linkBroken = { ...override.linkBroken, [role]: true };
+      return true;
+    }
+    case "edgeMarker": {
+      const override = settings.edgeMarkers.overrides[parsed.floorId]?.[parsed.markerKey];
+      if (!override) return false;
+      override.color = color;
+      override.linkBroken = { ...override.linkBroken, color: true };
       return true;
     }
     case "static": {

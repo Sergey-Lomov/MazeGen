@@ -4,6 +4,7 @@ import type { MazeStore } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import { watchStoreInputs } from "../storeWatch";
 import { creaseStyleOf, drawExportCreases, selectExportCreases, shiftCreases } from "./creaseExport";
+import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers, shiftEdgeMarkers } from "./edgeMarkerExport";
 import { resolveActiveCutPlan } from "./exportContent";
 import type { ExportMargin } from "./exportMargins";
 
@@ -47,15 +48,19 @@ export class CreaseExportOverlay implements ViewportListener {
     if (!mode || st.openCard !== "image_export" || st.nodes.length === 0) return;
     const style = creaseStyleOf(st, mode);
     const creases = selectExportCreases(st, style);
-    if (creases.length === 0) return;
+    const markerStyle = edgeMarkerStyleOf(st, mode);
+    const markers = selectExportEdgeMarkers(st, markerStyle);
+    if (creases.length === 0 && markers.length === 0) return;
     const plan = resolveActiveCutPlan(st, this.getMargin);
     if (!plan) {
-      drawExportCreases(g, creases, style);
+      if (creases.length > 0) drawExportCreases(g, creases, style);
+      drawExportEdgeMarkers(g, markers, markerStyle);
       return;
     }
     this.mask.poly(plan.region.flat()).fill(0xffffff);
     g.mask = this.mask;
-    drawExportCreases(g, plan.offsets.flatMap((offset) => shiftCreases(creases, offset)), style);
+    if (creases.length > 0) drawExportCreases(g, plan.offsets.flatMap((offset) => shiftCreases(creases, offset)), style);
+    drawExportEdgeMarkers(g, plan.offsets.flatMap((offset) => shiftEdgeMarkers(markers, offset)), markerStyle);
   }
 
   destroy(): void {

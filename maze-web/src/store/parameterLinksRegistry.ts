@@ -179,6 +179,7 @@ const G = {
   markerIndex: () => [m["image_export.vector_by_walls.section_marker_index"]()],
   topology: () => [m["topology.title"]()],
   glueTabs: () => [m["topology.title"](), m["image_export.glue_tabs.title"]()],
+  edgeMarkers: () => [m["topology.title"](), m["image_export.edge_markers.title"]()],
 
   verticalRoot: () => [m["image_export.vector_by_walls.section_vertical"]()],
   // `replaceTwoFloorElevatorsWithStairs`/`elevatorBadges.*` render identically regardless of
@@ -231,6 +232,8 @@ const GLUE_TAB_PARAMS = {
   "glueTabs.lineWidth": descriptor("number", () => m["image_export.glue_tabs.line_width"](), G.glueTabs),
   "glueTabs.lineStyle": descriptor("glueTabLineStyle", () => m["image_export.glue_tabs.line_style"](), G.glueTabs),
   "glueTabs.lineColor": descriptor("color", () => m["image_export.glue_tabs.line_color"](), G.glueTabs),
+  "edgeMarkers.shape": descriptor("markerShape", () => m["image_export.edge_markers.shape"](), G.edgeMarkers),
+  "edgeMarkers.color": descriptor("color", () => m["image_export.edge_markers.color"](), G.edgeMarkers),
 };
 
 /** "Vector by walls" mode's linkable parameter registry (GitHub issue #643) — one entry per field

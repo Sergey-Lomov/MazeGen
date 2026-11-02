@@ -17,6 +17,7 @@ import type {
   CutLineStyleFields,
   CreaseExportStyle,
   GlueTabStyle,
+  EdgeMarkerStyle,
 } from "../storeTypes";
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
@@ -307,6 +308,9 @@ function glueTabStyleFor(background: number, gridColor: number): GlueTabStyle {
 
 export const DEFAULT_GLUE_TAB_STYLE: GlueTabStyle = glueTabStyleFor(DEFAULT_MAZE_RENDER_STYLE.backgroundColor, DEFAULT_MAZE_RENDER_STYLE.grid.color);
 
+/** Edge alignment markers are hidden by default; once shown they are grey circles. */
+export const DEFAULT_EDGE_MARKER_STYLE: EdgeMarkerStyle = { mode: "hidden", size: 12, shape: "circle", color: 0x808080, overrides: {} };
+
 export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate(
   {
     background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
@@ -317,6 +321,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     ...DEFAULT_CUT_LINE_STYLE,
     creases: DEFAULT_CREASE_STYLE,
     glueTabs: DEFAULT_GLUE_TAB_STYLE,
+    edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
     randomWallColorMode: "off",
@@ -387,6 +392,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     ...DEFAULT_CUT_LINE_STYLE,
     creases: DEFAULT_CREASE_STYLE,
     glueTabs: glueTabStyleFor(canvas.stage.background, canvas.grid.line),
+    edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
     color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
     junctionRadius: 4,

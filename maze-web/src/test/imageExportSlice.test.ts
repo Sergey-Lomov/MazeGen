@@ -1,4 +1,4 @@
-import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
+import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
@@ -38,7 +38,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
@@ -174,7 +174,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
-      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE,
+      gridColor: canvas.grid.line, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE,
       showInnerGrid: false,
       innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
