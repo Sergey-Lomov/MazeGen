@@ -86,6 +86,25 @@ describe("floorsSlice", () => {
       expect(floorFields[floor3Id].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 8 }));
     });
 
+    it("carries the below floor's topology and creases to the new floor (#921)", () => {
+      const topology = { glues: [] } as never;
+      const creases = [{ a: [0, 0], b: [1, 1] }] as never;
+      useMazeStore.setState({ floorTopology: { floor_1: topology }, floorCreases: { floor_1: creases } });
+      useMazeStore.getState().addFloor();
+      const { floors, floorTopology, floorCreases } = useMazeStore.getState();
+      const newId = floors[1].id;
+      expect(floorTopology[newId]).toBe(topology);
+      expect(floorCreases[newId]).toBe(creases);
+    });
+
+    it("leaves the new floor without topology and creases when the below floor has none", () => {
+      useMazeStore.setState({ floorTopology: {}, floorCreases: {} });
+      useMazeStore.getState().addFloor();
+      const { floors, floorTopology, floorCreases } = useMazeStore.getState();
+      expect(floorTopology[floors[1].id]).toBeUndefined();
+      expect(floorCreases[floors[1].id]).toBeUndefined();
+    });
+
     it("copies into an independent object, not a shared reference", () => {
       useMazeStore.getState().addFloor();
       const floor2Id = useMazeStore.getState().floors[1].id;

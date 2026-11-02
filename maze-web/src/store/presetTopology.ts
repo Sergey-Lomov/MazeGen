@@ -43,6 +43,22 @@ function buildTopology(cfg: FieldConfig, preset: string, params: Record<string, 
   }
 }
 
+// Topology values are immutable wire data, so targets share the source's object. A source without
+// a topology clears the targets' (the copy must not keep stale seams of the replaced field).
+export function topologyCopiedTo(
+  floorTopology: MazeState["floorTopology"],
+  sourceFloorId: string,
+  targetIds: readonly string[],
+): MazeState["floorTopology"] {
+  const next = { ...floorTopology };
+  const source = floorTopology[sourceFloorId];
+  for (const id of targetIds) {
+    if (source) next[id] = source;
+    else delete next[id];
+  }
+  return next;
+}
+
 /**
  * `floorTopology` with `floorId` holding the topology `cfg` defines. A floor on a standard shape
  * has no glues of its own (the glue editor works on custom fields only), so its entry is exactly

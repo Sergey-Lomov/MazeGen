@@ -8,7 +8,7 @@ import { isFieldOpError } from "../../pixi/fieldOps";
 import { translateFieldCells } from "../../wasm/mazeService";
 import { computeMirrorPreview } from "../../pixi/mirror";
 import { tessellationFingerprint } from "../topologyWire";
-import { withPresetCreases, withPresetTopology } from "../presetTopology";
+import { topologyCopiedTo, withPresetCreases, withPresetTopology } from "../presetTopology";
 import { creasesCopiedTo } from "../creases";
 import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
@@ -23,22 +23,6 @@ function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) 
 
 function cloneFloorField(field: FloorFieldConfig): FloorFieldConfig {
   return structuredClone(field);
-}
-
-// Topology values are immutable wire data, so targets share the source's object. A source without
-// a topology clears the targets' (the copy must not keep stale seams of the replaced field).
-function topologyCopiedTo(
-  floorTopology: MazeState["floorTopology"],
-  sourceFloorId: string,
-  targetIds: string[],
-): MazeState["floorTopology"] {
-  const next = { ...floorTopology };
-  const source = floorTopology[sourceFloorId];
-  for (const id of targetIds) {
-    if (source) next[id] = source;
-    else delete next[id];
-  }
-  return next;
 }
 
 function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () => Partial<MazeState>) {
