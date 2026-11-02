@@ -1,6 +1,6 @@
 import type { MazeState } from "../../store/storeTypes";
 import {
-  splitNodeKey, teleportGroupKey,
+  edgeMarkerKey, splitNodeKey, teleportGroupKey,
   type ColorFieldKey, type StaticColorFieldKey, type TeleportGroupColorRole,
 } from "../colorFieldKeys";
 import {
@@ -49,6 +49,7 @@ type RoleKey =
   | "cut_line"
   | "glue_tab_fill"
   | "glue_tab_line"
+  | "edge_marker"
   | "floor"
   | "wall"
   | "one_way_line"
@@ -94,6 +95,7 @@ const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   cut_line: m["color_picker.entry.role.cut_line"],
   glue_tab_fill: m["color_picker.entry.role.glue_tab_fill"],
   glue_tab_line: m["color_picker.entry.role.glue_tab_line"],
+  edge_marker: m["color_picker.entry.role.edge_marker"],
   floor: m["color_picker.entry.role.floor"],
   wall: m["color_picker.entry.role.wall"],
   one_way_line: m["color_picker.entry.role.one_way_line"],
@@ -159,6 +161,7 @@ const STATIC_FIELDS = defineFields({
   cutLines: [["topology"], "cut_line"],
   glueTabFill: [["topology"], "glue_tab_fill"],
   glueTabLine: [["topology"], "glue_tab_line"],
+  edgeMarker: [["topology"], "edge_marker"],
 
   corridorFill: [["corridor"], "fill"],
 
@@ -249,6 +252,16 @@ export const PC = {
     const label = role === "fill" ? m["color_picker.entry.role.teleport_group_fill"] : m["color_picker.entry.role.teleport_group_border"];
     return makeField(teleportGroupKey(index, role), () => `${sectionLabel.teleports()}: ${label({ index: String(index + 1) })}`, (c) => isColorFieldVisible(teleportGroupKey(index, role), c));
   },
+
+  /** A per-edge-marker override color, named after the marker's own key (`g<glue>` / `c<crease>`, numbered from 1) and, when
+   *  the project has several floors, the floor's 0-based `level` ("Topology: Glue mark 1 (L1)"). The key carries the floor and
+   *  the marker's own key, so it stays put when markers around it come and go. */
+  edgeMarkerAt(floorId: string, markerKey: string, level: number, levelCount: number): ColorField {
+    const key = edgeMarkerKey(floorId, markerKey);
+    const index = String(Number(markerKey.slice(1)) + 1);
+    const name = markerKey.startsWith("c") ? m["color_picker.entry.role.edge_crease_marker_n"]({ index }) : m["color_picker.entry.role.edge_glue_marker_n"]({ index });
+    return makeField(key, () => `${sectionLabel.topology()}: ${name}${levelCount > 1 ? ` (L${level + 1})` : ""}`, (c) => isColorFieldVisible(key, c));
+  },
 } as const;
 
 /** Inverse of {@link ColorField.key}: the registry field for a key, or `null` for an unknown one. */
@@ -279,6 +292,24 @@ function teleportGroupRows(ctx: ColorVisibilityContext): ProjectColorEntry[] {
   return rows;
 }
 
+
+/** The own colours of the edge markers of every floor, floor by floor (bottom first) and by the marker's number on its floor. A
+ *  floor whose order is unknown (never active) numbers its markers by sorted key. */
+function edgeMarkerRows(ctx: ColorVisibilityContext): ProjectColorEntry[] {
+  const rows: ProjectColorEntry[] = [];
+  ctx.floorIds.forEach((floorId, level) => {
+    const overrides = ctx.settings.edgeMarkers.overrides[floorId];
+    if (!overrides) return;
+    const order = ctx.edgeMarkerOrder[floorId] ?? Object.keys(overrides).sort((a, b) => a.localeCompare(b));
+    order.forEach((key) => {
+      const color = overrides[key]?.color;
+      const field = PC.edgeMarkerAt(floorId, key, level, ctx.floorIds.length);
+      if (color !== undefined && field.isVisible(ctx)) rows.push(field.at(color));
+    });
+  });
+  return rows;
+}
+
 function splitRows(ctx: ColorVisibilityContext): ProjectColorEntry[] {
   const rows: ProjectColorEntry[] = [];
   for (let i = 0; i < ctx.slotCount; i++) {
@@ -305,6 +336,7 @@ function profileColors(ctx: ColorVisibilityContext): ProjectColorEntry[] {
   return [
     ...staticRows(ctx, beforeGroups),
     ...teleportGroupRows(ctx),
+    ...edgeMarkerRows(ctx),
     ...staticRows(ctx, beforeSplits),
     ...splitRows(ctx),
     ...staticRows(ctx, afterSplits),
@@ -318,7 +350,7 @@ function profileColors(ctx: ColorVisibilityContext): ProjectColorEntry[] {
 export function selectActiveProfileColors(state: MazeState): ProjectColorEntry[] {
   const settings = activeProfileSettings(state);
   if (!settings) return [];
-  return profileColors(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology) }, settings));
+  return profileColors(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology), edgeMarkerOrder: state.edgeMarkerOrder }, settings));
 }
 
 /** The export profile whose settings panel is open beside the canvas, or `null`. */
@@ -340,6 +372,6 @@ export function overrideActiveProfileColor(
   const source = activeProfileSettings(state);
   if (!source) return null;
   const settings = structuredClone(source);
-  writeColorField(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology) }, source), settings, fieldKey, color);
+  writeColorField(buildColorVisibility({ nodes: state.nodes, edges: state.edges, floors: state.floors, hasGlues: hasAnyGlue(state.floorTopology), edgeMarkerOrder: state.edgeMarkerOrder }, source), settings, fieldKey, color);
   return settings;
 }

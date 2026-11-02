@@ -119,6 +119,10 @@ export type ExportWarningId =
   | "glue_tab_too_thin"
   /** Both vector modes (GitHub issue #913) — the inset leaves nothing of a glued stretch, so it gets no tab at all. Highlights the stretch as `bands`. */
   | "glue_tab_missing"
+  /** Both vector modes (GitHub issue #902) — two edge markers with different keys have colours too close to tell apart. Highlights them as `polygons`. */
+  | "edge_marker_colors_similar"
+  /** Both vector modes (GitHub issue #902) — an edge marker colour is too close to the background. Highlights those markers as `polygons`. */
+  | "edge_marker_low_contrast_background"
   | "inner_grid_low_contrast_floor"
   | "inner_grid_low_contrast_wall"
   | "marker_fill_low_contrast"

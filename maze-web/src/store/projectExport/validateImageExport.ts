@@ -1,12 +1,12 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -558,6 +558,52 @@ function glueTabStyle(obj: Record<string, unknown> | null, d: GlueTabStyle): Glu
   };
 }
 
+/** Lenient like `glueTabStyle`: the section is absent from files saved before GitHub issue #902. A malformed override is dropped. */
+function edgeMarkerOverrides(raw: unknown): Record<string, EdgeMarkerOverride> {
+  const overrides: Record<string, EdgeMarkerOverride> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return overrides;
+  for (const [key, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const entry = value as Record<string, unknown>;
+    const override: EdgeMarkerOverride = {};
+    if (typeof entry.shape === "string" && (MARKER_SHAPES as readonly string[]).includes(entry.shape)) override.shape = entry.shape as MarkerShape;
+    if (typeof entry.color === "number" && Number.isFinite(entry.color)) override.color = entry.color;
+    if (entry.linkBroken && typeof entry.linkBroken === "object" && !Array.isArray(entry.linkBroken)) {
+      const rawBroken = entry.linkBroken as Record<string, unknown>;
+      const broken: NonNullable<EdgeMarkerOverride["linkBroken"]> = {};
+      if (rawBroken.color === true) broken.color = true;
+      if (rawBroken.shape === true) broken.shape = true;
+      if (Object.keys(broken).length > 0) override.linkBroken = broken;
+    }
+    if (Object.keys(override).length > 0) overrides[key] = override;
+  }
+  return overrides;
+}
+
+function edgeMarkerStyle(obj: Record<string, unknown> | null, d: EdgeMarkerStyle): EdgeMarkerStyle {
+  let o: Record<string, unknown> | null = null;
+  try {
+    o = obj && obj.edgeMarkers != null ? assertObject(obj.edgeMarkers, "edgeMarkers") : null;
+  } catch {
+    o = null;
+  }
+  const overrides: EdgeMarkerStyle["overrides"] = {};
+  const raw = o?.overrides;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [floorId, floorRaw] of Object.entries(raw)) {
+      const floor = edgeMarkerOverrides(floorRaw);
+      if (Object.keys(floor).length > 0) overrides[floorId] = floor;
+    }
+  }
+  return {
+    mode: optEnum(o, "mode", ["hidden", "gluings", "all"] as const, d.mode),
+    size: clampTo(EDGE_MARKER_SIZE_RANGE, optNumber(o, "size", d.size)),
+    shape: optMarkerShape(o, "shape", d.shape),
+    color: optNumber(o, "color", d.color),
+    overrides,
+  };
+}
+
 export function validateVectorByWallsSettings(v: unknown, path: string, links: ParamLink<VectorByWallsParamPath>[]): VectorByWallsSettings {
   const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
   if (v == null) return { ...d, links };
@@ -576,6 +622,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     ...cutLineStyle(obj, d),
     creases: creaseStyle(obj, d.creases),
     glueTabs: glueTabStyle(obj, d.glueTabs),
+    edgeMarkers: edgeMarkerStyle(obj, d.edgeMarkers),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
@@ -775,6 +822,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     ...cutLineStyle(obj, d),
     creases: creaseStyle(obj, d.creases),
     glueTabs: glueTabStyle(obj, d.glueTabs),
+    edgeMarkers: edgeMarkerStyle(obj, d.edgeMarkers),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),

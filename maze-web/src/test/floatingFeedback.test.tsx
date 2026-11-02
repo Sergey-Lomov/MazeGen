@@ -89,6 +89,47 @@ describe("Tooltip", () => {
     expect(screen.queryByTestId("tooltip")).toBeNull();
   });
 
+  it("hides on mouse press and stays hidden through the resulting focus and click", () => {
+    vi.useFakeTimers();
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerEnter(anchor, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS));
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.focus(anchor);
+    expect(screen.queryByTestId("tooltip")).toBeNull();
+  });
+
+  it("shows on keyboard focus again after a mouse press and blur", () => {
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.blur(anchor);
+    fireEvent.focus(anchor);
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
+  it("shows on keyboard focus after a press on an already focused anchor", () => {
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.pointerUp(anchor, { pointerType: "mouse" });
+    fireEvent.focus(anchor);
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
+  it("shows on hover again after a mouse press and leave", () => {
+    vi.useFakeTimers();
+    render(<Tooltip content="Why"><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    fireEvent.pointerDown(anchor, { pointerType: "mouse" });
+    fireEvent.pointerLeave(anchor, { pointerType: "mouse" });
+    fireEvent.pointerEnter(anchor, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS));
+    expect(screen.getByTestId("tooltip")).toBeTruthy();
+  });
+
   it("shows on tap and hides on tap outside", () => {
     render(<><Tooltip content="Why"><span>X</span></Tooltip><div data-testid="outside" /></>);
     tap(screen.getByTestId("tooltip-anchor"));

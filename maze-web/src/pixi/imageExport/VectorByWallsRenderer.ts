@@ -29,23 +29,15 @@ import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
-import { computeGlueTabWarnings } from "../selectors/glueTabWarnings";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
-import { TopologyBandRenderer } from "../renderers/TopologyBandRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
+import { WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
   buildMarkerIndexEndpointResolver, layoutExportMarkers,
 } from "./exportStyleBuilders";
 
-/** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
- *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
- *  must not import the web-styling layer. */
-export const WARNING_HIGHLIGHT_COLOR = 0xffaa44;
-
-/** Corner radius (display units) of a highlighted warning polygon. */
-const POLYGON_HIGHLIGHT_RADIUS = 3;
 
 /** Warnings about a one-way passage itself: highlighted as the passage's shared boundary (walls) or
  *  its two cells (corridors) rather than as plain cell regions. */
@@ -64,10 +56,6 @@ const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
  *  ownership rule, never a shared instance between the two mode renderers. */
 export class ExportWarningHighlight<TSettings> {
   private readonly highlight: RegionHighlightRenderer;
-  /** Fills the warning's `polygons` (GitHub issue #913), which are already in display space. */
-  private readonly polygons = new Graphics();
-  /** Draws the warning's `bands` with the glue editor's boundary band (GitHub issue #913). */
-  private readonly bands: TopologyBandRenderer;
   private readonly computeWarnings: (
     nodes: NodeDto[],
     edges: EdgeDto[],
@@ -102,8 +90,6 @@ export class ExportWarningHighlight<TSettings> {
     ) => ExportWarning[],
   ) {
     this.highlight = new RegionHighlightRenderer(container);
-    container.addChild(this.polygons);
-    this.bands = new TopologyBandRenderer(container);
     this.computeWarnings = computeWarnings;
   }
 
@@ -123,8 +109,6 @@ export class ExportWarningHighlight<TSettings> {
      * boundary; vector-by-walls keeps the boundary treatment. */
     boundaryWarningsAsRegions = false,
   ): void {
-    this.polygons.clear();
-    this.bands.render([]);
     if (!hoveredKey) {
       this.highlight.clear();
       return;
@@ -148,13 +132,6 @@ export class ExportWarningHighlight<TSettings> {
       this.cache = { nodes, edges, cfg, settings, start, finish, unscopedNodes, warnings };
     }
     const warning = warnings.find((w) => w.key === hoveredKey);
-    if (warning?.polygons?.length) {
-      // Like the cell highlight: translucent fill plus an opaque 3px outline, a closed contour with rounded corners.
-      for (const polygon of warning.polygons) this.polygons.roundShape(polygon.map(([x, y]) => ({ x, y })), POLYGON_HIGHLIGHT_RADIUS).closePath();
-      this.polygons.fill({ color: WARNING_HIGHLIGHT_COLOR, alpha: 0.25 });
-      this.polygons.stroke({ width: 3, color: WARNING_HIGHLIGHT_COLOR, join: "round", cap: "round" });
-    }
-    if (warning?.bands?.length) this.bands.render(warning.bands.map((polyline) => ({ polyline, color: WARNING_HIGHLIGHT_COLOR })));
     if (!warning || (warning.nodes.length === 0 && (!warning.cells || warning.cells.length === 0))) {
       this.highlight.clear();
       return;
@@ -241,8 +218,6 @@ export class ExportWarningHighlight<TSettings> {
 
   destroy(): void {
     this.highlight.destroy();
-    this.polygons.destroy();
-    this.bands.destroy();
   }
 }
 
@@ -840,7 +815,7 @@ export class VectorByWallsRenderer {
     const warnings = computeVectorByWallsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByWallsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
-    ).concat(computeGlueTabWarnings(state, state.vectorByWallsSettings.glueTabs));
+    );
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset,
       // Boundary band as wide as the live one-way indicator, like the analytics highlight; without it the band spans the whole distance between the two cell centers.
