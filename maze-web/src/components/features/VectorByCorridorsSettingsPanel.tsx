@@ -68,6 +68,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setGlueTabs = useMazeStore((s) => s.setVectorByCorridorsGlueTabs);
   const setEdgeMarkers = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkers);
   const setEdgeMarkerOverride = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkerOverride);
+  const setEdgeMarkerOverrides = useMazeStore((s) => s.setVectorByCorridorsEdgeMarkerOverrides);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
@@ -1190,6 +1191,7 @@ export function VectorByCorridorsSettingsPanel() {
         edgeMarkerPriorityColors={[bg, corridor, PC.bgGrid.at(settings.gridColor)]}
         onEdgeMarkersChange={setEdgeMarkers}
         onEdgeMarkerOverride={setEdgeMarkerOverride}
+        onEdgeMarkerOverrides={setEdgeMarkerOverrides}
       />
 
     </div>

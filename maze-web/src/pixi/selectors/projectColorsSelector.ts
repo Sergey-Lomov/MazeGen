@@ -253,12 +253,14 @@ export const PC = {
     return makeField(teleportGroupKey(index, role), () => `${sectionLabel.teleports()}: ${label({ index: String(index + 1) })}`, (c) => isColorFieldVisible(teleportGroupKey(index, role), c));
   },
 
-  /** A per-edge-marker override color: the marker's 1-based `number` on its floor and that floor's 0-based `level` name it
-   *  ("Topology: Alignment marker N (L1)"). The key carries the floor and the marker's own key, so it stays put when markers
-   *  around it come and go. */
-  edgeMarkerAt(floorId: string, markerKey: string, number: number, level: number): ColorField {
+  /** A per-edge-marker override color, named after the marker's own key (`g<glue>` / `c<crease>`, numbered from 1) and, when
+   *  the project has several floors, the floor's 0-based `level` ("Topology: Glue mark 1 (L1)"). The key carries the floor and
+   *  the marker's own key, so it stays put when markers around it come and go. */
+  edgeMarkerAt(floorId: string, markerKey: string, level: number, levelCount: number): ColorField {
     const key = edgeMarkerKey(floorId, markerKey);
-    return makeField(key, () => `${sectionLabel.topology()}: ${m["color_picker.entry.role.edge_marker_n"]({ index: String(number) })} (L${level + 1})`, (c) => isColorFieldVisible(key, c));
+    const index = String(Number(markerKey.slice(1)) + 1);
+    const name = markerKey.startsWith("c") ? m["color_picker.entry.role.edge_crease_marker_n"]({ index }) : m["color_picker.entry.role.edge_glue_marker_n"]({ index });
+    return makeField(key, () => `${sectionLabel.topology()}: ${name}${levelCount > 1 ? ` (L${level + 1})` : ""}`, (c) => isColorFieldVisible(key, c));
   },
 } as const;
 
@@ -299,9 +301,9 @@ function edgeMarkerRows(ctx: ColorVisibilityContext): ProjectColorEntry[] {
     const overrides = ctx.settings.edgeMarkers.overrides[floorId];
     if (!overrides) return;
     const order = ctx.edgeMarkerOrder[floorId] ?? Object.keys(overrides).sort((a, b) => a.localeCompare(b));
-    order.forEach((key, i) => {
+    order.forEach((key) => {
       const color = overrides[key]?.color;
-      const field = PC.edgeMarkerAt(floorId, key, i + 1, level);
+      const field = PC.edgeMarkerAt(floorId, key, level, ctx.floorIds.length);
       if (color !== undefined && field.isVisible(ctx)) rows.push(field.at(color));
     });
   });

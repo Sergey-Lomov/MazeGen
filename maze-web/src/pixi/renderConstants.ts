@@ -37,7 +37,12 @@ export const GLUE_TAB_INSET_RANGE = { min: 0, max: 40 } as const;
 export const GLUE_TAB_WIDTH_RANGE = { min: 2, max: 80 } as const;
 export const GLUE_TAB_LINE_WIDTH_RANGE = { min: 0, max: 10 } as const;
 /** Range of the edge marker diameter (GitHub issue #902). */
-export const EDGE_MARKER_SIZE_RANGE = { min: 2, max: 40 } as const;
+/** The base colour of the automatic hue distribution (GitHub issue #903): glue colours, and the default base colour of the
+ *  export's edge alignment markers, so markers that sit on glues get the glues' colours. */
+export const AUTO_HUE_BASE_COLOR = 0x2873bd;
+/** Lightness added to a hovered glue's colour (OKLCH L). */
+export const GLUE_HOVER_LIGHTNESS = 10;
+export const EDGE_MARKER_SIZE_RANGE ={ min: 2, max: 40 } as const;
 export const TEXT_MARGIN_RANGE = { min: 0, max: 10, step: 0.5 } as const;
 
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same

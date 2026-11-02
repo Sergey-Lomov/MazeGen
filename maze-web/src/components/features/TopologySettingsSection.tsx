@@ -13,7 +13,7 @@ import * as m from "~/paraglide/messages";
 
 /** The "Topology" section of a render mode's settings (GitHub issue #859): how the cut lines are drawn on the image.
  * Shown for a floor that has glues or creases (its glue rows only with glues). Both render modes use it as is, each with its own store actions. */
-export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride }: {
+export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
   expanded: boolean;
   onToggle: () => void;
   style: CutLineStyleFields;
@@ -44,6 +44,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   edgeMarkerPriorityColors: ProjectColorEntry[];
   onEdgeMarkersChange: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
   onEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  onEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
   const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
   const hasCreases = useMazeStore((s) => (s.floorCreases[s.activeFloorId]?.length ?? 0) > 0);
@@ -75,7 +76,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
           {hasCreases && (
             <CreaseSettingsSubsection expanded={creasesExpanded} onToggle={onToggleCreases} style={creaseStyle} defaultColor={creaseDefaultColor} priorityColors={creasePriorityColors} onChange={onCreasesChange} />
           )}
-          <EdgeMarkerSettingsSubsection expanded={edgeMarkersExpanded} onToggle={onToggleEdgeMarkers} style={edgeMarkerStyle} defaultColor={edgeMarkerDefaultColor} priorityColors={edgeMarkerPriorityColors} onChange={onEdgeMarkersChange} onOverride={onEdgeMarkerOverride} />
+          <EdgeMarkerSettingsSubsection expanded={edgeMarkersExpanded} onToggle={onToggleEdgeMarkers} style={edgeMarkerStyle} defaultColor={edgeMarkerDefaultColor} priorityColors={edgeMarkerPriorityColors} onChange={onEdgeMarkersChange} onOverride={onEdgeMarkerOverride} onOverrides={onEdgeMarkerOverrides} />
         </div>
       )}
     </>

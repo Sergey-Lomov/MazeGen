@@ -11,12 +11,14 @@ import { sharedStyles } from "../../styles/shared";
 import { EDGE_MARKER_SIZE_RANGE } from "../../pixi/renderConstants";
 import { edgeMarkerKeys, edgeMarkerLook, edgeMarkerLooksAlike, selectExportEdgeMarkers } from "../../pixi/imageExport/edgeMarkerExport";
 import { PC, type ColorField, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
+import { distributeHueGroups } from "../../store/colorMath";
 import { useLocale } from "../../i18n/useLocale";
 import { ColorSwatch } from "../ColorSwatch";
 import { LinkStatusIcon } from "../LinkStatusIcon";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
+import { Button } from "../Button";
 import { Tooltip } from "../Tooltip";
 import { LinkedColorRow, LinkedSelectRow } from "./LinkedRows";
 import { useLinkContext } from "./LinkContext";
@@ -83,7 +85,6 @@ function EdgeMarkerCell({ markerKey, index, colorField, override, shape, color, 
           <Tooltip content={hasCollision ? m["image_export.edge_markers.collision"]() : undefined}><span style={styles.warningIcon}>
             {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
           </span></Tooltip>
-          <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
         </div>
       </div>
       <div style={styles.cellControls}>
@@ -115,7 +116,7 @@ function EdgeMarkerCell({ markerKey, index, colorField, override, shape, color, 
  *  and the shape and colour of each. The shared shape and colour are linkable parameters the marker cards follow by default
  *  (the model of the teleport groups' customization); a card's link icon breaks that for one marker. The parent shows it
  *  only for a floor that has glues or creases. Both render modes use it as is. */
-export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaultColor, priorityColors, onChange, onOverride }: {
+export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaultColor, priorityColors, onChange, onOverride, onOverrides }: {
   expanded: boolean;
   onToggle: () => void;
   style: EdgeMarkerStyle;
@@ -123,6 +124,8 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   priorityColors: ProjectColorEntry[];
   onChange: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
   onOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  /** Several markers of the floor at once. */
+  onOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
   const { links } = useLinkContext<string>();
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
@@ -138,8 +141,8 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   );
   const level = useMemo(() => floors.findIndex((floor) => floor.id === activeFloorId), [floors, activeFloorId]);
   const resolved = useMemo(() => withResolvedEdgeMarkers(style, links, activeFloorId), [style, links, activeFloorId]);
-  // The colour field of a marker that has a colour of its own; its number is the marker's `#N` in the list.
-  const fieldOf = (key: string, i: number): ColorField | undefined => (style.overrides[activeFloorId]?.[key]?.color !== undefined ? PC.edgeMarkerAt(activeFloorId, key, i + 1, level) : undefined);
+  // The colour field of a marker that has a colour of its own.
+  const fieldOf = (key: string): ColorField | undefined => (style.overrides[activeFloorId]?.[key]?.color !== undefined ? PC.edgeMarkerAt(activeFloorId, key, level, floors.length) : undefined);
   const looks = keys.map((key) => edgeMarkerLook(resolved, key));
   const shapeOptions = markerShapeSelectOptions();
   return (
@@ -162,18 +165,33 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
               <SliderRow label={m["image_export.edge_markers.size"]()} value={style.size} onChange={(size) => onChange({ size })} min={EDGE_MARKER_SIZE_RANGE.min} max={EDGE_MARKER_SIZE_RANGE.max} step={1} format={(v) => String(v)} />
               <LinkedSelectRow label={m["image_export.edge_markers.shape"]()} value={style.shape} options={shapeOptions} onChange={(shape) => onChange({ shape })} linkTarget="edgeMarkers.shape" />
               <LinkedColorRow label={m["image_export.edge_markers.color"]()} color={style.color} onChange={(color) => onChange({ color })} priorityColors={priorityColors} defaultColor={defaultColor} field={PC.edgeMarker} linkTarget="edgeMarkers.color" />
+              {keys.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={(e) => {
+                    // One-off: the shared colour spread by hue over the markers, each set as the marker's own colour.
+                    const colors = distributeHueGroups(resolved.color, keys.length);
+                    onOverrides(activeFloorId, Object.fromEntries(keys.map((key, i) => [key, { color: colors[i] }])));
+                    e.currentTarget.blur();
+                  }}
+                >
+                  {m["image_export.edge_markers.auto_colors"]()}
+                </Button>
+              )}
               <div style={styles.list}>
                 {keys.map((key, i) => {
                   const others = keys.flatMap((other, j) => {
-                    const field = j !== i ? fieldOf(other, j) : undefined;
+                    const field = j !== i ? fieldOf(other) : undefined;
                     return field ? [field.at(looks[j].color)] : [];
                   });
                   return (
                     <EdgeMarkerCell
-                      key={key}
+                      // Keyed by floor too: marker keys repeat from floor to floor, so a card (and the colour picker open in it) must not carry over to the
+                      // same key on another floor, where its edits would land on that floor's marker.
+                      key={`${activeFloorId}:${key}`}
                       markerKey={key}
                       index={i}
-                      colorField={fieldOf(key, i)}
+                      colorField={fieldOf(key)}
                       override={style.overrides[activeFloorId]?.[key]}
                       shape={looks[i].shape}
                       color={looks[i].color}

@@ -122,7 +122,7 @@ describe("TopologySettingsSection with creases", () => {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
     creasesExpanded: true, onToggleCreases: () => {}, creaseStyle: shown, creaseDefaultColor: 0, creasePriorityColors: [], onCreasesChange: () => {},
-    edgeMarkersExpanded: true, onToggleEdgeMarkers: () => {}, edgeMarkerStyle: DEFAULT_EDGE_MARKER_STYLE, edgeMarkerDefaultColor: 0, edgeMarkerPriorityColors: [], onEdgeMarkersChange: () => {}, onEdgeMarkerOverride: () => {},
+    edgeMarkersExpanded: true, onToggleEdgeMarkers: () => {}, edgeMarkerStyle: DEFAULT_EDGE_MARKER_STYLE, edgeMarkerDefaultColor: 0, edgeMarkerPriorityColors: [], onEdgeMarkersChange: () => {}, onEdgeMarkerOverride: () => {}, onEdgeMarkerOverrides: () => {},
     glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
@@ -148,7 +148,7 @@ describe("EdgeMarkerSettingsSubsection cards", () => {
     const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;
     render(
       <LinkContextProvider value={context}>
-        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all" }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} />
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all" }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={() => {}} />
       </LinkContextProvider>,
     );
     expect(screen.getByText(m["image_export.edge_markers.crease_marker"]({ id: "1" }))).toBeTruthy();
@@ -166,9 +166,38 @@ describe("EdgeMarkerSettingsSubsection linked", () => {
     const context = { ...linkContext, links, registry } as unknown as typeof linkContext;
     render(
       <LinkContextProvider value={context}>
-        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all", overrides: { [useMazeStore.getState().activeFloorId]: { c0: { shape: "star", linkBroken: { shape: true } } } } }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} />
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all", overrides: { [useMazeStore.getState().activeFloorId]: { c0: { shape: "star", linkBroken: { shape: true } } } } }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={() => {}} />
       </LinkContextProvider>,
     );
     expect(screen.getByText(m["image_export.edge_markers.crease_marker"]({ id: "1" }))).toBeTruthy();
+  });
+});
+
+describe("EdgeMarkerSettingsSubsection auto colours", () => {
+  it("sets each shown marker's own colour from the hue distribution of the shared colour, once", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    const { distributeHueGroups } = await import("../store/colorMath");
+    const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
+    const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;
+    setCreases([crease]);
+    const calls: unknown[][] = [];
+    render(
+      <LinkContextProvider value={context}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all", color: 0x123456 }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={(...args) => { calls.push(args); }} />
+      </LinkContextProvider>,
+    );
+    fireEvent.click(screen.getByText(m["image_export.edge_markers.auto_colors"]()));
+    expect(calls).toEqual([[useMazeStore.getState().activeFloorId, { c0: { color: distributeHueGroups(0x123456, 1)[0] } }]]);
+  });
+
+  it("offers no button while no marker is shown", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    setCreases([]);
+    render(
+      <LinkContextProvider value={linkContext}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={{ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all" }} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={() => {}} />
+      </LinkContextProvider>,
+    );
+    expect(screen.queryByText(m["image_export.edge_markers.auto_colors"]())).toBeNull();
   });
 });

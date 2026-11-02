@@ -63,7 +63,7 @@ export function edgeMarkerLook(style: Pick<FloorEdgeMarkerStyle, "shape" | "colo
   return { shape: override?.shape ?? style.shape, color: override?.color ?? style.color };
 }
 
-type EdgeMarkerState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "floors">;
+type EdgeMarkerState =Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "floors">;
 
 /// The markers of the active floor, or none while the style hides them. "gluings": one marker per
 /// glue, at the centre of its side A and the matching spot on side B, each as the half on its own face (a glue with a cut line

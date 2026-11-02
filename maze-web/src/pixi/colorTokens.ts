@@ -104,8 +104,6 @@ export const canvas = {
   topology: {
     runA: hexToNumber(base.topologyRunA),
     runB: hexToNumber(base.topologyRunB),
-    seamArrow: hexToNumber(base.topologySeamArrow),
-    seamArrowHover: hexToNumber(base.topologySeamArrowHover),
     seamTwistIcon: hexToNumber(base.topologySeamTwistIcon),
     crease: hexToNumber(base.topologyCrease),
     creaseHover: hexToNumber(base.topologyCreaseHover),

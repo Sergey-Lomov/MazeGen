@@ -269,3 +269,22 @@ describe("persistence of link flags", () => {
     expect(validateVectorByWallsSettings({ edgeMarkers: saved }, "x", []).edgeMarkers.overrides.f1?.a).toEqual({ shape: "star", linkBroken: { shape: true } });
   });
 });
+
+describe("setVectorBy*EdgeMarkerOverrides", () => {
+  it("sets and drops the overrides of several markers in one settings update", () => {
+    // The markers must exist, or the store's cleanup (`edgeMarkerSync`) drops their overrides at once.
+    const floor = useMazeStore.getState().activeFloorId;
+    useMazeStore.setState({ floorCreases: { [floor]: [{ id: 0, a: [0, 0], b: [2, 0] }, { id: 1, a: [0, 1], b: [2, 1] }] } } as never);
+    useMazeStore.getState().setVectorByWallsEdgeMarkers({ mode: "all" });
+    let updates = 0;
+    const unsubscribe = useMazeStore.subscribe((state, prev) => { if (state.vectorByWallsSettings !== prev.vectorByWallsSettings) updates++; });
+    useMazeStore.getState().setVectorByWallsEdgeMarkerOverrides(floor, { c0: { color: 1 }, c1: { color: 2 } });
+    unsubscribe();
+    expect(updates).toBe(1);
+    expect(useMazeStore.getState().vectorByWallsSettings.edgeMarkers.overrides[floor]).toMatchObject({ c0: { color: 1 }, c1: { color: 2 } });
+    useMazeStore.getState().setVectorByWallsEdgeMarkerOverrides(floor, { c0: null, c1: null });
+    expect(useMazeStore.getState().vectorByWallsSettings.edgeMarkers.overrides[floor]).toBeUndefined();
+    useMazeStore.getState().setVectorByWallsEdgeMarkers({ mode: "hidden" });
+    useMazeStore.setState({ floorCreases: {} });
+  });
+});

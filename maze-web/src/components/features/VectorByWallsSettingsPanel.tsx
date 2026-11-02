@@ -65,6 +65,7 @@ export function VectorByWallsSettingsPanel() {
   const setGlueTabs = useMazeStore((s) => s.setVectorByWallsGlueTabs);
   const setEdgeMarkers = useMazeStore((s) => s.setVectorByWallsEdgeMarkers);
   const setEdgeMarkerOverride = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverride);
+  const setEdgeMarkerOverrides = useMazeStore((s) => s.setVectorByWallsEdgeMarkerOverrides);
   const setShowInnerGrid = useMazeStore((s) => s.setVectorByWallsShowInnerGrid);
   const setInnerGridColor = useMazeStore((s) => s.setVectorByWallsInnerGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
@@ -1361,6 +1362,7 @@ export function VectorByWallsSettingsPanel() {
         edgeMarkerPriorityColors={[wall]}
         onEdgeMarkersChange={setEdgeMarkers}
         onEdgeMarkerOverride={setEdgeMarkerOverride}
+        onEdgeMarkerOverrides={setEdgeMarkerOverrides}
       />
 
     </div>

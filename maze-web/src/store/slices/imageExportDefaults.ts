@@ -22,7 +22,7 @@ import type {
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
+import { AUTO_HUE_BASE_COLOR, DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
 import { propagate } from "./parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
@@ -309,7 +309,7 @@ function glueTabStyleFor(background: number, gridColor: number): GlueTabStyle {
 export const DEFAULT_GLUE_TAB_STYLE: GlueTabStyle = glueTabStyleFor(DEFAULT_MAZE_RENDER_STYLE.backgroundColor, DEFAULT_MAZE_RENDER_STYLE.grid.color);
 
 /** Edge alignment markers are hidden by default; once shown they are grey circles. */
-export const DEFAULT_EDGE_MARKER_STYLE: EdgeMarkerStyle = { mode: "hidden", size: 12, shape: "circle", color: 0x808080, overrides: {} };
+export const DEFAULT_EDGE_MARKER_STYLE: EdgeMarkerStyle = { mode: "hidden", size: 12, shape: "circle", color: AUTO_HUE_BASE_COLOR, overrides: {} };
 
 export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate(
   {

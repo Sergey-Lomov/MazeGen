@@ -1038,6 +1038,8 @@ export interface ImageExportActions {
   setVectorByCorridorsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
   /** Sets one marker's own look; `null` drops the override. */
   setVectorByCorridorsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  /** Several markers of one floor in a single update (the "Auto colours" button). */
+  setVectorByCorridorsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
@@ -1132,6 +1134,8 @@ export interface ImageExportActions {
   setVectorByWallsEdgeMarkers: (patch: Partial<Omit<EdgeMarkerStyle, "overrides">>) => void;
   /** Sets one marker's own look; `null` drops the override. */
   setVectorByWallsEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
+  /** Several markers of one floor in a single update (the "Auto colours" button). */
+  setVectorByWallsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;
