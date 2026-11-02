@@ -1,4 +1,5 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
+import * as mazeService from "../wasm/mazeService";
 import { configAllCells } from "./tessellationCells";
 import {
   getCellAt,
@@ -213,6 +214,34 @@ export function prefetchCellOutlines(cells: readonly (readonly [number, number])
     outlineCache.set(cellKey(outline.cell[0], outline.cell[1]), outline.commands);
   }
   while (outlineCache.size > maxOutsideCells) outlineCache.delete(outlineCache.keys().next().value!);
+}
+
+/**
+ * Selects intersecting cells and caches their boundary paths in one core call. The viewport grid
+ * uses this instead of first asking core for cell ids and then crossing WASM again for outlines.
+ */
+export function prefetchRegionOutlines(region: WorldPoint[], cfg: FieldConfig): [number, number][] {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  const request = {
+    tessellation: cfg.tessellation,
+    region,
+    mode: "intersects",
+    scope: null,
+  } as const;
+  // Kept as a compatibility path for a stale generated package or a partial test mock. Production
+  // ships `geometry_region_outlines`, so ordinary viewport queries use the single combined call.
+  if (!("getRegionOutlines" in mazeService)) {
+    const cells = getCellsInRegion(request);
+    prefetchCellOutlines(cells, cfg);
+    return cells;
+  }
+  const outlines = mazeService.getRegionOutlines(request);
+  for (const outline of outlines) {
+    const key = cellKey(outline.cell[0], outline.cell[1]);
+    if (!fieldCache.has(key) && !outsideCache.has(key)) outlineCache.set(key, outline.commands);
+  }
+  while (outlineCache.size > maxOutsideCells) outlineCache.delete(outlineCache.keys().next().value!);
+  return outlines.map((outline) => outline.cell);
 }
 
 /// Boundary path commands of one cell in world units: from the field or outside cache when it holds

@@ -561,6 +561,16 @@ export function getCellsInRegion(config: {
   return getWasm().geometry_cells_in_region(config) as [number, number][];
 }
 
+/** Cells matching a region and their path boundaries, computed by core in one WASM call. */
+export function getRegionOutlines(config: {
+  tessellation: WasmTessellationConfig;
+  region: WorldPoint[];
+  mode: RegionMode;
+  scope: [number, number][] | null;
+}): CellOutline[] {
+  return getWasm().geometry_region_outlines(config) as CellOutline[];
+}
+
 /** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell
  *  without a template comes back as `undefined` in `point_shapes`. */
 export interface TessellationShapes {

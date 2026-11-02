@@ -285,7 +285,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
 
     this.gridContainer = new Container();
     container.addChild(this.gridContainer);
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "vector export grid");
 
     this.glueTabs = new Container();
     container.addChild(this.glueTabs);
@@ -462,7 +462,7 @@ export class VectorByWallsRenderer {
     this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
-    this.innerGrid = new GridRenderer(this.innerGridContainer);
+    this.innerGrid = new GridRenderer(this.innerGridContainer, "vector export inner grid");
     this.walls = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);

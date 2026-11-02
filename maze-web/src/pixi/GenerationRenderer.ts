@@ -114,7 +114,7 @@ export class GenerationRenderer {
     viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.kruskalDsuHighlightContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "generation");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);

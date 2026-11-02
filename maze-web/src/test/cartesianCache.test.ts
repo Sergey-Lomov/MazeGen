@@ -11,6 +11,7 @@ import {
   prefetchCellGeometries,
   getFieldWorldBounds,
   prefetchCellOutlines,
+  prefetchRegionOutlines,
   DEFAULT_MAX_OUTSIDE_CELLS,
   setMaxOutsideCells,
   warmCartesianCache,
@@ -43,6 +44,22 @@ describe("geometry access layer", () => {
     expect(outlines).toHaveBeenCalledTimes(1);
     outlines.mockRestore();
     snapshot.mockRestore();
+  });
+
+  it("caches outlines returned with an unscoped region query", () => {
+    const square = fieldOf("square", { shape: "custom", points: [[0, 0]] });
+    warmCartesianCache(square);
+    const region = vi.spyOn(mazeService, "getRegionOutlines");
+    const outlines = vi.spyOn(mazeService, "getCellOutlines");
+
+    const cells = prefetchRegionOutlines([[5.1, 5.1], [5.9, 5.1], [5.9, 5.9], [5.1, 5.9]], square);
+
+    expect(region).toHaveBeenCalledOnce();
+    expect(cells).toContainEqual([5, 5]);
+    getCellOutline(5, 5, square);
+    expect(outlines).not.toHaveBeenCalled();
+    region.mockRestore();
+    outlines.mockRestore();
   });
 
   it("rebuilds the path boundary from the faces exactly as core's outline", () => {

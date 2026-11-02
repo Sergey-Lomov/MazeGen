@@ -320,6 +320,13 @@ pub fn cells_in_region(request: &CellsInRegionRequest) -> Result<Vec<[i32; 2]>, 
     build_tessellation(&request.tessellation, CellsInRegion { request })?
 }
 
+/// Boundary paths of every cell selected by a region query. This keeps candidate selection and
+/// outline construction in one tessellation visit, for viewport painters that would otherwise
+/// cross the wire once for each operation.
+pub fn region_outlines(request: &CellsInRegionRequest) -> Result<Vec<CellOutline>, String> {
+    build_tessellation(&request.tessellation, RegionOutlines { request })?
+}
+
 /// Identity of a tessellation instance: equal configs build equal instances.
 fn instance_key(config: &TessellationConfig) -> String {
     serde_json::to_string(config).expect("tessellation config serializes")
@@ -561,6 +568,44 @@ impl TessellationVisitor for CellsInRegion<'_> {
             .cells_in_region(&region, mode, scope(&scope_cells))
             .map_err(|e| format!("region too large: more than {} candidate cells", e.limit))?;
         Ok(cells.into_iter().map(|cell| wire(cell, codec)).collect())
+    }
+}
+
+struct RegionOutlines<'a> {
+    request: &'a CellsInRegionRequest,
+}
+
+impl TessellationVisitor for RegionOutlines<'_> {
+    type Output = Result<Vec<CellOutline>, String>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        let region: Vec<Point> = self
+            .request
+            .region
+            .iter()
+            .map(|&[x, y]| Point::new(x, y))
+            .collect();
+        let mode = match self.request.mode {
+            RegionModeDto::Intersects => RegionMode::Intersects,
+            RegionModeDto::Contained => RegionMode::Contained,
+            RegionModeDto::CenterInside => RegionMode::CenterInside,
+        };
+        let scope_cells = scope_cells(&self.request.scope, &*tessellation, codec)?;
+        let cells = tessellation
+            .cells_in_region(&region, mode, scope(&scope_cells))
+            .map_err(|e| format!("region too large: more than {} candidate cells", e.limit))?;
+        Ok(cells
+            .into_iter()
+            .map(|cell| CellOutline {
+                cell: wire(cell, codec),
+                commands: tessellation
+                    .boundary_path(cell)
+                    .path_commands()
+                    .iter()
+                    .map(command_dto)
+                    .collect(),
+            })
+            .collect())
     }
 }
 
@@ -1159,5 +1204,23 @@ mod tests {
             scope: None,
         });
         assert!(huge.is_err());
+    }
+
+    #[test]
+    fn region_outlines_selects_and_draws_cells_in_one_request() {
+        let request = CellsInRegionRequest {
+            tessellation: config(TessellationKind::CurvedQuadrilateral),
+            region: vec![[0.1, 0.1], [1.9, 0.1], [1.9, 1.9], [0.1, 1.9]],
+            mode: RegionModeDto::Intersects,
+            scope: None,
+        };
+        let outlines = region_outlines(&request).unwrap();
+
+        assert_eq!(
+            outlines.iter().map(|outline| outline.cell).collect::<Vec<_>>(),
+            cells_in_region(&request).unwrap(),
+        );
+        assert!(outlines.iter().all(|outline| !outline.commands.is_empty()));
+        assert!(outlines.iter().all(|outline| outline.commands.iter().any(|command| matches!(command, PathCommandDto::ArcTo { .. }))));
     }
 }

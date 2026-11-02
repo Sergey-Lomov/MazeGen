@@ -161,7 +161,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.issueHighlightContainer = new Container();
     this.root.addChild(this.issueHighlightContainer);
 
-    this.grid        = new GridRenderer(this.gridContainer);
+    this.grid        = new GridRenderer(this.gridContainer, "post edit");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer, (data) => {
       this.seamData = data;
       this.renderSeams();

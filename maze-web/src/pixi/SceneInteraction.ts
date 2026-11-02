@@ -140,7 +140,12 @@ export class SceneInteraction {
 
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
-      onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
+      const controller = getController(st);
+      // A pan changes the viewport continuously, so resolving a hover cell would synchronously
+      // cross into core (`geometry_cell_at`) for every pointer event. The hover is meaningless
+      // while the viewport moves and is recomputed on the first stationary pointer move.
+      if (this.defaultPan.isDragging || controller?.isViewportPanning) onHoverChanged(null);
+      else onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && (e.buttons & 4) !== 0) {
         setCanvasCursor(app.canvas, "grabbing");
@@ -187,7 +192,6 @@ export class SceneInteraction {
         );
         return;
       }
-      const controller = getController(st);
       if (controller) {
         controller.onPointerMove(e.globalX, e.globalY);
         return;
