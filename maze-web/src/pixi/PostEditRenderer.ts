@@ -139,6 +139,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
     this.splitJunctionContainer = new Container();
@@ -146,8 +148,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.teleportContainer);
     this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
-    // Above every layer of the maze itself, below only the highlights.
-    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.hoverContainer);
     this.cellHoverContainer = new Container();
     this.root.addChild(this.cellHoverContainer);

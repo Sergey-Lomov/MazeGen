@@ -92,6 +92,8 @@ export class AnalyticsRenderer {
 
     container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    container.addChild(this.seamArrowContainer);
     container.addChild(this.closedCellsContainer);
     container.addChild(this.regionsContainer);
     container.addChild(this.regionClassesContainer);
@@ -106,8 +108,6 @@ export class AnalyticsRenderer {
     container.addChild(this.navGraphContainer);
     container.addChild(this.pureCyclesContainer);
     container.addChild(this.routeContainer);
-    // Above every layer of the maze itself, below only the highlights.
-    container.addChild(this.seamArrowContainer);
     container.addChild(this.issueHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer, "analytics");
