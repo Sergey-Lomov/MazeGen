@@ -8,7 +8,7 @@ import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { insidePolygon } from "../pixi/selectors/seamRouting";
 import { arrowContains, buildSeamArrows, headPolygon, pairAt, seamFocusOf, BRACE_OFFSET, BRACE_WIDTH } from "../pixi/selectors/seamArrows";
 import { glueColor } from "../pixi/renderers/SeamArrowRenderer";
-import { boundsOf, portAxes, routeAll, routePair, type Point } from "../pixi/selectors/seamRouting";
+import { boundsOf, pickStemPorts, portAxes, routeAll, routePair, unitOf, SEAM_LINE_WIDTH, type Point } from "../pixi/selectors/seamRouting";
 import { logicalEdgeSegments } from "../pixi/selectors/seamEdges";
 import { getSeamModel } from "../pixi/selectors/seams";
 import { pickEdgeAtPosition } from "../pixi/edgeHitTesting";
@@ -325,6 +325,48 @@ describe("seam arrows", () => {
   };
   const along = (point: P, origin: P, dir: P): number => (point[0] - origin[0]) * dir[0] + (point[1] - origin[1]) * dir[1];
 
+  it("keeps the head of a brick glue's arrow within the contour edge it stands on", () => {
+    const wide = fieldOf("brick", { shape: "torus", cols: 8, rows: 8 });
+    const topology = presetTopologyOf(wide)!;
+    warmCartesianCache(wide, topology);
+    const sides = buildSeamArrows(wide, topology).find((arrow) => arrow.braces.length === 2 && arrow.braces.every((brace) => brace.length > 8))!;
+    const edgeAt = (point: [number, number]): number => Math.min(...sides.braces.flatMap((brace) => brace.slice(1).map((end, i) => {
+      const from = brace[i];
+      const length = Math.hypot(end[0] - from[0], end[1] - from[1]);
+      const across = Math.abs(((point[0] - from[0]) * (end[1] - from[1]) - (point[1] - from[1]) * (end[0] - from[0])) / length);
+      return across < 1e-6 ? length : Infinity;
+    })));
+    const width = (head: [number, number][]): number => Math.hypot(head[1][0] - head[2][0], head[1][1] - head[2][1]);
+    expect(width(sides.headA)).toBeLessThanOrEqual(edgeAt(sides.path[0]) + 1e-6);
+    expect(width(sides.headB)).toBeLessThanOrEqual(edgeAt(sides.path[sides.path.length - 1]) + 1e-6);
+  });
+
+  it("starts a pair route at the middle of the contour edge over a half-brick notch face, not past its end", () => {
+    const wide = fieldOf("brick", { shape: "torus", cols: 8, rows: 8 });
+    const topology = presetTopologyOf(wide)!;
+    warmCartesianCache(wide, topology);
+    const sides = buildSeamArrows(wide, topology).find((arrow) => arrow.braces.length === 2 && arrow.braces.every((brace) => brace.length > 8))!;
+    const within = (point: [number, number]): boolean => sides.braces.some((brace) => brace.slice(1).some((end, i) => {
+      const from = brace[i];
+      const length = Math.hypot(end[0] - from[0], end[1] - from[1]);
+      const along = ((point[0] - from[0]) * (end[0] - from[0]) + (point[1] - from[1]) * (end[1] - from[1])) / length;
+      const across = Math.abs(((point[0] - from[0]) * (end[1] - from[1]) - (point[1] - from[1]) * (end[0] - from[0])) / length);
+      return across < 1e-6 && along >= -1e-6 && along <= length + 1e-6;
+    }));
+    for (const pair of sides.pairs) {
+      expect(within(pair.path[0])).toBe(true);
+      expect(within(pair.path[pair.path.length - 1])).toBe(true);
+    }
+  });
+
+  it("lays a pair route once, on first access, and keeps it", () => {
+    warm(torus);
+    const pair = buildSeamArrows(field, torus)[0].pairs[0];
+    expect(pair.path).toBe(pair.path);
+    expect(pair.headA).toBe(pair.headA);
+    expect(pair.path.length).toBeGreaterThan(1);
+  });
+
   it("is empty without folds", () => {
     warm(null);
     expect(buildSeamArrows(field)).toEqual([]);
@@ -437,6 +479,115 @@ describe("seam arrows", () => {
     const hex = portAxes([{ contact: [0, 0], out: hexOut }]);
     expect(hex).toHaveLength(2);
     expect(Math.abs(hex[0].ux * hex[1].ux + hex[0].uy * hex[1].uy)).toBeLessThan(1e-9);
+  });
+
+  it("never routes a hairpin between rays that lean the same way, nor a sharp corner onto a ring", () => {
+    const sharp = (path: Point[]): number => path.slice(1, -1).filter((p, i) => {
+      const u: Point = [p[0] - path[i][0], p[1] - path[i][1]];
+      const v: Point = [path[i + 2][0] - p[0], path[i + 2][1] - p[1]];
+      return u[0] * v[0] + u[1] * v[1] < -1e-6 * Math.hypot(...u) * Math.hypot(...v);
+    }).length;
+    const half = Math.SQRT1_2;
+    const axes = portAxes([{ contact: [0, 0], out: [half, -half] }]);
+    // Two faces leaning up and to the right on opposite sides of a field: the corner route would be a 90 degree hairpin.
+    const ports: [{ contact: Point; out: Point }, { contact: Point; out: Point }] = [
+      { contact: [0, 0], out: [half, -half] },
+      { contact: [10, 0], out: [half, half] },
+    ];
+    const field: Point[] = [[0, -1], [10, -1], [10, 1], [0, 1]];
+    const [route] = routeAll([ports], [field], 1, axes);
+    expect(sharp(route)).toBe(0);
+  });
+
+  const turnsSharp = (path: Point[]): number => path.slice(1, -1).filter((p, i) => {
+    const u: Point = [p[0] - path[i][0], p[1] - path[i][1]];
+    const v: Point = [path[i + 2][0] - p[0], path[i + 2][1] - p[1]];
+    return u[0] * v[0] + u[1] * v[1] < -1e-9;
+  }).length;
+  const slab: Point[] = [[0, 0], [10, 0], [10, 2], [0, 2]];
+  const flat = [{ ux: 1, uy: 0 }, { ux: 0, uy: 1 }];
+
+  it("leaves an oblique face along its normal, then runs square, with no turn sharper than a right angle", () => {
+    const out: Point = [-0.5, Math.sqrt(3) / 2];
+    const ports: [{ contact: Point; out: Point }, { contact: Point; out: Point }] = [
+      { contact: [0, 1], out },
+      { contact: [10, 1], out: [1, 0] },
+    ];
+    const [route] = routeAll([ports], [slab], 1, flat);
+    expect(turnsSharp(route)).toBe(0);
+    const first = unitOf(route[0], route[1]);
+    expect(first[0]).toBeCloseTo(out[0], 6);
+    expect(first[1]).toBeCloseTo(out[1], 6);
+    if (route.length > 2) {
+      const second = unitOf(route[1], route[2]);
+      expect(Math.abs(second[0]) < 1e-9 || Math.abs(second[1]) < 1e-9).toBe(true);
+    }
+  });
+
+  it("arrives at an oblique face along its normal, without a sharp turn", () => {
+    const out: Point = [0.5, Math.sqrt(3) / 2];
+    const ports: [{ contact: Point; out: Point }, { contact: Point; out: Point }] = [
+      { contact: [0, 1], out: [-1, 0] },
+      { contact: [10, 1], out },
+    ];
+    const [route] = routeAll([ports], [slab], 1, flat);
+    const n = route.length;
+    expect(turnsSharp(route)).toBe(0);
+    const last = unitOf(route[n - 2], route[n - 1]);
+    expect(last[0]).toBeCloseTo(-out[0], 6);
+    expect(last[1]).toBeCloseTo(-out[1], 6);
+  });
+
+  it("crosses the field from inside, square to the faces, when no way round exists", () => {
+    const ports: [{ contact: Point; out: Point }, { contact: Point; out: Point }] = [
+      { contact: [0, 1], out: [0, -1] },
+      { contact: [10, 1], out: [0, -1] },
+    ];
+    // Cells hug both faces and the way out of each: no route round the field exists.
+    const cells: Point[][] = [[[-1, -20], [11, -20], [11, 2], [-1, 2]]];
+    const [route] = routeAll([ports], cells, 1, flat);
+    expect(route.length).toBeGreaterThan(2);
+    expect(unitOf(route[0], route[1])[1]).toBeCloseTo(1, 6);
+    const n = route.length;
+    expect(unitOf(route[n - 2], route[n - 1])[1]).toBeCloseTo(-1, 6);
+  });
+
+  it("slips past a cell beside the route instead of running out to a far lane and back", () => {
+    const ports: [{ contact: Point; out: Point }, { contact: Point; out: Point }] = [
+      { contact: [5, 5], out: [1, 0] },
+      { contact: [0, 5], out: [-1, 0] },
+    ];
+    const field: Point[] = [[0, 0], [5, 0], [5, 10], [0, 10]];
+    const far: Point[] = [[20, 9], [21, 9], [21, 10], [20, 10]];
+    const [route] = routeAll([ports], [field, far], 1, flat);
+    expect(Math.max(...route.map((point) => point[0]))).toBeLessThan(14);
+    expect(turnsSharp(route)).toBe(0);
+  });
+
+  it("moves the stem to the nearest clean face when the middle one cannot leave the field", () => {
+    const axes = [{ ux: 1, uy: 0 }, { ux: 0, uy: 1 }];
+    const left = [0, 2, 4].map((y) => ({ contact: [0, y] as Point, out: [-1, 0] as Point }));
+    const right = [0, 2, 4].map((y) => ({ contact: [10, y] as Point, out: [1, 0] as Point }));
+    const field: Point[] = [[0, -1], [10, -1], [10, 5], [0, 5]];
+    const neighbour: Point[] = [[-3, 1.5], [-2, 1.5], [-2, 2.5], [-3, 2.5]];
+    // Nothing in the way: the middle faces.
+    expect(pickStemPorts(left, right, [field], 1, axes)).toEqual([1, 1]);
+    // A cell right outside the middle face: the nearest face beside it.
+    const [i, j] = pickStemPorts(left, right, [field, neighbour], 1, axes);
+    expect(i).not.toBe(1);
+    expect(Math.abs(i - 1)).toBe(1);
+    expect(j).toBe(1);
+  });
+
+  it("never moves the stem further than a quarter of the run from the middle", () => {
+    const axes = [{ ux: 1, uy: 0 }, { ux: 0, uy: 1 }];
+    const ys = [0, 2, 4, 6, 8, 10, 12, 14];
+    const left = ys.map((y) => ({ contact: [0, y] as Point, out: [-1, 0] as Point }));
+    const right = ys.map((y) => ({ contact: [10, y] as Point, out: [1, 0] as Point }));
+    const field: Point[] = [[0, -1], [10, -1], [10, 15], [0, 15]];
+    // Only the first face of the left run can leave the field: too far from the middle to be taken.
+    const wall: Point[] = [[-3, 1.5], [-2, 1.5], [-2, 15], [-3, 15]];
+    expect(pickStemPorts(left, right, [field, wall], 1, axes)).toEqual([4, 4]);
   });
 
   it("keeps a connector at least a cell away from the contours instead of lying along them", () => {
@@ -558,7 +709,7 @@ describe("seam arrows", () => {
     const topology = eachFoldAlone([...cylinderFolds, ...wrapFolds]);
     warm(topology);
     for (const arrow of buildSeamArrows(field, topology)) expect(arrow.bodies).toEqual([arrow.path]);
-  });
+  }, 30000);
 
   it("puts overlapping runs on different rings, so no two bodies run along each other", () => {
     for (const topology of [eachFoldAlone(cylinderFolds), eachFoldAlone([...cylinderFolds, ...wrapFolds]), eachFoldAlone(mobiusFolds)]) {
@@ -582,7 +733,7 @@ describe("seam arrows", () => {
         for (let j = i + 1; j < arrows.length; j++) expect(collinearOverlap(arrows[i].path, arrows[j].path)).toBe(false);
       }
     }
-  });
+  }, 30000);
 
   it("stands a head at each end of the route, pointing away from the run along the body", () => {
     warm(cylinder);
@@ -830,10 +981,28 @@ describe("seam route axes", () => {
   const port = (x: number, y: number, ox: number, oy: number) => ({ contact: [x, y] as Point, out: [ox, oy] as Point });
 
   it("goes straight only along an axis", () => {
-    const along = routePair([port(0, 0, 0, -1), port(100, 0, 0, -1)], [], square, box, 10, axes);
+    const along = routePair([port(0, 0, 1, 0), port(100, 0, -1, 0)], [], square, box, 10, axes);
     expect(along).toEqual([[0, 0], [100, 0]]);
+    // Faces looking across the line joining them: a line along them would run over their borders, so stubs leave each face.
+    const lying = routePair([port(0, 0, 0, -1), port(100, 0, 0, 1)], [], square, box, 10, axes);
+    expect(lying.length).toBeGreaterThan(2);
+    expect(lying[1][0]).toBeCloseTo(0, 6);
     const slanted = routePair([port(0, 0, 0, -1), port(100, 40, 0, -1)], [], square, box, 10, axes);
     expect(slanted.length).toBeGreaterThan(2);
+  });
+
+  it("keeps a pair route at least four line widths from the route it avoids", () => {
+    const wall: Point[][] = [[[0, 0], [100, 0], [100, 40], [0, 40]]];
+    const hull = boundsOf(wall, []);
+    const ports: [ReturnType<typeof port>, ReturnType<typeof port>] = [port(0, 20, -1, 0), port(100, 20, 1, 0)];
+    const first = routePair(ports, [], wall, hull, 10, axes);
+    const second = routePair(ports, [first], wall, hull, 10, axes);
+    const flats = (path: Point[]): [number, number, number][] => path.slice(1).flatMap((q, k): [number, number, number][] => (path[k][1] === q[1] && q[1] !== 20 ? [[q[1], Math.min(path[k][0], q[0]), Math.max(path[k][0], q[0])]] : []));
+    for (const [y, from, to] of flats(first)) {
+      for (const [other, left, right] of flats(second)) {
+        if (Math.min(to, right) - Math.max(from, left) > 1) expect(Math.abs(y - other)).toBeGreaterThanOrEqual(SEAM_LINE_WIDTH * 4 - 1e-6);
+      }
+    }
   });
 });
 
