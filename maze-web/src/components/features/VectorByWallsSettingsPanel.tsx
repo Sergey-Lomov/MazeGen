@@ -59,6 +59,7 @@ export function VectorByWallsSettingsPanel() {
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
   const setShowCutLines = useMazeStore((s) => s.setVectorByWallsShowCutLines);
+  const setTrimWallsAtFaceBoundaries = useMazeStore((s) => s.setVectorByWallsTrimWallsAtFaceBoundaries);
   const setCutLinesGlueColor = useMazeStore((s) => s.setVectorByWallsCutLinesGlueColor);
   const setCutLinesColor = useMazeStore((s) => s.setVectorByWallsCutLinesColor);
   const setCreases = useMazeStore((s) => s.setVectorByWallsCreases);
@@ -1341,6 +1342,7 @@ export function VectorByWallsSettingsPanel() {
         defaultColor={D.cutLinesColor}
         priorityColors={[background, floor, wall, PC.bgGrid.at(settings.gridColor)]}
         onShow={setShowCutLines}
+        onTrimWallsAtFaceBoundaries={setTrimWallsAtFaceBoundaries}
         onGlueColor={setCutLinesGlueColor}
         onColor={setCutLinesColor}
         creasesExpanded={isExpanded("creases")}

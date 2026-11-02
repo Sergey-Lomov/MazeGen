@@ -107,6 +107,8 @@ export interface CutLineStyleFields {
   /** Each cut line takes the colour of its glue; `cutLinesColor` applies when off. */
   cutLinesGlueColor: boolean;
   cutLinesColor: number;
+  /** Clips maze artwork at glued face boundaries without clipping ordinary field edges. */
+  trimWallsAtFaceBoundaries?: boolean;
 }
 
 /** How the export shows topological crease lines (GitHub issue #900): as lines, or as pairs of marks whose tips point at each other. */
@@ -1041,6 +1043,7 @@ export interface ImageExportActions {
   /** Several markers of one floor in a single update (the "Auto colours" button). */
   setVectorByCorridorsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
+  setVectorByCorridorsTrimWallsAtFaceBoundaries: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
@@ -1137,6 +1140,7 @@ export interface ImageExportActions {
   /** Several markers of one floor in a single update (the "Auto colours" button). */
   setVectorByWallsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
+  setVectorByWallsTrimWallsAtFaceBoundaries: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;
   setVectorByWallsShowInnerGrid: (v: boolean) => void;

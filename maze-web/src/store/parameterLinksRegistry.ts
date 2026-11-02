@@ -218,6 +218,7 @@ const G = {
 /** The cut-line style (GitHub issue #859): the same three parameters in both render modes. */
 const CUT_LINE_PARAMS = {
   showCutLines: descriptor("boolean", () => m["image_export.topology.show_cut_lines"](), G.topology, formatBoolean),
+  trimWallsAtFaceBoundaries: descriptor("boolean", () => m["image_export.topology.trim_walls_at_face_boundaries"](), G.topology, formatBoolean),
   cutLinesGlueColor: descriptor("boolean", () => m["image_export.topology.cut_lines_glue_color"](), G.topology, formatBoolean),
   cutLinesColor: descriptor("color", () => m["image_export.topology.cut_lines_color"](), G.topology),
 };

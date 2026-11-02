@@ -1,4 +1,4 @@
-import type React from "react";
+import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { CreaseExportStyle, CutLineStyleFields, EdgeMarkerOverride, EdgeMarkerStyle, GlueTabStyle } from "../../store/imageExportTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
@@ -9,11 +9,12 @@ import { LinkedColorRow, LinkedToggleRow } from "./LinkedRows";
 import { CreaseSettingsSubsection } from "./CreaseSettingsSubsection";
 import { GlueTabSettingsSubsection } from "./GlueTabSettingsSubsection";
 import { EdgeMarkerSettingsSubsection } from "./EdgeMarkerSettingsSubsection";
+import { Modal } from "../Modal";
 import * as m from "~/paraglide/messages";
 
 /** The "Topology" section of a render mode's settings (GitHub issue #859): how the cut lines are drawn on the image.
  * Shown for a floor that has glues or creases (its glue rows only with glues). Both render modes use it as is, each with its own store actions. */
-export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
+export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, onTrimWallsAtFaceBoundaries, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
   expanded: boolean;
   onToggle: () => void;
   style: CutLineStyleFields;
@@ -23,6 +24,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   onShow: (show: boolean) => void;
   onGlueColor: (glueColor: boolean) => void;
   onColor: (color: number) => void;
+  onTrimWallsAtFaceBoundaries?: (trim: boolean) => void;
   /** The "Creases" subsection (GitHub issue #900). */
   creasesExpanded: boolean;
   onToggleCreases: () => void;
@@ -46,6 +48,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   onEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
   onEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
+  const [trimWallsInfoOpen, setTrimWallsInfoOpen] = useState(false);
   const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
   const hasCreases = useMazeStore((s) => (s.floorCreases[s.activeFloorId]?.length ?? 0) > 0);
   if (!hasGlues && !hasCreases) return null;
@@ -70,6 +73,15 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
               linkTarget="cutLinesColor"
             />
           )}
+          {hasGlues && onTrimWallsAtFaceBoundaries && (
+            <LinkedToggleRow
+              label={m["image_export.topology.trim_walls_at_face_boundaries"]()}
+              checked={style.trimWallsAtFaceBoundaries ?? true}
+              onChange={onTrimWallsAtFaceBoundaries}
+              info={() => setTrimWallsInfoOpen(true)}
+              linkTarget="trimWallsAtFaceBoundaries"
+            />
+          )}
           {hasGlues && (
             <GlueTabSettingsSubsection expanded={glueTabsExpanded} onToggle={onToggleGlueTabs} style={glueTabStyle} defaults={glueTabDefaults} priorityColors={glueTabPriorityColors} onChange={onGlueTabsChange} />
           )}
@@ -78,6 +90,11 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
           )}
           <EdgeMarkerSettingsSubsection expanded={edgeMarkersExpanded} onToggle={onToggleEdgeMarkers} style={edgeMarkerStyle} defaultColor={edgeMarkerDefaultColor} priorityColors={edgeMarkerPriorityColors} onChange={onEdgeMarkersChange} onOverride={onEdgeMarkerOverride} onOverrides={onEdgeMarkerOverrides} />
         </div>
+      )}
+      {trimWallsInfoOpen && (
+        <Modal title={m["image_export.topology.trim_walls_at_face_boundaries_info_title"]()} onClose={() => setTrimWallsInfoOpen(false)}>
+          <div>{m["image_export.topology.trim_walls_at_face_boundaries_info"]()}</div>
+        </Modal>
       )}
     </>
   );

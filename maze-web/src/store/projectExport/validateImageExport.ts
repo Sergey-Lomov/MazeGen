@@ -510,6 +510,7 @@ function cutLineStyle(obj: Record<string, unknown> | null, d: CutLineStyleFields
   return {
     showCutLines: optBool(obj, "showCutLines", d.showCutLines),
     cutLinesGlueColor: optBool(obj, "cutLinesGlueColor", d.cutLinesGlueColor),
+    trimWallsAtFaceBoundaries: optBool(obj, "trimWallsAtFaceBoundaries", d.trimWallsAtFaceBoundaries ?? true),
     cutLinesColor: optNumber(obj, "cutLinesColor", d.cutLinesColor),
   };
 }
