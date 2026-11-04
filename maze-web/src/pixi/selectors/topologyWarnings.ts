@@ -1,7 +1,7 @@
 import type { EdgeMarkerStyle, GlueTabStyle } from "../../store/imageExportTypes";
 import type { ParamLink } from "../../store/parameterLinks";
 import type { MazeState } from "../../store/storeTypes";
-import { computeEdgeMarkerWarningsOf } from "./edgeMarkerWarnings";
+import { computeEdgeMarkerWarningsOf, computeSeamSectionAmbiguityWarning } from "./edgeMarkerWarnings";
 import type { ExportWarning } from "./exportWarnings";
 import { computeGlueTabWarnings } from "./glueTabWarnings";
 
@@ -10,7 +10,7 @@ import { computeGlueTabWarnings } from "./glueTabWarnings";
 /// mode's list, the same way for both render modes; the panel appends them to the mode's list and `TopologyWarningHighlight`
 /// draws the hovered one.
 
-export type TopologyWarningState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "floors">;
+export type TopologyWarningState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "edges" | "floors">;
 
 /** The part of a render mode's settings the topology warnings read. */
 export interface TopologyWarningSettings<P extends string> {
@@ -21,5 +21,9 @@ export interface TopologyWarningSettings<P extends string> {
 }
 
 export function computeTopologyWarnings<P extends string>(state: TopologyWarningState, settings: TopologyWarningSettings<P>): ExportWarning[] {
-  return [...computeGlueTabWarnings(state, settings.glueTabs), ...computeEdgeMarkerWarningsOf(state, settings)];
+  return [
+    ...computeGlueTabWarnings(state, settings.glueTabs),
+    ...computeEdgeMarkerWarningsOf(state, settings),
+    ...computeSeamSectionAmbiguityWarning(state, settings.edgeMarkers),
+  ];
 }
