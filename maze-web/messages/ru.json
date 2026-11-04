@@ -2689,6 +2689,8 @@
   "image_export.warning.edge_marker_colors_similar_description": "Метки сопоставляются по цвету и форме, поэтому две метки, которые трудно различить (имеют одинаковый цвет и форму), легко перепутать при соединении краёв.",
   "image_export.warning.edge_marker_low_contrast_background": "Цвет метки совмещения слишком близок к цвету фона",
   "image_export.warning.edge_marker_low_contrast_background_description": "Метку может быть трудно разглядеть на фоне.",
+  "image_export.warning.seam_matching_ambiguous_without_markers": "Некоторые участки краёв склеек неразличимы без меток совмещения",
+  "image_export.warning.seam_matching_ambiguous_without_markers_description": "У разных склеек на несвязанных частях развёртки одинаковые рисунки стен и проходов. Без меток совмещения их участки можно неправильно сопоставить при сборке, и ошибка останется незаметной.",
   "image_export.warning.inner_grid_low_contrast_floor": "Цвет внутренней сетки слишком близок к цвету пола",
   "image_export.warning.inner_grid_low_contrast_floor_description": "Включённая внутренняя сетка может быть плохо различима на клетках пола.",
   "image_export.warning.inner_grid_low_contrast_wall": "Цвет внутренней сетки слишком близок к цвету стены",

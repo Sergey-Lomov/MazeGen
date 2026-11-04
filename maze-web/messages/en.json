@@ -2687,6 +2687,8 @@
   "image_export.warning.edge_marker_colors_similar_description": "Marks are matched by color and shape, so two marks that are hard to tell apart (have the same color and shape) are easy to mix up when the edges are joined.",
   "image_export.warning.edge_marker_low_contrast_background": "Edge alignment mark color is too close to the background color",
   "image_export.warning.edge_marker_low_contrast_background_description": "The mark may be difficult to see against the background.",
+  "image_export.warning.seam_matching_ambiguous_without_markers": "Some glue edge sections are indistinguishable without alignment marks",
+  "image_export.warning.seam_matching_ambiguous_without_markers_description": "Different, disconnected glues have identical wall and passage patterns. Without alignment marks, their sections can be matched incorrectly during assembly without the mismatch being noticeable.",
   "image_export.warning.inner_grid_low_contrast_floor": "Inner grid is too close to floor color",
   "image_export.warning.inner_grid_low_contrast_floor_description": "The enabled inner grid may be difficult to distinguish from floor cells.",
   "image_export.warning.inner_grid_low_contrast_wall": "Inner grid is too close to wall color",

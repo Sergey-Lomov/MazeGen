@@ -123,6 +123,8 @@ export type ExportWarningId =
   | "edge_marker_colors_similar"
   /** Both vector modes (GitHub issue #902) — an edge marker colour is too close to the background. Highlights those markers as `polygons`. */
   | "edge_marker_low_contrast_background"
+  /** Both vector modes (GitHub issue #920) — alignment marks are hidden and runs from different, disconnected glues have the same wall/passage pattern. Highlights the ambiguous runs as `bands`. */
+  | "seam_matching_ambiguous_without_markers"
   | "inner_grid_low_contrast_floor"
   | "inner_grid_low_contrast_wall"
   | "marker_fill_low_contrast"
