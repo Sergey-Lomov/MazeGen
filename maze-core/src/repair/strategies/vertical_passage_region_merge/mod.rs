@@ -156,7 +156,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue>
         let scc = maze.analysis.scc(&maze.graph);
         let mut pending = PendingEdges::default();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
                 region,
@@ -169,6 +169,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue>
                 prefer_partial,
                 direction_balance,
                 needy,
+                excluded,
                 rng,
                 &mut pending,
             )
@@ -317,6 +318,7 @@ fn find_merge_candidate<T: Tessellation>(
     prefer_partial: bool,
     direction_balance: f64,
     needy: &HashSet<ComponentId>,
+    excluded: &HashSet<ComponentId>,
     rng: &mut dyn RngCore,
     pending: &mut PendingEdges,
 ) -> Option<(ComponentId, bool)> {
@@ -329,6 +331,11 @@ fn find_merge_candidate<T: Tessellation>(
     // and rng-indexed picks stay reproducible across runs for the same seed.
     let mut keys: Vec<ComponentId> = by_neighbor.keys().copied().collect();
     keys.sort_unstable();
+    // Neighbors already tried and failed for this region (see `run_merge_loop`).
+    keys.retain(|k| !excluded.contains(k));
+    if keys.is_empty() {
+        return None;
+    }
 
     // First priority level (only relevant to `one_way`, where a partial connection is
     // meaningful): partially-connected neighbors, if any and requested.

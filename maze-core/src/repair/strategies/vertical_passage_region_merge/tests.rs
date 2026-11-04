@@ -772,3 +772,32 @@ fn direction_balance_tie_breaks_between_two_unconnected_directions() {
             .is_none()
     );
 }
+
+#[test]
+fn blocked_preferred_direction_falls_back_to_the_other_neighbor() {
+    // `direction_balance` 1.0 prefers the upward neighbor, but its only bridge is preset-blocked,
+    // so the region must merge downward instead of staying unmerged.
+    let (mut maze, nodes) = build_multi_level(1, 1, 3);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[1][0], nodes[2][0]));
+    preset_state.blocked.insert((nodes[2][0], nodes[1][0]));
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[1][0])
+        .unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(
+        &VerticalPassageRegionMergeStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(MODE_RANDOM, CONNECTION_PASSAGE, false, 1.0),
+        &preset_state,
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    assert!(maze.graph.edge_between(nodes[1][0], nodes[0][0]).is_some());
+    assert!(maze.graph.edge_between(nodes[1][0], nodes[2][0]).is_none());
+}

@@ -84,17 +84,23 @@ pub fn narrow_to_partial<'a>(
 /// from `invalid` (LIFO), skips ones already absorbed by an earlier merge in this call
 /// (`merged_away`), and calls `find_candidate` for each remaining one to pick a neighbor and
 /// apply the actual connection. `find_candidate` receives the region's id and the current
-/// `needy` set (every other still-unmerged flagged region) and returns `Some((neighbor_idx,
+/// `needy` set (every other still-unmerged flagged region) plus the `excluded` set (neighbors
+/// already tried and failed for this region; it must not pick them again) and returns `Some((neighbor_idx,
 /// applied))` — `applied` is whether the connection actually succeeded (a candidate can be found
 /// but fail to bridge, e.g. `one_way` mode needing a second distinct pair that doesn't exist) —
-/// or `None` if the region has no eligible neighbor at all. If the chosen neighbor was itself a
+/// or `None` if the region has no eligible neighbor left. An unapplied candidate is retried with
+/// that neighbor excluded until one applies or none is left. If the chosen neighbor was itself a
 /// needy region, it's marked `merged_away` so a later iteration doesn't try to expand it again.
 ///
 /// Returns `true` if at least one region was successfully merged (caller maps this to
 /// `Fixed`/`Failed`).
 pub fn run_merge_loop(
     invalid: &[ComponentId],
-    mut find_candidate: impl FnMut(ComponentId, &HashSet<ComponentId>) -> Option<(ComponentId, bool)>,
+    mut find_candidate: impl FnMut(
+        ComponentId,
+        &HashSet<ComponentId>,
+        &HashSet<ComponentId>,
+    ) -> Option<(ComponentId, bool)>,
 ) -> bool {
     let mut pending: Vec<ComponentId> = invalid.to_vec();
     let mut merged_away: HashSet<ComponentId> = HashSet::new();
@@ -111,15 +117,22 @@ pub fn run_merge_loop(
             .filter(|i| *i != region_idx && !merged_away.contains(i))
             .collect();
 
-        let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy) else {
-            continue;
-        };
-        if !applied {
-            continue;
-        }
-        any_fixed = true;
-        if needy.contains(&neighbor_idx) {
-            merged_away.insert(neighbor_idx);
+        // A chosen neighbor that could not be bridged is excluded and the next one is tried, so a
+        // blocked preferred pick (target mode, partial-connection preference) falls back to the
+        // remaining neighbors instead of leaving the region unmerged.
+        let mut excluded: HashSet<ComponentId> = HashSet::new();
+        while let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy, &excluded) {
+            if applied {
+                any_fixed = true;
+                if needy.contains(&neighbor_idx) {
+                    merged_away.insert(neighbor_idx);
+                }
+                break;
+            }
+            // Guards against a candidate finder that ignores `excluded` and keeps returning the same neighbor.
+            if !excluded.insert(neighbor_idx) {
+                break;
+            }
         }
     }
 
@@ -328,7 +341,7 @@ mod tests {
     #[test]
     fn run_merge_loop_returns_false_when_nothing_merges() {
         let invalid = vec![0, 1, 2];
-        let any_fixed = run_merge_loop(&invalid, |_region, _needy| None);
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, _excluded| None);
         assert!(!any_fixed);
     }
 
@@ -337,7 +350,7 @@ mod tests {
         let invalid = vec![0, 1];
         let any_fixed = run_merge_loop(
             &invalid,
-            |region, _needy| {
+            |region, _needy, _excluded| {
                 if region == 0 { Some((99, true)) } else { None }
             },
         );
@@ -350,8 +363,36 @@ mod tests {
         // candidate was found but the connection itself failed to apply (e.g. one_way mode
         // needing a second distinct pair that doesn't exist) -- must not count as any_fixed.
         let invalid = vec![0, 1];
-        let any_fixed = run_merge_loop(&invalid, |_region, _needy| Some((99, false)));
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, _excluded| Some((99, false)));
         assert!(!any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_falls_back_to_the_next_neighbor_after_an_unapplied_one() {
+        // Neighbor 7 never bridges; once excluded, the finder offers 8, which does.
+        let invalid = vec![0];
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, excluded| {
+            if !excluded.contains(&7) {
+                Some((7, false))
+            } else if !excluded.contains(&8) {
+                Some((8, true))
+            } else {
+                None
+            }
+        });
+        assert!(any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_gives_up_when_every_neighbor_fails() {
+        let invalid = vec![0];
+        let mut calls = 0;
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy, excluded| {
+            calls += 1;
+            [7, 8].into_iter().find(|n| !excluded.contains(n)).map(|n| (n, false))
+        });
+        assert!(!any_fixed);
+        assert_eq!(calls, 3, "two failed neighbors, then none left");
     }
 
     #[test]
@@ -362,7 +403,7 @@ mod tests {
         use std::cell::RefCell;
         let invalid = vec![1, 0]; // pop order: 0 first, then 1
         let calls: RefCell<Vec<ComponentId>> = RefCell::new(Vec::new());
-        let any_fixed = run_merge_loop(&invalid, |region, _needy| {
+        let any_fixed = run_merge_loop(&invalid, |region, _needy, _excluded| {
             calls.borrow_mut().push(region);
             if region == 0 {
                 Some((1, true))
@@ -390,7 +431,7 @@ mod tests {
         use std::cell::RefCell;
         let invalid = vec![0, 1, 2]; // pop order: 2, 1, 0
         let seen: RefCell<Vec<(ComponentId, Vec<ComponentId>)>> = RefCell::new(Vec::new());
-        run_merge_loop(&invalid, |region, needy| {
+        run_merge_loop(&invalid, |region, needy, _excluded| {
             let mut sorted: Vec<ComponentId> = needy.iter().copied().collect();
             sorted.sort_unstable();
             seen.borrow_mut().push((region, sorted));

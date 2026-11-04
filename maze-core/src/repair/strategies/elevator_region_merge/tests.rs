@@ -712,3 +712,45 @@ fn apply_is_deterministic_for_fixed_seed() {
     let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_a, edges_b);
 }
+
+#[test]
+fn blocked_preferred_floor_falls_back_to_the_other_floor() {
+    // The middle floor's region can reach the floor below or above. Whichever one the target
+    // mode prefers, blocking exactly that bridge must not leave the region unmerged: the other
+    // floor is used. Blocking each side in turn guarantees one run hits the preferred pick.
+    for blocked_floor in [0usize, 2] {
+        let (mut maze, nodes) = maze_three_floors();
+        let mut preset_state = PresetState::empty();
+        preset_state
+            .blocked
+            .insert((nodes[1][0], nodes[blocked_floor][0]));
+        preset_state
+            .blocked
+            .insert((nodes[blocked_floor][0], nodes[1][0]));
+        let region_idx = maze
+            .analysis
+            .scc(&maze.graph)
+            .component_of(nodes[1][0])
+            .unwrap();
+        let issue = issue_for(vec![region_idx]);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(
+            &ElevatorRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(crate::repair::strategies::region_merge_core::MODE_LARGEST, PriorityLevel::Forbidden),
+            &preset_state,
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Fixed { score: None }),
+            "blocked floor {blocked_floor}: must merge through the other floor"
+        );
+        let elevators = elevator_groups(&maze);
+        assert_eq!(elevators.len(), 1);
+        let other = 2 - blocked_floor;
+        assert!(elevators[0].stops.contains(&nodes[other][0]));
+        assert!(!elevators[0].stops.contains(&nodes[blocked_floor][0]));
+    }
+}

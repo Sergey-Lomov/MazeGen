@@ -124,7 +124,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
         // any other region that reaches into that merged blob resolves to the very same root.
         let mut planned_union = PlannedUnion::new(&scc);
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
             let region = scc.components.get(region_idx)?;
             let region_root = planned_union.find(region_idx);
             let candidates =
@@ -135,6 +135,11 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
 
             let mut keys: Vec<ComponentId> = candidates.keys().copied().collect();
             keys.sort_unstable();
+            // Neighbors already tried and failed for this region (see `run_merge_loop`).
+            keys.retain(|k| !excluded.contains(k));
+            if keys.is_empty() {
+                return None;
+            }
             let chosen = region_merge_core::pick_by_mode(&keys, &scc, mode, needy, rng)?;
             let shared_points = &candidates[&chosen];
 
