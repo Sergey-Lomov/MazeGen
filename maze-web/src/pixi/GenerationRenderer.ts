@@ -100,14 +100,14 @@ export class GenerationRenderer {
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    viewport.addChild(this.seamArrowContainer);
     viewport.addChild(this.closedCellsContainer);
     viewport.addChild(this.wallsContainer);
     viewport.addChild(this.splitJunctionContainer);
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.verticalContainer);
     viewport.addChild(this.markersContainer);
-    // Above every layer of the maze itself, below only the highlights.
-    viewport.addChild(this.seamArrowContainer);
     viewport.addChild(this.debugValueHighlightContainer);
     // Hovered debug refs (including cell/region highlights) must stay above persistent debug-value
     // layers so the active event remains readable while frontier/reserve/visited are toggled on.

@@ -51,6 +51,13 @@ export function seamArrowsShown(state: MazeState): boolean {
   }
 }
 
+/// Whether the export layer's own seam arrows are shown. That layer lies above every other layer, so it covers the
+/// teleport connectors of the layers below it (GitHub issue #919): it is shown only while the export card's topology
+/// panel is open, and every other card shows its arrows through its feature-renderer's layer, below the teleports.
+export function exportSeamLayerShown(state: MazeState): boolean {
+  return state.openCard === "image_export" && seamArrowsShown(state);
+}
+
 /// Cards whose hovered face is highlighted together with its copy across the seam.
 function isEdgeHighlightCard(state: MazeState): boolean {
   return state.openCard === "post_edit" || state.openCard === "preset_connections";

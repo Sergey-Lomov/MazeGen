@@ -118,6 +118,9 @@ export function PresetConnectionsFeature() {
   const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
   const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
   const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
+  const presetEditConfirmation = useMazeStore((s) => s.presetEditConfirmation);
+  const confirmPresetEdit = useMazeStore((s) => s.confirmPresetEdit);
+  const cancelPresetEdit = useMazeStore((s) => s.cancelPresetEdit);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -308,6 +311,14 @@ export function PresetConnectionsFeature() {
 
       {presetLockSettingsPrompt && (
         <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
+      )}
+
+      {presetEditConfirmation !== null && (
+        <ConfirmModal
+          message={m["preset.reset_generation_warning"]()}
+          onConfirm={confirmPresetEdit}
+          onCancel={cancelPresetEdit}
+        />
       )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>

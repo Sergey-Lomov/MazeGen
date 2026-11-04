@@ -201,6 +201,7 @@
   "preset.passage": "Проход",
   "preset.reset": "Неопределенная грань",
   "preset.reset_tooltip": "Значение грани (стена или проход) будет определено во время генерации",
+  "preset.reset_generation_warning": "Изменение пресетов сбросит текущие результаты генерации и пост-редактирования. Продолжить?",
   "preset.default_edge": "Ребра по-умолчанию",
   "preset.default_undefined": "Неопределенная грань",
   "preset.default_undefined_short": "Неопред.",
