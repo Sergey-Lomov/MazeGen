@@ -13,6 +13,7 @@ import { applyTransform } from "../geometry/worldTransform";
 import { cutLineOf, cutSettingOf, lineSpans, type Vec2 } from "./cutLines";
 import { floorGroupCuts, tilePolygons } from "./exportContent";
 import { hasLowContrast } from "../colorContrast";
+import { selectAmbiguousGlueSections } from "../selectors/ambiguousGlueSections";
 
 /// Edge alignment markers of the export (GitHub issue #902, `Specs/image-export.md`, "Edge alignment markers"): marks centred
 /// on matching edges so the user can see which edges are joined during assembly. Display space.
@@ -63,11 +64,12 @@ export function edgeMarkerLook(style: Pick<FloorEdgeMarkerStyle, "shape" | "colo
   return { shape: override?.shape ?? style.shape, color: override?.color ?? style.color };
 }
 
-type EdgeMarkerState =Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "floors">;
+type EdgeMarkerState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "edges" | "floors">;
 
 /// The markers of the active floor, or none while the style hides them. "gluings": one marker per
 /// glue, at the centre of its side A and the matching spot on side B, each as the half on its own face (a glue with a cut line
-/// gets it in the middle of the cut line and on its twin). "all": also the centre of every crease line.
+/// gets it in the middle of the cut line and on its twin). "ambiguous": only the glue runs that share a wall/passage
+/// pattern with a run from another physical-net component. "all": also the centre of every crease line.
 export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<FloorEdgeMarkerStyle, "mode">): EdgeMarker[] {
   if (style.mode === "hidden") return [];
   const floorId = state.activeFloorId;
@@ -75,6 +77,14 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
   const markers: EdgeMarker[] = [];
   const topology = state.floorTopology[floorId];
   if (topology && topology.groups.length > 0) {
+    const ambiguousSides = style.mode === "ambiguous" ? new Map<number, Set<"a" | "b">>() : null;
+    if (ambiguousSides) {
+      for (const section of selectAmbiguousGlueSections(state)) {
+        const sides = ambiguousSides.get(section.group) ?? new Set<"a" | "b">();
+        sides.add(section.side);
+        ambiguousSides.set(section.group, sides);
+      }
+    }
     const model = getSeamModel(cfg);
     const transform = displayTransform(cfg);
     const toDisplay = (p: readonly [number, number]): Vec2 => applyTransform(transform, [p[0], p[1]]) as Vec2;
@@ -96,7 +106,7 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
     };
 
     // The two halves of a fold's marker, at fraction `t` of its A face and the matching fraction of its B face, each looking toward its own cell.
-    const pushFold = (key: string, foldIndex: number, t: number): void => {
+    const pushFold = (key: string, foldIndex: number, t: number, shownSides: ReadonlySet<"a" | "b"> | null): void => {
       const fold = topology.folds[foldIndex];
       if (!fold) return;
       const ends = [model.halfEdgeAt(fold.a.cell, fold.a.face_idx), model.halfEdgeAt(fold.b.cell, fold.b.face_idx)];
@@ -104,6 +114,7 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
       const fractions = [t, partnerFraction(model.seams[ends[0].seam], t)];
       const halves: EdgeMarker[] = [];
       for (const [i, half] of ends.entries()) {
+        if (shownSides && !shownSides.has(i === 0 ? "a" : "b")) continue;
         const at = fractions[i];
         const center = toDisplay(pointOnHalfEdge(half!, at));
         const before = toDisplay(pointOnHalfEdge(half!, at - TANGENT_STEP));
@@ -139,7 +150,7 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
     // A glue has exactly one marker, as near the centre of its side A (by arc length) as a cell allows: at the middle of a
     // face (a cell's own centre of that edge) or at a vertex between two faces that continue each other, never at a corner,
     // where the marker would lie across a bend and its halves would not join once folded. The earlier of equally near spots wins.
-    const pushGlue = (key: string, folds: readonly number[]): void => {
+    const pushGlue = (key: string, folds: readonly number[], shownSides: ReadonlySet<"a" | "b"> | null): void => {
       const faces = folds.flatMap((index) => {
         const fold = topology.folds[index];
         const half = fold && model.halfEdgeAt(fold.a.cell, fold.a.face_idx);
@@ -160,13 +171,15 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
         if (next && joinsStraight(face.half, next.half)) consider(face.index, 1, start + face.length);
         start += face.length;
       });
-      pushFold(key, best.index, best.t);
+      pushFold(key, best.index, best.t, shownSides);
     };
 
     for (const group of topology.groups) {
+      const shownSides = ambiguousSides?.get(group.id) ?? null;
+      if (ambiguousSides && !shownSides) continue;
       const line = cuts.get(group.id);
       if (!line) {
-        pushGlue(`g${group.id}`, group.folds);
+        pushGlue(`g${group.id}`, group.folds, shownSides);
         continue;
       }
       // A glue with a cut line: the marker is in the middle of the line, whatever its offset, half on each side of the cut.
@@ -179,9 +192,9 @@ export function selectExportEdgeMarkers(state: EdgeMarkerState, style: Pick<Floo
       if (!span) continue;
       const key = `g${group.id}`;
       const middle: Vec2 = [(span[0][0] + span[1][0]) / 2, (span[0][1] + span[1][1]) / 2];
-      markers.push({ key, center: middle, inward: sheet, ...edgeFrame(sheet, 1) });
+      if (!shownSides || shownSides.has("a")) markers.push({ key, center: middle, inward: sheet, ...edgeFrame(sheet, 1) });
       const away: Vec2 = [-sheet[0], -sheet[1]];
-      markers.push({ key, center: [middle[0] + period[0], middle[1] + period[1]], inward: away, ...edgeFrame(away, -1) });
+      if (!shownSides || shownSides.has("b")) markers.push({ key, center: [middle[0] + period[0], middle[1] + period[1]], inward: away, ...edgeFrame(away, -1) });
     }
   }
   if (style.mode === "all") {

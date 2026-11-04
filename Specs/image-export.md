@@ -1299,9 +1299,11 @@ The result is memoised on the last call's inputs (floor, field config, topology,
 
 ## Edge alignment markers (GitHub issue #902)
 
+GitHub issue #923 adds the `"ambiguous"` visibility mode. It shows a mark only on a glue run whose visible wall, passage, and one-way pattern matches a run of another glue in a separate physical-net component. It uses `selectAmbiguousGlueSections`, the same active-floor analysis as the hidden-marker export warning; unique runs remain unmarked. The existing `"hidden"`, `"gluings"`, and `"all"` modes are unchanged.
+
 When a maze net is assembled physically, it is hard to tell which edges must be joined to which. The export can put markers on matching edges, so the user sees how faces connect. Both vector render modes carry `edgeMarkers: EdgeMarkerStyle` (`imageExportTypes.ts`, default `DEFAULT_EDGE_MARKER_STYLE`, hidden by default):
 
-- `mode` — `"hidden"`, `"gluings"` (markers on glued edges only) or `"all"` (also the centre of every crease line, assuming the user cuts along the creases and gets unconnected faces).
+- `mode` — `"hidden"`, `"ambiguous"` (only glue runs that have the same wall/passage/one-way pattern as a run from another physical-net component), `"gluings"` (markers on glued edges only), or `"all"` (also the centre of every crease line, assuming the user cuts along the creases and gets unconnected faces).
 - `size` (2-40, default 12) — the marker diameter, in display units, so it zooms with the field.
 - `shape` — the shared shape (`MarkerShape`, the standard set of every marker; `"circle"` by default).
 - `color` — the shared colour (default `AUTO_HUE_BASE_COLOR`, `renderConstants.ts`, the colour the glue colours start from).

@@ -2877,6 +2877,7 @@
   "image_export.edge_markers.title": "Метки совмещения краёв",
   "image_export.edge_markers.mode": "Показывать",
   "image_export.edge_markers.mode_hidden": "Скрыть",
+  "image_export.edge_markers.mode_ambiguous": "Неоднозначные участки",
   "image_export.edge_markers.mode_gluings": "Только склейки",
   "image_export.edge_markers.mode_all": "Все",
   "image_export.edge_markers.size": "Размер",

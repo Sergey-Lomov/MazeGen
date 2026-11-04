@@ -134,10 +134,11 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   const floorCreases = useMazeStore((s) => s.floorCreases);
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const nodes = useMazeStore((s) => s.nodes);
+  const edges = useMazeStore((s) => s.edges);
   const floors = useMazeStore((s) => s.floors);
   const keys = useMemo(
-    () => edgeMarkerKeys(selectExportEdgeMarkers({ activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, floors }, { mode: style.mode })),
-    [activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, floors, style.mode],
+    () => edgeMarkerKeys(selectExportEdgeMarkers({ activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, edges, floors }, { mode: style.mode })),
+    [activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, edges, floors, style.mode],
   );
   const level = useMemo(() => floors.findIndex((floor) => floor.id === activeFloorId), [floors, activeFloorId]);
   const resolved = useMemo(() => withResolvedEdgeMarkers(style, links, activeFloorId), [style, links, activeFloorId]);
@@ -155,6 +156,7 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
             value={style.mode}
             options={[
               { value: "hidden", label: m["image_export.edge_markers.mode_hidden"]() },
+              { value: "ambiguous", label: m["image_export.edge_markers.mode_ambiguous"]() },
               { value: "gluings", label: m["image_export.edge_markers.mode_gluings"]() },
               { value: "all", label: m["image_export.edge_markers.mode_all"]() },
             ]}

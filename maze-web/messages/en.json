@@ -2865,6 +2865,7 @@
   "image_export.edge_markers.title": "Edge alignment marks",
   "image_export.edge_markers.mode": "Show",
   "image_export.edge_markers.mode_hidden": "Hidden",
+  "image_export.edge_markers.mode_ambiguous": "Ambiguous sections",
   "image_export.edge_markers.mode_gluings": "Gluings only",
   "image_export.edge_markers.mode_all": "All",
   "image_export.edge_markers.size": "Size",

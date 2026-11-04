@@ -216,6 +216,9 @@ describe("computeSeamSectionAmbiguityWarning", () => {
     expect(hidden[0]).toMatchObject({ id: "seam_matching_ambiguous_without_markers" });
     expect(hidden[0].bands).toHaveLength(4);
     expect(selectAmbiguousGlueSections(state as never).map((section) => [section.group, section.side])).toEqual([[0, "a"], [0, "b"], [1, "a"], [1, "b"]]);
+    const markers = selectExportEdgeMarkers(state as never, style({ mode: "ambiguous" }));
+    expect(edgeMarkerKeys(markers)).toEqual(["g0", "g1"]);
+    expect(markers).toHaveLength(4);
   });
 
   it("does not flag glue runs with different wall and passage patterns", () => {
@@ -246,6 +249,7 @@ describe("computeSeamSectionAmbiguityWarning", () => {
     };
 
     expect(computeSeamSectionAmbiguityWarning(state as never, { mode: "hidden" })).toEqual([]);
+    expect(selectExportEdgeMarkers(state as never, style({ mode: "ambiguous" }))).toEqual([]);
   });
 });
 
@@ -261,6 +265,11 @@ describe("persistence", () => {
     expect(result).toMatchObject({ mode: "all", shape: "star", color: 5 });
     expect(result.size).toBeLessThan(999);
     expect(result.overrides).toEqual({ f1: { a: { shape: "star", color: 1 } } });
+  });
+
+  it("preserves the ambiguous marker mode", () => {
+    const result = validateVectorByWallsSettings({ edgeMarkers: { mode: "ambiguous" } }, "x", []).edgeMarkers;
+    expect(result.mode).toBe("ambiguous");
   });
 });
 
