@@ -2,6 +2,7 @@ import React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ui, spacing } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
+import { InfoIconButton } from "./InfoIconButton";
 
 // One chevron size for every nesting level — a smaller nested icon drew a thinner, dimmer line
 // than its parent's (GitHub issue #734).
@@ -11,11 +12,13 @@ const CHEVRON_SIZE = 14;
  *  collapsible settings sections (Analytics, image-export render mode settings panels) at every
  *  nesting level, so the expand/collapse row reads identically everywhere. `disabled` renders it
  *  greyed out and non-interactive (e.g. a vertical-passage sub-group with nothing to configure). */
-export function SectionHeader({ label, expanded, disabled, onToggle }: {
+export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo }: {
   label: React.ReactNode;
   expanded: boolean;
   disabled?: boolean;
   onToggle: () => void;
+  /** Optional help for this section. Clicking it does not change the expanded state. */
+  onOpenInfo?: () => void;
 }) {
   const chevronColor = disabled ? ui.text.disabled : ui.text.tertiary;
   return (
@@ -28,6 +31,11 @@ export function SectionHeader({ label, expanded, disabled, onToggle }: {
     >
       {expanded ? <ChevronDown size={CHEVRON_SIZE} color={chevronColor} /> : <ChevronRight size={CHEVRON_SIZE} color={chevronColor} />}
       <div style={disabled ? { ...sharedStyles.sectionHeader, color: ui.text.disabled } : sharedStyles.sectionHeader}>{label}</div>
+      {onOpenInfo && (
+        <span onClick={(event) => event.stopPropagation()}>
+          <InfoIconButton onClick={onOpenInfo} />
+        </span>
+      )}
     </div>
   );
 }

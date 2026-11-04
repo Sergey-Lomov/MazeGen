@@ -1,6 +1,6 @@
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { ColorRow } from "../ColorRow";
+import { ColorRow, UnregisteredColorRow } from "../ColorRow";
 import { ToggleRow } from "../ToggleRow";
 import { TextFieldRow } from "../TextFieldRow";
 import { LinkStatusIcon } from "../LinkStatusIcon";
@@ -53,6 +53,25 @@ export function LinkedColorRow<P extends string>({ linkTarget, unsupportedHint, 
   const wasLinkEnabledRef = useRef(false);
   return (
     <ColorRow
+      {...rest}
+      onOpen={() => {
+        wasLinkEnabledRef.current = linkTarget !== null && (links.find((l) => l.target === linkTarget)?.enabled ?? false);
+      }}
+      onCancel={() => {
+        if (linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
+      }}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
+    />
+  );
+}
+
+/** Link-status variant for a colour that is intentionally not a project-colour field. */
+type UnregisteredColorRowProps = React.ComponentProps<typeof UnregisteredColorRow>;
+export function LinkedUnregisteredColorRow<P extends string>({ linkTarget, unsupportedHint, ...rest }: UnregisteredColorRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
+  const wasLinkEnabledRef = useRef(false);
+  return (
+    <UnregisteredColorRow
       {...rest}
       onOpen={() => {
         wasLinkEnabledRef.current = linkTarget !== null && (links.find((l) => l.target === linkTarget)?.enabled ?? false);

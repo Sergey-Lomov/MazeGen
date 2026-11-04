@@ -9,7 +9,7 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
-import type { EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import type { CreaseExportStyle, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
 import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
@@ -48,6 +48,19 @@ function writeMarkerPatch<S extends object>(settings: S, kind: VectorMarkerKind,
     if (value === undefined) continue;
     const path = `${kind}.${field}`;
     next = (field === "text" ? setParamValue(next, path, value) : writeLinkedParam(next, path, value)) as Writable;
+  }
+  return markLinked(next);
+}
+
+/** Writes linkable crease fields through the link engine; the display mode stays unsupported. */
+function writeCreasePatch<S extends object>(settings: S, patch: Partial<CreaseExportStyle>): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    next = field === "mode"
+      ? markLinked(setParamValue(next, `creases.${field}`, value)) as Writable
+      : writeLinkedParam<string, { links: ParamLink<string>[] }>(next, `creases.${field}`, value) as unknown as Writable;
   }
   return markLinked(next);
 }
@@ -102,7 +115,7 @@ const wallsPatch =
 /** Every glue-tab parameter is linkable; an edit detaches its own link (GitHub issue #901). */
 const GLUE_TAB_PATHS = ["glueTabs.showTabs", "glueTabs.inset", "glueTabs.width", "glueTabs.alternate", "glueTabs.fillColor", "glueTabs.lineWidth", "glueTabs.lineStyle", "glueTabs.lineColor"] as const;
 /** The shared edge marker parameters are linkable; an edit detaches its own link (GitHub issue #902). */
-const EDGE_MARKER_PATHS = ["edgeMarkers.shape", "edgeMarkers.color"] as const;
+const EDGE_MARKER_PATHS = ["edgeMarkers.size", "edgeMarkers.shape", "edgeMarkers.color"] as const;
 
 /** The edge marker style with one marker of one floor merged with `patch` (GitHub issue #902); `null` drops it. A floor left
  *  without overrides is dropped too. */
@@ -357,7 +370,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsEdgeMarkers: (patch) => set(corridorsPatch({ edgeMarkers: patch }, EDGE_MARKER_PATHS, (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
   setVectorByCorridorsEdgeMarkerOverride: (floorId, key, patch) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
   setVectorByCorridorsEdgeMarkerOverrides: (floorId, patches) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
-  setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources<VectorByCorridorsParamPath, VectorByCorridorsSettings>({ ...s.vectorByCorridorsSettings, creases: { ...s.vectorByCorridorsSettings.creases, ...patch } }, []) })),
+  setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: writeCreasePatch(s.vectorByCorridorsSettings, patch) })),
   setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
   setVectorByCorridorsTrimWallsAtFaceBoundaries: (v) => set(corridorsParam("trimWallsAtFaceBoundaries", v)),
   setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
@@ -460,7 +473,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsEdgeMarkers: (patch) => set(wallsPatch({ edgeMarkers: patch }, EDGE_MARKER_PATHS, (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
   setVectorByWallsEdgeMarkerOverride: (floorId, key, patch) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
   setVectorByWallsEdgeMarkerOverrides: (floorId, patches) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
-  setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: propagateLinkedSources<VectorByWallsParamPath, VectorByWallsSettings>({ ...s.vectorByWallsSettings, creases: { ...s.vectorByWallsSettings.creases, ...patch } }, []) })),
+  setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: writeCreasePatch(s.vectorByWallsSettings, patch) })),
   setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
   setVectorByWallsTrimWallsAtFaceBoundaries: (v) => set(wallsParam("trimWallsAtFaceBoundaries", v)),
   setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),

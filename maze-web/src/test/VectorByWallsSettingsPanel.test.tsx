@@ -1206,7 +1206,7 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
 describe("Topology section (cut lines, GitHub issue #859)", () => {
   const withGlues = () => useMazeStore.setState({
     floorTopology: { [useMazeStore.getState().activeFloorId]: { folds: [], groups: [{ id: 0 }] } },
-    vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, topology: true },
+    vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, topology: true, cutLines: true },
   } as never);
 
   it("is hidden for a floor without glues", () => {

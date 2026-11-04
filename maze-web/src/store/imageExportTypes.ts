@@ -113,14 +113,15 @@ export interface CutLineStyleFields {
 
 /** How the export shows topological crease lines (GitHub issue #900): as lines, or as pairs of marks whose tips point at each other. */
 export type CreaseDisplayMode = "lines" | "marks";
-export type CreaseLineStyle = "dashed" | "solid";
+/** Reusable appearance of a stroked line. */
+export type LineStyle = "dashed" | "solid";
 
 /** Crease display on the image (GitHub issue #900, `Specs/image-export.md`, "Crease lines"). Sizes are in display
  * units, so they zoom with the field. */
 export interface CreaseExportStyle {
   showCreases: boolean;
   mode: CreaseDisplayMode;
-  lineStyle: CreaseLineStyle;
+  lineStyle: LineStyle;
   lineWidth: number;
   /** Base width of one mark. */
   markSize: number;
@@ -151,12 +152,10 @@ export interface GlueTabStyle {
   fillColor: number;
   /** Outline colour, linked to the outer grid colour by default. Used while `lineWidth` is above zero. */
   lineColor: number;
-  lineStyle: GlueTabLineStyle;
+  lineStyle: LineStyle;
   /** Outline thickness; zero draws no outline. */
   lineWidth: number;
 }
-
-export type GlueTabLineStyle = "dashed" | "solid";
 
 /** Both render modes carry the glue-tab style. */
 export interface GlueTabStyleFields {

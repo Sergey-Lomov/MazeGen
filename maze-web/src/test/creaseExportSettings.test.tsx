@@ -82,7 +82,11 @@ describe("crease style validation ranges", () => {
 describe("CreaseSettingsSubsection", () => {
   const renderSubsection = (style: CreaseExportStyle, expanded = true) => {
     const patches: Partial<CreaseExportStyle>[] = [];
-    render(<CreaseSettingsSubsection expanded={expanded} onToggle={() => {}} style={style} defaultColor={0} priorityColors={[]} onChange={(p) => patches.push(p)} />);
+    render(
+      <LinkContextProvider value={linkContext}>
+        <CreaseSettingsSubsection expanded={expanded} onToggle={() => {}} style={style} defaultColor={0} priorityColors={[]} onChange={(p) => patches.push(p)} />
+      </LinkContextProvider>,
+    );
     return patches;
   };
 
@@ -121,15 +125,18 @@ describe("TopologySettingsSection with creases", () => {
   const props = {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
+    cutLinesExpanded: true, onToggleCutLines: () => {},
     creasesExpanded: true, onToggleCreases: () => {}, creaseStyle: shown, creaseDefaultColor: 0, creasePriorityColors: [], onCreasesChange: () => {},
     edgeMarkersExpanded: true, onToggleEdgeMarkers: () => {}, edgeMarkerStyle: DEFAULT_EDGE_MARKER_STYLE, edgeMarkerDefaultColor: 0, edgeMarkerPriorityColors: [], onEdgeMarkersChange: () => {}, onEdgeMarkerOverride: () => {}, onEdgeMarkerOverrides: () => {},
     glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
-  it("renders nothing for a floor with neither glues nor creases", () => {
+  it("keeps Cut lines available for a floor with neither glues nor creases", () => {
     setCreases([]);
-    const { container } = render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(container.textContent).toBe("");
+    render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    expect(screen.getByText(m["image_export.topology.cut_lines"]())).toBeTruthy();
+    expect(screen.getByText(m["image_export.cuts.edit"]())).toBeTruthy();
+    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
   });
 
   it("shows the creases subsection but no cut-line rows for a floor with creases only", () => {
@@ -141,6 +148,17 @@ describe("TopologySettingsSection with creases", () => {
 });
 
 describe("EdgeMarkerSettingsSubsection cards", () => {
+  it("explains every visibility mode in its info dialog", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    render(
+      <LinkContextProvider value={linkContext}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={DEFAULT_EDGE_MARKER_STYLE} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={() => {}} />
+      </LinkContextProvider>,
+    );
+    fireEvent.click(screen.getByLabelText("Info"));
+    expect(screen.getByText(m["image_export.edge_markers.info"]())).toBeTruthy();
+  });
+
   it("offers and applies the ambiguous-sections visibility mode", async () => {
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
     const patches: unknown[] = [];
