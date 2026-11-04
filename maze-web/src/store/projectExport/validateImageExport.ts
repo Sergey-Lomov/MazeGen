@@ -597,7 +597,7 @@ function edgeMarkerStyle(obj: Record<string, unknown> | null, d: EdgeMarkerStyle
     }
   }
   return {
-    mode: optEnum(o, "mode", ["hidden", "gluings", "all"] as const, d.mode),
+    mode: optEnum(o, "mode", ["hidden", "ambiguous", "gluings", "all"] as const, d.mode),
     size: clampTo(EDGE_MARKER_SIZE_RANGE, optNumber(o, "size", d.size)),
     shape: optMarkerShape(o, "shape", d.shape),
     color: optNumber(o, "color", d.color),

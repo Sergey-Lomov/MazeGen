@@ -141,6 +141,18 @@ describe("TopologySettingsSection with creases", () => {
 });
 
 describe("EdgeMarkerSettingsSubsection cards", () => {
+  it("offers and applies the ambiguous-sections visibility mode", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    const patches: unknown[] = [];
+    render(
+      <LinkContextProvider value={linkContext}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={DEFAULT_EDGE_MARKER_STYLE} defaultColor={0} priorityColors={[]} onChange={(patch) => patches.push(patch)} onOverride={() => {}} onOverrides={() => {}} />
+      </LinkContextProvider>,
+    );
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ambiguous" } });
+    expect(patches).toEqual([{ mode: "ambiguous" }]);
+  });
+
   it("renders a card with link icons for a crease marker under the real registry", async () => {
     const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");

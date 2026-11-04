@@ -164,7 +164,7 @@ export interface GlueTabStyleFields {
 }
 
 /** Which edge alignment markers the export shows (GitHub issue #902). */
-export type EdgeMarkerMode = "hidden" | "gluings" | "all";
+export type EdgeMarkerMode = "hidden" | "ambiguous" | "gluings" | "all";
 
 /** The two parameters of a marker's own look. */
 export type EdgeMarkerRole = "color" | "shape";
