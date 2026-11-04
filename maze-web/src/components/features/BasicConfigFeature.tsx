@@ -41,6 +41,7 @@ export function BasicConfigFeature() {
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
   const confirmTessellation = useMazeStore((s) => s.confirmTessellation);
+  const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
 
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -166,7 +167,7 @@ export function BasicConfigFeature() {
         <ConfirmModal
           message={m["tessellation.reset_warning"]()}
           onConfirm={() => { confirmTessellation(); setShowConfirm(false); }}
-          onCancel={() => setShowConfirm(false)}
+          onCancel={() => { syncPreviewToConfirmed(); setShowConfirm(false); }}
         />
       )}
     </div>

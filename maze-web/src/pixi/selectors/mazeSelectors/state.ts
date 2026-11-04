@@ -2,7 +2,7 @@ import type { NodeDto, EdgeDto, IssueDto } from "../../../wasm/types";
 import type { MazeState } from "../../../store/mazeStore";
 import { splitPatternsFor } from "../../shapeTemplates";
 import { qcForTessellation } from "../../../store/slices/qcTessellationFilter";
-import { sameTessellation } from "../../../store/storeHelpers";
+import { sameTessellationSettings } from "../../../store/storeHelpers";
 
 /** Narrows a maze-wide `{ nodes, edges, start, finish }` view down to one floor, by `activeFloorId`
  *  (GitHub issue #337/#347) — the single shared floor-scoping step every render-facing consumer of
@@ -92,14 +92,19 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
   return s.postEditDirty;
 }
 
-/** True when confirming tessellation would destroy data the user has entered. Kind change resets
- * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
+/** True when confirming tessellation would destroy data the user has entered. A settings change
+ * (kind, params, orientation) resets every floor's own field config (Specs/field-editor.md), so
+ * any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
-  "previewKind" | "previewParams" | "tessellationKind" | "tessellationParams" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  "previewKind" | "previewParams" | "tessellationKind" | "tessellationParams" | "floorFields"
+  | "previewHexOrientation" | "previewTriOrientation" | "hexOrientation" | "triOrientation" | "presetsDirty" | "mazeDirty" | "postEditDirty"
   | "previewFieldConfig" | "splitPatterns" | "rules" | "availableChecks" | "availableStrategies" | "availableRuleParams"
 >): boolean {
-  // Params define the cell set, so changing them resets the fields like a kind change does.
-  if (!sameTessellation({ kind: s.previewKind, params: s.previewParams }, { kind: s.tessellationKind, params: s.tessellationParams })) {
+  // Any settings change (kind, params, orientation) resets the fields and presets.
+  if (!sameTessellationSettings(
+    { tessellation: { kind: s.previewKind, params: s.previewParams }, hexOrientation: s.previewHexOrientation, triOrientation: s.previewTriOrientation },
+    { tessellation: { kind: s.tessellationKind, params: s.tessellationParams }, hexOrientation: s.hexOrientation, triOrientation: s.triOrientation },
+  )) {
     const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
     if (anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty) return true;
   }

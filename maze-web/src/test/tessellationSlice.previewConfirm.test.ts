@@ -259,6 +259,40 @@ describe("mazeStore preview/confirm flow", () => {
     useMazeStore.getState().confirmTessellation();
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID]).not.toBe(s0.floorFields[TEST_FLOOR_ID]);
   });
+
+  it("a changed orientation reports data loss and clears the maze and presets", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      previewKind: "hex",
+      hexOrientation: "flat_top",
+      previewHexOrientation: "pointy_top",
+      presetsDirty: true,
+      mazeDirty: true,
+      presetStart: { point: [0, 0] },
+    });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(true);
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toBeNull();
+    expect(s.mazeDirty).toBe(false);
+  });
+
+  it("a params change reports data loss and clears the maze and presets", () => {
+    useMazeStore.getState().setPreviewKind("radial");
+    useMazeStore.getState().confirmTessellation();
+    useMazeStore.setState({ presetsDirty: true, mazeDirty: true, presetStart: { point: [0, 0] } });
+    useMazeStore.getState().setPreviewParams({ first_ring_cells: 15, ring_layout: "classic", max_cells: 3000 });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(true);
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toBeNull();
+    expect(s.mazeDirty).toBe(false);
+  });
+
+  it("an orientation of an unused slot does not count as a change", () => {
+    useMazeStore.setState({ tessellationKind: "square", previewKind: "square", presetsDirty: true, previewHexOrientation: "pointy_top", hexOrientation: "flat_top" });
+    expect(selectTessellationWouldLoseData(useMazeStore.getState())).toBe(false);
+  });
 });
 
 describe("mazeStore tessellation misc actions", () => {
