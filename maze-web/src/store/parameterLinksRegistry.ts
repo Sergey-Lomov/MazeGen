@@ -55,8 +55,8 @@ function descriptor(type: ParamType, label: () => string, group: () => string[],
             ? formatTeleportCurveDirection
           : type === "labelFontWeight"
             ? formatElevatorBadgesFontWeight
-            : type === "glueTabLineStyle"
-              ? formatGlueTabLineStyle
+            : type === "lineStyle"
+              ? formatLineStyle
               : type === "number"
                 ? formatNumber
                 : type === "color"
@@ -131,7 +131,7 @@ function formatVerticalArrowStyle(value: unknown): string {
  *  `format` can't pick the right set, so the default (elevator-badges wording) covers the more
  *  common case and `markerIndex.*` descriptors pass their own via `descriptor()`'s `format`
  *  override. */
-function formatGlueTabLineStyle(value: unknown): string {
+function formatLineStyle(value: unknown): string {
   if (value === "dashed") return m["image_export.glue_tabs.line_style_dashed"]();
   if (value === "solid") return m["image_export.glue_tabs.line_style_solid"]();
   return String(value);
@@ -178,6 +178,8 @@ const G = {
   teleportConnector: () => [m["image_export.vector_by_walls.section_teleports"](), m["image_export.vector_by_walls.teleport_subsection_connector"]()],
   markerIndex: () => [m["image_export.vector_by_walls.section_marker_index"]()],
   topology: () => [m["topology.title"]()],
+  cutLines: () => [m["topology.title"](), m["image_export.topology.cut_lines"]()],
+  creases: () => [m["topology.title"](), m["image_export.creases.title"]()],
   glueTabs: () => [m["topology.title"](), m["image_export.glue_tabs.title"]()],
   edgeMarkers: () => [m["topology.title"](), m["image_export.edge_markers.title"]()],
 
@@ -215,12 +217,23 @@ const G = {
   cells: () => [m["image_export.vector_by_corridors.section_corridors"]()],
 };
 
-/** The cut-line style (GitHub issue #859): the same three parameters in both render modes. */
+/** The top-level wall trimming and the Cut lines subsection (GitHub issues #859, #924). */
 const CUT_LINE_PARAMS = {
-  showCutLines: descriptor("boolean", () => m["image_export.topology.show_cut_lines"](), G.topology, formatBoolean),
+  showCutLines: descriptor("boolean", () => m["image_export.topology.show_cut_lines"](), G.cutLines, formatBoolean),
   trimWallsAtFaceBoundaries: descriptor("boolean", () => m["image_export.topology.trim_walls_at_face_boundaries"](), G.topology, formatBoolean),
-  cutLinesGlueColor: descriptor("boolean", () => m["image_export.topology.cut_lines_glue_color"](), G.topology, formatBoolean),
-  cutLinesColor: descriptor("color", () => m["image_export.topology.cut_lines_color"](), G.topology),
+  cutLinesGlueColor: descriptor("boolean", () => m["image_export.topology.cut_lines_glue_color"](), G.cutLines, formatBoolean),
+  cutLinesColor: descriptor("color", () => m["image_export.topology.cut_lines_color"](), G.cutLines),
+};
+
+/** Every crease-display field except mode is linkable and belongs to the Creases subsection (GitHub issue #924). */
+const CREASE_PARAMS = {
+  "creases.showCreases": descriptor("boolean", () => m["image_export.creases.show"](), G.creases, formatBoolean),
+  "creases.lineStyle": descriptor("lineStyle", () => m["image_export.creases.line_style"](), G.creases, formatLineStyle),
+  "creases.lineWidth": descriptor("number", () => m["image_export.creases.line_width"](), G.creases),
+  "creases.markSize": descriptor("number", () => m["image_export.creases.mark_size"](), G.creases),
+  "creases.markTipLength": descriptor("number", () => m["image_export.creases.mark_tip_length"](), G.creases),
+  "creases.color": descriptor("color", () => m["image_export.creases.color"](), G.creases),
+  "creases.markColor": descriptor("color", () => m["image_export.creases.mark_color"](), G.creases),
 };
 
 /** The glue-tab style (GitHub issue #901): the same parameters in both render modes. */
@@ -231,8 +244,9 @@ const GLUE_TAB_PARAMS = {
   "glueTabs.alternate": descriptor("boolean", () => m["image_export.glue_tabs.alternate"](), G.glueTabs, formatBoolean),
   "glueTabs.fillColor": descriptor("color", () => m["image_export.glue_tabs.fill_color"](), G.glueTabs),
   "glueTabs.lineWidth": descriptor("number", () => m["image_export.glue_tabs.line_width"](), G.glueTabs),
-  "glueTabs.lineStyle": descriptor("glueTabLineStyle", () => m["image_export.glue_tabs.line_style"](), G.glueTabs),
+  "glueTabs.lineStyle": descriptor("lineStyle", () => m["image_export.glue_tabs.line_style"](), G.glueTabs),
   "glueTabs.lineColor": descriptor("color", () => m["image_export.glue_tabs.line_color"](), G.glueTabs),
+  "edgeMarkers.size": descriptor("number", () => m["image_export.edge_markers.size"](), G.edgeMarkers),
   "edgeMarkers.shape": descriptor("markerShape", () => m["image_export.edge_markers.shape"](), G.edgeMarkers),
   "edgeMarkers.color": descriptor("color", () => m["image_export.edge_markers.color"](), G.edgeMarkers),
 };
@@ -418,6 +432,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
   ...CUT_LINE_PARAMS,
+  ...CREASE_PARAMS,
   ...GLUE_TAB_PARAMS,
   innerGridColor: descriptor("color", () => m["image_export.vector_by_walls.inner_grid_color"](), G.background),
   floorColor: descriptor("color", () => m["image_export.vector_by_walls.floor_color"](), G.tiles),
@@ -632,6 +647,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   background: descriptor("color", () => m["image_export.vector_by_walls.background_color"](), G.background),
   gridColor: descriptor("color", () => m["image_export.vector_by_walls.grid_color"](), G.background),
   ...CUT_LINE_PARAMS,
+  ...CREASE_PARAMS,
   ...GLUE_TAB_PARAMS,
   color: descriptor("color", () => m["image_export.vector_by_corridors.color"](), G.cells),
   thickness: descriptor("number", () => m["image_export.vector_by_corridors.thickness"](), G.cells),

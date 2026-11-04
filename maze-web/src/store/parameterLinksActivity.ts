@@ -36,6 +36,7 @@ export interface ParamActivitySettings {
   showCutLines?: boolean;
   cutLinesGlueColor?: boolean;
   glueTabs?: { showTabs: boolean; lineWidth: number };
+  creases?: { showCreases: boolean; mode: "lines" | "marks" };
   edgeMarkers?: { mode: string };
   elevatorBadges?: { enabled: boolean };
   markerIndex?: { enabled: boolean };
@@ -120,6 +121,9 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
   if (p === "glueTabs.showTabs") return true;
   if (p === "glueTabs.lineStyle" || p === "glueTabs.lineColor") return settings.glueTabs?.showTabs !== false && (settings.glueTabs?.lineWidth ?? 1) > 0;
   if (p.startsWith("glueTabs.")) return settings.glueTabs?.showTabs !== false;
+  if (p === "creases.showCreases") return true;
+  if (p === "creases.lineStyle" || p === "creases.lineWidth" || p === "creases.color") return settings.creases?.showCreases !== false && settings.creases?.mode === "lines";
+  if (p === "creases.markSize" || p === "creases.markTipLength" || p === "creases.markColor") return settings.creases?.showCreases !== false && settings.creases?.mode === "marks";
   if (p.startsWith("edgeMarkers.")) return (settings.edgeMarkers?.mode ?? "hidden") !== "hidden";
   if (p === "innerGridColor") return settings.showGrid !== false && settings.showInnerGrid !== false;
 

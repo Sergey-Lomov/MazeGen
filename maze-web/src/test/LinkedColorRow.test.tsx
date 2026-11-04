@@ -1,7 +1,7 @@
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { LinkedColorRow } from "../components/features/LinkedRows";
+import { LinkedColorRow, LinkedUnregisteredColorRow } from "../components/features/LinkedRows";
 import { LinkContextProvider } from "../components/features/LinkContext";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
 import * as m from "~/paraglide/messages";
@@ -53,6 +53,20 @@ describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () =>
     const onSetLinkEnabled = vi.fn();
     const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: true }];
     renderRow(links, vi.fn(), onSetLinkEnabled);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(onSetLinkEnabled).toHaveBeenCalledWith("target", true);
+  });
+
+  it("also restores an enabled link for an unregistered project colour", () => {
+    const onSetLinkEnabled = vi.fn();
+    const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: true }];
+    render(
+      <LinkContextProvider value={{ links, registry, onSetLinkEnabled, onAddLink: vi.fn(), activePaths: new Set<P>(["source", "target"]) }}>
+        <LinkedUnregisteredColorRow label="Target" color={0x000000} onChange={vi.fn()} linkTarget="target" />
+      </LinkContextProvider>,
+    );
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
     fireEvent.click(screen.getByText(cancelLabel()));

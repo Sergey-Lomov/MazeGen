@@ -5,7 +5,6 @@ import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
-import { bringSidePanelToFront } from "../SidePanel";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { AutoFitButton } from "./TextFitContext";
@@ -37,8 +36,8 @@ function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
 
 /** The "Settings" section (GitHub issue #668) — one collapsible section, placed before "Shared
  *  style", holding every link-editing/management control that isn't itself a style value: link
- *  icon visibility, "Manage links...", the destructive "Reset all settings" and, for a floor with
- *  glues, the "Topology" button that opens the export topology panel (GitHub issue #859). Split out of what
+ *  icon visibility, "Manage links...", and the destructive "Reset all settings". The cut-line editor
+ *  lives with the Cut lines subsection (GitHub issue #924). Split out of what
  *  used to be one combined "Shared style" section (GitHub issue #322/#643) so style configuration
  *  and management actions don't clutter each other, per the issue's own rationale. Shared by
  *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`, same per-mode-setters-only-differ
@@ -70,8 +69,6 @@ export function SettingsSection<P extends string>({
   const [infoOpen, setInfoOpen] = useState(false);
   const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
   const setLinkIconVisibility = useMazeStore((s) => s.setLinkIconVisibility);
-  const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
-  const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
 
   return (
     <div style={styles.block}>
@@ -93,17 +90,6 @@ export function SettingsSection<P extends string>({
           &#8505;
         </Button>
       </Inline>
-      {hasGlues && (
-        <Button
-          variant="secondary"
-          onClick={() => {
-            bringSidePanelToFront("image-export-topology");
-            setExportTopologyOpen(true);
-          }}
-        >
-          {m["topology.title"]()}
-        </Button>
-      )}
       <Button variant="destructive" onClick={onResetAll}>
         {m["image_export.vector_by_walls.shared_style_reset_all"]()}
       </Button>

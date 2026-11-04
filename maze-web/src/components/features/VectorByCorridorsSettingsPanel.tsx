@@ -1172,6 +1172,8 @@ export function VectorByCorridorsSettingsPanel() {
         onShow={setShowCutLines}
         onGlueColor={setCutLinesGlueColor}
         onColor={setCutLinesColor}
+        cutLinesExpanded={isExpanded("cutLines")}
+        onToggleCutLines={() => toggleSection("cutLines")}
         creasesExpanded={isExpanded("creases")}
         onToggleCreases={() => toggleSection("creases")}
         creaseStyle={settings.creases}
