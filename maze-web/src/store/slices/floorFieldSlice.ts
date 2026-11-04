@@ -14,7 +14,7 @@ import type { MazeStore, MazeState, FloorFieldConfig, FloorFieldsState, FloorFie
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf, tessellationOf,
   withFieldPointsEdit, setSelectedShapeState, activeFloorField, withActiveFloorField, deriveTessellationFromConfig,
-  buildResetDownstreamState, withoutFloorTopology,
+  buildResetDownstreamState, withoutFloorTopology, hasGeneration,
 } from "../storeHelpers";
 
 function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) {
@@ -30,7 +30,7 @@ function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () =
   // field, so accepting edits here would make them invisible and resurrect them when preview is
   // cancelled. The preview's Confirm action uses applyBackgroundAutoFill, not this guard.
   if (state.backgroundAutoFillPreview !== null) return {};
-  return state.mazeDirty || state.postEditDirty
+  return hasGeneration(state)
     ? { fieldEditConfirmation: pending }
     : apply();
 }
@@ -120,7 +120,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "setFieldConfigForFloors", config: cfg, applyToAllStandardFloors } });
       return;
     }
@@ -130,7 +130,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setFieldConfigsForFloors: (configs, applyToAllStandardFloors) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "setFieldConfigsForFloors", configs, applyToAllStandardFloors } });
       return;
     }
@@ -153,7 +153,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setFieldEditMode: (mode) => set((state) => {
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
     const field = activeFloorField(state);
     if (mode === "custom") {
       const cfg = field.fieldConfig;
@@ -350,7 +350,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const source = state.floorFields[sourceFloorId];
     if (!source) return {};
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology } };
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology } };
     return {
       ...withActiveFloorField(state, { ...cloneFloorField(source), fieldDirty: true }),
       floorTopology: includeTopology

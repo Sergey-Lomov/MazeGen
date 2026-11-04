@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import { editTopology, TopologyError } from "../../wasm/mazeService";
 import type { MazeStore } from "../storeTypes";
-import { buildResetDownstreamState, debugStaleOf, withActiveFloorField } from "../storeHelpers";
+import { buildResetDownstreamState, debugStaleOf, withActiveFloorField, hasGeneration } from "../storeHelpers";
 import { floorTopologyInfo, floorTopologyRequest, selectionRun } from "../topologyInfo";
 import type { WireFoldEnd } from "../../wasm/types";
 import type { TopologyActions, TopologyState } from "../topologyTypes";
@@ -97,7 +97,7 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
   applyTopologyOp: (op) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "applyTopologyOp", op } });
       return;
     }
@@ -133,7 +133,7 @@ export const createTopologySlice: StateCreator<MazeStore, [], [], TopologyState 
     if (state.backgroundAutoFillPreview !== null) return;
     const floorId = state.activeFloorId;
     if (!state.floorTopology[floorId]) return;
-    if (state.mazeDirty || state.postEditDirty) {
+    if (hasGeneration(state)) {
       set({ fieldEditConfirmation: { kind: "clearTopologyGroups" } });
       return;
     }

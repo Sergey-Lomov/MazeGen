@@ -600,6 +600,12 @@ export function withRecomputedAutoLock<T extends { presetConnections: Map<string
   return { ...patch, autoLockedNodes: recomputeAutoLock(state, patch), debugStale: debugStaleOf(state) };
 }
 
+/** True once the user has generated a maze (or edited on top of one) since the last reset: the
+ *  results that any input change would invalidate. */
+export function hasGeneration(state: Pick<MazeState, "mazeDirty" | "postEditDirty">): boolean {
+  return state.mazeDirty || state.postEditDirty;
+}
+
 /** Shared "wipe maze + derived analytics" fields, used by tessellation-kind switches, reset, and project load. */
 export function buildResetMazeState() {
   return {

@@ -196,6 +196,7 @@
   "preset.passage": "Passage",
   "preset.reset": "Undefined edge",
   "preset.reset_tooltip": "The edge value (wall or passage) will be determined during generation",
+  "preset.reset_generation_warning": "Changing presets resets the current generation and post-edit results. Continue?",
   "preset.default_edge": "Default edges",
   "preset.default_undefined": "Undefined edge",
   "preset.default_undefined_short": "Undefined",

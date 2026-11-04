@@ -9,6 +9,7 @@ import { Button } from "../Button";
 import { ToolIconButton, ToolTooltip } from "../ToolIconButton";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import { hasGeneration } from "../../store/storeHelpers";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
@@ -111,7 +112,7 @@ export function FieldSetupFeature() {
 
   function handleSwitchToDefault() {
     // The generation-loss dialog (store) already covers the loss of custom shape changes.
-    const generationLossDialogShown = useMazeStore.getState().mazeDirty || useMazeStore.getState().postEditDirty;
+    const generationLossDialogShown = hasGeneration(useMazeStore.getState());
     if (isCustom && fieldPoints.size > 0 && !generationLossDialogShown) {
       setConfirmPending("switchToDefault");
     } else {
