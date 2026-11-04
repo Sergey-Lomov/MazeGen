@@ -498,7 +498,10 @@ minimum 1.25px screen-space thickness at every zoom level.
 
 Every tool normalizes its result with one routine (`normalizeCells`): it removes cells that have
 no edge-adjacent neighbor and, with `Smoothing` enabled, one-edge terminal cells, repeating until no
-cell changes so removing one spike cannot leave a new one. When adding, cells already in the field
+cell changes so removing one spike cannot leave a new one. A one-cell-thick strip is peeled from
+its free end down to the anchors (or to nothing), leaving no stubs. A shape of fewer than four cells
+is judged once on the input and is not smoothed. A Default-mode preset that smoothing would remove
+entirely (a one-cell-thick strip) is kept as chosen. When adding, cells already in the field
 count as neighbors but are never removed. For remove and select no existing cells are used: only
 the shape's own cells are normalized, and the result is then intersected with the field, so
 smoothing matches the outline the user sees. Default-mode tessellation normalization has no

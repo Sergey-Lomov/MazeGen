@@ -68,6 +68,32 @@ describe("field shape primitives", () => {
       expect(normalizeCells(cells, SQUARE_CFG, false)).toEqual(cells);
     });
 
+    it("peels a thin strip completely instead of stopping at three cells", () => {
+      const config = fieldOf("tri", { shape: "rect", cols: 8, rows: 1 }, "r0");
+      const strip = configAllCells(config);
+      expect(strip.length).toBeGreaterThanOrEqual(4);
+      expect(normalizeCells(strip, config, true)).toEqual([]);
+    });
+
+    it("leaves no stub at the border when a strip protrudes from anchors", () => {
+      const strip: [number, number][] = [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]];
+      // A wall of anchors along x = 0 gives the first strip cell a single link to the field.
+      const isAnchor = (x: number) => x === 0;
+      expect(normalizeCells(strip, SQUARE_CFG, true, isAnchor)).toEqual([]);
+    });
+
+    it("does not smooth a shape of fewer than four cells", () => {
+      const line: [number, number][] = [[0, 0], [1, 0], [2, 0]];
+      expect(normalizeCells(line, SQUARE_CFG, true)).toEqual(line);
+    });
+
+    it("keeps a one-cell-thick preset field when smoothing is on", () => {
+      const config = fieldOf("square", { shape: "rect", cols: 6, rows: 1 });
+      const raw = configAllCells(config);
+      expect(raw.length).toBe(6);
+      expect(configAllCells(config, true)).toEqual(raw);
+    });
+
     it("removes a lone isolated cell", () => {
       expect(normalizeCells([[0, 0]], SQUARE_CFG, false)).toEqual([]);
       expect(normalizeCells([[0, 0]], SQUARE_CFG, true)).toEqual([]);

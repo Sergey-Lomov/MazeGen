@@ -263,6 +263,8 @@ describe("FieldEditController polygon interaction", () => {
   });
 
   it("commits when a new vertex is double-clicked", () => {
+    // The thin staircase would be smoothed away entirely, leaving nothing to commit.
+    useMazeStore.setState({ smoothPrimitives: false });
     const { controller, commits } = makeController();
     click(controller, 45, -45);
     click(controller, 125, -45);

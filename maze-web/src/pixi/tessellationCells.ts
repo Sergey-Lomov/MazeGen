@@ -31,9 +31,12 @@ export function belowMinimum(cfg: FieldConfig, preset: string, params: Record<st
   return presetParams(cfg.tessellation, preset).some(({ name, min }) => params[name] < min);
 }
 
-/** A one-cell preset is a valid field, so it is not stripped as an isolated cell. */
+/** A one-cell preset is a valid field, so it is not stripped as an isolated cell. A preset that
+ * smoothing would peel away entirely (a one-cell-thick strip) is kept as chosen. */
 function smoothPreset(cells: [number, number][], cfg: FieldConfig): [number, number][] {
-  return cells.length < 2 ? cells : normalizeCells(cells, cfg, true);
+  if (cells.length < 2) return cells;
+  const smoothed = normalizeCells(cells, cfg, true);
+  return smoothed.length === 0 ? cells : smoothed;
 }
 
 /** Callers may mutate what they get, so the cache never hands out its own arrays. */
