@@ -86,6 +86,32 @@ fn main() -> ExitCode {
             .join("src")
             .join(parent_dir_of(&source.location.rust_file))
             .join(format!("{}_wire.rs", source.location.stem));
+        // Written before the wire file is formatted: `rustfmt` resolves the wire file's
+        // `#[path]` golden-tests module and fails if that file does not exist yet.
+        if let Some(raw_golden_text) = rust_emitter::generate_rust_golden_tests_file(source) {
+            let golden_rs_path = rust_wire_path
+                .with_file_name(format!("{}_wire_golden_tests.rs", source.location.stem));
+            let golden_rs_text = match format_rust(&raw_golden_text, &golden_rs_path) {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!(
+                        "codegen: could not format {}: {e}",
+                        golden_rs_path.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            };
+            let had_errors_before_golden_rs = had_errors;
+            write_or_check(
+                &golden_rs_path,
+                &golden_rs_text,
+                check_only,
+                &mut had_errors,
+            );
+            if !check_only && had_errors != had_errors_before_golden_rs {
+                continue;
+            }
+        }
         let raw_rust_text = rust_emitter::generate_rust_wire_file(source);
         let new_rust_text = match format_rust(&raw_rust_text, &rust_wire_path) {
             Ok(text) => text,
