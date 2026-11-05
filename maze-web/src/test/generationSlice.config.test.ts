@@ -310,6 +310,35 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
+  it("loadProject skips generation when the project was saved without a generated maze (GitHub issue #932)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], mazeDirty: false, postEditDirty: false });
+    const idleFile = serializeProject(useMazeStore.getState());
+    vi.mocked(generateMaze).mockClear();
+    useMazeStore.getState().loadProject(idleFile);
+    expect(generateMaze).not.toHaveBeenCalled();
+    expect(useMazeStore.getState().generationStatus).toBe("idle");
+    expect(useMazeStore.getState().openCard).toBe(idleFile.ui.openCard);
+
+    // Saved flags are restored on the skip path too, and a post-edit-only project still generates.
+    const presetsOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, presets: true } };
+    useMazeStore.getState().loadProject(presetsOnly);
+    expect(generateMaze).not.toHaveBeenCalled();
+    expect(useMazeStore.getState().presetsDirty).toBe(true);
+    const postEditOnly = { ...idleFile, dirtyFlags: { ...idleFile.dirtyFlags, postEdit: true } };
+    useMazeStore.getState().loadProject(postEditOnly);
+    expect(generateMaze).toHaveBeenCalledTimes(1);
+    vi.mocked(generateMaze).mockClear();
+
+    useMazeStore.getState().generate();
+    const doneFile = serializeProject(useMazeStore.getState());
+    expect(doneFile.dirtyFlags.maze).toBe(true);
+    vi.mocked(generateMaze).mockClear();
+    useMazeStore.getState().loadProject(doneFile);
+    expect(generateMaze).toHaveBeenCalledTimes(1);
+    expect(useMazeStore.getState().generationStatus).toBe("done");
+  });
+
   it("loadProject restores vectorByCorridorsSettings/vectorByCorridorsSectionsExpanded from the saved file", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
