@@ -118,7 +118,7 @@ export class GenerationRenderer {
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
-    this.walls = new WallRenderer(this.wallsContainer);
+    this.walls = new WallRenderer(this.wallsContainer, true);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
@@ -127,8 +127,8 @@ export class GenerationRenderer {
     this.debugValueHighlight = new DebugValueHighlightOverlay(this.debugValueHighlightContainer);
     this.kruskalDsuHighlight = new KruskalDsuHighlightOverlay(this.kruskalDsuHighlightContainer);
 
-    this.syncVisibility(useMazeStore.getState());
-    this.renderAll(useMazeStore.getState());
+    // A hidden layer is still drawn once so it is ready when shown.
+    if (!this.syncVisibility(useMazeStore.getState())) this.renderAll(useMazeStore.getState());
     this.subscribe();
   }
 
@@ -140,9 +140,9 @@ export class GenerationRenderer {
         state.showMaze !== prev.showMaze ||
         state._generatedNodes.length > 0 !== prev._generatedNodes.length > 0;
 
-      if (visibilityChanged) {
-        this.syncVisibility(state);
-      }
+      // `syncVisibility` already redraws while the layer is visible; the data check below would
+      // repeat the same full render for the same state.
+      const redrawn = visibilityChanged ? this.syncVisibility(state) : false;
 
       const dataChanged =
         state._generatedNodes !== prev._generatedNodes ||
@@ -160,7 +160,7 @@ export class GenerationRenderer {
         state.debugValueToggles !== prev.debugValueToggles ||
         state.showKruskalDsuGroups !== prev.showKruskalDsuGroups;
 
-      if (dataChanged) {
+      if (dataChanged && !redrawn) {
         this.renderAll(state);
       }
 
@@ -168,7 +168,8 @@ export class GenerationRenderer {
     });
   }
 
-  private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
+  /** Returns whether it redrew the layer. */
+  private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): boolean {
     const visible = state.openCard === "generation" && state.showMaze;
     this.gridContainer.visible = visible;
     // Nothing to mark on the field before a maze is generated.
@@ -186,6 +187,7 @@ export class GenerationRenderer {
     if (visible) {
       this.renderAll(state);
     }
+    return visible;
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {

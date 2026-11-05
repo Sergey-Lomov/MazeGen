@@ -27,6 +27,11 @@ Requests coalesce: at most one `app.render()` per animation frame. Nothing rende
 
 **Profiling.** Development builds emit Chrome User Timing entries named `Maze grid (<owner>): viewport bounds`, `Maze grid (<owner>): core region and outlines`, `Maze grid (<owner>): trace paths`, and `Maze grid (<owner>): Pixi stroke` for every actual grid rebuild. The owner distinguishes concurrently alive editor, preview, analytics, and export grids. The first two phases cover synchronous core/WASM and cache work, the latter two cover JavaScript command creation and Pixi submission. GPU execution is asynchronous and must be assessed from the surrounding WebGL frame in the same trace.
 
+**Generation layer draw cost (GitHub issue #174).** On a 200x200 maze the layer's redraw (`GenerationRenderer.renderAll`) and Pixi's `app.render` together take about a second after generation completes (measured: `renderAll` ~0.5 s, `app.render` ~0.5 s). Two things keep it down:
+
+- One `renderAll` per store update. `syncVisibility` returns whether it redrew the layer; `subscribe` skips its data-change redraw when it did, and the constructor draws once whether or not the layer starts visible. A visibility change and a data change in the same update therefore no longer render twice.
+- Batched draw instructions. `CellFillRenderer` fills a group with no inset and no border as one path with a single `fill`, and `GenerationRenderer` creates its `WallRenderer` with `batchStrokes`, which strokes default-style solid walls in one instruction (each wall still a separate subpath with its own caps and no joins). The batching is opt-in on `WallRenderer` so image export and tests keep one stroke per edge.
+
 **`app.render` is routed through the scheduler.** Pixi's own synchronous renders (the resize plugin) go through the same path and consume an already-queued frame. Notifications fired while a render is in progress are ignored — they are Pixi's bookkeeping for the frame being drawn, not new content.
 
 **Suspension.** `setSuspended(true)` while the Quality card hides the canvas (`MazeScene.subscribeToQualityOpen`, see `Specs/quality-feature.md`): no renders at all, including the resize plugin's. `setSuspended(false)` triggers one render that draws everything changed meanwhile.
