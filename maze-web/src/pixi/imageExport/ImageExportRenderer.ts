@@ -6,6 +6,7 @@ import type { ViewportListener } from "../sceneTypes";
 import { SeamArrowLayer } from "../seamArrowSync";
 import { exportSeamLayerShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
+import type { TeleportEdge } from "../renderers/types";
 
 type CopyLayer = "content" | "overlay" | "highlight";
 const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay", "highlight"];
@@ -94,6 +95,10 @@ export class ImageExportRenderer implements ViewportListener {
    *  it via a Pixi-free pure function. */
   getModeRenderer(mode: RenderModeId): ModeRenderer | undefined {
     return this.modeRenderers.get(mode);
+  }
+
+  getTeleportConnectorPaths(mode: RenderModeId): readonly { edge: TeleportEdge; points: readonly number[] }[] {
+    return this.modeRenderers.get(mode)?.getTeleportConnectorPaths?.() ?? [];
   }
 
   private syncVisibility(activeMode: RenderModeId | null): void {

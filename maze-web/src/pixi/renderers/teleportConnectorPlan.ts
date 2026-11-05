@@ -6,6 +6,7 @@ import { getSeamModel } from "../selectors/seams";
 import { cutPolylineAtChain, shortestSeamCrossing } from "../selectors/seamUnfold";
 import { displayTransform } from "../tessellationGeometry";
 import { applyTransform, invertTransform } from "../geometry/worldTransform";
+import { manualConnectorPoints, type ManualTeleportConnectorPath } from "./teleportConnectorManual";
 
 /** Routes every connector of `edges` (one `RoutedConnector` per edge, same order) for `style`'s
  *  `connectorStyle` — pure routing, no drawing. Shared by `TeleportRenderer` (drawing) and the
@@ -21,12 +22,18 @@ export function routeTeleportConnectors(args: {
   avoidFieldExit: boolean;
   fieldCells: [number, number][];
   markerMaxFactor: number;
+  /** Explicit user-edited paths, keyed by the underlying unordered teleport-node pair.  An
+   * edited path is never fed back through the automatic router. */
+  manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>;
   /** Glued pairs of the floor (GitHub issue #873); when given, a connector between two cells glued
    *  by a seam is routed as two pieces through the seam whenever that is shorter than the direct
    *  connector, as if the field continued beyond the glue. */
   seam?: { cfg: FieldConfig };
 }): RoutedConnector[] {
   const { edges, seam } = args;
+  // A manually authored path is already in display coordinates. Do not unfold/re-cut it through
+  // a seam: that would silently rewrite the user's geometry.
+  if (args.manualPaths && edges.some((edge) => manualConnectorPoints(edge, args.manualPaths) !== null)) return routeWholeConnectors(args);
   const model = seam ? getSeamModel(seam.cfg) : null;
   if (!seam || !model || model.isEmpty) return routeWholeConnectors(args);
 
@@ -71,7 +78,17 @@ export function routeTeleportConnectors(args: {
 }
 
 function routeWholeConnectors(args: Omit<Parameters<typeof routeTeleportConnectors>[0], "seam">): RoutedConnector[] {
-  const { router, edges, style, cfg, waypoints, avoidFieldExit, fieldCells, markerMaxFactor } = args;
+  const { router, edges, style, cfg, waypoints, avoidFieldExit, fieldCells, markerMaxFactor, manualPaths } = args;
+  const manual = edges.map((edge) => manualConnectorPoints(edge, manualPaths));
+  // A manual connector must be visible to the automatic router.  Its vertices are fed through
+  // the existing point-avoidance weighting; this prevents a newly routed connector from cutting
+  // through a hand-placed bend while leaving the authored line itself untouched.
+  const routingWaypoints: [number, number][] = [...waypoints, ...manual.flatMap((points) => {
+    if (!points) return [];
+    const result: [number, number][] = [];
+    for (let i = 2; i + 3 < points.length; i += 2) result.push([points[i], points[i + 1]]);
+    return result;
+  })];
   // Includes the gap once (not doubled) — two adjacent connectors' gaps are allowed to
   // overlap a bit, only their core lines need to stay visually distinct.
   const gap = (style.connectorWidth + style.connectorGapWidth) * 1.5;
@@ -90,15 +107,24 @@ function routeWholeConnectors(args: Omit<Parameters<typeof routeTeleportConnecto
   const markerAvoidanceRadius =
     (endpointStyle.markerRadius + endpointStyle.markerBorderWidth + endpointStyle.connectorGapWidth + endpointStyle.connectorWidth / 2) * 1.25;
   if (style.connectorStyle === "curved") {
-    return routeCurvedConnectors(edges, style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, waypoints);
+    return edges.map((edge, index) => manual[index]
+      ? { points: manual[index]! }
+      : routeCurvedConnectors([edge], style.curveDirection ?? "inward", style.curveStrength ?? 0.25, cfg?.tessellation.kind === "radial", markerAvoidanceRadius, routingWaypoints)[0]);
   }
   if (cfg?.tessellation.kind === "radial" && style.connectorStyle === "orthogonal") {
-    return routeRadialConnectors(edges, markerAvoidanceRadius, waypoints);
+    return edges.map((edge, index) => manual[index]
+      ? { points: manual[index]! }
+      : routeRadialConnectors([edge], markerAvoidanceRadius, routingWaypoints)[0]);
   }
   if (style.connectorStyle === "orthogonal") {
-    return router.route(
-      edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
+    // Route automatic connectors as one batch, retaining their normal collision/offset handling.
+    // Edited connectors are substituted back afterwards and are never offset by the router.
+    const automatic = edges.map((edge, index) => ({ edge, index })).filter(({ index }) => !manual[index]);
+    const routedAutomatic = router.route(
+      automatic.map(({ edge }) => edge), gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, routingWaypoints, avoidFieldExit, fieldCells,
     );
+    const byIndex = new Map(automatic.map(({ index }, routedIndex) => [index, routedAutomatic[routedIndex]]));
+    return edges.map((_, index) => manual[index] ? { points: manual[index]! } : byIndex.get(index)!);
   }
-  return routeStraightConnectors(edges);
+  return edges.map((edge, index) => manual[index] ? { points: manual[index]! } : routeStraightConnectors([edge])[0]);
 }

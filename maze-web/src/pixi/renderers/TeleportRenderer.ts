@@ -13,6 +13,7 @@ import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
+import type { ManualTeleportConnectorPath } from "./teleportConnectorManual";
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's
@@ -62,6 +63,11 @@ export class TeleportRenderer {
     container.addChild(this.overlayLayer);
   }
 
+  /** Exact polylines from the most recent draw, for the non-exported edit overlay. */
+  getConnectorPaths(): readonly { edge: TeleportEdge; points: readonly number[] }[] {
+    return this.selectionConnectors.map(({ edge, routed }) => ({ edge, points: routed.points }));
+  }
+
   /** `lineStyle` defaults to the pre-#293 fixed look (every caller except `VectorByWallsRenderer`).
    *  `groupCustomization` (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`
    *  pattern) merges teleport pairs into groups wherever an endpoint coordinate coincides (see
@@ -103,6 +109,7 @@ export class TeleportRenderer {
     /** Glued pairs of the floor (GitHub issue #873) — present only when "Route through seams" is on.
      *  A connector between two cells glued by a seam is then drawn as two pieces through the seam. */
     seam?: { cfg: FieldConfig };
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>;
   }): void {
     this.mergeTeleports = data.mergeTeleports ?? true;
     this.selectionScaler = data.scaler ?? NO_MARKER_SCALING;
@@ -123,6 +130,7 @@ export class TeleportRenderer {
       data.fieldCells ?? [],
       data.floorNavigable ?? false,
       data.seam,
+      data.manualPaths,
     );
   }
 
@@ -137,6 +145,7 @@ export class TeleportRenderer {
     fieldCells: [number, number][],
     floorNavigable: boolean,
     seam?: { cfg: FieldConfig },
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>,
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -158,7 +167,7 @@ export class TeleportRenderer {
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
       style.connectorStyle !== "none"
-        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells, seam)
+        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells, seam, manualPaths)
         : [];
 
     this.renderGroups();
@@ -176,6 +185,7 @@ export class TeleportRenderer {
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
     seam?: { cfg: FieldConfig },
+    manualPaths?: Readonly<Record<string, ManualTeleportConnectorPath>>,
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
     const groups = groupCustomization ? buildTeleportGroups(edges, this.mergeTeleports) : [];
     const groupKeyByPoint = new Map<string, string>();
@@ -189,7 +199,7 @@ export class TeleportRenderer {
 
     const routed = routeTeleportConnectors({
       router: this.connectorRouter, edges, style, cfg, waypoints, avoidFieldExit, fieldCells,
-      markerMaxFactor: this.selectionScaler.maxFactor, seam,
+      markerMaxFactor: this.selectionScaler.maxFactor, seam, manualPaths,
     });
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];

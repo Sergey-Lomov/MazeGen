@@ -21,7 +21,7 @@ export function backgroundImageEditMode(state: MazeState): "transform" | "crop" 
 
 export interface PointerHandler {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean, clickCount?: number): void;
-  onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean): void;
+  onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean): void;
   onPointerUp(button?: number): void;
   cancelPointerGesture(): void;
   clearHover?(): void;

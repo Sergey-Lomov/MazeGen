@@ -267,6 +267,22 @@ describe("validateTeleportSettingsFields curved connector recovery", () => {
   });
 });
 
+describe("validateTeleportSettingsFields manual connector paths", () => {
+  it("preserves finite authored coordinates and drops malformed paths", () => {
+    const result = validateTeleportSettingsFields({
+      manualTeleportConnectorPaths: {
+        "1:2": { mode: "curve", nodes: [[1.5, -2], [30, 40]], controls: [[10, 0], [20, 30]] },
+        legacy: { mode: "curve", points: [[0, 0], [30, 40]] },
+        broken: { points: [[0, "x"]] },
+      },
+    }, "path", DEFAULT_TELEPORT_SETTINGS);
+    expect(result.manualTeleportConnectorPaths).toEqual({
+      "1:2": { mode: "curve", nodes: [[1.5, -2], [30, 40]], controls: [[10, 0], [20, 30]] },
+      legacy: { mode: "curve", nodes: [[0, 0], [30, 40]] },
+    });
+  });
+});
+
 // GitHub issue #510 — the "Round junctions" boolean was replaced by a Contour/Line rendering-mode enum.
 describe("optRenderStyle (VectorByCorridorsSettings.renderStyle recovery)", () => {
   it("reads a valid value as-is", () => {

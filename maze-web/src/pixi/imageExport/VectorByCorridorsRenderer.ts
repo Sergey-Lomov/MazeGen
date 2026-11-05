@@ -59,6 +59,10 @@ type SplitOneWayStyle = { color: number; thickness: number; width: number; join:
  * skipped entirely — their own follow-up sub-issue, same as `VectorByCorridorsSettings`' own doc
  * comment. */
 export class VectorByCorridorsRenderer implements ModeRenderer {
+  getTeleportConnectorPaths(): readonly { edge: import("../renderers/types").TeleportEdge; points: readonly number[] }[] {
+    this.renderAll(useMazeStore.getState());
+    return this.teleports.getConnectorPaths();
+  }
   private readonly glueTabRenderer: GlueTabRenderer;
   private readonly backgroundGrid: BackgroundGridLayer<VectorByCorridorsSettings>;
   private readonly corridorsContainer: Container;
@@ -536,6 +540,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
       mergeTeleports: settings.teleportMergeMode,
       seam: settings.teleportThroughSeams !== false ? { cfg } : undefined,
+      manualPaths: settings.manualTeleportConnectorPaths,
     });
 
     this.markers.render({ markers: markerData, scaler });

@@ -41,6 +41,26 @@ The connector is then routed in the unfolded frame with its own style: the edge'
 
 A topological-only seam has no transform, so the unfold is built from its chain ends (`Seam.endpoints`, `seamUnfold.ts`): the rigid motion that lays the partner's face chain on this face chain with matching ends, choosing the variant that puts the partner's cell on the far side of the glue (a mirror one when needed). Everything above then applies unchanged. Edges without a shorter way through a seam and cross-floor badge points are unchanged. Each piece is stroked, gapped and given arrows on its own (`center`/`double` arrows therefore repeat per piece). The export warning `teleport_connector_covers_one_way` is given the same `seam` context and checks both pieces of a split connector. The shape is cut at its first crossing of any face glued by the same unfold (`SeamCrossing.chains`), since a routed shape (e.g. an orthogonal bend) may leave the field through a neighbouring face of the same glue. The renderers pass only `{ cfg }` as the `seam` context when the setting is on (`teleportThroughSeams !== false`, so a missing value counts as on); the seam model comes from `getSeamModel(cfg)`.
 
+## Manual connector paths (GitHub issue #301)
+
+An export connector can carry a user-authored path, identified by its unordered pair of underlying
+teleport node ids. Every manual path has `nodes` (polyline vertices and cubic anchors), plus
+optional `controls` (two cubic Bezier controls per consecutive node pair), and a `mode`.
+`"polyline"` joins nodes and ignores controls. `"curve"` uses nodes and controls as ordinary
+cubic Bezier segments. Switching to curve mode creates straight controls only when they do not
+exist; switching back leaves controls persisted but ignored. A manual path is drawn exactly as
+authored. New controls sit a fixed one-and-a-half-tile distance from their anchors along the local path
+tangent, so the initial curve is smooth. Dragging an anchor translates its adjacent controls;
+dragging one control rotates its paired control around their common anchor while preserving that
+paired control's length, keeping a G1 join. Controls and dotted control-to-anchor guides are shown
+only for the selected anchor. Inserting a node on a curve splits its cubic segment with the
+de Casteljau construction, preserving the drawn path; deleting an interior node regenerates the
+remaining segment controls.
+and never receives an automatic bend choice or corridor offset. Its intermediate points are
+nevertheless supplied to the automatic router's avoidance set, so subsequent automatic connectors
+do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
+not route through seams.
+
 ## Bend axes
 
 An orthogonal connector's single bend must run along an axis *perpendicular* to the tessellation's own cell faces (a connector crossing a wall head-on, not running alongside it):

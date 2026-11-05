@@ -135,6 +135,7 @@ export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
  * `.borderWidth`, `.gapWidth`/`teleportConnectorGapWidth`) start from the
  * canonical runtime values here and are reconciled once assembled into a full settings object. */
 export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
+  manualTeleportConnectorPaths: {},
   teleportMarker: {
     shape: DEFAULT_MAZE_RENDER_STYLE.teleport.shape,
     cornerStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.cornerStyle,

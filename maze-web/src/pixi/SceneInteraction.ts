@@ -34,6 +34,12 @@ export class SceneInteraction {
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
+    if (state.teleportConnectorEdit !== null && (e.code === "Escape" || e.code === "Delete")) {
+      e.preventDefault();
+      const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
+      if (e.code === "Escape") controller?.escape?.(); else controller?.deleteSelected?.();
+      return;
+    }
     if (state.floorLabelDrag !== null
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
@@ -123,6 +129,9 @@ export class SceneInteraction {
     stage.on("pointerdown", (e) => {
       const st = useMazeStore.getState();
       const controller = getController(st);
+      if (st.teleportConnectorEdit !== null) {
+        console.info("[teleport-connector-edit] stage pointerdown", { x: e.globalX, y: e.globalY, button: e.button, hasController: controller !== null });
+      }
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && e.button === 1) {
         this.defaultPan.begin(e.globalX, e.globalY);
@@ -193,7 +202,7 @@ export class SceneInteraction {
         return;
       }
       if (controller) {
-        controller.onPointerMove(e.globalX, e.globalY);
+        controller.onPointerMove(e.globalX, e.globalY, e.buttons, e.shiftKey, e.ctrlKey, e.metaKey);
         return;
       }
       this.defaultPan.move(e.globalX, e.globalY);

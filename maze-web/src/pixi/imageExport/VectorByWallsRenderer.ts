@@ -376,6 +376,12 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
+  getTeleportConnectorPaths(): readonly { edge: import("../renderers/types").TeleportEdge; points: readonly number[] }[] {
+    // The base renderer can be in a backdrop-only pass while a cut sheet is displayed. Refreshing
+    // its plan here keeps the editor independent of that presentation pass.
+    this.renderAll(useMazeStore.getState());
+    return this.teleports.getConnectorPaths();
+  }
   private readonly mazeContent: Container;
   private readonly trimMask = new Graphics();
   private trimMaskInputs: { nodes: NodeDto[]; floorId: string; cfg: FieldConfig; topology: unknown } | null = null;
@@ -801,6 +807,7 @@ export class VectorByWallsRenderer {
       fieldCells: cells,
       mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
       seam: state.vectorByWallsSettings.teleportThroughSeams !== false ? { cfg } : undefined,
+      manualPaths: state.vectorByWallsSettings.manualTeleportConnectorPaths,
     });
 
     this.markers.render({ markers: markerData, scaler });
