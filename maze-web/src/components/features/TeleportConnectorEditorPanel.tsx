@@ -5,7 +5,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Tooltip } from "../Tooltip";
-import { ShortcutKeycaps } from "../ToolIconButton";
+import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 import { sharedStyles } from "../../styles/shared";
 import { radius, spacing, typography, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -92,7 +92,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
 }
 
 function Instruction({ keys, text }: { keys: readonly string[]; text: string }) {
-  return <div style={styles.instruction}><ShortcutKeycaps keys={keys} muted /><span>{text}</span></div>;
+  return <EmbeddedHotkeyHint keys={keys}>{text}</EmbeddedHotkeyHint>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -106,5 +106,4 @@ const styles: Record<string, React.CSSProperties> = {
   arrow: { ...typography.caption, color: ui.text.secondary },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
   instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: spacing.itemGap },
-  instruction: { ...typography.caption, display: "flex", alignItems: "center", justifyContent: "center", gap: spacing.itemGap, textAlign: "center" },
 };

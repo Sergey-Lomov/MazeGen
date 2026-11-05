@@ -28,6 +28,7 @@ import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/store
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "./PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
+import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 
 const CANVAS_MODE_OPTIONS: { value: PngCanvasMode; label: string }[] = [
   { value: "edge_to_edge", label: m["image_export.format.png.digital.canvas_edge_to_edge"]() },
@@ -324,21 +325,21 @@ export function PngExportSettingsPanel() {
               />
             </div>
 
-            <Inline gap="itemGap" justify="space-between">
-              <span style={{ ...styles.label, ...(print.scaleAutoFit ? styles.labelDisabled : {}) }}>{m["image_export.format.png.print.scale"]()}</span>
-              <input
-                type="number"
-                name="png-print-scale"
-                step="0.01"
-                style={{
-                  ...sharedStyles.input, ...styles.control, width: 90,
-                  ...(print.scaleAutoFit ? styles.inputDisabled : {}),
-                }}
-                value={print.scale}
-                disabled={print.scaleAutoFit}
-                onChange={(e) => setPrintScale(Number(e.target.value))}
-              />
-            </Inline>
+            <SliderRow
+              label={m["image_export.format.png.print.scale"]()}
+              value={print.scale}
+              onChange={setPrintScale}
+              min={0.1}
+              max={5}
+              step={0.01}
+              format={(value) => value.toFixed(2)}
+              precise
+              preciseDecimals={2}
+              preciseWidth={58}
+              preciseMax={null}
+              preciseAriaLabel={m["image_export.format.png.print.scale"]()}
+              disabled={print.scaleAutoFit}
+            />
 
             <SelectRow<PrintAnchor>
               label={m["image_export.format.png.print.anchor"]()}
@@ -374,7 +375,7 @@ export function PngExportSettingsPanel() {
 
             <Inline gap="itemGap" justify="space-between">
               <span style={styles.label}>{m["image_export.format.png.print.screen_calibration"]()}</span>
-              <Inline gap="elementsGap">
+              <Inline gap="itemGap">
                 <span style={typography.caption}>
                   {calibratedCssPpi == null
                     ? m["image_export.format.png.print.screen_calibration_uncalibrated"]()
@@ -405,6 +406,12 @@ export function PngExportSettingsPanel() {
             >
               {m["image_export.format.png.print.physical_size"]()}
             </Button>
+
+            <div style={styles.instructions}>
+              <EmbeddedHotkeyHint prefix={m["image_export.format.png.print.canvas_navigation_hold"]()} keys={["mod"]}>
+                {m["image_export.format.png.print.canvas_navigation_hint"]()}
+              </EmbeddedHotkeyHint>
+            </div>
           </Stack>
           </div>
         )}
@@ -425,4 +432,5 @@ const styles = {
   iconToggle: { flex: "none" as const, width: controlRowHeight, padding: 0, display: "flex" as const, alignItems: "center" as const, justifyContent: "center" as const },
   inputDisabled: { opacity: 0.4, cursor: "not-allowed" as const },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
+  instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },
 } as const;

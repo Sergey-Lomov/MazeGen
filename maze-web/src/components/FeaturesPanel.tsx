@@ -461,7 +461,7 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
           <HoverIconButton onClick={handleSave} title={m["project.save"]()}><Save size={16} /></HoverIconButton>
           <HoverIconButton onClick={handleLoadClick} title={m["project.load"]()}><FolderOpen size={16} /></HoverIconButton>
           <HoverIconButton onClick={handleSaveDebugConfig} title={m["generation.save_debug_config_tooltip"]()}><Bug size={16} /></HoverIconButton>
-          <HoverIconButton onClick={onRefit} title="Fit to screen"><Maximize2 size={16} /></HoverIconButton>
+          <HoverIconButton onClick={onRefit} title={m["app.fit_to_screen"]()}><Maximize2 size={16} /></HoverIconButton>
         </div>
         <input
           ref={fileInputRef}

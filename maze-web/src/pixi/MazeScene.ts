@@ -112,6 +112,7 @@ export class MazeScene {
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
+  private lastSyncedViewport = { x: 0, y: 0, scale: 1 };
   private fieldSizeCallback: ((readout: FieldSizeReadout) => void) | null = null;
   private fieldSizeReadout: FieldSizeReadout = EMPTY_FIELD_SIZE_READOUT;
   private cachedProjection: { cfg: FieldConfig; projection: TessellationProjection } | null = null;
@@ -143,10 +144,8 @@ export class MazeScene {
     this.analyticsContainer = new Container();
     this.imageExportContainer = new Container();
     this.cutLinesContainer = new Container();
-    // Deliberately NOT in syncedLayers — hosts ExportFrameOverlay, which draws in screen space.
-    // Print mode's frame is a fixed rect (the sheet stays put while the maze content underneath
-    // keeps panning/zooming with the normal viewport); digital mode's frame instead recomputes its
-    // screen rect from the live viewport transform on every change. See ExportFrameOverlay.
+    // The print frame is a normal viewport layer. Ctrl-navigation is the sole exception: it leaves
+    // this layer fixed while moving the canvas inside it (see syncLayersToViewport).
     this.imageExportFrameContainer = new Container();
 
     this.syncedLayers = [
@@ -158,6 +157,7 @@ export class MazeScene {
       this.analyticsContainer,
       this.imageExportContainer,
       this.cutLinesContainer,
+      this.imageExportFrameContainer,
     ];
 
     this.app.stage.addChild(this.viewport);
@@ -176,7 +176,7 @@ export class MazeScene {
     this.imageExportRenderer = new ImageExportRenderer(this.imageExportContainer);
     this.exportFrameOverlay = new ExportFrameOverlay(
       this.imageExportFrameContainer,
-      (x, y, scale) => this.setViewportTransform(x, y, scale),
+      (x, y, scale, navigation) => this.setViewportTransform(x, y, scale, navigation),
       () => ({ width: this.app.screen.width, height: this.app.screen.height }),
       this.imageExportRenderer,
     );
@@ -255,7 +255,7 @@ export class MazeScene {
       getController: (st) => this.getController(st),
       getHoverProvider: (st) => this.getHoverProvider(st),
       onHoverChanged: (info) => this.hoverCallback?.(info),
-      onViewportChanged: () => this.syncLayersToViewport(),
+      onViewportChanged: (canvasOnly) => this.syncLayersToViewport(canvasOnly ? "canvas" : "layout"),
       onResetZoom: () => this.resetZoomToOne(),
     });
 
@@ -519,21 +519,35 @@ export class MazeScene {
     });
   }
 
-  private syncLayersToViewport(): void {
+  private syncLayersToViewport(navigation?: "layout" | "canvas"): void {
     for (const layer of this.syncedLayers) {
+      // Ctrl/Cmd navigation intentionally moves only the maze canvas within the print sheet.
+      if (navigation === "canvas" && layer === this.imageExportFrameContainer) continue;
+      if (navigation === "layout" && layer === this.imageExportFrameContainer) {
+        const ratio = this.viewport.scale.x / this.lastSyncedViewport.scale;
+        layer.x = this.viewport.x - this.lastSyncedViewport.x * ratio + layer.x * ratio;
+        layer.y = this.viewport.y - this.lastSyncedViewport.y * ratio + layer.y * ratio;
+        layer.scale.set(layer.scale.x * ratio);
+        this.exportFrameOverlay.setFrameViewport(layer.x, layer.y, layer.scale.x);
+        continue;
+      }
       layer.x = this.viewport.x;
       layer.y = this.viewport.y;
       layer.scale.x = this.viewport.scale.x;
       layer.scale.y = this.viewport.scale.y;
+      if (layer === this.imageExportFrameContainer) this.exportFrameOverlay.setFrameViewport(layer.x, layer.y, layer.scale.x);
     }
+    this.lastSyncedViewport = { x: this.viewport.x, y: this.viewport.y, scale: this.viewport.scale.x };
     for (const listener of this.viewportListeners) {
-      listener.onViewportChanged(
+      const args = [
         this.viewport.x,
         this.viewport.y,
         this.app.screen.width,
         this.app.screen.height,
         this.viewport.scale.x,
-      );
+      ] as const;
+      if (navigation === undefined) listener.onViewportChanged(...args);
+      else listener.onViewportChanged(...args, navigation);
     }
     this.viewportScaleCallback?.(this.viewport.scale.x);
     this.renderScheduler.requestRender();
@@ -614,9 +628,8 @@ export class MazeScene {
   }
 
   /** Physical 1:1 request from the print settings panel (GitHub issue #476) — a pure viewport
-   * command: zoom the editor to `targetScale`, keeping the point under the print frame's centre
-   * fixed on screen. Does NOT touch print placement (`print.scale`/`anchor`/`offset`) — that
-   * stays the export contract; a later real pan/zoom moves placement as usual. */
+   * command that centres and zooms the complete print layout to `targetScale`. It does not touch
+   * print placement (`print.scale`/`anchor`/`offset`). */
   applyPrintPhysicalZoom(targetScale: number): void {
     this.exportFrameOverlay.applyViewportScaleAroundFrameCentre(targetScale);
   }
@@ -650,11 +663,11 @@ export class MazeScene {
   /** Directly sets the editor viewport's transform (used by `ExportFrameOverlay` to push
    * print-settings-panel edits — scale/offset/anchor — back onto the canvas, the inverse
    * direction of its own pan/zoom-to-settings sync). */
-  setViewportTransform(x: number, y: number, scale: number): void {
+  setViewportTransform(x: number, y: number, scale: number, navigation?: "canvas"): void {
     this.viewport.x = x;
     this.viewport.y = y;
     this.viewport.scale.set(scale);
-    this.syncLayersToViewport();
+    this.syncLayersToViewport(navigation);
   }
 
   /** Centers and scales the live canvas around one edited connector's authored polyline. */
@@ -667,6 +680,7 @@ export class MazeScene {
 
   refit(): void {
     this.app.resize();
+    if (this.exportFrameOverlay.fitLayoutToScreen()) return;
     const { nodes, previewFieldConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
     const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);

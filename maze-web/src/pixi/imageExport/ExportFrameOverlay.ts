@@ -35,6 +35,10 @@ export class ExportFrameOverlay implements ViewportListener {
   private readonly graphics: Graphics;
   private unsubscribe: (() => void) | null = null;
   private lastViewport = { x: 0, y: 0, scale: 1 };
+  // The frame is a viewport layer. Ctrl navigation intentionally leaves this transform untouched
+  // while the canvas viewport continues moving.
+  private frameViewport = { x: 0, y: 0, scale: 1 };
+  private printFrameWorldLayout: PrintFrameLayout | null = null;
   // Depth counter around our own setPrintCustomPlacement()/setViewportTransform() writes (which
   // recursively re-enter redraw()) so redraw() doesn't try to sync canvas<->settings again from
   // its own output. A counter, not a boolean: syncViewportToPlacement's setViewportTransform call
@@ -48,7 +52,7 @@ export class ExportFrameOverlay implements ViewportListener {
 
   constructor(
     container: Container,
-    private readonly setViewportTransform: (x: number, y: number, scale: number) => void,
+    private readonly setViewportTransform: (x: number, y: number, scale: number, navigation?: "canvas") => void,
     private readonly getScreenSize: () => { width: number; height: number },
     // Optional — lets the frame read a pixel-accurate margin off the same live mode-renderer
     // instance the on-screen canvas itself uses (GitHub issue #324 follow-up), instead of a
@@ -76,23 +80,26 @@ export class ExportFrameOverlay implements ViewportListener {
     this.redraw();
   }
 
+  /** Mirrors the actual transform of the frame's viewport layer. MazeScene calls this whenever
+   * ordinary navigation moves the complete layout; Ctrl navigation deliberately does not. */
+  setFrameViewport(x: number, y: number, scale: number): void {
+    this.frameViewport = { x, y, scale };
+  }
+
   /** "Physical size (1:1)" viewport command from the print settings panel (GitHub issue #476):
-   * set the editor viewport to `targetScale`, keeping the point currently under the print frame's
-   * centre fixed on screen (standard zoom-around-point). Deliberately does NOT write
+   * set the editor viewport to `targetScale` and centre the complete print layout. Deliberately does NOT write
    * `print.scale`/`anchor`/`offset` — the user changed how they view the sheet, not the maze's
    * placement on it — so it's `syncingDepth`-guarded exactly like `syncViewportToPlacement`, to
    * stop `onViewportChanged` mistaking this for a real pan/zoom and stomping the placement. A
    * genuine pan/zoom afterwards still flows through `syncPlacementToViewport` as usual. */
   applyViewportScaleAroundFrameCentre(targetScale: number): void {
-    const state = useMazeStore.getState();
-    const layout = this.currentPrintFrameLayout(state);
-    if (!layout || targetScale <= 0) return;
-
-    const cx = layout.x + layout.w / 2;
-    const cy = layout.y + layout.h / 2;
-    const k = targetScale / this.lastViewport.scale;
-    const newX = cx - (cx - this.lastViewport.x) * k;
-    const newY = cy - (cy - this.lastViewport.y) * k;
+    const world = this.printFrameWorldLayout;
+    if (!world || targetScale <= 0) return;
+    // Same auto-centering as Fit to screen: centre the whole print layout (sheet plus its canvas)
+    // in the visible screen, with physical preview supplying the different zoom.
+    const { width, height } = this.getScreenSize();
+    const newX = width / 2 - (world.x + world.w / 2) * targetScale;
+    const newY = height / 2 - (world.y + world.h / 2) * targetScale;
 
     this.syncingDepth++;
     try {
@@ -103,24 +110,48 @@ export class ExportFrameOverlay implements ViewportListener {
     // The `setViewportTransform` callback moves the real Pixi viewport, but its `onViewportChanged`
     // echo is skipped while syncing — mirror the new transform into our own cache so a subsequent
     // real pan/zoom computes its delta from here.
-    this.lastViewport = { x: newX, y: newY, scale: targetScale };
+    const nextViewport = { x: newX, y: newY, scale: targetScale };
+    this.lastViewport = nextViewport;
+    this.frameViewport = nextViewport;
     this.redraw();
+  }
+
+  /** Restores the complete print layout (sheet and canvas) to its padded screen-fit position. */
+  fitLayoutToScreen(): boolean {
+    const state = useMazeStore.getState();
+    const layout = this.basePrintFrameLayout(state);
+    const world = this.printFrameWorldLayout;
+    if (!layout || !world) return false;
+    const scale = layout.w / world.w;
+    const x = layout.x - world.x * scale;
+    const y = layout.y - world.y * scale;
+    this.frameViewport = { x, y, scale };
+    this.lastViewport = this.frameViewport;
+    this.syncingDepth++;
+    try {
+      this.setViewportTransform(x, y, scale);
+    } finally {
+      this.syncingDepth--;
+    }
+    this.redraw();
+    return true;
   }
 
   // w/h unused: screen size is now read live via getScreenSize() at redraw time (see its doc
   // comment) rather than cached from this callback's params, to avoid drawing against a stale
   // canvas size on any redraw that isn't itself triggered by a viewport change.
-  onViewportChanged(x: number, y: number, _w: number, _h: number, scale: number): void {
+  onViewportChanged(x: number, y: number, _w: number, _h: number, scale: number, navigation?: "layout" | "canvas"): void {
     // A resize-triggered syncLayersToViewport() re-fires this with the *same* x/y/scale as before
     // (nothing actually panned/zoomed) — only a genuine value change is real user pan/zoom.
-    const actuallyMoved = x !== this.lastViewport.x || y !== this.lastViewport.y || scale !== this.lastViewport.scale;
+    const previousViewport = this.lastViewport;
+    const actuallyMoved = x !== previousViewport.x || y !== previousViewport.y || scale !== previousViewport.scale;
     this.lastViewport = { x, y, scale };
     const state = useMazeStore.getState();
     const layout = this.currentPrintFrameLayout(state);
     // Skip while syncing: this viewport change is our own syncViewportToPlacement() echo (a
     // settings-panel edit pushed onto the canvas), not real user pan/zoom — syncing it back would
     // immediately stomp anchor to "custom" the instant a fixed anchor is picked from the dropdown.
-    if (layout && !this.syncing && actuallyMoved) this.syncPlacementToViewport(state, layout);
+    if (layout && !this.syncing && actuallyMoved && navigation !== "layout") this.syncPlacementToViewport(state, layout);
     // syncPlacementToViewport's setPrintCustomPlacement already triggers redraw() via the store
     // subscription below when it's active; the explicit call covers every other case (print frame
     // not shown — nothing to sync — or digital frame, which needs the new viewport regardless).
@@ -167,7 +198,7 @@ export class ExportFrameOverlay implements ViewportListener {
     return resolveExportContent(plan, modeMargin, resolveContentBoundsBasis(state.activeRenderMode!));
   }
 
-  private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
+  private basePrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
     const { margin, basis } = this.resolveContent(state);
     const printFit = computePrintExportFit(state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, basis);
@@ -176,6 +207,21 @@ export class ExportFrameOverlay implements ViewportListener {
     const layout = computeSheetScreenLayout(printFit.sheetWidthPx, printFit.sheetHeightPx, screenSize.width, screenSize.height);
     return { ...layout, sheetWidthPx: printFit.sheetWidthPx, sheetHeightPx: printFit.sheetHeightPx };
   }
+
+  private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
+    const layout = this.printFrameWorldLayout;
+    if (!layout || !this.basePrintFrameLayout(state)) return null;
+    const transform = this.frameViewport;
+    return {
+      x: layout.x * transform.scale + transform.x,
+      y: layout.y * transform.scale + transform.y,
+      w: layout.w * transform.scale,
+      h: layout.h * transform.scale,
+      sheetWidthPx: layout.sheetWidthPx,
+      sheetHeightPx: layout.sheetHeightPx,
+    };
+  }
+
 
   /** Digital canvas's world-space rect (`computeDigitalExportFit`'s `worldX`/`worldY` + size)
    * converted to screen space through the live viewport transform — recomputed fresh every call,
@@ -213,6 +259,11 @@ export class ExportFrameOverlay implements ViewportListener {
     try {
       if (state.pngExportSettings.print.scaleAutoFit) state.setPrintScaleAutoFit(false);
       state.setPrintCustomPlacement(scale, offsetXMm, offsetYMm);
+      const print = useMazeStore.getState().pngExportSettings.print;
+      // The surrounding onViewportChanged() redraw runs after this guarded store write. Mark this
+      // placement as observed now, otherwise that redraw treats the Ctrl-only move as a panel edit
+      // and calls syncViewportToPlacement(), moving the sheet as well.
+      this.lastPlacement = { scale: print.scale, offsetXMm: print.offsetXMm, offsetYMm: print.offsetYMm, anchor: print.anchor };
     } finally {
       this.syncingDepth--;
     }
@@ -223,13 +274,14 @@ export class ExportFrameOverlay implements ViewportListener {
    * moves the editor viewport so the canvas shows exactly that placement under the fixed frame.
    * Skipped while `syncing` (this settings change is our own echo of a pan/zoom) to avoid feeding
    * the viewport back into itself. */
-  private syncViewportToPlacement(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
+  private syncViewportToPlacement(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect, canvasOnly = false): void {
     if (state.activeRenderMode === null) return;
     const { margin, basis } = this.resolveContent(state);
     const { x, y, scale } = computeViewportFromPrintPlacement(
       state.activeFieldConfig, activeFloorNodes(state), margin, state.pngExportSettings.print, frameLayout, basis,
     );
     this.lastViewport = { x, y, scale };
+    if (!canvasOnly) this.frameViewport = { x, y, scale };
     // setViewportTransform synchronously fans out into onViewportChanged -> syncPlacementToViewport
     // -> a store write -> a re-entrant redraw() call, all before this call returns. Guard the whole
     // call, not just the inner store write, or that re-entrant redraw() sees syncing=false and
@@ -237,7 +289,7 @@ export class ExportFrameOverlay implements ViewportListener {
     // infinite mutual recursion (stack overflow).
     this.syncingDepth++;
     try {
-      this.setViewportTransform(x, y, scale);
+      this.setViewportTransform(x, y, scale, canvasOnly ? "canvas" : undefined);
     } finally {
       this.syncingDepth--;
     }
@@ -245,20 +297,36 @@ export class ExportFrameOverlay implements ViewportListener {
 
   private redraw(): void {
     const state = useMazeStore.getState();
-    const printLayout = this.currentPrintFrameLayout(state);
+    const basePrintLayout = this.basePrintFrameLayout(state);
+    let printLayout = this.currentPrintFrameLayout(state) ?? basePrintLayout;
     const becameActive = printLayout !== null && !this.wasFrameActive;
     this.wasFrameActive = printLayout !== null;
 
     if (printLayout && !this.syncing) {
       const settings = state.pngExportSettings.print;
-      const sheetSizeChanged = this.sheetSizeChanged(printLayout);
+      const sheetSizeChanged = this.sheetSizeChanged(basePrintLayout!);
       const placementChanged = this.placementChanged(settings);
       const activeFloorChanged = this.lastActiveFloorId !== null && this.lastActiveFloorId !== state.activeFloorId;
-      if (becameActive || activeFloorChanged || sheetSizeChanged || placementChanged) {
-        this.syncViewportToPlacement(state, printLayout);
+      const initialPlacement = becameActive || this.printFrameWorldLayout === null || activeFloorChanged;
+      if (initialPlacement || placementChanged || sheetSizeChanged) {
+        // Once the preview exists, Scale/anchor/offset are canvas-local edits. They must win over
+        // a coincidental frame-size recalculation and must never recenter the sheet.
+        const canvasOnly = !initialPlacement && placementChanged;
+        // A canvas-only edit is relative to the sheet where it is *now*, not to the original
+        // screen-centred frame used when the panel opened. Using the latter was the remaining
+        // source of the apparent centring on every Scale edit after the layout had been moved.
+        const placementFrame = canvasOnly ? this.currentPrintFrameLayout(state)! : basePrintLayout!;
+        this.syncViewportToPlacement(state, placementFrame, canvasOnly);
+        if (!canvasOnly) {
+          this.printFrameWorldLayout = { ...this.toFrameWorld(basePrintLayout!), sheetWidthPx: basePrintLayout!.sheetWidthPx, sheetHeightPx: basePrintLayout!.sheetHeightPx };
+          printLayout = basePrintLayout!;
+        } else {
+          // The sheet is unchanged; only the canvas viewport is updated relative to it.
+          printLayout = placementFrame;
+        }
       }
       this.lastPlacement = { scale: settings.scale, offsetXMm: settings.offsetXMm, offsetYMm: settings.offsetYMm, anchor: settings.anchor };
-      this.lastSheetSize = { x: printLayout.x, y: printLayout.y, w: printLayout.w, h: printLayout.h };
+      this.lastSheetSize = { x: basePrintLayout!.x, y: basePrintLayout!.y, w: basePrintLayout!.w, h: basePrintLayout!.h };
     }
 
     this.lastActiveFloorId = state.activeFloorId;
@@ -270,15 +338,16 @@ export class ExportFrameOverlay implements ViewportListener {
     const backgroundColor = state.activeRenderMode ? resolveBackgroundColor(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings }) : 0;
     const frameColor = contrastGray(backgroundColor);
 
-    this.drawDimOverlay(layout);
-    drawPaperLayoutFrame(this.graphics, layout, frameColor);
+    const drawLayout = this.toFrameWorld(layout);
+    this.drawDimOverlay(drawLayout);
+    drawPaperLayoutFrame(this.graphics, drawLayout, frameColor);
     if (printLayout) {
       const dpi = DPI_BY_DENSITY[state.pngExportSettings.print.density];
-      const sheetToScreenX = printLayout.w / printLayout.sheetWidthPx;
-      const sheetToScreenY = printLayout.h / printLayout.sheetHeightPx;
+      const sheetToScreenX = drawLayout.w / printLayout.sheetWidthPx;
+      const sheetToScreenY = drawLayout.h / printLayout.sheetHeightPx;
       drawPaperLayoutMargins(
         this.graphics,
-        layout,
+        drawLayout,
         mmToPx(state.pngExportSettings.print.marginHMm, dpi) * sheetToScreenX,
         mmToPx(state.pngExportSettings.print.marginVMm, dpi) * sheetToScreenY,
         frameColor,
@@ -315,10 +384,19 @@ export class ExportFrameOverlay implements ViewportListener {
 
   private drawDimOverlay(layout: ScreenRect): void {
     const { width: screenW, height: screenH } = this.getScreenSize();
-    drawPaperLayoutDim(this.graphics, layout, { x: 0, y: 0, w: screenW, h: screenH });
+    drawPaperLayoutDim(this.graphics, layout, this.toFrameWorld({ x: 0, y: 0, w: screenW, h: screenH }));
     // Four rects covering everything outside `layout` (top/bottom bands full-width, left/right
     // bands only the remaining height) rather than an even-odd cutout path — simpler and this
     // shape has no rotation/skew to worry about.
+  }
+
+  private toFrameWorld(layout: ScreenRect): ScreenRect {
+    return {
+      x: (layout.x - this.frameViewport.x) / this.frameViewport.scale,
+      y: (layout.y - this.frameViewport.y) / this.frameViewport.scale,
+      w: layout.w / this.frameViewport.scale,
+      h: layout.h / this.frameViewport.scale,
+    };
   }
 
   // Pixi centers a stroke on the path — inset the rect outward by half the stroke width so the
