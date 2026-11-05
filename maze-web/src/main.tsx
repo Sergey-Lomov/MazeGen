@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initWasm } from "./wasm/wasmLoader";
 import { initLocale } from "./i18n/localeStore";
+import * as m from "~/paraglide/messages";
 import "./styles/global.css";
 
 // React DevTools' render-diff logger (dev-only instrumentation) runs JSON.stringify on component
@@ -19,6 +20,11 @@ import "./styles/global.css";
 
 // Must run sync before createRoot to avoid first-render locale mismatch
 initLocale();
+
+// index.html ships an English splash inside #root so something shows while wasm and the app chunk load;
+// `createRoot(...).render` replaces it once the app mounts.
+const splash = document.getElementById("boot-splash");
+if (splash) splash.textContent = m["common.loading"]();
 
 async function bootstrap() {
   const root = document.getElementById("root")!;
