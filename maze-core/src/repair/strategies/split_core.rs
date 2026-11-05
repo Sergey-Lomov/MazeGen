@@ -251,65 +251,80 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
             if face.sibling_target.is_some() {
                 continue; // inter-split edge, not an outside connection — out of scope here
             }
-            match face.requirement {
-                SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
-                SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let tess_face = tessellation.faces_of(point)[local_face];
-                    let level = maze.field.level_of(at).expect("at must be in field");
-                    let neighbor_point = maze.field.neighbor_via(level, point, tess_face)?.cell;
-                    let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
-                    if neighbor_candidates.is_empty() {
-                        return None;
-                    }
-                    let neighbor = *neighbor_candidates
-                        .iter()
-                        .find(|&&c| {
-                            maze.graph.edge_between(at, c).is_some()
-                                || maze.graph.edge_between(c, at).is_some()
-                        })
-                        .unwrap_or(&neighbor_candidates[0]);
-                    // `neighbor` is a `SplitNodeEdge::target`, existing connection or brand-new —
-                    // either way this exact `NodeId` must still resolve at apply time. If its
-                    // point already got a `ReplacePointNodes` command earlier in the same batch
-                    // (`excluded`), this id won't exist by then — reject this variant outright
-                    // rather than plan a doomed edge (a different variant, or ultimately the
-                    // whole pattern, is tried instead).
-                    if excluded.contains(&neighbor) {
-                        return None;
-                    }
-                    let direction = match face.requirement {
-                        SplitFaceRequirement::Passage => SplitNodeEdgeDirection::Passage,
-                        SplitFaceRequirement::OneWay(OneWayDirection::Forward) => {
-                            SplitNodeEdgeDirection::Forward
-                        }
-                        SplitFaceRequirement::OneWay(OneWayDirection::Backward) => {
-                            SplitNodeEdgeDirection::Backward
-                        }
-                        _ => unreachable!(),
-                    };
-                    let already_connected = match direction {
-                        SplitNodeEdgeDirection::Passage => {
-                            maze.graph.edge_between(at, neighbor).is_some()
-                                && maze.graph.edge_between(neighbor, at).is_some()
-                        }
-                        SplitNodeEdgeDirection::Forward => {
-                            maze.graph.edge_between(at, neighbor).is_some()
-                        }
-                        SplitNodeEdgeDirection::Backward => {
-                            maze.graph.edge_between(neighbor, at).is_some()
-                        }
-                    };
-                    if !already_connected && !allow_add {
-                        return None;
-                    }
-                    claimed_directions.insert(neighbor);
-                    node_edges.push(SplitNodeEdge {
-                        target: neighbor,
-                        direction,
-                        kind: EdgeKind::Basic,
-                    });
-                }
+            if face.requirement == SplitFaceRequirement::Wall {
+                continue;
             }
+            let unspecified = face.requirement == SplitFaceRequirement::Unspecified;
+            let tess_face = tessellation.faces_of(point)[local_face];
+            let level = maze.field.level_of(at).expect("at must be in field");
+            let crossing = maze.field.neighbor_via(level, point, tess_face);
+            let neighbor_candidates = match crossing {
+                Some(crossing) => maze.field.nodes_at(level, crossing.cell),
+                None if unspecified => continue,
+                None => return None,
+            };
+            if neighbor_candidates.is_empty() {
+                if unspecified {
+                    continue;
+                }
+                return None;
+            }
+            let neighbor = *neighbor_candidates
+                .iter()
+                .find(|&&c| {
+                    maze.graph.edge_between(at, c).is_some()
+                        || maze.graph.edge_between(c, at).is_some()
+                })
+                .unwrap_or(&neighbor_candidates[0]);
+            // An `Unspecified` face (GitHub issue #239) keeps whatever connection already exists
+            // across it and adds none, so it resolves to the face's actual state here.
+            let requirement = if unspecified {
+                SplitFaceRequirement::from_edges(
+                    maze.graph.edge_between(at, neighbor).is_some(),
+                    maze.graph.edge_between(neighbor, at).is_some(),
+                )
+            } else {
+                face.requirement
+            };
+            if requirement == SplitFaceRequirement::Wall {
+                continue;
+            }
+            // `neighbor` is a `SplitNodeEdge::target`, existing connection or brand-new —
+            // either way this exact `NodeId` must still resolve at apply time. If its point
+            // already got a `ReplacePointNodes` command earlier in the same batch (`excluded`),
+            // this id won't exist by then — reject this variant outright rather than plan a
+            // doomed edge (a different variant, or ultimately the whole pattern, is tried
+            // instead).
+            if excluded.contains(&neighbor) {
+                return None;
+            }
+            let direction = match requirement {
+                SplitFaceRequirement::Passage => SplitNodeEdgeDirection::Passage,
+                SplitFaceRequirement::OneWay(OneWayDirection::Forward) => {
+                    SplitNodeEdgeDirection::Forward
+                }
+                SplitFaceRequirement::OneWay(OneWayDirection::Backward) => {
+                    SplitNodeEdgeDirection::Backward
+                }
+                _ => unreachable!(),
+            };
+            let already_connected = match direction {
+                SplitNodeEdgeDirection::Passage => {
+                    maze.graph.edge_between(at, neighbor).is_some()
+                        && maze.graph.edge_between(neighbor, at).is_some()
+                }
+                SplitNodeEdgeDirection::Forward => maze.graph.edge_between(at, neighbor).is_some(),
+                SplitNodeEdgeDirection::Backward => maze.graph.edge_between(neighbor, at).is_some(),
+            };
+            if !already_connected && !allow_add {
+                return None;
+            }
+            claimed_directions.insert(neighbor);
+            node_edges.push(SplitNodeEdge {
+                target: neighbor,
+                direction,
+                kind: EdgeKind::Basic,
+            });
         }
         per_node.push(node_edges);
     }

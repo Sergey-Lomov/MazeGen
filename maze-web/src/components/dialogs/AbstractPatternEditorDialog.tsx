@@ -27,13 +27,10 @@ interface Props {
  *  `SplitGenerationConfig`'s doc comment), but `getTileDiagram` only ever uses its `(x,y)` argument
  *  to compute the tile's own shape/faces, centering the result around the origin regardless — any
  *  fixed point works identically. */
-// "undefined" (`SplitFaceRequirement::Unspecified`) deliberately excluded from this editor's
-// switcher — it queues an unvisited neighbor into `reserve` for the ordinary corridor/junction
-// logic to maybe connect later, but does nothing at all once that neighbor is already visited by
-// the time this pattern applies (no cyclic-style retry the way Passage/OneWay faces get) — in
-// practice it reads to the user as "maybe a passage" but behaves as "wall" far more often than
-// not. See the tracking issue for making it actually probabilistic before re-exposing it here.
-const AVAILABLE_KINDS: SplitEdgeKind[] = ["passage", "one_way", "wall"];
+// "undefined" (`SplitFaceRequirement::Unspecified`) is an optional connection: an unvisited
+// neighbor is queued into `reserve` for the ordinary logic, a visited one can become a cycle
+// edge when the cyclicity roll fires (GitHub issue #239).
+const AVAILABLE_KINDS: SplitEdgeKind[] = ["passage", "one_way", "undefined", "wall"];
 
 /** A pattern-local node index, addressed directly (no `NodeId`/point+slot concept — a pattern is
  *  pure face-index data until applied during generation, see `SplitGenerationConfig`'s doc

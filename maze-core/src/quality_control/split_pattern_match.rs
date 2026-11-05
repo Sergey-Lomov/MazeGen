@@ -1,6 +1,4 @@
-use crate::generation::{
-    OneWayDirection, PatternVariant, SplitFaceRequirement, SplitPattern, pattern_variants,
-};
+use crate::generation::{PatternVariant, SplitFaceRequirement, SplitPattern, pattern_variants};
 use crate::graph::Graph;
 use crate::ids::NodeId;
 use crate::space::{MultiLevelField, Tessellation};
@@ -10,7 +8,8 @@ use crate::space::{MultiLevelField, Tessellation};
 /// `nodes_at` slice (slot-0 first, same order `SplitPattern.faces[0]` assumes). Only
 /// `Passage`/`OneWay`/absent-edge (`Wall`) are distinguished here — `Unspecified` never appears in
 /// a reconstructed tile (there is no way to tell an intentional "maybe" from a plain absent edge
-/// after the fact), and `sibling_target` is resolved implicitly: a face whose neighbor is one of
+/// after the fact; a pattern's `Unspecified` face is a wildcard in `split_tile_matches_any`), and
+/// `sibling_target` is resolved implicitly: a face whose neighbor is one of
 /// `nodes` itself reads the same as any other neighbor-directed face, since `matches_any` (below)
 /// only compares requirement shape per geometric direction, not node identity.
 ///
@@ -54,12 +53,7 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
                     let bwd = candidates
                         .iter()
                         .any(|&c| graph.edge_between(c, node).is_some());
-                    match (fwd, bwd) {
-                        (true, true) => SplitFaceRequirement::Passage,
-                        (true, false) => SplitFaceRequirement::OneWay(OneWayDirection::Forward),
-                        (false, true) => SplitFaceRequirement::OneWay(OneWayDirection::Backward),
-                        (false, false) => SplitFaceRequirement::Wall,
-                    }
+                    SplitFaceRequirement::from_edges(fwd, bwd)
                 })
                 .collect()
         })
@@ -116,16 +110,21 @@ pub fn split_tile_matches_any<T: Tessellation>(
 
     patterns.iter().any(|pattern| {
         pattern.node_count == nodes.len()
-            && pattern_variants(pattern, &shape)
-                .iter()
-                .any(|variant| pattern_faces_at(pattern, variant, face_count) == actual)
+            && pattern_variants(pattern, &shape).iter().any(|variant| {
+                let expected = pattern_faces_at(pattern, variant, face_count);
+                expected.iter().zip(&actual).all(|(exp, act)| {
+                    exp.iter()
+                        .zip(act)
+                        .all(|(req, actual)| req.is_satisfied_by(*actual))
+                })
+            })
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::generation::SplitPatternFace;
+    use crate::generation::{OneWayDirection, SplitPatternFace};
     use crate::space::test_support::GappedSquareTessellation;
     use crate::space::{SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};

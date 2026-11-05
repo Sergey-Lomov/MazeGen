@@ -287,6 +287,36 @@ fn resolve_face<T: Tessellation>(
     }
 }
 
+/// GitHub issue #239: when the cyclicity roll fired and no `Passage`/`OneWay` face already took the
+/// event's single visited-neighbor slot, the first `Unspecified` face resolving to a distinct,
+/// already-visited neighbor (not `bridge`/`parent`, which have their own edge handling) becomes a
+/// `Passage` — a genuine cycle edge under the same one-per-event limit. Otherwise every
+/// `Unspecified` face stays open to the ordinary logic. RNG-free.
+fn promote_unspecified_to_cycle(
+    builder: &mut AdaptationBuilder,
+    visited: &HashSet<NodeId>,
+    bridge: Option<NodeId>,
+    parent: Option<NodeId>,
+) {
+    let candidate = builder.faces.iter().position(|face| {
+        face.requirement == SplitFaceRequirement::Unspecified
+            && face.neighbor.is_some_and(|n| {
+                visited.contains(&n)
+                    && bridge != Some(n)
+                    && parent != Some(n)
+                    && !builder.used_neighbors.contains(&n)
+            })
+    });
+    if let Some(idx) = candidate {
+        let face = &mut builder.faces[idx];
+        face.requirement = SplitFaceRequirement::Passage;
+        builder.visited_face_used = true;
+        if let Some(n) = face.neighbor {
+            builder.used_neighbors.insert(n);
+        }
+    }
+}
+
 /// Tries one variant of `pattern` (topology level of the two-level applicability rule), returning
 /// the resulting adaptation candidate if every face resolved and bridge/parent/preset requirements
 /// were all met.
@@ -341,6 +371,9 @@ fn try_adaptation<T: Tessellation>(
 
     if !builder.bridge_targeted || !builder.parent_targeted {
         return None;
+    }
+    if cyclic_fired && !builder.visited_face_used {
+        promote_unspecified_to_cycle(&mut builder, visited, bridge, parent);
     }
     if !adaptation_respects_presets(src, &builder.faces, preset_state) {
         return None;

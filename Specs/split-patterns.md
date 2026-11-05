@@ -14,7 +14,7 @@ a random node count with unconstrained face assignment.
 - **`SplitFaceRequirement`** — `Passage | OneWay(direction) | Wall | Unspecified`. `Wall` is the
   only requirement satisfiable off-field (a face pointing past the tessellation's boundary).
   `Unspecified` leaves the face open to the ordinary corridor/junction logic like any other free
-  neighbor (see "The `Unspecified` trap" below) — client-side wire name is `"unspecified"`.
+  neighbor (see "`Unspecified` faces" below) — client-side wire name is `"unspecified"`.
 - **`OneWayDirection`** — `Forward | Backward`, relative to the pattern-local node that owns the
   face: `Forward` means the edge points away from this node, `Backward` means into it. Mirrors
   `PresetConnectionState`'s naming.
@@ -100,38 +100,25 @@ Mints `node_count - 1` new nodes (node 0 reuses `src`), immediately marks **ever
 - **`OneWay(dir)`** adds a single directed edge, `Forward` = `node -> dst`, `Backward` = `dst ->
   node`.
 - **`Wall`** adds nothing.
-- **`Unspecified`** adds nothing directly — see below.
+- **`Unspecified`** adds nothing directly (unless promoted to a cycle `Passage`) — see below.
 
 Node 0 (`src`) never runs through the ordinary `run_ordinary_step_body_for_node` path afterward —
 every one of its connections is already fully decided by the chosen adaptation's faces.
 
-### The `Unspecified` trap (GitHub issue #239 — known limitation, not yet fixed)
+### `Unspecified` faces (GitHub issue #239)
 
-`Unspecified` was designed to read as "maybe a passage, decided later by the ordinary
-corridor/junction logic" — the same way an ordinary frontier node's undecided neighbor gets queued
-into `reserve` and connected on a later step. In practice it behaves as "wall" far more often than
-not, for two compounding reasons:
+`Unspecified` reads as "optional connection". Every node a pattern mints is marked `visited` before
+any face is applied, so an `Unspecified` face is resolved by its neighbor's state:
 
-1. **Every node this pattern mints is marked `visited` immediately**, before any face is applied
-   (see "Applying a pattern" above) — this prevents a `sibling_target` face from misreading an
-   unvisited sibling as a genuine outside neighbor. But it also means an `Unspecified` face's
-   neighbor, if already visited by the time this pattern applies, can **never** connect back — only
-   an unvisited neighbor gets queued into `reserve`.
-2. **No cyclic-style retry exists for `Unspecified` faces.** `cyclic_fired` (the mechanism that lets
-   the *cyclicity* generation parameter carve a passage through an already-decided wall between two
-   visited nodes) only ever applies to `Passage`/`OneWay` faces during ordinary step generation —
-   never to a pattern's `Unspecified` face. So even the one case where "maybe connect later" could
-   still happen (cyclic retry cutting through) doesn't apply here.
+- **Unvisited neighbor**: queued into `reserve`, connected later by the ordinary logic.
+- **Visited neighbor**: when the event's cyclicity roll fired (`cyclic_fired`) and no
+  `Passage`/`OneWay` face already took the event's single visited-neighbor slot, the first such
+  face (in node/face order; neighbor distinct from `bridge`, `parent` and other faces' neighbors)
+  is promoted during adaptation enumeration (`promote_unspecified_to_cycle`) to a `Passage`. It is
+  a normal cycle edge under the same one-per-event limit. Otherwise it stays open and adds
+  nothing. Promotion is RNG-free, so enumeration stays deterministic.
 
-Net effect: an `Unspecified` face only ever becomes a real passage when its neighbor happens to be
-unvisited at the moment this exact pattern event runs — a narrow, order-dependent window, not the
-general "optional connection" the design intended. **The pattern editor's UI (`TileFaceEditor`
-switcher) deliberately excludes `Unspecified` from its kind list** (`AVAILABLE_KINDS` in
-`AbstractPatternEditorDialog.tsx` — only `passage`/`one_way`/`wall`) pending a fix that makes it
-actually probabilistic (e.g. a genuine reserve-style retry independent of visited state). The wire
-type/core logic still fully support `Unspecified` (a hand-edited or pre-#239 project file's
-patterns keep working exactly as before) — only the editor's own switcher hides it from new
-authoring.
+`Unspecified` is available in the pattern editor's face switcher.
 
 ## Pattern Editor UI (`AbstractPatternEditorDialog.tsx`)
 

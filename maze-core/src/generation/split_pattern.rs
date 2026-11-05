@@ -17,6 +17,27 @@ pub enum SplitFaceRequirement {
     Unspecified,
 }
 
+impl SplitFaceRequirement {
+    /// The requirement an actual face state reads as, from whether an edge leaves (`fwd`) and
+    /// enters (`bwd`) the owning node across it — never `Unspecified`. Shared by the QC tile
+    /// reconstruction and the repair strategies' handling of existing connections.
+    pub fn from_edges(fwd: bool, bwd: bool) -> Self {
+        match (fwd, bwd) {
+            (true, true) => Self::Passage,
+            (true, false) => Self::OneWay(OneWayDirection::Forward),
+            (false, true) => Self::OneWay(OneWayDirection::Backward),
+            (false, false) => Self::Wall,
+        }
+    }
+
+    /// Whether an actual face state (`actual`, from `from_edges`) satisfies this requirement:
+    /// `Unspecified` accepts anything, every other requirement must match exactly (GitHub issue
+    /// #239).
+    pub fn is_satisfied_by(self, actual: Self) -> bool {
+        self == Self::Unspecified || self == actual
+    }
+}
+
 /// Direction of a `OneWay` face's edge relative to the pattern-local node that owns the face —
 /// `Forward` means the edge points away from this node (toward `sibling_target` or the outside
 /// neighbor), `Backward` means it points into this node. Reuses `PresetConnectionState`'s

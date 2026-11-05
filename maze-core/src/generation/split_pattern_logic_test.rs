@@ -418,3 +418,63 @@ fn east_face_index() -> usize {
         .position(|&face| face == SquareFace::E)
         .unwrap()
 }
+
+// ─── Unspecified faces (GitHub issue #239) ───────────────────────────────
+
+fn unspecified_pattern() -> SplitPattern {
+    SplitPattern {
+        shape: "regular:4".to_string(),
+        node_count: 1,
+        faces: vec![vec![SplitPatternFace {
+            face_index: 1,
+            requirement: SplitFaceRequirement::Unspecified,
+            sibling_target: None,
+        }]],
+        weight: 1.0,
+    }
+}
+
+fn unspecified_adaptations(cyclic_fired: bool) -> Vec<Vec<ResolvedFace>> {
+    let (field, graph, _ids) = make_field_graph_ids(3, 3);
+    let level = field.single_level_id();
+    let src = field.node_at(level, SquarePoint { x: 1, y: 1 }).unwrap();
+    let visited: std::collections::HashSet<NodeId> = (0..3)
+        .flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
+        .filter_map(|p| field.node_at(level, p))
+        .collect();
+    split_adaptation_candidates(
+        &graph,
+        &field,
+        &empty_presets(),
+        &visited,
+        &unspecified_pattern(),
+        src,
+        None,
+        None,
+        cyclic_fired,
+    )
+}
+
+#[test]
+fn unspecified_face_to_visited_neighbor_stays_open_without_cyclic_roll() {
+    let candidates = unspecified_adaptations(false);
+    assert!(!candidates.is_empty());
+    for faces in &candidates {
+        assert!(
+            faces
+                .iter()
+                .all(|f| f.requirement == SplitFaceRequirement::Unspecified)
+        );
+    }
+}
+
+#[test]
+fn unspecified_face_to_visited_neighbor_becomes_cycle_passage_when_cyclic_fired() {
+    let candidates = unspecified_adaptations(true);
+    assert!(!candidates.is_empty());
+    for faces in &candidates {
+        assert_eq!(faces.len(), 1);
+        assert_eq!(faces[0].requirement, SplitFaceRequirement::Passage);
+        assert!(faces[0].neighbor.is_some());
+    }
+}
