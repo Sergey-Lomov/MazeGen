@@ -103,6 +103,7 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     [rawNodes, rawEdges, floors, settings, hasGlues],
   );
   const hasOneWays = colorVisibility.oneWayIndicator;
+  const hasActiveFloorGlues = (floorTopology[activeFloorId]?.groups.length ?? 0) > 0;
   const hasTeleports = colorVisibility.teleports;
   // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross floor teleport.
   const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
@@ -122,10 +123,10 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   const activePaths = useMemo(
     () => computeActivePaths(registry, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams,
+      hasVerticalSection, hasMarkerIndexSource, hasActiveFloorGlues, hasAreaSpread, hasSeams,
       hasMultipleFloors: floors.length > 1,
     }, settings),
-    [registry, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams, floors.length, settings],
+    [registry, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasActiveFloorGlues, hasAreaSpread, hasSeams, floors.length, settings],
   );
 
   return {

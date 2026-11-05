@@ -1211,6 +1211,7 @@ describe("Topology section (cut lines, GitHub issue #859)", () => {
 
   it("is hidden for a floor without glues", () => {
     render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["topology.title"]())).not.toBeInTheDocument();
     expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).not.toBeInTheDocument();
   });
 

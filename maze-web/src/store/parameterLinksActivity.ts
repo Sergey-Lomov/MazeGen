@@ -18,6 +18,8 @@ export interface ParamActivityContext {
   /** Maze has a teleport / vertical passage / elevator — the "Marker indices" section is shown
    *  only then, regardless of its coverage settings. */
   hasMarkerIndexSource: boolean;
+  /** Active floor has at least one glue, so the Image Export "Topology" section is shown. */
+  hasActiveFloorGlues?: boolean;
   hasMultipleFloors?: boolean;
   /** Cell areas of the active field differ enough for marker size adaptation to matter (GitHub issue #819). */
   hasAreaSpread?: boolean;
@@ -77,6 +79,7 @@ const TWO_WAY_DECORATIVE_PATHS = new Set(["decorativeStairsArrowSize", "decorati
 const ONE_WAY_PASSAGE_ABSTRACT_PATHS = new Set(["oneWayArrowColor", "oneWayArrowSize", "oneWayArrowStyle", "oneWayArrowCornerStyle"]);
 const ONE_WAY_PASSAGE_DECORATIVE_PATHS = new Set(["decorativeStairsOneWayArrowSize", "decorativeStairsOneWayArrowColor"]);
 const ELEVATOR_ABSTRACT_PATHS = new Set(["elevatorArrowColor", "elevatorArrowSize", "elevatorArrowStyle", "elevatorArrowCornerStyle"]);
+const TOPOLOGY_PATHS = new Set(["trimWallsAtFaceBoundaries", "showCutLines", "cutLinesGlueColor", "cutLinesColor"]);
 
 function startsWithAny(path: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => path.startsWith(prefix));
@@ -94,6 +97,10 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
 
   // Size adaptation (GitHub issue #819) is offered only on fields whose cells differ in area.
   if ((p.endsWith("SizeAdaptation") || p.endsWith(".sizeAdaptation")) && ctx.hasAreaSpread === false) return false;
+
+  // The entire Topology section is hidden without glues (GitHub issue #931), including its
+  // conditional subsections. Keep all of its paths inactive in the parameter-links dialog too.
+  if (ctx.hasActiveFloorGlues === false && (TOPOLOGY_PATHS.has(p) || p.startsWith("glueTabs.") || p.startsWith("creases.") || p.startsWith("edgeMarkers."))) return false;
 
   if (startsWithAny(p, TELEPORT_PREFIXES)) {
     if (!ctx.hasTeleports) return false;

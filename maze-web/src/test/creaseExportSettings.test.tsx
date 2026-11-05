@@ -121,7 +121,7 @@ describe("CreaseSettingsSubsection", () => {
   });
 });
 
-describe("TopologySettingsSection with creases", () => {
+describe("TopologySettingsSection visibility", () => {
   const props = {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
@@ -131,19 +131,16 @@ describe("TopologySettingsSection with creases", () => {
     glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
-  it("keeps Cut lines available for a floor with neither glues nor creases", () => {
+  it("is hidden for a floor with neither glues nor creases", () => {
     setCreases([]);
     render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(screen.getByText(m["image_export.topology.cut_lines"]())).toBeTruthy();
-    expect(screen.getByText(m["image_export.cuts.edit"]())).toBeTruthy();
-    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
+    expect(screen.queryByText(m["topology.title"]())).toBeNull();
   });
 
-  it("shows the creases subsection but no cut-line rows for a floor with creases only", () => {
+  it("is hidden for a floor with creases only", () => {
     setCreases([crease]);
     render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(screen.getByText(m["image_export.creases.title"]())).toBeTruthy();
-    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
+    expect(screen.queryByText(m["topology.title"]())).toBeNull();
   });
 });
 
