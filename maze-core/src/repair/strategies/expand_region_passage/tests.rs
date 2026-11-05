@@ -807,3 +807,36 @@ fn mode_prefer_needy_picks_a_flagged_neighbor_in_one_way_mode_too() {
         "one_way must build both directions toward the needy left neighbor"
     );
 }
+
+#[test]
+fn blocked_preferred_neighbor_falls_back_to_the_next_neighbor() {
+    // Same layout as `mode_largest_prefers_the_bigger_neighbor`, but the only bridge to the
+    // preferred (larger) right-hand region is preset-blocked, so the region must merge into the
+    // left singleton instead of staying unmerged.
+    let (mut maze, nodes) = build_field(5, 1);
+    maze.graph
+        .add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((nodes[2], nodes[3]));
+    preset_state.blocked.insert((nodes[3], nodes[2]));
+
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[2])
+        .unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(11);
+    let result = apply_and_commit(
+        &ExpandRegionPassageStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with_mode(MODE_LARGEST),
+        &preset_state,
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    assert!(maze.graph.edge_between(nodes[2], nodes[1]).is_some());
+    assert!(maze.graph.edge_between(nodes[2], nodes[3]).is_none());
+}

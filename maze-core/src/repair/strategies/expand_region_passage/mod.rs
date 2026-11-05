@@ -135,7 +135,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ExpandReg
         let scc = maze.analysis.scc(&maze.graph);
         let mut pending = PendingEdges::default();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy, excluded| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
                 region,
@@ -147,6 +147,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ExpandReg
                 connection_mode,
                 prefer_partial,
                 needy,
+                excluded,
                 rng,
                 &mut pending,
             )
@@ -251,6 +252,7 @@ fn find_merge_candidate<T: Tessellation>(
     connection_mode: &str,
     prefer_partial: bool,
     needy: &HashSet<ComponentId>,
+    excluded: &HashSet<ComponentId>,
     rng: &mut dyn RngCore,
     pending: &mut PendingEdges,
 ) -> Option<(ComponentId, bool)> {
@@ -272,6 +274,11 @@ fn find_merge_candidate<T: Tessellation>(
     // and rng-indexed picks stay reproducible across runs for the same seed.
     let mut keys: Vec<ComponentId> = by_neighbor.keys().copied().collect();
     keys.sort_unstable();
+    // Neighbors already tried and failed for this region (see `run_merge_loop`).
+    keys.retain(|k| !excluded.contains(k));
+    if keys.is_empty() {
+        return None;
+    }
 
     // First priority level (only relevant to `one_way`, where a partial connection is
     // meaningful): partially-connected neighbors, if any and requested.
@@ -332,7 +339,7 @@ fn find_first_neighbor_passage<T: Tessellation>(
 ///   for each direction.
 /// - Returns `false` (no mutation) if there's no second, distinct pair available to carry the
 ///   missing direction (a neighbor with only one bridging cell pair can't support a fully
-///   separated one-way round trip) — the caller then tries a different neighbor.
+///   separated one-way round trip) — `run_merge_loop` then retries with that neighbor excluded.
 fn apply_one_way<T: Tessellation>(
     maze: &Maze<T>,
     info: &NeighborInfo,

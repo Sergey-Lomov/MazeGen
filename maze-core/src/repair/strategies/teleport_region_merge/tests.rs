@@ -1134,3 +1134,53 @@ fn apply_respects_preset_blocked_direction() {
     assert!(matches!(result2, RepairResult::Failed));
     assert_eq!(maze2.graph.edges().count(), 0);
 }
+
+#[test]
+fn blocked_preferred_neighbor_falls_back_to_the_next_neighbor() {
+    // Same layout as `mode_largest_prefers_the_bigger_neighbor`, but every pair between the
+    // singleton and the preferred (larger) region is preset-blocked, so the region must merge
+    // into one of the singleton neighbors instead of staying unmerged.
+    let (mut maze, nodes) = build_field(5, 1);
+    maze.graph
+        .add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
+    let mut preset_state = PresetState::empty();
+    for &far in &[nodes[3], nodes[4]] {
+        preset_state.blocked.insert((nodes[2], far));
+        preset_state.blocked.insert((far, nodes[2]));
+    }
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[2])
+        .unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(
+        &TeleportRegionMergeStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(MODE_LARGEST, DIRECTION_TWO_WAY, false, 0.0),
+        &preset_state,
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    let teleports: Vec<_> = maze
+        .graph
+        .edges()
+        .filter(|e| e.kind == EK::Teleport)
+        .collect();
+    assert!(
+        teleports.iter().any(|e| {
+            let ends = [e.from, e.to];
+            ends.contains(&nodes[2]) && (ends.contains(&nodes[0]) || ends.contains(&nodes[1]))
+        }),
+        "must fall back to a singleton neighbor"
+    );
+    assert!(
+        !teleports
+            .iter()
+            .any(|e| [e.from, e.to].contains(&nodes[3]) || [e.from, e.to].contains(&nodes[4])),
+        "the blocked larger region must stay unconnected"
+    );
+}
