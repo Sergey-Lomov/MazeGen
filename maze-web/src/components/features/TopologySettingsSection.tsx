@@ -14,8 +14,8 @@ import { Button } from "../Button";
 import { bringSidePanelToFront } from "../SidePanel";
 import * as m from "~/paraglide/messages";
 
-/** The "Topology" section of a render mode's settings (GitHub issues #859, #924): cut lines, glue tabs,
- * creases and alignment marks. Cut lines remain available without glues, while glue-dependent controls stay hidden. */
+/** The "Topology" section of a render mode's settings (GitHub issues #859, #924, #931): cut lines, glue tabs,
+ * creases and alignment marks. It is available only on floors that have glues. */
 export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, onTrimWallsAtFaceBoundaries, cutLinesExpanded, onToggleCutLines, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
   expanded: boolean;
   onToggle: () => void;
@@ -58,13 +58,14 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
   const hasCreases = useMazeStore((s) => (s.floorCreases[s.activeFloorId]?.length ?? 0) > 0);
   const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
+  if (!hasGlues) return null;
   return (
     <>
       <div style={styles.divider} />
       <SectionHeader label={m["topology.title"]()} expanded={expanded} onToggle={onToggle} />
       {expanded && (
         <div style={styles.block}>
-          {hasGlues && onTrimWallsAtFaceBoundaries && (
+          {onTrimWallsAtFaceBoundaries && (
             <LinkedToggleRow
               label={m["image_export.topology.trim_walls_at_face_boundaries"]()}
               checked={style.trimWallsAtFaceBoundaries ?? true}
@@ -76,7 +77,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
           <div style={styles.subsection}>
             <SectionHeader label={m["image_export.topology.cut_lines"]()} expanded={cutLinesExpanded} onToggle={onToggleCutLines} onOpenInfo={() => setCutLinesInfoOpen(true)} />
             {cutLinesExpanded && <div style={styles.subsectionFields}>
-              {hasGlues && <>
+              <>
                   <LinkedToggleRow label={m["image_export.topology.show_cut_lines"]()} checked={style.showCutLines} onChange={onShow} linkTarget="showCutLines" />
                   {style.showCutLines && (
                     <LinkedToggleRow label={m["image_export.topology.cut_lines_glue_color"]()} checked={style.cutLinesGlueColor} onChange={onGlueColor} linkTarget="cutLinesGlueColor" />
@@ -92,7 +93,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
                       linkTarget="cutLinesColor"
                     />
                   )}
-              </>}
+              </>
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -104,9 +105,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
               </Button>
             </div>}
           </div>
-          {hasGlues && (
-            <GlueTabSettingsSubsection expanded={glueTabsExpanded} onToggle={onToggleGlueTabs} style={glueTabStyle} defaults={glueTabDefaults} priorityColors={glueTabPriorityColors} onChange={onGlueTabsChange} />
-          )}
+          <GlueTabSettingsSubsection expanded={glueTabsExpanded} onToggle={onToggleGlueTabs} style={glueTabStyle} defaults={glueTabDefaults} priorityColors={glueTabPriorityColors} onChange={onGlueTabsChange} />
           {hasCreases && (
             <CreaseSettingsSubsection expanded={creasesExpanded} onToggle={onToggleCreases} style={creaseStyle} defaultColor={creaseDefaultColor} priorityColors={creasePriorityColors} onChange={onCreasesChange} />
           )}

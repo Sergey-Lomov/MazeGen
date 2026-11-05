@@ -29,7 +29,13 @@ type P =
   | "markerIndex.enabled"
   | "markerIndex.fillColor"
   | "backgroundColor"
-  | "floorLabel.labelType";
+  | "floorLabel.labelType"
+  | "trimWallsAtFaceBoundaries"
+  | "showCutLines"
+  | "cutLinesGlueColor"
+  | "glueTabs.width"
+  | "creases.lineWidth"
+  | "edgeMarkers.shape";
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
@@ -40,6 +46,7 @@ const registry: Record<P, ParamDescriptor> = Object.fromEntries(
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
     "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor", "floorLabel.labelType",
+    "trimWallsAtFaceBoundaries", "showCutLines", "cutLinesGlueColor", "glueTabs.width", "creases.lineWidth", "edgeMarkers.shape",
   ].map((p) => [p, { type: "color", equals: Object.is, label: p, group: [], format: String }]),
 ) as unknown as Record<P, ParamDescriptor>;
 
@@ -170,6 +177,19 @@ describe("isPathActive", () => {
     expect(active("markerIndex.fillColor", {}, {})).toBe(true);
     expect(active("markerIndex.enabled", { hasMarkerIndexSource: false }, { markerIndex: { enabled: true } })).toBe(false);
     expect(active("markerIndex.fillColor", { hasMarkerIndexSource: false }, { markerIndex: { enabled: true } })).toBe(false);
+  });
+
+  it("marks every Topology path inactive when the active floor has no glues", () => {
+    const settings: ParamActivitySettings = {
+      showCutLines: true,
+      glueTabs: { showTabs: true, lineWidth: 1 },
+      creases: { showCreases: true, mode: "lines" },
+      edgeMarkers: { mode: "all" },
+    };
+    for (const path of ["trimWallsAtFaceBoundaries", "showCutLines", "cutLinesGlueColor", "glueTabs.width", "creases.lineWidth", "edgeMarkers.shape"] as const) {
+      expect(active(path, { hasActiveFloorGlues: false }, settings)).toBe(false);
+      expect(active(path, { hasActiveFloorGlues: true }, settings)).toBe(true);
+    }
   });
 
   it("defaults unrecognized paths to active", () => {
