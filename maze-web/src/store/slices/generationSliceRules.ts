@@ -3,7 +3,7 @@ import { entriesForSlot } from "../storeTypes";
 import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
 import {
-  resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
+  newStage, nextStageIndex, resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
   newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName,
 } from "./generationSliceHelpers";
 
@@ -11,7 +11,8 @@ type RulesSliceKeys =
   | "addCheck" | "createRule" | "removeCheck" | "setCheckParam" | "toggleCheckDisabled" | "removeCheckFromRule"
   | "setStrategy" | "clearStrategy" | "setNestedStrategy" | "setNestedStrategyParam" | "addNestedStrategy"
   | "removeNestedStrategy" | "moveNestedStrategy" | "toggleStrategyDisabled" | "toggleRuleDisabled"
-  | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule";
+  | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule"
+  | "reorderRule" | "moveRuleToNewStage";
 
 export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, RulesSliceKeys>> = (set) => ({
   // retired) could always be added, including one already active elsewhere — each call mints a
@@ -257,6 +258,32 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
       if (i === neighborIdx) return { ...s, ruleIds: neighborRuleIds };
       return s;
     });
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  // Drag-and-drop placement (GitHub issue #39): puts `ruleId` into `targetStageId` at `index`,
+  // where `index` counts positions in the target's `ruleIds` *after* the rule was taken out of its
+  // source (so a same-stage reorder behaves like `arrayMove`). Out-of-range indices are clamped.
+  // No-op for an unknown rule or target stage.
+  reorderRule: (ruleId, targetStageId, index) => set((state) => {
+    if (!state.stages.some((s) => s.id === targetStageId)) return {};
+    if (!state.stages.some((s) => s.ruleIds.includes(ruleId))) return {};
+    const stages = state.stages.map((s) => {
+      const ruleIds = s.ruleIds.filter((id) => id !== ruleId);
+      if (s.id !== targetStageId) return { ...s, ruleIds };
+      const at = Math.max(0, Math.min(index, ruleIds.length));
+      return { ...s, ruleIds: [...ruleIds.slice(0, at), ruleId, ...ruleIds.slice(at)] };
+    });
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  // Drag-and-drop beyond the outer stage boundaries (GitHub issue #39): creates a new stage at
+  // the start or end of `stages` and moves `ruleId` into it. Default name follows `addStage`.
+  moveRuleToNewStage: (ruleId, position) => set((state) => {
+    if (!state.stages.some((s) => s.ruleIds.includes(ruleId))) return {};
+    const created = newStage(nextStageIndex(state.stages), [ruleId]);
+    const rest = state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => id !== ruleId) }));
+    const stages = position === "start" ? [created, ...rest] : [...rest, created];
     return { stages, debugStale: debugStaleOf(state) };
   }),
 });

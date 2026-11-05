@@ -269,6 +269,12 @@ export interface GenerationActions {
    * last stage moving "down"). This *does* affect repair dispatch now — unlike before staging
    * existed, order across a stage boundary changes which stage a rule belongs to. */
   moveRule: (ruleId: string, direction: "up" | "down") => void;
+  /** Drag-and-drop: moves `ruleId` into `targetStageId` at `index` (counted after the rule is
+   * taken out of its source stage, clamped). */
+  reorderRule: (ruleId: string, targetStageId: string, index: number) => void;
+  /** Drag-and-drop past the outer boundary: creates a new stage at the start/end of `stages` and
+   * moves `ruleId` into it. */
+  moveRuleToNewStage: (ruleId: string, position: "start" | "end") => void;
   /** Appends a new empty stage, default name `Stage N` (N = current stage count + 1 at creation
    * time, not renumbered later). */
   addStage: () => void;
@@ -282,6 +288,9 @@ export interface GenerationActions {
    * other restriction (an empty stage, or the sole stage, is still swappable like any other —
    * the "sole stage" case is naturally a no-op anyway, since it has no neighbor). */
   moveStage: (stageId: string, direction: "up" | "down") => void;
+  /** Drag-and-drop: moves the whole stage to `index` in `stages` order (clamped); rules
+   * untouched, no stage created. */
+  reorderStage: (stageId: string, index: number) => void;
   /** Flips the stage's `disabled` — see `RepairStageState`'s doc comment. */
   toggleStageDisabled: (stageId: string) => void;
   /** Flips the stage section's `collapsed` — UI-only, does not mark the config stale. */

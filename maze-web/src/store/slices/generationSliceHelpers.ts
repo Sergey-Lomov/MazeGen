@@ -124,6 +124,16 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
 // rules; later stages fall back to "Stage N" by creation-order position, not renumbered on
 // rename/reorder. `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
 // doc comment.
+// Index passed to `newStage` for the next "Stage N": highest "Stage N" suffix in use, not
+// `stages.length`, so removing a middle stage never reproduces an already-used name.
+export function nextStageIndex(stages: RepairStageState[]): number {
+  const used = stages
+    .map((s) => /^Stage (\d+)$/.exec(s.name)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number);
+  return used.length > 0 ? Math.max(...used) : stages.length;
+}
+
 export function newStage(index: number, ruleIds: string[] = []): RepairStageState {
   return {
     id: `stage_${crypto.randomUUID()}`,
