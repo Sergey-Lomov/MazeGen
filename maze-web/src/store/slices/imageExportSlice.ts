@@ -80,6 +80,7 @@ function withMazeBound<S extends VectorByWallsSettings | VectorByCorridorsSettin
   return {
     ...preset,
     teleportGroupOverrides: current.teleportGroupOverrides,
+    manualTeleportConnectorPaths: current.manualTeleportConnectorPaths,
     floorLabel: { ...preset.floorLabel, positionsByFloorId: current.floorLabel.positionsByFloorId },
   };
 }
@@ -192,6 +193,7 @@ const FLOOR_LABEL_OVERRIDABLE = [
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
   floorLabelDrag: null,
+  teleportConnectorEdit: null,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
@@ -207,7 +209,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   exportTopologyOpen: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
-  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null, teleportConnectorEdit: null }),
   loadVisualPreset: (preset) => set((s) => {
     const p = preset.imageExport;
     const update = {
@@ -282,6 +284,13 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       }),
     };
   }),
+  startTeleportConnectorEdit: (renderMode) => set({ teleportConnectorEdit: { renderMode, selected: null }, floorLabelDrag: null }),
+  finishTeleportConnectorEdit: () => set({ teleportConnectorEdit: null }),
+  setTeleportConnectorEditSelection: (selected) => set((s) => s.teleportConnectorEdit ? { teleportConnectorEdit: { ...s.teleportConnectorEdit, selected } } : {}),
+  setManualTeleportConnectorPaths: (paths) => set((s) => ({
+    vectorByWallsSettings: markLinked({ ...s.vectorByWallsSettings, manualTeleportConnectorPaths: paths }),
+    vectorByCorridorsSettings: markLinked({ ...s.vectorByCorridorsSettings, manualTeleportConnectorPaths: paths }),
+  })),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
   setExportTopologyOpen: (open) => set({ exportTopologyOpen: open }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from

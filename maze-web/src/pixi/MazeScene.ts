@@ -26,6 +26,7 @@ import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
 import { FloorLabelDragController } from "./imageExport/FloorLabelDragController";
 import { CutLineDragController, hasManualCutLine } from "./imageExport/CutLineDragController";
+import { TeleportConnectorEditController } from "./imageExport/TeleportConnectorEditController";
 import { CutLinesOverlay } from "./imageExport/CutLinesOverlay";
 import { CreaseExportOverlay } from "./imageExport/CreaseExportOverlay";
 import { TopologyWarningHighlight } from "./imageExport/TopologyWarningHighlight";
@@ -103,6 +104,7 @@ export class MazeScene {
   private backgroundImageController: BackgroundImageController;
   private floorLabelDragController: FloorLabelDragController;
   private cutLineDragController: CutLineDragController;
+  private teleportConnectorEditController: TeleportConnectorEditController;
   private cutLinesOverlay: CutLinesOverlay;
   private creaseExportOverlay: CreaseExportOverlay;
   private topologyWarningHighlight: TopologyWarningHighlight;
@@ -192,6 +194,16 @@ export class MazeScene {
       move: (x, y) => this.interaction.defaultPan.move(x, y),
       end: () => this.interaction.defaultPan.end(),
     });
+    this.teleportConnectorEditController = new TeleportConnectorEditController(
+      () => this.viewport,
+      () => { const mode = useMazeStore.getState().activeRenderMode; return mode ? this.imageExportRenderer.getTeleportConnectorPaths(mode) : []; },
+      {
+        start: (x, y) => this.interaction.defaultPan.begin(x, y),
+        move: (x, y) => this.interaction.defaultPan.move(x, y),
+        end: () => this.interaction.defaultPan.end(),
+      },
+      this.cutLinesContainer,
+    );
     this.cutLinesOverlay = new CutLinesOverlay(this.cutLinesContainer);
     const activeModeMargin = () => {
       const mode = useMazeStore.getState().activeRenderMode;
@@ -206,6 +218,7 @@ export class MazeScene {
       this.cutLinesOverlay,
       this.creaseExportOverlay,
       this.topologyWarningHighlight,
+      this.teleportConnectorEditController,
       this.generationRenderer,
       this.fieldEditorOverlay,
       this.primitivePreviewOverlay,
@@ -296,7 +309,7 @@ export class MazeScene {
 
     // Renderers react to store updates by editing Pixi objects, which the scheduler's render-group
     // hooks already pick up; this explicit request is the safety net for any update path they miss.
-    this.unsubscribeRender = useMazeStore.subscribe(() => this.renderScheduler.requestRender());
+    this.unsubscribeRender = useMazeStore.subscribe(() => { this.renderScheduler.requestRender(); this.teleportConnectorEditController.render(); });
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToQualityOpen();
@@ -307,6 +320,7 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
+    if (st.teleportConnectorEdit !== null) return this.teleportConnectorEditController;
     if (st.floorLabelDrag !== null) return this.floorLabelDragController;
     if (hasManualCutLine(st)) return this.cutLineDragController;
     if (backgroundImageEditMode(st) !== null) {
@@ -643,6 +657,14 @@ export class MazeScene {
     this.syncLayersToViewport();
   }
 
+  /** Centers and scales the live canvas around one edited connector's authored polyline. */
+  focusTeleportConnector(points: readonly [number, number][]): void {
+    if (points.length < 2) return;
+    const xs = points.map(([x]) => x), ys = points.map(([, y]) => y), pad = 30;
+    const { x, y, scale } = fitBoundsViewport({ minX: Math.min(...xs) - pad, minY: Math.min(...ys) - pad, maxX: Math.max(...xs) + pad, maxY: Math.max(...ys) + pad }, this.app.screen.width, this.app.screen.height);
+    this.setViewportTransform(x, y, scale);
+  }
+
   refit(): void {
     this.app.resize();
     const { nodes, previewFieldConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
@@ -693,6 +715,7 @@ export class MazeScene {
     this.cutLinesOverlay.destroy();
     this.creaseExportOverlay.destroy();
     this.topologyWarningHighlight.destroy();
+    this.teleportConnectorEditController.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

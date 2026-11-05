@@ -159,11 +159,42 @@ export function tryValidateTeleportGroupOverride(v: unknown): TeleportGroupOverr
   return result;
 }
 
+/** Recovery for #301's free-form connector paths. Coordinates are deliberately not clamped:
+ * authored display-space points may sit outside the field to create a readable detour. */
+function validateManualTeleportConnectorPaths(v: unknown): NonNullable<TeleportSettingsFields["manualTeleportConnectorPaths"]> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+  const result: NonNullable<TeleportSettingsFields["manualTeleportConnectorPaths"]> = {};
+  for (const [key, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    // `points` is the pre-controls #301 format and migrates to nodes on load.
+    const nodes = (raw as Record<string, unknown>).nodes ?? (raw as Record<string, unknown>).points;
+    if (!Array.isArray(nodes) || nodes.length < 2) continue;
+    const parsed: [number, number][] = [];
+    for (const point of nodes) {
+      if (!Array.isArray(point) || point.length !== 2 || typeof point[0] !== "number" || typeof point[1] !== "number" || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) { parsed.length = 0; break; }
+      parsed.push([point[0], point[1]]);
+    }
+    const rawControls = (raw as Record<string, unknown>).controls;
+    const controls: [number, number][] = [];
+    if (Array.isArray(rawControls)) for (const point of rawControls) {
+      if (!Array.isArray(point) || point.length !== 2 || typeof point[0] !== "number" || typeof point[1] !== "number" || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) { controls.length = 0; break; }
+      controls.push([point[0], point[1]]);
+    }
+    if (parsed.length >= 2) result[key] = {
+      nodes: parsed,
+      ...(controls.length === (parsed.length - 1) * 2 ? { controls } : {}),
+      mode: (raw as Record<string, unknown>).mode === "curve" ? "curve" : "polyline",
+    };
+  }
+  return result;
+}
+
 /** Shared by `validateVectorByWallsSettings`/`validateVectorByCorridorsSettings` (GitHub issue
  * #313) — `TeleportSettingsFields` is `extends`-ed identically by both settings interfaces, so the
  * two never need their own separate recovery logic for it. */
 export function validateTeleportSettingsFields(obj: Record<string, unknown> | null, path: string, d: TeleportSettingsFields): TeleportSettingsFields {
   return {
+    manualTeleportConnectorPaths: validateManualTeleportConnectorPaths(obj?.manualTeleportConnectorPaths),
     teleportMarker: validateMarkerSettings(obj?.teleportMarker, `${path}.teleportMarker`, d.teleportMarker),
     teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
     teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),

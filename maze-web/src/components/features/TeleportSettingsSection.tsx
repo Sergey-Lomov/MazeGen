@@ -366,6 +366,10 @@ export function TeleportSettingsSection<P extends string>({
   floorBadgeBorderColorField: ColorField;
   floorBadgeTextColorField: ColorField;
 }) {
+  const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
+  const edit = useMazeStore((s) => s.teleportConnectorEdit);
+  const startTeleportConnectorEdit = useMazeStore((s) => s.startTeleportConnectorEdit);
+  const finishTeleportConnectorEdit = useMazeStore((s) => s.finishTeleportConnectorEdit);
   // Expand state of the Teleports section's subsections — local and per mount, all collapsed by default.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setExpanded((c) => ({ ...c, [id]: !c[id] }));
@@ -552,6 +556,16 @@ export function TeleportSettingsSection<P extends string>({
           />
         </div>
         </>)}
+        {settings.teleportConnectorStyle !== "none" && activeRenderMode && (
+          <Button
+            variant="secondary"
+            onClick={() => edit?.renderMode === activeRenderMode ? finishTeleportConnectorEdit() : startTeleportConnectorEdit(activeRenderMode)}
+          >
+            {edit?.renderMode === activeRenderMode
+              ? m["image_export.vector_by_walls.teleport_connector_edit_done"]()
+              : m["image_export.vector_by_walls.teleport_connector_edit"]()}
+          </Button>
+        )}
       </div>}
 
       {hasCrossFloorTeleports && (

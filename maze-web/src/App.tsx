@@ -124,6 +124,7 @@ export function App() {
         <FeaturesPanel
           onRefit={() => sceneRef.current?.refit()}
           onExportPng={(settings) => sceneRef.current?.exportPng(settings) ?? Promise.resolve(null)}
+          onFocusTeleportConnector={(points) => sceneRef.current?.focusTeleportConnector(points)}
         />
       </div>
       <div style={styles.canvasColumn}>

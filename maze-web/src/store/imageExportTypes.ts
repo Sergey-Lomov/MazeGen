@@ -429,6 +429,8 @@ export interface VerticalDecorativeFields {
 export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
 
 export interface TeleportSettingsFields {
+  /** User-authored connector polylines, keyed by their unordered teleport-node pair. */
+  manualTeleportConnectorPaths?: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>;
   /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
    *  markers instead of the former flat `teleportLine*`/`teleportEdge*` fields. `gapWidth` is the
    *  floor-colored gap ring around the border (GitHub issue #302), same convention as the waypoint
@@ -933,6 +935,8 @@ export interface ImageExportState {
    * toggles. */
   activeRenderMode: RenderModeId | null;
   floorLabelDrag: FloorLabelDragState | null;
+  /** Transient state for the on-canvas teleport connector editor. */
+  teleportConnectorEdit: { renderMode: RenderModeId; selected: { key: string; index: number } | null } | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -1002,6 +1006,11 @@ export interface ImageExportActions {
   updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
   finishFloorLabelDrag: () => void;
   cancelFloorLabelDrag: () => void;
+  startTeleportConnectorEdit: (renderMode: RenderModeId) => void;
+  finishTeleportConnectorEdit: () => void;
+  setTeleportConnectorEditSelection: (selected: { key: string; index: number } | null) => void;
+  /** Writes the renderer-independent paths to both display modes in one transaction. */
+  setManualTeleportConnectorPaths: (paths: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;
