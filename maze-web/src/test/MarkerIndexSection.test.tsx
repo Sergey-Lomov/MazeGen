@@ -15,7 +15,7 @@ const nullTargets = {
 
 function renderSection(expanded: Set<string>, onToggle = vi.fn(), enabled = true) {
   render(
-    <LinkContextProvider value={{ links: [], registry: {}, onSetLinkEnabled: vi.fn(), onAddLink: vi.fn(), activePaths: new Set<string>() }}>
+    <LinkContextProvider value={{ links: [], registry: {}, onSetLinkEnabled: vi.fn(), onAddLink: vi.fn(), gate: (name) => name !== "markerIndexOn" || enabled, activePaths: new Set<string>() }}>
     <MarkerIndexSection
       settings={{ ...DEFAULT_MARKER_INDEX_SETTINGS, enabled }}
       onChange={vi.fn()}

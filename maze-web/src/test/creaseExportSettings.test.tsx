@@ -8,13 +8,16 @@ import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from
 import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../pixi/renderConstants";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { CreaseExportStyle } from "../store/imageExportTypes";
+import { isGateOpen, type GateName } from "../store/parameterLinkRules";
+import type { ParamActivityContext } from "../store/parameterLinksActivity";
 
 const { useMazeStore } = await import("../store/mazeStore");
 const { baseStoreState, TEST_FLOOR_ID } = await import("./storeTestHelpers");
 const { TopologySettingsSection } = await import("../components/features/TopologySettingsSection");
 const { CreaseSettingsSubsection } = await import("../components/features/CreaseSettingsSubsection");
 const { LinkContextProvider } = await import("../components/features/LinkContext");
-const linkContext = { links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, activePaths: new Set<string>() };
+const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
+const linkContext = { links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, gate: () => true, activePaths: new Set<string>(Object.keys(VECTOR_BY_WALLS_PARAM_REGISTRY)) };
 
 // Export crease style (GitHub issue #900): selection, store actions, validation and the settings UI.
 
@@ -83,7 +86,7 @@ describe("CreaseSettingsSubsection", () => {
   const renderSubsection = (style: CreaseExportStyle, expanded = true) => {
     const patches: Partial<CreaseExportStyle>[] = [];
     render(
-      <LinkContextProvider value={linkContext}>
+      <LinkContextProvider value={{ ...linkContext, gate: (name: string) => isGateOpen(name as GateName, "walls", { hasGlues: true, hasCreases: true } as ParamActivityContext, { creases: style }) }}>
         <CreaseSettingsSubsection expanded={expanded} onToggle={() => {}} style={style} defaultColor={0} priorityColors={[]} onChange={(p) => patches.push(p)} />
       </LinkContextProvider>,
     );
@@ -133,14 +136,16 @@ describe("TopologySettingsSection visibility", () => {
 
   it("is hidden for a floor with neither glues nor creases", () => {
     setCreases([]);
-    render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(screen.queryByText(m["topology.title"]())).toBeNull();
+    const { container } = render(<LinkContextProvider value={{ ...linkContext, gate: () => false }}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    expect(container.textContent).toBe("");
   });
 
   it("is hidden for a floor with creases only", () => {
     setCreases([crease]);
-    render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(screen.queryByText(m["topology.title"]())).toBeNull();
+    // The whole section needs a glue: creases alone do not open it.
+    const creasesOnly = { ...linkContext, gate: (name: string) => name === "creases" };
+    const { container } = render(<LinkContextProvider value={creasesOnly}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    expect(container.textContent).toBe("");
   });
 });
 
@@ -159,8 +164,9 @@ describe("EdgeMarkerSettingsSubsection cards", () => {
   it("offers and applies the ambiguous-sections visibility mode", async () => {
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
     const patches: unknown[] = [];
+    // The hidden mode keeps the shape/colour rows inactive, so only the coverage select renders.
     render(
-      <LinkContextProvider value={linkContext}>
+      <LinkContextProvider value={{ ...linkContext, activePaths: new Set<string>() }}>
         <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={DEFAULT_EDGE_MARKER_STYLE} defaultColor={0} priorityColors={[]} onChange={(patch) => patches.push(patch)} onOverride={() => {}} onOverrides={() => {}} />
       </LinkContextProvider>,
     );
@@ -169,7 +175,6 @@ describe("EdgeMarkerSettingsSubsection cards", () => {
   });
 
   it("renders a card with link icons for a crease marker under the real registry", async () => {
-    const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
     setCreases([crease]);
     const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;

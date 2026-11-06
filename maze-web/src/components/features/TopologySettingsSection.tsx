@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { CreaseExportStyle, CutLineStyleFields, EdgeMarkerOverride, EdgeMarkerStyle, GlueTabStyle } from "../../store/imageExportTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
@@ -6,6 +7,7 @@ import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui } from "../../styles/theme";
 import { SectionHeader } from "../SectionHeader";
 import { LinkedColorRow, LinkedToggleRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { CreaseSettingsSubsection } from "./CreaseSettingsSubsection";
 import { GlueTabSettingsSubsection } from "./GlueTabSettingsSubsection";
 import { EdgeMarkerSettingsSubsection } from "./EdgeMarkerSettingsSubsection";
@@ -55,8 +57,8 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
 }) {
   const [trimWallsInfoOpen, setTrimWallsInfoOpen] = useState(false);
   const [cutLinesInfoOpen, setCutLinesInfoOpen] = useState(false);
-  const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
-  const hasCreases = useMazeStore((s) => (s.floorCreases[s.activeFloorId]?.length ?? 0) > 0);
+  const hasGlues = useGate("glues");
+  const hasCreases = useGate("creases");
   const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
   if (!hasGlues) return null;
   return (
@@ -77,23 +79,17 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
           <div style={styles.subsection}>
             <SectionHeader label={m["image_export.topology.cut_lines"]()} expanded={cutLinesExpanded} onToggle={onToggleCutLines} onOpenInfo={() => setCutLinesInfoOpen(true)} />
             {cutLinesExpanded && <div style={styles.subsectionFields}>
-              <>
-                  <LinkedToggleRow label={m["image_export.topology.show_cut_lines"]()} checked={style.showCutLines} onChange={onShow} linkTarget="showCutLines" />
-                  {style.showCutLines && (
-                    <LinkedToggleRow label={m["image_export.topology.cut_lines_glue_color"]()} checked={style.cutLinesGlueColor} onChange={onGlueColor} linkTarget="cutLinesGlueColor" />
-                  )}
-                  {style.showCutLines && !style.cutLinesGlueColor && (
-                    <LinkedColorRow
-                      label={m["image_export.topology.cut_lines_color"]()}
-                      color={style.cutLinesColor}
-                      onChange={onColor}
-                      defaultColor={defaultColor}
-                      field={PC.cutLines}
-                      priorityColors={priorityColors}
-                      linkTarget="cutLinesColor"
-                    />
-                  )}
-              </>
+              <LinkedToggleRow label={m["image_export.topology.show_cut_lines"]()} checked={style.showCutLines} onChange={onShow} linkTarget="showCutLines" />
+              <LinkedToggleRow label={m["image_export.topology.cut_lines_glue_color"]()} checked={style.cutLinesGlueColor} onChange={onGlueColor} linkTarget="cutLinesGlueColor" />
+              <LinkedColorRow
+                label={m["image_export.topology.cut_lines_color"]()}
+                color={style.cutLinesColor}
+                onChange={onColor}
+                defaultColor={defaultColor}
+                field={PC.cutLines}
+                priorityColors={priorityColors}
+                linkTarget="cutLinesColor"
+              />
               <Button
                 variant="secondary"
                 onClick={() => {

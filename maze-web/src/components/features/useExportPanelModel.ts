@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { floorIdsWithCut } from "../../pixi/imageExport/exportContent";
 import type { EdgeDto, NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { ParamDescriptor } from "../../store/parameterLinks";
-import { computeActivePaths } from "../../store/parameterLinksActivity";
+import { isGateOpen, type GateName } from "../../store/parameterLinkRules";
+import type { LinkMode } from "../../store/parameterLinkSchema";
+import { computeActivePaths, type ParamActivityContext } from "../../store/parameterLinksActivity";
 import { computeTextFitItemsAcrossFloors, type ExportWarning } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/exportStyleBuilders";
 import { maxFittingFontSize, requiredTextPlateDimensions } from "../../pixi/textFit";
@@ -26,6 +28,7 @@ type FloorEntry = ReturnType<typeof useMazeStore.getState>["floors"][number];
 export function useExportPanelModel<S extends ExportSettings, P extends string>(
   settings: S,
   registry: Record<P, ParamDescriptor>,
+  mode: LinkMode,
   computeWarnings: (
     nodes: NodeDto[], edges: EdgeDto[], floors: FloorEntry[], cfg: FieldConfig,
     settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
@@ -95,6 +98,9 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   // Splits/One-ways/Teleports sections stay visible whenever their component exists on any floor
   // (GitHub issue #484), checked against the unscoped nodes/edges.
   const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
+  // "Topology" section gates: what the active floor has (cut lines and glue tabs need a glue; the section itself, a glue or a crease).
+  const hasActiveFloorGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
+  const hasActiveFloorCreases = useMazeStore((s) => (s.floorCreases[s.activeFloorId]?.length ?? 0) > 0);
 
   // One visibility context for the whole panel (GitHub issue #717): section gates, priority color
   // lists and the "Project colors" list all derive from it, so they cannot drift.
@@ -103,7 +109,6 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     [rawNodes, rawEdges, floors, settings, hasGlues],
   );
   const hasOneWays = colorVisibility.oneWayIndicator;
-  const hasActiveFloorGlues = (floorTopology[activeFloorId]?.groups.length ?? 0) > 0;
   const hasTeleports = colorVisibility.teleports;
   // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross floor teleport.
   const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
@@ -118,20 +123,32 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   // Marker size adaptation only matters when cells differ in area (GitHub issue #819).
   const hasAreaSpread = useMemo(() => hasCellAreaSpread(cfg), [cfg]);
 
+  // Every maze-derived gate of the panel, in one object: the panels branch on these flags only, and the
+  // parameter-links activity rules read the very same ones, so a field can't be shown by one and hidden
+  // by the other (GitHub issue #927).
+  const hasMultipleFloors = floors.length > 1;
+  const hasSplits = maxSplit > 0;
+  const activityContext = useMemo<ParamActivityContext>(() => ({
+    hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
+    hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams, hasMultipleFloors,
+    hasSplits, hasGlues: hasActiveFloorGlues, hasCreases: hasActiveFloorCreases,
+  }), [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams, hasMultipleFloors, hasSplits, hasActiveFloorGlues, hasActiveFloorCreases]);
+
   // Which registry paths the panel currently shows (GitHub issue #670), so the parameter links
   // dialog can tell an inactive parameter apart from an active one.
   const activePaths = useMemo(
-    () => computeActivePaths(registry, {
-      hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection, hasMarkerIndexSource, hasActiveFloorGlues, hasAreaSpread, hasSeams,
-      hasMultipleFloors: floors.length > 1,
-    }, settings),
-    [registry, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, hasActiveFloorGlues, hasAreaSpread, hasSeams, floors.length, settings],
+    () => computeActivePaths(registry, mode, activityContext, settings),
+    [registry, mode, activityContext, settings],
+  );
+
+  // The panel asks its section/row conditions by schema name instead of reading the flags itself.
+  const gate = useCallback(
+    (name: GateName) => isGateOpen(name, mode, activityContext, settings),
+    [mode, activityContext, settings],
   );
 
   return {
     floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
-    colorVisibility, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages,
-    hasElevators, hasVerticalSection, hasMarkerIndexSource, hasSeams, activePaths,
+    colorVisibility, gate, activePaths,
   };
 }

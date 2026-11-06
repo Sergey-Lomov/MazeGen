@@ -1,9 +1,11 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import { FLOOR_LABEL_ANCHORS, type FloorLabelAnchor, type FloorLabelPosition, type FloorLabelSettings, type RenderModeId } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ColorField, ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import { SectionHeader } from "../SectionHeader";
 import { AutoFitButton } from "./TextFitContext";
@@ -15,7 +17,7 @@ import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { convertFloorLabelPosition } from "../../pixi/renderers/FloorLabelRenderer";
 import * as m from "~/paraglide/messages";
 
-export function FloorLabelSection<P extends string>({ renderMode, settings, onChange, fields, defaults, priorities, activeFloorId, activeFloorTitle, floorIds }: {
+export function FloorLabelSection<P extends LinkPath>({ renderMode, settings, onChange, fields, defaults, priorities, activeFloorId, activeFloorTitle, floorIds }: {
   renderMode: RenderModeId;
   settings: FloorLabelSettings;
   onChange: (patch: Partial<FloorLabelSettings>) => void;
@@ -26,6 +28,9 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
   activeFloorTitle: string;
   floorIds: readonly string[];
 }) {
+  const labelOn = useGate("floorLabelOn");
+  const indexMode = useGate("floorLabelIndexMode");
+  const hasBackground = useGate("floorLabelBackground");
   const floorLabelDrag = useMazeStore((state) => state.floorLabelDrag);
   const startFloorLabelDrag = useMazeStore((state) => state.startFloorLabelDrag);
   const finishFloorLabelDrag = useMazeStore((state) => state.finishFloorLabelDrag);
@@ -50,7 +55,7 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
   return (
     <div style={styles.block}>
       <LinkedToggleRow label={m["image_export.floors.show"]()} checked={settings.enabled} onChange={(enabled) => onChange({ enabled })} linkTarget={"floorLabel.enabled" as P} />
-      {settings.enabled && (
+      {labelOn && (
         <>
           <SectionHeader label={m["image_export.floors.position_subsection"]({ floor: activeFloorTitle })} expanded={expanded.position} onToggle={() => toggle("position")} />
           {expanded.position && <div style={styles.group}>
@@ -94,7 +99,7 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
               onChange={(labelMode) => onChange({ labelMode })}
               linkTarget={null}
             />
-            {settings.labelMode === "index" && <>
+            {indexMode && <>
               <LinkedTextFieldRow label={m["image_export.floors.prefix"]()} value={settings.prefix} onChange={(prefix) => onChange({ prefix })} linkTarget={null} inputWidth={120} />
               <LinkedSelectRow
                 label={m["image_export.floors.label"]()}
@@ -146,7 +151,7 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
               onChange={(backgroundShape) => onChange({ backgroundShape })}
               linkTarget={null}
             />
-            {settings.backgroundShape !== "none" && (
+            {hasBackground && (
               <>
                 <LinkedSliderRow label={m["image_export.floors.width"]()} value={settings.width} onChange={(width) => onChange({ width: Math.round(width) })} min={FLOOR_LABEL_WIDTH_RANGE.min} max={FLOOR_LABEL_WIDTH_RANGE.max} step={FLOOR_LABEL_WIDTH_RANGE.step} format={String} linkTarget={"floorLabel.width" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelWidth(), FLOOR_LABEL_WIDTH_RANGE.min, FLOOR_LABEL_WIDTH_RANGE.max)} onApply={(width) => onChange({ width })} />} />
                 <LinkedSliderRow label={m["image_export.floors.height"]()} value={settings.height} onChange={(height) => onChange({ height: Math.round(height) })} min={16} max={100} step={1} format={String} linkTarget={"floorLabel.height" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelHeight(), 16, 100)} onApply={(height) => onChange({ height })} />} />

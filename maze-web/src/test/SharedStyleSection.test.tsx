@@ -18,6 +18,7 @@ function renderSection(onChange = vi.fn()) {
         registry: VECTOR_BY_WALLS_PARAM_REGISTRY,
         onSetLinkEnabled: vi.fn(),
         onAddLink: vi.fn(),
+        gate: () => true,
         activePaths: new Set<VectorByWallsParamPath>(Object.keys(VECTOR_BY_WALLS_PARAM_REGISTRY) as VectorByWallsParamPath[]),
       }}
     >

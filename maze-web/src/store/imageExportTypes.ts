@@ -1051,7 +1051,6 @@ export interface ImageExportActions {
   /** Several markers of one floor in a single update (the "Auto colours" button). */
   setVectorByCorridorsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByCorridorsShowCutLines: (v: boolean) => void;
-  setVectorByCorridorsTrimWallsAtFaceBoundaries: (v: boolean) => void;
   setVectorByCorridorsCutLinesGlueColor: (v: boolean) => void;
   setVectorByCorridorsCutLinesColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;

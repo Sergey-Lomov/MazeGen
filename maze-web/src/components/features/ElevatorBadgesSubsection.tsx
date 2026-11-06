@@ -1,9 +1,11 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { ElevatorBadgeSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedToggleRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
@@ -18,7 +20,7 @@ import * as m from "~/paraglide/messages";
  *  `links`/`registry`/`onSetLinkEnabled`/`onAddLink` from the nearest `LinkContextProvider` via the
  *  `Linked*Row` wrappers (GitHub issue #652 follow-up) rather than taking them as props. Shared by
  *  both render modes, so `P` is generic over each mode's own `ParamPath` union. */
-export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorField, fillColorField, textColorField }: {
+export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorField, fillColorField, textColorField }: {
   settings: ElevatorBadgeSettings;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
@@ -56,6 +58,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
   borderColorField: ColorField;
   textColorField: ColorField;
 }) {
+  const badgesOn = useGate("elevatorBadgesOn");
   return (
     <div style={styles.wrap}>
       <div style={typography.body}>{m["image_export.vector_by_walls.elevator_badges"]()}</div>
@@ -66,7 +69,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
           onChange={(enabled) => onChange({ enabled })}
           linkTarget={linkTargets.enabled}
         />
-        {settings.enabled && (
+        {badgesOn && (
           <>
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.elevator_badges_label_type"]()}
@@ -116,7 +119,6 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               max={20}
               step={1}
               format={(v) => String(v)}
-              disabled={settings.placement === "full_circle" && settings.evenDistribution}
               linkTarget={linkTargets.gap}
             />
             <MarkerAppearanceRows
