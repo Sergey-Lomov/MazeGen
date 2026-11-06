@@ -137,6 +137,9 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `setFieldConfig(cfg)` — full config override, derives kind/shape from `cfg.tessellation.kind` and `cfg.shape`
 
 ### Generation
+
+The Generation card's debug switch forwards its checked value directly to `setDebugMode(v)`.
+
 - `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`. Also updates `seedHistory`: truncates from `seedHistoryIndex` and appends the used seed (capped at 20, oldest dropped), unless this is a repeat-generate on the exact seed just navigated to via history (`seedAttachedToHistory` and unchanged)
 - `seedHistoryBack()` / `seedHistoryForward()` / `seedHistoryJump(index)` — move `seedHistoryIndex` and copy that seed into `seed`; does not trigger generation. Also turns `randomSeed` off. No-op past either end of history
 - `reset()` — clears maze data
