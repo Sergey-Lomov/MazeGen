@@ -19,6 +19,7 @@ import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstant
 import type { ExportWarning, ExportWarningId, WarningFloor } from "./exportWarnings";
 import type { TeleportGroup } from "./teleportGroups";
 import { getProjectTeleportGroups } from "./projectTeleportGroups";
+import { trackedMemo } from "./trackedMemo";
 
 /** Which size control a text label belongs to — one per independent font-size field (GitHub issue
  *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
@@ -158,8 +159,18 @@ export function pushTextOverflowWarnings(warnings: ExportWarning[], entries: rea
 }
 
 /** Every label across all floors, grouped by size control — the input of the "Auto-fit" buttons
- *  (GitHub issue #707). Empty array for a kind with nothing to fit. */
+ *  (GitHub issue #707). Empty array for a kind with nothing to fit. Cached on the settings fields it reads
+ *  (GitHub issue #928), so unrelated settings edits (a connector control point) return the same object. */
 export function computeTextFitItemsAcrossFloors(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
+  settings: TextFitSettings, start: number | null, finish: number | null,
+): Record<TextFitKind, TextFitItem[]> {
+  return trackedMemo("textFitItems", [nodes, edges, floors, cfg, start, finish], settings, (tracked) => (
+    computeTextFitItems(nodes, edges, floors, cfg, tracked, start, finish)
+  ));
+}
+
+function computeTextFitItems(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
 ): Record<TextFitKind, TextFitItem[]> {

@@ -1,5 +1,6 @@
 import type { MazeState } from "../../store/storeTypes";
-import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
+import { resolveGroupOverrides } from "../../store/teleportGroupLinks";
+import { lazyOverlay } from "../../store/lazyOverlay";
 import { withResolvedEdgeMarkerFloors } from "../../store/edgeMarkerLinks";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/imageExportTypes";
 import type { EdgeDto } from "../../wasm/types";
@@ -108,43 +109,70 @@ export function hasAnyGlue(floorTopology: MazeState["floorTopology"]): boolean {
   return Object.values(floorTopology).some((topology) => topology.groups.length > 0);
 }
 
+function memoized<T>(compute: () => T): () => T {
+  let done = false;
+  let value: T;
+  return () => {
+    if (!done) {
+      value = compute();
+      done = true;
+    }
+    return value;
+  };
+}
+
+/** The visibility context of `rawSettings` over the unscoped maze. Lazy (GitHub issue #928): `settings` is an
+ *  overlay that resolves group/edge-marker overrides when first read, and every flag is a getter computed on
+ *  access (maze scans memoized), so over dependency-tracked settings a reader of one color field subscribes only
+ *  to that field and the flags gating it. */
 export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: ExportSettings): ColorVisibilityContext {
-  const grouped = withResolvedGroupOverrides(rawSettings);
-  const s = { ...grouped, edgeMarkers: withResolvedEdgeMarkerFloors(grouped.edgeMarkers, grouped.links) } as typeof grouped;
-  const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs);
-  const walls = "verticalStyle" in s;
-  const teleports = maze.edges.some((e) => e.kind === "teleport");
-  const markerIndexAvailable = teleports || elevators || maze.edges.some((e) => e.kind === "vertical_passage");
-  const glueTabsShown = s.glueTabs.showTabs && (maze.hasGlues ?? true);
+  const s = lazyOverlay<ExportSettings>(rawSettings, {
+    teleportGroupOverrides: () => resolveGroupOverrides(rawSettings),
+    edgeMarkers: () => withResolvedEdgeMarkerFloors(rawSettings.edgeMarkers, rawSettings.links),
+  });
+  const vertical = memoized(() => verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs));
+  const walls = memoized(() => "verticalStyle" in s);
+  const teleports = memoized(() => maze.edges.some((e) => e.kind === "teleport"));
+  const markerIndexAvailable = memoized(() => teleports() || vertical().elevators || maze.edges.some((e) => e.kind === "vertical_passage"));
+  const glueTabsShown = () => s.glueTabs.showTabs && (maze.hasGlues ?? true);
+  const multipleFloors = () => maze.floors.length > 1;
+  const floorLabelBackground = () => multipleFloors() && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none";
+  const slotCount = memoized(() => maxSplitNodeCount(maze.nodes));
+  const oneWayIndicator = memoized(() => hasDirectionalBasicEdge(maze.edges));
+  const crossFloorTeleports = memoized(() => hasCrossFloorTeleport(maze.nodes, maze.edges));
+  const floorIds = memoized(() => maze.floors.map((floor) => floor.id));
   return {
     settings: s,
-    mode: walls ? "walls" : "corridors",
-    slotCount: maxSplitNodeCount(maze.nodes),
-    grid: s.showGrid,
-    innerGrid: "showInnerGrid" in s && s.showInnerGrid,
-    cutLines: s.showCutLines && !s.cutLinesGlueColor,
-    glueTabs: glueTabsShown,
-    glueTabLine: glueTabsShown && s.glueTabs.lineWidth > 0,
-    edgeMarkers: s.edgeMarkers.mode !== "hidden",
+    get mode() { return walls() ? "walls" : "corridors"; },
+    get slotCount() { return slotCount(); },
+    get grid() { return s.showGrid; },
+    get innerGrid() { return "showInnerGrid" in s && s.showInnerGrid; },
+    get cutLines() { return s.showCutLines && !s.cutLinesGlueColor; },
+    get glueTabs() { return glueTabsShown(); },
+    get glueTabLine() { return glueTabsShown() && s.glueTabs.lineWidth > 0; },
+    get edgeMarkers() { return s.edgeMarkers.mode !== "hidden"; },
     edgeMarkerOrder: maze.edgeMarkerOrder ?? {},
-    floorIds: maze.floors.map((floor) => floor.id),
-    wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
-    oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
-    teleports,
-    crossFloorTeleports: hasCrossFloorTeleport(maze.nodes, maze.edges),
-    teleportConnector: s.teleportConnectorStyle !== "none",
-    teleportGroupOverrides: s.teleportGroupCustomization,
-    twoWayPassages,
-    oneWayPassages,
-    elevators,
-    vertical: twoWayPassages || oneWayPassages || elevators || maze.floors.length > 1,
-    verticalStyle: walls ? (s as VectorByWallsSettings).verticalStyle : "abstract",
-    markerIndexAvailable,
-    markerIndex: markerIndexAvailable && s.markerIndex.enabled,
-    markerIndexBorder: !s.markerIndex.borderColorFromMarker,
-    floorLabel: maze.floors.length > 1 && s.floorLabel.enabled,
-    floorLabelBackground: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none",
-    floorLabelBorder: maze.floors.length > 1 && s.floorLabel.enabled && s.floorLabel.backgroundShape !== "none" && s.floorLabel.borderWidth > 0,
+    get floorIds() { return floorIds(); },
+    get wall() { return !("randomWallColorMode" in s) || s.randomWallColorMode === "off"; },
+    get oneWayIndicator() { return oneWayIndicator(); },
+    get teleports() { return teleports(); },
+    get crossFloorTeleports() { return crossFloorTeleports(); },
+    get teleportConnector() { return s.teleportConnectorStyle !== "none"; },
+    get teleportGroupOverrides() { return s.teleportGroupCustomization; },
+    get twoWayPassages() { return vertical().twoWayPassages; },
+    get oneWayPassages() { return vertical().oneWayPassages; },
+    get elevators() { return vertical().elevators; },
+    get vertical() {
+      const { twoWayPassages, oneWayPassages, elevators } = vertical();
+      return twoWayPassages || oneWayPassages || elevators || multipleFloors();
+    },
+    get verticalStyle() { return walls() ? (s as VectorByWallsSettings).verticalStyle : "abstract"; },
+    get markerIndexAvailable() { return markerIndexAvailable(); },
+    get markerIndex() { return markerIndexAvailable() && s.markerIndex.enabled; },
+    get markerIndexBorder() { return !s.markerIndex.borderColorFromMarker; },
+    get floorLabel() { return multipleFloors() && s.floorLabel.enabled; },
+    get floorLabelBackground() { return floorLabelBackground(); },
+    get floorLabelBorder() { return floorLabelBackground() && s.floorLabel.borderWidth > 0; },
   };
 }
 

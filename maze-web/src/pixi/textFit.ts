@@ -438,3 +438,11 @@ export function requiredTextPlateDimensions(items: readonly TextFitItem[], fontS
   }
   return found ? { width: Math.ceil(width), height: Math.ceil(height) } : null;
 }
+
+/** Which label fonts are installed, as a string: the one global input of {@link measureText} besides its arguments (a font that
+ *  finishes loading changes every measurement), so cached text-fit results list it among their inputs (GitHub issue #928). */
+export function textMetricsKey(): string {
+  return (["regular", "bold"] as const)
+    .map((weight) => (typeof Cache.has !== "function" || Cache.has(`${msdfFontFamily(weight)}-bitmap`) ? "1" : "0"))
+    .join("");
+}

@@ -281,49 +281,67 @@ export function pushSplitPairwiseWarning(
   });
 }
 
-export function addCommonContrastWarnings(
-  warnings: ExportWarning[],
-  nodes: NodeDto[],
-  edges: EdgeDto[],
-  ctx: ColorVisibilityContext,
-  teleportEdges: TeleportEdge[],
-  allNodesForWarnings: NodeDto[],
-  allEdgesForWarnings: EdgeDto[],
-  start: number | null,
-  finish: number | null,
-  displayFloorIndex: number,
-  cfg: FieldConfig,
-): void {
-  const settings = ctx.settings;
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const warningNodeById = new Map(allNodesForWarnings.map((node) => [node.id, node]));
-  const surfaceKind = ctx.mode === "walls" ? "floor" : "corridor";
-  /** Every color below is read through the registry: hidden fields come back `null` and their
-   *  entries are dropped by `pushContrastWarningEntries` (GitHub issue #717). */
+/** Settings-free, per-floor inputs of the contrast checks below. The derived fields are computed on first
+ *  read, so a check that never asks for one never pays for it. */
+export interface ContrastFloorEnv {
+  readonly nodes: NodeDto[];
+  readonly edges: EdgeDto[];
+  readonly teleportEdges: TeleportEdge[];
+  readonly allNodesForWarnings: NodeDto[];
+  readonly allEdgesForWarnings: EdgeDto[];
+  readonly start: number | null;
+  readonly finish: number | null;
+  readonly displayFloorIndex: number;
+  readonly cfg: FieldConfig;
+  readonly nodeById: Map<number, NodeDto>;
+  readonly warningNodeById: Map<number, NodeDto>;
+  readonly vertical: EdgeDto[];
+  readonly oneWayVertical: EdgeDto[];
+  readonly twoWay: EdgeDto[];
+  readonly elevator: EdgeDto[];
+  readonly teleport: EdgeDto[];
+}
+
+/** Every color below is read through the registry: hidden fields come back `null` and their
+ *  entries are dropped by `pushContrastWarningEntries` (GitHub issue #717). `base` is the floor /
+ *  corridor surface color; `surface` names which. */
+function colorReader(ctx: ColorVisibilityContext) {
+  const surface = ctx.mode === "walls" ? "floor" : "corridor";
   const color = (key: ColorFieldKey) => visibleColor(ctx, key);
-  /** The floor / corridor surface color. */
-  const base = color(surfaceKind === "floor" ? "tilesFloor" : "corridorFill");
-  const markerFillWarningId = surfaceKind === "floor" ? "marker_fill_low_contrast_floor" : "marker_fill_low_contrast_corridor";
-  const markerBorderWarningId = surfaceKind === "floor" ? "marker_border_low_contrast_floor" : "marker_border_low_contrast_corridor";
-  const elevatorBadgeFillWarningId = surfaceKind === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor";
-  const teleportBadgeBorderWarningId = surfaceKind === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
-  const teleportBadgeFillWarningId = surfaceKind === "floor" ? "teleport_badge_fill_low_contrast_floor" : "teleport_badge_fill_low_contrast_corridor";
-  const floorLabelFillWarningId = surfaceKind === "floor" ? "floor_label_fill_low_contrast_floor" : "floor_label_fill_low_contrast_corridor";
-  const floorLabelBorderWarningId = surfaceKind === "floor" ? "floor_label_border_low_contrast_floor" : "floor_label_border_low_contrast_corridor";
-  const vertical = verticalPassageEdges(edges);
-  const oneWayVertical = oneWayVerticalPassageEdges(edges, allEdgesForWarnings);
-  const elevator = edges.filter((edge) => edge.kind === "elevator");
-  const teleport = edges.filter((edge) => edge.kind === "teleport");
+  return { surface, color, base: color(surface === "floor" ? "tilesFloor" : "corridorFill") } as const;
+}
+
+type ContrastCheck = (warnings: ExportWarning[], env: ContrastFloorEnv, ctx: ColorVisibilityContext) => void;
+
+export const pushGridContrastWarnings: ContrastCheck = (warnings, _env, ctx) => {
+  const { color } = colorReader(ctx);
   pushContrastWarning(warnings, "grid_low_contrast_background", [[color("bgGrid"), color("bgFill")]]);
+};
+
+export const pushInnerGridContrastWarnings: ContrastCheck = (warnings, _env, ctx) => {
+  const { color, base } = colorReader(ctx);
   pushContrastWarning(warnings, "inner_grid_low_contrast_floor", [[color("innerGrid"), base]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_wall", [[color("innerGrid"), color("tilesWall")]]);
+};
+
+export const pushGlueTabContrastWarnings: ContrastCheck = (warnings, _env, ctx) => {
+  const { color } = colorReader(ctx);
   pushContrastWarning(warnings, "glue_tab_outline_low_contrast_fill", [[color("glueTabLine"), color("glueTabFill")]]);
   // Without an outline the fill alone sets the tab apart from the background.
-  if (settings.glueTabs.lineWidth === 0) pushContrastWarning(warnings, "glue_tab_fill_low_contrast_background", [[color("glueTabFill"), color("bgFill")]]);
-  pushContrastWarning(warnings, floorLabelFillWarningId, [[color("floorLabelFill"), base]]);
-  pushContrastWarning(warnings, floorLabelBorderWarningId, [[color("floorLabelBorder"), base]]);
-  pushContrastWarning(warnings, "floor_label_text_low_contrast", [[color("floorLabelText"), color("floorLabelFill") ?? base]]);
+  if (ctx.settings.glueTabs.lineWidth === 0) pushContrastWarning(warnings, "glue_tab_fill_low_contrast_background", [[color("glueTabFill"), color("bgFill")]]);
+};
 
+export const pushFloorLabelContrastWarnings: ContrastCheck = (warnings, _env, ctx) => {
+  const { color, base, surface } = colorReader(ctx);
+  pushContrastWarning(warnings, surface === "floor" ? "floor_label_fill_low_contrast_floor" : "floor_label_fill_low_contrast_corridor", [[color("floorLabelFill"), base]]);
+  pushContrastWarning(warnings, surface === "floor" ? "floor_label_border_low_contrast_floor" : "floor_label_border_low_contrast_corridor", [[color("floorLabelBorder"), base]]);
+  pushContrastWarning(warnings, "floor_label_text_low_contrast", [[color("floorLabelText"), color("floorLabelFill") ?? base]]);
+};
+
+/** `marker_fill_low_contrast_*` / `marker_border_low_contrast_*`: every marker against the surface (a marker with a border is checked by its border, one without by its fill). */
+export const pushMarkerSurfaceContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const settings = ctx.settings;
+  const { color, base, surface } = colorReader(ctx);
   const fillEntries: ContrastEntry[] = [];
   const borderEntries: ContrastEntry[] = [];
   const addMarker = (
@@ -335,9 +353,10 @@ export function addCommonContrastWarnings(
     if (borderWidth === 0) fillEntries.push({ foreground: color(fill), background: base, nodes: markerNodes });
     else borderEntries.push({ foreground: color(border), background: base, nodes: markerNodes });
   };
+  const { start, finish, nodeById, teleportEdges } = env;
   if (start !== null && nodeById.has(start)) addMarker(settings.startMarker.borderWidth, [start], "startFill", "startBorder");
   if (finish !== null && nodeById.has(finish)) addMarker(settings.finishMarker.borderWidth, [finish], "finishFill", "finishBorder");
-  if (teleport.length > 0) {
+  if (env.teleport.length > 0) {
     const groups = settings.teleportGroupCustomization ? buildTeleportGroups(teleportEdges, settings.teleportMergeMode) : [];
     const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
     const teleportBorderWidth = settings.teleportMarker.borderWidth;
@@ -358,27 +377,37 @@ export function addCommonContrastWarnings(
       }
     }
   }
-  for (const edge of vertical) {
-    if (!oneWayVertical.includes(edge)) addMarker(settings.twoWayPassageMarker.borderWidth, [edge.from, edge.to], "twoWayFill", "twoWayBorder");
+  for (const edge of env.vertical) {
+    if (!env.oneWayVertical.includes(edge)) addMarker(settings.twoWayPassageMarker.borderWidth, [edge.from, edge.to], "twoWayFill", "twoWayBorder");
   }
-  for (const edge of oneWayVertical) {
+  for (const edge of env.oneWayVertical) {
     addMarker(settings.oneWayPassageMarker.borderWidth, [edge.from, edge.to], "oneWayFill", "oneWayBorder");
   }
-  for (const edge of elevator) addMarker(settings.elevatorMarker.borderWidth, [edge.from, edge.to], "elevatorFill", "elevatorBorder");
-  pushContrastWarningEntries(warnings, markerFillWarningId, fillEntries);
-  pushContrastWarningEntries(warnings, markerBorderWarningId, borderEntries);
+  for (const edge of env.elevator) addMarker(settings.elevatorMarker.borderWidth, [edge.from, edge.to], "elevatorFill", "elevatorBorder");
+  pushContrastWarningEntries(warnings, surface === "floor" ? "marker_fill_low_contrast_floor" : "marker_fill_low_contrast_corridor", fillEntries);
+  pushContrastWarningEntries(warnings, surface === "floor" ? "marker_border_low_contrast_floor" : "marker_border_low_contrast_corridor", borderEntries);
+};
 
+/** `teleport_badge_text_low_contrast`: the floor badge's text against its fill, when some teleport crosses floors. */
+export const pushTeleportBadgeTextContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const { color } = colorReader(ctx);
+  const crossFloorTeleportEdges = env.teleport.filter((edge) => (env.warningNodeById.get(edge.from)?.level ?? 0) !== (env.warningNodeById.get(edge.to)?.level ?? 0));
+  if (crossFloorTeleportEdges.length === 0) return;
+  pushContrastWarningEntries(warnings, "teleport_badge_text_low_contrast", [{
+    foreground: color("teleportBadgeText"),
+    background: color("teleportBadgeFill"),
+    cells: teleportBadgeCells(env.teleportEdges, env.displayFloorIndex, env.cfg),
+  }]);
+};
+
+/** `label_low_contrast`: every text label (elevator badge, start, finish, marker index) against its plate. */
+export const pushLabelContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const settings = ctx.settings;
+  const { color } = colorReader(ctx);
+  const { start, finish, nodeById, warningNodeById } = env;
   const labelEntries: ContrastEntry[] = [];
-  const crossFloorTeleportEdges = teleport.filter((edge) => (warningNodeById.get(edge.from)?.level ?? 0) !== (warningNodeById.get(edge.to)?.level ?? 0));
-  if (crossFloorTeleportEdges.length > 0) {
-    pushContrastWarningEntries(warnings, "teleport_badge_text_low_contrast", [{
-      foreground: color("teleportBadgeText"),
-      background: color("teleportBadgeFill"),
-      cells: teleportBadgeCells(teleportEdges, displayFloorIndex, cfg),
-    }]);
-  }
-  if (elevator.length > 0) {
-    labelEntries.push({ foreground: color("elevatorBadgeText"), background: color("elevatorBadgeFill"), nodes: elevator.flatMap((edge) => [edge.from, edge.to]) });
+  if (env.elevator.length > 0) {
+    labelEntries.push({ foreground: color("elevatorBadgeText"), background: color("elevatorBadgeFill"), nodes: env.elevator.flatMap((edge) => [edge.from, edge.to]) });
   }
   if (start !== null && nodeById.has(start)) {
     labelEntries.push({ foreground: color("startText"), background: color("startFill"), nodes: [start] });
@@ -386,7 +415,7 @@ export function addCommonContrastWarnings(
   if (finish !== null && nodeById.has(finish)) {
     labelEntries.push({ foreground: color("finishText"), background: color("finishFill"), nodes: [finish] });
   }
-  const indexedEdges = edges.filter((edge) => {
+  const indexedEdges = env.edges.filter((edge) => {
     if (edge.kind === "elevator") return settings.markerIndex.coverage.elevator;
     if (edge.kind === "vertical_passage") return settings.markerIndex.coverage.verticalPassage;
     if (edge.kind !== "teleport") return false;
@@ -398,43 +427,142 @@ export function addCommonContrastWarnings(
     labelEntries.push({ foreground: color("markerIndexText"), background: color("markerIndexFill"), nodes: edgeNodeIds(indexedEdges, warningNodeById), edges: edgePairs(indexedEdges) });
   }
   pushContrastWarningEntries(warnings, "label_low_contrast", labelEntries);
+};
 
-  const twoWay = vertical.filter((edge) => !oneWayVertical.includes(edge));
+/** Abstract-style arrows against their marker fill (their fields are hidden under the decorative style). */
+export const pushVerticalArrowContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const { color } = colorReader(ctx);
   /** A per-kind entry: present only when the maze has that kind on this floor. */
   const verticalEntry = (
     kindEdges: EdgeDto[],
     foreground: ColorFieldKey,
     background: ColorFieldKey,
   ): ContrastEntry[] => kindEdges.length > 0
-    ? [{ foreground: color(foreground), background: color(background), nodes: edgeNodeIds(kindEdges, warningNodeById), edges: edgePairs(kindEdges) }]
+    ? [{ foreground: color(foreground), background: color(background), nodes: edgeNodeIds(kindEdges, env.warningNodeById), edges: edgePairs(kindEdges) }]
     : [];
-  // Abstract-style arrows (their fields are hidden under the decorative style) …
-  pushContrastWarningEntries(warnings, "vertical_arrow_low_contrast", verticalEntry(twoWay, "twoWayArrow", "twoWayFill"));
-  pushContrastWarningEntries(warnings, "vertical_one_way_arrow_low_contrast_fill", verticalEntry(oneWayVertical, "oneWayArrow", "oneWayFill"));
-  pushContrastWarningEntries(warnings, "elevator_arrow_low_contrast", verticalEntry(elevator, "elevatorArrow", "elevatorFill"));
+  pushContrastWarningEntries(warnings, "vertical_arrow_low_contrast", verticalEntry(env.twoWay, "twoWayArrow", "twoWayFill"));
+  pushContrastWarningEntries(warnings, "vertical_one_way_arrow_low_contrast_fill", verticalEntry(env.oneWayVertical, "oneWayArrow", "oneWayFill"));
+  pushContrastWarningEntries(warnings, "elevator_arrow_low_contrast", verticalEntry(env.elevator, "elevatorArrow", "elevatorFill"));
+};
+
+export const pushWallContrastWarnings: ContrastCheck = (warnings, _env, ctx) => {
+  const { color } = colorReader(ctx);
   pushContrastWarning(warnings, "wall_low_contrast_floor", [[color("tilesWall"), color("tilesFloor")]]);
-  // … and decorative-style lines/arrows over the floor (Vector by walls only; hidden otherwise).
+};
+
+/** Decorative-style lines/arrows over the floor (Vector by walls only; hidden otherwise). */
+export const pushVerticalDecorContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const { color, base } = colorReader(ctx);
   const decor = (kindEdges: EdgeDto[], foreground: ColorFieldKey) => kindEdges.length > 0
-    ? [{ foreground: color(foreground), background: base, nodes: edgeNodeIds(kindEdges, warningNodeById), edges: edgePairs(kindEdges) }]
+    ? [{ foreground: color(foreground), background: base, nodes: edgeNodeIds(kindEdges, env.warningNodeById), edges: edgePairs(kindEdges) }]
     : [];
-  pushContrastWarningEntries(warnings, "vertical_two_way_line_low_contrast_floor", decor(twoWay, "decorLineTwoWay"));
-  pushContrastWarningEntries(warnings, "vertical_two_way_arrow_low_contrast_floor", decor(twoWay, "decorArrowTwoWay"));
-  pushContrastWarningEntries(warnings, "vertical_one_way_line_low_contrast_floor", decor(oneWayVertical, "decorLineOneWay"));
-  pushContrastWarningEntries(warnings, "vertical_one_way_accent_low_contrast_floor", decor(oneWayVertical, "decorArrowOneWay"));
-  pushContrastWarningEntries(warnings, "elevator_line_low_contrast_floor", decor(elevator, "decorLineElevator"));
-  if (elevator.length > 0) {
-    pushContrastWarning(warnings, elevatorBadgeFillWarningId, [[color("elevatorBadgeFill"), base]], edgeNodeIds(elevator, warningNodeById), edgePairs(elevator));
-  }
+  pushContrastWarningEntries(warnings, "vertical_two_way_line_low_contrast_floor", decor(env.twoWay, "decorLineTwoWay"));
+  pushContrastWarningEntries(warnings, "vertical_two_way_arrow_low_contrast_floor", decor(env.twoWay, "decorArrowTwoWay"));
+  pushContrastWarningEntries(warnings, "vertical_one_way_line_low_contrast_floor", decor(env.oneWayVertical, "decorLineOneWay"));
+  pushContrastWarningEntries(warnings, "vertical_one_way_accent_low_contrast_floor", decor(env.oneWayVertical, "decorArrowOneWay"));
+  pushContrastWarningEntries(warnings, "elevator_line_low_contrast_floor", decor(env.elevator, "decorLineElevator"));
+};
+
+export const pushElevatorBadgeFillContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  if (env.elevator.length === 0) return;
+  const { color, base, surface } = colorReader(ctx);
+  pushContrastWarning(
+    warnings,
+    surface === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor",
+    [[color("elevatorBadgeFill"), base]], edgeNodeIds(env.elevator, env.warningNodeById), edgePairs(env.elevator),
+  );
+};
+
+/** `teleport_badge_border_*` / `teleport_badge_fill_*`: the floor badge against the surface, by its border when it has one. */
+export const pushTeleportBadgeSurfaceContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
+  const { base, surface } = colorReader(ctx);
+  const { warningNodeById, teleportEdges } = env;
   const crossFloorTeleports = teleportEdges.filter((edge) => (warningNodeById.get(edge.fromNode ?? -1)?.level ?? 0) !== (warningNodeById.get(edge.toNode ?? -1)?.level ?? 0));
-  if (crossFloorTeleports.length > 0) {
-    // Group overrides replace the badge border as well as the connector border. Without group
-    // customization the badge has its own dedicated border color.
-    const badgeBorderWidth = settings.teleportFloorBadge.borderWidth;
-    const badgeHasBorder = badgeBorderWidth > 0;
-    pushContrastWarningEntries(
-      warnings,
-      badgeHasBorder ? teleportBadgeBorderWarningId : teleportBadgeFillWarningId,
-      teleportBadgeColorEntries(teleportEdges, ctx, base, displayFloorIndex, cfg, badgeHasBorder ? "border" : "fill"),
-    );
-  }
+  if (crossFloorTeleports.length === 0) return;
+  // Group overrides replace the badge border as well as the connector border. Without group
+  // customization the badge has its own dedicated border color.
+  const badgeHasBorder = ctx.settings.teleportFloorBadge.borderWidth > 0;
+  const borderId = surface === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
+  const fillId = surface === "floor" ? "teleport_badge_fill_low_contrast_floor" : "teleport_badge_fill_low_contrast_corridor";
+  pushContrastWarningEntries(
+    warnings,
+    badgeHasBorder ? borderId : fillId,
+    teleportBadgeColorEntries(teleportEdges, ctx, base, env.displayFloorIndex, env.cfg, badgeHasBorder ? "border" : "fill"),
+  );
+};
+
+/** Every contrast check shared by both vector modes, in emission order, with the warning ids each may emit: the cached warning
+ *  groups run them one by one (GitHub issue #928). */
+export const COMMON_CONTRAST_CHECKS: readonly { name: string; ids: readonly ExportWarningId[]; check: ContrastCheck }[] = [
+  { name: "grid", ids: ["grid_low_contrast_background"], check: pushGridContrastWarnings },
+  { name: "innerGrid", ids: ["inner_grid_low_contrast_floor", "inner_grid_low_contrast_wall"], check: pushInnerGridContrastWarnings },
+  { name: "glueTab", ids: ["glue_tab_outline_low_contrast_fill", "glue_tab_fill_low_contrast_background"], check: pushGlueTabContrastWarnings },
+  {
+    name: "floorLabel",
+    ids: [
+      "floor_label_fill_low_contrast_floor", "floor_label_fill_low_contrast_corridor", "floor_label_border_low_contrast_floor",
+      "floor_label_border_low_contrast_corridor", "floor_label_text_low_contrast",
+    ],
+    check: pushFloorLabelContrastWarnings,
+  },
+  {
+    name: "markerSurface",
+    ids: ["marker_fill_low_contrast_floor", "marker_fill_low_contrast_corridor", "marker_border_low_contrast_floor", "marker_border_low_contrast_corridor"],
+    check: pushMarkerSurfaceContrastWarnings,
+  },
+  { name: "teleportBadgeText", ids: ["teleport_badge_text_low_contrast"], check: pushTeleportBadgeTextContrastWarnings },
+  { name: "label", ids: ["label_low_contrast"], check: pushLabelContrastWarnings },
+  {
+    name: "verticalArrow",
+    ids: ["vertical_arrow_low_contrast", "vertical_one_way_arrow_low_contrast_fill", "elevator_arrow_low_contrast"],
+    check: pushVerticalArrowContrastWarnings,
+  },
+  { name: "wall", ids: ["wall_low_contrast_floor"], check: pushWallContrastWarnings },
+  {
+    name: "verticalDecor",
+    ids: [
+      "vertical_two_way_line_low_contrast_floor", "vertical_two_way_arrow_low_contrast_floor", "vertical_one_way_line_low_contrast_floor",
+      "vertical_one_way_accent_low_contrast_floor", "elevator_line_low_contrast_floor",
+    ],
+    check: pushVerticalDecorContrastWarnings,
+  },
+  { name: "elevatorBadgeFill", ids: ["elevator_badge_fill_low_contrast_floor", "elevator_badge_fill_low_contrast_corridor"], check: pushElevatorBadgeFillContrastWarnings },
+  {
+    name: "teleportBadgeSurface",
+    ids: [
+      "teleport_badge_border_low_contrast_floor", "teleport_badge_border_low_contrast_corridor",
+      "teleport_badge_fill_low_contrast_floor", "teleport_badge_fill_low_contrast_corridor",
+    ],
+    check: pushTeleportBadgeSurfaceContrastWarnings,
+  },
+];
+
+/** Builds the lazy {@link ContrastFloorEnv} of one floor. */
+export function buildContrastFloorEnv(input: {
+  nodes: NodeDto[]; edges: EdgeDto[]; teleportEdges: TeleportEdge[]; allNodesForWarnings: NodeDto[]; allEdgesForWarnings: EdgeDto[];
+  start: number | null; finish: number | null; displayFloorIndex: number; cfg: FieldConfig;
+}): ContrastFloorEnv {
+  let nodeById: Map<number, NodeDto> | undefined;
+  let warningNodeById: Map<number, NodeDto> | undefined;
+  let vertical: EdgeDto[] | undefined;
+  let oneWayVertical: EdgeDto[] | undefined;
+  let twoWay: EdgeDto[] | undefined;
+  let elevator: EdgeDto[] | undefined;
+  let teleport: EdgeDto[] | undefined;
+  return {
+    ...input,
+    get nodeById() { return nodeById ??= new Map(input.nodes.map((node) => [node.id, node])); },
+    get warningNodeById() { return warningNodeById ??= new Map(input.allNodesForWarnings.map((node) => [node.id, node])); },
+    get vertical() { return vertical ??= verticalPassageEdges(input.edges); },
+    get oneWayVertical() { return oneWayVertical ??= oneWayVerticalPassageEdges(input.edges, input.allEdgesForWarnings); },
+    get twoWay() {
+      if (!twoWay) {
+        const oneWay = new Set(this.oneWayVertical);
+        twoWay = this.vertical.filter((edge) => !oneWay.has(edge));
+      }
+      return twoWay;
+    },
+    get elevator() { return elevator ??= input.edges.filter((edge) => edge.kind === "elevator"); },
+    get teleport() { return teleport ??= input.edges.filter((edge) => edge.kind === "teleport"); },
+  };
 }

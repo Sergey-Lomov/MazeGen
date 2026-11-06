@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
 import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
@@ -16,7 +17,7 @@ import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
-import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
+import { computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import { isHiddenSpecialMirror, type Viewport, type TeleportEdge, type SplitPassage, type SplitSpecialShape, type VerticalConnectionMarker } from "../renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
@@ -116,7 +117,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
    *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
    *  export warning's cells (GitHub issue #313 follow-up: this mode's warnings section had no
-   *  hover-highlight wiring at all), see `computeVectorByCorridorsWarnings`. Memoize+draw mechanics
+   *  hover-highlight wiring at all), see `computeVectorByCorridorsWarningsAcrossFloors`. Draw mechanics
    *  shared with `VectorByWallsRenderer`'s own via `ExportWarningHighlight`. */
   private readonly warningHighlight: ExportWarningHighlight<VectorByCorridorsSettings>;
 
@@ -212,7 +213,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     this.warningHighlightContainer = new Container();
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
-    this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByCorridorsWarnings);
+    this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -1345,7 +1346,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   /** Highlights the currently hovered export warning's flagged cell(s) — see
-   *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
+   *  `ExportWarningHighlight`'s own doc comment for the draw mechanics, shared with
    *  `VectorByWallsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
@@ -1359,7 +1360,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           2 / (this.viewport.scale || 1),
         );
       } else {
-        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByCorridorsSettings, null, null);
+        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByCorridorsSettings);
       }
       return;
     }
@@ -1367,15 +1368,16 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Same floor-scoping as `renderAll` (GitHub issue #348) — the warning computation must see
     // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
     // reference an id that isn't actually rendered.
-    const { nodes, edges, start, finish } = selectFloorScopedMaze(
+    const { nodes } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     const warnings = computeVectorByCorridorsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
+      hasAnyGlue(state.floorTopology),
     );
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
+    this.warningHighlight.render(hoveredExportWarningKey, warnings, nodes, state.activeFieldConfig, state.vectorByCorridorsSettings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }
 
   destroy(): void {
