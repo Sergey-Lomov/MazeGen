@@ -63,6 +63,10 @@ not route through seams.
 
 ## Bend axes
 
+**Brick exception (GitHub issue #940).** Unlike the face-normal rule below, brick uses the three
+axes {0°, 45°, 135°}. Horizontal routes stay within a row; the two diagonals route between rows
+shifted by half a cell without a vertical leg across their half-edges.
+
 An orthogonal connector's single bend must run along an axis *perpendicular* to the tessellation's own cell faces (a connector crossing a wall head-on, not running alongside it):
 
 - **Square** — 2 axes, 0°/90° (horizontal/vertical).
