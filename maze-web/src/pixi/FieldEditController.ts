@@ -1,4 +1,4 @@
-import { notifyAutoFillPreviewActive, notifyClipboardUnavailable, notifyNothingCopied, notifyNothingSelected } from "../notifications/fieldSetupNotifications";
+import { notifyAutoFillPreviewActive, notifyClipboardUnavailable, notifyNothingCopied, notifyNothingSelected, notifySmoothingAffected, notifySmoothingEmptyResult } from "../notifications/fieldSetupNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
@@ -35,6 +35,16 @@ const TOPOLOGY_PICK_RADIUS_PX = 14;
 /** Cells around the target cell tried when the exact paste offset is not a translation symmetry. */
 const PASTE_SNAP_RADIUS = 2;
 
+function uniqueCells(cells: [number, number][]): [number, number][] {
+  const seen = new Set<number>();
+  return cells.filter(([x, y]) => {
+    const key = encodePoint(x, y);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;
   movePan: (x: number, y: number) => void;
@@ -42,7 +52,7 @@ interface PanCallbacks {
 }
 
 interface PrimitiveCallbacks {
-  onPreviewUpdate: (cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: ReturnType<typeof primitiveWorldGeometry>) => void;
+  onPreviewUpdate: (cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: ReturnType<typeof primitiveWorldGeometry>, smoothedOutCells: [number, number][]) => void;
   onPreviewClear: () => void;
   onPrimitiveCommit: (cells: [number, number][], button: number) => void;
   onSelectionMovePreview?: (sourceCells: [number, number][], temporaryCells: [number, number][]) => void;
@@ -66,6 +76,11 @@ export class FieldEditController {
   private primitiveStartWorld: { x: number; y: number } | null = null;
   private primitiveStartCanvas: { x: number; y: number } | null = null;
   private lastPreviewCells: [number, number][] = [];
+  /** Raw shape cells removed by the current smoothing pass, for its dim preview. */
+  private lastSmoothedOutCells: [number, number][] = [];
+  private lastSmoothingFeedback: "partial" | "empty" | null = null;
+  private smoothingAffectedToastShown = false;
+  private unsubscribeStore: (() => void) | null = null;
   private selectionPreviewVisible = false;
   private lastSizeReadout: FieldSizeReadout = EMPTY_FIELD_SIZE_READOUT;
   private selectionSourceCells: [number, number][] = [];
@@ -252,6 +267,13 @@ export class FieldEditController {
     this.getViewport = getViewport;
     this.panCallbacks = panCallbacks;
     this.primitiveCallbacks = primitiveCallbacks;
+    this.unsubscribeStore = useMazeStore.subscribe((state, prev) => {
+      // This deliberately watches only the persistent switch. Holding S changes smoothInverted,
+      // so it must not make the one-time explanation eligible again.
+      if (state.smoothPrimitives !== prev.smoothPrimitives && !state.smoothPrimitives) {
+        this.smoothingAffectedToastShown = false;
+      }
+    });
 
     canvas.addEventListener("contextmenu", this.onContextMenu);
     canvas.addEventListener("pointerenter", this.onPointerEnter);
@@ -426,7 +448,7 @@ export class FieldEditController {
       this.lastEndGrid = grid;
       this.lastEndWorld = this.primitiveStartWorld;
       this.reportSize({ shape: measureShape(this.lastPreviewCells, this.activePrimitive) });
-      this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }));
+      this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, startWorld: this.primitiveStartWorld, endWorld: this.primitiveStartWorld, gridRadius: 1, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }), this.lastSmoothedOutCells);
     }
   }
 
@@ -580,7 +602,7 @@ export class FieldEditController {
       this.lastEndGrid = currentGrid;
       this.lastEndWorld = currentWorld;
       this.reportSize({ shape: measureShape(this.lastPreviewCells, this.activePrimitive) });
-      this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }));
+      this.primitiveCallbacks.onPreviewUpdate(this.lastPreviewCells, this.operationButton(), kind, cfg, this.primitivePreviewGeometry(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, startWorld: this.primitiveStartWorld, endWorld: currentWorld, gridRadius, kind, config: cfg, symmetric: this.shiftHeld, constrainSquare: this.controlHeld }), this.lastSmoothedOutCells);
     }
   }
 
@@ -754,6 +776,7 @@ export class FieldEditController {
       if (field.fieldOperation === "select") {
         this.showSelection(this.lastPreviewCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
       } else {
+        this.emitSmoothingFeedback();
         this.clearPreview();
         this.primitiveCallbacks.onPrimitiveCommit(this.lastPreviewCells, this.operationButton());
       }
@@ -878,6 +901,7 @@ export class FieldEditController {
     this.lastPreviewCells = previewPoints.length >= 3
       ? this.polygonCells(previewPoints)
       : [];
+    if (previewPoints.length < 3) this.clearSmoothingPreview();
     this.reportSize({ shape: measureShape(this.lastPreviewCells, "polygon") });
     this.primitiveCallbacks.onPreviewUpdate(
       this.lastPreviewCells,
@@ -889,6 +913,7 @@ export class FieldEditController {
         dashedClosing: this.polygonPoints.length >= 2,
         ...(field.fieldOperation === "select" ? { dashedAll: true } : {}),
       }),
+      this.lastSmoothedOutCells,
     );
   }
 
@@ -927,6 +952,7 @@ export class FieldEditController {
       this.showSelection(committedCells, field.fieldConfig.tessellation.kind, field.fieldConfig);
       return;
     }
+    this.emitSmoothingFeedback();
     this.clearPreview();
     if (committedCells.length > 0) this.primitiveCallbacks.onPrimitiveCommit(committedCells, this.operationButton());
   }
@@ -1019,6 +1045,7 @@ export class FieldEditController {
     const points = this.parallelogramPoints(this.parallelogramCursor);
     if (!points) return;
     this.lastPreviewCells = points.length >= 4 ? this.polygonCells(points) : [];
+    if (points.length < 4) this.clearSmoothingPreview();
     this.reportSize({ shape: measureShape(this.lastPreviewCells, "parallelogram") });
     this.primitiveCallbacks.onPreviewUpdate(
       this.lastPreviewCells,
@@ -1031,6 +1058,7 @@ export class FieldEditController {
         closed: points.length >= 3,
         ...(field.fieldOperation === "select" ? { dashedAll: true } : {}),
       }),
+      this.lastSmoothedOutCells,
     );
   }
 
@@ -1250,13 +1278,48 @@ export class FieldEditController {
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
     const adding = this.effectiveOperation(this.gestureButton) === "add";
+    const smooth = state.smoothPrimitives !== state.smoothInverted;
     const normalized = normalizeCells(
       cells,
       field.fieldConfig,
-      state.smoothPrimitives !== state.smoothInverted,
+      smooth,
       adding ? (x, y) => field.fieldPoints.has(encodePoint(x, y)) : undefined,
     );
-    return adding ? normalized : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+    const result = adding ? normalized : normalized.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+    if (!smooth) {
+      this.clearSmoothingPreview();
+      return result;
+    }
+    const accepted = new Set(result.map(([x, y]) => encodePoint(x, y)));
+    // Remove/Select previews are already clipped to occupied cells. Do not paint the rest of the
+    // shape as a smoothing exclusion merely because there is nothing there to remove/select.
+    const previewCells = adding ? cells : cells.filter(([x, y]) => field.fieldPoints.has(encodePoint(x, y)));
+    this.lastSmoothedOutCells = previewCells.filter(([x, y]) => !accepted.has(encodePoint(x, y)));
+    if (!adding) {
+      this.lastSmoothingFeedback = null;
+      return result;
+    }
+    const rawNew = uniqueCells(cells).filter(([x, y]) => !field.fieldPoints.has(encodePoint(x, y)));
+    const acceptedNew = uniqueCells(result).filter(([x, y]) => !field.fieldPoints.has(encodePoint(x, y)));
+    this.lastSmoothingFeedback = rawNew.length > acceptedNew.length
+      ? acceptedNew.length === 0 ? "empty" : "partial"
+      : null;
+    return result;
+  }
+
+  private clearSmoothingPreview(): void {
+    this.lastSmoothedOutCells = [];
+    this.lastSmoothingFeedback = null;
+  }
+
+  /** Reports smoothing only after the shape is placed, never while its preview is moving. */
+  private emitSmoothingFeedback(): void {
+    if (this.lastSmoothingFeedback === "empty") notifySmoothingEmptyResult();
+    else if (this.lastSmoothingFeedback === "partial" && !this.smoothingAffectedToastShown) {
+      notifySmoothingAffected();
+      this.smoothingAffectedToastShown = true;
+    }
+    this.lastSmoothingFeedback = null;
   }
 
   private primitivePreviewGeometry(primitive: ShapePrimitive, context: PrimitiveContext): ReturnType<typeof primitiveWorldGeometry> {
@@ -1275,6 +1338,7 @@ export class FieldEditController {
   /** Clears the primitive preview and, with it, the status-bar size readout. */
   private clearPreview(): void {
     this.primitiveCallbacks.onPreviewClear();
+    this.clearSmoothingPreview();
     this.reportSize(EMPTY_FIELD_SIZE_READOUT);
   }
 
@@ -1306,6 +1370,7 @@ export class FieldEditController {
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 1,
       },
+      [],
     );
     this.selectionPreviewVisible = true;
     useMazeStore.getState().setFieldHasSelection(true);
@@ -1328,6 +1393,7 @@ export class FieldEditController {
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },
+      [],
     );
   }
 
@@ -1378,6 +1444,7 @@ export class FieldEditController {
         cellColor: canvas.fieldEditor.previewSelect,
         cellAlpha: 0.5,
       },
+      [],
     );
   }
 
@@ -1540,6 +1607,8 @@ export class FieldEditController {
   }
 
   destroy(): void {
+    this.unsubscribeStore?.();
+    this.unsubscribeStore = null;
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.canvas.removeEventListener("pointerenter", this.onPointerEnter);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);

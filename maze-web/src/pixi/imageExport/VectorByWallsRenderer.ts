@@ -49,6 +49,7 @@ const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
 export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldConfig, margin: number): number[][] {
   const polygons: number[][] = [];
   const cellKeys = new Set(cells.map(([x, y]) => `${x},${y}`));
+  const boundaryVertices = new Map<string, { cell: string; x: number; y: number; nx: number; ny: number }[]>();
   const seams = getSeamModel(cfg);
   // The union of cells keeps every interior edge. Add an outward strip only for an ordinary field
   // edge; a glued face intentionally has no strip, so all artwork is cut at that exact boundary.
@@ -70,6 +71,26 @@ export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldC
         const nx = (mx - center.x) / length;
         const ny = (my - center.y) / length;
         polygons.push([x0, y0, x1, y1, x1 + nx * margin, y1 + ny * margin, x0 + nx * margin, y0 + ny * margin]);
+        for (const [px, py] of [[x0, y0], [x1, y1]]) {
+          const key = `${Math.round(px * 100)},${Math.round(py * 100)}`;
+          const entries = boundaryVertices.get(key) ?? [];
+          entries.push({ cell: `${x},${y}`, x: px, y: py, nx, ny });
+          boundaryVertices.set(key, entries);
+        }
+      }
+    }
+  }
+
+  // A face strip alone leaves the diagonal quadrant at a convex field corner uncovered. An
+  // export-only trim mask would therefore cut off the miter that `WallRenderer` has already drawn.
+  // Join each pair of boundary faces belonging to the same cell with its outward corner wedge.
+  for (const entries of boundaryVertices.values()) {
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i];
+        const b = entries[j];
+        if (a.cell !== b.cell || a.nx * b.nx + a.ny * b.ny > 0.999) continue;
+        polygons.push([a.x, a.y, a.x + a.nx * margin, a.y + a.ny * margin, b.x + b.nx * margin, b.y + b.ny * margin]);
       }
     }
   }
@@ -705,6 +726,7 @@ export class VectorByWallsRenderer {
       const effectiveNodeColors = buildEffectiveSplitNodeColors(splitNodeColors, maxSplitNodeCount(nodes));
       const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
         buildSplitPassages(nodes, edges, cfg, specialNodeIds, {}, {}, effectiveNodeColors);
+      const wallEdges = buildMazeWalls(nodes, edges, cfg);
       this.geometryCache = {
         rawNodes: state.nodes,
         rawEdges: state.edges,
@@ -715,7 +737,7 @@ export class VectorByWallsRenderer {
         splitNodeColors,
         teleportAvoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
         closedCells: buildClosedCells(nodes, edges, state.edges),
-        wallEdges: buildMazeWalls(nodes, edges, cfg),
+        wallEdges,
         teleportEdges: (() => {
           const { floorContext, spread } = buildTeleportFloorInputs({
             unscopedNodes: state.nodes,

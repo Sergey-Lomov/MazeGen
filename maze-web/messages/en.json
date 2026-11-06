@@ -735,6 +735,8 @@
   "field.smoothing_info_title": "Smoothing",
   "field.smoothing_info_description": "Smoothing removes cells that touch the rest of the selected shape by only one side.",
   "field.smoothing_info_hotkey": "Hold S to temporarily invert smoothing.",
+  "field_edit.smoothing_affected": "Smoothing excluded some cells from the shape.",
+  "field_edit.smoothing_empty_result": "Smoothing prevented the shape from adding any new cells.",
   "field.center": "Center field",
   "field.clear": "Clear",
   "field.confirm_switch_to_default": "Switch to standard shapes? The user's custom field will be replaced.",

@@ -12,6 +12,7 @@ const ADD_COLOR = canvas.fieldEditor.previewAdd;
 const REMOVE_COLOR = canvas.fieldEditor.previewRemove;
 const SELECT_COLOR = canvas.fieldEditor.previewSelect;
 const PREVIEW_ALPHA = 0.5;
+const SMOOTHED_OUT_ALPHA = 0.22;
 const FRAME_ALPHA = 0.9;
 const FRAME_WIDTH = 1.25;
 const NODE_RADIUS = TILE_SIZE * 0.16;
@@ -24,6 +25,7 @@ export class PrimitivePreviewOverlay {
   private readonly layer: Graphics;
   private rafPending = false;
   private pendingCells: [number, number][] | null = null;
+  private pendingSmoothedOutCells: [number, number][] = [];
   private pendingButton = 0;
   private pendingCfg: FieldConfig | null = null;
   private pendingGeometry: PrimitiveWorldGeometry | null = null;
@@ -36,8 +38,9 @@ export class PrimitivePreviewOverlay {
     this.root.addChild(this.layer);
   }
 
-  update(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
+  update(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry, smoothedOutCells: [number, number][] = []): void {
     this.pendingCells = cells;
+    this.pendingSmoothedOutCells = smoothedOutCells;
     this.pendingButton = button;
     this.pendingCfg = cfg;
     this.pendingGeometry = geometry;
@@ -45,7 +48,7 @@ export class PrimitivePreviewOverlay {
       this.rafPending = true;
       requestAnimationFrame(() => {
         this.rafPending = false;
-        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
+        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingSmoothedOutCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
       });
     }
   }
@@ -53,11 +56,11 @@ export class PrimitivePreviewOverlay {
   setFrameVisible(visible: boolean): void {
     this.frameVisible = visible;
     if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
-      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
+      this.redraw(this.pendingCells, this.pendingSmoothedOutCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
     }
   }
 
-  private redraw(cells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
+  private redraw(cells: [number, number][], smoothedOutCells: [number, number][], button: number, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
     const color = geometry.kind === "polygon" && geometry.cellColor !== undefined
@@ -66,6 +69,13 @@ export class PrimitivePreviewOverlay {
         ? geometry.cellColor
         : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
     const alpha = geometry.kind !== "ellipse" ? geometry.cellAlpha ?? PREVIEW_ALPHA : PREVIEW_ALPHA;
+    // Draw exclusions first: the accepted cells remain the clear, primary preview.
+    for (const [x, y] of smoothedOutCells) {
+      const verts = geometryCellVertices(x, y, cfg);
+      if (!verts) continue;
+      g.poly(verts.flatMap(v => [v.x, v.y]));
+      g.fill({ color, alpha: SMOOTHED_OUT_ALPHA });
+    }
     for (const [x, y] of cells) {
       const verts = geometryCellVertices(x, y, cfg);
       if (!verts) continue;
@@ -160,6 +170,7 @@ export class PrimitivePreviewOverlay {
 
   clear(): void {
     this.pendingCells = null;
+    this.pendingSmoothedOutCells = [];
     this.pendingGeometry = null;
     this.layer.clear();
   }
@@ -167,7 +178,7 @@ export class PrimitivePreviewOverlay {
   onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
     this.viewportScale = scale;
     if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
-      this.redraw(this.pendingCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
+      this.redraw(this.pendingCells, this.pendingSmoothedOutCells, this.pendingButton, this.pendingCfg, this.pendingGeometry);
     }
   }
 

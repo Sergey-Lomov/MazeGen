@@ -273,8 +273,8 @@ export class MazeScene {
         endPan: () => this.interaction.defaultPan.end(),
       },
       {
-        onPreviewUpdate: (cells, btn, _kind, cfg, geometry) => {
-          this.primitivePreviewOverlay.update(cells, btn, cfg, geometry);
+        onPreviewUpdate: (cells, btn, _kind, cfg, geometry, smoothedOutCells) => {
+          this.primitivePreviewOverlay.update(cells, btn, cfg, geometry, smoothedOutCells);
         },
         onPreviewClear: () => {
           this.primitivePreviewOverlay.clear();

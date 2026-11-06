@@ -41,6 +41,23 @@ beforeEach(() => {
 });
 
 describe("PrimitivePreviewOverlay selection frames", () => {
+  it("draws smoothing exclusions before accepted cells with a lighter dim fill", () => {
+    const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
+
+    overlay.update(
+      [[1, 0]],
+      0,
+      cfg,
+      { kind: "polygon", points: [] },
+      [[0, 0]],
+    );
+
+    const fills = stubs.graphics[0].calls.filter(({ name }) => name === "fill");
+    expect(fills[0].args[0]).toMatchObject({ alpha: 0.22 });
+    expect(fills[1].args[0]).toMatchObject({ alpha: 0.5 });
+    overlay.destroy();
+  });
+
   it("uses the selection color for selected cells and dashed polygon edges", () => {
     const overlay = new PrimitivePreviewOverlay({ addChild() {} } as never);
 
