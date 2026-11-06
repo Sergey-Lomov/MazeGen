@@ -88,8 +88,15 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   useEffect(() => {
     if (!open) return;
     const onWindowBlur = () => setOpen(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") setOpen(false);
+    };
     window.addEventListener("blur", onWindowBlur);
-    return () => window.removeEventListener("blur", onWindowBlur);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [open]);
 
   const Wrapper = block ? "div" : "span";

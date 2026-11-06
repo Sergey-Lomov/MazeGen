@@ -18,7 +18,7 @@ interface SceneInteractionDeps {
   getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
   getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
   onHoverChanged: (info: HoverInfo | null) => void;
-  onViewportChanged: () => void;
+  onViewportChanged: (canvasOnly: boolean) => void;
   onResetZoom: () => void;
 }
 
@@ -31,6 +31,7 @@ export class SceneInteraction {
   private deps: SceneInteractionDeps;
   defaultPan: PanState;
   private onWheel: (e: WheelEvent) => void = () => {};
+  private canvasOnlyNavigation = false;
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
@@ -114,7 +115,7 @@ export class SceneInteraction {
       (x, y) => {
         viewport.x = x;
         viewport.y = y;
-        onViewportChanged();
+        onViewportChanged(this.canvasOnlyNavigation);
       },
     );
     this.setup();
@@ -127,6 +128,7 @@ export class SceneInteraction {
     stage.hitArea = app.screen;
 
     stage.on("pointerdown", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
       const controller = getController(st);
       if (st.teleportConnectorEdit !== null) {
@@ -148,6 +150,7 @@ export class SceneInteraction {
     });
 
     stage.on("pointermove", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
       const controller = getController(st);
       // A pan changes the viewport continuously, so resolving a hover cell would synchronously
@@ -275,7 +278,7 @@ export class SceneInteraction {
       viewport.y = mouseY + (viewport.y - mouseY) * factor;
       viewport.scale.x *= factor;
       viewport.scale.y *= factor;
-      onViewportChanged();
+      onViewportChanged(e.ctrlKey || e.metaKey);
     };
     app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }

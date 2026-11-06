@@ -38,6 +38,19 @@ describe("PngExportSettingsPanel", () => {
     expect(screen.getByText(m["image_export.format.png.print.anchor"]())).toBeInTheDocument();
   });
 
+  it("provides a bounded, precise print-scale control and the Ctrl canvas-navigation hint", () => {
+    setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
+    render(<PngExportSettingsPanel />);
+
+    const slider = screen.getByRole("slider");
+    expect(slider).toHaveAttribute("min", "0.1");
+    expect(slider).toHaveAttribute("max", "5");
+    expect(slider).toHaveAttribute("step", "0.01");
+    expect(screen.getByRole("spinbutton", { name: m["image_export.format.png.print.scale"]() })).not.toHaveAttribute("max");
+    expect(document.body).toHaveTextContent(m["image_export.format.png.print.canvas_navigation_hint"]());
+    expect(document.body).toHaveTextContent(m["image_export.format.png.print.canvas_navigation_hold"]());
+  });
+
   it("shows margin input only for margin_px/margin_cells canvas modes, and sets default margin value on switch", () => {
     render(<PngExportSettingsPanel />);
     const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
@@ -156,6 +169,22 @@ describe("PngExportSettingsPanel", () => {
     render(<PngExportSettingsPanel />);
     const select = screen.getByDisplayValue(m["image_export.format.png.print.paper_custom"]()) as HTMLSelectElement;
     expect(select.value).toBe("custom");
+  });
+
+  it("keeps the current Custom print anchor readable while preventing it as a new choice", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, anchor: "custom" },
+      },
+    });
+    render(<PngExportSettingsPanel />);
+
+    const select = screen.getByText(m["image_export.format.png.print.anchor"]()).parentElement!.querySelector("select") as HTMLSelectElement;
+    const custom = Array.from(select.options).find((option) => option.value === "custom");
+    expect(custom).toBeDefined();
+    expect(custom).not.toBeDisabled();
   });
 
   it("shows a result-info section (image size + cell size) below a divider in digital mode", () => {

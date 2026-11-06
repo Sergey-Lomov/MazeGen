@@ -36,6 +36,61 @@ function makeOverlay(setViewportTransform = vi.fn()) {
 }
 
 describe("ExportFrameOverlay — print anchor guard", () => {
+  it("moves the complete print layout without changing export placement during ordinary navigation", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: true, anchor: "center" },
+      },
+    });
+    const { overlay, setViewportTransform } = makeOverlay();
+    const [x, y, scale] = setViewportTransform.mock.calls.at(-1)!;
+
+    overlay.onViewportChanged(x + 40, y + 25, SCREEN.width, SCREEN.height, scale, "layout");
+
+    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(true);
+    expect(useMazeStore.getState().pngExportSettings.print.anchor).toBe("center");
+    overlay.destroy();
+  });
+
+  it("keeps the sheet fixed and updates canvas placement during Ctrl navigation", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: true, anchor: "center" },
+      },
+    });
+    const { overlay, setViewportTransform } = makeOverlay();
+    const [x, y, scale] = setViewportTransform.mock.calls.at(-1)!;
+
+    overlay.onViewportChanged(x + 40, y + 25, SCREEN.width, SCREEN.height, scale, "canvas");
+
+    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(false);
+    expect(useMazeStore.getState().pngExportSettings.print.anchor).toBe("custom");
+    expect((overlay as unknown as { frameViewport: { x: number; y: number; scale: number } }).frameViewport)
+      .toEqual({ x, y, scale });
+    overlay.destroy();
+  });
+
+  it("does not rebuild or recenter the sheet when print scale changes", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" },
+      },
+    });
+    const { overlay } = makeOverlay();
+    const before = (overlay as unknown as { printFrameWorldLayout: unknown }).printFrameWorldLayout;
+
+    useMazeStore.getState().setPrintScale(2);
+
+    expect((overlay as unknown as { printFrameWorldLayout: unknown }).printFrameWorldLayout).toBe(before);
+    overlay.destroy();
+  });
+
   it("re-centers print placement after switching the active floor", () => {
     const secondFloorId = "floor_2";
     setBaseState({
@@ -138,35 +193,19 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
     });
   }
 
-  it("is a pure scale about the print frame's screen centre", async () => {
-    const { computeSheetScreenLayout } = await import("../pixi/imageExport/printFit");
-    const { computePrintExportFit } = await import("../pixi/imageExport/printFit");
-    const { resolveContentBoundsBasis } = await import("../pixi/imageExport/exportMargins");
-
+  it("centers the complete print layout at the requested physical scale", () => {
     printState();
     const { overlay, setViewportTransform } = makeOverlay();
-
-    // The constructor's becameActive sync already placed the viewport for "center" — that's our
-    // "old" transform (read it back), no pan/zoom needed.
-    const [oldX, oldY, oldS] = setViewportTransform.mock.calls.at(-1)!;
     setViewportTransform.mockClear();
 
     const target = 2.5;
     overlay.applyViewportScaleAroundFrameCentre(target);
 
     const [nx, ny, ns] = setViewportTransform.mock.calls.at(-1)!;
+    const world = (overlay as unknown as { printFrameWorldLayout: { x: number; y: number; w: number; h: number } }).printFrameWorldLayout;
     expect(ns).toBe(target);
-
-    // The frame's own screen centre (computeSheetScreenLayout of the current print fit).
-    const s = useMazeStore.getState();
-    const fit = computePrintExportFit(s.activeFieldConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
-    const layout = computeSheetScreenLayout(fit.sheetWidthPx, fit.sheetHeightPx, SCREEN.width, SCREEN.height);
-    const cx = layout.x + layout.w / 2;
-    const cy = layout.y + layout.h / 2;
-
-    const k = target / oldS;
-    expect(nx).toBeCloseTo(cx - (cx - oldX) * k);
-    expect(ny).toBeCloseTo(cy - (cy - oldY) * k);
+    expect(nx).toBeCloseTo(SCREEN.width / 2 - (world.x + world.w / 2) * target);
+    expect(ny).toBeCloseTo(SCREEN.height / 2 - (world.y + world.h / 2) * target);
   });
 
   it("does not touch print placement (scale / anchor / offset)", () => {
@@ -180,6 +219,19 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
     expect(p.anchor).toBe("center");
     expect(p.offsetXMm).toBe(DEFAULT_PNG_EXPORT_SETTINGS.print.offsetXMm);
     expect(p.offsetYMm).toBe(DEFAULT_PNG_EXPORT_SETTINGS.print.offsetYMm);
+  });
+
+  it("restores the layout's original screen-fit transform", () => {
+    printState();
+    const { overlay, setViewportTransform } = makeOverlay();
+    const initialTransform = setViewportTransform.mock.calls.at(-1)!;
+    setViewportTransform.mockClear();
+
+    expect(overlay.fitLayoutToScreen()).toBe(true);
+    const [x, y, scale] = setViewportTransform.mock.calls.at(-1)!;
+    expect(x).toBeCloseTo(initialTransform[0]);
+    expect(y).toBeCloseTo(initialTransform[1]);
+    expect(scale).toBeCloseTo(initialTransform[2]);
   });
 
   it("ignores a non-positive target scale (no viewport write)", () => {

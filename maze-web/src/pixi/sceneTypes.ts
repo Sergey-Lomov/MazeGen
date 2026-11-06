@@ -1,7 +1,7 @@
 import type { MazeState } from "../store/storeTypes";
 
 export interface ViewportListener {
-  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void;
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number, navigation?: "layout" | "canvas"): void;
 }
 
 /** Whether the active editor can route canvas interaction to the shared underlay controller. */
