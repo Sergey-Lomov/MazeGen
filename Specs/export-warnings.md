@@ -6,7 +6,7 @@ This specification defines warnings that belong to the two image-export renderer
 These are presentation warnings, not Quality Control issues. A maze may be valid and still
 produce an export whose colors, labels, markers, or geometry are difficult to read. The warnings
 are computed by the renderer-specific pure selectors in
-`maze-web/src/pixi/selectors/exportWarnings.ts` (entry points and per-mode orchestration; text fit in `exportTextFit.ts`,
+`maze-web/src/pixi/selectors/exportWarnings.ts` (entry points, per-floor caching and merging; the warning groups in `exportWarningGroups.ts`; text fit in `exportTextFit.ts`,
 contrast checks in `exportContrastWarnings.ts`, teleport/elevator checks in `exportTeleportWarnings.ts`, corridor-specific
 checks in `exportCorridorWarnings.ts`) and are displayed in the corresponding export
 settings panel.
@@ -46,6 +46,43 @@ not belong in the generated `qualityIds.ts` registry.
 The implementation may group several visual roles under one warning id when they have the same
 foreground/surface relationship. The description shown in the panel must still name the affected
 roles precisely.
+
+## Warning groups and recomputation (GitHub issue #928)
+
+Every export warning belongs to exactly one **warning group** (`WarningGroup` in `exportWarningGroups.ts`; a mode's list is
+`WALLS_WARNING_GROUPS` / `CORRIDORS_WARNING_GROUPS`). A group is a pure function of one floor's maze data (`WarningFloorEnv`) and of
+the settings fields it reads, and declares the warning ids it may emit; no id appears in two groups of a mode, and a test checks both
+that and that every emitted id is declared.
+
+- **Dependency tracking.** `computeVector*WarningsAcrossFloors` runs each (mode, group, floor) under `trackedMemo`
+  (`selectors/trackedMemo.ts`): the group reads the settings through a read-recording view, and its cached result is reused while every
+  recorded read (leaf value, key set, `in` check) still holds in the new settings. A group never lists its own settings dependencies, and
+  an edit to a field it does not read cannot recompute it — e.g. dragging a teleport connector control point
+  (`manualTeleportConnectorPaths`) recomputes no group. Settings are immutable (replaced, never mutated, like the store's state); a
+  group must keep no settings sub-object in its result (the tracker throws) and must not call `trackedMemo` itself (`inputMemo` is allowed).
+- **Other inputs.** The cache key of every group is the maze (`nodes`, `edges`, `cfg`, effective `start`/`finish`), the floor ids in order
+  (titles excluded), `hasGlues` and the group's own `hiddenInputs`: the text-overflow group adds the floor title and the loaded
+  bitmap-font state (`textMetricsKey()`), the split color groups add whether a cut line separates seam mirrors on the floor. A group that
+  reads any other state outside the settings must list it in `hiddenInputs`. Color checks read through `buildColorVisibility`, which is
+  lazy (a reader of one color field subscribes to that field and the flags gating it, not to the whole settings).
+- **Order.** The merged list is ordered group by group (the group list order), floors in order within a group; a group's own order is the
+  order its warnings are emitted in. The uncached single-floor entry points (`computeVectorByWallsWarnings`,
+  `computeVectorByCorridorsWarnings`) run the same groups in the same order; they are the uncached reference the tests compare the cache against,
+  and nothing in the app calls them.
+- **Merged list.** The per-floor lists are merged into one list per mode (`inputMemo` slot `merge:<mode>`, keyed on the maze nodes and the
+  identity of every group's list): while every group hits, the same list object comes back, so a settings edit that touches no group costs
+  no merge and gives the panel no new list to re-render on. The topology list is kept the same way. A returned list is shared: callers
+  must not mutate it. The tracker keeps at most 4096 slots, least recently used first, and drops an evicted slot's counters with it.
+- **Adding a warning.** Put its id in exactly one group (a new group when no existing one reads the same settings fields), keep the group's
+  `ids` list complete, and read settings only through the group's `settings` argument. Tests: `exportWarningCache.test.ts` (partition,
+  warm-vs-cold equality under paranoid mode, recomputation).
+- **Panel and hover share the cache.** The settings panel (`useExportPanelModel`) and both renderers' hover highlight (`ExportWarningHighlight`, which only draws the warnings it is given) call the same
+  `*AcrossFloors` functions with the same `hasGlues` (`hasAnyGlue(floorTopology)`). `computeTextFitItemsAcrossFloors` is cached the same way.
+- **Topology warnings.** The glue tab and edge mark warnings (`topologyWarnings.ts`) use the same mechanism through
+  `TOPOLOGY_WARNING_GROUPS` (`glueTabs`, `edgeMarkers`, `seamAmbiguity`; slots `topology:<group>`). They concern the active floor's net, so
+  a group's cache key is the store state it reads (`activeFloorId`, `activeFieldConfig`, `floorTopology`, `floorCreases`,
+  `pngExportSettings`, `nodes`, `edges`, `floors`) instead of the maze data, and the settings are tracked the same way. The panel passes
+  the whole mode settings and lists no settings fields; `TopologyWarningHighlight` calls the same function and shares the cache.
 
 ## Vector by corridors only
 

@@ -73,7 +73,8 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
       { activeFloorId, activeFieldConfig: cfg, floorTopology, floorCreases, pngExportSettings, nodes: rawNodes, edges: rawEdges, floors },
       settings,
     ),
-    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings.glueTabs, settings.edgeMarkers, settings.links, settings.background],
+    // The settings are a dependency as a whole: `computeTopologyWarnings` caches each group on the fields it reads (GitHub issue #928).
+    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings],
   );
   const exportWarnings = useMemo(() => [...modeWarnings, ...topologyWarnings], [modeWarnings, topologyWarnings]);
 

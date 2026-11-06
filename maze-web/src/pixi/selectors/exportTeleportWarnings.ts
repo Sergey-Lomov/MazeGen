@@ -39,115 +39,102 @@ export function buildPointFillStates(teleportEdges: TeleportEdge[]): Map<string,
   return result;
 }
 
-/** The three teleport-only checks (`teleport_marker_invisible`, `teleport_group_ambiguous`,
- *  `teleport_waypoint_overlap`) both "Vector by walls" and "Vector by corridors" share — every
- *  field they read (`teleportMarker.borderWidth`, `teleportConnectorStyle`, `teleportGroupOverrides`,
- *  etc.) lives on the common `TeleportSettingsFields` (GitHub issue #313 follow-up: teleport
- *  rendering transfers as-is between the two modes, so its warnings should too — previously
- *  `computeVectorByCorridorsWarnings` detected none of these, silently missing e.g. ambiguous
- *  teleport groups with no connector to tell them apart). Takes `start`/`finish` marker style
- *  directly (not a whole mode-specific settings object) so it stays mode-agnostic. */
-export function computeTeleportWarnings(
+type WaypointMarker = { id: number | null; size: number; borderWidth: number };
+
+/** `teleport_marker_invisible`: a one-way teleport's exit-only endpoint draws "outline" —
+ *  floor-colored fill, not `edgeColor` — so with no border it has nothing to draw at all. Only
+ *  checked when `teleportMarker.borderWidth` is 0; a filled ("entry"/two-way) point is unaffected
+ *  regardless of border, since its own `edgeColor` fill is always visible. */
+export function computeTeleportMarkerInvisibleWarning(
   teleportEdges: TeleportEdge[],
-  settings: TeleportSettingsFields & MarkerLayoutSettingsFields,
-  startMarker: { id: number | null; size: number; borderWidth: number },
-  finishMarker: { id: number | null; size: number; borderWidth: number },
+  settings: Pick<TeleportSettingsFields, "teleportMarker">,
+): ExportWarning | null {
+  if (settings.teleportMarker.borderWidth !== 0) return null;
+  const fillStates = buildPointFillStates(teleportEdges);
+  const outlineNodeIds = new Set<number>();
+  for (const e of teleportEdges) {
+    for (const [pos, nodeId] of [[e.from, e.fromNode], [e.to, e.toNode]] as const) {
+      if (nodeId === undefined) continue;
+      if (fillStates.get(coordKey(pos[0], pos[1])) === "outline") outlineNodeIds.add(nodeId);
+    }
+  }
+  if (outlineNodeIds.size === 0) return null;
+  return { id: "teleport_marker_invisible", key: "teleport_marker_invisible", nodes: Array.from(outlineNodeIds), edges: [] };
+}
+
+/** `teleport_merged_without_connectors`: merge mode on, teleports really share a cell, no connectors to show the links. */
+export function computeTeleportMergedWithoutConnectorsWarning(
+  teleportEdges: TeleportEdge[],
+  settings: Pick<TeleportSettingsFields, "teleportMergeMode" | "teleportConnectorStyle">,
+): ExportWarning | null {
+  if (!settings.teleportMergeMode || settings.teleportConnectorStyle !== "none") return null;
+  const edgeKeysByPoint = new Map<string, Set<string>>();
+  const nodesByPoint = new Map<string, Set<number>>();
+  for (const e of teleportEdges) {
+    const edgeKey = teleportEdgeKey(e);
+    for (const [pos, nodeId, floor] of [[e.from, e.fromNode, e.fromFloor], [e.to, e.toNode, e.toFloor]] as const) {
+      if (floor !== undefined) continue;
+      const pk = coordKey(pos[0], pos[1]);
+      (edgeKeysByPoint.get(pk) ?? edgeKeysByPoint.set(pk, new Set()).get(pk)!).add(edgeKey);
+      if (nodeId !== undefined) (nodesByPoint.get(pk) ?? nodesByPoint.set(pk, new Set()).get(pk)!).add(nodeId);
+    }
+  }
+  const mergedNodeIds = new Set<number>();
+  for (const [pk, keys] of edgeKeysByPoint) {
+    if (keys.size > 1) for (const id of nodesByPoint.get(pk) ?? []) mergedNodeIds.add(id);
+  }
+  if (mergedNodeIds.size === 0) return null;
+  return { id: "teleport_merged_without_connectors", key: "teleport_merged_without_connectors", nodes: Array.from(mergedNodeIds), edges: [] };
+}
+
+/** `teleport_group_ambiguous`: two or more groups share the same resolved color+shape while
+ *  there is no connector to tell them apart visually (mirrors the panel's own pre-existing
+ *  check). One warning total, covering every colliding group at once — not one per group — but
+ *  its `nodes` still spans every affected group so hovering it highlights all of them. */
+export function computeTeleportGroupAmbiguousWarning(
+  teleportEdges: TeleportEdge[],
+  settings: Pick<TeleportSettingsFields, "teleportMergeMode" | "teleportConnectorStyle" | "teleportGroupOverrides" | "teleportMarker">,
+): ExportWarning | null {
+  if (settings.teleportConnectorStyle !== "none") return null;
+  const groups = buildTeleportGroups(teleportEdges, settings.teleportMergeMode);
+  const resolvedKey = (groupKey: string) => {
+    const o = settings.teleportGroupOverrides[groupKey];
+    return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
+  };
+  const byResolved = new Map<string, typeof groups>();
+  for (const g of groups) {
+    const rk = resolvedKey(g.key);
+    const list = byResolved.get(rk);
+    if (list) list.push(g); else byResolved.set(rk, [g]);
+  }
+  const edgesByKey = new Map(teleportEdges.map((e) => [teleportEdgeKey(e), e]));
+  const ambiguousNodeIds = new Set<number>();
+  for (const collidingGroups of byResolved.values()) {
+    if (collidingGroups.length <= 1) continue;
+    for (const g of collidingGroups) {
+      for (const edgeKey of g.edgeKeys) {
+        const e = edgesByKey.get(edgeKey);
+        if (!e) continue;
+        if (e.fromNode !== undefined) ambiguousNodeIds.add(e.fromNode);
+        if (e.toNode !== undefined) ambiguousNodeIds.add(e.toNode);
+      }
+    }
+  }
+  if (ambiguousNodeIds.size === 0) return null;
+  return { id: "teleport_group_ambiguous", key: "teleport_group_ambiguous", nodes: Array.from(ambiguousNodeIds), edges: [] };
+}
+
+/** `teleport_waypoint_overlap`: a teleport marker's visual footprint overlaps a start/finish
+ *  marker's footprint. One warning total, covering every overlapping pair. */
+export function computeTeleportWaypointOverlapWarning(
+  teleportEdges: TeleportEdge[],
+  settings: Pick<TeleportSettingsFields, "teleportMarker" | "teleportMergeMode"> & MarkerLayoutSettingsFields,
+  startMarker: WaypointMarker,
+  finishMarker: WaypointMarker,
   allNodes: NodeDto[],
   cfg: FieldConfig,
   edges: EdgeDto[],
-): ExportWarning[] {
-  const warnings: ExportWarning[] = [];
-
-  // --- teleport_marker_invisible: a one-way teleport's exit-only endpoint draws "outline" —
-  // floor-colored fill, not `edgeColor` — so with no border it has nothing to draw at all. Only
-  // checked when `teleportMarker.borderWidth` is 0; a filled ("entry"/two-way) point is unaffected
-  // regardless of border, since its own `edgeColor` fill is always visible. ---
-  if (settings.teleportMarker.borderWidth === 0) {
-    const fillStates = buildPointFillStates(teleportEdges);
-    const outlineNodeIds = new Set<number>();
-    for (const e of teleportEdges) {
-      for (const [pos, nodeId] of [[e.from, e.fromNode], [e.to, e.toNode]] as const) {
-        if (nodeId === undefined) continue;
-        if (fillStates.get(coordKey(pos[0], pos[1])) === "outline") outlineNodeIds.add(nodeId);
-      }
-    }
-    if (outlineNodeIds.size > 0) {
-      warnings.push({
-        id: "teleport_marker_invisible",
-        key: "teleport_marker_invisible",
-        nodes: Array.from(outlineNodeIds),
-        edges: [],
-      });
-    }
-  }
-
-  // --- teleport_group_ambiguous: two or more groups share the same resolved color+shape while
-  // there is no connector to tell them apart visually (mirrors the panel's own pre-existing
-  // check). One warning total, covering every colliding group at once — not one per group — but
-  // its `nodes` still spans every affected group so hovering it highlights all of them. ---
-  if (settings.teleportMergeMode && settings.teleportConnectorStyle === "none") {
-    const edgeKeysByPoint = new Map<string, Set<string>>();
-    const nodesByPoint = new Map<string, Set<number>>();
-    for (const e of teleportEdges) {
-      const edgeKey = teleportEdgeKey(e);
-      for (const [pos, nodeId, floor] of [[e.from, e.fromNode, e.fromFloor], [e.to, e.toNode, e.toFloor]] as const) {
-        if (floor !== undefined) continue;
-        const pk = coordKey(pos[0], pos[1]);
-        (edgeKeysByPoint.get(pk) ?? edgeKeysByPoint.set(pk, new Set()).get(pk)!).add(edgeKey);
-        if (nodeId !== undefined) (nodesByPoint.get(pk) ?? nodesByPoint.set(pk, new Set()).get(pk)!).add(nodeId);
-      }
-    }
-    const mergedNodeIds = new Set<number>();
-    for (const [pk, keys] of edgeKeysByPoint) {
-      if (keys.size > 1) for (const id of nodesByPoint.get(pk) ?? []) mergedNodeIds.add(id);
-    }
-    if (mergedNodeIds.size > 0) {
-      warnings.push({
-        id: "teleport_merged_without_connectors",
-        key: "teleport_merged_without_connectors",
-        nodes: Array.from(mergedNodeIds),
-        edges: [],
-      });
-    }
-  }
-
-  if (settings.teleportConnectorStyle === "none") {
-    const groups = buildTeleportGroups(teleportEdges, settings.teleportMergeMode);
-    const resolvedKey = (groupKey: string) => {
-      const o = settings.teleportGroupOverrides[groupKey];
-      return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
-    };
-    const byResolved = new Map<string, typeof groups>();
-    for (const g of groups) {
-      const rk = resolvedKey(g.key);
-      const list = byResolved.get(rk);
-      if (list) list.push(g); else byResolved.set(rk, [g]);
-    }
-    const edgesByKey = new Map(teleportEdges.map((e) => [teleportEdgeKey(e), e]));
-    const ambiguousNodeIds = new Set<number>();
-    for (const collidingGroups of byResolved.values()) {
-      if (collidingGroups.length <= 1) continue;
-      for (const g of collidingGroups) {
-        for (const edgeKey of g.edgeKeys) {
-          const e = edgesByKey.get(edgeKey);
-          if (!e) continue;
-          if (e.fromNode !== undefined) ambiguousNodeIds.add(e.fromNode);
-          if (e.toNode !== undefined) ambiguousNodeIds.add(e.toNode);
-        }
-      }
-    }
-    if (ambiguousNodeIds.size > 0) {
-      warnings.push({
-        id: "teleport_group_ambiguous",
-        key: "teleport_group_ambiguous",
-        nodes: Array.from(ambiguousNodeIds),
-        edges: [],
-      });
-    }
-  }
-
-  // --- teleport_waypoint_overlap: a teleport marker's visual footprint overlaps a start/finish
-  // marker's footprint. One warning total, covering every overlapping pair. ---
+): ExportWarning | null {
   const teleportRadius = markerWorldRadius(settings.teleportMarker.size, settings.teleportMarker.borderWidth);
   const overlappingNodeIds = new Set<number>();
   // The marker positioning layer (GitHub issue #735) already separates markers sharing one host, so
@@ -187,16 +174,31 @@ export function computeTeleportWarnings(
       }
     }
   });
-  if (overlappingNodeIds.size > 0) {
-    warnings.push({
-      id: "teleport_waypoint_overlap",
-      key: "teleport_waypoint_overlap",
-      nodes: Array.from(overlappingNodeIds),
-      edges: [],
-    });
-  }
+  if (overlappingNodeIds.size === 0) return null;
+  return { id: "teleport_waypoint_overlap", key: "teleport_waypoint_overlap", nodes: Array.from(overlappingNodeIds), edges: [] };
+}
 
-  return warnings;
+/** The four teleport-only checks both "Vector by walls" and "Vector by corridors" share — every
+ *  field they read lives on the common `TeleportSettingsFields` (GitHub issue #313 follow-up:
+ *  teleport rendering transfers as-is between the two modes, so its warnings should too). Takes
+ *  `start`/`finish` marker style directly (not a whole mode-specific settings object) so it stays
+ *  mode-agnostic. The per-warning functions above are what the cached warning groups run
+ *  (GitHub issue #928); this runs them all. */
+export function computeTeleportWarnings(
+  teleportEdges: TeleportEdge[],
+  settings: TeleportSettingsFields & MarkerLayoutSettingsFields,
+  startMarker: WaypointMarker,
+  finishMarker: WaypointMarker,
+  allNodes: NodeDto[],
+  cfg: FieldConfig,
+  edges: EdgeDto[],
+): ExportWarning[] {
+  return [
+    computeTeleportMarkerInvisibleWarning(teleportEdges, settings),
+    computeTeleportMergedWithoutConnectorsWarning(teleportEdges, settings),
+    computeTeleportGroupAmbiguousWarning(teleportEdges, settings),
+    computeTeleportWaypointOverlapWarning(teleportEdges, settings, startMarker, finishMarker, allNodes, cfg, edges),
+  ].filter((warning): warning is ExportWarning => warning !== null);
 }
 
 /** Every export-specific warning "Vector by walls" currently knows how to detect (GitHub issue
