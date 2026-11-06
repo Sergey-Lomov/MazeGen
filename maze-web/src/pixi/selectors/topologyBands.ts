@@ -13,6 +13,9 @@ import { mergedFacePolylines } from "../topologyGeometry";
 export function selectTopologyBands(state: MazeState): TopologyBand[] {
   const floor = state.activeFloorId;
   const field = state.floorFields[floor];
+  // Nothing to highlight: skip core's contour computation, which is costly on a large field.
+  if (state.topologyFaceHover === null && state.topologyRunA === null && state.topologyRunB === null
+    && state.topologySideHover === null && state.topologyFlagged.length === 0) return [];
   const result = floorTopologyInfo(state, floor);
   if (!result.ok || !field) return [];
   const cfg = field.fieldConfig;

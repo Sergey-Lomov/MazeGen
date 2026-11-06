@@ -254,6 +254,29 @@ describe("FieldEditorOverlay", () => {
     expect(fieldRender.mock.calls[fieldRenderCount][0].cells).not.toEqual(smoothedCells);
   });
 
+  it("redraws the floor and the boundary once when the field config and points change together", () => {
+    openOverlay();
+    const fieldRender = (stubs.floors[0] as Stub).render;
+    const boundaryRender = (stubs.walls[0] as Stub).render;
+    const fieldRenderCount = fieldRender.mock.calls.length;
+    const boundaryRenderCount = boundaryRender.mock.calls.length;
+    const state = useMazeStore.getState();
+
+    useMazeStore.setState({
+      floorFields: {
+        ...state.floorFields,
+        [TEST_FLOOR_ID]: {
+          ...state.floorFields[TEST_FLOOR_ID],
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }),
+          fieldPoints: new Set([encodePoint(3, 3)]),
+        },
+      },
+    });
+
+    expect(fieldRender).toHaveBeenCalledTimes(fieldRenderCount + 1);
+    expect(boundaryRender).toHaveBeenCalledTimes(boundaryRenderCount + 1);
+  });
+
   it("draws mirror cells and polygon geometry only while mirror is active", () => {
     const { overlay } = openOverlay();
     const state = useMazeStore.getState();
