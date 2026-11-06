@@ -15,6 +15,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   getCellOutlines: (await importActual<typeof import("../wasm/mazeService")>()).getCellOutlines,
   getCellAt: (await importActual<typeof import("../wasm/mazeService")>()).getCellAt,
   getCellsInRegion: (await importActual<typeof import("../wasm/mazeService")>()).getCellsInRegion,
+  getRegionEdges: (await importActual<typeof import("../wasm/mazeService")>()).getRegionEdges,
   generateMaze: vi.fn(),
   computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),

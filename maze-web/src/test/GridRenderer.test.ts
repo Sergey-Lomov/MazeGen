@@ -30,7 +30,7 @@ import {
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
 import { fieldOf } from "./fieldConfigFixtures";
-import { cellsInDisplayRect, cellsNearDisplayRect, getCellVertices } from "../pixi/tessellationGeometry";
+import { cellsInDisplayRect, getCellVertices, gridEdgesNearDisplayRect } from "../pixi/tessellationGeometry";
 
 describe("viewport grid density", () => {
   it("counts the inclusive viewport bounds", () => {
@@ -177,14 +177,29 @@ describe("viewport grid density", () => {
   });
 });
 
-describe("cellsNearDisplayRect", () => {
-  it("covers every cell of the exact rectangle query and is stable across calls", () => {
+describe("gridEdgesNearDisplayRect", () => {
+  const strokes = (chunks: readonly (readonly { op: string }[])[]) => chunks.flat().filter((command) => command.op === "move_to").length;
+
+  it("serves a repeated rectangle from the chunk cache", () => {
     const cfg = fieldOf("snub_hexagonal", { shape: "rect", cols: 3, rows: 3 });
     const rect = { minX: 100, maxX: 700, minY: -200, maxY: 300 };
-    const exact = cellsInDisplayRect(rect, "intersects", cfg);
-    const near = cellsNearDisplayRect(rect, cfg);
-    const nearKeys = new Set(near.map(([x, y]) => `${x},${y}`));
-    expect(exact.every(([x, y]) => nearKeys.has(`${x},${y}`))).toBe(true);
-    expect(cellsNearDisplayRect(rect, cfg)).toEqual(near);
+    const first = gridEdgesNearDisplayRect(rect, cfg);
+    expect(strokes(first)).toBeGreaterThan(0);
+    expect(gridEdgesNearDisplayRect(rect, cfg)).toEqual(first);
+    first.forEach((chunk, index) => expect(gridEdgesNearDisplayRect(rect, cfg)[index]).toBe(chunk));
+  });
+
+  it("strokes no edge twice within one chunk", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const [chunk] = gridEdgesNearDisplayRect({ minX: 10, maxX: 20, minY: 10, maxY: 20 }, cfg);
+    const keys: string[] = [];
+    for (let i = 0; i + 1 < chunk.length; i += 2) {
+      const from = chunk[i], to = chunk[i + 1];
+      if (from.op !== "move_to" || to.op !== "line_to") throw new Error("a square edge is one move and one line");
+      const ends = [from.to, to.to].map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).sort();
+      keys.push(ends.join("|"));
+    }
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

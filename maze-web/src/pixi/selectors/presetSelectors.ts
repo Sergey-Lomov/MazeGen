@@ -4,7 +4,7 @@ import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../re
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
-import { buildNodePositions, getCellCenter, getFaceEdgeSegment, getNeighborData } from "../tessellationGeometry";
+import { buildNodePositions, getCellCenter, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { getSeamModel } from "./seams";
 import { resolveFaceNeighbors } from "../faceNeighbors";
@@ -54,7 +54,7 @@ export function buildPresetWallGroups(
 
   for (const [x, y] of cells) {
     if (splitPointKeys.has(`${x},${y}`)) continue; // rendered by buildPresetSplitPassages instead
-    const { offsets } = getNeighborData(cfg, x, y);
+    const offsets = getCellNeighborOffsets(cfg, x, y);
     for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;
@@ -141,7 +141,7 @@ export function buildPresetWallGroups(
   // per-node walls.ts), so no dedup is needed.
   for (const [x, y] of cells) {
     if (!splitPointKeys.has(`${x},${y}`)) continue;
-    const { offsets } = getNeighborData(cfg, x, y);
+    const offsets = getCellNeighborOffsets(cfg, x, y);
     for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = x + dx;
       const ny = y + dy;

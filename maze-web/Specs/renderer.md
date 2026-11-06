@@ -115,10 +115,10 @@ The viewport grid is cached while panning: it is drawn over the viewport plus a 
 viewport size per side, at least a few cells), and a pan that keeps the viewport inside that drawn
 area reuses the existing world-space geometry. Zoom and leaving the drawn area redraw it
 (GitHub issue #889: zoomed-out drags no longer rebuild the grid on every cell crossed). A redraw
-asks core for cells through `cellsNearDisplayRect` (`pixi/tessellationGeometry.ts`): it splits the
-area into fixed grid-aligned chunks of 32 cells per side and keeps each chunk's cell list in a
-bounded cache keyed by tessellation and orientation, so only newly exposed chunks reach core. The
-result is a duplicate-free superset of the rectangle's cells, in no particular order. If the viewport would require more than `MAX_VIEWPORT_GRID_CELLS` cells, the background
+asks core for the cell edges through `gridEdgesNearDisplayRect` (`pixi/tessellationGeometry.ts`): it splits the
+area into fixed grid-aligned chunks of 32 cells per side and keeps each chunk's edge commands (each shared edge once, from
+`geometry_region_edges`) in a cache keyed by tessellation and orientation and capped by command count (least recently used
+chunks go first), so only newly exposed chunks reach core. An edge on a chunk border may be drawn from both chunks. If the viewport would require more than `MAX_VIEWPORT_GRID_CELLS` cells, the background
 grid is temporarily suppressed because it is below a useful visual scale; maze geometry remains
 visible. This also prevents extreme zoom-out from turning every pointermove into an unbounded grid
 rebuild (GitHub issue #650).

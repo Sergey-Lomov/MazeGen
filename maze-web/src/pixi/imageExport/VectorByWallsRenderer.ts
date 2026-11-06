@@ -23,7 +23,7 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape,
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
-import { exactCellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData } from "../tessellationGeometry";
+import { exactCellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { getSeamModel } from "../selectors/seams";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
@@ -57,7 +57,7 @@ export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldC
     const vertices = getCellVertices(x, y, cfg);
     polygons.push(vertices.flatMap(({ x: px, y: py }) => [px, py]));
     const center = getCellCenter(x, y, cfg);
-    for (const [face, [dx, dy]] of getNeighborData(cfg, x, y).offsets.entries()) {
+    for (const [face, [dx, dy]] of getCellNeighborOffsets(cfg, x, y).entries()) {
       if (seams.halfEdgeAt([x, y], face) || (dx !== 0 || dy !== 0) && cellKeys.has(`${x + dx},${y + dy}`)) continue;
       const edge = getFaceEdgeSegment([x, y], face, cfg);
       if (!edge) continue;

@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../../fieldConfig";
 import type { FoldFace, SegmentDto, WorldPoint } from "../../wasm/mazeService";
-import { getCellGeometry, getFieldVersion, getTopologyVersion, isCacheWarmFor } from "../cartesianCache";
+import { getFieldCellsWithFaces, getFieldVersion, getTopologyVersion, isCacheWarmFor } from "../cartesianCache";
 import { configAllCells } from "../tessellationCells";
 import { flattenSegments } from "../geometry/pathFlatten";
 
@@ -244,7 +244,7 @@ export function getSeamModel(cfg: FieldConfig): SeamModel {
   const model =
     cached?.fieldVersion === fieldVersion && cached.topologyVersion === topologyVersion
       ? cached.model
-      : buildSeamModel(cells.map(([x, y]) => getCellGeometry(x, y, cfg)));
+      : buildSeamModel(getFieldCellsWithFaces(cfg));
   cached = { cfg, fieldVersion, topologyVersion, model };
   return model;
 }

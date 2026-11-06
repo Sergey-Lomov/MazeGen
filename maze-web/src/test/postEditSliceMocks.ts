@@ -17,6 +17,7 @@ export function mazeServiceMock(actual: MazeService) {
     getGeometrySnapshot: actual.getGeometrySnapshot,
     getCellAt: actual.getCellAt,
     getCellsInRegion: actual.getCellsInRegion,
+    getRegionEdges: actual.getRegionEdges,
     generateMaze: vi.fn(),
     computeAnalyticsAsync: vi.fn(),
     computeAnalytics: vi.fn(),

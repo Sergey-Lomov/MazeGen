@@ -3,7 +3,7 @@ import type { Container } from "pixi.js";
 import type { Viewport } from "./types";
 import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { cellsNearDisplayRect, getCellOutlinePath } from "../tessellationGeometry";
+import { getCellOutlinePath, gridEdgesNearDisplayRect } from "../tessellationGeometry";
 import { tracePath } from "../geometry/pathRenderer";
 import { TILE_SIZE } from "../constants";
 import { GRID_LINE_ALPHA } from "../renderConstants";
@@ -204,11 +204,11 @@ export class GridRenderer {
       });
     } else if (drawn) {
       // Not every lattice coordinate is a cell (Cairo skips some), so ask core which cells the
-      // drawn area touches instead of walking the coordinate box. `cellsNearDisplayRect` also
-      // fetches and caches their outlines through that same core call.
-      const visible = profileGrid(this.diagnosticOwner, "core region and outlines", () => cellsNearDisplayRect(drawn, cfg));
+      // drawn area touches instead of walking the coordinate box. Core answers with the edges of
+      // those cells directly, each shared edge once.
+      const chunks = profileGrid(this.diagnosticOwner, "core region and edges", () => gridEdgesNearDisplayRect(drawn, cfg));
       profileGrid(this.diagnosticOwner, "trace paths", () => {
-        for (const [xi, yi] of visible) drawCell(xi, yi);
+        for (const edges of chunks) tracePath(this.g, edges, undefined, viewportGridMaxChordAngle(scale));
       });
     }
     profileGrid(this.diagnosticOwner, "Pixi stroke", () => this.g.stroke());

@@ -1,5 +1,4 @@
 import type { FieldConfig, TessellationConfig } from "../fieldConfig";
-import * as mazeService from "../wasm/mazeService";
 import { configAllCells } from "./tessellationCells";
 import {
   getCellAt,
@@ -40,14 +39,34 @@ export const GEOMETRY_TOLERANCE = 1e-3;
 /// `GEOMETRY_TOLERANCE` (geometric operations). No consumer inspects the segment kinds.
 export type CellGeometryEntry = PathCellGeometry & { polyline: WorldPoint[] };
 
+/// A field cell whose faces the warm-up skipped: everything but `faces` (`warmCartesianCache`).
+/// Enough to draw the cell; reading faces goes through `getCellGeometry`, which completes it.
+export type LightCellGeometry = Omit<CellGeometryEntry, "faces">;
+
 function withPolyline(geometry: PathCellGeometry): CellGeometryEntry {
   return { ...geometry, polyline: flattenCommands(geometry.boundary.commands, GEOMETRY_TOLERANCE) };
+}
+
+/// The entry of a snapshot cell: with faces when the snapshot carried them, light otherwise.
+function entryOf(geometry: PathCellGeometry): CellGeometryEntry | LightCellGeometry {
+  const entry = withPolyline(geometry);
+  if (geometry.has_faces) return entry;
+  const { faces: _faces, ...light } = entry;
+  return light;
+}
+
+function hasFaces(entry: CellGeometryEntry | LightCellGeometry): entry is CellGeometryEntry {
+  return "faces" in entry;
 }
 
 type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
 
 /// Cells of the current field: filled by one snapshot, never evicted until the field changes.
-const fieldCache = new Map<string, CellGeometryEntry>();
+const fieldCache = new Map<string, CellGeometryEntry | LightCellGeometry>();
+/// Field cells still held without faces; emptied by `completeFieldFaces`.
+const lightFieldCells = new Set<string>();
+/// The request the field snapshot was built with (fallback applied), to complete it with faces.
+let fieldRequest: Parameters<typeof getGeometrySnapshot>[0] | null = null;
 /// Cells outside the field (grid margin, hover, invalid endpoints): bounded, least recently used
 /// first out. `Map` iteration order is insertion order, so re-inserting on a hit keeps it LRU.
 const outsideCache = new Map<string, CellGeometryEntry>();
@@ -112,6 +131,8 @@ export function warmCartesianCache(cfg: FieldConfig, topology: WireTopology | nu
   const signature = cells.map(([x, y]) => cellKey(x, y)).join(";");
   if (instance === cachedInstance && signature === fieldSignature && topology === cachedTopology) return;
   fieldCache.clear();
+  lightFieldCells.clear();
+  fieldRequest = null;
   outsideCache.clear();
   outlineCache.clear();
   cachedInstance = instance;
@@ -121,25 +142,43 @@ export function warmCartesianCache(cfg: FieldConfig, topology: WireTopology | nu
   fieldVersion++;
   if (cells.length === 0) return;
   const request = { tessellation: cfg.tessellation, cells, boundary: { kind: "path" } as const, fieldVersion, topologyVersion };
+  let used: typeof request & { topology?: ReturnType<typeof topologyRequestOf> } = request;
   let snapshot;
   try {
-    snapshot = getGeometrySnapshot(
-      topology === null
-        ? request
-        : {
-            ...request,
-            topology: {
-              field_cells: cells,
-              folds: topology.folds.map((fold) => ({ ...fold, twist: fold.twist === true })),
-              groups: topology.groups,
-            },
-          },
-    );
+    if (topology !== null) used = { ...request, topology: topologyRequestOf(cells, topology) };
+    snapshot = getGeometrySnapshot({ ...used, faces: "boundary" });
   } catch (error) {
     if (topology === null) throw error;
-    snapshot = getGeometrySnapshot(request);
+    used = request;
+    snapshot = getGeometrySnapshot({ ...used, faces: "boundary" });
   }
-  for (const geometry of snapshot.cells) fieldCache.set(cellKey(geometry.cell[0], geometry.cell[1]), withPolyline(geometry));
+  fieldRequest = used;
+  for (const geometry of snapshot.cells) {
+    const key = cellKey(geometry.cell[0], geometry.cell[1]);
+    fieldCache.set(key, entryOf(geometry));
+    if (!geometry.has_faces) lightFieldCells.add(key);
+  }
+}
+
+function topologyRequestOf(cells: [number, number][], topology: WireTopology) {
+  return {
+    field_cells: cells,
+    folds: topology.folds.map((fold) => ({ ...fold, twist: fold.twist === true })),
+    groups: topology.groups,
+  };
+}
+
+/// Loads the faces of every field cell the warm-up left light, in one snapshot call with the
+/// request the field was built with (so fold data matches), keeping each cell's boundary and polyline.
+function completeFieldFaces(): void {
+  if (fieldRequest === null || lightFieldCells.size === 0) return;
+  const cells = [...lightFieldCells].map((key) => key.split(",").map(Number) as [number, number]);
+  const snapshot = getGeometrySnapshot({ ...fieldRequest, cells, faces: "all" });
+  for (const geometry of snapshot.cells) {
+    const key = cellKey(geometry.cell[0], geometry.cell[1]);
+    fieldCache.set(key, { ...geometry, polyline: (fieldCache.get(key) as LightCellGeometry).polyline });
+  }
+  lightFieldCells.clear();
 }
 
 /// Geometry of one cell. Served from the cache for any cell of the current field; a cell outside
@@ -147,6 +186,26 @@ export function warmCartesianCache(cfg: FieldConfig, topology: WireTopology | nu
 /// snapshot call and is cached in a bounded LRU (`DEFAULT_MAX_OUTSIDE_CELLS`), so hovering the same cell every
 /// frame pays only once and field cells are never evicted.
 export function getCellGeometry(x: number, y: number, cfg: FieldConfig): CellGeometryEntry {
+  const light = getLightCellGeometry(x, y, cfg);
+  if (hasFaces(light)) return light;
+  // A light field cell: the warm-up skipped its faces; load every remaining one at once.
+  completeFieldFaces();
+  return fieldCache.get(cellKey(x, y)) as CellGeometryEntry;
+}
+
+/// Field cells that carry their faces right now, without loading the rest: every cell with a face
+/// that has no field neighbor or carries a fold (`warmCartesianCache`), or all of them once completed.
+/// For readers that need only those, like the seam model (a fold's faces are always among them).
+export function getFieldCellsWithFaces(cfg: FieldConfig): CellGeometryEntry[] {
+  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
+  const result: CellGeometryEntry[] = [];
+  for (const entry of fieldCache.values()) if (hasFaces(entry)) result.push(entry);
+  return result;
+}
+
+/// Geometry of one cell without the promise of faces: for readers that draw or measure a cell and
+/// must not trigger loading the faces of the whole field (`getCellGeometry` does).
+export function getLightCellGeometry(x: number, y: number, cfg: FieldConfig): LightCellGeometry {
   if (instanceKey(cfg) !== cachedInstance) {
     // Defensive: queried before the cache was warmed for this tessellation.
     warmCartesianCache(cfg);
@@ -216,34 +275,6 @@ export function prefetchCellOutlines(cells: readonly (readonly [number, number])
   while (outlineCache.size > maxOutsideCells) outlineCache.delete(outlineCache.keys().next().value!);
 }
 
-/**
- * Selects intersecting cells and caches their boundary paths in one core call. The viewport grid
- * uses this instead of first asking core for cell ids and then crossing WASM again for outlines.
- */
-export function prefetchRegionOutlines(region: WorldPoint[], cfg: FieldConfig): [number, number][] {
-  if (instanceKey(cfg) !== cachedInstance) warmCartesianCache(cfg);
-  const request = {
-    tessellation: cfg.tessellation,
-    region,
-    mode: "intersects",
-    scope: null,
-  } as const;
-  // Kept as a compatibility path for a stale generated package or a partial test mock. Production
-  // ships `geometry_region_outlines`, so ordinary viewport queries use the single combined call.
-  if (!("getRegionOutlines" in mazeService)) {
-    const cells = getCellsInRegion(request);
-    prefetchCellOutlines(cells, cfg);
-    return cells;
-  }
-  const outlines = mazeService.getRegionOutlines(request);
-  for (const outline of outlines) {
-    const key = cellKey(outline.cell[0], outline.cell[1]);
-    if (!fieldCache.has(key) && !outsideCache.has(key)) outlineCache.set(key, outline.commands);
-  }
-  while (outlineCache.size > maxOutsideCells) outlineCache.delete(outlineCache.keys().next().value!);
-  return outlines.map((outline) => outline.cell);
-}
-
 /// Boundary path commands of one cell in world units: from the field or outside cache when it holds
 /// the cell, else from the outline cache, else one `geometry_outlines` call.
 export function getCellOutline(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
@@ -270,11 +301,11 @@ function polygonArea(points: readonly WorldPoint[]): number {
   return Math.abs(twice) / 2;
 }
 
-const areaCache = new WeakMap<CellGeometryEntry, number>();
+const areaCache = new WeakMap<LightCellGeometry, number>();
 
 /// Area of one cell in world units, computed once per cached geometry entry.
 export function getCellArea(x: number, y: number, cfg: FieldConfig): number {
-  const geometry = getCellGeometry(x, y, cfg);
+  const geometry = getLightCellGeometry(x, y, cfg);
   let area = areaCache.get(geometry);
   if (area === undefined) {
     area = polygonArea(geometry.polyline);
@@ -317,7 +348,7 @@ export function getFieldAreaStats(cfg: FieldConfig): CellAreaStats | null {
 
 /// World-unit center of one cell.
 export function getCartesian(x: number, y: number, cfg: FieldConfig): WorldPoint {
-  return getCellGeometry(x, y, cfg).center;
+  return getLightCellGeometry(x, y, cfg).center;
 }
 
 /// Bounding box of the field's flattened cell boundaries, in world units; `null` for an empty field.
@@ -326,7 +357,7 @@ export function getFieldWorldBounds(cfg: FieldConfig): Bounds | null {
   if (cells.length === 0) return null;
   const bounds: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (const [x, y] of cells) {
-    for (const [px, py] of getCellGeometry(x, y, cfg).polyline) {
+    for (const [px, py] of getLightCellGeometry(x, y, cfg).polyline) {
       bounds.minX = Math.min(bounds.minX, px);
       bounds.minY = Math.min(bounds.minY, py);
       bounds.maxX = Math.max(bounds.maxX, px);

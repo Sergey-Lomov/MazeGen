@@ -350,9 +350,18 @@ export interface CellGeometry<B extends PathBoundary | PolylineBoundary = PathBo
   shape: string | null;
   /** Allowed transform group: permutations of canonical face indices, identity first. */
   allowed_group: number[][] | null;
+  /** Per face in `faces_of` order: the neighbor's coordinates minus the cell's, `[0, 0]` for a face
+   *  without a neighbor. Present with or without `faces`. */
+  neighbor_offsets: [number, number][];
   boundary: B;
+  /// `false` when the request's `faces` mode left this cell's `faces` empty.
+  has_faces: boolean;
   faces: FaceGeometry[];
 }
+
+/// Which cells of a snapshot carry their faces (`runner::geometry::FacesRequest`): `boundary` keeps
+/// them for the cells with a face that has no neighbor among the requested cells or carries a fold.
+export type FacesMode = "all" | "none" | "boundary";
 
 export type PolylineCellGeometry = CellGeometry<PolylineBoundary>;
 export type PathCellGeometry = CellGeometry<PathBoundary>;
@@ -377,6 +386,7 @@ export function getGeometrySnapshot(config: {
   fieldVersion: number;
   topologyVersion?: number;
   topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot<PolylineBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
@@ -385,6 +395,7 @@ export function getGeometrySnapshot(config: {
   fieldVersion: number;
   topologyVersion?: number;
   topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot<PathBoundary>;
 export function getGeometrySnapshot(config: {
   tessellation: WasmTessellationConfig;
@@ -393,16 +404,19 @@ export function getGeometrySnapshot(config: {
   fieldVersion: number;
   topologyVersion?: number;
   topology?: TopologyRequest;
+  faces?: FacesMode;
 }): GeometrySnapshot {
-  // A path boundary is not sent: it is the faces' segments chained, rebuilt here.
-  const wasPath = config.boundary.kind === "path";
+  // A path boundary is not sent when every cell has faces: it is their segments chained, rebuilt
+  // here. Cells without faces get the path itself.
+  const wasPath = config.boundary.kind === "path" && (config.faces ?? "all") === "all";
   const raw = getWasm().geometry_snapshot({
     tessellation: config.tessellation,
     cells: config.cells,
-    boundary: wasPath ? { kind: "faces" } : config.boundary,
+    boundary: wasPath ? { kind: "faces" } : config.boundary.kind === "path" ? { kind: "path_templated" } : config.boundary,
     field_version: config.fieldVersion,
     topology_version: config.topologyVersion ?? 0,
     topology: config.topology ?? null,
+    faces: config.faces ?? "all",
   }) as WireGeometrySnapshot;
   return restoreSnapshot(raw, wasPath);
 }
@@ -411,19 +425,36 @@ export function getGeometrySnapshot(config: {
 /// when the faces carry it (`runner::geometry::GeometrySnapshot`).
 type WireGeometrySnapshot = Omit<GeometrySnapshot, "cells"> & {
   allowed_groups: number[][][];
-  cells: (Omit<CellGeometry, "allowed_group" | "boundary"> & { allowed_group: number | null; boundary: PolylineBoundary | { kind: "faces" } })[];
+  offset_tables: [number, number][][];
+  boundary_templates: PathCommand[][];
+  cells: (Omit<CellGeometry, "allowed_group" | "neighbor_offsets" | "boundary"> & { allowed_group: number | null; offsets: number; boundary: PolylineBoundary | { kind: "faces" } | { kind: "path_template"; template: number } })[];
 };
 
 function restoreSnapshot(raw: WireGeometrySnapshot, pathBoundary: boolean): GeometrySnapshot {
-  const { allowed_groups, cells, ...rest } = raw;
+  const { allowed_groups, offset_tables, boundary_templates, cells, ...rest } = raw;
   return {
     ...rest,
-    cells: cells.map((cell) => ({
+    cells: cells.map(({ offsets, ...cell }) => ({
       ...cell,
+      neighbor_offsets: offset_tables[offsets],
       allowed_group: cell.allowed_group === null ? null : allowed_groups[cell.allowed_group],
-      boundary: pathBoundary ? { kind: "path", commands: pathCommandsOfFaces(cell.faces) } : (cell.boundary as PolylineBoundary),
+      boundary:
+        cell.boundary.kind === "path_template"
+          ? { kind: "path", commands: translateCommands(boundary_templates[cell.boundary.template], cell.center) }
+          : pathBoundary && cell.boundary.kind === "faces"
+            ? { kind: "path", commands: pathCommandsOfFaces(cell.faces) }
+            : (cell.boundary as PolylineBoundary),
     })),
   };
+}
+
+/// A shared boundary template (relative to the cell's center) placed at `center`.
+function translateCommands(template: readonly PathCommand[], [cx, cy]: WorldPoint): PathCommand[] {
+  return template.map((command): PathCommand =>
+    command.op === "arc_to"
+      ? { ...command, center: [command.center[0] + cx, command.center[1] + cy] }
+      : { op: command.op, to: [command.to[0] + cx, command.to[1] + cy] },
+  );
 }
 
 /// `MoveTo` the first segment's start, then one command per segment (`BoundaryPath::path_commands`).
@@ -562,13 +593,15 @@ export function getCellsInRegion(config: {
 }
 
 /** Cells matching a region and their path boundaries, computed by core in one WASM call. */
-export function getRegionOutlines(config: {
+/// The edges of the cells in a region, each shared edge once, as one flat command list
+/// (`geometry_region_edges`).
+export function getRegionEdges(config: {
   tessellation: WasmTessellationConfig;
   region: WorldPoint[];
   mode: RegionMode;
   scope: [number, number][] | null;
-}): CellOutline[] {
-  return getWasm().geometry_region_outlines(config) as CellOutline[];
+}): PathCommand[] {
+  return getWasm().geometry_region_edges(config) as PathCommand[];
 }
 
 /** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell

@@ -1,6 +1,6 @@
 import { splitSlotColor } from "./colorUtils";
 import { canvas } from "./colorTokens";
-import { anchorCanonicalFaces, getNeighborData } from "./tessellationGeometry";
+import { anchorCanonicalFaces, getCellNeighborOffsets } from "./tessellationGeometry";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
@@ -17,7 +17,7 @@ import type { FieldConfig } from "../fieldConfig";
  *  (3), so the origin's value is representative here too. */
 export function degreeFor(cfg: FieldConfig): number {
   const [x, y] = originCellOf(cfg);
-  return getNeighborData(cfg, x, y).offsets.length;
+  return getCellNeighborOffsets(cfg, x, y).length;
 }
 
 /** A valid cell near the lattice origin: split-pattern previews and the origin marker. The origin

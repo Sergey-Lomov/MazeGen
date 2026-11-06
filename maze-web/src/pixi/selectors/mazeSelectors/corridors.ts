@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
-import { getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
+import { getCellCenter, getCellVertices, getFaceEdgeSegment, getSharedEdgeSegment, getCellNeighborOffsets } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { getSeamModel } from "../seams";
 import { buildSplitPointKeys } from "./split";
@@ -83,7 +83,7 @@ export function buildCorridorSegments(
   for (const n of nodes) {
     const selfKey = `${n.x},${n.y}`;
     const selfSplit = splitPointKeys.has(selfKey);
-    const { offsets } = getNeighborData(cfg, n.x, n.y);
+    const offsets = getCellNeighborOffsets(cfg, n.x, n.y);
     for (const [dx, dy] of offsets) {
       const nx = n.x + dx;
       const ny = n.y + dy;
