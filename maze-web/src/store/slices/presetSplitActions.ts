@@ -7,7 +7,7 @@ import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, presetEndpoin
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { getCellNeighborOffsets } from "../../pixi/tessellationGeometry";
 import { resolveFaceNeighbor } from "../../pixi/faceNeighbors";
 import type { NodeLockKind } from "../../wasm/types";
 import { withRecomputedAutoLock, activeFloorField, activeFloorLevel } from "../storeHelpers";
@@ -284,7 +284,7 @@ export const createPresetSplitActions = (set: CreatorSet, get: CreatorGet): Pick
       }, []);
 
       const field = activeFloorField(state);
-      const { offsets } = getNeighborData(field.fieldConfig, point[0], point[1]);
+      const offsets = getCellNeighborOffsets(field.fieldConfig, point[0], point[1]);
       const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
       const cells = resolveCells(field.fieldConfig, customPts);
       const inFieldCells = buildCellSet(cells);

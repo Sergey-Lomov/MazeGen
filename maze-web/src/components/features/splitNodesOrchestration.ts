@@ -3,7 +3,7 @@ import { blueprintsFor } from "../../pixi/splitBlueprints";
 import { splitShapeBinding } from "../../pixi/splitShape";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { getCellNeighborOffsets } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import type { TileFace, TileFaceNode } from "./TileFaceEditor";
@@ -11,7 +11,7 @@ import type { ElementInfo, LinkInfo, SplitNodesRow } from "./SplitNodesDialogVie
 
 export interface SplitNodesOrchestrationArgs<E> {
   point: [number, number];
-  cfg: Parameters<typeof getNeighborData>[0];
+  cfg: Parameters<typeof getCellNeighborOffsets>[0];
   slots: number[];
   originalEndpoint: E | null;
   endpointForSlot: (slotId: number) => E;
@@ -83,7 +83,7 @@ export function useSplitNodesDialogOrchestration<E>({
   const blueprints = useMemo(
     () => blueprintsFor(
       splitShapeBinding(cfg, point[0], point[1])?.shape ?? null,
-      getNeighborData(cfg, point[0], point[1]).offsets.length,
+      getCellNeighborOffsets(cfg, point[0], point[1]).length,
     ),
     [cfg, point],
   );

@@ -3,7 +3,7 @@ import { buildMazeWalls, selectFloorScopedMaze } from "./mazeSelectors";
 import { getSeamModel } from "./seams";
 import { mergedFacePolylines } from "../topologyGeometry";
 import { configAllCells } from "../tessellationCells";
-import { getNeighborData } from "../tessellationGeometry";
+import { getCellNeighborOffsets } from "../tessellationGeometry";
 
 /// The part of the maze state required to identify glued edge runs that are physically
 /// interchangeable in the exported net. It deliberately has no warning or marker-style fields.
@@ -42,7 +42,7 @@ function fieldComponents(state: AmbiguousGlueSectionState): Map<string, number> 
     const pending = [cell];
     while (pending.length > 0) {
       const [x, y] = pending.pop()!;
-      for (const [face, [dx, dy]] of getNeighborData(state.activeFieldConfig, x, y).offsets.entries()) {
+      for (const [face, [dx, dy]] of getCellNeighborOffsets(state.activeFieldConfig, x, y).entries()) {
         if ((dx === 0 && dy === 0) || seams.halfEdgeAt([x, y], face)) continue;
         const neighbor: [number, number] = [x + dx, y + dy];
         const neighborKey = `${neighbor[0]},${neighbor[1]}`;

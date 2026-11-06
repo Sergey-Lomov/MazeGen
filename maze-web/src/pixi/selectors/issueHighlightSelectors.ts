@@ -1,7 +1,7 @@
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { Pos } from "../tessellationGeometry";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { getCellCenter, getSharedEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 
 export interface RegionGeometry {
@@ -72,7 +72,7 @@ export function buildRegionGeometry(
       const [cx, cy] = stack.pop()!;
       // Each cell is pushed exactly once (guarded by `componentByCell.has` below), so this cache
       // is always a fresh entry, never a repeat lookup.
-      const offsets = getNeighborData(cfg, cx, cy).offsets;
+      const offsets = getCellNeighborOffsets(cfg, cx, cy);
       offsetsByCell.set(cellKey(cx, cy), offsets);
       for (const [dx, dy] of offsets) {
         const nx = cx + dx;

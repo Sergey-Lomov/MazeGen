@@ -6,7 +6,7 @@
  * client-side template applied instantly and directly to the current point's nodes/edges — no
  * wire type, nothing sent to wasm, nothing stored in the project file.
  *
- * Filtered by tile degree (`getNeighborData(cfg, x, y).offsets.length`), not by tessellation
+ * Filtered by tile degree (`getCellNeighborOffsets(cfg, x, y).length`), not by tessellation
  * `type` — two different tessellations sharing the same tile shape (e.g. a future tessellation
  * with square cells) can reuse the same blueprint set.
  *
