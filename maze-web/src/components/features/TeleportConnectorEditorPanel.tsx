@@ -6,6 +6,7 @@ import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Tooltip } from "../Tooltip";
 import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
+import type { ShortcutKey } from "../ToolIconButton";
 import { sharedStyles } from "../../styles/shared";
 import { radius, spacing, typography, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -81,6 +82,8 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
         <Instruction keys={["LMB"]} text={m["image_export.teleport_connector_editor.hint_left_click"]()} />
         <Instruction keys={["RMB"]} text={m["image_export.teleport_connector_editor.hint_right_click"]()} />
         <Instruction keys={["mod"]} text={m["image_export.teleport_connector_editor.hint_snap"]()} />
+        <Instruction keys={["Alt"]} text={m["image_export.teleport_connector_editor.hint_independent_handles"]()} />
+        <Instruction keys={["shift"]} text={m["image_export.teleport_connector_editor.hint_symmetric_handles"]()} />
       </div>
       {pendingKey !== null && <ConfirmModal
         message={m["image_export.teleport_connector_editor.reset_confirm"]()}
@@ -91,7 +94,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   );
 }
 
-function Instruction({ keys, text }: { keys: readonly string[]; text: string }) {
+function Instruction({ keys, text }: { keys: readonly ShortcutKey[]; text: string }) {
   return <EmbeddedHotkeyHint keys={keys}>{text}</EmbeddedHotkeyHint>;
 }
 
@@ -105,5 +108,5 @@ const styles: Record<string, React.CSSProperties> = {
   bubble: { ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", border: `1px solid ${ui.debug.refHighlight.text}`, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`, background: ui.debug.refHighlight.bg, color: ui.debug.refHighlight.text, whiteSpace: "nowrap" },
   arrow: { ...typography.caption, color: ui.text.secondary },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
-  instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: spacing.itemGap },
+  instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px`, display: "flex", flexDirection: "column", gap: spacing.groupGap },
 };

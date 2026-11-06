@@ -55,11 +55,17 @@ dragging one control rotates its paired control around their common anchor while
 paired control's length, keeping a G1 join. Controls and dotted control-to-anchor guides are shown
 only for the selected anchor. Inserting a node on a curve splits its cubic segment with the
 de Casteljau construction, preserving the drawn path; deleting an interior node regenerates the
-remaining segment controls.
-and never receives an automatic bend choice or corridor offset. Its intermediate points are
+remaining segment controls. A manual path never receives an automatic bend choice or corridor offset.
+Its intermediate points are
 nevertheless supplied to the automatic router's avoidance set, so subsequent automatic connectors
 do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
 not route through seams.
+
+The connector editor explains these interactions in place: left-click a point to select it or a path
+to insert a point; right-click a point to delete it; and hold the platform modifier while moving a
+point to snap it to a field anchor. In Cubic curve mode, holding Alt while moving a handle adjusts
+it independently, while holding Shift adjusts its paired handles symmetrically. The left- and
+right-button hints use LMB/RMB keycaps.
 
 ## Bend axes
 
