@@ -275,10 +275,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       <div style={styles.row}>
         <span style={styles.switchLabel}>{m["generation.debug_mode"]()}</span>
         <div style={styles.switchRight}>
-          <Switch checked={debugMode} onChange={(enabled) => {
-            if (enabled) setDebugMode(true);
-            else bringSidePanelToFront("debug");
-          }} />
+          <Switch checked={debugMode} onChange={setDebugMode} />
         </div>
       </div>
 

@@ -5,6 +5,22 @@ import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 import { getTooltipAnchor, getTooltipControl } from "./tooltipTestUtils";
 
+describe("GenerationFeature debug mode toggle", () => {
+  it("enables and disables debug mode", () => {
+    render(<GenerationFeature canGenerate={true} />);
+
+    const checkbox = screen.getByText(m["generation.debug_mode"]())
+      .closest("div")!
+      .querySelector("input[type=checkbox]") as HTMLInputElement;
+
+    fireEvent.click(checkbox);
+    expect(useMazeStore.getState().debugMode).toBe(true);
+
+    fireEvent.click(checkbox);
+    expect(useMazeStore.getState().debugMode).toBe(false);
+  });
+});
+
 beforeEach(() => {
   useMazeStore.setState({
     seed: 42,
