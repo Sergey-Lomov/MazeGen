@@ -27,12 +27,12 @@ disambiguate between them).
 
 ## 3. Register it in the parameter-links system when its type supports it
 
-If the new field's value type has a matching `ParamType`, add a registry entry (`parameterLinksRegistry.ts`)
-and a `linkTargets` plumbing path from the owning settings panel, the same way every other linkable field
+If the new field's value type has a matching `ParamType`, declare it in `LINK_SCHEMA` (`parameterLinkSchema.ts` — the registries, activity rules and `patch*` path lists derive from it)
+and add a `linkTargets` plumbing path from the owning settings panel, the same way every other linkable field
 in that panel already works. Do not leave a field that structurally *could* be linked rendering with
 `linkTarget={null}` ("unsupported") just because it was new — that renders as a permanent broken-looking
 icon for no real reason. The current set of supported `ParamType`s is not reproduced here — read it
-directly from `parameterLinksRegistry.ts`, since it changes as new field shapes get modeled.
+directly from `parameterLinks.ts`, since it changes as new field shapes get modeled.
 
 ## 4. Never add backward-compatibility logic for old projects
 
@@ -86,7 +86,7 @@ default:
   the sibling setters' own naming convention for that settings group).
 - **Settings panel UI** — the relevant row in `VectorByWallsSettingsPanel.tsx`/
   `VectorByCorridorsSettingsPanel.tsx` (or a shared group component), wired to the new setter.
-- **Parameter-links registry** — see step 3, when applicable.
+- **Parameter-links schema** — `maze-web/src/store/parameterLinkSchema.ts`, see step 3, when applicable.
 - **Validation** — `maze-web/src/store/projectExport/validateImageExport.ts` (an `opt*` read with a
   fallback to the default, for loading project files saved before this field existed).
 - **i18n messages** — `maze-web/messages/en.json` and `maze-web/messages/ru.json` (English content is

@@ -102,9 +102,8 @@ export function VectorByWallsSettingsPanel() {
 
   const {
     floors, activeFloorId, exportWarnings, textFit, teleportGroups, teleportCollisionKeys, maxSplit,
-    colorVisibility, hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages,
-    hasElevators, hasVerticalSection, hasMarkerIndexSource, hasSeams, activePaths,
-  } = useExportPanelModel(settings, VECTOR_BY_WALLS_PARAM_REGISTRY, computeVectorByWallsWarningsAcrossFloors);
+    colorVisibility, gate, activePaths,
+  } = useExportPanelModel(settings, VECTOR_BY_WALLS_PARAM_REGISTRY, "walls", computeVectorByWallsWarningsAcrossFloors);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -164,7 +163,7 @@ export function VectorByWallsSettingsPanel() {
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths, gate } as unknown as LinkContextValue<string>}>
     <ColorVisibilityProvider value={colorVisibility}>
     <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
@@ -324,7 +323,7 @@ export function VectorByWallsSettingsPanel() {
 
       <div style={styles.divider} />
 
-      {floors.length > 1 && (
+      {gate("multipleFloors") && (
         <>
           <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
           {isExpanded("floors") && (
@@ -426,7 +425,7 @@ export function VectorByWallsSettingsPanel() {
         );
       })()}
 
-      {hasOneWays && (
+      {gate("oneWays") && (
         <>
           <div style={styles.divider} />
 
@@ -502,7 +501,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasTeleports && (
+      {gate("teleports") && (
         <>
           <div style={styles.divider} />
 
@@ -520,9 +519,7 @@ export function VectorByWallsSettingsPanel() {
               onGroupOverridesPatch={patchTeleportGroupOverrides}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
-              hasCrossFloorTeleports={hasCrossFloorTeleports}
-              hasSeams={hasSeams}
-              linkTargets={{
+                            linkTargets={{
                 lineCornerStyle: "teleportMarker.cornerStyle",
                 lineShape: "teleportMarker.shape",
                 lineSize: "teleportMarker.size",
@@ -582,7 +579,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasVerticalSection && (
+      {gate("verticalSection") && (
         <>
           <div style={styles.divider} />
 
@@ -775,8 +772,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
-                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && gate("twoWayPassages")} disabled={!gate("twoWayPassages")} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && gate("twoWayPassages") && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsTwoWay}
@@ -817,8 +814,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
-                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && gate("oneWayPassages")} disabled={!gate("oneWayPassages")} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && gate("oneWayPassages") && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsOneWay}
@@ -859,8 +856,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalDecorative">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
-                  {isExpanded("vertical_elevator") && hasElevators && (
+                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && gate("elevators")} disabled={!gate("elevators")} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && gate("elevators") && (
                   <div style={styles.subGroup}>
                     <LinkedToggleRow
                       label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
@@ -916,8 +913,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
-                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && gate("twoWayPassages")} disabled={!gate("twoWayPassages")} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && gate("twoWayPassages") && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -1010,8 +1007,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
-                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
+                  <SectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && gate("oneWayPassages")} disabled={!gate("oneWayPassages")} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && gate("oneWayPassages") && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -1104,8 +1101,8 @@ export function VectorByWallsSettingsPanel() {
 
               <LayoutGate gate="verticalAbstract">
                 <div style={styles.subGroupWrap}>
-                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
-                  {isExpanded("vertical_elevator") && hasElevators && (
+                  <SectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && gate("elevators")} disabled={!gate("elevators")} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && gate("elevators") && (
                   <div style={styles.subGroup}>
                     <LinkedToggleRow
                       label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
@@ -1240,7 +1237,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {maxSplit > 0 && (
+      {gate("splits") && (
         <>
           <div style={styles.divider} />
 
@@ -1283,7 +1280,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasMarkerIndexSource && (
+      {gate("markerIndexSource") && (
         <>
           <div style={styles.divider} />
 

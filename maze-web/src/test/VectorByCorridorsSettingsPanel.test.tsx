@@ -146,7 +146,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.join).toBe("miter");
   });
 
-  it("disables the Bow slider for miter corridor style", () => {
+  it("hides the Bow slider for miter corridor style", () => {
     useMazeStore.setState((state) => ({
       nodes: [{ id: 1, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 }],
       vectorByCorridorsSettings: { ...state.vectorByCorridorsSettings, join: "miter", splitSpecialShapes: true },
@@ -154,9 +154,8 @@ describe("VectorByCorridorsSettingsPanel", () => {
     }));
     render(<VectorByCorridorsSettingsPanel />);
 
-    const label = screen.getByText(m["image_export.vector_by_corridors.split_diagonal_bow_amount"]());
-    const slider = label.parentElement?.querySelector('input[type="range"]');
-    expect(slider).toBeDisabled();
+    expect(screen.queryByText(m["image_export.vector_by_corridors.split_diagonal_bow_amount"]())).not.toBeInTheDocument();
+    expect(screen.queryAllByText(m["image_export.vector_by_corridors.split_gap_width"]()).length).toBeGreaterThan(0);
   });
 
   describe("round-join rendering controls", () => {

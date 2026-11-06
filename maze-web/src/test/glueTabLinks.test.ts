@@ -28,9 +28,9 @@ describe("glue-tab parameter links (GitHub issue #901)", () => {
   });
 
   it("is active only while the tabs show, and the outline rows only with an outline", () => {
-    const ctx = {} as ParamActivityContext;
+    const ctx = { hasGlues: true } as ParamActivityContext;
     const active = (path: string, glueTabs: { showTabs: boolean; lineWidth: number }) =>
-      isPathActive(path as never, VECTOR_BY_WALLS_PARAM_REGISTRY as never, ctx, { glueTabs });
+      isPathActive(path as never, "walls", ctx, { glueTabs });
     expect(active("glueTabs.showTabs", { showTabs: false, lineWidth: 2 })).toBe(true);
     expect(active("glueTabs.width", { showTabs: false, lineWidth: 2 })).toBe(false);
     expect(active("glueTabs.width", { showTabs: true, lineWidth: 0 })).toBe(true);

@@ -1,10 +1,12 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
 import { SectionHeader } from "../SectionHeader";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { TILE_SIZE } from "../../pixi/constants";
 import { MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
 import { TextStyleRows } from "./MarkerFieldRows";
@@ -19,7 +21,7 @@ import * as m from "~/paraglide/messages";
  *  is nested one indent deep in three collapsible sub-groups ("Coverage" per-connection-kind
  *  toggles, "Caption" text style, "Backplate" plate appearance). All geometric fields are in px
  *  (GitHub issue #681 — `height`/`offset`/`cornerRadius`/`paddingX` were previously fractions of `TILE_SIZE`). */
-export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorField, textColorField, borderColorField, isExpanded, onToggle }: {
+export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorField, textColorField, borderColorField, isExpanded, onToggle }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
   /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
@@ -67,6 +69,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
   isExpanded: (id: string) => boolean;
   onToggle: (id: string) => void;
 }) {
+  const indexOn = useGate("markerIndexOn");
   const cov = settings.coverage;
   const setCoverage = (patch: Partial<MarkerIndexSettings["coverage"]>) =>
     onChange({ coverage: { ...cov, ...patch } });
@@ -79,7 +82,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
         onChange={(enabled) => onChange({ enabled })}
         linkTarget={linkTargets.enabled}
       />
-      {settings.enabled && (
+      {indexOn && (
         <>
           <SubGroup id="marker_index_coverage" label={m["image_export.vector_by_walls.marker_index_subsection_coverage"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedToggleRow
@@ -184,7 +187,6 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(borderWidth) => onChange({ borderWidth: Math.round(borderWidth) })}
                 min={0} max={10} step={1}
                 format={(v) => String(Math.round(v))}
-                disabled={settings.borderWidthFromMarker}
                 linkTarget={linkTargets.borderWidth}
               />
               <LinkedColorRow
@@ -206,7 +208,6 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 label={m["image_export.vector_by_walls.marker_index_border_color"]()}
                 color={settings.borderColor}
                 onChange={(borderColor) => onChange({ borderColor })}
-                disabled={settings.borderColorFromMarker}
                 priorityColors={borderColorPriority}
                 defaultColor={borderColorDefault}
                 field={borderColorField}

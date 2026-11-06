@@ -1,10 +1,11 @@
 import type { ParamDescriptor } from "./parameterLinks";
+import { isSchemaPathActive, type LinkMode } from "./parameterLinkSchema";
 
 /** Maze-derived flags that gate whole sections/subsections of the render-mode settings panels
- *  (`VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`) — computed by each panel from
- *  `rawNodes`/`rawEdges` and threaded here so `isPathActive` can tell whether a registry path is
- *  currently shown in that panel, independent of the parameter-links dialog (GitHub issue #670).
- *  Mirrors each panel's own `has*` `useMemo`s one-to-one; see those for how each flag is derived. */
+ *  (`VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`) — built once by `useExportPanelModel`
+ *  and read by both the activity rules (`isPathActive`) and the panels' named gates, so a registry path
+ *  is shown in the panel exactly when it is active, independent of the parameter-links dialog
+ *  (GitHub issues #670, #927). */
 export interface ParamActivityContext {
   hasOneWays: boolean;
   hasTeleports: boolean;
@@ -18,11 +19,17 @@ export interface ParamActivityContext {
   /** Maze has a teleport / vertical passage / elevator — the "Marker indices" section is shown
    *  only then, regardless of its coverage settings. */
   hasMarkerIndexSource: boolean;
-  hasMultipleFloors?: boolean;
+  hasMultipleFloors: boolean;
   /** Cell areas of the active field differ enough for marker size adaptation to matter (GitHub issue #819). */
-  hasAreaSpread?: boolean;
+  hasAreaSpread: boolean;
   /** Some floor has a topological seam — "Route through seams" is shown only then (GitHub issue #873). */
-  hasSeams?: boolean;
+  hasSeams: boolean;
+  /** Some cell of the maze has split nodes — the "Splits" section is shown only then. */
+  hasSplits: boolean;
+  /** The active floor has a glue — cut lines and glue tabs are shown only then (GitHub issue #859). */
+  hasGlues: boolean;
+  /** The active floor has a crease; together with `hasGlues` it decides whether the "Topology" section exists. */
+  hasCreases: boolean;
 }
 
 /** Settings fields this activity check needs to read across both render modes' settings objects —
@@ -33,160 +40,37 @@ export interface ParamActivitySettings {
   teleportConnectorStyle?: string;
   showGrid?: boolean;
   showInnerGrid?: boolean;
+  join?: string;
+  renderStyle?: string;
+  teleportGroupCustomization?: boolean;
   showCutLines?: boolean;
   cutLinesGlueColor?: boolean;
   glueTabs?: { showTabs: boolean; lineWidth: number };
   edgeMarkers?: { mode: string };
-  elevatorBadges?: { enabled: boolean };
-  markerIndex?: { enabled: boolean };
+  elevatorBadges?: { enabled: boolean; placement?: string; evenDistribution?: boolean };
+  markerIndex?: { enabled: boolean; borderWidthFromMarker?: boolean; borderColorFromMarker?: boolean };
+  teleportArrowMode?: string;
+  splitSpecialShapes?: boolean;
   startMarker?: { textEnabled?: boolean };
   finishMarker?: { textEnabled?: boolean };
   floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram" };
 }
 
-const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportThroughSeams", "teleportCurve", "teleportMergeMode", "teleportGroupCustomization", "teleportFloorBadge."];
-const CROSS_FLOOR_TELEPORT_PREFIX = "teleportFloorBadge.";
-const ONE_WAY_PATHS = new Set([
-  "oneWayJoin", "oneWayColor", "oneWayGapWidth", "oneWaySize", "oneWayThickness",
-  "oneWayCount", "oneWayGap", "oneWayWidth", "oneWayLength",
-]);
-const VERTICAL_ROOT_PATHS = new Set([
-  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
-  "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
-]);
-// Vertical "Shared style" fields that only make sense for one of the two "Vector by walls"
-// `verticalStyle` modes (GitHub issue #668 follow-up, #677 follow-up) — mirrors the panel's own
-// filtering inside that sub-block. "Vector by corridors" has no `verticalStyle` at all, so
-// `settings.verticalStyle` is `undefined` there and these sets are never consulted
-// (`VERTICAL_ROOT_PATHS` alone gates them) — `verticalSize`/`verticalArrowSize` stay active there
-// despite being listed as abstract-only below, since that branch is only reached once
-// `ctx.hasVerticalSection` is true and `verticalStyle` is still checked against `"decorative"`,
-// which corridors' `undefined` never equals.
-const VERTICAL_SHARED_STYLE_ABSTRACT_ONLY = new Set([
-  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
-  "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-]);
-const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set([
-  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
-]);
-
-const TWO_WAY_ABSTRACT_PATHS = new Set(["twoWayArrowColor", "twoWayArrowSize", "twoWayArrowStyle", "twoWayArrowCornerStyle"]);
-const TWO_WAY_DECORATIVE_PATHS = new Set(["decorativeStairsArrowSize", "decorativeStairsArrowColor"]);
-const ONE_WAY_PASSAGE_ABSTRACT_PATHS = new Set(["oneWayArrowColor", "oneWayArrowSize", "oneWayArrowStyle", "oneWayArrowCornerStyle"]);
-const ONE_WAY_PASSAGE_DECORATIVE_PATHS = new Set(["decorativeStairsOneWayArrowSize", "decorativeStairsOneWayArrowColor"]);
-const ELEVATOR_ABSTRACT_PATHS = new Set(["elevatorArrowColor", "elevatorArrowSize", "elevatorArrowStyle", "elevatorArrowCornerStyle"]);
-
-function startsWithAny(path: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => path.startsWith(prefix));
-}
-
 /** Whether `path` is currently shown in the settings panel, given `ctx` (maze-derived section
  *  gates) and `settings` (toggle/enum fields that hide a subsection regardless of the maze itself) —
- *  GitHub issue #670. Mirrors the panels' own render-time conditionals; a path not covered by any
- *  rule below (most fields — background, tiles, markers, shared style, ...) is always active, since
- *  those sections have no hide condition of their own. */
-export function isPathActive<P extends string>(path: P, registry: Record<P, ParamDescriptor>, ctx: ParamActivityContext, settings: ParamActivitySettings): boolean {
-  void registry;
-  const p = path as string;
-  const verticalStyle = settings.verticalStyle;
-
-  // Size adaptation (GitHub issue #819) is offered only on fields whose cells differ in area.
-  if ((p.endsWith("SizeAdaptation") || p.endsWith(".sizeAdaptation")) && ctx.hasAreaSpread === false) return false;
-
-  if (startsWithAny(p, TELEPORT_PREFIXES)) {
-    if (!ctx.hasTeleports) return false;
-    if (p.startsWith(CROSS_FLOOR_TELEPORT_PREFIX) && !ctx.hasCrossFloorTeleports) return false;
-    if (p === "teleportThroughSeams") return ctx.hasSeams !== false;
-    if (p === "teleportConnectorCornerStyle") return settings.teleportConnectorStyle === "orthogonal";
-    if (p.startsWith("teleportCurve")) return settings.teleportConnectorStyle === "curved";
-    return true;
-  }
-
-  if (ONE_WAY_PATHS.has(p)) return ctx.hasOneWays;
-
-  if (p === "replaceTwoFloorElevatorsWithStairs") return ctx.hasElevators;
-
-  if (VERTICAL_ROOT_PATHS.has(p)) {
-    if (!ctx.hasVerticalSection) return false;
-    if (VERTICAL_SHARED_STYLE_ABSTRACT_ONLY.has(p)) return verticalStyle !== "decorative";
-    if (VERTICAL_SHARED_STYLE_DECORATIVE_ONLY.has(p)) return verticalStyle === "decorative";
-    return true;
-  }
-
-  if (p === "gridColor") return settings.showGrid !== false;
-  if (p === "cutLinesGlueColor") return settings.showCutLines !== false;
-  if (p === "cutLinesColor") return settings.showCutLines !== false && settings.cutLinesGlueColor === false;
-  if (p === "glueTabs.showTabs") return true;
-  if (p === "glueTabs.lineStyle" || p === "glueTabs.lineColor") return settings.glueTabs?.showTabs !== false && (settings.glueTabs?.lineWidth ?? 1) > 0;
-  if (p.startsWith("glueTabs.")) return settings.glueTabs?.showTabs !== false;
-  if (p.startsWith("edgeMarkers.")) return (settings.edgeMarkers?.mode ?? "hidden") !== "hidden";
-  if (p === "innerGridColor") return settings.showGrid !== false && settings.showInnerGrid !== false;
-
-  if (p.startsWith("twoWayPassageMarker.") || TWO_WAY_ABSTRACT_PATHS.has(p)) {
-    if (!ctx.hasTwoWayPassages) return false;
-    return verticalStyle !== "decorative";
-  }
-  if (p.startsWith("decorativeStairsTwoWay.") || TWO_WAY_DECORATIVE_PATHS.has(p)) {
-    if (!ctx.hasTwoWayPassages) return false;
-    return verticalStyle === "decorative";
-  }
-
-  if (p.startsWith("oneWayPassageMarker.") || ONE_WAY_PASSAGE_ABSTRACT_PATHS.has(p)) {
-    if (!ctx.hasOneWayPassages) return false;
-    return verticalStyle !== "decorative";
-  }
-  if (p.startsWith("decorativeStairsOneWay.") || ONE_WAY_PASSAGE_DECORATIVE_PATHS.has(p)) {
-    if (!ctx.hasOneWayPassages) return false;
-    return verticalStyle === "decorative";
-  }
-
-  if (p.startsWith("elevatorMarker.") || ELEVATOR_ABSTRACT_PATHS.has(p)) {
-    if (!ctx.hasElevators) return false;
-    return verticalStyle !== "decorative";
-  }
-  if (p.startsWith("decorativeElevator.")) {
-    if (!ctx.hasElevators) return false;
-    return verticalStyle === "decorative";
-  }
-  if (p.startsWith("elevatorBadges.")) {
-    if (!ctx.hasElevators) return false;
-    if (p === "elevatorBadges.enabled" || p === "elevatorBadges.cornerStyle") return true;
-    return settings.elevatorBadges?.enabled !== false;
-  }
-
-  if (p.startsWith("markerIndex.")) {
-    if (!ctx.hasMarkerIndexSource) return false;
-    return p === "markerIndex.enabled" || settings.markerIndex?.enabled !== false;
-  }
-
-  if (p.startsWith("floorLabel.")) {
-    if (!ctx.hasMultipleFloors) return false;
-    if (p === "floorLabel.enabled") return true;
-    if (settings.floorLabel?.enabled === false) return false;
-    if (p === "floorLabel.labelType") return settings.floorLabel?.labelMode === "index";
-    if (["floorLabel.width", "floorLabel.height", "floorLabel.cornerRadius", "floorLabel.gap", "floorLabel.borderWidth", "floorLabel.fillColor", "floorLabel.borderColor"].includes(p)) {
-      return settings.floorLabel?.backgroundShape !== "none";
-    }
-    return true;
-  }
-
-  for (const kind of ["startMarker", "finishMarker"] as const) {
-    if (p.startsWith(`${kind}.text`) && p !== `${kind}.textEnabled`) {
-      return settings[kind]?.textEnabled !== false;
-    }
-  }
-
-  return true;
+ *  GitHub issue #670. The rule of every declared field lives in `LINK_SCHEMA` (`parameterLinkSchema.ts`,
+ *  GitHub issue #927); a path outside the schema has no hide condition and is always active. */
+export function isPathActive(path: string, mode: LinkMode, ctx: ParamActivityContext, settings: ParamActivitySettings): boolean {
+  return isSchemaPathActive(path, mode, ctx, settings);
 }
 
 /** Builds the full set of currently-active paths out of `registry`'s own keys — convenience
  *  wrapper around `isPathActive` for callers (the parameter-links dialog, `LinkEditor`'s pickers)
  *  that want a `Set<P>` rather than calling the predicate per path themselves. */
-export function computeActivePaths<P extends string>(registry: Record<P, ParamDescriptor>, ctx: ParamActivityContext, settings: ParamActivitySettings): Set<P> {
+export function computeActivePaths<P extends string>(registry: Record<P, ParamDescriptor>, mode: LinkMode, ctx: ParamActivityContext, settings: ParamActivitySettings): Set<P> {
   const active = new Set<P>();
   for (const path of Object.keys(registry) as P[]) {
-    if (isPathActive(path, registry, ctx, settings)) active.add(path);
+    if (isPathActive(path, mode, ctx, settings)) active.add(path);
   }
   return active;
 }

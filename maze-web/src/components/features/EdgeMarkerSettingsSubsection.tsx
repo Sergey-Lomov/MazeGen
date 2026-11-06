@@ -21,7 +21,7 @@ import { SliderRow } from "../SliderRow";
 import { Button } from "../Button";
 import { Tooltip } from "../Tooltip";
 import { LinkedColorRow, LinkedSelectRow } from "./LinkedRows";
-import { useLinkContext } from "./LinkContext";
+import { useGate, useLinkContext } from "./LinkContext";
 import { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
@@ -128,6 +128,7 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   onOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
   const { links } = useLinkContext<string>();
+  const markersShown = useGate("edgeMarkers");
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const activeFieldConfig = useMazeStore((s) => s.activeFieldConfig);
   const floorTopology = useMazeStore((s) => s.floorTopology);
@@ -160,7 +161,7 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
             ]}
             onChange={(mode) => onChange({ mode })}
           />
-          {style.mode !== "hidden" && (
+          {markersShown && (
             <>
               <SliderRow label={m["image_export.edge_markers.size"]()} value={style.size} onChange={(size) => onChange({ size })} min={EDGE_MARKER_SIZE_RANGE.min} max={EDGE_MARKER_SIZE_RANGE.max} step={1} format={(v) => String(v)} />
               <LinkedSelectRow label={m["image_export.edge_markers.shape"]()} value={style.shape} options={shapeOptions} onChange={(shape) => onChange({ shape })} linkTarget="edgeMarkers.shape" />

@@ -4,7 +4,7 @@ import type { ParamDescriptor } from "../store/parameterLinks";
 
 type P =
   | "teleportMarker.fillColor"
-  | "teleportFloorBadge.enabled"
+  | "teleportFloorBadge.shape"
   | "teleportThroughSeams"
   | "teleportCurveStrength"
   | "teleportCurveDirection"
@@ -22,24 +22,24 @@ type P =
   | "oneWayArrowColor"
   | "decorativeStairsOneWayArrowColor"
   | "elevatorArrowColor"
-  | "decorativeElevator.fillColor"
+  | "decorativeElevator.lineColor"
   | "elevatorBadges.enabled"
   | "elevatorBadges.cornerStyle"
   | "elevatorBadges.fillColor"
   | "markerIndex.enabled"
   | "markerIndex.fillColor"
-  | "backgroundColor"
+  | "background"
   | "floorLabel.labelType";
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
-    "teleportMarker.fillColor", "teleportFloorBadge.enabled", "teleportThroughSeams", "teleportCurveStrength", "teleportCurveDirection", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
+    "teleportMarker.fillColor", "teleportFloorBadge.shape", "teleportThroughSeams", "teleportCurveStrength", "teleportCurveDirection", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
     "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
     "verticalDecorativeSize", "verticalDecorativeArrowSize",
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
-    "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
+    "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.lineColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
-    "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor", "floorLabel.labelType",
+    "markerIndex.enabled", "markerIndex.fillColor", "background", "floorLabel.labelType",
   ].map((p) => [p, { type: "color", equals: Object.is, label: p, group: [], format: String }]),
 ) as unknown as Record<P, ParamDescriptor>;
 
@@ -52,10 +52,16 @@ const baseCtx: ParamActivityContext = {
   hasElevators: false,
   hasVerticalSection: false,
   hasMarkerIndexSource: true,
+  hasSplits: false,
+  hasGlues: false,
+  hasCreases: false,
+  hasMultipleFloors: false,
+  hasAreaSpread: true,
+  hasSeams: true,
 };
 
 function active(path: P, ctx: Partial<ParamActivityContext> = {}, settings: ParamActivitySettings = {}): boolean {
-  return isPathActive(path, registry, { ...baseCtx, ...ctx }, settings);
+  return isPathActive(path, "walls", { ...baseCtx, ...ctx }, settings);
 }
 
 describe("isPathActive", () => {
@@ -74,8 +80,8 @@ describe("isPathActive", () => {
   });
 
   it("hides cross-floor teleport badge fields even with teleports, unless cross-floor ones exist", () => {
-    expect(active("teleportFloorBadge.enabled", { hasTeleports: true, hasCrossFloorTeleports: false })).toBe(false);
-    expect(active("teleportFloorBadge.enabled", { hasTeleports: true, hasCrossFloorTeleports: true })).toBe(true);
+    expect(active("teleportFloorBadge.shape", { hasTeleports: true, hasCrossFloorTeleports: false })).toBe(false);
+    expect(active("teleportFloorBadge.shape", { hasTeleports: true, hasCrossFloorTeleports: true })).toBe(true);
   });
 
   it("shows the seam toggle only while some floor has a seam (GitHub issue #873)", () => {
@@ -99,17 +105,11 @@ describe("isPathActive", () => {
     expect(active("replaceTwoFloorElevatorsWithStairs", { hasElevators: true })).toBe(true);
   });
 
-  it("hides gridColor only when showGrid is explicitly false", () => {
-    expect(active("gridColor", {}, {})).toBe(true);
-    expect(active("gridColor", {}, { showGrid: true })).toBe(true);
-    expect(active("gridColor", {}, { showGrid: false })).toBe(false);
-  });
-
-  it("hides innerGridColor when either showGrid or showInnerGrid is false", () => {
-    expect(active("innerGridColor", {}, {})).toBe(true);
-    expect(active("innerGridColor", {}, { showGrid: false })).toBe(false);
-    expect(active("innerGridColor", {}, { showGrid: true, showInnerGrid: false })).toBe(false);
-    expect(active("innerGridColor", {}, { showGrid: true, showInnerGrid: true })).toBe(true);
+  it("keeps both grid colors available whatever the grid toggles say — the panel always shows them", () => {
+    for (const settings of [{}, { showGrid: false }, { showGrid: true, showInnerGrid: false }, { showGrid: true, showInnerGrid: true }]) {
+      expect(active("gridColor", {}, settings)).toBe(true);
+      expect(active("innerGridColor", {}, settings)).toBe(true);
+    }
   });
 
   it("gates vertical shared-style fields on hasVerticalSection, abstract/decorative split by verticalStyle", () => {
@@ -147,8 +147,8 @@ describe("isPathActive", () => {
   it("shows elevator abstract/decorative fields mirroring the same split", () => {
     expect(active("elevatorArrowColor", { hasElevators: true }, { verticalStyle: "abstract" })).toBe(true);
     expect(active("elevatorArrowColor", { hasElevators: true }, { verticalStyle: "decorative" })).toBe(false);
-    expect(active("decorativeElevator.fillColor", { hasElevators: true }, { verticalStyle: "decorative" })).toBe(true);
-    expect(active("decorativeElevator.fillColor", { hasElevators: false }, { verticalStyle: "decorative" })).toBe(false);
+    expect(active("decorativeElevator.lineColor", { hasElevators: true }, { verticalStyle: "decorative" })).toBe(true);
+    expect(active("decorativeElevator.lineColor", { hasElevators: false }, { verticalStyle: "decorative" })).toBe(false);
   });
 
   it("gates elevatorBadges.* on hasElevators only, regardless of verticalStyle (the subsection renders in both modes)", () => {
@@ -173,24 +173,24 @@ describe("isPathActive", () => {
   });
 
   it("defaults unrecognized paths to active", () => {
-    expect(active("backgroundColor")).toBe(true);
+    expect(active("background")).toBe(true);
   });
 });
 
 describe("computeActivePaths", () => {
   it("returns exactly the set of paths isPathActive accepts for the given context", () => {
     const ctx: ParamActivityContext = { ...baseCtx, hasTeleports: true, hasOneWays: true };
-    const settings: ParamActivitySettings = { showGrid: false };
-    const result = computeActivePaths(registry, ctx, settings);
+    const settings: ParamActivitySettings = { teleportConnectorStyle: "straight" };
+    const result = computeActivePaths(registry, "walls", ctx, settings);
     expect(result.has("teleportMarker.fillColor")).toBe(true);
     expect(result.has("oneWayColor")).toBe(true);
-    expect(result.has("gridColor")).toBe(false);
-    expect(result.has("backgroundColor")).toBe(true);
+    expect(result.has("teleportCurveStrength")).toBe(false);
+    expect(result.has("background")).toBe(true);
   });
 });
 
 describe("isPathActive: size adaptation (GitHub issue #819)", () => {
-  const check = (path: string, hasAreaSpread?: boolean) => isPathActive(path, {} as never, { ...baseCtx, hasAreaSpread }, {});
+  const check = (path: string, hasAreaSpread: boolean) => isPathActive(path, "walls", { ...baseCtx, hasAreaSpread }, {});
 
   it("deactivates every adaptation path when the cell areas have no spread", () => {
     for (const path of ["startMarker.sizeAdaptation", "teleportFloorBadge.sizeAdaptation", "markerSizeAdaptation", "verticalSizeAdaptation"]) {
@@ -198,14 +198,13 @@ describe("isPathActive: size adaptation (GitHub issue #819)", () => {
     }
   });
 
-  it("keeps an adaptation path active when the spread exists or is unknown", () => {
+  it("keeps an adaptation path active when the spread exists", () => {
     expect(check("startMarker.sizeAdaptation", true)).toBe(true);
-    expect(check("startMarker.sizeAdaptation", undefined)).toBe(true);
   });
 });
 
 describe("isPathActive: start/finish caption", () => {
-  const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, {} as never, baseCtx, settings);
+  const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, "walls", baseCtx, settings);
 
   it("deactivates caption style fields when the caption is off, keeps the toggle active", () => {
     const off = { startMarker: { textEnabled: false }, finishMarker: { textEnabled: false } };

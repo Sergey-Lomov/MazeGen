@@ -11,6 +11,7 @@ import { oneGlue, range } from "./seamFixtures";
 const { ExportTopologyPanel } = await import("../components/features/ExportTopologyPanel");
 const { ImageExportFeature } = await import("../components/features/ImageExportFeature");
 const { SettingsSection } = await import("../components/features/SharedStyleSection");
+const { LinkContextProvider } = await import("../components/features/LinkContext");
 const { CutLineDragController, activeCutLines, hasManualCutLine, cutEditingActive } = await import("../pixi/imageExport/CutLineDragController");
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS } = await import("../store/slices/imageExportSlice");
@@ -230,31 +231,33 @@ describe("ExportTopologyPanel", () => {
 });
 
 describe("topology button of the render mode settings", () => {
-  const settingsSection = () => (
+  const settingsSection = (hasGlues: boolean) => (
+    <LinkContextProvider value={{ links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, gate: (name) => name === "glues" && hasGlues, activePaths: new Set<string>() }}>
     <SettingsSection
       onResetAll={() => {}}
       settings={{}}
       links={[]}
-      registry={{}}
+      registry={{} as never}
       onSetLinkEnabled={() => {}}
       onAddLink={() => {}}
       onRemoveLink={() => {}}
-      activePaths={new Set<string>()}
+      activePaths={new Set() as never}
     />
+    </LinkContextProvider>
   );
   const openButton = () => screen.queryByRole("button", { name: m["topology.title"]() });
 
   it("is hidden without glues", () => {
     setState(undefined);
     useMazeStore.setState({ exportTopologyOpen: false } as never);
-    render(settingsSection());
+    render(settingsSection(false));
     expect(openButton()).toBeNull();
   });
 
   it("opens the export topology panel on a floor with glues", () => {
     setState(cylinder());
     useMazeStore.setState({ exportTopologyOpen: false } as never);
-    render(settingsSection());
+    render(settingsSection(true));
     fireEvent.click(openButton()!);
     expect(useMazeStore.getState().exportTopologyOpen).toBe(true);
   });

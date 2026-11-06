@@ -14,7 +14,8 @@ const { baseStoreState, TEST_FLOOR_ID } = await import("./storeTestHelpers");
 const { TopologySettingsSection } = await import("../components/features/TopologySettingsSection");
 const { CreaseSettingsSubsection } = await import("../components/features/CreaseSettingsSubsection");
 const { LinkContextProvider } = await import("../components/features/LinkContext");
-const linkContext = { links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, activePaths: new Set<string>() };
+const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
+const linkContext = { links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, gate: () => true, activePaths: new Set<string>(Object.keys(VECTOR_BY_WALLS_PARAM_REGISTRY)) };
 
 // Export crease style (GitHub issue #900): selection, store actions, validation and the settings UI.
 
@@ -128,13 +129,15 @@ describe("TopologySettingsSection with creases", () => {
 
   it("renders nothing for a floor with neither glues nor creases", () => {
     setCreases([]);
-    const { container } = render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    const { container } = render(<LinkContextProvider value={{ ...linkContext, gate: () => false }}><TopologySettingsSection {...props} /></LinkContextProvider>);
     expect(container.textContent).toBe("");
   });
 
   it("shows the creases subsection but no cut-line rows for a floor with creases only", () => {
     setCreases([crease]);
-    render(<LinkContextProvider value={linkContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    // A floor without glues: the schema reports no cut-line field as active, so those rows are not rendered.
+    const noGlueContext = { ...linkContext, activePaths: new Set<string>(), gate: (name: string) => name === "creases" };
+    render(<LinkContextProvider value={noGlueContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
     expect(screen.getByText(m["image_export.creases.title"]())).toBeTruthy();
     expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
   });
@@ -142,7 +145,6 @@ describe("TopologySettingsSection with creases", () => {
 
 describe("EdgeMarkerSettingsSubsection cards", () => {
   it("renders a card with link icons for a crease marker under the real registry", async () => {
-    const { VECTOR_BY_WALLS_PARAM_REGISTRY } = await import("../store/parameterLinksRegistry");
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
     setCreases([crease]);
     const context = { ...linkContext, registry: VECTOR_BY_WALLS_PARAM_REGISTRY } as unknown as typeof linkContext;

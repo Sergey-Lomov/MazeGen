@@ -22,11 +22,11 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-type P = "source" | "target";
+type P = "markerFillColor" | "startMarker.fillColor";
 
 const registry: Record<P, ParamDescriptor> = {
-  source: { type: "color", equals: Object.is, label: "Source", group: [], format: String },
-  target: { type: "color", equals: Object.is, label: "Target", group: [], format: String },
+  markerFillColor: { type: "color", equals: Object.is, label: "Source", group: [], format: String },
+  "startMarker.fillColor": { type: "color", equals: Object.is, label: "Target", group: [], format: String },
 };
 
 const hexLabel = () => m["color_picker.hex_label"]();
@@ -43,25 +43,25 @@ function openPicker() {
 describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () => {
   function renderRow(links: ParamLink<P>[], onChange = vi.fn(), onSetLinkEnabled = vi.fn()) {
     return render(
-      <LinkContextProvider value={{ links, registry, onSetLinkEnabled, onAddLink: vi.fn(), activePaths: new Set<P>(["source", "target"]) }}>
-        <LinkedColorRow field={PC.bgFill} label="Target" color={0x000000} onChange={onChange} linkTarget="target" />
+      <LinkContextProvider value={{ links, registry, onSetLinkEnabled, onAddLink: vi.fn(), gate: () => true, activePaths: new Set<P>(["markerFillColor", "startMarker.fillColor"]) }}>
+        <LinkedColorRow field={PC.bgFill} label="Target" color={0x000000} onChange={onChange} linkTarget="startMarker.fillColor" />
       </LinkContextProvider>,
     );
   }
 
   it("re-enables a link that was enabled on open after Cancel, via onSetLinkEnabled", () => {
     const onSetLinkEnabled = vi.fn();
-    const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: true }];
+    const links: ParamLink<P>[] = [{ id: "l1", source: "markerFillColor", target: "startMarker.fillColor", enabled: true }];
     renderRow(links, vi.fn(), onSetLinkEnabled);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
     fireEvent.click(screen.getByText(cancelLabel()));
-    expect(onSetLinkEnabled).toHaveBeenCalledWith("target", true);
+    expect(onSetLinkEnabled).toHaveBeenCalledWith("startMarker.fillColor", true);
   });
 
   it("does not call onSetLinkEnabled on Cancel when the link was already disabled before open", () => {
     const onSetLinkEnabled = vi.fn();
-    const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: false }];
+    const links: ParamLink<P>[] = [{ id: "l1", source: "markerFillColor", target: "startMarker.fillColor", enabled: false }];
     renderRow(links, vi.fn(), onSetLinkEnabled);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
@@ -80,7 +80,7 @@ describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () =>
 
   it("does not call onSetLinkEnabled on Apply (a real commit keeps the override)", () => {
     const onSetLinkEnabled = vi.fn();
-    const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: true }];
+    const links: ParamLink<P>[] = [{ id: "l1", source: "markerFillColor", target: "startMarker.fillColor", enabled: true }];
     renderRow(links, vi.fn(), onSetLinkEnabled);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
@@ -92,16 +92,16 @@ describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () =>
     // The link starts enabled; re-rendering with a changed `links` prop (as the store would after a
     // preview tick disables it) must not affect what the snapshot captured at open.
     const onSetLinkEnabled = vi.fn();
-    const links: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: true }];
+    const links: ParamLink<P>[] = [{ id: "l1", source: "markerFillColor", target: "startMarker.fillColor", enabled: true }];
     const { rerender } = renderRow(links, vi.fn(), onSetLinkEnabled);
     openPicker();
-    const disabledLinks: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: false }];
+    const disabledLinks: ParamLink<P>[] = [{ id: "l1", source: "markerFillColor", target: "startMarker.fillColor", enabled: false }];
     rerender(
-      <LinkContextProvider value={{ links: disabledLinks, registry, onSetLinkEnabled, onAddLink: vi.fn(), activePaths: new Set<P>(["source", "target"]) }}>
-        <LinkedColorRow field={PC.bgFill} label="Target" color={0x000000} onChange={vi.fn()} linkTarget="target" />
+      <LinkContextProvider value={{ links: disabledLinks, registry, onSetLinkEnabled, onAddLink: vi.fn(), gate: () => true, activePaths: new Set<P>(["markerFillColor", "startMarker.fillColor"]) }}>
+        <LinkedColorRow field={PC.bgFill} label="Target" color={0x000000} onChange={vi.fn()} linkTarget="startMarker.fillColor" />
       </LinkContextProvider>,
     );
     fireEvent.click(screen.getByText(cancelLabel()));
-    expect(onSetLinkEnabled).toHaveBeenCalledWith("target", true);
+    expect(onSetLinkEnabled).toHaveBeenCalledWith("startMarker.fillColor", true);
   });
 });

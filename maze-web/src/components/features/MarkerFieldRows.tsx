@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerAppearance, SizeAdaptationField, TextStyleFields } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
@@ -37,7 +38,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  marker, and the elevator / teleport floor-number badges. Renders bare rows (no wrapper) so each
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
-export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
+export function MarkerAppearanceRows<P extends LinkPath>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
   settings: MarkerAppearance & Partial<SizeAdaptationField>;
   onChange: (patch: Partial<MarkerAppearance & SizeAdaptationField>) => void;
   /** `sizeAdaptation` (GitHub issue #819) is opt-in: the "Size adaptation" row is rendered only by
@@ -115,7 +116,7 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Horizontal alignment stays centered for
  *  these consumers and is exposed separately only by `FloorLabelSection`. */
-export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
+export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
   linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]: P | null };

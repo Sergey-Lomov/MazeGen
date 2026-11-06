@@ -1,4 +1,5 @@
 import { useColorVisibility } from "../ColorVisibilityContext";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
@@ -13,7 +14,7 @@ import { SectionHeader } from "../SectionHeader";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import { useLinkContext } from "./LinkContext";
+import { useGate, useLinkContext } from "./LinkContext";
 import { useLocale } from "../../i18n/useLocale";
 import { buildGroupLinks, groupRolePath, isGroupRoleLinked, resolveGroupOverrides } from "../../store/teleportGroupLinks";
 import { LinkStatusIcon } from "../LinkStatusIcon";
@@ -259,7 +260,7 @@ function TeleportGroupCell({
  *  per-mode-setters-only-differ reuse convention. The caller owns the `SectionHeader`/expand-collapse
  *  chrome and the "only show when the maze actually has teleports" gating — this component always
  *  renders its full body once mounted. */
-export function TeleportSettingsSection<P extends string>({
+export function TeleportSettingsSection<P extends LinkPath>({
   settings,
   onChange,
   groupOverrides,
@@ -267,8 +268,6 @@ export function TeleportSettingsSection<P extends string>({
   onGroupOverridesPatch,
   teleportGroups,
   teleportCollisionKeys,
-  hasCrossFloorTeleports,
-  hasSeams,
   linkTargets,
   edgeColorPriority,
   edgeBorderColorPriority,
@@ -297,12 +296,6 @@ export function TeleportSettingsSection<P extends string>({
   onGroupOverridesPatch: (patches: Record<string, TeleportGroupOverride>) => void;
   teleportGroups: TeleportGroup[];
   teleportCollisionKeys: Set<string>;
-  /** Whether the project has at least one cross-floor teleport (its two endpoints on different
-   *  floors) — the "Floor badges" subsection is hidden entirely otherwise (GitHub issue #485). */
-  hasCrossFloorTeleports: boolean;
-  /** Whether some floor has a topological seam — the "Route through seams" row is hidden otherwise
-   *  (GitHub issue #873). */
-  hasSeams: boolean;
   /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
    *  concrete path where the registry models the field, `null` where it doesn't. */
   linkTargets: {
@@ -391,6 +384,11 @@ export function TeleportSettingsSection<P extends string>({
   ];
   // Hidden fields (no connector line, no cross-floor teleport) are dropped by the picker's
   // visibility-filtered "Project colors" list — no gating here (GitHub issue #717).
+  // The "Floor badges" subsection exists only with a cross-floor teleport (GitHub issue #485).
+  const hasCrossFloorTeleports = useGate("crossFloorTeleports");
+  const groupCustomization = useGate("teleportGroupCustomization");
+  const arrowPeriodShown = useGate("teleportArrowPeriodic");
+  const arrowShown = useGate("teleportArrowOn");
   const colorVisibility = useColorVisibility();
   const connectorShown = colorVisibility === null || connectorColorField.isVisible(colorVisibility);
 
@@ -437,36 +435,29 @@ export function TeleportSettingsSection<P extends string>({
           onChange={(v) => onChange({ teleportConnectorStyle: v })}
           linkTarget={linkTargets.connectorStyle}
         />
-        {settings.teleportConnectorStyle === "orthogonal" && (
-          <>
-            <LinkedSelectRow
-              label={m["image_export.vector_by_walls.marker_corner_style"]()}
-              value={settings.teleportConnectorCornerStyle ?? settings.teleportMarker.cornerStyle}
-              options={[
-                { value: "miter" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-                { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
-              ]}
-              onChange={(teleportConnectorCornerStyle) => onChange({ teleportConnectorCornerStyle })}
-              linkTarget={linkTargets.connectorCornerStyle}
-            />
-            <LinkedToggleRow
-              label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
-              checked={settings.teleportAvoidFieldExit}
-              onChange={(v) => onChange({ teleportAvoidFieldExit: v })}
-              linkTarget={linkTargets.avoidFieldExit}
-            />
-          </>
-        )}
-        {hasSeams && (
-          <LinkedToggleRow
-            label={m["image_export.vector_by_walls.teleport_through_seams"]()}
-            checked={settings.teleportThroughSeams ?? true}
-            onChange={(v) => onChange({ teleportThroughSeams: v })}
-            linkTarget={linkTargets.throughSeams}
-          />
-        )}
-        {settings.teleportConnectorStyle === "curved" && (<>
-          <LinkedSelectRow
+        <LinkedSelectRow
+          label={m["image_export.vector_by_walls.marker_corner_style"]()}
+          value={settings.teleportConnectorCornerStyle ?? settings.teleportMarker.cornerStyle}
+          options={[
+            { value: "miter" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+            { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
+          ]}
+          onChange={(teleportConnectorCornerStyle) => onChange({ teleportConnectorCornerStyle })}
+          linkTarget={linkTargets.connectorCornerStyle}
+        />
+        <LinkedToggleRow
+          label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
+          checked={settings.teleportAvoidFieldExit}
+          onChange={(v) => onChange({ teleportAvoidFieldExit: v })}
+          linkTarget={linkTargets.avoidFieldExit}
+        />
+        <LinkedToggleRow
+          label={m["image_export.vector_by_walls.teleport_through_seams"]()}
+          checked={settings.teleportThroughSeams ?? true}
+          onChange={(v) => onChange({ teleportThroughSeams: v })}
+          linkTarget={linkTargets.throughSeams}
+        />
+        <LinkedSelectRow
             label={m["image_export.vector_by_walls.teleport_curve_direction"]()}
             value={settings.teleportCurveDirection ?? "inward"}
             options={[
@@ -486,7 +477,6 @@ export function TeleportSettingsSection<P extends string>({
             format={(v) => `${Math.round(v * 100)}%`}
             linkTarget={linkTargets.curveStrength}
           />
-        </>)}
 
         {connectorShown && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
@@ -528,28 +518,30 @@ export function TeleportSettingsSection<P extends string>({
             onChange={(v) => onChange({ teleportArrowMode: v })}
             linkTarget={linkTargets.arrowMode}
           />
-          <LinkedSliderRow
-            label={m["image_export.vector_by_walls.teleport_arrow_period"]()}
-            value={settings.teleportArrowPeriod}
-            onChange={(v) => onChange({ teleportArrowPeriod: v })}
-            min={1}
-            max={20}
-            step={1}
-            format={(v) => String(v)}
-            disabled={settings.teleportArrowMode !== "periodic"}
-            linkTarget={linkTargets.arrowPeriod}
-          />
-          <LinkedSliderRow
-            label={m["image_export.vector_by_walls.teleport_arrow_size"]()}
-            value={settings.teleportArrowSize}
-            onChange={(v) => onChange({ teleportArrowSize: v })}
-            min={1}
-            max={20}
-            step={1}
-            format={(v) => String(v)}
-            disabled={settings.teleportArrowMode === "none"}
-            linkTarget={linkTargets.arrowSize}
-          />
+          {arrowPeriodShown && (
+            <LinkedSliderRow
+              label={m["image_export.vector_by_walls.teleport_arrow_period"]()}
+              value={settings.teleportArrowPeriod}
+              onChange={(v) => onChange({ teleportArrowPeriod: v })}
+              min={1}
+              max={20}
+              step={1}
+              format={(v) => String(v)}
+              linkTarget={linkTargets.arrowPeriod}
+            />
+          )}
+          {arrowShown && (
+            <LinkedSliderRow
+              label={m["image_export.vector_by_walls.teleport_arrow_size"]()}
+              value={settings.teleportArrowSize}
+              onChange={(v) => onChange({ teleportArrowSize: v })}
+              min={1}
+              max={20}
+              step={1}
+              format={(v) => String(v)}
+              linkTarget={linkTargets.arrowSize}
+            />
+          )}
         </div>
         </>)}
       </div>}
@@ -614,7 +606,7 @@ export function TeleportSettingsSection<P extends string>({
             onChange={(checked) => onChange({ teleportGroupCustomization: checked })}
             linkTarget={linkTargets.groupCustomization}
           />
-          {settings.teleportGroupCustomization && teleportGroups.length > 0 && (
+          {groupCustomization && teleportGroups.length > 0 && (
             <div style={styles.autoFillRow}>
               {(["fillColor", "borderColor"] as const).map((role) => (
                 <Button
@@ -632,7 +624,7 @@ export function TeleportSettingsSection<P extends string>({
               ))}
             </div>
           )}
-          {settings.teleportGroupCustomization && teleportGroups.length > 0 && (() => {
+          {groupCustomization && teleportGroups.length > 0 && (() => {
             // Every group's own fill+border colors, computed once (GitHub issue #503 follow-up) —
             // each cell's own "other groups" priority list below is a slice of this shared array
             // rather than a fresh `PC.teleportGroup(...).at(...)` pass per cell.

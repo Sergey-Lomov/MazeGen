@@ -1,4 +1,5 @@
 import type React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import { useState } from "react";
 import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
@@ -8,6 +9,7 @@ import { Modal } from "../Modal";
 import { bringSidePanelToFront } from "../SidePanel";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { AutoFitButton } from "./TextFitContext";
 import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
@@ -43,7 +45,7 @@ function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
  *  and management actions don't clutter each other, per the issue's own rationale. Shared by
  *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`, same per-mode-setters-only-differ
  *  reuse convention as `SharedStyleSection` itself. */
-export function SettingsSection<P extends string>({
+export function SettingsSection<P extends LinkPath>({
   onResetAll,
   settings,
   links,
@@ -70,7 +72,7 @@ export function SettingsSection<P extends string>({
   const [infoOpen, setInfoOpen] = useState(false);
   const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
   const setLinkIconVisibility = useMazeStore((s) => s.setLinkIconVisibility);
-  const hasGlues = useMazeStore((s) => (s.floorTopology[s.activeFloorId]?.groups.length ?? 0) > 0);
+  const hasGlues = useGate("glues");
   const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
 
   return (
@@ -134,7 +136,7 @@ export function SettingsSection<P extends string>({
  *  *dependent* field's own row elsewhere in the panel, not here. Link editing/icon-visibility/
  *  "Reset all settings" live in the separate "Settings" section (GitHub issue #668) — this section
  *  is style values only. */
-export function SharedStyleSection<P extends string>({
+export function SharedStyleSection<P extends LinkPath>({
   settings,
   onChange,
   onLayoutChange,
