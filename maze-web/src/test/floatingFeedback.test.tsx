@@ -153,6 +153,18 @@ describe("Tooltip", () => {
     expect(screen.queryByTestId("tooltip")).toBeNull();
   });
 
+  it("hides when the document becomes hidden", () => {
+    render(<Tooltip content="Why"><span>X</span></Tooltip>);
+    fireEvent.focus(screen.getByTestId("tooltip-anchor"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    try {
+      fireEvent(document, new Event("visibilitychange"));
+      expect(screen.queryByTestId("tooltip")).toBeNull();
+    } finally {
+      delete (document as { visibilityState?: string }).visibilityState;
+    }
+  });
+
   it("ColorRow exposes its disabledHint through the tooltip, not the native title", () => {
     const { container, rerender } = render(<UnregisteredColorRow label="Fill" color={0} onChange={() => {}} disabled disabledHint="Set by group" />);
     expect(container.querySelector("[title='Set by group']")).toBeNull();
