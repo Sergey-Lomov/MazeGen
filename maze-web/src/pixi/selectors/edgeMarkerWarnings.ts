@@ -5,12 +5,13 @@ import { edgeMarkerLook, edgeMarkerLooksAlike, markerPoint, selectExportEdgeMark
 import type { ExportWarning } from "./exportWarnings";
 import { withResolvedEdgeMarkers } from "../../store/edgeMarkerLinks";
 import type { ParamLink } from "../../store/parameterLinks";
+import { selectAmbiguousGlueSections } from "./ambiguousGlueSections";
 
 /// Edge marker warnings (GitHub issue #902, `Specs/export-warnings.md`, "Edge alignment markers"): markers are matched by
 /// colour and shape, so two markers of different keys must not look alike (same shape, close colours), and a marker must stand
 /// out from the background. Both highlight the offending markers as `polygons` (a rounded square around each).
 
-type EdgeMarkerWarningState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "floors">;
+type EdgeMarkerWarningState = Pick<MazeState, "activeFloorId" | "activeFieldConfig" | "floorTopology" | "floorCreases" | "pngExportSettings" | "nodes" | "edges" | "floors">;
 
 /// How far the highlight frame reaches past the marker's radius, in display units.
 const FRAME_MARGIN = 4;
@@ -80,4 +81,21 @@ export function computeEdgeMarkerWarningsOf<P extends string>(
   settings: { edgeMarkers: EdgeMarkerStyle; links: ParamLink<P>[]; background: number },
 ): ExportWarning[] {
   return computeEdgeMarkerWarnings(state, withResolvedEdgeMarkers(settings.edgeMarkers, settings.links as ParamLink<string>[], state.activeFloorId), settings.background);
+}
+
+/** Emits the warning presentation for reusable ambiguous-glue-section analysis. */
+export function computeSeamSectionAmbiguityWarning(
+  state: EdgeMarkerWarningState,
+  style: Pick<EdgeMarkerStyle, "mode">,
+): ExportWarning[] {
+  if (style.mode !== "hidden") return [];
+  const sections = selectAmbiguousGlueSections(state);
+  if (sections.length === 0) return [];
+  return [{
+    id: "seam_matching_ambiguous_without_markers",
+    key: "seam_matching_ambiguous_without_markers",
+    nodes: [],
+    edges: [],
+    bands: sections.flatMap((section) => section.bands),
+  }];
 }

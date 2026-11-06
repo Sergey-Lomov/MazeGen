@@ -285,6 +285,10 @@ On the Rust side: `PresetVerticalPassage { from: PresetEndpoint, to: PresetEndpo
 
 Every node touched by either loop is added to `preset_connected`/`preset_edges` — **not** `preset_teleports`.
 
+## Editing after generation (GitHub issue #922)
+
+A preset edit invalidates the generated maze and the post-edit state built on it. While `mazeDirty` or `postEditDirty` is set, every action that commits preset data (edges, markers, locks, teleports, vertical passages, elevators, split nodes, default edge state, auto-lock, bulk entity delete) is parked in `presetEditConfirmation` instead of running, and `PresetConnectionsFeature` shows a `ConfirmModal` ("Changing presets resets the current generation and post-edit results"). Confirming (`confirmPresetEdit`) runs `buildResetDownstreamState()` and then replays the parked call; cancelling (`cancelPresetEdit`) drops it. Edits arriving while a confirmation is open are ignored. Selection, hover, tool choice, prompts, placement-in-progress actions and generation settings (`setGenerationSourceMode`, edited outside this card) are not guarded. The guard fires on the call, not on an actual change, so a call that would turn out to be a no-op still asks. The guard is applied in one place, `guardPresetEdits` (`presetEditGuard.ts`), which wraps the listed actions of the composed store.
+
 ## Default edge state
 
 `defaultEdgeState: "undefined" | "wall" | "passage"` controls the implicit state of all edges not explicitly set by the user. It is one maze-wide toggle, not per-floor — toggling it while any floor is active applies to every floor's edges (GitHub issue #434).

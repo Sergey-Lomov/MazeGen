@@ -3,10 +3,12 @@ import type { GlueTabStyle } from "../../store/imageExportTypes";
 import { indent, spacing } from "../../styles/theme";
 import { GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE } from "../../pixi/renderConstants";
 import { SectionHeader } from "../SectionHeader";
+import { Modal } from "../Modal";
 import { useGate } from "./LinkContext";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
+import { useState } from "react";
 
 /** The "Glue tabs" subsection of the "Topology" section (GitHub issue #901): whether the trapezoidal glue tabs show on the
  * image, how far they start from the ends of the edge, how wide they are and how they are filled and outlined (the colours follow
@@ -20,11 +22,12 @@ export function GlueTabSettingsSubsection({ expanded, onToggle, style, defaults,
   priorityColors: ProjectColorEntry[];
   onChange: (patch: Partial<GlueTabStyle>) => void;
 }) {
+  const [infoOpen, setInfoOpen] = useState(false);
   const tabsOn = useGate("glueTabs");
   const outlineOn = useGate("glueTabLine");
   return (
     <>
-      <SectionHeader label={m["image_export.glue_tabs.title"]()} expanded={expanded} onToggle={onToggle} />
+      <SectionHeader label={m["image_export.glue_tabs.title"]()} expanded={expanded} onToggle={onToggle} onOpenInfo={() => setInfoOpen(true)} />
       {expanded && (
         <div style={styles.block}>
           <LinkedToggleRow label={m["image_export.glue_tabs.show"]()} checked={style.showTabs} onChange={(showTabs) => onChange({ showTabs })} linkTarget="glueTabs.showTabs" />
@@ -53,6 +56,11 @@ export function GlueTabSettingsSubsection({ expanded, onToggle, style, defaults,
             </>
           )}
         </div>
+      )}
+      {infoOpen && (
+        <Modal title={m["image_export.glue_tabs.info_title"]()} onClose={() => setInfoOpen(false)}>
+          <div>{m["image_export.glue_tabs.info"]()}</div>
+        </Modal>
       )}
     </>
   );

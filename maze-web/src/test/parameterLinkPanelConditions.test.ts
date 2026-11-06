@@ -85,9 +85,11 @@ const ALLOWED_CONDITIONS: Record<string, string> = {
   "MarkerSettingsGroup.tsx: sectionId": "the caller opts into a collapsible section",
   "MarkerSettingsGroup.tsx: showTextSection": "the caller opts into the text subsection",
   "MarkerSettingsGroup.tsx: title": "the caller opts into a section title",
+  "TeleportSettingsSection.tsx: activeRenderMode": "the connector editor button needs a render mode to edit; it is not a field",
   "TeleportSettingsSection.tsx: connectorShown": "the connector colour is hidden while the colour-visibility registry says it is not drawn",
   "TeleportSettingsSection.tsx: hasCollision": "warning icon of a group that looks like another one",
   "TeleportSettingsSection.tsx: teleportGroups.length > 0": "the group list is shown only when there are groups",
+  "TopologySettingsSection.tsx: onTrimWallsAtFaceBoundaries": "the caller opts into the row (only 'Vector by walls' trims walls)",
   "VectorByWallsSettingsPanel.tsx: PC.tilesWall.isVisible(colorVisibility)": "the colour-visibility registry decides whether the tile wall colour is drawn",
 };
 

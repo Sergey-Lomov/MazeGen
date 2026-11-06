@@ -7,7 +7,7 @@ import { type PostEditEndpoint, type PostEditHoveredEntity, nodeEndpoint, splitE
 import { cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { getCellNeighborOffsets } from "../../pixi/tessellationGeometry";
 import { resolveFaceNeighbor } from "../../pixi/faceNeighbors";
 import type { ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import { activeFloorField, activeFloorLevel } from "../storeHelpers";
@@ -174,7 +174,7 @@ export const createPostEditSplitActions = (set: CreatorSet, get: CreatorGet): Pi
     const nextActiveSplitNode = { ...state.postEditActiveSplitNode };
     delete nextActiveSplitNode[key];
 
-    const { offsets } = getNeighborData(state.activeFieldConfig, point[0], point[1]);
+    const offsets = getCellNeighborOffsets(state.activeFieldConfig, point[0], point[1]);
     const field = activeFloorField(state);
     const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeFieldConfig);
     const inFieldCells = buildCellSet(cells);

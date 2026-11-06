@@ -45,6 +45,7 @@ function scanStateReads(): string[] {
 const ALLOWED_STATE_READS: Record<string, string> = {
   "EdgeMarkerSettingsSubsection.tsx: s.activeFieldConfig": "data of the per-edge override list it displays",
   "EdgeMarkerSettingsSubsection.tsx: s.activeFloorId": "data of the per-edge override list it displays",
+  "EdgeMarkerSettingsSubsection.tsx: s.edges": "data of the per-edge override list it displays",
   "EdgeMarkerSettingsSubsection.tsx: s.floorCreases": "data of the per-edge override list it displays",
   "EdgeMarkerSettingsSubsection.tsx: s.floorTopology": "data of the per-edge override list it displays",
   "EdgeMarkerSettingsSubsection.tsx: s.floors": "data of the per-edge override list it displays",
@@ -55,6 +56,8 @@ const ALLOWED_STATE_READS: Record<string, string> = {
   "FloorLabelSection.tsx: s.floors": "floor titles shown in the label preview",
   "FloorLabelSection.tsx: s.nodes": "geometry of the label drag preview",
   "SharedStyleSection.tsx: s.linkIconVisibility": "the link-icon visibility setting itself, not a field's visibility",
+  "TeleportSettingsSection.tsx: s.activeRenderMode": "the render mode the connector editor button targets, not a field's visibility",
+  "TeleportSettingsSection.tsx: s.teleportConnectorEdit": "transient state of the connector editor session",
   "VectorByCorridorsSettingsPanel.tsx: s.showColorWarnings": "toggle of the warnings block, not a settings field",
   "VectorByCorridorsSettingsPanel.tsx: s.vectorByCorridorsSectionsExpanded": "collapse state of the sections",
   "VectorByCorridorsSettingsPanel.tsx: s.vectorByCorridorsSettings": "the panel's own settings",

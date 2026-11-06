@@ -6,6 +6,8 @@ import {
   cellsInWorldRegion,
   getCartesian,
   getCellGeometry,
+  getFieldCellsWithFaces,
+  getLightCellGeometry,
   getFieldVersion,
   getCellOutline,
   prefetchCellGeometries,
@@ -15,6 +17,8 @@ import {
   setMaxOutsideCells,
   warmCartesianCache,
 } from "../pixi/cartesianCache";
+import { getCellNeighborOffsets, getCellVertices, getNeighborData } from "../pixi/tessellationGeometry";
+import { configAllCells } from "../pixi/tessellationCells";
 import { fieldOf } from "./fieldConfigFixtures";
 
 // Runs against the real `maze-core` module loaded by `setup.ts`.
@@ -164,5 +168,63 @@ describe("geometry access layer", () => {
     const square = fieldOf("square", { shape: "custom", points: [[0, 0], [2, 1]] });
     expect(getFieldWorldBounds(square)).toEqual({ minX: 0, minY: 0, maxX: 3, maxY: 2 });
     expect(getFieldWorldBounds(fieldOf("square", { shape: "custom", points: [] }))).toBeNull();
+  });
+});
+
+describe("light field cells", () => {
+  const KINDS = ["square", "hex", "tri", "curved_quadrilateral"] as const;
+  const fieldCells = (cfg: ReturnType<typeof fieldOf>) => configAllCells(cfg);
+
+  it("warms the field with faces for edge cells only and completes the rest in one call", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
+    const spy = vi.spyOn(mazeService, "getGeometrySnapshot");
+    warmCartesianCache(cfg);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // Reading what a light cell carries never loads faces.
+    expect("faces" in getLightCellGeometry(0, 0, cfg)).toBe(false);
+    expect(getCellNeighborOffsets(cfg, 0, 0)).toHaveLength(4);
+    expect(getCellVertices(0, 0, cfg).length).toBeGreaterThan(2);
+    expect(getFieldCellsWithFaces(cfg).length).toBe(12);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // An edge cell has faces from the start; an interior one gets them, and every other light cell with it.
+    expect(getCellGeometry(1, 1, cfg).faces).toHaveLength(4);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(getCellGeometry(0, 0, cfg).faces).toHaveLength(4);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(getCellGeometry(-1, -1, cfg).faces).toHaveLength(4);
+    expect(getFieldCellsWithFaces(cfg)).toHaveLength(16);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it("carries the same neighbor offsets as the faces do", () => {
+    for (const kind of KINDS) {
+      const cfg = fieldOf(kind, { shape: "rect", cols: 4, rows: 4 });
+      warmCartesianCache(cfg);
+      const light = fieldCells(cfg).map(([x, y]) => getCellNeighborOffsets(cfg, x, y));
+      const fromFaces = fieldCells(cfg).map(([x, y]) => getNeighborData(cfg, x, y).offsets);
+      expect(light, kind).toEqual(fromFaces);
+    }
+  });
+
+  it("shares boundary templates that expand to core's own outline", () => {
+    for (const kind of KINDS) {
+      const cfg = fieldOf(kind, { shape: "rect", cols: 4, rows: 4 });
+      warmCartesianCache(cfg);
+      const cells = fieldCells(cfg);
+      const outlines = mazeService.getCellOutlines(cfg.tessellation, cells);
+      cells.forEach(([x, y], index) => {
+        const got = getLightCellGeometry(x, y, cfg).boundary.commands;
+        const want = outlines[index].commands;
+        expect(got.length, kind).toBe(want.length);
+        got.forEach((command, i) => {
+          expect(command.op, kind).toBe(want[i].op);
+          expect(JSON.stringify(command, (_, v) => (typeof v === "number" ? Math.round(v * 1e6) : v)), kind)
+            .toBe(JSON.stringify(want[i], (_, v) => (typeof v === "number" ? Math.round(v * 1e6) : v)));
+        });
+      });
+    }
   });
 });

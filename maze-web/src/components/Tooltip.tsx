@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { Placement } from "@floating-ui/react-dom";
 import { FLOATING_Z_INDEX, useFeedbackFloating } from "./floating/floatingPosition";
@@ -7,6 +7,21 @@ import { radius, shadow, typography, ui } from "../styles/theme";
 /** Hover delay before showing, ms — avoids flicker while the pointer crosses a settings list.
  *  Focus and touch show immediately. */
 export const TOOLTIP_HOVER_DELAY_MS = 300;
+
+// Global switch: while true no bubble is shown (e.g. during a drag-and-drop, where hovering an
+// icon under the dragged card would pop a tooltip up).
+let tooltipsSuppressed = false;
+const suppressionListeners = new Set<() => void>();
+export function setTooltipsSuppressed(value: boolean) {
+  if (tooltipsSuppressed === value) return;
+  tooltipsSuppressed = value;
+  suppressionListeners.forEach((l) => l());
+}
+function subscribeSuppression(l: () => void) {
+  suppressionListeners.add(l);
+  return () => { suppressionListeners.delete(l); };
+}
+const getSuppressed = () => tooltipsSuppressed;
 
 /** Accessible tooltip (GitHub issue #768) — replaces the native `title`, which does not work on
  *  touch, cannot be reached from the keyboard on a disabled control and is not reliably announced.
@@ -34,6 +49,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   const id = useId();
   const descriptionId = `${id}-description`;
   const active = !!content;
+  const suppressed = useSyncExternalStore(subscribeSuppression, getSuppressed);
   const [open, setOpen] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressDismissed = useRef(false);
@@ -51,6 +67,12 @@ export function Tooltip({ content, children, placement = "bottom", block = false
     }
   }, [active]);
 
+  useEffect(() => {
+    if (!suppressed) return;
+    clearHoverTimer();
+    setOpen(false);
+  }, [suppressed]);
+
   // Touch: a tap outside both the anchor and the bubble hides it.
   useEffect(() => {
     if (!open) return;
@@ -66,8 +88,15 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   useEffect(() => {
     if (!open) return;
     const onWindowBlur = () => setOpen(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") setOpen(false);
+    };
     window.addEventListener("blur", onWindowBlur);
-    return () => window.removeEventListener("blur", onWindowBlur);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [open]);
 
   const Wrapper = block ? "div" : "span";
@@ -123,7 +152,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
     >
       {children}
       {active && <span id={descriptionId} hidden>{content}</span>}
-      {active && open && createPortal(
+      {active && open && !suppressed && createPortal(
         <div ref={refs.setFloating} data-testid="tooltip" aria-hidden="true" style={{ ...floatingStyles, ...styles.bubble, ...bubbleStyle }}>
           {content}
         </div>,

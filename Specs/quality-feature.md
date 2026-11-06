@@ -595,6 +595,9 @@ toggleRuleCollapsed(ruleId: string): void
 renameRule(ruleId: string, name: string): void
 removeRule(ruleId: string): void
 moveRule(ruleId: string, direction: "up" | "down"): void
+reorderRule(ruleId: string, targetStageId: string, index: number): void
+moveRuleToNewStage(ruleId: string, position: "start" | "end"): void
+reorderStage(stageId: string, index: number): void
 addStage(): void
 renameStage(stageId: string, name: string): void
 removeStage(stageId: string): void
@@ -684,6 +687,25 @@ Operates directly on `state.stages` (not a derived flat list):
 Surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row — `isFirst`/`isLast` are computed against the combined stage-then-rule flat order (`stages.flatMap(s => s.slots)`), not per-stage position, so the buttons only disable at the true global boundary.
 
 `createRule`'s optional `targetStageId` — when given and resolving to a known stage, places the new rule there instead of the last stage; used by each stage's own toolbar "+ Add rule" button (see "Stage toolbar" below) so a rule created from within a specific stage's section actually lands in that stage, not always the last one. The three-step new-rule dialog flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`) threads this id through every step.
+
+### Drag-and-drop: reorderRule / moveRuleToNewStage / reorderStage
+
+`RulesColumn` wraps rule cards and stage sections in `@dnd-kit` sortables; only the grip handle (rule title row / stage header) starts a drag. The up/down buttons stay for precision and keyboard use. Drag state and event handling live in the `useQualityDnd` hook (`quality/useQualityDnd.ts`); the pure placement rules in `qcDnd.ts`.
+
+Store actions:
+
+- `reorderRule(ruleId, targetStageId, index)`: removes the rule from its stage and inserts it at `index` of the target's `ruleIds` (counted after removal, clamped).
+- `moveRuleToNewStage(ruleId, position)`: creates a new stage at the start/end of `stages` and moves the rule into it. Default name follows `addStage` (`nextStageIndex`: highest `Stage N` suffix in use).
+- `reorderStage(stageId, index)`: moves the whole stage to `index` (clamped), rules intact. Never creates a stage; the new-stage behavior applies only to dragging a rule past the outer boundaries.
+
+UI behavior while a **rule** is dragged:
+
+- The item under the pointer is a `DragOverlay` showing the collapsed (title-only) card, always following the pointer (x locked, no horizontal scrollbar). The original node stays in the list as an empty dashed placeholder of the same collapsed size, marking the drop slot. No move animation.
+- A live `PreviewLayout` (`stageId -> ruleIds`, pure helpers in `qcDnd.ts`: `movePreview`, `finalizeRuleDrop`) decides the slot: pointer in the upper half of a rule card inserts above it, lower half below it; over a stage's title/toolbar inserts as that stage's first slot; over an empty stage body inserts there. Other cards shift to make room, including across stages. On drop `finalizeRuleDrop` yields the `reorderRule` call (none if the rule ended where it started).
+- "New stage" zones: a dashed strip overlays the top edge of the list (shown when the pointer is within `EDGE_ZONE_PX` of the top) and one sits at the end of the list, before the add-stage button (shown when the pointer nears it; its wrapper grows only then, pushing the button down). Both droppables stay mounted for the whole drag (hidden until approached) so dnd-kit measures them at drag start. A floating label next to the dragged card names the hovered zone (`quality.drop_new_stage_top` / `_bottom`). Dropping on a zone calls `moveRuleToNewStage` (`resolveDrop`); the preview placeholder stays in its last existing stage while the pointer is over a zone. A zone under the pointer wins collision detection over rules/headers it overlaps.
+- Hover effects, text selection and tooltips are suppressed for the duration of any drag (`pointer-events: none` on the list, `setTooltipsSuppressed`, `grabbing` cursor).
+
+**Stage** drags use dnd-kit's built-in sortable (closest-center among stages); `resolveDrop` maps the drop to `reorderStage`. Stage placeholder is full size; the overlay shows only the stage title. Keyboard drags have no pointer position, so the edge zones are not reachable that way (use the toolbar buttons).
 
 ### Stage toolbar: addStage() / renameStage(stageId, name) / removeStage(stageId) / moveStage(stageId, direction) / toggleStageDisabled(stageId)
 

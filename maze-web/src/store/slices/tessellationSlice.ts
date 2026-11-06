@@ -8,7 +8,7 @@ import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfi
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { splitPatternsFor } from "../../pixi/shapeTemplates";
 import { qcForTessellation } from "./qcTessellationFilter";
-import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellation, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sameTessellationSettings, defaultTessellationOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 import { computeMirrorPreview } from "../../pixi/mirror";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 
@@ -76,13 +76,14 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     const tessellation: TessellationConfig = { kind: state.previewKind, params: state.previewParams };
     const hexOrientation = state.previewHexOrientation;
     const triOrientation = state.previewTriOrientation;
-    // Params define the cell set, so a params change discards the maze like a kind change does.
-    const clearMaze = !sameTessellation(tessellation, tessellationOf(state));
+    // Any settings change (kind, params, orientation) discards the maze, presets included.
+    const clearMaze = !sameTessellationSettings(
+      { tessellation, hexOrientation, triOrientation },
+      { tessellation: tessellationOf(state), hexOrientation: state.hexOrientation, triOrientation: state.triOrientation },
+    );
     const freshField = defaultFloorFieldConfig(tessellation, hexOrientation, triOrientation);
-    // Re-confirming an unchanged tessellation keeps every floor's field as it is.
-    const unchanged = !clearMaze
-      && hexOrientation === state.hexOrientation
-      && triOrientation === state.triOrientation;
+    // Re-confirming unchanged settings keeps every floor's field as it is.
+    const unchanged = !clearMaze;
     const activeField = unchanged ? state.floorFields[state.activeFloorId] ?? freshField : freshField;
     warmCartesianCache(activeField.fieldConfig, clearMaze ? null : state.floorTopology[state.activeFloorId] ?? null);
     // Kind/orientation are maze-wide (Specs/field-editor.md) — every floor's own field config is

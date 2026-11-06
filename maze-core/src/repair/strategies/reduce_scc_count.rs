@@ -1,5 +1,6 @@
 use crate::Maze;
 use crate::generation::PresetState;
+use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::quality_control::{
     ExcessiveSccCountIssue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue,
 };
@@ -9,11 +10,13 @@ use crate::repair::params::{
     StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params,
 };
 use crate::repair::result::RepairResult;
+use crate::repair::strategies::region_merge_core::mutation_command_endpoints;
 use crate::repair::strategy::{
     NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
 };
 use crate::space::Tessellation;
 use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
 pub const PARAM_MERGE_PRIORITY: &str = "merge_priority";
 
@@ -148,12 +151,12 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         };
 
         let sizes: Vec<usize> = scc.components.iter().map(|c| c.len()).collect();
-        let chosen = select_merge_candidates(&sizes, mode, to_merge, rng);
-        if chosen.is_empty() {
+        // Full priority order, not just the first `to_merge`: regions the nested strategy fails to
+        // merge are replaced by the next ones in this order instead of leaving the count short.
+        let order = select_merge_candidates(&sizes, mode, sizes.len(), rng);
+        if order.is_empty() || to_merge == 0 {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
-
-        let synthetic = RegionNeedsExpansionIssue::synthetic(chosen);
 
         let nested_params = build_params(
             merge_target.strategy.params(),
@@ -161,14 +164,63 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         );
         // Parent has accumulated no commands of its own before delegating — nested_commands are
         // the entire returned batch, already in "parent, then nested" order (Specs/repair.md).
-        merge_target.strategy.apply(
-            &synthetic as &dyn crate::quality_control::Issue,
-            maze,
-            rng,
-            &nested_params,
-            preset_state,
-            &merge_target.nested,
-        )
+        let mut commands = Vec::new();
+        let mut last_result = RepairResult::Failed;
+        let mut merges = MergeTally::default();
+        let mut cursor = 0;
+        while merges.total() < to_merge && cursor < order.len() {
+            let end = (cursor + (to_merge - merges.total())).min(order.len());
+            let synthetic = RegionNeedsExpansionIssue::synthetic(order[cursor..end].to_vec());
+            cursor = end;
+            let (result, nested_commands) = merge_target.strategy.apply(
+                &synthetic as &dyn crate::quality_control::Issue,
+                maze,
+                rng,
+                &nested_params,
+                preset_state,
+                &merge_target.nested,
+            );
+            merges.record(&nested_commands, &scc);
+            commands.extend(nested_commands);
+            last_result = result;
+        }
+
+        if commands.is_empty() {
+            (last_result, commands)
+        } else {
+            (RepairResult::Fixed { score: None }, commands)
+        }
+    }
+}
+
+/// Running count of region merges across every nested call of one `apply()`: the distinct
+/// component pairs the commands connect, so a pair bridged again by a later batch (the snapshot is
+/// stale between batches) is not counted twice. Commands with no recognizable endpoints (an
+/// elevator) cannot be attributed to a pair, so each counts as one merge instead of being mistaken
+/// for a failure and retried on more regions.
+#[derive(Default)]
+struct MergeTally {
+    pairs: HashSet<(ComponentId, ComponentId)>,
+    uncountable: usize,
+}
+
+impl MergeTally {
+    fn record(&mut self, commands: &[MutationCommand], scc: &ConnectedComponents) {
+        for command in commands {
+            match mutation_command_endpoints(command)
+                .and_then(|(a, b)| Some((scc.component_of(a)?, scc.component_of(b)?)))
+            {
+                Some((ca, cb)) if ca != cb => {
+                    self.pairs.insert((ca.min(cb), ca.max(cb)));
+                }
+                Some(_) => {}
+                None => self.uncountable += 1,
+            }
+        }
+    }
+
+    fn total(&self) -> usize {
+        self.pairs.len() + self.uncountable
     }
 }
 

@@ -168,6 +168,7 @@ const SETTING_VALUES: { [K in keyof ParamActivitySettings]-?: NonNullable<ParamA
   showCutLines: [true, false],
   cutLinesGlueColor: [true, false],
   glueTabs: [{ showTabs: true, lineWidth: 2 }, { showTabs: false, lineWidth: 2 }, { showTabs: true, lineWidth: 0 }],
+  creases: [{ showCreases: true, mode: "lines" }, { showCreases: true, mode: "marks" }, { showCreases: false, mode: "lines" }],
   edgeMarkers: [{ mode: "all" }, { mode: "hidden" }],
   elevatorBadges: [{ enabled: true }, { enabled: false }, { enabled: true, placement: "full_circle", evenDistribution: true }, { enabled: true, placement: "full_circle", evenDistribution: false }],
   markerIndex: [{ enabled: true }, { enabled: false }, { enabled: true, borderWidthFromMarker: true, borderColorFromMarker: true }, { enabled: true, borderWidthFromMarker: false, borderColorFromMarker: false }],

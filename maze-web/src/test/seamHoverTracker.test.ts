@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { HOVER_DELAY_MS, SeamHoverTracker, seamArrowsShown } from "../pixi/SeamHoverTracker";
+import { HOVER_DELAY_MS, SeamHoverTracker, seamArrowsShown, exportSeamLayerShown } from "../pixi/SeamHoverTracker";
 
 // Which arrow or pair the pointer is over comes from the arrow hit-tests, mocked here as "the pointer's x is the
 // arrow index, its y the pair index"; what is under test is when the focus reaches the store.
@@ -30,6 +30,20 @@ describe("seamArrowsShown", () => {
     expect(seamArrowsShown(useMazeStore.getState())).toBe(true);
     useMazeStore.setState({ openCard: "basic_config" });
     expect(seamArrowsShown(useMazeStore.getState())).toBe(false);
+  });
+});
+
+describe("exportSeamLayerShown", () => {
+  it("shows the export layer only on the export card with its topology panel open (GitHub issue #919)", () => {
+    useMazeStore.setState({ openCard: "image_export", exportTopologyOpen: true });
+    expect(exportSeamLayerShown(useMazeStore.getState())).toBe(true);
+    useMazeStore.setState({ exportTopologyOpen: false });
+    expect(exportSeamLayerShown(useMazeStore.getState())).toBe(false);
+    for (const card of ["field_setup", "preset_connections", "post_edit", "analytics"] as const) {
+      useMazeStore.setState({ openCard: card, exportTopologyOpen: true });
+      expect(seamArrowsShown(useMazeStore.getState())).toBe(true);
+      expect(exportSeamLayerShown(useMazeStore.getState())).toBe(false);
+    }
   });
 });
 

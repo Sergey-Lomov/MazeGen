@@ -125,6 +125,8 @@ const G = {
   markerIndexCaption: g("image_export.vector_by_walls.section_marker_index", "image_export.vector_by_walls.marker_index_subsection_caption"),
   markerIndexBackplate: g("image_export.vector_by_walls.section_marker_index", "image_export.vector_by_walls.marker_index_subsection_backplate"),
   topology: g("topology.title"),
+  cutLines: g("topology.title", "image_export.topology.cut_lines"),
+  creases: g("topology.title", "image_export.creases.title"),
   glueTabs: g("topology.title", "image_export.glue_tabs.title"),
   edgeMarkers: g("topology.title", "image_export.edge_markers.title"),
   verticalRoot: g("image_export.vector_by_walls.section_vertical"),
@@ -428,16 +430,34 @@ export const LINK_SCHEMA = {
   ...section(WALLS, { group: G.background }, {
     innerGridColor: f("color", `${VW}.inner_grid_color`),
   }),
+  // Only "Vector by walls" trims walls; the corridors settings carry the leaf but nothing reads it.
+  ...section(WALLS, { group: G.topology, active: R.glues }, {
+    trimWallsAtFaceBoundaries: f("boolean", "image_export.topology.trim_walls_at_face_boundaries"),
+  }),
   // The cut-line style (GitHub issue #859): the same three parameters in both render modes.
-  ...section(BOTH, { group: G.topology, active: R.glues }, {
+  ...section(BOTH, { group: G.cutLines, active: R.glues }, {
     showCutLines: f("boolean", "image_export.topology.show_cut_lines"),
   }),
-  ...section(BOTH, { group: G.topology, active: R.cutLines }, {
+  ...section(BOTH, { group: G.cutLines, active: R.cutLines }, {
     cutLinesGlueColor: f("boolean", "image_export.topology.cut_lines_glue_color"),
   }),
-  ...section(BOTH, { group: G.topology, active: R.customCutLineColor }, {
+  ...section(BOTH, { group: G.cutLines, active: R.customCutLineColor }, {
     cutLinesColor: f("color", "image_export.topology.cut_lines_color"),
   }),
+  // The crease display (GitHub issue #924): every field but `mode` is linkable.
+  ...prefixed("creases", section(BOTH, { group: G.creases, active: R.creases }, {
+    showCreases: f("boolean", "image_export.creases.show"),
+  })),
+  ...prefixed("creases", section(BOTH, { group: G.creases, active: R.creaseLines }, {
+    lineStyle: f("lineStyle", "image_export.creases.line_style"),
+    lineWidth: f("number", "image_export.creases.line_width"),
+    color: f("color", "image_export.creases.color"),
+  })),
+  ...prefixed("creases", section(BOTH, { group: G.creases, active: R.creaseMarks }, {
+    markSize: f("number", "image_export.creases.mark_size"),
+    markTipLength: f("number", "image_export.creases.mark_tip_length"),
+    markColor: f("color", "image_export.creases.mark_color"),
+  })),
   // The glue-tab style (GitHub issue #901).
   ...prefixed("glueTabs", section(BOTH, { group: G.glueTabs, active: R.glues, update: "glueTabs" }, {
     showTabs: f("boolean", "image_export.glue_tabs.show"),
@@ -450,10 +470,11 @@ export const LINK_SCHEMA = {
     lineWidth: f("number", "image_export.glue_tabs.line_width"),
   })),
   ...prefixed("glueTabs", section(BOTH, { group: G.glueTabs, active: R.glueTabLine, update: "glueTabs" }, {
-    lineStyle: f("glueTabLineStyle", "image_export.glue_tabs.line_style"),
+    lineStyle: f("lineStyle", "image_export.glue_tabs.line_style"),
     lineColor: f("color", "image_export.glue_tabs.line_color"),
   })),
   ...prefixed("edgeMarkers", section(BOTH, { group: G.edgeMarkers, active: R.edgeMarkers, update: "edgeMarkers" }, {
+    size: f("number", "image_export.edge_markers.size"),
     shape: f("markerShape", "image_export.edge_markers.shape"),
     color: f("color", "image_export.edge_markers.color"),
   })),

@@ -222,9 +222,10 @@ export function normalizeCells(
   isAnchor?: (x: number, y: number) => boolean,
 ): [number, number][] {
   let result = cells;
+  // Smoothing needs at least four cells to leave a meaningful shape. Judged once on the input: a
+  // per-pass check would stop peeling a thin strip at three cells and leave its stubs behind.
+  const minLinks = smooth && cells.length >= 4 ? 2 : 1;
   for (;;) {
-    // Smoothing needs at least four cells to leave a meaningful shape.
-    const minLinks = smooth && result.length >= 4 ? 2 : 1;
     const present = new Set(result.map(([x, y]) => `${x},${y}`));
     const next = result.filter(([x, y]) => {
       let links = 0;

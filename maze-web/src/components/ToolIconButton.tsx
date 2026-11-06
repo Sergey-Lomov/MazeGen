@@ -77,12 +77,13 @@ const SHORTCUT_ICONS = {
   shift: ArrowBigUp,
 } as const;
 
-function ShortcutKeycaps({ keys }: { keys: readonly ShortcutKey[] }) {
+export function ShortcutKeycaps({ keys, muted = false }: { keys: readonly ShortcutKey[]; muted?: boolean }) {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-  const spokenKeys = keys.map((key) => key === "shift" ? "Shift" : key === "Alt" && isMac ? "Option" : key);
+  const displayKey = (key: ShortcutKey) => key === "mod" ? (isMac ? "⌘" : "Ctrl") : key === "shift" ? "Shift" : key === "Alt" && isMac ? "Option" : key;
+  const spokenKeys = keys.map(displayKey);
   return <span aria-label={`Shortcut: ${spokenKeys.join(" plus ")}`} style={styles.shortcut}>{keys.map((key, index) => {
     const Icon = key === "Alt" && isMac ? Option : SHORTCUT_ICONS[key as keyof typeof SHORTCUT_ICONS];
-    return <kbd key={`${key}-${index}`} style={styles.keycap}>{Icon ? <Icon aria-hidden="true" size={key === "Alt" && isMac ? 11 : 14} strokeWidth={2.5} /> : key}</kbd>;
+    return <kbd key={`${key}-${index}`} style={muted ? styles.keycapMuted : styles.keycap}>{Icon ? <Icon aria-hidden="true" size={key === "Alt" && isMac ? 11 : 14} strokeWidth={2.5} /> : displayKey(key)}</kbd>;
   })}</span>;
 }
 
@@ -116,6 +117,23 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: radius.md,
     background: ui.bg.keycap,
     color: ui.text.primary,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: "0.9em",
+    lineHeight: 1.2,
+    textAlign: "center",
+  },
+  keycapMuted: {
+    height: 20,
+    minWidth: 20,
+    padding: "0 5px",
+    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: radius.md,
+    background: "transparent",
+    color: ui.text.tertiary,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: "0.9em",
     lineHeight: 1.2,

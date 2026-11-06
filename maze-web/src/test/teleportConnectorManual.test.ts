@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
+import { routeTeleportConnectors } from "../pixi/renderers/teleportConnectorPlan";
+import { curveControls, manualConnectorPoints, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
+import type { TeleportEdge } from "../pixi/renderers/types";
+
+const edge = (from: [number, number], to: [number, number], fromNode: number, toNode: number): TeleportEdge =>
+  ({ from, to, fromNode, toNode, oneWay: false });
+
+describe("manual teleport connector paths", () => {
+  it("uses an unordered node-pair key and retains authored endpoint positions", () => {
+    const forward = edge([0, 0], [40, 40], 7, 3);
+    expect(teleportConnectorKey(forward)).toBe("3:7");
+    expect(manualConnectorPoints(forward, { "3:7": { nodes: [[4, 5], [20, 0], [20, 40], [42, 43]] } })).toEqual([4, 5, 20, 0, 20, 40, 42, 43]);
+  });
+
+  it("never sends a manually edited connector through automatic routing", () => {
+    const edited = edge([0, 0], [40, 40], 1, 2);
+    const automatic = edge([0, 0], [40, 40], 3, 4);
+    const routed = routeTeleportConnectors({
+      router: new TeleportConnectorRouter(),
+      edges: [edited, automatic],
+      style: DEFAULT_MAZE_RENDER_STYLE.teleport,
+      cfg: undefined,
+      waypoints: [],
+      avoidFieldExit: false,
+      fieldCells: [],
+      markerMaxFactor: 1,
+      manualPaths: { "1:2": { nodes: [[0, 0], [5, 30], [35, 10], [40, 40]] } },
+    });
+    expect(routed[0].points).toEqual([0, 0, 5, 30, 35, 10, 40, 40]);
+    expect(routed[1].points).not.toEqual(routed[0].points);
+  });
+
+  it("samples cubic spans without changing the authored control points", () => {
+    const points: [number, number][] = [[0, 0], [30, 0], [30, 30]];
+    const sampled = sampleCubicPath(points);
+    expect(points).toEqual([[0, 0], [30, 0], [30, 30]]);
+    expect(sampled.slice(0, 2)).toEqual([0, 0]);
+    expect(sampled.slice(-2)).toEqual([30, 30]);
+    expect(sampled).not.toEqual(points.flat());
+  });
+
+  it("generates two controls per segment with a smooth join at an interior node", () => {
+    const nodes: [number, number][] = [[0, 0], [100, 0], [100, 100]];
+    const controls = straightCubicControls(nodes);
+    expect(controls).toHaveLength(4);
+    expect(curveControls({ mode: "curve", nodes })).toEqual(controls);
+    const [incoming, outgoing] = [controls[1], controls[2]];
+    const fromNode: [number, number] = [incoming[0] - 100, incoming[1]];
+    const toNode: [number, number] = [outgoing[0] - 100, outgoing[1]];
+    expect(fromNode[0] * toNode[1] - fromNode[1] * toNode[0]).toBeCloseTo(0);
+    expect(fromNode[0] * toNode[0] + fromNode[1] * toNode[1]).toBeLessThan(0);
+  });
+
+  it("samples a cubic manual path for the renderer while retaining its editable control points", () => {
+    const curved = edge([0, 0], [30, 30], 1, 2);
+    const rendered = manualConnectorPoints(curved, {
+      "1:2": { mode: "curve", nodes: [[0, 0], [30, 30]], controls: [[30, 0], [0, 30]] },
+    });
+    expect(rendered).not.toEqual([0, 0, 30, 0, 0, 30, 30, 30]);
+    expect(rendered?.slice(0, 2)).toEqual([0, 0]);
+    expect(rendered?.slice(-2)).toEqual([30, 30]);
+  });
+});

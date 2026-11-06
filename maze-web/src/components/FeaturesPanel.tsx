@@ -174,9 +174,10 @@ export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { 
   return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
 }
 
-export function FeaturesPanel({ onRefit, onExportPng }: {
+export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }: {
   onRefit: () => void;
   onExportPng: (settings: PngExportSettings) => Promise<Blob | null>;
+  onFocusTeleportConnector?: (points: readonly [number, number][]) => void;
 }) {
   const openCard = useMazeStore((s) => s.openCard);
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
@@ -451,7 +452,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         expanded={openCard === "image_export"}
         onOpen={() => handleToggle("image_export")}
       >
-        <ImageExportFeature onExportPng={onExportPng} />
+        <ImageExportFeature onExportPng={onExportPng} onFocusTeleportConnector={onFocusTeleportConnector ?? (() => {})} />
       </FeatureCard>
       </div>
       <div style={styles.footer}>
@@ -460,7 +461,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
           <HoverIconButton onClick={handleSave} title={m["project.save"]()}><Save size={16} /></HoverIconButton>
           <HoverIconButton onClick={handleLoadClick} title={m["project.load"]()}><FolderOpen size={16} /></HoverIconButton>
           <HoverIconButton onClick={handleSaveDebugConfig} title={m["generation.save_debug_config_tooltip"]()}><Bug size={16} /></HoverIconButton>
-          <HoverIconButton onClick={onRefit} title="Fit to screen"><Maximize2 size={16} /></HoverIconButton>
+          <HoverIconButton onClick={onRefit} title={m["app.fit_to_screen"]()}><Maximize2 size={16} /></HoverIconButton>
         </div>
         <input
           ref={fileInputRef}

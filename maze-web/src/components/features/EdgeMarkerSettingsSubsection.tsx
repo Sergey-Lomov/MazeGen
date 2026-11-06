@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { EdgeMarkerOverride, EdgeMarkerRole, EdgeMarkerStyle } from "../../store/imageExportTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
@@ -16,11 +16,10 @@ import { useLocale } from "../../i18n/useLocale";
 import { ColorSwatch } from "../ColorSwatch";
 import { LinkStatusIcon } from "../LinkStatusIcon";
 import { SectionHeader } from "../SectionHeader";
-import { SelectRow } from "../SelectRow";
-import { SliderRow } from "../SliderRow";
 import { Button } from "../Button";
 import { Tooltip } from "../Tooltip";
-import { LinkedColorRow, LinkedSelectRow } from "./LinkedRows";
+import { Modal } from "../Modal";
+import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useGate, useLinkContext } from "./LinkContext";
 import { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
@@ -127,6 +126,7 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   /** Several markers of the floor at once. */
   onOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
+  const [infoOpen, setInfoOpen] = useState(false);
   const { links } = useLinkContext<string>();
   const markersShown = useGate("edgeMarkers");
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
@@ -135,10 +135,11 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   const floorCreases = useMazeStore((s) => s.floorCreases);
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const nodes = useMazeStore((s) => s.nodes);
+  const edges = useMazeStore((s) => s.edges);
   const floors = useMazeStore((s) => s.floors);
   const keys = useMemo(
-    () => edgeMarkerKeys(selectExportEdgeMarkers({ activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, floors }, { mode: style.mode })),
-    [activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, floors, style.mode],
+    () => edgeMarkerKeys(selectExportEdgeMarkers({ activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, edges, floors }, { mode: style.mode })),
+    [activeFloorId, activeFieldConfig, floorTopology, floorCreases, pngExportSettings, nodes, edges, floors, style.mode],
   );
   const level = useMemo(() => floors.findIndex((floor) => floor.id === activeFloorId), [floors, activeFloorId]);
   const resolved = useMemo(() => withResolvedEdgeMarkers(style, links, activeFloorId), [style, links, activeFloorId]);
@@ -148,22 +149,24 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
   const shapeOptions = markerShapeSelectOptions();
   return (
     <>
-      <SectionHeader label={m["image_export.edge_markers.title"]()} expanded={expanded} onToggle={onToggle} />
+      <SectionHeader label={m["image_export.edge_markers.title"]()} expanded={expanded} onToggle={onToggle} onOpenInfo={() => setInfoOpen(true)} />
       {expanded && (
         <div style={styles.block}>
-          <SelectRow
+          <LinkedSelectRow
             label={m["image_export.edge_markers.mode"]()}
             value={style.mode}
             options={[
               { value: "hidden", label: m["image_export.edge_markers.mode_hidden"]() },
+              { value: "ambiguous", label: m["image_export.edge_markers.mode_ambiguous"]() },
               { value: "gluings", label: m["image_export.edge_markers.mode_gluings"]() },
               { value: "all", label: m["image_export.edge_markers.mode_all"]() },
             ]}
             onChange={(mode) => onChange({ mode })}
+            linkTarget={null}
           />
           {markersShown && (
             <>
-              <SliderRow label={m["image_export.edge_markers.size"]()} value={style.size} onChange={(size) => onChange({ size })} min={EDGE_MARKER_SIZE_RANGE.min} max={EDGE_MARKER_SIZE_RANGE.max} step={1} format={(v) => String(v)} />
+              <LinkedSliderRow label={m["image_export.edge_markers.size"]()} value={style.size} onChange={(size) => onChange({ size })} min={EDGE_MARKER_SIZE_RANGE.min} max={EDGE_MARKER_SIZE_RANGE.max} step={1} format={(v) => String(v)} linkTarget="edgeMarkers.size" />
               <LinkedSelectRow label={m["image_export.edge_markers.shape"]()} value={style.shape} options={shapeOptions} onChange={(shape) => onChange({ shape })} linkTarget="edgeMarkers.shape" />
               <LinkedColorRow label={m["image_export.edge_markers.color"]()} color={style.color} onChange={(color) => onChange({ color })} priorityColors={priorityColors} defaultColor={defaultColor} field={PC.edgeMarker} linkTarget="edgeMarkers.color" />
               {keys.length > 0 && (
@@ -207,6 +210,20 @@ export function EdgeMarkerSettingsSubsection({ expanded, onToggle, style, defaul
           )}
         </div>
       )}
+      {infoOpen && (
+        <Modal title={m["image_export.edge_markers.info_title"]()} onClose={() => setInfoOpen(false)}>
+          <div style={styles.info}>
+            <div>{m["image_export.edge_markers.info"]()}</div>
+            <div style={styles.infoCoverage}>{m["image_export.edge_markers.info_coverage"]()}</div>
+            <ul style={styles.infoList}>
+              <li><strong>{m["image_export.edge_markers.mode_hidden"]()}.</strong> {m["image_export.edge_markers.info_hidden"]()}</li>
+              <li><strong>{m["image_export.edge_markers.mode_ambiguous"]()}.</strong> {m["image_export.edge_markers.info_ambiguous"]()}</li>
+              <li><strong>{m["image_export.edge_markers.mode_gluings"]()}.</strong> {m["image_export.edge_markers.info_gluings"]()}</li>
+              <li><strong>{m["image_export.edge_markers.mode_all"]()}.</strong> {m["image_export.edge_markers.info_all"]()}</li>
+            </ul>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
@@ -222,4 +239,7 @@ const styles: Record<string, React.CSSProperties> = {
   cellHeader: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, flexShrink: 0 },
   cellControls: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap },
   warningIcon: { display: "inline-flex", alignItems: "center", cursor: "default", width: 13 },
+  info: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  infoCoverage: { marginTop: spacing.itemGap },
+  infoList: { margin: 0, paddingLeft: "1.5em" },
 };

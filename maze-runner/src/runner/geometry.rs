@@ -11,7 +11,7 @@ use maze_core::space::{
     TessellationGeometry, Topology, chain_midpoint,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Request for an immutable geometry snapshot of `cells`. `field_version` is the caller's field
@@ -30,6 +30,22 @@ pub struct GeometrySnapshotRequest {
     /// The floor's folds. Without it (or without active folds) the snapshot is the plain one.
     #[serde(default)]
     pub topology: Option<TopologyRequest>,
+    /// Which cells carry their `faces` (the bulk of the response). Defaults to every cell.
+    #[serde(default)]
+    pub faces: FacesRequest,
+}
+
+/// Which cells of a snapshot carry their faces. A cell without them has `has_faces == false` and an
+/// empty `faces`; its boundary is then always a path or polyline, never `BoundaryDto::Faces`.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FacesRequest {
+    #[default]
+    All,
+    None,
+    /// Only the cells that have a face with no neighbor among the requested `cells`, or a fold
+    /// glued to a face: the cells whose faces are not fixed by their cell class alone.
+    Boundary,
 }
 
 /// The folds of one floor plus the floor's whole cell set, which decides which folds are active
@@ -67,6 +83,10 @@ pub struct FoldGroupRequest {
 pub enum BoundaryRequest {
     /// Exact drawing commands, arcs included; the caller decides how to flatten them.
     Path,
+    /// The path with its commands shared: cells whose boundaries are translations of each other
+    /// (to within `TEMPLATE_QUANTUM`) carry a `BoundaryDto::PathTemplate` pointing into
+    /// `GeometrySnapshot::boundary_templates`, the commands relative to the cell's center.
+    PathTemplated,
     /// No boundary: the caller assembles the path from the faces' segments (they chain in
     /// `faces_of` order, `MoveTo` the first start, then one command per segment).
     Faces,
@@ -84,8 +104,17 @@ pub struct GeometrySnapshot {
     pub topology_version: u64,
     /// The distinct allowed transform groups; a cell's `allowed_group` indexes this list.
     pub allowed_groups: Vec<Vec<Vec<usize>>>,
+    /// The distinct neighbor-offset lists; a cell's `offsets` indexes this list.
+    pub offset_tables: Vec<Vec<[i32; 2]>>,
+    /// Boundary path commands relative to a cell's center, shared by the cells of a
+    /// `PathTemplate` boundary.
+    pub boundary_templates: Vec<Vec<PathCommandDto>>,
     pub cells: Vec<CellGeometry>,
 }
+
+/// Coordinates closer than this count as equal when matching boundary templates. Far above float
+/// noise of a translation, far below anything drawn.
+const TEMPLATE_QUANTUM: f64 = 1e-9;
 
 /// Interns allowed transform groups: cells of a shape share one entry instead of carrying a copy.
 #[derive(Default)]
@@ -124,8 +153,14 @@ pub struct CellGeometry {
     /// resolved through `ShapeDescriptor::group`), identity first; `None` for a cell without a
     /// shape template.
     pub allowed_group: Option<usize>,
+    /// Index into `GeometrySnapshot::offset_tables`: per face in `faces_of` order, the neighbor's
+    /// coordinates minus the cell's, `[0, 0]` for a face without a neighbor. Carried by every cell,
+    /// with or without `faces`.
+    pub offsets: usize,
     pub boundary: BoundaryDto,
-    /// One entry per face, in `faces_of` order.
+    /// Whether `faces` is filled (see `FacesRequest`).
+    pub has_faces: bool,
+    /// One entry per face, in `faces_of` order; empty when `has_faces` is false.
     pub faces: Vec<FaceGeometry>,
 }
 
@@ -135,6 +170,8 @@ pub struct CellGeometry {
 pub enum BoundaryDto {
     /// The boundary path's drawing commands.
     Path { commands: Vec<PathCommandDto> },
+    /// The path of `GeometrySnapshot::boundary_templates[template]` translated by the cell's center.
+    PathTemplate { template: usize },
     /// The boundary flattened at the requested tolerance, first point not repeated.
     Polyline { points: Vec<[f64; 2]> },
     /// Nothing: the faces' segments carry the boundary.
@@ -254,12 +291,15 @@ pub fn geometry_snapshot(request: &GeometrySnapshotRequest) -> Result<GeometrySn
             return Err(format!("tolerance must be positive, got {tolerance}"));
         }
     }
-    let (cells, allowed_groups) = build_tessellation(&request.tessellation, Snapshot { request })??;
+    let (cells, allowed_groups, offset_tables, boundary_templates) =
+        build_tessellation(&request.tessellation, Snapshot { request })??;
     Ok(GeometrySnapshot {
         instance: instance_key(&request.tessellation),
         field_version: request.field_version,
         topology_version: request.topology_version,
         allowed_groups,
+        offset_tables,
+        boundary_templates,
         cells,
     })
 }
@@ -320,6 +360,15 @@ pub fn cells_in_region(request: &CellsInRegionRequest) -> Result<Vec<[i32; 2]>, 
     build_tessellation(&request.tessellation, CellsInRegion { request })?
 }
 
+/// The edges of every cell selected by a region query, each edge once: a face is emitted by the
+/// cell that owns it (`TessellationGeometry::edge_owner`), or by this cell when the owner is not
+/// among the selected cells. One `MoveTo` plus the face's segments per edge, so the whole answer is
+/// one flat command list. For painters that stroke a grid (the viewport grid), which would
+/// otherwise stroke every shared edge twice and pay for the boundary of cells they already hold.
+pub fn region_edges(request: &CellsInRegionRequest) -> Result<Vec<PathCommandDto>, String> {
+    build_tessellation(&request.tessellation, RegionEdges { request })?
+}
+
 /// Identity of a tessellation instance: equal configs build equal instances.
 fn instance_key(config: &TessellationConfig) -> String {
     serde_json::to_string(config).expect("tessellation config serializes")
@@ -333,7 +382,15 @@ struct Snapshot<'a> {
 }
 
 impl TessellationVisitor for Snapshot<'_> {
-    type Output = Result<(Vec<CellGeometry>, Vec<Vec<Vec<usize>>>), String>;
+    type Output = Result<
+        (
+            Vec<CellGeometry>,
+            Vec<Vec<Vec<usize>>>,
+            Vec<Vec<[i32; 2]>>,
+            Vec<Vec<PathCommandDto>>,
+        ),
+        String,
+    >;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
         let field = match &self.request.topology {
@@ -346,12 +403,48 @@ impl TessellationVisitor for Snapshot<'_> {
         let mut edges: HashMap<EdgeKey<T>, (Vec<Segment>, Point)> = HashMap::new();
         let mut out = Vec::with_capacity(self.request.cells.len());
         let mut groups = GroupTable::default();
+        let mut offset_tables: Vec<Vec<[i32; 2]>> = Vec::new();
+        let mut offset_index: HashMap<Vec<[i32; 2]>, usize> = HashMap::new();
+        let mut templates = BoundaryTemplates::default();
         // The shape key and interned group of a template, computed once per distinct template and
         // allowed transform set instead of once per cell.
         let mut shape_info: HashMap<(&str, &[usize]), (String, usize)> = HashMap::new();
         // Only a path or polyline boundary needs the cell's segment chains assembled.
         let needs_path = self.request.boundary != BoundaryRequest::Faces;
+        let requested: HashSet<[i32; 2]> = match self.request.faces {
+            FacesRequest::Boundary => self.request.cells.iter().copied().collect(),
+            _ => HashSet::new(),
+        };
         for cell in codec.decode_valid(&*tessellation, &self.request.cells)? {
+            let has_faces = match self.request.faces {
+                FacesRequest::All => true,
+                FacesRequest::None => false,
+                FacesRequest::Boundary => tessellation.faces_of(cell).iter().any(|&face| {
+                    let inside = tessellation
+                        .neighbor(cell, face)
+                        .is_some_and(|(neighbor, _)| requested.contains(&wire(neighbor, codec)));
+                    !inside
+                        || field
+                            .as_ref()
+                            .is_some_and(|field| field.folded_face(cell, face).is_some())
+                }),
+            };
+            let wire_cell = wire(cell, codec);
+            let offsets: Vec<[i32; 2]> = tessellation
+                .faces_of(cell)
+                .iter()
+                .map(|&face| match tessellation.neighbor(cell, face) {
+                    Some((neighbor, _)) => {
+                        let [nx, ny] = wire(neighbor, codec);
+                        [nx - wire_cell[0], ny - wire_cell[1]]
+                    }
+                    None => [0, 0],
+                })
+                .collect();
+            let offsets = *offset_index.entry(offsets).or_insert_with_key(|key| {
+                offset_tables.push(key.clone());
+                offset_tables.len() - 1
+            });
             let mut faces = Vec::new();
             let mut face_segments = Vec::new();
             let shape = tessellation.shape_of(cell);
@@ -366,7 +459,9 @@ impl TessellationVisitor for Snapshot<'_> {
                     (segments, contact)
                 });
                 let owned = key.0 == cell;
-                let segment_dtos = if owned {
+                let segment_dtos: Vec<SegmentDto> = if !has_faces {
+                    Vec::new()
+                } else if owned {
                     owner_segments.iter().map(segment_dto).collect()
                 } else {
                     owner_segments
@@ -375,17 +470,19 @@ impl TessellationVisitor for Snapshot<'_> {
                         .map(|segment| segment_dto(&segment.reversed()))
                         .collect()
                 };
-                faces.push(FaceGeometry {
-                    neighbor: tessellation
-                        .neighbor(cell, face)
-                        .map(|(neighbor, _)| wire(neighbor, codec)),
-                    canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
-                    contact_point: xy(*contact),
-                    segments: segment_dtos,
-                    fold: field.as_ref().and_then(|field| {
-                        fold_face_dto(field, &mut fold_classes, cell, face, codec)
-                    }),
-                });
+                if has_faces {
+                    faces.push(FaceGeometry {
+                        neighbor: tessellation
+                            .neighbor(cell, face)
+                            .map(|(neighbor, _)| wire(neighbor, codec)),
+                        canonical_face: shape.map(|shape| shape.canonical_of_local(local)),
+                        contact_point: xy(*contact),
+                        segments: segment_dtos,
+                        fold: field.as_ref().and_then(|field| {
+                            fold_face_dto(field, &mut fold_classes, cell, face, codec)
+                        }),
+                    });
+                }
                 if needs_path {
                     face_segments.push(if owned {
                         owner_segments.clone()
@@ -396,7 +493,12 @@ impl TessellationVisitor for Snapshot<'_> {
             }
             let boundary = if needs_path {
                 // Same chain as `boundary_path(cell)`, assembled from the cached edge geometry.
-                boundary_dto(&BoundaryPath::new(face_segments), self.request.boundary)
+                let path = BoundaryPath::new(face_segments);
+                if self.request.boundary == BoundaryRequest::PathTemplated {
+                    templates.intern(&path, xy(tessellation.center(cell)))
+                } else {
+                    boundary_dto(&path, self.request.boundary)
+                }
             } else {
                 BoundaryDto::Faces
             };
@@ -419,11 +521,13 @@ impl TessellationVisitor for Snapshot<'_> {
                 cell_scale: tessellation.cell_scale(cell),
                 shape: shape_key,
                 allowed_group,
+                offsets,
                 boundary,
+                has_faces,
                 faces,
             });
         }
-        Ok((out, groups.groups))
+        Ok((out, groups.groups, offset_tables, templates.templates))
     }
 }
 
@@ -509,9 +613,78 @@ fn fold_face_dto<T: Tessellation>(
     })
 }
 
+/// Interns boundary paths relative to the cell's center: cells that are translations of each other
+/// share one entry.
+#[derive(Default)]
+struct BoundaryTemplates {
+    templates: Vec<Vec<PathCommandDto>>,
+    index: HashMap<Vec<i64>, usize>,
+}
+
+impl BoundaryTemplates {
+    fn intern(&mut self, path: &BoundaryPath, center: [f64; 2]) -> BoundaryDto {
+        let shift = |p: [f64; 2]| [p[0] - center[0], p[1] - center[1]];
+        let commands: Vec<PathCommandDto> = path
+            .path_commands()
+            .iter()
+            .map(|command| match command_dto(command) {
+                PathCommandDto::MoveTo { to } => PathCommandDto::MoveTo { to: shift(to) },
+                PathCommandDto::LineTo { to } => PathCommandDto::LineTo { to: shift(to) },
+                PathCommandDto::ArcTo {
+                    center: arc_center,
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw,
+                } => PathCommandDto::ArcTo {
+                    center: shift(arc_center),
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw,
+                },
+            })
+            .collect();
+        let key = template_key(&commands);
+        let template = *self.index.entry(key).or_insert_with(|| {
+            self.templates.push(commands);
+            self.templates.len() - 1
+        });
+        BoundaryDto::PathTemplate { template }
+    }
+}
+
+/// The commands with every number rounded to `TEMPLATE_QUANTUM`, a variant tag before each command.
+fn template_key(commands: &[PathCommandDto]) -> Vec<i64> {
+    let q = |v: f64| (v / TEMPLATE_QUANTUM).round() as i64;
+    let mut key = Vec::with_capacity(commands.len() * 4);
+    for command in commands {
+        match *command {
+            PathCommandDto::MoveTo { to } => key.extend([0, q(to[0]), q(to[1])]),
+            PathCommandDto::LineTo { to } => key.extend([1, q(to[0]), q(to[1])]),
+            PathCommandDto::ArcTo {
+                center,
+                radius,
+                start_angle,
+                end_angle,
+                ccw,
+            } => key.extend([
+                2,
+                q(center[0]),
+                q(center[1]),
+                q(radius),
+                q(start_angle),
+                q(end_angle),
+                ccw as i64,
+            ]),
+        }
+    }
+    key
+}
+
 fn boundary_dto(path: &BoundaryPath, request: BoundaryRequest) -> BoundaryDto {
     match request {
-        BoundaryRequest::Path => BoundaryDto::Path {
+        BoundaryRequest::Path | BoundaryRequest::PathTemplated => BoundaryDto::Path {
             commands: path.path_commands().iter().map(command_dto).collect(),
         },
         BoundaryRequest::Faces => BoundaryDto::Faces,
@@ -561,6 +734,45 @@ impl TessellationVisitor for CellsInRegion<'_> {
             .cells_in_region(&region, mode, scope(&scope_cells))
             .map_err(|e| format!("region too large: more than {} candidate cells", e.limit))?;
         Ok(cells.into_iter().map(|cell| wire(cell, codec)).collect())
+    }
+}
+
+struct RegionEdges<'a> {
+    request: &'a CellsInRegionRequest,
+}
+
+impl TessellationVisitor for RegionEdges<'_> {
+    type Output = Result<Vec<PathCommandDto>, String>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        let region: Vec<Point> = self
+            .request
+            .region
+            .iter()
+            .map(|&[x, y]| Point::new(x, y))
+            .collect();
+        let mode = match self.request.mode {
+            RegionModeDto::Intersects => RegionMode::Intersects,
+            RegionModeDto::Contained => RegionMode::Contained,
+            RegionModeDto::CenterInside => RegionMode::CenterInside,
+        };
+        let scope_cells = scope_cells(&self.request.scope, &*tessellation, codec)?;
+        let cells = tessellation
+            .cells_in_region(&region, mode, scope(&scope_cells))
+            .map_err(|e| format!("region too large: more than {} candidate cells", e.limit))?;
+        let selected: HashSet<[i32; 2]> = cells.iter().map(|&cell| wire(cell, codec)).collect();
+        let mut commands = Vec::new();
+        for &cell in &cells {
+            for &face in tessellation.faces_of(cell).iter() {
+                let (owner, owner_face) = tessellation.edge_owner(cell, face);
+                if owner != cell && selected.contains(&wire(owner, codec)) {
+                    continue;
+                }
+                let path = BoundaryPath::new(vec![tessellation.face_segments(owner, owner_face)]);
+                commands.extend(path.path_commands().iter().map(command_dto));
+            }
+        }
+        Ok(commands)
     }
 }
 
@@ -672,6 +884,7 @@ mod tests {
             field_version: 7,
             topology_version: 0,
             topology: None,
+            faces: FacesRequest::All,
         }
     }
 
@@ -785,12 +998,94 @@ mod tests {
                         boundary: BoundaryDto::Polyline {
                             points: path.flatten(0.01).into_iter().map(xy).collect(),
                         },
+                        offsets: 0,
+                        has_faces: true,
                         faces,
                     });
                 }
             }
             cells
         }
+    }
+
+    /// A template shifted back by the cell's center equals the exact path (to float noise).
+    #[test]
+    fn templated_path_expands_to_the_plain_path() {
+        for kind in [
+            TessellationKind::Square,
+            TessellationKind::Hex,
+            TessellationKind::Cairo,
+            TessellationKind::Brick,
+            TessellationKind::CurvedQuadrilateral,
+        ] {
+            let cells: Vec<[i32; 2]> = build_tessellation(&config(kind), CoreGeometry)
+                .unwrap()
+                .iter()
+                .map(|cell| cell.cell)
+                .collect();
+            let plain =
+                geometry_snapshot(&request_with(kind, cells.clone(), BoundaryRequest::Path))
+                    .unwrap();
+            let templated =
+                geometry_snapshot(&request_with(kind, cells, BoundaryRequest::PathTemplated))
+                    .unwrap();
+            assert!(
+                templated.boundary_templates.len() < plain.cells.len(),
+                "{kind:?} shares no template"
+            );
+            let near = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+                (a[0] - b[0] - c[0]).abs() < 1e-8 && (a[1] - b[1] - c[1]).abs() < 1e-8
+            };
+            for (exact, shared) in plain.cells.iter().zip(&templated.cells) {
+                let BoundaryDto::Path { commands } = &exact.boundary else {
+                    panic!("plain path");
+                };
+                let BoundaryDto::PathTemplate { template } = shared.boundary else {
+                    panic!("templated path");
+                };
+                let relative = &templated.boundary_templates[template];
+                assert_eq!(commands.len(), relative.len());
+                for (a, b) in commands.iter().zip(relative) {
+                    match (a, b) {
+                        (PathCommandDto::MoveTo { to: a }, PathCommandDto::MoveTo { to: b })
+                        | (PathCommandDto::LineTo { to: a }, PathCommandDto::LineTo { to: b }) => {
+                            assert!(near(*a, *b, exact.center), "{kind:?}");
+                        }
+                        (
+                            PathCommandDto::ArcTo { center: a, .. },
+                            PathCommandDto::ArcTo { center: b, .. },
+                        ) => assert!(near(*a, *b, exact.center), "{kind:?}"),
+                        _ => panic!("command kinds differ"),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn boundary_faces_mode_keeps_faces_only_for_cells_on_the_field_edge() {
+        let cells: Vec<[i32; 2]> = (0..3).flat_map(|x| (0..3).map(move |y| [x, y])).collect();
+        let mut all = request_with(TessellationKind::Square, cells, BoundaryRequest::Path);
+        let full = geometry_snapshot(&all).unwrap();
+        all.faces = FacesRequest::Boundary;
+        let light = geometry_snapshot(&all).unwrap();
+        for (full, light) in full.cells.iter().zip(&light.cells) {
+            assert_eq!(full.boundary, light.boundary);
+            assert_eq!(light.has_faces, light.cell != [1, 1]);
+            if light.has_faces {
+                assert_eq!(full.faces, light.faces);
+            } else {
+                assert!(light.faces.is_empty());
+            }
+        }
+        all.faces = FacesRequest::None;
+        assert!(
+            geometry_snapshot(&all)
+                .unwrap()
+                .cells
+                .iter()
+                .all(|cell| !cell.has_faces && cell.faces.is_empty())
+        );
     }
 
     #[test]
@@ -824,6 +1119,28 @@ mod tests {
         assert!(snapshot.cells.iter().all(|cell| cell.allowed_group == Some(0)));
     }
 
+    /// The snapshot's cells with `offsets` checked against their faces' neighbors and zeroed, the
+    /// value the per-cell core reference carries.
+    fn without_offsets(snapshot: GeometrySnapshot) -> Vec<CellGeometry> {
+        let tables = snapshot.offset_tables;
+        snapshot
+            .cells
+            .into_iter()
+            .map(|cell| {
+                let derived: Vec<[i32; 2]> = cell
+                    .faces
+                    .iter()
+                    .map(|face| {
+                        face.neighbor
+                            .map_or([0, 0], |n| [n[0] - cell.cell[0], n[1] - cell.cell[1]])
+                    })
+                    .collect();
+                assert_eq!(tables[cell.offsets], derived, "{:?}", cell.cell);
+                CellGeometry { offsets: 0, ..cell }
+            })
+            .collect()
+    }
+
     #[test]
     fn snapshot_equals_the_core_per_cell_geometry() {
         for kind in [
@@ -845,7 +1162,7 @@ mod tests {
             let expected = build_tessellation(&config(kind), CoreGeometry).unwrap();
             let cells = expected.iter().map(|cell| cell.cell).collect();
             let snapshot = geometry_snapshot(&request(kind, cells)).unwrap();
-            assert_eq!(snapshot.cells, expected, "{kind:?}");
+            assert_eq!(without_offsets(snapshot), expected, "{kind:?}");
         }
     }
 
@@ -916,7 +1233,7 @@ mod tests {
         let cells = expected.iter().map(|cell| cell.cell).collect();
         let mut request = request(TessellationKind::Radial, cells);
         request.tessellation = cfg;
-        assert_eq!(geometry_snapshot(&request).unwrap().cells, expected);
+        assert_eq!(without_offsets(geometry_snapshot(&request).unwrap()), expected);
     }
 
     /// A 4x2 square field whose east edge is glued to its west edge (face 0 = east, 2 = west).
@@ -1159,5 +1476,42 @@ mod tests {
             scope: None,
         });
         assert!(huge.is_err());
+    }
+
+    /// Every edge of the selected cells comes out once: all the faces minus one per pair of
+    /// selected neighbors.
+    #[test]
+    fn region_edges_emit_each_shared_edge_once() {
+        for kind in [
+            TessellationKind::Square,
+            TessellationKind::Hex,
+            TessellationKind::Tri,
+            TessellationKind::Cairo,
+            TessellationKind::Brick,
+            TessellationKind::CurvedQuadrilateral,
+        ] {
+            let request = CellsInRegionRequest {
+                tessellation: config(kind),
+                region: vec![[0.1, 0.1], [4.9, 0.1], [4.9, 4.9], [0.1, 4.9]],
+                mode: RegionModeDto::Intersects,
+                scope: None,
+            };
+            let cells = cells_in_region(&request).unwrap();
+            let snapshot =
+                geometry_snapshot(&request_with(kind, cells.clone(), BoundaryRequest::Faces)).unwrap();
+            let faces: usize = snapshot.cells.iter().map(|cell| cell.faces.len()).sum();
+            let shared: usize = snapshot
+                .cells
+                .iter()
+                .flat_map(|cell| &cell.faces)
+                .filter(|face| face.neighbor.is_some_and(|n| cells.contains(&n)))
+                .count();
+            let edges = region_edges(&request).unwrap();
+            let strokes = edges
+                .iter()
+                .filter(|command| matches!(command, PathCommandDto::MoveTo { .. }))
+                .count();
+            assert_eq!(strokes, faces - shared / 2, "{kind:?}");
+        }
     }
 }

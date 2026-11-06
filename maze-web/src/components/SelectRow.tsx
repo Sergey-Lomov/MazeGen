@@ -43,7 +43,11 @@ export function SelectRow<T extends string>({
         onChange={(e) => onChange(e.target.value as T)}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
+          // A disabled option may still be the current persisted value (e.g. print anchor
+          // "Custom"). Native selects render that selected disabled option in a low-contrast
+          // disabled style, so keep the current value readable while it remains unavailable as a
+          // new choice from every other state.
+          <option key={o.value} value={o.value} disabled={o.disabled && o.value !== value}>{o.label}</option>
         ))}
       </select>
       {info && <InfoIconButton onClick={info} />}

@@ -18,7 +18,7 @@ interface SceneInteractionDeps {
   getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
   getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
   onHoverChanged: (info: HoverInfo | null) => void;
-  onViewportChanged: () => void;
+  onViewportChanged: (canvasOnly: boolean) => void;
   onResetZoom: () => void;
 }
 
@@ -31,9 +31,16 @@ export class SceneInteraction {
   private deps: SceneInteractionDeps;
   defaultPan: PanState;
   private onWheel: (e: WheelEvent) => void = () => {};
+  private canvasOnlyNavigation = false;
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
+    if (state.teleportConnectorEdit !== null && (e.code === "Escape" || e.code === "Delete")) {
+      e.preventDefault();
+      const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
+      if (e.code === "Escape") controller?.escape?.(); else controller?.deleteSelected?.();
+      return;
+    }
     if (state.floorLabelDrag !== null
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
@@ -108,7 +115,7 @@ export class SceneInteraction {
       (x, y) => {
         viewport.x = x;
         viewport.y = y;
-        onViewportChanged();
+        onViewportChanged(this.canvasOnlyNavigation);
       },
     );
     this.setup();
@@ -121,8 +128,12 @@ export class SceneInteraction {
     stage.hitArea = app.screen;
 
     stage.on("pointerdown", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
       const controller = getController(st);
+      if (st.teleportConnectorEdit !== null) {
+        console.info("[teleport-connector-edit] stage pointerdown", { x: e.globalX, y: e.globalY, button: e.button, hasController: controller !== null });
+      }
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && e.button === 1) {
         this.defaultPan.begin(e.globalX, e.globalY);
@@ -139,8 +150,14 @@ export class SceneInteraction {
     });
 
     stage.on("pointermove", (e) => {
+      this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
-      onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
+      const controller = getController(st);
+      // A pan changes the viewport continuously, so resolving a hover cell would synchronously
+      // cross into core (`geometry_cell_at`) for every pointer event. The hover is meaningless
+      // while the viewport moves and is recomputed on the first stationary pointer move.
+      if (this.defaultPan.isDragging || controller?.isViewportPanning) onHoverChanged(null);
+      else onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && (e.buttons & 4) !== 0) {
         setCanvasCursor(app.canvas, "grabbing");
@@ -187,9 +204,8 @@ export class SceneInteraction {
         );
         return;
       }
-      const controller = getController(st);
       if (controller) {
-        controller.onPointerMove(e.globalX, e.globalY);
+        controller.onPointerMove(e.globalX, e.globalY, e.buttons, e.shiftKey, e.ctrlKey, e.metaKey);
         return;
       }
       this.defaultPan.move(e.globalX, e.globalY);
@@ -262,7 +278,7 @@ export class SceneInteraction {
       viewport.y = mouseY + (viewport.y - mouseY) * factor;
       viewport.scale.x *= factor;
       viewport.scale.y *= factor;
-      onViewportChanged();
+      onViewportChanged(e.ctrlKey || e.metaKey);
     };
     app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }

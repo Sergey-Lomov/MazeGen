@@ -2,6 +2,8 @@ import type { StateCreator } from "zustand";
 import type { MazeStore, FloorsState, FloorsActions, FloorState, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import { defaultFloorFieldConfig, defaultTessellationOf, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock, buildResetDownstreamState } from "../storeHelpers";
+import { topologyCopiedTo } from "../presetTopology";
+import { creasesCopiedTo } from "../creases";
 
 export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
@@ -33,6 +35,9 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
       floors: [...state.floors, floor],
       nextFloorNumber: state.nextFloorNumber + 1,
       floorFields: { ...state.floorFields, [floor.id]: { ...belowField } },
+      // The copied field carries its topology and creases along (GitHub issue #921).
+      floorTopology: topologyCopiedTo(state.floorTopology, belowFloor.id, [floor.id]),
+      floorCreases: creasesCopiedTo(state.floorCreases, belowFloor.id, [floor.id]),
     };
   }),
 

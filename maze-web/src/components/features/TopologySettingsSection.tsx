@@ -1,4 +1,6 @@
 import type React from "react";
+import { useState } from "react";
+import { useMazeStore } from "../../store/mazeStore";
 import type { CreaseExportStyle, CutLineStyleFields, EdgeMarkerOverride, EdgeMarkerStyle, GlueTabStyle } from "../../store/imageExportTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
@@ -9,11 +11,14 @@ import { useGate } from "./LinkContext";
 import { CreaseSettingsSubsection } from "./CreaseSettingsSubsection";
 import { GlueTabSettingsSubsection } from "./GlueTabSettingsSubsection";
 import { EdgeMarkerSettingsSubsection } from "./EdgeMarkerSettingsSubsection";
+import { Modal } from "../Modal";
+import { Button } from "../Button";
+import { bringSidePanelToFront } from "../SidePanel";
 import * as m from "~/paraglide/messages";
 
-/** The "Topology" section of a render mode's settings (GitHub issue #859): how the cut lines are drawn on the image.
- * Shown for a floor that has glues or creases (its glue rows only with glues). Both render modes use it as is, each with its own store actions. */
-export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
+/** The "Topology" section of a render mode's settings (GitHub issues #859, #924, #931): cut lines, glue tabs,
+ * creases and alignment marks. It is available only on floors that have glues. */
+export function TopologySettingsSection({ expanded, onToggle, style, defaultColor, priorityColors, onShow, onGlueColor, onColor, onTrimWallsAtFaceBoundaries, cutLinesExpanded, onToggleCutLines, creasesExpanded, onToggleCreases, creaseStyle, creaseDefaultColor, creasePriorityColors, onCreasesChange, glueTabsExpanded, onToggleGlueTabs, glueTabStyle, glueTabDefaults, glueTabPriorityColors, onGlueTabsChange, edgeMarkersExpanded, onToggleEdgeMarkers, edgeMarkerStyle, edgeMarkerDefaultColor, edgeMarkerPriorityColors, onEdgeMarkersChange, onEdgeMarkerOverride, onEdgeMarkerOverrides }: {
   expanded: boolean;
   onToggle: () => void;
   style: CutLineStyleFields;
@@ -23,6 +28,10 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   onShow: (show: boolean) => void;
   onGlueColor: (glueColor: boolean) => void;
   onColor: (color: number) => void;
+  onTrimWallsAtFaceBoundaries?: (trim: boolean) => void;
+  /** The "Cut lines" subsection (GitHub issue #924). */
+  cutLinesExpanded: boolean;
+  onToggleCutLines: () => void;
   /** The "Creases" subsection (GitHub issue #900). */
   creasesExpanded: boolean;
   onToggleCreases: () => void;
@@ -46,34 +55,68 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
   onEdgeMarkerOverride: (floorId: string, key: string, patch: EdgeMarkerOverride | null) => void;
   onEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
 }) {
+  const [trimWallsInfoOpen, setTrimWallsInfoOpen] = useState(false);
+  const [cutLinesInfoOpen, setCutLinesInfoOpen] = useState(false);
   const hasGlues = useGate("glues");
   const hasCreases = useGate("creases");
-  if (!hasGlues && !hasCreases) return null;
+  const setExportTopologyOpen = useMazeStore((s) => s.setExportTopologyOpen);
+  if (!hasGlues) return null;
   return (
     <>
       <div style={styles.divider} />
       <SectionHeader label={m["topology.title"]()} expanded={expanded} onToggle={onToggle} />
       {expanded && (
         <div style={styles.block}>
-          <LinkedToggleRow label={m["image_export.topology.show_cut_lines"]()} checked={style.showCutLines} onChange={onShow} linkTarget="showCutLines" />
-          <LinkedToggleRow label={m["image_export.topology.cut_lines_glue_color"]()} checked={style.cutLinesGlueColor} onChange={onGlueColor} linkTarget="cutLinesGlueColor" />
-          <LinkedColorRow
-            label={m["image_export.topology.cut_lines_color"]()}
-            color={style.cutLinesColor}
-            onChange={onColor}
-            defaultColor={defaultColor}
-            field={PC.cutLines}
-            priorityColors={priorityColors}
-            linkTarget="cutLinesColor"
-          />
-          {hasGlues && (
-            <GlueTabSettingsSubsection expanded={glueTabsExpanded} onToggle={onToggleGlueTabs} style={glueTabStyle} defaults={glueTabDefaults} priorityColors={glueTabPriorityColors} onChange={onGlueTabsChange} />
+          {onTrimWallsAtFaceBoundaries && (
+            <LinkedToggleRow
+              label={m["image_export.topology.trim_walls_at_face_boundaries"]()}
+              checked={style.trimWallsAtFaceBoundaries ?? true}
+              onChange={onTrimWallsAtFaceBoundaries}
+              info={() => setTrimWallsInfoOpen(true)}
+              linkTarget="trimWallsAtFaceBoundaries"
+            />
           )}
+          <div style={styles.subsection}>
+            <SectionHeader label={m["image_export.topology.cut_lines"]()} expanded={cutLinesExpanded} onToggle={onToggleCutLines} onOpenInfo={() => setCutLinesInfoOpen(true)} />
+            {cutLinesExpanded && <div style={styles.subsectionFields}>
+              <LinkedToggleRow label={m["image_export.topology.show_cut_lines"]()} checked={style.showCutLines} onChange={onShow} linkTarget="showCutLines" />
+              <LinkedToggleRow label={m["image_export.topology.cut_lines_glue_color"]()} checked={style.cutLinesGlueColor} onChange={onGlueColor} linkTarget="cutLinesGlueColor" />
+              <LinkedColorRow
+                label={m["image_export.topology.cut_lines_color"]()}
+                color={style.cutLinesColor}
+                onChange={onColor}
+                defaultColor={defaultColor}
+                field={PC.cutLines}
+                priorityColors={priorityColors}
+                linkTarget="cutLinesColor"
+              />
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  bringSidePanelToFront("image-export-topology");
+                  setExportTopologyOpen(true);
+                }}
+              >
+                {m["image_export.cuts.edit"]()}
+              </Button>
+            </div>}
+          </div>
+          <GlueTabSettingsSubsection expanded={glueTabsExpanded} onToggle={onToggleGlueTabs} style={glueTabStyle} defaults={glueTabDefaults} priorityColors={glueTabPriorityColors} onChange={onGlueTabsChange} />
           {hasCreases && (
             <CreaseSettingsSubsection expanded={creasesExpanded} onToggle={onToggleCreases} style={creaseStyle} defaultColor={creaseDefaultColor} priorityColors={creasePriorityColors} onChange={onCreasesChange} />
           )}
           <EdgeMarkerSettingsSubsection expanded={edgeMarkersExpanded} onToggle={onToggleEdgeMarkers} style={edgeMarkerStyle} defaultColor={edgeMarkerDefaultColor} priorityColors={edgeMarkerPriorityColors} onChange={onEdgeMarkersChange} onOverride={onEdgeMarkerOverride} onOverrides={onEdgeMarkerOverrides} />
         </div>
+      )}
+      {trimWallsInfoOpen && (
+        <Modal title={m["image_export.topology.trim_walls_at_face_boundaries_info_title"]()} onClose={() => setTrimWallsInfoOpen(false)}>
+          <div>{m["image_export.topology.trim_walls_at_face_boundaries_info"]()}</div>
+        </Modal>
+      )}
+      {cutLinesInfoOpen && (
+        <Modal title={m["image_export.topology.cut_lines_info_title"]()} onClose={() => setCutLinesInfoOpen(false)}>
+          <div>{m["image_export.topology.cut_lines_info"]()}</div>
+        </Modal>
       )}
     </>
   );
@@ -81,5 +124,7 @@ export function TopologySettingsSection({ expanded, onToggle, style, defaultColo
 
 const styles: Record<string, React.CSSProperties> = {
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  subsectionFields: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
 };

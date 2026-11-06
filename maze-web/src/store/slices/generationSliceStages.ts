@@ -1,10 +1,10 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, GenerationActions } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
-import { newStage } from "./generationSliceHelpers";
+import { newStage, nextStageIndex } from "./generationSliceHelpers";
 
 type StagesSliceKeys =
-  | "addStage" | "renameStage" | "removeStage" | "moveStage" | "toggleStageDisabled" | "toggleStageCollapsed"
+  | "addStage" | "renameStage" | "removeStage" | "moveStage" | "reorderStage" | "toggleStageDisabled" | "toggleStageCollapsed"
   | "setStrategyParam" | "setRuleParam";
 
 export const createGenerationStagesSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, StagesSliceKeys>> = (set) => ({
@@ -13,12 +13,7 @@ export const createGenerationStagesSlice: StateCreator<MazeStore, [], [], Pick<G
   // the middle was removed (e.g. remove "Stage 2" out of ["Waypoints", "Stage 2", "Stage 3"],
   // then Add stage would otherwise mint another "Stage 3").
   addStage: () => set((state) => {
-    const usedIndices = state.stages
-      .map((s) => /^Stage (\d+)$/.exec(s.name)?.[1])
-      .filter((n): n is string => n !== undefined)
-      .map(Number);
-    const nextIndex = usedIndices.length > 0 ? Math.max(...usedIndices) : state.stages.length;
-    return { stages: [...state.stages, newStage(nextIndex)] };
+    return { stages: [...state.stages, newStage(nextStageIndex(state.stages))] };
   }),
 
   renameStage: (stageId, name) => set((state) => ({
@@ -48,6 +43,17 @@ export const createGenerationStagesSlice: StateCreator<MazeStore, [], [], Pick<G
     if (idx === -1 || swapWith < 0 || swapWith >= state.stages.length) return {};
     const stages = [...state.stages];
     [stages[idx], stages[swapWith]] = [stages[swapWith], stages[idx]];
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  // Drag-and-drop placement (GitHub issue #39): moves the whole stage (rules intact) to `index`
+  // in `stages` order, clamped; never creates a stage.
+  reorderStage: (stageId, index) => set((state) => {
+    const from = state.stages.findIndex((s) => s.id === stageId);
+    if (from === -1) return {};
+    const stages = [...state.stages];
+    const [moved] = stages.splice(from, 1);
+    stages.splice(Math.max(0, Math.min(index, stages.length)), 0, moved);
     return { stages, debugStale: debugStaleOf(state) };
   }),
 

@@ -9,7 +9,7 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
-import type { EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import type { CreaseExportStyle, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
 import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { patchPaths, type PatchGroup } from "../parameterLinkSchema";
@@ -53,6 +53,19 @@ function writeMarkerPatch<S extends object>(settings: S, kind: VectorMarkerKind,
   return markLinked(next);
 }
 
+/** Writes linkable crease fields through the link engine; the display mode stays unsupported. */
+function writeCreasePatch<S extends object>(settings: S, patch: Partial<CreaseExportStyle>): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    next = field === "mode"
+      ? markLinked(setParamValue(next, `creases.${field}`, value)) as Writable
+      : writeLinkedParam<string, { links: ParamLink<string>[] }>(next, `creases.${field}`, value) as unknown as Writable;
+  }
+  return markLinked(next);
+}
+
 const wallsParam = (path: VectorByWallsParamPath, value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: writeLinkedParam(s.vectorByWallsSettings, path, value),
 });
@@ -68,6 +81,7 @@ function withMazeBound<S extends VectorByWallsSettings | VectorByCorridorsSettin
   return {
     ...preset,
     teleportGroupOverrides: current.teleportGroupOverrides,
+    manualTeleportConnectorPaths: current.manualTeleportConnectorPaths,
     floorLabel: { ...preset.floorLabel, positionsByFloorId: current.floorLabel.positionsByFloorId },
   };
 }
@@ -147,6 +161,7 @@ function pruneUnchanged(cur: unknown, patch: object): object {
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
   floorLabelDrag: null,
+  teleportConnectorEdit: null,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
@@ -162,7 +177,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   exportTopologyOpen: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
-  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null, teleportConnectorEdit: null }),
   loadVisualPreset: (preset) => set((s) => {
     const p = preset.imageExport;
     const update = {
@@ -237,6 +252,13 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       }),
     };
   }),
+  startTeleportConnectorEdit: (renderMode) => set({ teleportConnectorEdit: { renderMode, selected: null }, floorLabelDrag: null }),
+  finishTeleportConnectorEdit: () => set({ teleportConnectorEdit: null }),
+  setTeleportConnectorEditSelection: (selected) => set((s) => s.teleportConnectorEdit ? { teleportConnectorEdit: { ...s.teleportConnectorEdit, selected } } : {}),
+  setManualTeleportConnectorPaths: (paths) => set((s) => ({
+    vectorByWallsSettings: markLinked({ ...s.vectorByWallsSettings, manualTeleportConnectorPaths: paths }),
+    vectorByCorridorsSettings: markLinked({ ...s.vectorByCorridorsSettings, manualTeleportConnectorPaths: paths }),
+  })),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
   setExportTopologyOpen: (open) => set({ exportTopologyOpen: open }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from
@@ -325,7 +347,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsEdgeMarkers: (patch) => set(corridorsPatch({ edgeMarkers: patch }, corridorsPatchPaths("edgeMarkers"), (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
   setVectorByCorridorsEdgeMarkerOverride: (floorId, key, patch) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
   setVectorByCorridorsEdgeMarkerOverrides: (floorId, patches) => set(corridorsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
-  setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources<VectorByCorridorsParamPath, VectorByCorridorsSettings>({ ...s.vectorByCorridorsSettings, creases: { ...s.vectorByCorridorsSettings.creases, ...patch } }, []) })),
+  setVectorByCorridorsCreases: (patch) => set((s) => ({ vectorByCorridorsSettings: writeCreasePatch(s.vectorByCorridorsSettings, patch) })),
   setVectorByCorridorsShowCutLines: (v) => set(corridorsParam("showCutLines", v)),
   setVectorByCorridorsCutLinesGlueColor: (v) => set(corridorsParam("cutLinesGlueColor", v)),
   setVectorByCorridorsCutLinesColor: (color) => set(corridorsParam("cutLinesColor", color)),
@@ -427,8 +449,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsEdgeMarkers: (patch) => set(wallsPatch({ edgeMarkers: patch }, wallsPatchPaths("edgeMarkers"), (cur) => ({ ...cur, edgeMarkers: { ...cur.edgeMarkers, ...patch } }))),
   setVectorByWallsEdgeMarkerOverride: (floorId, key, patch) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverride(cur.edgeMarkers, floorId, key, patch) }))),
   setVectorByWallsEdgeMarkerOverrides: (floorId, patches) => set(wallsPatch({}, [], (cur) => ({ ...cur, edgeMarkers: withEdgeMarkerOverrides(cur.edgeMarkers, floorId, patches) }))),
-  setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: propagateLinkedSources<VectorByWallsParamPath, VectorByWallsSettings>({ ...s.vectorByWallsSettings, creases: { ...s.vectorByWallsSettings.creases, ...patch } }, []) })),
+  setVectorByWallsCreases: (patch) => set((s) => ({ vectorByWallsSettings: writeCreasePatch(s.vectorByWallsSettings, patch) })),
   setVectorByWallsShowCutLines: (v) => set(wallsParam("showCutLines", v)),
+  setVectorByWallsTrimWallsAtFaceBoundaries: (v) => set(wallsParam("trimWallsAtFaceBoundaries", v)),
   setVectorByWallsCutLinesGlueColor: (v) => set(wallsParam("cutLinesGlueColor", v)),
   setVectorByWallsCutLinesColor: (color) => set(wallsParam("cutLinesColor", color)),
   setVectorByWallsShowInnerGrid: (v) => set(wallsParam("showInnerGrid", v)),

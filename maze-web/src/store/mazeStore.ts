@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
+import { guardPresetEdits } from "./presetEditGuard";
 import { createTessellationSlice } from "./slices/tessellationSlice";
 import { createFloorFieldSlice } from "./slices/floorFieldSlice";
 import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
@@ -15,7 +16,7 @@ import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installEdgeMarkerSync } from "./edgeMarkerSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
-import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock } from "./storeHelpers";
+import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { resolveFieldConfig } from "../pixi/tessellationCells";
@@ -37,7 +38,7 @@ export type {
 
 export { decodePoint };
 
-export const useMazeStore = create<MazeStore>()((...a) => ({
+export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
   ...createTessellationSlice(...a),
   ...createFloorFieldSlice(...a),
   ...createPresetConnectionsSlice(...a),
@@ -290,6 +291,23 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     // A project saved with Image Export open lands on it without a `setOpenCard` call.
     if (file.ui.openCard === "image_export") set(chooseFloorLabelModeOnce(get()));
 
+    // Saved dirty flags take precedence over whatever generation (or its absence) left behind.
+    const restoreDirtyFlags = () => set((state) => ({
+      postEditDirty: file.dirtyFlags.postEdit,
+      floorFields: Object.fromEntries(
+        Object.entries(state.floorFields).map(([id, f]) => [id, { ...f, fieldDirty: file.dirtyFlags.field }]),
+      ),
+      presetsDirty: file.dirtyFlags.presets,
+      mazeDirty: file.dirtyFlags.maze,
+    }));
+
+    // A project saved before any generation stays ungenerated (GitHub issue #932).
+    if (!hasGeneration({ mazeDirty: file.dirtyFlags.maze, postEditDirty: file.dirtyFlags.postEdit })) {
+      restoreDirtyFlags();
+      set({ openCard: targetOpenCard });
+      return;
+    }
+
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
     // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below
     // if a saved postEdit exists, then confirmPostEdit recomputes analytics over the restored
@@ -355,14 +373,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     }
 
     // Restore dirty flags — generateWithSeed resets them, but saved values take precedence
-    set((state) => ({
-      postEditDirty: file.dirtyFlags.postEdit,
-      floorFields: Object.fromEntries(
-        Object.entries(state.floorFields).map(([id, f]) => [id, { ...f, fieldDirty: file.dirtyFlags.field }]),
-      ),
-      presetsDirty: file.dirtyFlags.presets,
-      mazeDirty: file.dirtyFlags.maze,
-    }));
+    restoreDirtyFlags();
 
     // If debug mode: restore the saved step, clamped to the freshly (re)generated arena's range —
     // generateWithSeed above already set debugStep to the last step of the new run.
@@ -381,7 +392,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     if (get()._postEditRequestId !== confirmationRequestId) return;
     set({ openCard: targetOpenCard });
   },
-}));
+}, a[0], a[1]));
 
 installTopologySync(useMazeStore);
 installFieldClipboardSync(useMazeStore);

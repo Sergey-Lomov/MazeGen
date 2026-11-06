@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Graphics } from "pixi.js";
 import { clipToHalfPlane, drawExportEdgeMarkers, edgeMarkerKeys, edgeMarkerLook, edgeMarkerLooksAlike, selectExportEdgeMarkers, shiftEdgeMarkers } from "../pixi/imageExport/edgeMarkerExport";
-import { computeEdgeMarkerWarnings, frameAround } from "../pixi/selectors/edgeMarkerWarnings";
+import { computeEdgeMarkerWarnings, computeSeamSectionAmbiguityWarning, frameAround } from "../pixi/selectors/edgeMarkerWarnings";
+import { selectAmbiguousGlueSections } from "../pixi/selectors/ambiguousGlueSections";
 import { DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from "../store/projectExport/validateImageExport";
 import { useMazeStore } from "../store/mazeStore";
@@ -146,6 +147,112 @@ describe("computeEdgeMarkerWarnings", () => {
   });
 });
 
+describe("computeSeamSectionAmbiguityWarning", () => {
+  const cfgFor = (cols: number, rows: number) => fieldOf("square", {
+    shape: "custom",
+    points: Array.from({ length: cols * rows }, (_, i) => [i % cols, Math.floor(i / cols)] as [number, number]),
+  });
+  const topologyFor = (cols: number, rows: number): WireTopology => ({
+    fingerprint: "square{}",
+    folds: [
+      ...Array.from({ length: rows }, (_, y) => ({ a: { cell: [cols - 1, y] as [number, number], face_idx: 0 }, b: { cell: [0, y] as [number, number], face_idx: 2 }, twist: false, group: 0 })),
+      ...Array.from({ length: cols }, (_, x) => ({ a: { cell: [x, rows - 1] as [number, number], face_idx: 1 }, b: { cell: [x, 0] as [number, number], face_idx: 3 }, twist: false, group: 1 })),
+    ],
+    groups: [
+      { id: 0, folds: Array.from({ length: rows }, (_, i) => i) },
+      { id: 1, folds: Array.from({ length: cols }, (_, i) => rows + i) },
+    ],
+  });
+  const nodesFor = (cols: number, rows: number) => Array.from(
+    { length: cols * rows },
+    (_, id) => ({ id, x: id % cols, y: Math.floor(id / cols), i: 0 }),
+  );
+
+  it("is empty without at least two glue groups", () => {
+    const cfg = cfgFor(4, 4);
+    const topology: WireTopology = {
+      fingerprint: "square{}",
+      folds: [{ a: { cell: [3, 0], face_idx: 0 }, b: { cell: [0, 0], face_idx: 2 }, twist: false, group: 0 }],
+      groups: [{ id: 0, folds: [0] }],
+    };
+    warmCartesianCache(cfg, topology);
+    const state = { activeFloorId: "f", activeFieldConfig: cfg, floorTopology: { f: topology }, nodes: nodesFor(4, 4), edges: [], floors: [{ id: "f" }] };
+
+    expect(selectAmbiguousGlueSections(state as never)).toEqual([]);
+  });
+
+  it("ignores matching glue runs on the same connected piece of the net", () => {
+    const cfg = cfgFor(4, 4);
+    const topology = topologyFor(4, 4);
+    warmCartesianCache(cfg, topology);
+    const state = { activeFloorId: "f", activeFieldConfig: cfg, floorTopology: { f: topology }, floorCreases: { f: [] }, pngExportSettings: { cuts: { lines: {} } }, nodes: nodesFor(4, 4), edges: [], floors: [] };
+
+    expect(computeSeamSectionAmbiguityWarning(state as never, { mode: "hidden" })).toEqual([]);
+    expect(computeSeamSectionAmbiguityWarning(state as never, { mode: "gluings" })).toEqual([]);
+  });
+
+  it("flags matching glue runs on separate pieces of the net", () => {
+    const cells = [
+      ...Array.from({ length: 4 }, (_, x) => [x, 0] as [number, number]),
+      ...Array.from({ length: 4 }, (_, x) => [x + 10, 0] as [number, number]),
+    ];
+    const cfg = fieldOf("square", { shape: "custom", points: cells });
+    const topology: WireTopology = {
+      fingerprint: "square{}",
+      folds: [
+        { a: { cell: [3, 0], face_idx: 0 }, b: { cell: [0, 0], face_idx: 2 }, twist: false, group: 0 },
+        { a: { cell: [13, 0], face_idx: 0 }, b: { cell: [10, 0], face_idx: 2 }, twist: false, group: 1 },
+      ],
+      groups: [{ id: 0, folds: [0] }, { id: 1, folds: [1] }],
+    };
+    warmCartesianCache(cfg, topology);
+    const state = {
+      activeFloorId: "f", activeFieldConfig: cfg, floorTopology: { f: topology }, floorCreases: { f: [] }, pngExportSettings: { cuts: { lines: {} } },
+      nodes: cells.map(([x, y], id) => ({ id, x, y, i: 0 })), edges: [], floors: [],
+    };
+
+    const hidden = computeSeamSectionAmbiguityWarning(state as never, { mode: "hidden" });
+    expect(hidden).toHaveLength(1);
+    expect(hidden[0]).toMatchObject({ id: "seam_matching_ambiguous_without_markers" });
+    expect(hidden[0].bands).toHaveLength(4);
+    expect(selectAmbiguousGlueSections(state as never).map((section) => [section.group, section.side])).toEqual([[0, "a"], [0, "b"], [1, "a"], [1, "b"]]);
+    const markers = selectExportEdgeMarkers(state as never, style({ mode: "ambiguous" }));
+    expect(edgeMarkerKeys(markers)).toEqual(["g0", "g1"]);
+    expect(markers).toHaveLength(4);
+  });
+
+  it("does not flag glue runs with different wall and passage patterns", () => {
+    const cells = [
+      ...Array.from({ length: 4 }, (_, x) => [x, 0] as [number, number]),
+      ...Array.from({ length: 4 }, (_, x) => [x + 10, 0] as [number, number]),
+    ];
+    const cfg = fieldOf("square", { shape: "custom", points: cells });
+    const topology: WireTopology = {
+      fingerprint: "square{}",
+      folds: [
+        { a: { cell: [3, 0], face_idx: 0 }, b: { cell: [0, 0], face_idx: 2 }, twist: false, group: 0 },
+        { a: { cell: [13, 0], face_idx: 0 }, b: { cell: [10, 0], face_idx: 2 }, twist: false, group: 1 },
+      ],
+      groups: [{ id: 0, folds: [0] }, { id: 1, folds: [1] }],
+    };
+    const nodes = cells.map(([x, y], id) => ({ id, x, y, i: 0 }));
+    warmCartesianCache(cfg, topology);
+    // The first horizontal glue face is an open two-way passage; every other seam face remains a wall.
+    const otherFloorNodes = nodes.map((node) => ({ ...node, id: node.id + 100, level: 1 }));
+    const state = {
+      activeFloorId: "f", activeFieldConfig: cfg, floorTopology: { f: topology }, floorCreases: { f: [] }, pngExportSettings: { cuts: { lines: {} } },
+      // Duplicate cells on another floor would make every active-floor cell look split if the
+      // selector analysed the unscoped project graph instead of the active floor.
+      edges: [{ from: 3, to: 0, kind: "basic" }, { from: 0, to: 3, kind: "basic" }],
+      floors: [{ id: "f" }, { id: "other" }],
+      nodes: [...nodes, ...otherFloorNodes],
+    };
+
+    expect(computeSeamSectionAmbiguityWarning(state as never, { mode: "hidden" })).toEqual([]);
+    expect(selectExportEdgeMarkers(state as never, style({ mode: "ambiguous" }))).toEqual([]);
+  });
+});
+
 describe("persistence", () => {
   it("defaults when absent", () => {
     expect(validateVectorByWallsSettings({}, "x", []).edgeMarkers).toEqual(DEFAULT_EDGE_MARKER_STYLE);
@@ -158,6 +265,11 @@ describe("persistence", () => {
     expect(result).toMatchObject({ mode: "all", shape: "star", color: 5 });
     expect(result.size).toBeLessThan(999);
     expect(result.overrides).toEqual({ f1: { a: { shape: "star", color: 1 } } });
+  });
+
+  it("preserves the ambiguous marker mode", () => {
+    const result = validateVectorByWallsSettings({ edgeMarkers: { mode: "ambiguous" } }, "x", []).edgeMarkers;
+    expect(result.mode).toBe("ambiguous");
   });
 });
 

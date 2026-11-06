@@ -70,10 +70,10 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   const floorCreases = useMazeStore((s) => s.floorCreases);
   const topologyWarnings = useMemo(
     () => computeTopologyWarnings(
-      { activeFloorId, activeFieldConfig: cfg, floorTopology, floorCreases, pngExportSettings, nodes: rawNodes, floors },
+      { activeFloorId, activeFieldConfig: cfg, floorTopology, floorCreases, pngExportSettings, nodes: rawNodes, edges: rawEdges, floors },
       settings,
     ),
-    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, floors, settings.glueTabs, settings.edgeMarkers, settings.links, settings.background],
+    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings.glueTabs, settings.edgeMarkers, settings.links, settings.background],
   );
   const exportWarnings = useMemo(() => [...modeWarnings, ...topologyWarnings], [modeWarnings, topologyWarnings]);
 

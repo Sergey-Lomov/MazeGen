@@ -38,16 +38,9 @@ describe("registries derived from the schema", () => {
  *  settings object holds must be declared in `LINK_SCHEMA` — a field added to the settings without a
  *  schema entry (or parked behind `linkTarget={null}`) fails the coverage check below. */
 const NOT_LINKABLE: Record<string, string> = {
-  "creases.showCreases": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.mode": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.lineStyle": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.lineWidth": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.markSize": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.markTipLength": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.color": "crease export style: not linkable yet (own settings group, issue #900)",
-  "creases.markColor": "crease export style: not linkable yet (own settings group, issue #900)",
-  "edgeMarkers.mode": "edge-marker export style: not linkable yet (own settings group)",
-  "edgeMarkers.size": "edge-marker export style: not linkable yet (own settings group)",
+  "creases.mode": "crease display mode: the other crease fields follow it, so it is not linkable (GitHub issue #924)",
+  "edgeMarkers.mode": "edge-marker coverage mode: it gates the other edge-marker fields",
+  trimWallsAtFaceBoundaries: "linkable in 'Vector by walls' only: the corridors settings carry the leaf but nothing reads it",
   randomWallColorMode: "enum without a `ParamType`; the panel row passes `linkTarget={null}`",
   oneWayPattern: "enum without a `ParamType`; the panel row passes `linkTarget={null}`",
   renderStyle: "enum without a `ParamType`; selects the corridors rendering style",
@@ -83,9 +76,8 @@ describe("settings coverage", () => {
   });
 
   it("the not-linkable list holds no stale entries", () => {
-    const leaves = new Set(MODES.flatMap((mode) => scalarLeaves(DEFAULTS[mode])));
-    const declared = new Set<string>(MODES.flatMap((mode) => schemaEntriesFor(mode).map(([path]) => path as string)));
-    expect(Object.keys(NOT_LINKABLE).filter((leaf) => !leaves.has(leaf) || declared.has(leaf))).toEqual([]);
+    const undeclaredIn = (leaf: string) => MODES.some((mode) => scalarLeaves(DEFAULTS[mode]).includes(leaf) && !schemaEntriesFor(mode).some(([path]) => path === leaf));
+    expect(Object.keys(NOT_LINKABLE).filter((leaf) => !undeclaredIn(leaf))).toEqual([]);
   });
 });
 
@@ -231,7 +223,7 @@ describe("activity rules", () => {
     hasSplits: false, hasGlues: false, hasCreases: false,
   };
   const floorLabel = { enabled: true, labelMode: "index", backgroundShape: "rectangle" } as const;
-  const toggles = { teleportArrowMode: "periodic", splitSpecialShapes: true, join: "round", renderStyle: "contour", teleportGroupCustomization: true, showCutLines: true, cutLinesGlueColor: false, edgeMarkers: { mode: "all" }, glueTabs: { showTabs: true, lineWidth: 1 } } as const;
+  const toggles = { teleportArrowMode: "periodic", splitSpecialShapes: true, join: "round", renderStyle: "contour", teleportGroupCustomization: true, showCutLines: true, cutLinesGlueColor: false, edgeMarkers: { mode: "all" }, glueTabs: { showTabs: true, lineWidth: 1 }, creases: { showCreases: true, mode: "lines" } } as const;
   const SETTINGS: Record<string, ParamActivitySettings> = {
     abstract: { ...toggles, verticalStyle: "abstract", teleportConnectorStyle: "orthogonal", floorLabel },
     decorative: { ...toggles, verticalStyle: "decorative", teleportConnectorStyle: "curved", floorLabel },
@@ -251,7 +243,8 @@ describe("activity rules", () => {
   });
 
   it("every field of a mode is reachable in some maze/settings combination", () => {
-    const combos: [LinkMode, ParamActivitySettings][] = [["walls", SETTINGS.abstract], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }]];
+    const marks = { ...SETTINGS.abstract, creases: { showCreases: true, mode: "marks" } } as ParamActivitySettings;
+    const combos: [LinkMode, ParamActivitySettings][] = [["walls", SETTINGS.abstract], ["walls", marks], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }], ["corridors", { ...SETTINGS.corridors, creases: { showCreases: true, mode: "marks" } }]];
     for (const mode of MODES) {
       const reachable = new Set<string>();
       for (const [m, settings] of combos) {
@@ -296,8 +289,8 @@ describe("activity rules", () => {
     expect(isPathActive("teleportAvoidFieldExit", "walls", ctx, { teleportConnectorStyle: "orthogonal" })).toBe(true);
     expect(isPathActive("teleportAvoidFieldExit", "walls", ctx, { teleportConnectorStyle: "curved" })).toBe(false);
     expect(isPathActive("glueTabs.showTabs", "walls", { ...ctx, hasGlues: false }, {})).toBe(false);
-    expect(isPathActive("edgeMarkers.color", "walls", { ...ctx, hasGlues: false, hasCreases: true }, { edgeMarkers: { mode: "all" } })).toBe(true);
-    expect(isPathActive("edgeMarkers.color", "walls", { ...ctx, hasGlues: false, hasCreases: false }, { edgeMarkers: { mode: "all" } })).toBe(false);
+    expect(isPathActive("edgeMarkers.color", "walls", { ...ctx, hasGlues: true }, { edgeMarkers: { mode: "all" } })).toBe(true);
+    expect(isPathActive("edgeMarkers.color", "walls", { ...ctx, hasGlues: false, hasCreases: true }, { edgeMarkers: { mode: "all" } })).toBe(false);
     expect(isPathActive("splitSpecialShapes", "walls", { ...ctx, hasSplits: false }, {})).toBe(false);
     expect(isPathActive("glueTabs.inset", "walls", ctx, { glueTabs: { showTabs: false, lineWidth: 1 } })).toBe(false);
     expect(isPathActive("glueTabs.lineColor", "walls", ctx, { glueTabs: { showTabs: true, lineWidth: 0 } })).toBe(false);

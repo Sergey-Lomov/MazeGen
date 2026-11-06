@@ -48,6 +48,26 @@ describe("WallRenderer.render", () => {
     expect(strokeCalls).toHaveLength(2);
   });
 
+  it("with batchStrokes, merges the default-style solid walls into a single stroke while keeping one subpath per edge", () => {
+    const renderer = new WallRenderer(new Container(), true);
+    renderer.render({ edges: cornerEdges() }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+    // Each edge keeps its own moveTo, so segments stay independent subpaths (no chaining or joins).
+    expect(g.calls.filter((c) => c.fn === "moveTo")).toHaveLength(2);
+    // The single stroke comes after every path was traced.
+    expect(g.calls[g.calls.length - 1].fn).toBe("stroke");
+  });
+
+  it("with batchStrokes and no solid walls, issues no stroke at all", () => {
+    const renderer = new WallRenderer(new Container(), true);
+    renderer.render({ edges: [] }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
+  });
+
   it("with a style override, chains the two corner edges into one continuous path (single stroke call) so the join renders", () => {
     const renderer = new WallRenderer(new Container());
     renderer.render({ edges: cornerEdges() }, squareCfg, { color: 0x123456, width: 5, join: "miter", cap: "square" });

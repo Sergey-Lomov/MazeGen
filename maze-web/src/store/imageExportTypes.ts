@@ -107,18 +107,21 @@ export interface CutLineStyleFields {
   /** Each cut line takes the colour of its glue; `cutLinesColor` applies when off. */
   cutLinesGlueColor: boolean;
   cutLinesColor: number;
+  /** Clips maze artwork at glued face boundaries without clipping ordinary field edges. */
+  trimWallsAtFaceBoundaries?: boolean;
 }
 
 /** How the export shows topological crease lines (GitHub issue #900): as lines, or as pairs of marks whose tips point at each other. */
 export type CreaseDisplayMode = "lines" | "marks";
-export type CreaseLineStyle = "dashed" | "solid";
+/** Reusable appearance of a stroked line. */
+export type LineStyle = "dashed" | "solid";
 
 /** Crease display on the image (GitHub issue #900, `Specs/image-export.md`, "Crease lines"). Sizes are in display
  * units, so they zoom with the field. */
 export interface CreaseExportStyle {
   showCreases: boolean;
   mode: CreaseDisplayMode;
-  lineStyle: CreaseLineStyle;
+  lineStyle: LineStyle;
   lineWidth: number;
   /** Base width of one mark. */
   markSize: number;
@@ -149,12 +152,10 @@ export interface GlueTabStyle {
   fillColor: number;
   /** Outline colour, linked to the outer grid colour by default. Used while `lineWidth` is above zero. */
   lineColor: number;
-  lineStyle: GlueTabLineStyle;
+  lineStyle: LineStyle;
   /** Outline thickness; zero draws no outline. */
   lineWidth: number;
 }
-
-export type GlueTabLineStyle = "dashed" | "solid";
 
 /** Both render modes carry the glue-tab style. */
 export interface GlueTabStyleFields {
@@ -162,7 +163,7 @@ export interface GlueTabStyleFields {
 }
 
 /** Which edge alignment markers the export shows (GitHub issue #902). */
-export type EdgeMarkerMode = "hidden" | "gluings" | "all";
+export type EdgeMarkerMode = "hidden" | "ambiguous" | "gluings" | "all";
 
 /** The two parameters of a marker's own look. */
 export type EdgeMarkerRole = "color" | "shape";
@@ -428,6 +429,8 @@ export interface VerticalDecorativeFields {
 export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
 
 export interface TeleportSettingsFields {
+  /** User-authored connector polylines, keyed by their unordered teleport-node pair. */
+  manualTeleportConnectorPaths?: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>;
   /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
    *  markers instead of the former flat `teleportLine*`/`teleportEdge*` fields. `gapWidth` is the
    *  floor-colored gap ring around the border (GitHub issue #302), same convention as the waypoint
@@ -932,6 +935,8 @@ export interface ImageExportState {
    * toggles. */
   activeRenderMode: RenderModeId | null;
   floorLabelDrag: FloorLabelDragState | null;
+  /** Transient state for the on-canvas teleport connector editor. */
+  teleportConnectorEdit: { renderMode: RenderModeId; selected: { key: string; index: number } | null } | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -1001,6 +1006,11 @@ export interface ImageExportActions {
   updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
   finishFloorLabelDrag: () => void;
   cancelFloorLabelDrag: () => void;
+  startTeleportConnectorEdit: (renderMode: RenderModeId) => void;
+  finishTeleportConnectorEdit: () => void;
+  setTeleportConnectorEditSelection: (selected: { key: string; index: number } | null) => void;
+  /** Writes the renderer-independent paths to both display modes in one transaction. */
+  setManualTeleportConnectorPaths: (paths: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;
@@ -1137,6 +1147,7 @@ export interface ImageExportActions {
   /** Several markers of one floor in a single update (the "Auto colours" button). */
   setVectorByWallsEdgeMarkerOverrides: (floorId: string, patches: Record<string, EdgeMarkerOverride | null>) => void;
   setVectorByWallsShowCutLines: (v: boolean) => void;
+  setVectorByWallsTrimWallsAtFaceBoundaries: (v: boolean) => void;
   setVectorByWallsCutLinesGlueColor: (v: boolean) => void;
   setVectorByWallsCutLinesColor: (color: number) => void;
   setVectorByWallsShowInnerGrid: (v: boolean) => void;

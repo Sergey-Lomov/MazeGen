@@ -80,6 +80,7 @@ impl PreparedVisitor for TimeStage<'_> {
             field_version: 0,
             topology_version: 0,
             topology: None,
+            faces: Default::default(),
         };
         let started = Instant::now();
         match self.stage {

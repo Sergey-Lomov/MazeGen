@@ -7,13 +7,14 @@ import type { FieldSizeReadout } from "../pixi/fieldSizeReadout";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
 import { fieldOf } from "./fieldConfigFixtures";
 import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
-import { AUTO_FILL_PREVIEW_ACTIVE } from "../notifications/fieldSetupNotifications";
+import { AUTO_FILL_PREVIEW_ACTIVE, SMOOTHING_AFFECTED, SMOOTHING_EMPTY_RESULT } from "../notifications/fieldSetupNotifications";
 
 const activeControllers: FieldEditController[] = [];
 
 function makeController() {
   const updates: PrimitiveWorldGeometry[] = [];
   const previewCells: [number, number][][] = [];
+  const smoothedOutCells: [number, number][][] = [];
   const mirrorUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
   const selectionMovePreviews: { source: [number, number][]; temporary: [number, number][] }[] = [];
@@ -31,8 +32,9 @@ function makeController() {
     () => viewport,
     { startPan: vi.fn(), movePan: vi.fn(), endPan: vi.fn() },
     {
-      onPreviewUpdate: (cells, _button, _kind, _cfg, geometry) => {
+      onPreviewUpdate: (cells, _button, _kind, _cfg, geometry, smoothedOut) => {
         previewCells.push(cells);
+        smoothedOutCells.push(smoothedOut);
         updates.push(geometry);
       },
       onPreviewClear: previewClear,
@@ -47,7 +49,7 @@ function makeController() {
     },
   );
   activeControllers.push(controller);
-  return { controller, updates, previewCells, mirrorUpdates, commits, selectionMoves, selectionMovePreviews, previewClear, readouts };
+  return { controller, updates, previewCells, smoothedOutCells, mirrorUpdates, commits, selectionMoves, selectionMovePreviews, previewClear, readouts };
 }
 
 function click(controller: FieldEditController, x: number, y: number, button = 0): void {
@@ -96,8 +98,9 @@ describe("FieldEditController smoothing hotkey", () => {
   const key = (type: "keydown" | "keyup") => window.dispatchEvent(new KeyboardEvent(type, { code: "KeyS" }));
 
   it("inverts smoothing while held, re-renders the preview at once and commits what was previewed", () => {
-    const { controller, previewCells, commits } = startCircleDrag();
+    const { controller, previewCells, smoothedOutCells, commits } = startCircleDrag();
     const smoothed = previewCells.at(-1)!;
+    expect(smoothedOutCells.at(-1)!.length).toBeGreaterThan(0);
 
     key("keydown");
     const raw = previewCells.at(-1)!;
@@ -106,6 +109,30 @@ describe("FieldEditController smoothing hotkey", () => {
     controller.onPointerUp();
     expect(commits.at(-1)!.cells).toEqual(raw);
     expect(useMazeStore.getState().smoothPrimitives).toBe(true);
+  });
+
+  it("reports partial smoothing once, resets only when the persistent switch turns off, and warns for an empty result", () => {
+    const { controller } = startCircleDrag();
+    controller.onPointerUp();
+    expect(useNotificationStore.getState().notices.map((notice) => notice.code)).toContain(SMOOTHING_EMPTY_RESULT);
+
+    useMazeStore.getState().setSmoothPrimitives(false);
+    useMazeStore.getState().setSmoothPrimitives(true);
+    const internals = controller as unknown as {
+      normalizedOperationCells: (cells: [number, number][]) => [number, number][];
+      emitSmoothingFeedback: () => void;
+      smoothingAffectedToastShown: boolean;
+    };
+    expect(internals.normalizedOperationCells([[0, 0], [1, 0], [0, 1], [1, 1], [2, 1]])).toHaveLength(4);
+    internals.emitSmoothingFeedback();
+    expect(useNotificationStore.getState().notices.map((notice) => notice.code)).toContain(SMOOTHING_AFFECTED);
+    expect(internals.smoothingAffectedToastShown).toBe(true);
+
+    key("keydown");
+    key("keyup");
+    expect(internals.smoothingAffectedToastShown).toBe(true);
+    useMazeStore.getState().setSmoothPrimitives(false);
+    expect(internals.smoothingAffectedToastShown).toBe(false);
   });
 
   it("restores the persistent smoothing preview on release", () => {
@@ -263,6 +290,8 @@ describe("FieldEditController polygon interaction", () => {
   });
 
   it("commits when a new vertex is double-clicked", () => {
+    // The thin staircase would be smoothed away entirely, leaving nothing to commit.
+    useMazeStore.setState({ smoothPrimitives: false });
     const { controller, commits } = makeController();
     click(controller, 45, -45);
     click(controller, 125, -45);

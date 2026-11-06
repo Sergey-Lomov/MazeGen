@@ -22,6 +22,7 @@ import { computeMirrorPreview, type MirrorAxisPoints, type MirrorPoint } from ".
 import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
 import type { FieldOpError } from "../wasm/mazeService";
+import { warmCartesianCache } from "./cartesianCache";
 import { cellBounds } from "./tessellationGeometry";
 import { controlLineWidth } from "./controlLineWidth";
 
@@ -85,7 +86,7 @@ export class FieldEditorOverlay {
     this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.hoverContainer);
 
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "field editor");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.backgroundImage = new BackgroundImageHost({
       image: this.backgroundImageContainer,
@@ -123,6 +124,13 @@ export class FieldEditorOverlay {
         this.redrawAll(state);
       }
 
+      // A config change redraws every layer at once; the narrower redraws below would repeat that work.
+      const configChanged = field.fieldConfig !== prevField.fieldConfig;
+      if (isOpen && configChanged) {
+        this.redrawAll(state);
+      }
+      const partial = isOpen && !configChanged;
+
       if (isOpen && (
         state.activeFloorId !== prev.activeFloorId
         || state.floorTopology !== prev.floorTopology
@@ -135,27 +143,16 @@ export class FieldEditorOverlay {
         || state.topologyFlagged !== prev.topologyFlagged
         || state.topologySideHover !== prev.topologySideHover
         || state.topologyPick !== prev.topologyPick
-        || field.fieldConfig !== prevField.fieldConfig
         || field.fieldPoints !== prevField.fieldPoints
-      )) this.redrawTopology(state);
+      ) && !configChanged) this.redrawTopology(state);
 
-      if (isOpen && field.fieldPoints !== prevField.fieldPoints) {
+      if (partial && (
+        field.fieldPoints !== prevField.fieldPoints
+        || state.backgroundAutoFillPreview !== prev.backgroundAutoFillPreview
+        || state.smoothPrimitives !== prev.smoothPrimitives
+      )) {
         this.redrawFloor(state);
         this.redrawFieldBoundary(state);
-      }
-
-      if (isOpen && state.backgroundAutoFillPreview !== prev.backgroundAutoFillPreview) {
-        this.redrawFloor(state);
-        this.redrawFieldBoundary(state);
-      }
-
-      if (isOpen && state.smoothPrimitives !== prev.smoothPrimitives) {
-        this.redrawFloor(state);
-        this.redrawFieldBoundary(state);
-      }
-
-      if (isOpen && field.fieldConfig !== prevField.fieldConfig) {
-        this.redrawAll(state);
       }
 
       // The boundary skips glued faces; the seam model behind that is rewarmed by `topologySync`, a
@@ -167,7 +164,7 @@ export class FieldEditorOverlay {
         });
       }
 
-      if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
+      if (partial && field.fieldEditMode !== prevField.fieldEditMode) {
         this.redrawFloor(state);
         this.redrawFieldBoundary(state);
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
@@ -190,16 +187,16 @@ export class FieldEditorOverlay {
         this.redrawMirror(state);
       }
 
-      if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
+      if (partial && state.showFieldOrigin !== prev.showFieldOrigin) {
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
       }
 
-      if (isOpen && (state.showPaperLayout !== prev.showPaperLayout
+      if (partial && (state.showPaperLayout !== prev.showPaperLayout
         || state.pngExportSettings.print !== prev.pngExportSettings.print)) {
         this.redrawPaperLayout(state);
       }
 
-      if (isOpen && (backgroundImageChanged(state, prev)
+      if (partial && (backgroundImageChanged(state, prev)
         || field.fieldEditMode !== prevField.fieldEditMode)) {
         this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
         this.redrawFieldBoundary(state);
@@ -237,34 +234,37 @@ export class FieldEditorOverlay {
 
   private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const field = state.floorFields[state.activeFloorId];
+    // The geometry cache is bound to the tessellation, so a size change leaves it holding the old
+    // cells; reading each new one then costs a wasm call apiece. One batched warm-up replaces them.
+    warmCartesianCache(field.fieldConfig, state.floorTopology[state.activeFloorId] ?? null);
     this.grid.render({ viewport: this.viewport }, field.fieldConfig);
-    this.redrawFloor(state);
+    const cells = this.visibleFieldCells(state);
+    this.redrawFloor(state, cells);
     this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
-    this.redrawFieldBoundary(state);
+    this.redrawFieldBoundary(state, cells);
     this.redrawTopology(state);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.fieldConfig);
     this.redrawPaperLayout(state);
     this.redrawMirror(state);
   }
 
-  private redrawFloor(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawFloor(state: ReturnType<typeof useMazeStore.getState>, cells = this.visibleFieldCells(state)): void {
     const field = state.floorFields[state.activeFloorId];
     const cfg = field.fieldConfig;
-    const cells = this.visibleFieldCells(state);
     this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
   }
 
   /** Draws a visual-only wall-style contour around the field. The exposed-edge union handles
    * holes, disconnected cells, and every supported tessellation without introducing walls or
    * changing the field sent to generation. */
-  private redrawFieldBoundary(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawFieldBoundary(state: ReturnType<typeof useMazeStore.getState>, cells = this.visibleFieldCells(state)): void {
     const field = state.floorFields[state.activeFloorId];
     this.fieldBoundaryContainer.visible = true;
 
     // Reuse the same boundary-edge selector as Preset Connections and the same WallRenderer,
     // including the configured wall color, width, cap, and join.
     const { preset: boundaryWalls } = buildPresetWallGroups(
-      this.visibleFieldCells(state),
+      cells,
       new Map(),
       field.fieldConfig,
     );

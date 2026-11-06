@@ -4,7 +4,9 @@ import { WallRenderer } from "../pixi/renderers/WallRenderer";
 import { buildCorridorSegments, buildMazeWalls } from "../pixi/selectors/mazeSelectors";
 import { buildCorridorLineTiles } from "../pixi/imageExport/vectorByCorridorsLineTiles";
 import { buildCorridorContour, contourToPolyline } from "../pixi/imageExport/vectorByCorridorsContour";
-import { getCellCenter, getCellVertices, getFaceEdgeSegment } from "../pixi/tessellationGeometry";
+import { getSeamModel } from "../pixi/selectors/seams";
+import { getCellCenter, getCellVertices, getFaceEdgeSegment, getNeighborData } from "../pixi/tessellationGeometry";
+import { trimMaskPolygons } from "../pixi/imageExport/VectorByWallsRenderer";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
 import { range } from "./seamFixtures";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -44,6 +46,7 @@ const ROWS = 5;
 const cells: Cell[] = [];
 for (let x = 0; x < COLUMNS; x++) for (let y = 0; y < ROWS; y++) cells.push([x, y]);
 const field = fieldOf("square", { shape: "custom", points: cells });
+const singleCellField = fieldOf("square", { shape: "custom", points: [[0, 0]] });
 
 const nodes: NodeDto[] = cells.map(([x, y], id) => ({ id, x, y, i: 0 }));
 const idOf = ([x, y]: Cell): number => nodes.find((node) => node.x === x && node.y === y)!.id;
@@ -86,6 +89,18 @@ describe.each(cases)("seam export: $name", ({ topology, sides }) => {
   const [first, second] = sides;
   const open = passage(first.cell, second.cell);
   const prepare = () => warmCartesianCache(field, topology);
+
+  it("extends the clipping mask only through unglued field faces", () => {
+    prepare();
+    const model = getSeamModel(field);
+    const cellSet = new Set(cells.map(([x, y]) => `${x},${y}`));
+    const ordinaryBoundaryFaces = cells.flatMap(([x, y]) => getNeighborData(field, x, y).offsets.filter(([dx, dy], face) =>
+      !model.halfEdgeAt([x, y], face) && ((dx === 0 && dy === 0) || !cellSet.has(`${x + dx},${y + dy}`)),
+    ));
+    // One cell polygon per cell, plus one straight outward strip per ordinary square-field face
+    // and convex corner wedges. No strip is produced for either side of an active seam.
+    expect(trimMaskPolygons(cells, field, 100).length).toBeGreaterThanOrEqual(cells.length + ordinaryBoundaryFaces.length);
+  });
 
   describe("vector by corridors", () => {
     const segments = () => {
@@ -161,5 +176,12 @@ describe.each(cases)("seam export: $name", ({ topology, sides }) => {
       // Only the two faces of the passage were taken out.
       expect(strokes).toHaveLength(closed.length - 2);
     });
+  });
+});
+
+describe("Vector-by-walls trim mask", () => {
+  it("fills every convex outer corner beyond its two face strips", () => {
+    // Its three ordinary face strips meet in two convex corners, each requiring one extra wedge.
+    expect(trimMaskPolygons([[0, 0]], singleCellField, 100)).toHaveLength(6);
   });
 });

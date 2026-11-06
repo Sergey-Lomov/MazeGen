@@ -10,8 +10,6 @@ import { oneGlue, range } from "./seamFixtures";
 
 const { ExportTopologyPanel } = await import("../components/features/ExportTopologyPanel");
 const { ImageExportFeature } = await import("../components/features/ImageExportFeature");
-const { SettingsSection } = await import("../components/features/SharedStyleSection");
-const { LinkContextProvider } = await import("../components/features/LinkContext");
 const { CutLineDragController, activeCutLines, hasManualCutLine, cutEditingActive } = await import("../pixi/imageExport/CutLineDragController");
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS } = await import("../store/slices/imageExportSlice");
@@ -230,41 +228,8 @@ describe("ExportTopologyPanel", () => {
   });
 });
 
-describe("topology button of the render mode settings", () => {
-  const settingsSection = (hasGlues: boolean) => (
-    <LinkContextProvider value={{ links: [], registry: {}, onSetLinkEnabled: () => {}, onAddLink: () => {}, gate: (name) => name === "glues" && hasGlues, activePaths: new Set<string>() }}>
-    <SettingsSection
-      onResetAll={() => {}}
-      settings={{}}
-      links={[]}
-      registry={{} as never}
-      onSetLinkEnabled={() => {}}
-      onAddLink={() => {}}
-      onRemoveLink={() => {}}
-      activePaths={new Set() as never}
-    />
-    </LinkContextProvider>
-  );
-  const openButton = () => screen.queryByRole("button", { name: m["topology.title"]() });
-
-  it("is hidden without glues", () => {
-    setState(undefined);
-    useMazeStore.setState({ exportTopologyOpen: false } as never);
-    render(settingsSection(false));
-    expect(openButton()).toBeNull();
-  });
-
-  it("opens the export topology panel on a floor with glues", () => {
-    setState(cylinder());
-    useMazeStore.setState({ exportTopologyOpen: false } as never);
-    render(settingsSection(true));
-    fireEvent.click(openButton()!);
-    expect(useMazeStore.getState().exportTopologyOpen).toBe(true);
-  });
-});
-
 describe("export topology panel of the export card", () => {
-  it("is shown with the glues and closes when they are gone", () => {
+  it("stays open and shows an empty cut-line panel when glues are gone", () => {
     setState(cylinder());
     useMazeStore.setState({ exportTopologyOpen: false } as never);
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
@@ -272,8 +237,9 @@ describe("export topology panel of the export card", () => {
     act(() => useMazeStore.getState().setExportTopologyOpen(true));
     expect(screen.queryAllByTestId("topology-glue")).toHaveLength(1);
     act(() => useMazeStore.setState({ floorTopology: {} } as never));
-    expect(useMazeStore.getState().exportTopologyOpen).toBe(false);
+    expect(useMazeStore.getState().exportTopologyOpen).toBe(true);
     expect(screen.queryAllByTestId("topology-glue")).toHaveLength(0);
+    expect(screen.getByText(m["topology.no_glues"]())).toBeTruthy();
   });
 });
 

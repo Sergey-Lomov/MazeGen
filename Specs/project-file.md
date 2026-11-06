@@ -47,6 +47,13 @@ rejects the file instead of falling back to `square`. Failures are
 `loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
 
+GitHub issue #932. Load runs generation only when the file's `dirtyFlags` say a generation existed at
+save time (`hasGeneration`: `maze` or `postEdit`). Otherwise the project stays ungenerated
+(`generationStatus: "idle"`, no maze, no post-edit replay); the saved dirty flags and open card are
+still restored. A file without a `dirtyFlags` section predates the flags and always regenerated, so
+`validate.ts` defaults its `maze` flag to `true`; a present section with a missing `maze` key
+defaults to `false`.
+
 During a successful project load, feature maze canvases remain hidden while the saved post-edit
 command log is replayed and its analytics snapshot is recomputed. The saved feature card is opened
 only after that work completes, so the first visible maze frame includes the restored post-edit

@@ -183,7 +183,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     postEdit: optBool(dirtyFlagsObj, "postEdit", false),
     field: optBool(dirtyFlagsObj, "field", false),
     presets: optBool(dirtyFlagsObj, "presets", false),
-    maze: optBool(dirtyFlagsObj, "maze", false),
+    // A file without the section predates the flags and was always regenerated on load (GitHub
+    // issue #932), so it keeps loading generated.
+    maze: optBool(dirtyFlagsObj, "maze", dirtyFlagsObj === null),
   };
 
   // analytics

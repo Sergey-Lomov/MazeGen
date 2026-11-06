@@ -27,7 +27,8 @@ pub use field_ops::{
     field_preset_topology, field_reflect_cells, field_translate_cells,
 };
 pub use geometry::{
-    geometry_cell_at, geometry_cells_in_region, geometry_snapshot, tessellation_shapes,
+    geometry_cell_at, geometry_cells_in_region, geometry_region_edges, geometry_snapshot,
+    tessellation_shapes,
 };
 pub use strategies_catalog::available_strategies;
 pub use topology::{topology_edit, topology_info};

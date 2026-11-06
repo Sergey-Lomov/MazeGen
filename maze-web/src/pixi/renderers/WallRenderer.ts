@@ -147,7 +147,10 @@ function vertexDegrees(paths: Point[][]): Map<string, number> {
 export class WallRenderer {
   private readonly g: Graphics;
 
-  constructor(container: Container) {
+  /// `batchStrokes` merges the default-style solid walls into a single stroke instruction: same
+  /// look, far fewer draw instructions on big mazes. Off by default so callers (and tests) that
+  /// inspect per-edge strokes keep seeing one instruction per wall.
+  constructor(container: Container, private readonly batchStrokes = false) {
     this.g = new Graphics();
     container.addChild(this.g);
   }
@@ -211,9 +214,16 @@ export class WallRenderer {
       // feature-renderer's exact prior per-segment draw (independent round caps, no join) —
       // vertex-chaining below is only meaningful once a caller actually asks for a `join`/`cap` or
       // supplies `extraWalls`, so it must not change GenerationRenderer's rendering by default.
-      for (const seg of solidSegs) {
-        tracePath(this.g, seg.path);
-        this.g.stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
+      if (this.batchStrokes) {
+        // One stroke for every segment: each is its own subpath (independent caps, no join), and a
+        // single Graphics instruction keeps Pixi from building a geometry batch per wall.
+        for (const seg of solidSegs) tracePath(this.g, seg.path);
+        if (solidSegs.length > 0) this.g.stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
+      } else {
+        for (const seg of solidSegs) {
+          tracePath(this.g, seg.path);
+          this.g.stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
+        }
       }
     } else {
       const width = solidStyleOverride?.width ?? WALL_THICKNESS;

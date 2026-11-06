@@ -35,6 +35,15 @@ describe("path renderer", () => {
     expect(points[points.length - 1][1]).toBeCloseTo(1, 12);
   });
 
+  it("allows low-detail callers to use fewer arc chords", () => {
+    const target = recorder();
+    tracePath(target, quarter, undefined, Math.PI / 4);
+    // Two arc chords plus the final line to the origin.
+    expect(target.calls).toHaveLength(4);
+    expect(target.calls[2][1] as number).toBeCloseTo(0, 12);
+    expect(target.calls[2][2] as number).toBeCloseTo(1, 12);
+  });
+
   it("traces an arc and its reverse through the same points", () => {
     const forward = recorder();
     const backward = recorder();

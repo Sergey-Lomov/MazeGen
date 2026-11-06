@@ -23,7 +23,8 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape,
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
-import { exactCellBounds } from "../tessellationGeometry";
+import { exactCellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
+import { getSeamModel } from "../selectors/seams";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
@@ -44,6 +45,64 @@ import {
 const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
   "one_way_low_contrast_corridor", "one_way_arrows_overflow_corridor", "teleport_connector_covers_one_way",
 ]);
+
+export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldConfig, margin: number): number[][] {
+  const polygons: number[][] = [];
+  const cellKeys = new Set(cells.map(([x, y]) => `${x},${y}`));
+  const boundaryVertices = new Map<string, { cell: string; x: number; y: number; nx: number; ny: number }[]>();
+  const seams = getSeamModel(cfg);
+  // The union of cells keeps every interior edge. Add an outward strip only for an ordinary field
+  // edge; a glued face intentionally has no strip, so all artwork is cut at that exact boundary.
+  for (const [x, y] of cells) {
+    const vertices = getCellVertices(x, y, cfg);
+    polygons.push(vertices.flatMap(({ x: px, y: py }) => [px, py]));
+    const center = getCellCenter(x, y, cfg);
+    for (const [face, [dx, dy]] of getCellNeighborOffsets(cfg, x, y).entries()) {
+      if (seams.halfEdgeAt([x, y], face) || (dx !== 0 || dy !== 0) && cellKeys.has(`${x + dx},${y + dy}`)) continue;
+      const edge = getFaceEdgeSegment([x, y], face, cfg);
+      if (!edge) continue;
+      for (let index = 1; index < edge.polyline.length; index++) {
+        const [x0, y0] = edge.polyline[index - 1];
+        const [x1, y1] = edge.polyline[index];
+        const mx = (x0 + x1) / 2;
+        const my = (y0 + y1) / 2;
+        const length = Math.hypot(mx - center.x, my - center.y);
+        if (length === 0) continue;
+        const nx = (mx - center.x) / length;
+        const ny = (my - center.y) / length;
+        polygons.push([x0, y0, x1, y1, x1 + nx * margin, y1 + ny * margin, x0 + nx * margin, y0 + ny * margin]);
+        for (const [px, py] of [[x0, y0], [x1, y1]]) {
+          const key = `${Math.round(px * 100)},${Math.round(py * 100)}`;
+          const entries = boundaryVertices.get(key) ?? [];
+          entries.push({ cell: `${x},${y}`, x: px, y: py, nx, ny });
+          boundaryVertices.set(key, entries);
+        }
+      }
+    }
+  }
+
+  // A face strip alone leaves the diagonal quadrant at a convex field corner uncovered. An
+  // export-only trim mask would therefore cut off the miter that `WallRenderer` has already drawn.
+  // Join each pair of boundary faces belonging to the same cell with its outward corner wedge.
+  for (const entries of boundaryVertices.values()) {
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i];
+        const b = entries[j];
+        if (a.cell !== b.cell || a.nx * b.nx + a.ny * b.ny > 0.999) continue;
+        polygons.push([a.x, a.y, a.x + a.nx * margin, a.y + a.ny * margin, b.x + b.nx * margin, b.y + b.ny * margin]);
+      }
+    }
+  }
+  return polygons;
+}
+
+function drawTrimMask(mask: Graphics, cells: readonly [number, number][], cfg: FieldConfig, margin: number): void {
+  mask.clear();
+  for (const polygon of trimMaskPolygons(cells, cfg, margin)) {
+    mask.poly(polygon).fill(0xffffff);
+  }
+}
 
 /** Owns the hover-highlight overlay for one mode renderer's export warnings — factored out (GitHub
  *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same
@@ -260,7 +319,7 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
 
     this.gridContainer = new Container();
     container.addChild(this.gridContainer);
-    this.grid = new GridRenderer(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer, "vector export grid");
 
     this.glueTabs = new Container();
     container.addChild(this.glueTabs);
@@ -338,6 +397,15 @@ export class BackgroundGridLayer<TSettings extends { background: number; showGri
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
+  getTeleportConnectorPaths(): readonly { edge: import("../renderers/types").TeleportEdge; points: readonly number[] }[] {
+    // The base renderer can be in a backdrop-only pass while a cut sheet is displayed. Refreshing
+    // its plan here keeps the editor independent of that presentation pass.
+    this.renderAll(useMazeStore.getState());
+    return this.teleports.getConnectorPaths();
+  }
+  private readonly mazeContent: Container;
+  private readonly trimMask = new Graphics();
+  private trimMaskInputs: { nodes: NodeDto[]; floorId: string; cfg: FieldConfig; topology: unknown } | null = null;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
@@ -407,6 +475,9 @@ export class VectorByWallsRenderer {
   constructor(root: Container) {
     this.backgroundGrid = new BackgroundGridLayer(root);
     const container = this.backgroundGrid.content;
+    this.mazeContent = new Container();
+    container.addChild(this.mazeContent);
+    container.addChild(this.trimMask);
 
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
@@ -420,24 +491,24 @@ export class VectorByWallsRenderer {
     this.markerIndexBodyContainer = new Container();
     this.floorLabelContainer = new Container();
 
-    container.addChild(this.floorContainer);
-    container.addChild(this.closedCellsContainer);
-    container.addChild(this.innerGridContainer);
-    container.addChild(this.wallsContainer);
-    container.addChild(this.splitJunctionContainer);
-    container.addChild(this.markerIndexGapContainer);
-    container.addChild(this.teleportContainer);
-    container.addChild(this.verticalContainer);
-    container.addChild(this.markersContainer);
-    container.addChild(this.markerIndexBodyContainer);
-    container.addChild(this.floorLabelContainer);
+    this.mazeContent.addChild(this.floorContainer);
+    this.mazeContent.addChild(this.closedCellsContainer);
+    this.mazeContent.addChild(this.innerGridContainer);
+    this.mazeContent.addChild(this.wallsContainer);
+    this.mazeContent.addChild(this.splitJunctionContainer);
+    this.mazeContent.addChild(this.markerIndexGapContainer);
+    this.mazeContent.addChild(this.teleportContainer);
+    this.mazeContent.addChild(this.verticalContainer);
+    this.mazeContent.addChild(this.markersContainer);
+    this.mazeContent.addChild(this.markerIndexBodyContainer);
+    this.mazeContent.addChild(this.floorLabelContainer);
     this.warningHighlightContainer = new Container();
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
 
     this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
-    this.innerGrid = new GridRenderer(this.innerGridContainer);
+    this.innerGrid = new GridRenderer(this.innerGridContainer, "vector export inner grid");
     this.walls = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
@@ -599,6 +670,23 @@ export class VectorByWallsRenderer {
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     this.innerGridCells = nodes.map((node): [number, number] => [node.x, node.y]);
+    if (state.vectorByWallsSettings.trimWallsAtFaceBoundaries !== false) {
+      const maskInputs = { nodes: state.nodes, floorId: state.activeFloorId, cfg, topology: state.floorTopology?.[state.activeFloorId] };
+      if (
+        !this.trimMaskInputs || this.trimMaskInputs.nodes !== maskInputs.nodes || this.trimMaskInputs.floorId !== maskInputs.floorId ||
+        this.trimMaskInputs.cfg !== maskInputs.cfg || this.trimMaskInputs.topology !== maskInputs.topology
+      ) {
+        const bounds = exactCellBounds(nodes, cfg);
+        const fieldSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
+        drawTrimMask(this.trimMask, this.innerGridCells, cfg, fieldSpan + 512);
+        this.trimMaskInputs = maskInputs;
+      }
+      this.mazeContent.mask = this.trimMask;
+    } else {
+      this.mazeContent.mask = null;
+      this.trimMask.clear();
+      this.trimMaskInputs = null;
+    }
     this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
     if (state.vectorByWallsSettings.showInnerGrid) {
       this.innerGrid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor }, cfg, this.innerGridCells);
@@ -638,6 +726,7 @@ export class VectorByWallsRenderer {
       const effectiveNodeColors = buildEffectiveSplitNodeColors(splitNodeColors, maxSplitNodeCount(nodes));
       const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
         buildSplitPassages(nodes, edges, cfg, specialNodeIds, {}, {}, effectiveNodeColors);
+      const wallEdges = buildMazeWalls(nodes, edges, cfg);
       this.geometryCache = {
         rawNodes: state.nodes,
         rawEdges: state.edges,
@@ -648,7 +737,7 @@ export class VectorByWallsRenderer {
         splitNodeColors,
         teleportAvoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
         closedCells: buildClosedCells(nodes, edges, state.edges),
-        wallEdges: buildMazeWalls(nodes, edges, cfg),
+        wallEdges,
         teleportEdges: (() => {
           const { floorContext, spread } = buildTeleportFloorInputs({
             unscopedNodes: state.nodes,
@@ -740,6 +829,7 @@ export class VectorByWallsRenderer {
       fieldCells: cells,
       mergeTeleports: state.vectorByWallsSettings.teleportMergeMode,
       seam: state.vectorByWallsSettings.teleportThroughSeams !== false ? { cfg } : undefined,
+      manualPaths: state.vectorByWallsSettings.manualTeleportConnectorPaths,
     });
 
     this.markers.render({ markers: markerData, scaler });
@@ -837,6 +927,8 @@ export class VectorByWallsRenderer {
     this.markerIndex.destroy();
     this.floorLabel.destroy();
     this.warningHighlight.destroy();
+    this.trimMask.destroy();
+    this.mazeContent.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.innerGridContainer.destroy();

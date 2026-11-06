@@ -19,6 +19,12 @@ interface Props {
   precise?: boolean;
   /** Accessible name for the precise editor when the visible row label is contextual or repeated. */
   preciseAriaLabel?: string;
+  /** Limits a precise editor to a fixed number of decimal places. */
+  preciseDecimals?: number;
+  /** Width of the precise editor. */
+  preciseWidth?: React.CSSProperties["width"];
+  /** Maximum for the precise editor; `null` leaves it unbounded. Defaults to the slider maximum. */
+  preciseMax?: number | null;
   disabled?: boolean;
   onPointerDown?: React.PointerEventHandler<HTMLInputElement>;
   onPointerUp?: React.PointerEventHandler<HTMLInputElement>;
@@ -32,7 +38,7 @@ interface Props {
   trailingAction?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, valueWidth, precise, preciseAriaLabel, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, valueWidth, precise, preciseAriaLabel, preciseDecimals, preciseWidth, preciseMax, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -58,13 +64,13 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
             name={`${label}-value`}
             ariaLabel={preciseAriaLabel ?? `${label} value`}
             min={min}
-            max={max}
-            value={String(value)}
+            max={preciseMax === undefined ? max : preciseMax ?? undefined}
+            value={preciseDecimals === undefined ? String(value) : value.toFixed(preciseDecimals)}
             disabled={disabled}
-            style={{ ...sharedStyles.input, width: 64, textAlign: "right" }}
+            style={{ ...sharedStyles.input, width: preciseWidth ?? 64, textAlign: "right" }}
             onChange={(raw) => {
               const next = Number(raw);
-              if (Number.isFinite(next)) onChange(next);
+              if (Number.isFinite(next)) onChange(preciseDecimals === undefined ? next : Number(next.toFixed(preciseDecimals)));
             }}
           />
         ) : (

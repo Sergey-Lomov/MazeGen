@@ -46,6 +46,7 @@ export interface ParamActivitySettings {
   showCutLines?: boolean;
   cutLinesGlueColor?: boolean;
   glueTabs?: { showTabs: boolean; lineWidth: number };
+  creases?: { showCreases: boolean; mode: "lines" | "marks" };
   edgeMarkers?: { mode: string };
   elevatorBadges?: { enabled: boolean; placement?: string; evenDistribution?: boolean };
   markerIndex?: { enabled: boolean; borderWidthFromMarker?: boolean; borderColorFromMarker?: boolean };

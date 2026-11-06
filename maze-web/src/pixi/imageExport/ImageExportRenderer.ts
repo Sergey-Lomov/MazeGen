@@ -4,8 +4,9 @@ import { createModeRenderer, type ModeRenderer } from "./modeRendererFactory";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import { SeamArrowLayer } from "../seamArrowSync";
-import { seamArrowsShown } from "../SeamHoverTracker";
+import { exportSeamLayerShown } from "../SeamHoverTracker";
 import { NO_MARGIN, resolveActiveCutPlan } from "./exportContent";
+import type { TeleportEdge } from "../renderers/types";
 
 type CopyLayer = "content" | "overlay" | "highlight";
 const COPY_LAYERS: readonly CopyLayer[] = ["content", "overlay", "highlight"];
@@ -70,7 +71,7 @@ export class ImageExportRenderer implements ViewportListener {
     this.container.addChild(this.mask);
     this.container.addChild(this.seamArrowContainer);
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
-    this.seamArrowContainer.visible = seamArrowsShown(useMazeStore.getState());
+    this.seamArrowContainer.visible = exportSeamLayerShown(useMazeStore.getState());
     const initialMode = useMazeStore.getState().activeRenderMode;
     if (initialMode) this.ensureMode(initialMode);
     this.syncVisibility(initialMode);
@@ -94,6 +95,10 @@ export class ImageExportRenderer implements ViewportListener {
    *  it via a Pixi-free pure function. */
   getModeRenderer(mode: RenderModeId): ModeRenderer | undefined {
     return this.modeRenderers.get(mode);
+  }
+
+  getTeleportConnectorPaths(mode: RenderModeId): readonly { edge: TeleportEdge; points: readonly number[] }[] {
+    return this.modeRenderers.get(mode)?.getTeleportConnectorPaths?.() ?? [];
   }
 
   private syncVisibility(activeMode: RenderModeId | null): void {
@@ -175,7 +180,7 @@ export class ImageExportRenderer implements ViewportListener {
   private subscribe(): void {
     let prevMode = useMazeStore.getState().activeRenderMode;
     this.unsubscribe = useMazeStore.subscribe((state) => {
-      this.seamArrowContainer.visible = seamArrowsShown(state);
+      this.seamArrowContainer.visible = exportSeamLayerShown(state);
       if (state.activeRenderMode !== prevMode) {
         prevMode = state.activeRenderMode;
         if (prevMode) this.ensureMode(prevMode);

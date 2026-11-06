@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
 import { getSeamModel } from "./selectors/seams";
-import { getNeighborData } from "./tessellationGeometry";
+import { getCellNeighborOffsets } from "./tessellationGeometry";
 
 /// The single TS-side neighbor resolver for split logic. A face glued by a topology seam resolves to
 /// its seam partner cell (`getSeamModel`: `halfEdgeAt` + `partnerOf`); any other face resolves by the
@@ -19,13 +19,13 @@ export function faceNeighborCell(
 ): [number, number] | null {
   const half = getSeamModel(cfg).halfEdgeAt(point, faceIdx);
   if (half !== null) return [half.partnerCell[0], half.partnerCell[1]];
-  const offset = getNeighborData(cfg, point[0], point[1]).offsets[faceIdx];
+  const offset = getCellNeighborOffsets(cfg, point[0], point[1])[faceIdx];
   return offset === undefined ? null : [point[0] + offset[0], point[1] + offset[1]];
 }
 
 /// The cell across every face of `point`, in `getNeighborData`'s face order, in the field or not.
 export function faceNeighborCells(cfg: FieldConfig, point: readonly [number, number]): [number, number][] {
-  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  const offsets = getCellNeighborOffsets(cfg, point[0], point[1]);
   const seams = getSeamModel(cfg);
   return offsets.map(([dx, dy], faceIdx): [number, number] => {
     const half = seams.halfEdgeAt(point, faceIdx);

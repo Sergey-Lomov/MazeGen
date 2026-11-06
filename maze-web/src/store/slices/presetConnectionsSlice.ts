@@ -7,7 +7,7 @@ import { buildPresetPointEntities, type PresetPointEntityDescriptor, type Preset
 import { presetPurposeEntitiesAt, type EntityToolPurpose } from "../../pixi/entityToolKinds";
 import type { NodeLockKind } from "../../wasm/types";
 import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnectionsState, type PresetConnectionsActions } from "../storeTypes";
-import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorLevel, resolveFieldAtOf } from "../storeHelpers";
+import { debugStaleOf, buildResetDownstreamState, withRecomputedAutoLock, recomputeAutoLock, activeFloorLevel, resolveFieldAtOf } from "../storeHelpers";
 import { notifyVerticalDragFailure } from "../../notifications/editRefusalNotifications";
 import { createPresetSplitActions } from "./presetSplitActions";
 import { createPresetVerticalActions } from "./presetVerticalActions";
@@ -55,6 +55,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   autoLock: true,
   autoLockedNodes: new Set<string>(),
   presetsDirty: false,
+  presetEditConfirmation: null,
   presetTeleports: [] as PresetTeleportEntry[],
   presetTeleportPendingFrom: null,
   _nextPresetTeleportId: 1,
@@ -81,6 +82,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetMoveRequest: null,
   presetConnectionSettingsPrompt: null,
   presetLockSettingsPrompt: null,
+
+  confirmPresetEdit: () => {
+    const pending = get().presetEditConfirmation;
+    if (!pending) return;
+    set({ ...buildResetDownstreamState(), presetEditConfirmation: null });
+    pending.run();
+  },
+  cancelPresetEdit: () => set({ presetEditConfirmation: null }),
 
   setPresetConnectionsTool: (tool) => set((state) => {
     const enteringLockTools = isPresetLockTool(tool) && !isPresetLockTool(state.presetConnectionsTool);

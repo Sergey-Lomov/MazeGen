@@ -6,7 +6,8 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("defaults dirtyFlags, debug, and ui sections when absent", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.dirtyFlags).toEqual({ postEdit: false, field: false, presets: false, maze: false });
+    // `maze: true`: a file without flags was always regenerated on load, and keeps being (GitHub issue #932).
+    expect(result.dirtyFlags).toEqual({ postEdit: false, field: false, presets: false, maze: true });
     expect(result.debug).toEqual({
       debugMode: false,
       debugStep: 0,
@@ -209,6 +210,12 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete (data.floors as Record<string, unknown>).activeFloorId;
     const result = parseAndValidate(data);
     expect(result.floors.activeFloorId).toBe("floor_1");
+  });
+
+  it("keeps maze false when dirtyFlags is present but omits the maze key", () => {
+    const data = toJson(makeState());
+    data.dirtyFlags = { postEdit: false };
+    expect(parseAndValidate(data).dirtyFlags.maze).toBe(false);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

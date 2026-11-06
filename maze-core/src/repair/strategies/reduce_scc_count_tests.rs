@@ -451,3 +451,84 @@ fn apply_fails_when_nested_slot_id_does_not_match() {
     );
     assert!(matches!(result, RepairResult::Failed));
 }
+
+#[test]
+fn a_region_that_cannot_merge_is_replaced_by_the_next_candidate() {
+    // `smallest` ties break by ascending component index, so component 0 is chosen first. Every
+    // bridge touching it is preset-blocked, so the nested strategy fails on it and the next
+    // candidate must take its place instead of the whole call coming back empty.
+    let mut maze = maze_4_singletons();
+    let scc = maze.analysis.scc(&maze.graph);
+    let stuck = scc.components[0][0];
+    let mut preset_state = PresetState::empty();
+    for other in maze.field.all_node_ids().filter(|&n| n != stuck) {
+        preset_state.blocked.insert((stuck, other));
+        preset_state.blocked.insert((other, stuck));
+    }
+    let count_before = scc.components.len();
+    let issue = issue_for(count_before as u32 - 1);
+    let mut rng = MazeRng::seed_from_u64(7);
+    let nested = expand_region_passage_nested();
+    let result = apply_and_commit(
+        &ReduceSccCountStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with_priority(PRIORITY_SMALLEST),
+        &preset_state,
+        &nested,
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    let fresh = Maze::<SquareTessellation>::new(maze.field, maze.graph);
+    assert_eq!(
+        fresh.analysis.scc(&fresh.graph).components.len(),
+        count_before - 1
+    );
+}
+
+mod merge_tally_tests {
+    use super::*;
+
+    fn nodes_and_scc() -> (Vec<crate::ids::NodeId>, ConnectedComponents) {
+        let maze = maze_4_singletons();
+        let nodes: Vec<crate::ids::NodeId> = maze.field.all_node_ids().collect();
+        let scc = maze.analysis.scc(&maze.graph);
+        (nodes, scc)
+    }
+
+    #[test]
+    fn counts_distinct_component_pairs_once_across_records() {
+        let (n, scc) = nodes_and_scc();
+        let mut tally = MergeTally::default();
+        tally.record(
+            &[
+                MutationCommand::AddBidirectionalEdge { a: n[0], b: n[1] },
+                // one-way round trip of the same pair, and the reversed duplicate
+                MutationCommand::AddDirectedEdge { from: n[1], to: n[0] },
+            ],
+            &scc,
+        );
+        assert_eq!(tally.total(), 1);
+        // a later batch re-bridging the same pair adds nothing
+        tally.record(&[MutationCommand::AddBidirectionalEdge { a: n[1], b: n[0] }], &scc);
+        assert_eq!(tally.total(), 1);
+        tally.record(&[MutationCommand::AddBidirectionalEdge { a: n[2], b: n[3] }], &scc);
+        assert_eq!(tally.total(), 2);
+    }
+
+    #[test]
+    fn same_component_edge_is_not_a_merge() {
+        let (n, scc) = nodes_and_scc();
+        let mut tally = MergeTally::default();
+        tally.record(&[MutationCommand::AddDirectedEdge { from: n[0], to: n[0] }], &scc);
+        assert_eq!(tally.total(), 0);
+    }
+
+    #[test]
+    fn commands_without_endpoints_count_one_each() {
+        let (n, scc) = nodes_and_scc();
+        let mut tally = MergeTally::default();
+        tally.record(&[MutationCommand::SetStart(n[0]), MutationCommand::SetFinish(n[1])], &scc);
+        assert_eq!(tally.total(), 2);
+    }
+}

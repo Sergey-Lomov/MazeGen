@@ -81,7 +81,7 @@ function formatVerticalArrowStyle(value: unknown): string {
  *  `format` can't pick the right set, so the default (elevator-badges wording) covers the more
  *  common case and `markerIndex.*` descriptors pass their own via `descriptor()`'s `format`
  *  override. */
-function formatGlueTabLineStyle(value: unknown): string {
+function formatLineStyle(value: unknown): string {
   if (value === "dashed") return m["image_export.glue_tabs.line_style_dashed"]();
   if (value === "solid") return m["image_export.glue_tabs.line_style_solid"]();
   return String(value);
@@ -119,7 +119,7 @@ const FORMAT_BY_TYPE: Record<ParamType, (value: unknown) => string> = {
   teleportCurveDirection: formatTeleportCurveDirection,
   labelFontWeight: formatElevatorBadgesFontWeight,
   indexLabelStyle: formatElevatorBadgesLabelType,
-  glueTabLineStyle: formatGlueTabLineStyle,
+  lineStyle: formatLineStyle,
   number: formatNumber,
   color: formatColor,
   boolean: formatBoolean,

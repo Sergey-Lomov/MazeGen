@@ -5,7 +5,7 @@ import { closestPointOnPolyline, fractionAlong, offsetPolyline, polylineLength }
 import type { WireTopology } from "../../wasm/types";
 import { getSeamModel, type HalfEdge, type Seam } from "./seams";
 import { pointToSegmentDistance as distanceToSegment } from "../renderers/teleportGeometryUtils";
-import { boundsOf, distance, insidePolygon, pathLength, pointAtLength, portAxes, routeAll, routePair, unitOf, type Point, type Port } from "./seamRouting";
+import { boundsOf, distance, insidePolygon, pathLength, pickStemPorts, pointAtLength, SEAM_LINE_WIDTH, portAxes, routeAll, routePair, unitOf, type Point, type Port } from "./seamRouting";
 
 /// Fixed arrowhead dimensions, matching a seam on the square tessellation (a 40 px cell side).
 const HEAD_WIDTH = 20;
@@ -13,7 +13,7 @@ const HEAD_LENGTH = 16;
 /// The contour of a glue run longer than one face repeats the faces' own shape. Its distance from the
 /// faces and its stroke width are its own, not tied to the wall thickness.
 export const BRACE_OFFSET = 12;
-export const BRACE_WIDTH = 6;
+export const BRACE_WIDTH = SEAM_LINE_WIDTH;
 /// The longest end of a contour that is cut off where it crosses the other run's contour, in brace offsets: the
 /// overshoot of two runs meeting at a corner. A longer stretch is a crossing of its own and stays.
 const MAX_CORNER_CUT = 3;
@@ -146,19 +146,23 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
   const axes = portAxes(built.flatMap((item) => [...item.a.ports, ...item.b.ports]));
   const unit = built.reduce((sum, item) => sum + (item.a.faceLength + item.b.faceLength) / 2, 0) / built.length;
   const contours = built.flatMap((item) => [item.a.brace, item.b.brace].filter((brace): brace is Point[] => brace !== null));
+  // The stem leaves from the middle faces, or from the nearest pair that can be joined without crossing the field.
+  for (const item of built) {
+    if (item.a.ports.length === 1 && item.b.ports.length === 1) continue;
+    const [ia, ib] = pickStemPorts(item.a.ports, item.b.ports, polygons, unit, axes, contours);
+    item.a.port = item.a.ports[ia];
+    item.b.port = item.b.ports[ib];
+  }
   const routes = routeAll(built.map((item) => [item.a.port, item.b.port] as [Port, Port]), polygons, unit, axes, contours);
   const box = boundsOf(polygons, built.flatMap((item) => [item.a.port.contact, item.b.port.contact]));
 
   const arrows: SeamArrow[] = built.map((item, i) => {
     const headWidth = HEAD_WIDTH;
     const headLength = HEAD_LENGTH;
-    const path = standOff(routes[i], item.a.standOff, item.b.standOff);
+    const path = standOff(routes[i], item.a.standOff, item.b.standOff, [item.a.port.out, item.b.port.out]);
     const ending = endings(path, headLength, headWidth, [item.a.port.out, item.b.port.out], [item.a.brace, item.b.brace]);
     const braceRuns = [item.a, item.b].map((run, side) => ({ run, side: side as 0 | 1 })).filter(({ run }) => run.brace !== null);
     const pairs = item.glue.seams.map((seam, k): SeamPair => {
-      // Each face gets a route fitted among the other glues' arrows, so it neither crosses nor
-      // runs along them.
-      const route = standOff(routePair([item.a.ports[k], item.b.ports[k]], routes.filter((_, j) => j !== i), polygons, box, unit, axes, contours), item.a.standOff, item.b.standOff);
       const anchor = (run: Run): Point => [
         run.ports[k].contact[0] + run.ports[k].out[0] * run.standOff,
         run.ports[k].contact[1] + run.ports[k].out[1] * run.standOff,
@@ -169,15 +173,29 @@ export function buildSeamArrows(cfg: FieldConfig, topology: WireTopology | null 
         at: anchor(run),
       });
       const slots: [SeamSlot, SeamSlot] = [slot(item.a, item.halvesA[k]), slot(item.b, item.halvesB[k])];
-      return {
+      // A pair is shown alone, in place of the arrow's body, so its route only keeps clear of the other glues' arrows, and
+      // it is laid when first asked for: a glue may have hundreds of faces and few are ever hovered.
+      let laid: { path: Point[] } & ReturnType<typeof endings> | null = null;
+      const lay = (): NonNullable<typeof laid> => {
+        if (!laid) {
+          const among = routes.filter((_, j) => j !== i);
+          const raw = routePair([item.a.ports[k], item.b.ports[k]], among, polygons, box, unit, axes, contours);
+          const route = centreOnContour(standOff(raw, item.a.standOff, item.b.standOff, [item.a.ports[k].out, item.b.ports[k].out]), [item.a.ports[k].out, item.b.ports[k].out], [item.a.brace, item.b.brace]);
+          laid = { path: route, ...endings(route, headLength, headWidth, [item.a.ports[k].out, item.b.ports[k].out], [item.a.brace, item.b.brace]) };
+        }
+        return laid;
+      };
+      const pair = {
         seam: seam.a.seam,
         fold: seam.fold,
         anchors: [slots[0].at, slots[1].at],
         zones: [item.a.zones[k], item.b.zones[k]],
         slots,
-        path: route,
-        ...endings(route, headLength, headWidth, [item.a.ports[k].out, item.b.ports[k].out], [item.a.brace, item.b.brace]),
-      };
+      } as SeamPair;
+      for (const key of ["path", "headA", "headB", "mid", "midDir"] as const) {
+        Object.defineProperty(pair, key, { get: () => lay()[key], enumerable: true });
+      }
+      return pair;
     });
     return {
       seams: item.glue.seams.map((seam) => seam.a.seam),
@@ -280,6 +298,24 @@ function segmentCrossing(a1: Point, a2: Point, b1: Point, b2: Point): { t: numbe
 /// The heads at the two ends of `path` and the middle of it, where a twisted glue shows its icon. `outs` are the unit
 /// normals out of the two walls the route starts and ends at: a head's base lies along its wall, so a route leaving it at
 /// an angle gets a skewed triangle (its height off the wall stays the nominal length), not a crooked one over the contour.
+/// How far `point` is from the polyline `line`.
+const lineDistance = (point: Point, line: Point[]): number => closestPointOnPolyline(line, point)?.distance ?? Infinity;
+
+/// The length of the edge of `contour` nearest to `point` (unbounded without a contour).
+function edgeLengthAt(contour: Point[] | null, point: Point): number {
+  if (!contour || contour.length < 2) return Infinity;
+  let best = Infinity;
+  let length = Infinity;
+  for (let i = 1; i < contour.length; i++) {
+    const near = lineDistance(point, [contour[i - 1], contour[i]]);
+    if (near < best - 1e-9) {
+      best = near;
+      length = distance(contour[i - 1], contour[i]);
+    }
+  }
+  return length;
+}
+
 function endings(
   path: Point[],
   nominalLength: number,
@@ -296,7 +332,9 @@ function endings(
   const endDir = unitOf(end, path[path.length - 2]);
   const cosStart = obliqueCos(startDir, outs[0]);
   const cosEnd = obliqueCos(endDir, outs[1]);
-  const scale = Math.min(1, (first * share * cosStart) / nominalLength, (last * share * cosEnd) / nominalLength);
+  // A head also stays within the contour edge it stands on: a brick contour has jogs shorter than a head is wide.
+  const fits = Math.min(edgeLengthAt(contours[0], path[0]), edgeLengthAt(contours[1], end)) / nominalWidth;
+  const scale = Math.min(1, (first * share * cosStart) / nominalLength, (last * share * cosEnd) / nominalLength, fits);
   const headLength = nominalLength * scale;
   const headWidth = nominalWidth * scale;
   const { at, dir } = pointAtHalf(path);
@@ -527,16 +565,57 @@ function pointAtHalf(path: Point[]): { at: Point; dir: Point } {
 }
 
 /// The path with its start pulled `gapStart` and its end `gapEnd` inward along the first and last segments.
-function standOff(path: Point[], gapStart: number, gapEnd: number): Point[] {
+/// Slides each end of a pair route along its wall to the middle of the nearest contour edge when it lies past that edge's end
+/// (a brick contour has jogs shifted off their face, so the face's centre can lie past the jog's end).
+function centreOnContour(path: Point[], outs: [Point, Point], contours: [Point[] | null, Point[] | null]): Point[] {
+  const result = path.map((point): Point => [point[0], point[1]]);
+  const slide = (end: number, next: number, out: Point, contour: Point[] | null): void => {
+    if (!contour || result.length < 3) return;
+    const tangent: Point = [-out[1], out[0]];
+    const point = result[end];
+    // The contour edge along the wall nearest to the end.
+    let best: { from: Point; to: Point; length: number } | null = null;
+    let nearest = Infinity;
+    for (let i = 1; i < contour.length; i++) {
+      const from = contour[i - 1];
+      const to = contour[i];
+      const length = distance(from, to);
+      if (length === 0 || Math.abs(((to[0] - from[0]) * tangent[1] - (to[1] - from[1]) * tangent[0]) / length) > 1e-3) continue;
+      const off = lineDistance(point, [from, to]);
+      if (off < nearest - 1e-9) {
+        nearest = off;
+        best = { from, to, length };
+      }
+    }
+    if (!best || nearest > HEAD_WIDTH) return;
+    const { from, to, length } = best;
+    const along = ((point[0] - from[0]) * (to[0] - from[0]) + (point[1] - from[1]) * (to[1] - from[1])) / length;
+    // Only past the edge's end: a face over the edge keeps its own place.
+    if (along >= 0 && along <= length) return;
+    const by = length / 2 - along;
+    const dir: Point = [(to[0] - from[0]) / length, (to[1] - from[1]) / length];
+    for (const index of [end, next]) result[index] = [result[index][0] + dir[0] * by, result[index][1] + dir[1] * by];
+  };
+  slide(0, 1, outs[0], contours[0]);
+  slide(result.length - 1, result.length - 2, outs[1], contours[1]);
+  return result;
+}
+
+function standOff(path: Point[], gapStart: number, gapEnd: number, outs: [Point, Point]): Point[] {
   const out = path.map((point): Point => [point[0], point[1]]);
-  const pull = (end: number, next: number, gap: number): void => {
+  const pull = (end: number, next: number, gap: number, face: Point): void => {
     const length = Math.hypot(out[next][0] - out[end][0], out[next][1] - out[end][1]);
     if (length === 0) return;
+    // A route that leaves its face inward (across the field) starts on the contour, outside the face, and runs in through it.
+    if (((out[next][0] - out[end][0]) * face[0] + (out[next][1] - out[end][1]) * face[1]) < 0) {
+      out[end] = [out[end][0] + face[0] * gap, out[end][1] + face[1] * gap];
+      return;
+    }
     const by = Math.min(gap, length * 0.6);
     out[end] = [out[end][0] + ((out[next][0] - out[end][0]) / length) * by, out[end][1] + ((out[next][1] - out[end][1]) / length) * by];
   };
-  pull(0, 1, gapStart);
-  pull(out.length - 1, out.length - 2, gapEnd);
+  pull(0, 1, gapStart, outs[0]);
+  pull(out.length - 1, out.length - 2, gapEnd, outs[1]);
   return out;
 }
 

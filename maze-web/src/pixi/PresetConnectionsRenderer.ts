@@ -147,6 +147,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
+    // Below every other layer of the maze, so seam connectors never cover teleport connectors (GitHub issue #919).
+    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
@@ -156,8 +158,6 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
-    // Above every layer of the maze itself, below only the highlights.
-    this.root.addChild(this.seamArrowContainer);
     this.root.addChild(this.invalidMarkerHLContainer);
     this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
@@ -170,7 +170,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
 
-    this.grid           = new GridRenderer(this.gridContainer);
+    this.grid           = new GridRenderer(this.gridContainer, "preset connections");
     this.seamLayer = new SeamArrowLayer(this.seamArrowContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
     this.backgroundImage = new BackgroundImageHost({

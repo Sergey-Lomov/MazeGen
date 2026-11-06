@@ -8,6 +8,8 @@ import { validateVectorByCorridorsSettings, validateVectorByWallsSettings } from
 import { CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE } from "../pixi/renderConstants";
 import { fieldOf } from "./fieldConfigFixtures";
 import type { CreaseExportStyle } from "../store/imageExportTypes";
+import { isGateOpen, type GateName } from "../store/parameterLinkRules";
+import type { ParamActivityContext } from "../store/parameterLinksActivity";
 
 const { useMazeStore } = await import("../store/mazeStore");
 const { baseStoreState, TEST_FLOOR_ID } = await import("./storeTestHelpers");
@@ -83,7 +85,11 @@ describe("crease style validation ranges", () => {
 describe("CreaseSettingsSubsection", () => {
   const renderSubsection = (style: CreaseExportStyle, expanded = true) => {
     const patches: Partial<CreaseExportStyle>[] = [];
-    render(<CreaseSettingsSubsection expanded={expanded} onToggle={() => {}} style={style} defaultColor={0} priorityColors={[]} onChange={(p) => patches.push(p)} />);
+    render(
+      <LinkContextProvider value={{ ...linkContext, gate: (name: string) => isGateOpen(name as GateName, "walls", { hasGlues: true, hasCreases: true } as ParamActivityContext, { creases: style }) }}>
+        <CreaseSettingsSubsection expanded={expanded} onToggle={() => {}} style={style} defaultColor={0} priorityColors={[]} onChange={(p) => patches.push(p)} />
+      </LinkContextProvider>,
+    );
     return patches;
   };
 
@@ -118,32 +124,56 @@ describe("CreaseSettingsSubsection", () => {
   });
 });
 
-describe("TopologySettingsSection with creases", () => {
+describe("TopologySettingsSection visibility", () => {
   const props = {
     expanded: true, onToggle: () => {}, style: { showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0 }, defaultColor: 0, priorityColors: [],
     onShow: () => {}, onGlueColor: () => {}, onColor: () => {},
+    cutLinesExpanded: true, onToggleCutLines: () => {},
     creasesExpanded: true, onToggleCreases: () => {}, creaseStyle: shown, creaseDefaultColor: 0, creasePriorityColors: [], onCreasesChange: () => {},
     edgeMarkersExpanded: true, onToggleEdgeMarkers: () => {}, edgeMarkerStyle: DEFAULT_EDGE_MARKER_STYLE, edgeMarkerDefaultColor: 0, edgeMarkerPriorityColors: [], onEdgeMarkersChange: () => {}, onEdgeMarkerOverride: () => {}, onEdgeMarkerOverrides: () => {},
     glueTabsExpanded: true, onToggleGlueTabs: () => {}, glueTabStyle: DEFAULT_GLUE_TAB_STYLE, glueTabDefaults: DEFAULT_GLUE_TAB_STYLE, glueTabPriorityColors: [], onGlueTabsChange: () => {},
   };
 
-  it("renders nothing for a floor with neither glues nor creases", () => {
+  it("is hidden for a floor with neither glues nor creases", () => {
     setCreases([]);
     const { container } = render(<LinkContextProvider value={{ ...linkContext, gate: () => false }}><TopologySettingsSection {...props} /></LinkContextProvider>);
     expect(container.textContent).toBe("");
   });
 
-  it("shows the creases subsection but no cut-line rows for a floor with creases only", () => {
+  it("is hidden for a floor with creases only", () => {
     setCreases([crease]);
-    // A floor without glues: the schema reports no cut-line field as active, so those rows are not rendered.
-    const noGlueContext = { ...linkContext, activePaths: new Set<string>(), gate: (name: string) => name === "creases" };
-    render(<LinkContextProvider value={noGlueContext}><TopologySettingsSection {...props} /></LinkContextProvider>);
-    expect(screen.getByText(m["image_export.creases.title"]())).toBeTruthy();
-    expect(screen.queryByText(m["image_export.topology.show_cut_lines"]())).toBeNull();
+    // The whole section needs a glue: creases alone do not open it.
+    const creasesOnly = { ...linkContext, gate: (name: string) => name === "creases" };
+    const { container } = render(<LinkContextProvider value={creasesOnly}><TopologySettingsSection {...props} /></LinkContextProvider>);
+    expect(container.textContent).toBe("");
   });
 });
 
 describe("EdgeMarkerSettingsSubsection cards", () => {
+  it("explains every visibility mode in its info dialog", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    render(
+      <LinkContextProvider value={linkContext}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={DEFAULT_EDGE_MARKER_STYLE} defaultColor={0} priorityColors={[]} onChange={() => {}} onOverride={() => {}} onOverrides={() => {}} />
+      </LinkContextProvider>,
+    );
+    fireEvent.click(screen.getByLabelText("Info"));
+    expect(screen.getByText(m["image_export.edge_markers.info"]())).toBeTruthy();
+  });
+
+  it("offers and applies the ambiguous-sections visibility mode", async () => {
+    const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
+    const patches: unknown[] = [];
+    // The hidden mode keeps the shape/colour rows inactive, so only the coverage select renders.
+    render(
+      <LinkContextProvider value={{ ...linkContext, activePaths: new Set<string>() }}>
+        <EdgeMarkerSettingsSubsection expanded onToggle={() => {}} style={DEFAULT_EDGE_MARKER_STYLE} defaultColor={0} priorityColors={[]} onChange={(patch) => patches.push(patch)} onOverride={() => {}} onOverrides={() => {}} />
+      </LinkContextProvider>,
+    );
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ambiguous" } });
+    expect(patches).toEqual([{ mode: "ambiguous" }]);
+  });
+
   it("renders a card with link icons for a crease marker under the real registry", async () => {
     const { EdgeMarkerSettingsSubsection } = await import("../components/features/EdgeMarkerSettingsSubsection");
     setCreases([crease]);

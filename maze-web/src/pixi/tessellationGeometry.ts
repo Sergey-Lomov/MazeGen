@@ -1,6 +1,6 @@
 import type { FieldConfig } from "../fieldConfig";
-import { cellAtSpacePoint, getCellGeometry, getCellOutline, type CellGeometryEntry } from "./cartesianCache";
-import { getCellsInRegion, type RegionMode } from "../wasm/mazeService";
+import { cellAtSpacePoint, getCellGeometry, getCellOutline, getLightCellGeometry, type CellGeometryEntry, type LightCellGeometry } from "./cartesianCache";
+import { getCellsInRegion, getRegionEdges, type RegionMode } from "../wasm/mazeService";
 import type { PathCommand } from "../wasm/mazeService";
 import { rotationTransform, splitShapeBinding } from "./splitShape";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
@@ -95,12 +95,12 @@ function topologyOf(geometry: CellGeometryEntry): CellTopology {
   return topology;
 }
 
-const vertexCache = new WeakMap<CellGeometryEntry, Map<WorldTransform, Pos[]>>();
+const vertexCache = new WeakMap<LightCellGeometry, Map<WorldTransform, Pos[]>>();
 
 /// The cell's boundary polygon in display space (arcs flattened at the cache tolerance). Vertex
 /// order follows core's boundary; `getNeighborData`'s `edgeVerts` index into it.
 export function getCellVertices(x: number, y: number, cfg: FieldConfig): Pos[] {
-  const geometry = getCellGeometry(x, y, cfg);
+  const geometry = getLightCellGeometry(x, y, cfg);
   const t = displayTransform(cfg);
   let byTransform = vertexCache.get(geometry);
   if (!byTransform) {
@@ -118,12 +118,12 @@ export function getCellVertices(x: number, y: number, cfg: FieldConfig): Pos[] {
   return vertices;
 }
 
-const pathCache = new WeakMap<CellGeometryEntry, Map<WorldTransform, PathCommand[]>>();
+const pathCache = new WeakMap<LightCellGeometry, Map<WorldTransform, PathCommand[]>>();
 
 /// The cell's boundary as path commands in display space (arcs stay arcs), ready for
 /// `tracePath`/`pathToSvg` with the identity transform. Cached per cell geometry and transform.
 export function getCellPath(x: number, y: number, cfg: FieldConfig): readonly PathCommand[] {
-  const geometry = getCellGeometry(x, y, cfg);
+  const geometry = getLightCellGeometry(x, y, cfg);
   const t = displayTransform(cfg);
   let byTransform = pathCache.get(geometry);
   if (!byTransform) {
@@ -159,7 +159,7 @@ export function getCellOutlinePath(x: number, y: number, cfg: FieldConfig): read
 }
 
 export function getCellCenter(x: number, y: number, cfg: FieldConfig): Pos {
-  const [px, py] = applyTransform(displayTransform(cfg), getCellGeometry(x, y, cfg).center);
+  const [px, py] = applyTransform(displayTransform(cfg), getLightCellGeometry(x, y, cfg).center);
   return { x: px, y: py };
 }
 
@@ -298,46 +298,64 @@ export function cellsInDisplayRect(
   return [...found.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
-/// Most chunks kept by `cellsNearDisplayRect`; the oldest are dropped first.
-const MAX_CACHED_RECT_CHUNKS = 600;
-/// Cells per side of one cached chunk of `cellsNearDisplayRect`: small, so a normal-zoom grid is not
-/// padded by a whole large chunk, yet few enough wasm calls per redraw when zoomed far out.
+/// Commands the cached grid-edge chunks may hold together; the least recently used chunks go first.
+/// A command is a small object, so this bounds the cache at tens of megabytes however far the
+/// viewport zooms out.
+const MAX_CACHED_EDGE_COMMANDS = 1_500_000;
+/// Cells per side of one cached chunk of `gridEdgesNearDisplayRect`: small, so a normal-zoom grid is
+/// not padded by a whole large chunk, yet few enough wasm calls per redraw when zoomed far out.
 const NEAR_RECT_CHUNK_CELLS = 32;
-const rectChunkCache = new Map<string, [number, number][]>();
+const edgeChunkCache = new Map<string, PathCommand[]>();
+let edgeChunkCommands = 0;
 
-/// A superset of `cellsInDisplayRect(rect, "intersects")`: the cells of every fixed, grid-aligned
-/// chunk the rectangle overlaps. Each chunk is queried once and kept, so a painter that redraws a
-/// slowly moving rectangle (the viewport grid) only pays core for the newly exposed chunks. Without
-/// duplicates, in no particular order.
-export function cellsNearDisplayRect(
+/// The edges of the cells the rectangle overlaps, in display space, each shared edge once (one
+/// `MoveTo` per edge): what a grid painter strokes. The rectangle is split into fixed, grid-aligned
+/// chunks, each queried once through core's region-edge endpoint and kept, so a painter that redraws
+/// a slowly moving rectangle (the viewport grid) only pays one WASM crossing for newly exposed
+/// chunks. An edge on a chunk border may come from both chunks.
+export function gridEdgesNearDisplayRect(
   rect: { minX: number; minY: number; maxX: number; maxY: number },
   cfg: FieldConfig,
-): [number, number][] {
+): readonly (readonly PathCommand[])[] {
   const chunk = NEAR_RECT_CHUNK_CELLS * TESSELLATION_UI[cfg.tessellation.kind].pixelsPerUnit;
   const prefix = `${JSON.stringify(cfg.tessellation)}|${cfg.orientation ?? ""}|`;
-  const found = new Map<string, [number, number]>();
+  const transform = displayTransform(cfg);
+  const inverse = invertTransform(transform);
+  const chunks: (readonly PathCommand[])[] = [];
   const lastColumn = Math.floor(rect.maxX / chunk);
   const lastRow = Math.floor(rect.maxY / chunk);
   for (let column = Math.floor(rect.minX / chunk); column <= lastColumn; column++) {
     for (let row = Math.floor(rect.minY / chunk); row <= lastRow; row++) {
       const key = `${prefix}${column},${row}`;
-      let cells = rectChunkCache.get(key);
-      if (cells) {
-        rectChunkCache.delete(key);
+      let edges = edgeChunkCache.get(key);
+      if (edges) {
+        edgeChunkCache.delete(key);
       } else {
-        cells = cellsInDisplayRect({
-          minX: column * chunk,
-          maxX: (column + 1) * chunk,
-          minY: row * chunk,
-          maxY: (row + 1) * chunk,
-        }, "intersects", cfg);
+        const corner = (x: number, y: number) => applyTransform(inverse, [x, y]);
+        edges = getRegionEdges({
+          tessellation: cfg.tessellation,
+          region: [
+            corner(column * chunk, row * chunk),
+            corner((column + 1) * chunk, row * chunk),
+            corner((column + 1) * chunk, (row + 1) * chunk),
+            corner(column * chunk, (row + 1) * chunk),
+          ],
+          mode: "intersects",
+          scope: null,
+        }).map((command) => transformCommand(transform, command));
+        edgeChunkCommands += edges.length;
       }
-      rectChunkCache.set(key, cells);
-      for (const cell of cells) found.set(`${cell[0]},${cell[1]}`, cell);
+      edgeChunkCache.set(key, edges);
+      chunks.push(edges);
     }
   }
-  while (rectChunkCache.size > MAX_CACHED_RECT_CHUNKS) rectChunkCache.delete(rectChunkCache.keys().next().value!);
-  return [...found.values()];
+  // Never evicts the chunks just returned: the loop stops at the last one still in `chunks`.
+  while (edgeChunkCommands > MAX_CACHED_EDGE_COMMANDS && edgeChunkCache.size > chunks.length) {
+    const oldest = edgeChunkCache.keys().next().value!;
+    edgeChunkCommands -= edgeChunkCache.get(oldest)!.length;
+    edgeChunkCache.delete(oldest);
+  }
+  return chunks;
 }
 
 /// Offsets of a cell's neighbors and the boundary-vertex indices of each face, one entry per face
@@ -351,8 +369,10 @@ export function getNeighborData(
   return { offsets, edgeVerts };
 }
 
+/// Only a cell's neighbor offsets, which every cell carries: unlike `getNeighborData` it never
+/// loads the faces of a cell the warm-up left light.
 export function getCellNeighborOffsets(cfg: FieldConfig, x: number, y: number): [number, number][] {
-  return topologyOf(getCellGeometry(x, y, cfg)).offsets;
+  return getLightCellGeometry(x, y, cfg).neighbor_offsets;
 }
 
 /** The face reached by one rotation step around the cell: `direction` 1 is counter-clockwise on

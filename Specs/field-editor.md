@@ -227,7 +227,7 @@ image sizing; it does not add cells, change the custom field, or alter any gener
 
 ## Default shape per kind
 
-When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape. `confirmTessellation` with an unchanged tessellation (same kind, params, hex and triangle orientations) is a no-op for the fields: every floor keeps its field config as is (GitHub issue #881).
+When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape. `confirmTessellation` with an unchanged tessellation (same kind, params, hex and triangle orientations) is a no-op for the fields: every floor keeps its field config as is (GitHub issue #881). Any change of the settings (kind, params, or the orientation of the slot the kind uses; `sameTessellationSettings`) gets the same warning (`selectTessellationWouldLoseData`) and the same full reset, presets included (GitHub issue #925). `params` are compared by `tessellationFingerprint` (key order does not matter). Cancelling the warning restores the preview to the confirmed settings (`syncPreviewToConfirmed`).
 
 | Kind | Default shape |
 |---|---|
@@ -498,7 +498,10 @@ minimum 1.25px screen-space thickness at every zoom level.
 
 Every tool normalizes its result with one routine (`normalizeCells`): it removes cells that have
 no edge-adjacent neighbor and, with `Smoothing` enabled, one-edge terminal cells, repeating until no
-cell changes so removing one spike cannot leave a new one. When adding, cells already in the field
+cell changes so removing one spike cannot leave a new one. A one-cell-thick strip is peeled from
+its free end down to the anchors (or to nothing), leaving no stubs. A shape of fewer than four cells
+is judged once on the input and is not smoothed. A Default-mode preset that smoothing would remove
+entirely (a one-cell-thick strip) is kept as chosen. When adding, cells already in the field
 count as neighbors but are never removed. For remove and select no existing cells are used: only
 the shape's own cells are normalized, and the result is then intersected with the field, so
 smoothing matches the outline the user sees. Default-mode tessellation normalization has no
@@ -506,6 +509,13 @@ existing cells and runs without anchors.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
 cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results.
+
+When smoothing excludes cells from a shape preview, the excluded cells remain visible with a
+noticeably dimmer fill than the cells that will be applied. After an Add shape is placed, the
+editor shows one informational toast the first time enabled smoothing excludes only part of a
+shape; it does not repeat until the persistent Smoothing switch has been turned off and on again.
+Holding `S` to invert smoothing does not reset that state. If smoothing leaves an Add shape with no
+new cells, the editor shows a warning toast instead.
 
 Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
 RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.

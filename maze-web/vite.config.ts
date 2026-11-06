@@ -24,6 +24,26 @@ export default defineConfig({
       "~/paraglide": path.resolve(__dirname, "generated/paraglide"),
     },
   },
+  // Pre-bundle the heavy dependencies up front so a cold start does not discover them one by one
+  // and trigger repeated optimizer runs and full page reloads.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom/client",
+      "pixi.js",
+      "pixi.js/unsafe-eval",
+      "zustand",
+      "lucide-react",
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "@dnd-kit/utilities",
+      "@floating-ui/react-dom",
+      "@tanstack/react-virtual",
+    ],
+  },
+  server: {
+    warmup: { clientFiles: ["./src/main.tsx", "./src/App.tsx"] },
+  },
   worker: {
     format: "es",
   },

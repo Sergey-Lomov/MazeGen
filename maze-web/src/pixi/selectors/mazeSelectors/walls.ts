@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { WallEdge, PassageKind } from "../../renderers/types";
-import { getCellCenter, getFaceEdgeSegment, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
+import { getCellCenter, getFaceEdgeSegment, getSharedEdgeSegment, getCellNeighborOffsets } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { getSeamModel } from "../seams";
 import { buildSplitPointKeys } from "./split";
@@ -85,7 +85,7 @@ export function buildMazeWalls(
   for (const n of nodes) {
     const selfKey = `${n.x},${n.y}`;
     if (splitPointKeys.has(selfKey)) continue; // rendered by buildSplitPassages instead
-    const { offsets } = getNeighborData(cfg, n.x, n.y);
+    const offsets = getCellNeighborOffsets(cfg, n.x, n.y);
     for (const [dx, dy] of offsets) {
       const nx = n.x + dx;
       const ny = n.y + dy;
@@ -132,7 +132,7 @@ export function buildMazeWalls(
   const seams = getSeamModel(cfg);
   const boundaryDrawn = new Set<string>();
   for (const n of nodes) {
-    const { offsets } = getNeighborData(cfg, n.x, n.y);
+    const offsets = getCellNeighborOffsets(cfg, n.x, n.y);
     for (const [face, [dx, dy]] of offsets.entries()) {
       const nx = n.x + dx;
       const ny = n.y + dy;

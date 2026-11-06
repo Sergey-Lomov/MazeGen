@@ -7,6 +7,7 @@ import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
 import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
 import { presetEdgeKey } from "../pixi/presetSplitResolve";
+import { tessellationFingerprint } from "./topologyWire";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
 import type {
@@ -366,7 +367,21 @@ export function defaultTessellationOf(kind: TessellationKind): TessellationConfi
 
 /** Whether two tessellation configs build the same cell set. */
 export function sameTessellation(a: TessellationConfig, b: TessellationConfig): boolean {
-  return a.kind === b.kind && JSON.stringify(a.params) === JSON.stringify(b.params);
+  return tessellationFingerprint(a.kind, a.params) === tessellationFingerprint(b.kind, b.params);
+}
+
+interface TessellationSettings {
+  tessellation: TessellationConfig;
+  hexOrientation: HexOrientation;
+  triOrientation: TriOrientation;
+}
+
+/** Whether two settings sets build the same field: same tessellation and the same orientation in
+ *  the slot the kind uses (an orientation of an unused slot never matters). */
+export function sameTessellationSettings(a: TessellationSettings, b: TessellationSettings): boolean {
+  return sameTessellation(a.tessellation, b.tessellation)
+    && orientationFor(a.tessellation.kind, a.hexOrientation, a.triOrientation)
+      === orientationFor(b.tessellation.kind, b.hexOrientation, b.triOrientation);
 }
 
 /** The maze-wide `{ kind, params }` config held by `state` (a fresh object per call). */
@@ -598,6 +613,12 @@ export function withRecomputedAutoLock<T extends { presetConnections: Map<string
   patch: T,
 ): T & { autoLockedNodes: Set<string>; debugStale: boolean } {
   return { ...patch, autoLockedNodes: recomputeAutoLock(state, patch), debugStale: debugStaleOf(state) };
+}
+
+/** True once the user has generated a maze (or edited on top of one) since the last reset: the
+ *  results that any input change would invalidate. */
+export function hasGeneration(state: Pick<MazeState, "mazeDirty" | "postEditDirty">): boolean {
+  return state.mazeDirty || state.postEditDirty;
 }
 
 /** Shared "wipe maze + derived analytics" fields, used by tessellation-kind switches, reset, and project load. */

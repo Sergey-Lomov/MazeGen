@@ -34,15 +34,18 @@ export const R = {
   connectorDrawn: (_, s) => s.teleportConnectorStyle !== "none",
   /** Some floor cell has split nodes — the "Splits" section exists only then. */
   splits: (c) => c.hasSplits,
-  /** The active floor has a glue — cut lines and glue tabs are offered only then. */
+  /** The active floor has a glue — the whole "Topology" section is offered only then (GitHub issue #931). */
   glues: (c) => c.hasGlues,
-  /** The active floor has a crease. */
-  creases: (c) => c.hasCreases,
   cutLines: (c, s) => c.hasGlues && s.showCutLines !== false,
   customCutLineColor: (c, s) => c.hasGlues && s.showCutLines !== false && s.cutLinesGlueColor === false,
   glueTabs: (c, s) => c.hasGlues && s.glueTabs?.showTabs !== false,
   glueTabLine: (c, s) => c.hasGlues && s.glueTabs?.showTabs !== false && (s.glueTabs?.lineWidth ?? 1) > 0,
-  edgeMarkers: (c, s) => (c.hasGlues || c.hasCreases) && (s.edgeMarkers?.mode ?? "hidden") !== "hidden",
+  /** Creases live inside the "Topology" section, so they need a glue on the floor as well as a crease. */
+  creases: (c) => c.hasGlues && c.hasCreases,
+  creaseShown: (c, s) => c.hasGlues && c.hasCreases && s.creases?.showCreases !== false,
+  creaseLines: (c, s) => c.hasGlues && c.hasCreases && s.creases?.showCreases !== false && s.creases?.mode === "lines",
+  creaseMarks: (c, s) => c.hasGlues && c.hasCreases && s.creases?.showCreases !== false && s.creases?.mode === "marks",
+  edgeMarkers: (c, s) => c.hasGlues && (s.edgeMarkers?.mode ?? "hidden") !== "hidden",
   /** The round-join corridors: the rendering-mode choice only matters for round joins. */
   roundJoin: (_, s) => s.join === "round",
   /** Only the round-join contour engine reads the junction radius. */
