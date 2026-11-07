@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
@@ -6,7 +6,6 @@ import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { Stack, Inline } from "../Layout";
 import { HoverIconButton } from "../HoverIconButton";
-import { ToggleRow } from "../ToggleRow";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
@@ -170,18 +169,50 @@ export function PngExportSettingsPanel() {
     setDigitalScale(floor2(getCurrentViewportScale()));
   }
 
-  // While print.scaleAutoFit is on, keeps print.scale in lockstep with computeAutoFitPrintScale —
-  // recomputed on every change that could affect the fit (sheet size/orientation/DPI, margins, or
-  // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
-  useEffect(() => {
-    if (!print.scaleAutoFit || floorNodes.length === 0) return;
+  function handlePrintScaleChange(scale: number) {
+    setPrintScale(scale);
+  }
+
+  function handlePrintAutoFit() {
+    if (floorNodes.length === 0) return;
     const autoScale = floor2(computeAutoFitPrintScale(cfg, floorNodes, fitMargin, print, basis));
-    if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, floorNodes, fitMargin, print, basis, setPrintScale]);
+    setPrintScale(autoScale);
+    // `scaleAutoFit` remains in persisted projects for compatibility, but no longer enables a
+    // persistent fitting mode. This button performs exactly one calculation.
+    if (print.scaleAutoFit) setPrintScaleAutoFit(false);
+  }
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];
   const printCellSizeMm = printCellMeasureMm(cfg, print.scale, printDpi);
+  const scaleRow = (
+    <SliderRow
+      label={m["image_export.format.png.digital.scale"]()}
+      value={outputMode === "digital" ? digital.scale : print.scale}
+      onChange={outputMode === "digital" ? setDigitalScale : handlePrintScaleChange}
+      min={1}
+      max={8}
+      step={0.1}
+      precise
+      preciseDecimals={2}
+      preciseWidth={58}
+      preciseMin={0.11}
+      preciseMax={null}
+      preciseAriaLabel={m["image_export.format.png.digital.scale"]()}
+      trailingAction={
+        <HoverIconButton
+          onClick={outputMode === "digital" ? handleScaleFromZoom : handlePrintAutoFit}
+          title={outputMode === "digital"
+            ? m["image_export.format.png.digital.scale_from_zoom_tooltip"]()
+            : m["image_export.format.png.print.scale_auto_fit"]()}
+          stretch
+          square
+        >
+          <Maximize2 size={16} />
+        </HoverIconButton>
+      }
+    />
+  );
 
   return (
     <div style={styles.root}>
@@ -203,26 +234,11 @@ export function PngExportSettingsPanel() {
           </Button>
         </Inline>
 
+        {outputMode === "digital" && scaleRow}
+
         {outputMode === "digital" && (
           <div style={styles.paramsBlock}>
           <Stack gap="itemGap">
-            <Inline gap="itemGap" justify="space-between">
-              <div style={{ flex: 1 }}>
-                <SliderRow
-                  label={m["image_export.format.png.digital.scale"]()}
-                  value={digital.scale}
-                  onChange={setDigitalScale}
-                  min={1}
-                  max={8}
-                  step={0.1}
-                  format={(v) => `${v.toFixed(1)}x`}
-                />
-              </div>
-              <HoverIconButton onClick={handleScaleFromZoom} title={m["image_export.format.png.digital.scale_from_zoom_tooltip"]()}>
-                <Maximize2 size={16} />
-              </HoverIconButton>
-            </Inline>
-
             <SelectRow<PngCanvasMode>
               label={m["image_export.format.png.digital.canvas"]()}
               value={digital.canvasMode}
@@ -317,36 +333,14 @@ export function PngExportSettingsPanel() {
               inputNamePrefix="png-print"
             />
 
-            <div style={styles.control}>
-              <ToggleRow
-                label={m["image_export.format.png.print.scale_auto_fit"]()}
-                checked={print.scaleAutoFit}
-                onChange={setPrintScaleAutoFit}
-              />
-            </div>
-
-            <SliderRow
-              label={m["image_export.format.png.print.scale"]()}
-              value={print.scale}
-              onChange={setPrintScale}
-              min={0.1}
-              max={5}
-              step={0.01}
-              format={(value) => value.toFixed(2)}
-              precise
-              preciseDecimals={2}
-              preciseWidth={58}
-              preciseMax={null}
-              preciseAriaLabel={m["image_export.format.png.print.scale"]()}
-              disabled={print.scaleAutoFit}
-            />
-
             <SelectRow<PrintAnchor>
               label={m["image_export.format.png.print.anchor"]()}
               value={print.anchor}
               options={ANCHOR_OPTIONS}
               onChange={setPrintAnchor}
             />
+
+            {scaleRow}
 
             {printFit && (
               <>
@@ -429,7 +423,6 @@ const styles = {
   shortLabel: { ...typography.body },
   labelDisabled: { opacity: 0.4 },
   control: { height: controlRowHeight, boxSizing: "border-box" as const },
-  iconToggle: { flex: "none" as const, width: controlRowHeight, padding: 0, display: "flex" as const, alignItems: "center" as const, justifyContent: "center" as const },
   inputDisabled: { opacity: 0.4, cursor: "not-allowed" as const },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px` },

@@ -109,7 +109,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         ...buildResetDownstreamState(),
         pngExportSettings: {
           ...state.pngExportSettings,
-          print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+          print: { ...state.pngExportSettings.print, scaleAutoFit: false },
         },
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -183,7 +183,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       mirrorPolygonFinished: false,
       pngExportSettings: {
         ...state.pngExportSettings,
-        print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+        print: { ...state.pngExportSettings.print, scaleAutoFit: false },
       },
       ...buildResetDownstreamState(),
       error: null,

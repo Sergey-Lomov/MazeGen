@@ -374,7 +374,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
     useMazeStore.getState().setTessellationKind("hex");
 
-    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(true);
+    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(false);
   });
 
   it("setHexShape to hexagon sets hexShape and hex_hexagon config type", () => {

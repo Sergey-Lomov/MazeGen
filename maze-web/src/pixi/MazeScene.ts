@@ -663,7 +663,7 @@ export class MazeScene {
   /** Directly sets the editor viewport's transform (used by `ExportFrameOverlay` to push
    * print-settings-panel edits — scale/offset/anchor — back onto the canvas, the inverse
    * direction of its own pan/zoom-to-settings sync). */
-  setViewportTransform(x: number, y: number, scale: number, navigation?: "canvas"): void {
+  setViewportTransform(x: number, y: number, scale: number, navigation?: "layout" | "canvas"): void {
     this.viewport.x = x;
     this.viewport.y = y;
     this.viewport.scale.set(scale);

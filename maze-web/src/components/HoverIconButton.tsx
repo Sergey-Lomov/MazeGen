@@ -2,7 +2,7 @@ import React from "react";
 import { ui, typography, controlRowHeight } from "../styles/theme";
 import { Tooltip } from "./Tooltip";
 
-export function HoverIconButton({ onClick, title, children, fixedHeight, stretch }: {
+export function HoverIconButton({ onClick, title, children, fixedHeight, stretch, square, ariaLabel }: {
   onClick: () => void;
   title: string;
   children: React.ReactNode;
@@ -12,12 +12,17 @@ export function HoverIconButton({ onClick, title, children, fixedHeight, stretch
   fixedHeight?: boolean;
   /** Stretch the tooltip wrapper and button to a sibling text button's height. */
   stretch?: boolean;
+  /** Keep the button as wide as its stretched height (for controls beside a text input). */
+  square?: boolean;
+  /** Accessible control name. Defaults to the tooltip text. */
+  ariaLabel?: string;
 }) {
   return (
     <Tooltip content={title} stretch={stretch}>
       <button
         onClick={onClick}
-        style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
+        aria-label={ariaLabel ?? title}
+        style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}), ...(square ? { aspectRatio: "1 / 1", padding: 0 } : {}) }}
         onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
         onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
       >

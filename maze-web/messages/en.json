@@ -2231,7 +2231,7 @@
   "image_export.format.png.print.screen_calibration_uncalibrated": "not calibrated",
   "image_export.format.png.print.screen_calibration_value": "{ppi} CSS PPI",
   "image_export.format.png.print.calibrate_tooltip": "Calibrate screen scale",
-  "image_export.format.png.print.physical_size": "Physical size (1:1)",
+  "image_export.format.png.print.physical_size": "Physical size",
   "image_export.format.png.print.physical_size_tooltip": "Show the layout at its real printed size",
   "image_export.format.png.print.canvas_navigation_hint": "Hold to move and zoom the canvas without the sheet.",
   "app.fit_to_screen": "Fit to screen",

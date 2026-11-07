@@ -49,12 +49,10 @@ export interface PrintExportSettings {
   orientation: PaperOrientation;
   marginHMm: number;
   marginVMm: number;
-  /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. Ignored (kept
-   * up to date but not user-editable) while `scaleAutoFit` is on. */
+  /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. */
   scale: number;
-  /** While on, `scale` is recomputed automatically (`computeAutoFitPrintScale`) on every change
-   * that could affect the fit — sheet size/orientation/DPI, margins, or the maze itself — instead
-   * of the user setting it by hand. The scale input is disabled in this state. */
+  /** Legacy persisted field retained for project compatibility. New projects always store false;
+   * print auto-fit is a one-shot panel action, never a persistent mode. */
   scaleAutoFit: boolean;
   anchor: PrintAnchor;
   /** Content offset in mm from the margin-inset area's top-left corner — only meaningful (and only

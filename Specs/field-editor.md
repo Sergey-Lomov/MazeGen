@@ -138,13 +138,11 @@ shape kind are calculated once; each caller receives its own copy. Invalid input
 disables confirmation.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
-its paper format, custom dimensions, orientation, and margins are initialized from the current
-print settings. When `print.scaleAutoFit` is enabled, the cell measure starts at 10 mm; otherwise it
-is derived from `print.scale` and the selected print DPI. On
-confirmation, those values are written back to the print settings, with the requested cell measure
-converted back to `print.scale` using the selected tessellation's geometry and `scaleAutoFit`
-disabled so the panel's automatic-fit effect does not immediately replace the user's physical
-size. The print panel's reported physical cell size uses the same geometry-aware conversion.
+its paper format, custom dimensions, orientation, margins, and cell measure are initialized from
+the current print settings; the cell measure is derived from `print.scale` and the selected print
+DPI. On confirmation, those values are written back to the print settings, with the requested cell
+measure converted back to `print.scale` using the selected tessellation's geometry. The print
+panel's reported physical cell size uses the same geometry-aware conversion.
 
 When multiple floors exist, the dialog also offers **Apply to all floors with standard shape**, enabled
 by default. The result section lists floors from top to bottom while numbering them with the same
@@ -154,9 +152,9 @@ and cell count (for example, `Rectangle | 11 × 11 | 121 cells`). Custom-mode fl
 their cell count. A total cell count is shown below the rows. With one floor, the result shows
 the calculated field dimensions only.
 
-Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
-enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
-physical size was tied to the old tessellation geometry.
+Changing the confirmed tessellation kind leaves the selected print scale unchanged. The next
+print-sizing dialog derives its cell measure from that scale and the newly selected tessellation's
+geometry.
 
 ### Paper layout in custom mode (GitHub issue #641)
 

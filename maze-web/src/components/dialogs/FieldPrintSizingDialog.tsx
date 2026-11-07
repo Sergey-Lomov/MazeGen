@@ -10,7 +10,7 @@ import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, isPredefinedFieldConfig, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { configAllCells } from "../../pixi/tessellationCells";
 import * as m from "~/paraglide/messages";
@@ -34,9 +34,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
-  const initialCellSizeMm = print.scaleAutoFit
-    ? DEFAULT_PRINT_CELL_SIZE_MM
-    : printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
+  const initialCellSizeMm = printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(() => print.paperSize);
   const [customWidthText, setCustomWidthText] = useState(() => String(print.customWidthMm));
   const [customHeightText, setCustomHeightText] = useState(() => String(print.customHeightMm));

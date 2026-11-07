@@ -2233,7 +2233,7 @@
   "image_export.format.png.print.screen_calibration_uncalibrated": "не калибровано",
   "image_export.format.png.print.screen_calibration_value": "{ppi} CSS PPI",
   "image_export.format.png.print.calibrate_tooltip": "Калибровка масштаба экрана",
-  "image_export.format.png.print.physical_size": "Физ. размер (1:1)",
+  "image_export.format.png.print.physical_size": "Физ. размер",
   "image_export.format.png.print.physical_size_tooltip": "Показать макет в реальном печатном размере",
   "image_export.format.png.print.canvas_navigation_hint": "Удерживайте для перемещения и зума канвы без листа.",
   "app.fit_to_screen": "Вписать в экран",

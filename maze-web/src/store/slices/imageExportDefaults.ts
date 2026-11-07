@@ -429,7 +429,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
 export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
   outputMode: "digital",
-  digital: { scale: 4, canvasMode: "edge_to_edge", marginValue: 20, fixedWidth: 1920, fixedHeight: 1080 },
-  print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: true, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
+  digital: { scale: 4, canvasMode: "margin_cells", marginValue: 1, fixedWidth: 1920, fixedHeight: 1080 },
+  print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: false, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
   cuts: { lines: {} },
 };

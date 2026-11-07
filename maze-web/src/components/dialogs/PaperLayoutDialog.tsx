@@ -3,7 +3,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
-import { DEFAULT_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
+import { resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
@@ -21,9 +21,7 @@ interface Props {
 
 export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
-  const initialCellSizeMm = print.scaleAutoFit
-    ? DEFAULT_PRINT_CELL_SIZE_MM
-    : printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
+  const initialCellSizeMm = printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(print.paperSize);
   const [customWidth, setCustomWidth] = useState(String(print.customWidthMm));
   const [customHeight, setCustomHeight] = useState(String(print.customHeightMm));
