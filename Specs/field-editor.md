@@ -170,6 +170,39 @@ and cell count (for example, `Rectangle | 11 × 11 | 121 cells`). Custom-mode fl
 their cell count. A total cell count is shown below the rows. With one floor, the result shows
 the calculated field dimensions only.
 
+**Cell sizes (GitHub issue #948).** Below the cell size input, set off by a divider and before the
+result, the dialog lists the side length (several, longest first and separated by `/`, for a cell with
+unequal sides) and the diameter of every cell type of the tessellation that occurs in the calculated
+fields, in millimeters with one decimal for the entered size. The diameter is that of the circle centered at the
+cell's center (its centroid) through its farthest vertex, which for a cyclic polygon is the circumcircle. Mixed tessellations (3.3.3.3.6, 3.6.3.6) therefore show the real size of each
+polygon, whatever the entered measure (a side or a diameter) means for the tessellation. With several
+types the sizes form a headerless table (type, side, diameter) whose cells carry their own prefix
+(`Side 5.0 mm`, `Diameter 7.1 mm`); with a single type they are one line of text. The
+cell counts are not in this section: the total of the result (a single floor's cell count or the
+multi-floor total) is followed by the count of each type in parentheses when the field has several
+types, e.g. `Total: 1000 cells (Triangle 600, Square 300, Dodecagon 100)`; counts are summed over all
+floors, custom-mode floors included. The section is rendered by `CellSizesSection` (`components/dialogs/CellSizesSection.tsx`). The numbers are measured by core from the real cell geometry
+(`field_cell_sizes`, `maze-runner` `cell_sizes`). A preset floor is sent as its preset name and
+params, which core builds itself, so its cells never cross the wasm boundary; floors of one shape are
+sent once with their number (`times`) and measured once; only the cells of a custom-mode floor are
+sent, and they go from JS to wasm only. Nothing in this dialog gets a list of cells back from wasm:
+core answers with numbers (`CellSizesReport`: the per-type count, sides and diameter, and the cell count
+of each preset), and the dialog takes every floor's cell count and the totals from that answer, never
+from `configAllCells`. Core's answer is cached by tessellation and sources (it does not depend on the entered size), so
+editing the size back and forth does not measure the cells again. Core classifies the cells with
+`Tessellation::cell_type_of` and returns lengths in world units, which `printCellSizes.ts` scales by the
+millimeters per world unit (`cellSizeMm / cellMeasurePx * pixelsPerUnit`). A type whose cells differ in
+size or shape (Voronoi, the rings of a radial field) is irregular. When any type is, the section has no title, table or type rows: below the divider
+it is one explanation in the regular body font, saying that the entered size is nominal, the side of a
+square with the area of an average cell. A radial field has its own explanation: its cells are ring sectors and the entered size is the
+thickness of a ring. A failing core call leaves the section out (the error is logged and not cached)
+and the per-floor counts of preset floors at 0.
+
+A cell type whose shortest side is under 5 mm (`MIN_COMFORTABLE_CELL_SIDE_MM`, judged on the entered
+size, an irregular type is not judged) is flagged twice: its side value (not the whole row) turns orange
+with a warning icon beside it, and one warning bubble listing every such type with its side closes the
+dialog, set apart from the result by a larger gap, above the buttons. Warnings do not block confirmation.
+
 Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
 enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
 physical size was tied to the old tessellation geometry.

@@ -5,6 +5,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { FloorFieldConfig } from "../../store/storeTypes";
 import type { PaperOrientation, PaperSize } from "../../store/storeTypes";
 import { Modal } from "../Modal";
+import { WarningBubble } from "../WarningBubble";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
@@ -12,7 +13,10 @@ import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
 import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
-import { configAllCells } from "../../pixi/tessellationCells";
+import { decodePoint } from "../../pixi/tessellationProjection";
+import { cellSourceOf, hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, measurePrintCells, type CellSource, type PrintCellTypeSize } from "../../pixi/printCellSizes";
+import { cellTypeLabel } from "../../i18n/cellTypeLabel";
+import { CellSizesSection, typeBreakdown } from "./CellSizesSection";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
@@ -71,6 +75,15 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     })),
     [floors, floorFields, paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
   );
+  // Core counts and measures the cells of all floors together: the count of a type is summed over
+  // them, and only numbers come back.
+  const measure = useMemo(
+    () => measurePrintCells(config, floorSummaries.flatMap(({ info }) => info.sources), cellSizeMm),
+    [config, floorSummaries, cellSizeMm],
+  );
+  const cellTypeSizes = measure.types;
+  const floorCellCounts = useMemo(() => floorCountsOf(floorSummaries, measure.sourceCounts), [floorSummaries, measure]);
+  const smallSideTypes = useMemo(() => cellTypeSizes.filter(hasTooSmallSide), [cellTypeSizes]);
   const hasInvalidTargetFloor = hasMultipleFloors
     && applyToAllStandardFloors
     && floorSummaries.some(({ info }) => !info.isValid);
@@ -163,6 +176,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           </Stack>
         )}
 
+        <CellSizesSection sizes={cellTypeSizes} tessellationKind={config.tessellation.kind} />
+
         <div style={styles.divider} />
         <div style={styles.result}>
           {hasMultipleFloors ? (
@@ -174,11 +189,13 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                     <span>{title}</span>
                     <span>{info.shape}</span>
                     <span>{info.size}</span>
-                    <span>{formatCellCount(info.cellCount)}</span>
+                    <span>{formatCellCount(floorCellCounts.get(id) ?? 0)}</span>
                   </div>
                 ))}
               </div>
-              <div style={styles.floorTotal}>{m["field.print_sizing.floor_total"]({ count: formatCellCount(totalCellCount(floorSummaries)) })}</div>
+              <div style={styles.floorTotal}>{totalText(
+                "field.print_sizing.floor_total", "field.print_sizing.floor_total_types", formatCellCount(sumOf(floorCellCounts)), cellTypeSizes,
+              )}</div>
               {(!result || hasInvalidTargetFloor) && (
                 <span style={styles.error}>{m["field.print_sizing.invalid"]()}</span>
               )}
@@ -186,12 +203,26 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           ) : result ? (
             <Stack gap="elementsGap">
               <span style={typography.body}>{m["field.print_sizing.result"]({ description: configSizeDescription(result.config) })}</span>
-              <span style={typography.body}>{m["field.print_sizing.result_cell_count"]({ count: printFieldCellCount(result.config) })}</span>
+              <span style={typography.body}>{totalText(
+                "field.print_sizing.result_cell_count", "field.print_sizing.result_cell_count_types", String(sumOf(floorCellCounts)), cellTypeSizes,
+              )}</span>
             </Stack>
           ) : (
             <span style={styles.error}>{m["field.print_sizing.invalid"]()}</span>
           )}
         </div>
+        {smallSideTypes.length > 0 && (
+          <div style={styles.warnings}>
+            <WarningBubble
+              message={m["field.print_sizing.warning_small_side"]({
+                types: smallSideTypes
+                  .map((type) => `${cellTypeLabel(type.key)} ${m["field.print_sizing.length_mm"]({ value: Math.min(...type.sidesMm).toFixed(1) })}`)
+                  .join(", "),
+                min: String(MIN_COMFORTABLE_CELL_SIDE_MM),
+              })}
+            />
+          </div>
+        )}
       </Stack>
 
       <div style={styles.footer}>
@@ -233,7 +264,8 @@ export function configSizeDescription(config: FieldConfig): string {
 interface FloorPrintInfo {
   shape: string;
   size: string;
-  cellCount: number;
+  /** What core measures for the cell sizes: the floor preset, or the cells of a custom field. */
+  sources: CellSource[];
   isValid: boolean;
 }
 
@@ -242,29 +274,54 @@ function floorPrintInfo(field: FloorFieldConfig | undefined, input: PrintFieldSi
     return {
       shape: m["field.print_sizing.floor_non_standard"](),
       size: "—",
-      cellCount: field?.fieldPoints.size ?? 0,
+      sources: field ? [{ cells: Array.from(field.fieldPoints, decodePoint) }] : [],
       isValid: true,
     };
   }
 
   const config = field.fieldConfig;
   if (!isPredefinedFieldConfig(config)) {
-    return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", cellCount: field.fieldPoints.size, isValid: true };
+    return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", sources: [{ cells: Array.from(field.fieldPoints, decodePoint) }], isValid: true };
   }
   const result = calculatePrintFieldConfig(config, input);
   if (!result || !isPredefinedFieldConfig(result.config)) {
-    return { shape: printFieldShapeLabel(config), size: "—", cellCount: 0, isValid: false };
+    return { shape: printFieldShapeLabel(config), size: "—", sources: [], isValid: false };
   }
   return {
     shape: printFieldShapeLabel(result.config),
     size: printFieldSizeLabel(result.config),
-    cellCount: printFieldCellCount(result.config),
+    sources: [cellSourceOf(result.config)],
     isValid: true,
   };
 }
 
-function totalCellCount(summaries: { info: FloorPrintInfo }[]): number {
-  return summaries.reduce((total, summary) => total + summary.info.cellCount, 0);
+/** A cell total with the per-type breakdown appended when the tessellation has several types in the field. */
+function totalText(
+  plainKey: "field.print_sizing.floor_total" | "field.print_sizing.result_cell_count",
+  typesKey: "field.print_sizing.floor_total_types" | "field.print_sizing.result_cell_count_types",
+  count: string,
+  sizes: PrintCellTypeSize[],
+): string {
+  const types = typeBreakdown(sizes);
+  return types ? m[typesKey]({ count, types }) : m[plainKey]({ count });
+}
+
+/** The cell count of each floor, by floor id; `sourceCounts` follows the order of the floors' sources. */
+function floorCountsOf(summaries: { id: string; info: FloorPrintInfo }[], sourceCounts: number[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  let offset = 0;
+  for (const { id, info } of summaries) {
+    const end = offset + info.sources.length;
+    counts.set(id, sourceCounts.slice(offset, end).reduce((sum, count) => sum + count, 0));
+    offset = end;
+  }
+  return counts;
+}
+
+function sumOf(counts: Map<string, number>): number {
+  let total = 0;
+  for (const count of counts.values()) total += count;
+  return total;
 }
 
 function formatCellCount(count: number): string {
@@ -305,10 +362,6 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
   }
 }
 
-function printFieldCellCount(config: FieldConfig): number {
-  return configAllCells(config).length;
-}
-
 const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },
   input: { ...sharedStyles.input, width: 56, boxSizing: "border-box" },
@@ -326,6 +379,7 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
   },
   floorRow: { display: "contents" },
+  warnings: { marginTop: dialogSpacing.paddingY * 2 },
   floorTotal: { ...typography.body, marginTop: dialogSpacing.paddingY },
   footer: { display: "flex", justifyContent: "flex-end", gap: dialogSpacing.gap, paddingTop: 0 },
   footerButton: { ...typography.control, padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`, cursor: "default", borderRadius: radius.sm },

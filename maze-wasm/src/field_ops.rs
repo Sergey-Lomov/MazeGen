@@ -2,6 +2,7 @@ use maze_runner::runner::field_ops::{
     self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
     PresetRequest, ReflectRequest, TranslateRequest,
 };
+use maze_runner::runner::cell_sizes::{self, CellSizesRequest};
 use maze_runner::runner::print_sizing::{self, PrintSizingRequest};
 use wasm_bindgen::prelude::*;
 
@@ -71,6 +72,17 @@ pub fn field_print_sizing(request: JsValue) -> Result<JsValue, JsValue> {
                 .serialize_missing_as_null(true),
         )
         .unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Count, sides and diameter of the cells of each cell type among given cells (GitHub issue #948),
+/// in world units. The error is `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_cell_sizes(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: CellSizesRequest = decode(request)?;
+    match cell_sizes::cell_sizes(&request) {
+        Ok(sizes) => Ok(serde_wasm_bindgen::to_value(&sizes).unwrap()),
         Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
     }
 }
