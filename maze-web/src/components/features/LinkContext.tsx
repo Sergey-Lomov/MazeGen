@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { GateName } from "../../store/parameterLinkRules";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 
 /** Per-render-mode link context (GitHub issue #652 follow-up) — `VectorByWallsSettingsPanel`/
@@ -17,6 +18,9 @@ export interface LinkContextValue<P extends string> {
    *  `LinkEditor` so its Target/Source pickers can hide/mark paths the renderer currently hides
    *  (e.g. teleport fields when the maze has no teleports). */
   activePaths: Set<P>;
+  /** Whether the named schema condition holds for the panel's current maze and settings — what the panel's
+   *  sections and unlinked rows ask instead of repeating the condition (`useGate`). */
+  gate: (name: GateName) => boolean;
 }
 
 const LinkContext = createContext<LinkContextValue<string> | null>(null);
@@ -30,4 +34,9 @@ export function useLinkContext<P extends string>(): LinkContextValue<P> {
   const ctx = useContext(LinkContext);
   if (ctx === null) throw new Error("useLinkContext: no LinkContextProvider in the tree");
   return ctx as unknown as LinkContextValue<P>;
+}
+
+/** Whether the named schema condition holds (`LinkContextValue.gate`). */
+export function useGate(name: GateName): boolean {
+  return useLinkContext<string>().gate(name);
 }

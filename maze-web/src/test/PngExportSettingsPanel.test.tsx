@@ -48,7 +48,6 @@ describe("PngExportSettingsPanel", () => {
     expect(slider).toHaveAttribute("step", "0.01");
     expect(screen.getByRole("spinbutton", { name: m["image_export.format.png.print.scale"]() })).not.toHaveAttribute("max");
     expect(document.body).toHaveTextContent(m["image_export.format.png.print.canvas_navigation_hint"]());
-    expect(document.body).toHaveTextContent(m["image_export.format.png.print.canvas_navigation_hold"]());
   });
 
   it("shows margin input only for margin_px/margin_cells canvas modes, and sets default margin value on switch", () => {

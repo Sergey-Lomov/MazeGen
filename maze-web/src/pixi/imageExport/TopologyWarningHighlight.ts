@@ -9,10 +9,7 @@ import { pointInPolygonBy } from "../tessellationGeometry";
 import { resolveActiveCutPlan } from "./exportContent";
 import type { ExportMargin } from "./exportMargins";
 import type { CutPlan } from "./cutLines";
-import { WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
-
-/// Corner radius (display units) of a highlighted warning polygon.
-const POLYGON_HIGHLIGHT_RADIUS = 3;
+import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
 
 /// What the highlight is drawn from: it redraws only when one of these changes.
 function highlightInputs(st: MazeStore): readonly unknown[] {

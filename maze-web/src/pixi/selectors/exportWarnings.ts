@@ -1,28 +1,17 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
-import { buildTeleportEdges, buildSplitPassages, buildCorridorSegments, shortestCorridorFace, shortestCorridorFaceAcrossFloors, maxSplitNodeCount, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, selectFloorScopedMaze } from "./mazeSelectors";
+import { shortestCorridorFaceAcrossFloors, selectNodeLevelResolver, selectFloorScopedMaze } from "./mazeSelectors";
 import type { TeleportFloorContext } from "./mazeSelectors";
-import type { TeleportEdge } from "../renderers/types";
-import { chevronRowStep } from "../renderers/wallUtils";
-import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
-import { TILE_SIZE } from "../constants";
-import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
-import { oneWayStopLineShape, stopLineOverlapsRoundedRect } from "../renderers/verticalConnectionGeometry";
-import type { VerticalConnectionStyle } from "../renderers/types";
-import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
 import type { TeleportGroup } from "./teleportGroups";
-import { getProjectTeleportGroups } from "./projectTeleportGroups";
-import { buildColorVisibility, visibleColor, type ColorVisibilityContext, type ColorVisibilityMaze } from "./colorFieldRegistry";
-import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
-import { computeTeleportConnectorCoversOneWayWarning } from "./teleportOneWayCoverage";
-import { collectTextFitEntries, pushTextOverflowWarnings } from "./exportTextFit";
 export { computeTextFitItemsAcrossFloors } from "./exportTextFit";
 export type { TextFitKind } from "./exportTextFit";
 import { type ColorFieldKey } from "../colorFieldKeys";
-import { pushContrastWarningEntries, pushContrastWarning, teleportConnectorEntries, splitContrastData, splitColorEntries, pushSplitPairwiseWarning, addCommonContrastWarnings } from "./exportContrastWarnings";
-import { computeTeleportWarnings, computeElevatorIndistinguishableWarning } from "./exportTeleportWarnings";
-import { computeMarkerExtensionHitsCorridorWarning } from "./exportCorridorWarnings";
+import { trackedMemo, inputMemo } from "./trackedMemo";
+import {
+  WarningFloorEnv, WALLS_WARNING_GROUPS, CORRIDORS_WARNING_GROUPS,
+  type AnySettings, type WarningGroup, type WarningMode,
+} from "./exportWarningGroups";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
  *  render mode still can't depict some case correctly (GitHub issue #298), e.g. a teleport whose
@@ -42,6 +31,22 @@ export type ExportWarningId =
    *  over a one-way indicator, which draws below it, so the passage reads as two-way. Highlights
    *  the covered one-way passages. */
   | "teleport_connector_covers_one_way"
+  /** Both vector modes (GitHub issue #945) — presentation caveats of the drawn teleport connectors; each highlights the
+   *  offending parts of the connectors as `floorPolygons`. Overlapping lines hide one another. */
+  | "teleport_connectors_overlap"
+  /** A manually routed connector's end lies outside its marker. */
+  | "teleport_connector_endpoint_detached"
+  /** "Avoid field exit" is on, but a connector (manual or automatic) leaves the field. */
+  | "teleport_connector_leaves_field"
+  /** A connector runs over a marker automatic routing steers around (start/finish, vertical passage, another teleport's endpoint or badge). */
+  | "teleport_connector_crosses_marker"
+  /** A direction arrow's tip or tail lies off the line it sits on (a bend under the arrow, a line shorter than the arrow). */
+  | "teleport_connector_arrow_sticks_out"
+  /** A one-way connector leaves no room for its arrow between the markers hiding its two ends. */
+  | "teleport_connector_too_short_for_arrow"
+  | "teleport_connector_covers_arrow"
+  /** A connector with both ends in one point, so no line is left to read. */
+  | "teleport_connector_degenerate"
   | "waypoint_on_split"
   | "teleport_on_special_split"
   /** Start/finish marker caption, elevator floor badge or teleport floor badge text exceeds its plate
@@ -127,8 +132,6 @@ export type ExportWarningId =
   | "seam_matching_ambiguous_without_markers"
   | "inner_grid_low_contrast_floor"
   | "inner_grid_low_contrast_wall"
-  | "marker_fill_low_contrast"
-  | "marker_border_low_contrast"
   | "marker_fill_low_contrast_corridor"
   | "marker_fill_low_contrast_floor"
   | "marker_border_low_contrast_corridor"
@@ -138,13 +141,10 @@ export type ExportWarningId =
   | "vertical_arrow_low_contrast"
   | "vertical_one_way_arrow_low_contrast_fill"
   | "elevator_arrow_low_contrast"
-  | "elevator_badge_fill_low_contrast"
   | "elevator_badge_fill_low_contrast_corridor"
   | "elevator_badge_fill_low_contrast_floor"
-  | "teleport_badge_border_low_contrast"
   | "teleport_badge_border_low_contrast_corridor"
   | "teleport_badge_border_low_contrast_floor"
-  | "teleport_badge_fill_low_contrast"
   | "teleport_badge_fill_low_contrast_corridor"
   | "teleport_badge_fill_low_contrast_floor"
   | "split_low_contrast_background"
@@ -200,25 +200,12 @@ export type ExportWarning = {
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
   /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
   polygons?: [number, number][][];
+  /** Like `polygons`, but each shape belongs to one floor (GitHub issue #945): the connector warnings are computed per floor and merged
+   *  across floors, and the mode renderer's hover highlight draws only the shapes of the floor it shows. */
+  floorPolygons?: { floorIndex: number; polygon: [number, number][] }[];
   /** Display-space polylines (active floor) the hover highlight draws as boundary bands, like the glue editor's runs (GitHub issue #913). */
   bands?: [number, number][][];
 };
-
-/** Filters `nodeIds` down to those sitting on one of `specialSplitPointKeys` — shared by
- *  `waypoint_on_split` (checked against `start`/`finish`) and `teleport_on_special_split` (checked
- *  against every teleport endpoint), which otherwise differ only in which node ids they check. */
-function filterNodesOnSpecialSplit(
-  nodeIds: Iterable<number>,
-  nodeById: Map<number, NodeDto>,
-  specialSplitPointKeys: ReadonlySet<string>,
-): number[] {
-  const result: number[] = [];
-  for (const id of nodeIds) {
-    const node = nodeById.get(id);
-    if (node && specialSplitPointKeys.has(`${node.x},${node.y}`)) result.push(id);
-  }
-  return result;
-}
 
 export type WarningFloor = { id: string; title?: string };
 
@@ -236,6 +223,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
           cells: warning.cells ? [...warning.cells] : undefined,
           fields: warning.fields ? [...warning.fields] : undefined,
           crossFloorTargets: warning.crossFloorTargets ? [...warning.crossFloorTargets] : undefined,
+          floorPolygons: warning.floorPolygons ? [...warning.floorPolygons] : undefined,
         });
         continue;
       }
@@ -247,6 +235,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
       }
       existing.crossFloorTargets = [...(existing.crossFloorTargets ?? []), ...(warning.crossFloorTargets ?? [])];
       existing.cells = [...(existing.cells ?? []), ...(warning.cells ?? [])];
+      if (warning.floorPolygons) existing.floorPolygons = [...(existing.floorPolygons ?? []), ...warning.floorPolygons];
       if (warning.fields) existing.fields = Array.from(new Set([...(existing.fields ?? []), ...warning.fields]));
     }
   }
@@ -282,20 +271,51 @@ function buildFloorContext(nodes: NodeDto[], edges: EdgeDto[], floors: WarningFl
   };
 }
 
-/** Project-wide teleport groups the marker index numbers by (GitHub issue #871); empty when the
- *  index is off, so nothing is built needlessly. */
-function projectGroupsForMarkerIndex(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
-  settings: VectorByWallsSettings | VectorByCorridorsSettings, start: number | null, finish: number | null,
-): TeleportGroup[] {
-  if (!settings.markerIndex.enabled) return [];
-  return getProjectTeleportGroups({
-    nodes, edges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start, finish, mergeTeleports: settings.teleportMergeMode,
-  });
-}
-
 /** Floors with an export cut line (GitHub issue #859), by id: the argument of the `*AcrossFloors` passes. */
 const NO_CUT_FLOORS: ReadonlySet<string> = new Set();
+
+/** Runs every group on every floor, each (mode, group, floor) cached under its own tracked slot (GitHub issue #928): a
+ *  settings change recomputes only the groups whose recorded reads it touched, a maze change (new `nodes`/`edges`/
+ *  `floors`/`cfg`) all of them. Warnings are listed group by group, floors in order within a group. */
+function computeGroupsAcrossFloors<S extends AnySettings>(
+  mode: WarningMode, groups: readonly WarningGroup<S>[],
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
+  settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
+  corridorFaceLimit?: () => number,
+): ExportWarning[] {
+  const project = { nodes, edges, floors, start, finish };
+  // Scoping and teleport context read floor ids and their order only; a floor's title is a hidden input of the groups that show it.
+  const floorsKey = floors.map((floor) => floor.id).join("\u0000");
+  const envs = floors.map((floor) => {
+    const highlightSeamMirrors = !cutFloorIds.has(floor.id);
+    const env = new WarningFloorEnv(mode, () => {
+      const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
+      return {
+        nodes: scoped.nodes, edges: scoped.edges, start: scoped.start, finish: scoped.finish, unscopedNodes: nodes,
+        floorContext: buildFloorContext(nodes, edges, floors, floor),
+      };
+    }, { cfg, hasGlues, highlightSeamMirrors, floorTitle: floor.title, corridorFaceLimit, project });
+    return { floor, env };
+  });
+  const warningLists: ExportWarning[][] = [];
+  for (const group of groups) {
+    for (const { floor, env } of envs) {
+      warningLists.push(trackedMemo(
+        `${mode}:${group.name}:${floor.id}`,
+        [nodes, edges, floorsKey, cfg, start, finish, hasGlues, ...(group.hiddenInputs?.(env) ?? [])],
+        settings,
+        (tracked) => group.run(env, tracked),
+      ));
+    }
+  }
+  // Every group hit returns the same list object, so an unchanged pass hands back the same merged list: no O(nodes) rebuild and no new identity for the panel to re-render on.
+  return inputMemo(`merge:${mode}`, [nodes, ...warningLists], () => mergeWarningsAcrossFloors(warningLists, nodes));
+}
+
+/** The shortest corridor face of the whole project: it depends on the maze alone, so it is kept apart from the settings-tracked groups. */
+function projectCorridorFaceLimit(nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig): () => number {
+  return () => inputMemo("corridorFaceLimit", [nodes, edges, floors, cfg], () => shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg));
+}
 
 export function computeVectorByWallsWarningsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
@@ -303,13 +323,7 @@ export function computeVectorByWallsWarningsAcrossFloors(
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
   hasGlues = true,
 ): ExportWarning[] {
-  const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
-  const warningLists = floors.map((floor) => {
-    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
-    const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext, floor.title, !cutFloorIds.has(floor.id), teleportGroups, hasGlues);
-  });
-  return mergeWarningsAcrossFloors(warningLists, nodes);
+  return computeGroupsAcrossFloors("walls", WALLS_WARNING_GROUPS, nodes, edges, floors, cfg, settings, start, finish, cutFloorIds, hasGlues);
 }
 
 export function computeVectorByCorridorsWarningsAcrossFloors(
@@ -318,76 +332,16 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
   cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
   hasGlues = true,
 ): ExportWarning[] {
-  const corridorFaceLimit = shortestCorridorFaceAcrossFloors(nodes, edges, floors, cfg);
-  const teleportGroups = projectGroupsForMarkerIndex(nodes, edges, floors, cfg, settings, start, finish);
-  const warningLists = floors.map((floor) => {
-    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
-    const floorContext = buildFloorContext(nodes, edges, floors, floor);
-    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes, floor.title, corridorFaceLimit, !cutFloorIds.has(floor.id), teleportGroups, hasGlues);
-  });
-  return mergeWarningsAcrossFloors(warningLists, nodes);
-}
-
-/** Visibility context of a warning pass. Built from the *unscoped* graph (a floor-scoped edge list
- *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor); the
- *  per-floor data conditions (does this floor have such an edge) stay with the callers. A minimal
- *  floor array preserves project-wide visibility for the floor-label colors. */
-function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings, floorCount?: number, hasGlues = true): ColorVisibilityContext {
-  const count = floorCount ?? new Set(nodes.map((node) => node.level ?? 0)).size;
-  const floors = Array.from({ length: count }, (_, i) => ({ id: String(i) })) as unknown as ColorVisibilityMaze["floors"];
-  return buildColorVisibility({ nodes, edges, floors, hasGlues }, settings);
-}
-
-/** `marker_index_covers_stop_line` (GitHub issue #744): on the displayed floor, every one-way
- *  vertical passage marker whose stop line (wall tick) is overlapped by any marker-index plate —
- *  its body plus border, never its floor-colored gap ring, which is drawn under the markers. The
- *  plate body is drawn above the markers, so an overlap hides part of the stop line. Mirrors both
- *  mode renderers: markers from `buildVerticalConnectionMarkers`, plates from
- *  `buildMarkerIndexLabels` + `markerIndexPlateBox`. Highlights the affected markers. */
-function computeMarkerIndexStopLineWarning(
-  nodeById: Map<number, NodeDto>,
-  edges: EdgeDto[],
-  cfg: FieldConfig,
-  settings: VectorByWallsSettings | VectorByCorridorsSettings,
-  verticalStyle: VerticalConnectionStyle,
-  teleportEdges: TeleportEdge[],
-  displayFloorIndex: number,
-  unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
-  teleportGroups: TeleportGroup[],
-): ExportWarning | null {
-  const index = settings.markerIndex;
-  if (!index.enabled) return null;
-  const markers = buildVerticalConnectionMarkers(
-    nodeById, edges, cfg, selectNodeLevelResolver(unscoped.nodes), displayFloorIndex,
-    selectVerticalPassagePairSet(unscoped.edges), unscoped.edges, settings.replaceTwoFloorElevatorsWithStairs,
+  return computeGroupsAcrossFloors(
+    "corridors", CORRIDORS_WARNING_GROUPS, nodes, edges, floors, cfg, settings, start, finish, cutFloorIds, hasGlues,
+    projectCorridorFaceLimit(nodes, edges, floors, cfg),
   );
-  const stopLines = markers.flatMap((marker) => {
-    const shape = oneWayStopLineShape(marker, verticalStyle);
-    return shape ? [{ node: marker.fromNode, shape }] : [];
-  });
-  if (stopLines.length === 0) return null;
-
-  // Plate placement depends only on each endpoint marker's outer radius, never on its colors, so
-  // the teleport gap color and group customization are irrelevant here.
-  const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
-    teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, mergeTeleports: settings.teleportMergeMode, groupOverrides: {}, verticalStyle,
-  });
-  const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual, undefined, teleportGroups);
-  const plates = labels.map((label) => {
-    const box = markerIndexPlateBox(label, index);
-    const border = box.borderWidth;
-    return {
-      x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border,
-      radius: box.cornerRadius + border,
-    };
-  });
-  const flagged = stopLines
-    .filter(({ shape }) => plates.some((plate) => stopLineOverlapsRoundedRect(shape, plate)))
-    .map(({ node }) => node);
-  if (flagged.length === 0) return null;
-  return { id: "marker_index_covers_stop_line", key: "marker_index_covers_stop_line", nodes: Array.from(new Set(flagged)), edges: [] };
 }
 
+/** Every export-specific warning "Vector by walls" currently knows how to detect (GitHub issue #298), of one floor, uncached.
+ *  The groups themselves live in `exportWarningGroups.ts`; each warning's `nodes`/`edges` back the hover-highlight the
+ *  settings panel wires up. `unscopedNodes` (GitHub issue #430) is the maze's full, floor-*un*scoped node list, needed to
+ *  resolve a badge's own target floor; optional and defaulted to `nodes` so single-floor callers need no change. */
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -402,204 +356,21 @@ export function computeVectorByWallsWarnings(
   teleportGroups: TeleportGroup[] = [],
   hasGlues = true,
 ): ExportWarning[] {
-  const settings = withResolvedGroupOverrides(rawSettings);
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
-  const allNodes = Array.from(nodeById.values());
-  const resolveNodeLevel = selectNodeLevelResolver(unscopedNodes);
-
-  const warnings: ExportWarning[] = computeTeleportWarnings(
-    teleportEdges,
-    settings,
-    { id: start, size: settings.startMarker.size, borderWidth: settings.startMarker.borderWidth },
-    { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
-    allNodes,
-    cfg,
-    edges,
+  const env = new WarningFloorEnv(
+    "walls",
+    () => ({ nodes, edges, start, finish, unscopedNodes, floorContext: teleportFloorContext }),
+    { cfg, hasGlues, highlightSeamMirrors, floorTitle: displayFloorTitle, teleportGroups },
   );
-
-  const coversOneWay = computeTeleportConnectorCoversOneWayWarning({
-    mode: "walls", settings, nodes, edges, cfg, start, finish, teleportEdges,
-    unscopedNodes, unscopedEdges: teleportFloorContext?.unscopedEdges ?? edges,
-    activeFloorIndex: teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-  });
-  if (coversOneWay) warnings.push(coversOneWay);
-
-  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount, hasGlues);
-  addCommonContrastWarnings(
-    warnings, nodes, edges, ctx, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
-  );
-
-  if (teleportEdges.length > 0) {
-    pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_floor", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "tilesFloor")));
-    if (settings.teleportConnectorGapWidth === 0) {
-      pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_wall", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "tilesWall")));
-    }
-  }
-  const splitFloor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
-  pushContrastWarningEntries(warnings, "split_low_contrast_floor", splitColorEntries(splitFloor, visibleColor(ctx, "tilesFloor")));
-  pushSplitPairwiseWarning(warnings, splitFloor);
-
-  // Split points recognized as a dedicated "special shape" (bridge/diagonal, `SplitSpecialShapeKind`)
-  // — only these draw noticeably different geometry from a generic split point, and only when
-  // `splitSpecialShapes` is actually on (off, every split point draws the plain per-node reading,
-  // which a waypoint/teleport endpoint handles fine — see GitHub issue #298 follow-up). Keyed by
-  // point (`"${x},${y}"`), resolved once and shared by both checks below.
-  const specialSplitPointKeys = new Set<string>();
-  if (settings.splitSpecialShapes && maxSplitNodeCount(nodes) > 0) {
-    const { specialShapes } = buildSplitPassages(nodes, edges, cfg);
-    for (const shape of specialShapes) specialSplitPointKeys.add(shape.pointKey);
-  }
-
-  // --- waypoint_on_split: start/finish lands on a specially-rendered split point (bridge/
-  // diagonal) — that geometry draws differently from a plain split point and a waypoint marker
-  // there can visually collide with it. One warning total, covering start and/or finish. ---
-  if (specialSplitPointKeys.size > 0) {
-    const flaggedIds = filterNodesOnSpecialSplit(
-      [start, finish].filter((id): id is number => id !== null),
-      nodeById,
-      specialSplitPointKeys,
-    );
-    if (flaggedIds.length > 0) {
-      warnings.push({
-        id: "waypoint_on_split",
-        key: "waypoint_on_split",
-        nodes: flaggedIds,
-        edges: [],
-      });
-    }
-  }
-
-  // --- teleport_on_special_split: a teleport endpoint lands on a specially-rendered split point
-  // (bridge/diagonal) — same rationale as `waypoint_on_split`, checked separately since a teleport
-  // endpoint's own marker geometry differs from a waypoint marker's. One warning total. ---
-  if (specialSplitPointKeys.size > 0) {
-    const teleportNodeIds = new Set<number>();
-    for (const e of teleportEdges) {
-      if (e.fromNode !== undefined) teleportNodeIds.add(e.fromNode);
-      if (e.toNode !== undefined) teleportNodeIds.add(e.toNode);
-    }
-    const flaggedIds = filterNodesOnSpecialSplit(teleportNodeIds, nodeById, specialSplitPointKeys);
-    if (flaggedIds.length > 0) {
-      warnings.push({
-        id: "teleport_on_special_split",
-        key: "teleport_on_special_split",
-        nodes: flaggedIds,
-        edges: [],
-      });
-    }
-  }
-
-  // --- vertical_on_special_split: a VerticalPassage/Elevator marker's own `from` node lands on a
-  // specially-rendered split point — same rationale as teleport_on_special_split. One warning
-  // total, covering every affected marker. ---
-  if (specialSplitPointKeys.size > 0) {
-    const verticalNodeIds = new Set<number>();
-    for (const e of edges) {
-      if (e.kind === "vertical_passage" || e.kind === "elevator") verticalNodeIds.add(e.from);
-    }
-    const flaggedIds = filterNodesOnSpecialSplit(verticalNodeIds, nodeById, specialSplitPointKeys);
-    if (flaggedIds.length > 0) {
-      warnings.push({
-        id: "vertical_on_special_split",
-        key: "vertical_on_special_split",
-        nodes: flaggedIds,
-        edges: [],
-      });
-    }
-  }
-
-  // --- elevator_badges_overlap / elevator_badges_too_many: an Elevator marker's own floor-number
-  // badge ring either visually overlaps itself, or has more floors on one side than that side's
-  // single row can hold (GitHub issue #430, #430 follow-ups). One warning total per id, covering
-  // every affected marker; each warning's own `crossFloorTargets` carries every reached floor of
-  // every flagged marker (not just the specific overlapping pair, or the specific overflowing side)
-  // so the hover highlight can show a click-to-navigate bubble per floor, same as
-  // `IssueHighlightOverlay`'s cross-floor markers. Mirrors `VerticalConnectionRenderer.
-  // drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation exactly (`elevatorMarker.size`,
-  // no border-width addition — unlike `markerWorldRadius` above, which is only used
-  // for the teleport/waypoint overlap check). ---
-  if (settings.elevatorBadges.enabled) {
-    const verticalPairs = selectVerticalPassagePairSet(edges);
-    const markers = buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, 0, verticalPairs, edges);
-    const markerRadius = settings.elevatorMarker.size / 2;
-    const badgeRadius = settings.elevatorBadges.size / 2 + settings.elevatorBadges.borderWidth;
-    const overlappingNodeIds: number[] = [];
-    const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];
-    const tooManyNodeIds: number[] = [];
-    const tooManyTargets: { nodeId: number; targetFloorIndex: number }[] = [];
-    for (const marker of markers) {
-      if (marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length < 2) continue;
-      const count = marker.targetFloorIndices.length;
-      const positions = computeElevatorBadgePositions(
-        marker.pos[0], marker.pos[1], markerRadius, count, badgeRadius,
-        settings.elevatorBadges.distance, settings.elevatorBadges.gap, settings.elevatorBadges.placement,
-        settings.elevatorBadges.evenDistribution,
-      );
-      if (elevatorBadgesOverlap(positions, badgeRadius)) {
-        overlappingNodeIds.push(marker.fromNode);
-        for (const targetFloorIndex of marker.targetFloorIndices) overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
-      }
-      if (elevatorBadgesTooMany(count, badgeRadius, settings.elevatorBadges.gap, settings.elevatorBadges.placement, settings.elevatorBadges.evenDistribution)) {
-        tooManyNodeIds.push(marker.fromNode);
-        for (const targetFloorIndex of marker.targetFloorIndices) tooManyTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
-      }
-    }
-    if (overlappingNodeIds.length > 0) {
-      warnings.push({
-        id: "elevator_badges_overlap",
-        key: "elevator_badges_overlap",
-        nodes: overlappingNodeIds,
-        edges: [],
-        crossFloorTargets: overlappingTargets,
-      });
-    }
-    if (tooManyNodeIds.length > 0) {
-      warnings.push({
-        id: "elevator_badges_too_many",
-        key: "elevator_badges_too_many",
-        nodes: tooManyNodeIds,
-        edges: [],
-        crossFloorTargets: tooManyTargets,
-      });
-    }
-  }
-
-  pushTextOverflowWarnings(warnings, collectTextFitEntries(
-    nodeById, edges, cfg, teleportEdges, settings, start, finish, resolveNodeLevel,
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-    { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
-    displayFloorTitle,
-    teleportGroups,
-  ));
-
-  const stopLineCovered = computeMarkerIndexStopLineWarning(
-    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.floorColor, settings), teleportEdges,
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-    { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
-    teleportGroups,
-  );
-  if (stopLineCovered) warnings.push(stopLineCovered);
-
-  const indistinguishable = computeElevatorIndistinguishableWarning(
-    nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
-  );
-  if (indistinguishable) warnings.push(indistinguishable);
-
-  return warnings;
+  return WALLS_WARNING_GROUPS.flatMap((group) => group.run(env, rawSettings));
 }
 
 /** Every export-specific warning "Vector by corridors" currently knows how to detect (GitHub issue
  *  #311, teleport checks added as a #313 follow-up bugfix — this mode reuses `TeleportRenderer`
  *  as-is, so it can hit the exact same "ambiguous group"/"invisible marker"/"waypoint overlap"
- *  caveats "Vector by walls" already flags, and previously silently didn't). Kept as its own
- *  function (not folded into `computeVectorByWallsWarnings`) since the two modes' warning sets
- *  still differ in their one-way overflow check. `waypoint_on_split`/`teleport_on_special_split`
- *  (GitHub issue #314) are now shared with "Vector by walls" — this mode draws the exact same
- *  bridge/diagonal special-shape geometry, gated on the same `splitSpecialShapes` setting, so the
- *  same caveat applies: a marker/teleport endpoint landing on a recognized special-shape point can
- *  visually collide with that shape's own geometry. */
+ *  caveats "Vector by walls" already flags). Its group list differs from the walls one in the
+ *  one-way overflow check and the corridor-specific contrast checks; `waypoint_on_split`/
+ *  `teleport_on_special_split` (GitHub issue #314) are shared — this mode draws the same bridge/diagonal
+ *  special-shape geometry, gated on the same `splitSpecialShapes` setting. */
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -615,165 +386,14 @@ export function computeVectorByCorridorsWarnings(
   teleportGroups: TeleportGroup[] = [],
   hasGlues = true,
 ): ExportWarning[] {
-  const settings = withResolvedGroupOverrides(rawSettings);
-  const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
-  const allNodes = Array.from(nodeById.values());
-
-  const warnings: ExportWarning[] = computeTeleportWarnings(
-    teleportEdges,
-    settings,
-    { id: start, size: settings.startMarker.size, borderWidth: settings.startMarker.borderWidth },
-    { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
-    allNodes,
-    cfg,
-    edges,
+  const floorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
+  const env = new WarningFloorEnv(
+    "corridors",
+    () => ({ nodes, edges, start, finish, unscopedNodes: allNodesForWarnings, floorContext }),
+    {
+      cfg, hasGlues, highlightSeamMirrors, floorTitle: displayFloorTitle, teleportGroups,
+      corridorFaceLimit: maxCorridorFace === undefined ? undefined : () => maxCorridorFace,
+    },
   );
-
-  const coversOneWay = computeTeleportConnectorCoversOneWayWarning({
-    mode: "corridors", settings, nodes, edges, cfg, start, finish, teleportEdges,
-    unscopedNodes: allNodesForWarnings, unscopedEdges: teleportFloorContext?.unscopedEdges ?? edges,
-    activeFloorIndex: teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-  });
-  if (coversOneWay) warnings.push(coversOneWay);
-
-  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount, hasGlues);
-  addCommonContrastWarnings(
-    warnings, nodes, edges, ctx, teleportEdges, allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
-  );
-
-  const corridorSegments = buildCorridorSegments(nodes, edges, cfg);
-  const markerExtensionHitsCorridor = computeMarkerExtensionHitsCorridorWarning(
-    corridorSegments, maxCorridorFace ?? shortestCorridorFace(corridorSegments), nodeById, cfg, edges, settings, start, finish,
-  );
-  if (markerExtensionHitsCorridor) warnings.push(markerExtensionHitsCorridor);
-  if (corridorSegments.length > 0) {
-    pushContrastWarning(warnings, "corridor_low_contrast_background", [[visibleColor(ctx, "corridorFill"), visibleColor(ctx, "bgFill")]]);
-  }
-  if (corridorSegments.some((segment) => segment.oneWayDir)) {
-    pushContrastWarning(
-      warnings,
-      "one_way_low_contrast_corridor",
-      [[visibleColor(ctx, "oneWaysMarker"), visibleColor(ctx, "corridorFill")]],
-      corridorSegments.filter((segment) => segment.oneWayDir).flatMap((segment) => [segment.fromNode, segment.toNode]),
-      corridorSegments.filter((segment) => segment.oneWayDir).map((segment) => [segment.fromNode, segment.toNode]),
-    );
-  }
-  if (teleportEdges.length > 0) {
-    pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_corridor", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "corridorFill")));
-    if (settings.teleportConnectorGapWidth === 0) {
-      pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_background", teleportConnectorEntries(teleportEdges, ctx, visibleColor(ctx, "bgFill")));
-    }
-  }
-  const splitCorridor = splitContrastData(nodes, edges, cfg, ctx, highlightSeamMirrors);
-  pushContrastWarningEntries(warnings, "split_low_contrast_corridor", splitColorEntries(splitCorridor, visibleColor(ctx, "corridorFill")));
-  pushContrastWarningEntries(warnings, "split_low_contrast_background", splitColorEntries(splitCorridor, visibleColor(ctx, "bgFill")));
-  pushSplitPairwiseWarning(warnings, splitCorridor);
-
-  if (settings.thickness + 2 * settings.splitGapWidth > 40) {
-    warnings.push({
-      id: "split_gap_may_shrink",
-      key: "split_gap_may_shrink",
-      nodes: [],
-      edges: [],
-    });
-  }
-
-  const specialSplitPointKeys = new Set<string>();
-  if (settings.splitSpecialShapes && maxSplitNodeCount(nodes) > 0) {
-    const { specialShapes } = buildSplitPassages(nodes, edges, cfg);
-    for (const shape of specialShapes) specialSplitPointKeys.add(shape.pointKey);
-  }
-
-  if (specialSplitPointKeys.size > 0) {
-    const flaggedIds = filterNodesOnSpecialSplit(
-      [start, finish].filter((id): id is number => id !== null),
-      nodeById,
-      specialSplitPointKeys,
-    );
-    if (flaggedIds.length > 0) {
-      warnings.push({
-        id: "waypoint_on_split",
-        key: "waypoint_on_split",
-        nodes: flaggedIds,
-        edges: [],
-      });
-    }
-
-    const teleportNodeIds = new Set<number>();
-    for (const e of teleportEdges) {
-      if (e.fromNode !== undefined) teleportNodeIds.add(e.fromNode);
-      if (e.toNode !== undefined) teleportNodeIds.add(e.toNode);
-    }
-    const flaggedTeleportIds = filterNodesOnSpecialSplit(teleportNodeIds, nodeById, specialSplitPointKeys);
-    if (flaggedTeleportIds.length > 0) {
-      warnings.push({
-        id: "teleport_on_special_split",
-        key: "teleport_on_special_split",
-        nodes: flaggedTeleportIds,
-        edges: [],
-      });
-    }
-  }
-
-  // --- one_way_arrows_overflow_corridor: the chevron row's own full visible extent exceeds a
-  // cell's own size along the corridor, or its width (oneWayWidth * thickness) exceeds the
-  // corridor's own thickness — GitHub issue #312, gap-accounts-for-thickness follow-up. Mirrors
-  // `VectorByCorridorsRenderer`'s own `oneWayLengthPx` (`oneWayLength` is a multiplier of the
-  // chevron's own full opening width, not an absolute pixel size — GitHub issue #312 follow-up) and
-  // `drawOneWayChevronRow`'s own `chevronRowStep` spacing exactly: `(count-1)` steps between
-  // chevron centers, plus the trailing chevron's own `length + thickness` overhang past its
-  // center. Checked once against the settings (every one-way passage draws the exact same row
-  // geometry), then applied via `buildCorridorSegments`' own `oneWayDir` — the same segments this
-  // mode's renderer actually draws a chevron row for (geometric neighbors, split points already
-  // excluded), not a looser re-derivation from the raw edge list that could flag an edge with no
-  // drawn corridor segment at all. ---
-  const oneWayFullWidth = settings.oneWayWidth * settings.thickness;
-  const oneWayLengthPx = settings.oneWayLength * oneWayFullWidth;
-  const rowStep = chevronRowStep(oneWayLengthPx, settings.oneWayGap, settings.oneWayThickness);
-  const rowLength = (settings.oneWayCount - 1) * rowStep + oneWayLengthPx + settings.oneWayThickness;
-  const rowOverflows = rowLength > TILE_SIZE || settings.oneWayWidth > 1;
-  if (rowOverflows) {
-    const oneWaySegments = buildCorridorSegments(nodes, edges, cfg).filter((seg) => seg.oneWayDir);
-    if (oneWaySegments.length > 0) {
-      const flaggedNodeIds = new Set<number>();
-      const flaggedEdgePairs: [number, number][] = [];
-      for (const seg of oneWaySegments) {
-        flaggedNodeIds.add(seg.fromNode);
-        flaggedNodeIds.add(seg.toNode);
-        flaggedEdgePairs.push([seg.fromNode, seg.toNode]);
-      }
-      warnings.push({
-        id: "one_way_arrows_overflow_corridor",
-        key: "one_way_arrows_overflow_corridor",
-        nodes: Array.from(flaggedNodeIds),
-        edges: flaggedEdgePairs,
-      });
-    }
-  }
-
-  pushTextOverflowWarnings(warnings, collectTextFitEntries(
-    nodeById, edges, cfg, teleportEdges, settings, start, finish, selectNodeLevelResolver(allNodesForWarnings),
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-    { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
-    displayFloorTitle,
-    teleportGroups,
-  ));
-
-  const stopLineCovered = computeMarkerIndexStopLineWarning(
-    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.color), teleportEdges,
-    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
-    { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
-    teleportGroups,
-  );
-  if (stopLineCovered) warnings.push(stopLineCovered);
-
-  const indistinguishable = computeElevatorIndistinguishableWarning(
-    nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
-  );
-  if (indistinguishable) warnings.push(indistinguishable);
-
-  return warnings;
+  return CORRIDORS_WARNING_GROUPS.flatMap((group) => group.run(env, rawSettings));
 }

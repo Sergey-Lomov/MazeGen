@@ -19,6 +19,19 @@ export function backgroundImageEditMode(state: MazeState): "transform" | "crop" 
   return state.backgroundImageCropping ? "crop" : state.backgroundImageManualPositioning ? "transform" : null;
 }
 
+/** The connector editor owns canvas input only while its own feature (export, in the mode being
+ * edited) is visible; the stored edit state alone never claims input (GitHub issue #947). */
+export function isTeleportConnectorEditActive(state: Pick<MazeState, "teleportConnectorEdit" | "openCard" | "activeRenderMode">): boolean {
+  const edit = state.teleportConnectorEdit;
+  return !!edit && state.openCard === "image_export" && state.activeRenderMode === edit.renderMode;
+}
+
+/** The floor-label drag owns canvas input only on the export card, in the drag's render mode and floor. */
+export function isFloorLabelDragActive(state: Pick<MazeState, "floorLabelDrag" | "openCard" | "activeRenderMode" | "activeFloorId">): boolean {
+  const drag = state.floorLabelDrag;
+  return !!drag && state.openCard === "image_export" && state.activeRenderMode === drag.renderMode && state.activeFloorId === drag.floorId;
+}
+
 export interface PointerHandler {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean, clickCount?: number): void;
   onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean): void;

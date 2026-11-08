@@ -13,10 +13,11 @@ import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
+import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
-import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
+import { computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
@@ -32,7 +33,8 @@ import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { roundedContourCorners } from "./roundedContour";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
@@ -104,93 +106,62 @@ function drawTrimMask(mask: Graphics, cells: readonly [number, number][], cfg: F
   }
 }
 
+/** Adds `polygon` to `g` as a closed contour with softened corners (see `roundedContourCorners`). */
+function roundedContour(g: Graphics, polygon: readonly [number, number][], radius: number): void {
+  const corners = roundedContourCorners(polygon, radius);
+  corners.forEach(({ entry, corner, exit }, i) => {
+    if (i === 0) g.moveTo(entry[0], entry[1]); else g.lineTo(entry[0], entry[1]);
+    g.quadraticCurveTo(corner[0], corner[1], exit[0], exit[1]);
+  });
+  if (corners.length) g.closePath();
+}
+
 /** Owns the hover-highlight overlay for one mode renderer's export warnings — factored out (GitHub
- *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same
- *  memoize-by-reference-equality-then-draw-a-cell-fill logic `VectorByWallsRenderer` already had,
- *  down to the cache shape and the `RegionHighlightRenderer.render` call. Generic over `TSettings`
- *  and the compute function so each mode still calls its own `compute*Warnings` with its own
- *  settings shape — the two modes' warning sets differ (see `exportWarnings.ts`), only the
- *  memoize+highlight *mechanics* are shared. Still one instance per mode renderer, each owning its
- *  own `RegionHighlightRenderer`/`Container` — per `maze-web/CLAUDE.md`'s feature-renderer
- *  ownership rule, never a shared instance between the two mode renderers. */
+ *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same draw-a-cell-fill
+ *  logic `VectorByWallsRenderer` already had, down to the `RegionHighlightRenderer.render` call.
+ *  It draws the warnings it is given and computes none: the renderers take them from the cached
+ *  `compute*WarningsAcrossFloors` (GitHub issue #928), the same cache the settings panel reads.
+ *  Generic over `TSettings` so each mode passes its own settings shape. Still one instance per mode
+ *  renderer, each owning its own `RegionHighlightRenderer`/`Container` — per `maze-web/CLAUDE.md`'s
+ *  feature-renderer ownership rule, never a shared instance between the two mode renderers. */
 export class ExportWarningHighlight<TSettings> {
   private readonly highlight: RegionHighlightRenderer;
-  private readonly computeWarnings: (
-    nodes: NodeDto[],
-    edges: EdgeDto[],
-    cfg: FieldConfig,
-    settings: TSettings,
-    start: number | null,
-    finish: number | null,
-    unscopedNodes?: NodeDto[],
-  ) => ExportWarning[];
+  /** Shapes of a warning that marks parts of the drawn connectors rather than cells (`ExportWarning.floorPolygons`). */
+  private readonly shapes = new Graphics();
 
-  private cache: {
-    nodes: NodeDto[];
-    edges: EdgeDto[];
-    cfg: FieldConfig;
-    settings: TSettings;
-    start: number | null;
-    finish: number | null;
-    unscopedNodes: NodeDto[];
-    warnings: ExportWarning[];
-  } | null = null;
-
-  constructor(
-    container: Container,
-    computeWarnings: (
-      nodes: NodeDto[],
-      edges: EdgeDto[],
-      cfg: FieldConfig,
-      settings: TSettings,
-      start: number | null,
-      finish: number | null,
-      unscopedNodes?: NodeDto[],
-    ) => ExportWarning[],
-  ) {
+  constructor(container: Container) {
     this.highlight = new RegionHighlightRenderer(container);
-    this.computeWarnings = computeWarnings;
+    container.addChild(this.shapes);
   }
 
+  /** Draws the warning of `warnings` keyed `hoveredKey` (`null` or an unknown key clears). */
   render(
     hoveredKey: string | null,
+    warnings: ExportWarning[],
     nodes: NodeDto[],
-    edges: EdgeDto[],
     cfg: FieldConfig,
     settings: TSettings,
-    start: number | null,
-    finish: number | null,
-    unscopedNodes: NodeDto[] = nodes,
-    warningsOverride?: ExportWarning[],
     inset = 2,
     boundaryWidth?: number,
     /** Vector-by-corridors draws one-way warning endpoints as inset regions instead of a shared
      * boundary; vector-by-walls keeps the boundary treatment. */
     boundaryWarningsAsRegions = false,
   ): void {
+    this.shapes.clear();
     if (!hoveredKey) {
       this.highlight.clear();
       return;
     }
-    let warnings: ExportWarning[];
-    if (warningsOverride) {
-      warnings = warningsOverride;
-    } else if (
-      this.cache &&
-      this.cache.nodes === nodes &&
-      this.cache.edges === edges &&
-      this.cache.cfg === cfg &&
-      this.cache.settings === settings &&
-      this.cache.start === start &&
-      this.cache.finish === finish &&
-      this.cache.unscopedNodes === unscopedNodes
-    ) {
-      warnings = this.cache.warnings;
-    } else {
-      warnings = this.computeWarnings(nodes, edges, cfg, settings, start, finish, unscopedNodes);
-      this.cache = { nodes, edges, cfg, settings, start, finish, unscopedNodes, warnings };
-    }
     const warning = warnings.find((w) => w.key === hoveredKey);
+    if (warning?.floorPolygons?.length) {
+      // Like the topology highlight: a translucent fill plus an opaque outline, a closed contour with rounded corners.
+      const floorIndex = nodes[0]?.level ?? 0;
+      for (const { floorIndex: shapeFloor, polygon } of warning.floorPolygons) {
+        if (shapeFloor === floorIndex) roundedContour(this.shapes, polygon, POLYGON_HIGHLIGHT_RADIUS);
+      }
+      this.shapes.fill({ color: WARNING_HIGHLIGHT_COLOR, alpha: 0.25 });
+      this.shapes.stroke({ width: 3, color: WARNING_HIGHLIGHT_COLOR, join: "round", cap: "round" });
+    }
     if (!warning || (warning.nodes.length === 0 && (!warning.cells || warning.cells.length === 0))) {
       this.highlight.clear();
       return;
@@ -277,6 +248,7 @@ export class ExportWarningHighlight<TSettings> {
 
   destroy(): void {
     this.highlight.destroy();
+    this.shapes.destroy();
   }
 }
 
@@ -442,7 +414,7 @@ export class VectorByWallsRenderer {
    *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
    *  rule. Highlights the currently hovered export warning's cells (GitHub issue #298 follow-up —
    *  cell fill reads much more clearly than a small marker circle), see
-   *  `computeVectorByWallsWarnings`. */
+   *  `computeVectorByWallsWarningsAcrossFloors`. */
   private readonly warningHighlight: ExportWarningHighlight<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
 
   private renderPass: RenderPass = "full";
@@ -516,7 +488,7 @@ export class VectorByWallsRenderer {
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
     this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
-    this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByWallsWarnings);
+    this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -877,7 +849,7 @@ export class VectorByWallsRenderer {
 
   /** Highlights the currently hovered export warning's flagged cell(s) (GitHub issue #298
    *  follow-up — a small marker-circle highlight read too weakly, cell fill is much clearer) — see
-   *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
+   *  `ExportWarningHighlight`'s own doc comment for the draw mechanics, shared with
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
@@ -891,7 +863,7 @@ export class VectorByWallsRenderer {
           getCellHighlightInset(state.vectorByWallsSettings.wallThickness),
         );
       } else {
-        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByWallsSettings, null, null);
+        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByWallsSettings);
       }
       return;
     }
@@ -899,15 +871,16 @@ export class VectorByWallsRenderer {
     // Same floor-scoping as `renderAll` (GitHub issue #347) — the warning computation must see
     // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
     // reference an id that isn't actually rendered.
-    const { nodes, edges, start, finish } = selectFloorScopedMaze(
+    const { nodes } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     const warnings = computeVectorByWallsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByWallsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
+      hasAnyGlue(state.floorTopology),
     );
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset,
+    this.warningHighlight.render(hoveredExportWarningKey, warnings, nodes, state.activeFieldConfig, state.vectorByWallsSettings, wallInset,
       // Boundary band as wide as the live one-way indicator, like the analytics highlight; without it the band spans the whole distance between the two cell centers.
       oneWayIndicatorSpan(buildOneWayStyle(state.vectorByWallsSettings)));
   }

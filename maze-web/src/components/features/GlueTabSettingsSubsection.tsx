@@ -4,6 +4,7 @@ import { indent, spacing } from "../../styles/theme";
 import { GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE } from "../../pixi/renderConstants";
 import { SectionHeader } from "../SectionHeader";
 import { Modal } from "../Modal";
+import { useGate } from "./LinkContext";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
@@ -22,20 +23,22 @@ export function GlueTabSettingsSubsection({ expanded, onToggle, style, defaults,
   onChange: (patch: Partial<GlueTabStyle>) => void;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
+  const tabsOn = useGate("glueTabs");
+  const outlineOn = useGate("glueTabLine");
   return (
     <>
       <SectionHeader label={m["image_export.glue_tabs.title"]()} expanded={expanded} onToggle={onToggle} onOpenInfo={() => setInfoOpen(true)} />
       {expanded && (
         <div style={styles.block}>
           <LinkedToggleRow label={m["image_export.glue_tabs.show"]()} checked={style.showTabs} onChange={(showTabs) => onChange({ showTabs })} linkTarget="glueTabs.showTabs" />
-          {style.showTabs && (
+          {tabsOn && (
             <>
               <LinkedSliderRow label={m["image_export.glue_tabs.inset"]()} value={style.inset} onChange={(inset) => onChange({ inset })} min={GLUE_TAB_INSET_RANGE.min} max={GLUE_TAB_INSET_RANGE.max} step={1} format={(v) => String(v)} linkTarget="glueTabs.inset" />
               <LinkedSliderRow label={m["image_export.glue_tabs.width"]()} value={style.width} onChange={(width) => onChange({ width })} min={GLUE_TAB_WIDTH_RANGE.min} max={GLUE_TAB_WIDTH_RANGE.max} step={1} format={(v) => String(v)} linkTarget="glueTabs.width" />
               <LinkedToggleRow label={m["image_export.glue_tabs.alternate"]()} checked={style.alternate} onChange={(alternate) => onChange({ alternate })} linkTarget="glueTabs.alternate" />
               <LinkedColorRow label={m["image_export.glue_tabs.fill_color"]()} color={style.fillColor} onChange={(fillColor) => onChange({ fillColor })} defaultColor={defaults.fillColor} field={PC.glueTabFill} priorityColors={priorityColors} linkTarget="glueTabs.fillColor" />
               <LinkedSliderRow label={m["image_export.glue_tabs.line_width"]()} value={style.lineWidth} onChange={(lineWidth) => onChange({ lineWidth })} min={GLUE_TAB_LINE_WIDTH_RANGE.min} max={GLUE_TAB_LINE_WIDTH_RANGE.max} step={1} format={(v) => String(v)} linkTarget="glueTabs.lineWidth" />
-              {style.lineWidth > 0 && (
+              {outlineOn && (
                 <>
                   <LinkedSelectRow
                     label={m["image_export.glue_tabs.line_style"]()}

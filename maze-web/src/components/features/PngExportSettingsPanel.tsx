@@ -408,7 +408,7 @@ export function PngExportSettingsPanel() {
             </Button>
 
             <div style={styles.instructions}>
-              <EmbeddedHotkeyHint prefix={m["image_export.format.png.print.canvas_navigation_hold"]()} keys={["mod"]}>
+              <EmbeddedHotkeyHint keys={["mod"]}>
                 {m["image_export.format.png.print.canvas_navigation_hint"]()}
               </EmbeddedHotkeyHint>
             </div>

@@ -1,10 +1,12 @@
 import type * as React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
 import { SectionHeader } from "../SectionHeader";
 import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
+import { useGate } from "./LinkContext";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
 import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../pixi/renderers/markerGlyph";
@@ -31,7 +33,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, textFitKind }: {
+export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, textFitKind }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -75,6 +77,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
   isExpanded?: (id: string) => boolean;
   onToggle?: (id: string) => void;
 }) {
+  const textOn = useGate(textFitKind === "finish" ? "finishTextOn" : "startTextOn");
   const markerId = sectionId ? `${sectionId}_marker` : "";
   const textId = sectionId ? `${sectionId}_text` : "";
   const sectionExpanded = !title || !sectionId || !isExpanded || isExpanded(sectionId);
@@ -96,7 +99,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                     onChange={(textEnabled) => onChange({ textEnabled })}
                     linkTarget={linkTargets.textEnabled}
                   />
-                  {(settings.textEnabled ?? true) && (
+                  {textOn && (
                     <>
                       <LinkedTextFieldRow
                         label={m["image_export.vector_by_walls.marker_text"]()}

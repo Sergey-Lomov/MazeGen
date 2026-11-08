@@ -1,4 +1,5 @@
 import type React from "react";
+import type { LinkPath } from "../../store/parameterLinkSchema";
 import { useState } from "react";
 import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
@@ -42,7 +43,7 @@ function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
  *  and management actions don't clutter each other, per the issue's own rationale. Shared by
  *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`, same per-mode-setters-only-differ
  *  reuse convention as `SharedStyleSection` itself. */
-export function SettingsSection<P extends string>({
+export function SettingsSection<P extends LinkPath>({
   onResetAll,
   settings,
   links,
@@ -120,7 +121,7 @@ export function SettingsSection<P extends string>({
  *  *dependent* field's own row elsewhere in the panel, not here. Link editing/icon-visibility/
  *  "Reset all settings" live in the separate "Settings" section (GitHub issue #668) — this section
  *  is style values only. */
-export function SharedStyleSection<P extends string>({
+export function SharedStyleSection<P extends LinkPath>({
   settings,
   onChange,
   onLayoutChange,

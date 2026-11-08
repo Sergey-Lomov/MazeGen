@@ -340,7 +340,9 @@ export class ExportFrameOverlay implements ViewportListener {
 
     const drawLayout = this.toFrameWorld(layout);
     this.drawDimOverlay(drawLayout);
-    drawPaperLayoutFrame(this.graphics, drawLayout, frameColor);
+    // `drawLayout` is in the viewport layer's coordinates, so counter that layer's scale to keep
+    // the frame and dashes visually stable as a paper-size change refits the viewport.
+    drawPaperLayoutFrame(this.graphics, drawLayout, frameColor, this.frameViewport.scale);
     if (printLayout) {
       const dpi = DPI_BY_DENSITY[state.pngExportSettings.print.density];
       const sheetToScreenX = drawLayout.w / printLayout.sheetWidthPx;
@@ -351,6 +353,7 @@ export class ExportFrameOverlay implements ViewportListener {
         mmToPx(state.pngExportSettings.print.marginHMm, dpi) * sheetToScreenX,
         mmToPx(state.pngExportSettings.print.marginVMm, dpi) * sheetToScreenY,
         frameColor,
+        this.frameViewport.scale,
       );
     }
   }
