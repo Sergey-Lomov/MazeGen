@@ -1,49 +1,17 @@
-import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig } from "../../fieldConfig";
-import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
-import type { TeleportEdge, WallEdge } from "../renderers/types";
 import type { ExportWarning } from "./exportWarnings";
-import {
-  buildMazeWalls, buildMazeMarkers, buildCorridorSegments, buildSplitPassages, buildVerticalConnectionMarkers,
-  buildTeleportAvoidanceWaypoints, maxSplitNodeCount, selectNodeLevelResolver, selectVerticalPassagePairSet,
-  type CorridorSegment,
-} from "./mazeSelectors";
-import { buildSplitHostKeys } from "./mazeSelectors/markerLayout";
-import {
-  buildEffectiveSplitNodeColors, buildMarkerStyle, buildOneWayStyle, buildTeleportLineStyle, buildVerticalConnectionStyle,
-  layoutExportMarkers,
-} from "../imageExport/exportStyleBuilders";
-import { TeleportConnectorRouter } from "../renderers/teleportConnectorRouter";
-import { routeTeleportConnectors } from "../renderers/teleportConnectorPlan";
+import type { WallEdge } from "../renderers/types";
+import type { CorridorSegment } from "./mazeSelectors";
 import { BOUNDARY_HIGHLIGHT_PADDING, chevronRowStep, oneWayIndicatorSpan } from "../renderers/wallUtils";
+import { buildOneWayStyle } from "../imageExport/exportStyleBuilders";
 import { pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
-import { buildMarkerScaler } from "../markerScale";
-import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { getSharedEdgeSegment } from "../tessellationGeometry";
+import { buildTeleportConnectorContext, type TeleportConnectorContext, type TeleportConnectorInput } from "./teleportConnectorContext";
 
 /** One drawn one-way indicator: its center, a circle bounding what it draws, and the node pair of
  *  the passage it marks (what the warning highlights). */
 type OneWayIndicator = { center: [number, number]; radius: number; fromNode: number; toNode: number };
 
-/** Shared by every call: the orthogonal router's cache keeps a settings slider drag from re-routing
- *  an unchanged layout on each warning recompute. */
-const sharedRouter = new TeleportConnectorRouter();
-
-export type TeleportOneWayCoverageInput = {
-  nodes: NodeDto[];
-  edges: EdgeDto[];
-  cfg: FieldConfig;
-  start: number | null;
-  finish: number | null;
-  /** Floor-scoped teleport edges, as `computeTeleportWarnings` receives them. */
-  teleportEdges: TeleportEdge[];
-  unscopedNodes: NodeDto[];
-  unscopedEdges: EdgeDto[];
-  activeFloorIndex: number;
-} & (
-  | { mode: "walls"; settings: VectorByWallsSettings }
-  | { mode: "corridors"; settings: VectorByCorridorsSettings }
-);
+export type TeleportOneWayCoverageInput = TeleportConnectorInput;
 
 /** Wall-mode indicators (triangle/chevron/arrow on the wall between two cells). The footprint is the
  *  indicator's own extent: `oneWayIndicatorSpan` minus the highlight padding it adds on both sides. */
@@ -102,76 +70,18 @@ function polylineDistance(points: number[], center: [number, number]): number {
 
 /** `teleport_connector_covers_one_way`: a drawn teleport connector (its line plus the floor-colored
  *  gap around it) passes over a one-way indicator, which draws below the teleport layer, so the
- *  passage reads as two-way. Routing is rebuilt the way the renderer builds it (same marker layout,
- *  scaler and avoidance waypoints, same `routeTeleportConnectors`), so the warning follows the path
- *  that is actually drawn — including the cases routing can't fix, like both ends on one line.
+ *  passage reads as two-way. Routing is rebuilt the way the renderer builds it (`buildTeleportConnectorContext`:
+ *  same marker layout, scaler, avoidance waypoints, manual paths and `routeTeleportConnectors`), so the warning
+ *  follows the path that is actually drawn — including the cases routing can't fix, like both ends on one
+ *  line — and goes away once the user routes the connector around the indicator by hand.
  *  Flags the covered one-way passages (`nodes` + `edges`), not the teleport. */
-export function computeTeleportConnectorCoversOneWayWarning(input: TeleportOneWayCoverageInput): ExportWarning | null {
-  const { nodes, edges, cfg, start, finish, teleportEdges, settings } = input;
+export function computeTeleportConnectorCoversOneWayWarning(input: TeleportConnectorInput, context?: TeleportConnectorContext): ExportWarning | null {
+  const { teleportEdges, settings } = input;
   if (settings.teleportConnectorStyle === "none" || teleportEdges.length === 0) return null;
-  // Built once: both the indicators and the router's avoidance waypoints are derived from them.
-  const wallEdges = input.mode === "walls" ? buildMazeWalls(nodes, edges, cfg) : [];
-  const corridorSegments = input.mode === "corridors" ? buildCorridorSegments(nodes, edges, cfg) : [];
-  const indicators = input.mode === "walls" ? wallIndicators(input, wallEdges) : corridorIndicators(input, corridorSegments);
+  const ctx = context ?? buildTeleportConnectorContext(input);
+  const indicators = input.mode === "walls" ? wallIndicators(input, ctx.wallEdges) : corridorIndicators(input, ctx.corridorSegments);
   if (indicators.length === 0) return null;
-
-  const floorColor = input.mode === "walls" ? input.settings.floorColor : input.settings.color;
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const verticalStyle = input.mode === "walls"
-    ? buildVerticalConnectionStyle(input.settings, floorColor, input.settings)
-    : buildVerticalConnectionStyle(input.settings, floorColor);
-  const layout = layoutExportMarkers({
-    markers: buildMazeMarkers(
-      nodeById, start, finish, cfg,
-      buildMarkerStyle(settings.startMarker, floorColor), buildMarkerStyle(settings.finishMarker, floorColor), edges,
-    ),
-    teleportEdges,
-    verticalMarkers: buildVerticalConnectionMarkers(
-      nodeById, edges, cfg, selectNodeLevelResolver(input.unscopedNodes), input.activeFloorIndex,
-      selectVerticalPassagePairSet(input.unscopedEdges), input.unscopedEdges, settings.replaceTwoFloorElevatorsWithStairs,
-    ),
-    settings,
-    verticalStyle,
-    splitHostKeys: buildSplitHostKeys(nodeById, edges, cfg),
-  });
-  const teleportStyle = buildTeleportLineStyle(settings, floorColor);
-  const scaler = buildMarkerScaler(cfg, [
-    ...footprintsOfMarkers(layout.markers),
-    ...footprintsOfVertical(layout.verticalMarkers, verticalStyle),
-    ...footprintsOfTeleports(layout.teleportEdges, teleportStyle),
-  ]);
-
-  const specialNodeIds = new Set<number>();
-  if (start !== null) specialNodeIds.add(start);
-  if (finish !== null) specialNodeIds.add(finish);
-  for (const e of edges) {
-    if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
-  }
-  const splitPassages = maxSplitNodeCount(nodes) > 0
-    ? buildSplitPassages(
-      nodes, edges, cfg, specialNodeIds, {}, {},
-      buildEffectiveSplitNodeColors(settings.splitNodeColors, maxSplitNodeCount(nodes)),
-      input.mode === "corridors" ? input.settings.thickness : undefined,
-    ).passages
-    : [];
-  const waypoints = buildTeleportAvoidanceWaypoints({
-    markers: layout.markers,
-    verticalMarkers: layout.verticalMarkers,
-    cfg,
-    splitPassages,
-    ...(input.mode === "walls" ? { oneWayWallEdges: wallEdges } : { oneWayCorridorSegments: corridorSegments }),
-  });
-  const routed = routeTeleportConnectors({
-    router: sharedRouter,
-    edges: layout.teleportEdges,
-    style: teleportStyle,
-    cfg,
-    waypoints,
-    avoidFieldExit: settings.teleportAvoidFieldExit,
-    fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
-    markerMaxFactor: scaler.maxFactor,
-    seam: settings.teleportThroughSeams !== false ? { cfg } : undefined,
-  });
+  const { teleportStyle, layout, routed } = ctx;
 
   // The line and the floor-colored gap around it both hide what is below.
   const reach = teleportStyle.connectorWidth / 2 + teleportStyle.connectorGapWidth;

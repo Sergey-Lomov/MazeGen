@@ -10,12 +10,13 @@ import { darken } from "../../styles/palette";
 import { FloorBadgeRow } from "../FloorBadgeRow";
 
 /** Distinct, ascending floor indices a warning touches: cross-floor targets (flagged nodes are
- *  folded in by the cross-floor merge) plus highlighted cells, which carry no node ids (e.g. marker
- *  index text overflow). */
-export function resolveWarningFloorLevels(warning: Pick<ExportWarning, "crossFloorTargets" | "cells">): number[] {
+ *  folded in by the cross-floor merge) plus highlighted cells and floor polygons, which carry no node ids (e.g. marker
+ *  index text overflow, connector geometry). */
+export function resolveWarningFloorLevels(warning: Pick<ExportWarning, "crossFloorTargets" | "cells"> & Partial<Pick<ExportWarning, "floorPolygons">>): number[] {
   const levels = new Set<number>();
   for (const target of warning.crossFloorTargets ?? []) levels.add(target.targetFloorIndex);
   for (const cell of warning.cells ?? []) levels.add(cell.floorIndex);
+  for (const shape of warning.floorPolygons ?? []) levels.add(shape.floorIndex);
   return Array.from(levels).sort((a, b) => a - b);
 }
 

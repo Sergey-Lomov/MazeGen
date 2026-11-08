@@ -58,7 +58,7 @@ that and that every emitted id is declared.
   (`selectors/trackedMemo.ts`): the group reads the settings through a read-recording view, and its cached result is reused while every
   recorded read (leaf value, key set, `in` check) still holds in the new settings. A group never lists its own settings dependencies, and
   an edit to a field it does not read cannot recompute it — e.g. dragging a teleport connector control point
-  (`manualTeleportConnectorPaths`) recomputes no group. Settings are immutable (replaced, never mutated, like the store's state); a
+  (`manualTeleportConnectorPaths`) recomputes only the `teleportConnectors` group. Settings are immutable (replaced, never mutated, like the store's state); a
   group must keep no settings sub-object in its result (the tracker throws) and must not call `trackedMemo` itself (`inputMemo` is allowed).
 - **Other inputs.** The cache key of every group is the maze (`nodes`, `edges`, `cfg`, effective `start`/`finish`), the floor ids in order
   (titles excluded), `hasGlues` and the group's own `hiddenInputs`: the text-overflow group adds the floor title and the loaded
@@ -233,6 +233,46 @@ so the covered passage reads as two-way. Not emitted when `teleportConnectorStyl
 - Hover highlights only the covered one-way passages (`nodes` and `edges` of each passage), not the
   teleport, using the same boundary highlight as the one-way corridor warnings.
 - Teleport edges are taken without cross-floor badge spreading, like the other teleport warnings.
+- A manually authored connector path (`manualTeleportConnectorPaths`, see `teleport_connectors.md`) is the path that is checked, so
+  the warning disappears once the user routes the connector around the indicator by hand.
+
+#### Teleport connector geometry (GitHub issue #945)
+
+Warnings about how the drawn connectors look. They share one warning group with `teleport_connector_covers_one_way`
+(`teleportConnectors`; one layout and one routing per floor, `buildTeleportConnectorContext`), are computed by
+`computeTeleportConnectorWarnings` (`teleportConnectorWarnings.ts`) on the path the renderer draws (manual paths included), and
+are not emitted when `teleportConnectorStyle === "none"`. Each id is one entry; hover highlights only the offending parts of the
+connectors as `floorPolygons` (display space, one floor each, drawn by the mode renderer's `ExportWarningHighlight` for the floor it
+shows), and carries no nodes, edges or cells. The highlight is a translucent fill plus an outline, a closed contour with softened
+corners (quadratic curves, cut-in capped at half of each neighbouring edge, `POLYGON_HIGHLIGHT_RADIUS`). Because the group reads `manualTeleportConnectorPaths`, editing a manual path recomputes it.
+
+- `teleport_connectors_overlap` — two connectors run along each other: a stretch of one at least 6 reaches long stays within the
+  reach (half the connector width plus the gap) of the other's centerline, so the line drawn later hides the one below. Crossings
+  at a large angle are not reported. The highlighted stretch is always measured along the connector drawn on top (draw order of
+  `TeleportRenderer.renderGroups`).
+- `teleport_connector_endpoint_detached` — the end of a **manual** connector lies farther from its marker center than the marker's
+  drawn radius (fill, border and edge gap ring; a floor badge uses the badge's own). Automatic connectors always start on their
+  marker. Highlights the end and the marker. Editing is not restricted; the warning is the only feedback.
+- `teleport_connector_leaves_field` — `teleportAvoidFieldExit` is on and the drawn stroke (centerline offset by half the
+  connector width plus gap, like the router's own check) leaves the union of the floor's cell polygons; applies to manual and
+  automatic connectors of every style. A connector through a seam is checked on the centerline only. Highlights the part outside:
+  one polygon per outside run (a lone inside sample between two outside ones does not split it), the outline of the stroke
+  buffered by the same half-width plus gap, so both sides run parallel to the line; the inner side of a bend is mitered, the outer
+  side is a round join.
+- `teleport_connector_crosses_marker` — the line runs over a marker automatic routing avoids: a start/finish marker, a vertical
+  passage marker or another connector's endpoint marker/floor badge (radius as drawn, including border and gap ring). The
+  connector's own end markers are ignored. One-way indicators are covered by `teleport_connector_covers_one_way`; split junction
+  hubs are not checked. Highlights the marker and the crossing segments.
+- `teleport_connector_arrow_sticks_out` — a direction arrow (one-way connectors with arrows on) whose tip or tail center is off the
+  line by more than half the connector width, e.g. a curved connector bending under the arrow or a line shorter than the arrow.
+  Highlights the arrow.
+- `teleport_connector_too_short_for_arrow` — a one-way connector with arrows on whose length minus the two end markers' drawn radii
+  is under 1.5 × the arrow size (the arrow's tip-to-tail length). Highlights the connector's middle.
+- `teleport_connector_covers_arrow` — the arrow of a one-way connector (arrows on) lies **under** another connector: that connector
+  is drawn after it (group order, then connector order, as `TeleportRenderer.renderGroups` draws) and its line plus floor-colored
+  gap (half the width plus the gap) reaches the arrow triangle. An arrow drawn above the other connector is fine and not
+  reported; a connector's own arrows (a seam connector's two pieces included) are never checked against itself. Highlights the arrow.
+- `teleport_connector_degenerate` — a connector shorter than its own width (both ends in one point). Highlights the point.
 
 #### Grid vs background
 
@@ -312,6 +352,9 @@ actually rendered.
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
 - `teleport_connector_covers_one_way`;
+- the teleport connector geometry warnings (`teleport_connectors_overlap`, `teleport_connector_endpoint_detached`,
+  `teleport_connector_leaves_field`, `teleport_connector_crosses_marker`, `teleport_connector_arrow_sticks_out`,
+  `teleport_connector_too_short_for_arrow`, `teleport_connector_covers_arrow`, `teleport_connector_degenerate`);
 - `elevator_indistinguishable`;
 - `marker_index_covers_stop_line`.
 

@@ -161,14 +161,20 @@ describe("recomputation", () => {
     startMarker: withText,
   });
 
-  it("an unrelated settings edit (a connector control point drag) recomputes no group", () => {
+  it("an unrelated settings edit recomputes no group", () => {
     walls(richWalls);
     const before = trackedMemoMisses();
-    for (let i = 0; i < 50; i++) {
-      const dragged = { ...richWalls, manualTeleportConnectorPaths: { a: { nodes: [[i, 0]] } } } as unknown as VectorByWallsSettings;
-      walls(dragged);
-    }
+    for (let i = 0; i < 50; i++) walls({ ...richWalls, cutLinesColor: 0x100000 + i });
     expect(trackedMemoMisses() - before).toBe(0);
+  });
+
+  it("a connector control point drag recomputes the teleport connector group only", () => {
+    walls(richWalls);
+    const before = new Map([...getTrackedMemoStats()].map(([slot, entry]) => [slot, entry.misses]));
+    walls({ ...richWalls, manualTeleportConnectorPaths: { "0:1": { nodes: [[1, 0], [2, 0]] } } });
+    const missed = [...getTrackedMemoStats()].filter(([slot, entry]) => entry.misses > (before.get(slot) ?? 0)).map(([slot]) => slot);
+    expect(missed.length).toBeGreaterThan(0);
+    expect(missed.every((slot) => slot.startsWith("walls:teleportConnectors:"))).toBe(true);
   });
 
   it("a color edit recomputes the groups that read it but not text fit or geometry", () => {
@@ -188,7 +194,7 @@ describe("recomputation", () => {
     const missed = [...getTrackedMemoStats()].filter(([, entry]) => entry.lastMiss?.startsWith("startMarker")).map(([slot]) => slot);
     expect(trackedMemoMisses() - before).toBeGreaterThan(0);
     expect(missed.length).toBeGreaterThan(0);
-    expect(missed.every((slot) => slot.startsWith("walls:textOverflow:") || slot.startsWith("walls:contrast.") || slot.includes("Overlap"))).toBe(true);
+    expect(missed.every((slot) => slot.startsWith("walls:textOverflow:") || slot.startsWith("walls:contrast.") || slot.startsWith("walls:teleportConnectors:") || slot.includes("Overlap"))).toBe(true);
   });
 
   it("a floor title edit recomputes the text overflow group alone", () => {
@@ -250,7 +256,7 @@ describe("merged list identity", () => {
   it("is the same list while every group hits and a new one when a group recomputes", () => {
     const run = (settings: VectorByWallsSettings) => computeVectorByWallsWarningsAcrossFloors(maze.nodes, maze.edges, maze.floors, squareCfg, settings, maze.start, maze.finish);
     const first = run(wallsBase);
-    expect(run({ ...wallsBase, manualTeleportConnectorPaths: { a: { nodes: [[1, 0]] } } } as unknown as VectorByWallsSettings)).toBe(first);
+    expect(run({ ...wallsBase, cutLinesColor: 0x100000 })).toBe(first);
     expect(run({ ...wallsBase, gridColor: 0x123456 })).not.toBe(first);
   });
 

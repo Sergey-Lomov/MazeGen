@@ -31,6 +31,22 @@ export type ExportWarningId =
    *  over a one-way indicator, which draws below it, so the passage reads as two-way. Highlights
    *  the covered one-way passages. */
   | "teleport_connector_covers_one_way"
+  /** Both vector modes (GitHub issue #945) — presentation caveats of the drawn teleport connectors; each highlights the
+   *  offending parts of the connectors as `floorPolygons`. Overlapping lines hide one another. */
+  | "teleport_connectors_overlap"
+  /** A manually routed connector's end lies outside its marker. */
+  | "teleport_connector_endpoint_detached"
+  /** "Avoid field exit" is on, but a connector (manual or automatic) leaves the field. */
+  | "teleport_connector_leaves_field"
+  /** A connector runs over a marker automatic routing steers around (start/finish, vertical passage, another teleport's endpoint or badge). */
+  | "teleport_connector_crosses_marker"
+  /** A direction arrow's tip or tail lies off the line it sits on (a bend under the arrow, a line shorter than the arrow). */
+  | "teleport_connector_arrow_sticks_out"
+  /** A one-way connector leaves no room for its arrow between the markers hiding its two ends. */
+  | "teleport_connector_too_short_for_arrow"
+  | "teleport_connector_covers_arrow"
+  /** A connector with both ends in one point, so no line is left to read. */
+  | "teleport_connector_degenerate"
   | "waypoint_on_split"
   | "teleport_on_special_split"
   /** Start/finish marker caption, elevator floor badge or teleport floor badge text exceeds its plate
@@ -184,6 +200,9 @@ export type ExportWarning = {
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
   /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
   polygons?: [number, number][][];
+  /** Like `polygons`, but each shape belongs to one floor (GitHub issue #945): the connector warnings are computed per floor and merged
+   *  across floors, and the mode renderer's hover highlight draws only the shapes of the floor it shows. */
+  floorPolygons?: { floorIndex: number; polygon: [number, number][] }[];
   /** Display-space polylines (active floor) the hover highlight draws as boundary bands, like the glue editor's runs (GitHub issue #913). */
   bands?: [number, number][][];
 };
@@ -204,6 +223,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
           cells: warning.cells ? [...warning.cells] : undefined,
           fields: warning.fields ? [...warning.fields] : undefined,
           crossFloorTargets: warning.crossFloorTargets ? [...warning.crossFloorTargets] : undefined,
+          floorPolygons: warning.floorPolygons ? [...warning.floorPolygons] : undefined,
         });
         continue;
       }
@@ -215,6 +235,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
       }
       existing.crossFloorTargets = [...(existing.crossFloorTargets ?? []), ...(warning.crossFloorTargets ?? [])];
       existing.cells = [...(existing.cells ?? []), ...(warning.cells ?? [])];
+      if (warning.floorPolygons) existing.floorPolygons = [...(existing.floorPolygons ?? []), ...warning.floorPolygons];
       if (warning.fields) existing.fields = Array.from(new Set([...(existing.fields ?? []), ...warning.fields]));
     }
   }
