@@ -47,6 +47,17 @@ rejects the file instead of falling back to `square`. Failures are
 `loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
 
+GitHub issue #946. Loading ends every UI mode, pending placement, prompt, hover and open panel of the
+previous session before the saved project's own UI state is restored. The reset is not a list inside
+`loadProject`: each store slice declares its own resting values next to its state (`<slice>TransientUi`
+in `tessellationSlice`, `floorFieldSlice`, `generationSlice`, `analyticsOverlaySlice`,
+`presetConnectionsSlice`, `postEditSlice`, `imageExportSlice`; the topology editor's `initialTopologyState`),
+spread into that slice's initial state, and `store/transientUiState.ts` (`TRANSIENT_UI_STATE`) only composes
+them. A new mode is added in its slice and is reset on load without touching `loadProject`.
+`transientUiState.test.ts` fails on a store state key that is neither in the registry nor listed in the
+test's `NOT_TRANSIENT` groups with its reason (restored from the file, rebuilt by regeneration, app-wide,
+owned by a controller), so a new key cannot be forgotten. A load test dirties every registered key and asserts each returns to its resting value.
+
 GitHub issue #932. Load runs generation only when the file's `dirtyFlags` say a generation existed at
 save time (`hasGeneration`: `maze` or `postEdit`). Otherwise the project stays ungenerated
 (`generationStatus: "idle"`, no maze, no post-edit replay); the saved dirty flags and open card are

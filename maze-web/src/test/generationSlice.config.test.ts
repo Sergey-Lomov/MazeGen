@@ -4,6 +4,7 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
+import { TRANSIENT_UI_STATE } from "../store/transientUiState";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import { baseStoreState, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
@@ -337,6 +338,19 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.getState().loadProject(doneFile);
     expect(generateMaze).toHaveBeenCalledTimes(1);
     expect(useMazeStore.getState().generationStatus).toBe("done");
+  });
+
+  it("loadProject returns every registered transient key to its resting value (GitHub issue #946)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    const file = serializeProject(useMazeStore.getState());
+    const dirty = Object.fromEntries(Object.keys(TRANSIENT_UI_STATE).map((key) => [key, "__dirty__"]));
+    useMazeStore.setState(dirty as never);
+    useMazeStore.getState().loadProject(file);
+    const state = useMazeStore.getState() as unknown as Record<string, unknown>;
+    for (const [key, resting] of Object.entries(TRANSIENT_UI_STATE)) {
+      expect({ key, value: state[key] }).toEqual({ key, value: resting });
+    }
   });
 
   it("loadProject restores vectorByCorridorsSettings/vectorByCorridorsSectionsExpanded from the saved file", () => {

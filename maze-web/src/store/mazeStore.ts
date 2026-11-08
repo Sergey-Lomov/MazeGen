@@ -11,7 +11,8 @@ import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
-import { createTopologySlice, initialTopologyState } from "./slices/topologySlice";
+import { createTopologySlice } from "./slices/topologySlice";
+import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installEdgeMarkerSync } from "./edgeMarkerSync";
@@ -137,8 +138,9 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       floorFields,
       floorTopology: file.floorTopology ?? {},
       floorCreases: file.floorCreases ?? {},
-      fieldClipboard: null,
-      ...initialTopologyState,
+      // Every UI mode, prompt, hover and open panel of the previous session ends here, before the
+      // saved project's own UI state is restored below (GitHub issue #946).
+      ...TRANSIENT_UI_STATE,
       activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,
@@ -176,46 +178,32 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       // reproducibility.
       generationSourceMode: file.presets.generationSourceMode,
       presetTeleports: file.presets.teleports,
-      presetTeleportPendingFrom: null,
       _nextPresetTeleportId: file.presets.teleports.length === 0
         ? 1
         : Math.max(...file.presets.teleports.map((t) => t.id)) + 1,
       presetVerticalPassages: file.presets.verticalPassages,
-      presetVerticalPassagePending: null,
       _nextPresetVerticalPassageId: file.presets.verticalPassages.length === 0
         ? 1
         : Math.max(...file.presets.verticalPassages.map((p) => p.id)) + 1,
       presetElevators: file.presets.elevators,
-      presetElevatorPending: null,
       _nextPresetElevatorId: file.presets.elevators.length === 0
         ? 1
         : Math.max(...file.presets.elevators.map((e) => e.id)) + 1,
       presetSplitPoints: file.presets.splitPoints,
-      presetActiveSplitNode: {},
-      presetFocusedPoint: null,
-      presetSplitTargetPrompt: null,
-      presetEntityPickPrompt: null,
-      presetMoveRequest: null,
-      presetConnectionSettingsPrompt: null,
-      presetLockSettingsPrompt: null,
       // reset maze state — will be populated by generate below
       ...buildResetMazeState(),
       generationStatus: "idle" as const,
       postEditAutoConfirm: file.ui.postEditAutoConfirm,
       postEditDraftEdges: null,
       postEditDraftTeleports: [],
-      postEditTeleportPendingFrom: null,
       _nextPostEditTeleportId: 1,
       postEditDraftMeta: null,
       postEditDraftSplitPoints: {},
-      postEditActiveSplitNode: {},
-      postEditFocusedPoint: null,
       postEditEdges: null,
       postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
       postEditRefreshError: null,
-      postEditTool: "wall" as const,
       postEditDirty: file.dirtyFlags.postEdit,
       presetsDirty: file.dirtyFlags.presets,
       mazeDirty: file.dirtyFlags.maze,
@@ -241,7 +229,6 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       // ui
       showPresetOrigin: file.ui.showPresetOrigin,
       showPresetLocks: file.ui.showPresetLocks,
-      showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
       showBackgroundImage: file.showBackgroundImage ?? false,
       backgroundImage: file.backgroundImage === null || file.backgroundImage === undefined
@@ -253,25 +240,10 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
           },
       backgroundImageManualPositioning: file.backgroundImageManualPositioning ?? false,
       backgroundImageCropping: file.backgroundImageCropping ?? false,
-      backgroundAutoFillPreview: null,
-      showPrimitiveFrame: true,
-      smoothPrimitives: true,
-      smoothInverted: false,
-      mirrorSnapMode: "centers",
-      mirrorScope: "one_side",
-      mirrorAxisPoints: [],
-      mirrorSourceSide: 1,
-      mirrorPolygon: [],
-      mirrorPolygonFinished: false,
-      fieldOpError: null,
       // Do not let a feature renderer draw the regenerated maze before the saved post-edit
       // commands have been restored and confirmed below. Switching to the requested card only
       // after that confirmation makes the first maze frame match the loaded project.
       openCard: "basic_config",
-      // clear transient UI flags
-      highlightInvalidPresets: false,
-      highlightIsolatedNodes: false,
-      highlightOrphanSplitNodes: false,
       error: null,
       // image export (GitHub issue #295) — buildResetMazeState() above resets these to their
       // defaults; restore the saved values on top.

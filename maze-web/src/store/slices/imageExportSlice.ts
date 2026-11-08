@@ -158,10 +158,20 @@ function pruneUnchanged(cur: unknown, patch: object): object {
   return out;
 }
 
-const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
-  activeRenderMode: null,
+/** Canvas edit modes, hovers and open settings dialogs of the export feature (GitHub issue #946). */
+export const imageExportTransientUi = {
   floorLabelDrag: null,
   teleportConnectorEdit: null,
+  hoveredTeleportNodeIds: null,
+  hoveredExportWarningKey: null,
+  openExportFormatSettings: null,
+  exportFormatSettingsCovered: false,
+  exportTopologyOpen: false,
+} satisfies Partial<ImageExportState>;
+
+const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
+  activeRenderMode: null,
+  ...imageExportTransientUi,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
@@ -170,11 +180,6 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   floorLabelModeChosen: false,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
-  hoveredTeleportNodeIds: null,
-  hoveredExportWarningKey: null,
-  openExportFormatSettings: null,
-  exportFormatSettingsCovered: false,
-  exportTopologyOpen: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null, teleportConnectorEdit: null }),

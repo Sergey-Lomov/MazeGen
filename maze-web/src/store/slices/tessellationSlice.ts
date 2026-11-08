@@ -12,6 +12,22 @@ import { buildPreviewConfig, buildPreviewState, debugStaleOf, tessellationOf, sa
 import { computeMirrorPreview } from "../../pixi/mirror";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 
+/** Field-editing modes and previews that never outlive the project they were opened in (GitHub issue #946). */
+export const tessellationTransientUi = {
+  showPrimitiveFrame: true,
+  backgroundAutoFillPreview: null,
+  smoothPrimitives: true,
+  smoothInverted: false,
+  mirrorSnapMode: "centers",
+  mirrorScope: "one_side",
+  mirrorAxisPoints: [],
+  mirrorSourceSide: 1,
+  mirrorPolygon: [],
+  mirrorPolygonFinished: false,
+  fieldOpError: null,
+  fieldClipboard: null,
+} satisfies Partial<TessellationState>;
+
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
   tessellationKind: "square",
@@ -27,23 +43,12 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   activeFieldConfig: resolveFieldConfig(buildPreviewConfig(defaultTessellationOf("square"), DEFAULT_HEX_ORI, DEFAULT_TRI_ORI)),
   showFieldOverlay: true,
   showFieldOrigin: true,
-  showPrimitiveFrame: true,
   showPaperLayout: false,
   showBackgroundImage: false,
   backgroundImage: null,
   backgroundImageManualPositioning: false,
   backgroundImageCropping: false,
-  backgroundAutoFillPreview: null,
-  smoothPrimitives: true,
-  smoothInverted: false,
-  mirrorSnapMode: "centers",
-  mirrorScope: "one_side",
-  mirrorAxisPoints: [],
-  mirrorSourceSide: 1,
-  mirrorPolygon: [],
-  mirrorPolygonFinished: false,
-  fieldOpError: null,
-  fieldClipboard: null,
+  ...tessellationTransientUi,
   fieldHasSelection: false,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),

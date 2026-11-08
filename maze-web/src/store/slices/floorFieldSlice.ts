@@ -107,9 +107,14 @@ function applyFieldConfigForFloors(state: MazeState, cfg: FieldConfig, applyToAl
   return applyFieldConfigsForFloors(state, configs, applyToAllStandardFloors);
 }
 
+/** A pending field-edit confirmation refers to the project it was raised in (GitHub issue #946). */
+export const floorFieldTransientUi = {
+  fieldEditConfirmation: null,
+} satisfies Partial<FloorFieldsState>;
+
 export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsState & FloorFieldsActions> = (set, get) => ({
   floorFields: {},
-  fieldEditConfirmation: null,
+  ...floorFieldTransientUi,
 
   setSelectedShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSelectedShape", shape }, () => setSelectedShapeState(shape)(state))),
 

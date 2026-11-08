@@ -24,6 +24,14 @@ let registryLoadInFlight: Promise<void> | null = null;
 export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 
+/** Selection, hover and search state tied to the maze and debug run being replaced (GitHub issue #946). */
+export const generationTransientUi = {
+  selectedNode: null,
+  hoveredDebugRef: null,
+  debugSearchQuery: "",
+  debugFocusNodeIndex: null,
+} satisfies Partial<GenerationState>;
+
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (...a) => {
   const [set, get] = a;
   const prepareGenerate = () => {
@@ -58,7 +66,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   showNodeIds: false,
   showCoords: false,
   showMaze: true,
-  selectedNode: null,
+  ...generationTransientUi,
   issues: [],
   error: null,
   registryError: null,
@@ -87,13 +95,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugArena: null,
   debugStep: 0,
   debugFocusToken: 0,
-  debugFocusNodeIndex: null,
   debugAutoSwitchFloor: true,
   debugStale: false,
-  hoveredDebugRef: null,
   debugValueToggles: new Set<string>(),
   showKruskalDsuGroups: false,
-  debugSearchQuery: "",
   mazeDirty: false,
   repairMaxIterations: 100,
   repairTimeBudgetSecs: 10,
