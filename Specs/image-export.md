@@ -1174,7 +1174,7 @@ Unlike digital mode, the canvas is **always** the full sheet size — content is
 
 Both comparisons use a `0.01px` epsilon tolerance — floating-point placement math (`placeInBox`'s division, the auto-fit scale's own division) can land content a fraction of a pixel past an edge it's meant to touch exactly, which without the tolerance reads as a false-positive warning the instant a fit is exact rather than only once content actually overflows.
 
-**Auto-fit scale** (`PrintExportSettings.scaleAutoFit` toggle, next to the scale field — the scale input is disabled while it's on): `computeAutoFitPrintScale(cfg, nodes, wallMargin, settings)` computes the scale that makes content (at `scale=1`) exactly fill the available (margin-inset) area on the limiting axis — a pure, one-shot calculation. `PngExportSettingsPanel`'s own `useEffect` re-runs it (floored to 2 decimals, `floor2` — always rounds *down*, since an up-rounded scale can push content a fraction of a percent past the available area, flagging a spurious `entersMarginZone` even though the true unrounded fit was exact) on every change that could affect the fit (sheet size/orientation/DPI, margins, or the maze itself), keeping `print.scale` continuously in lockstep while the toggle is on. When auto-fit is off, changing `density` rescales the stored `print.scale` by `newDpi / oldDpi`, so the displayed cell size in millimeters remains unchanged while only the raster resolution changes (GitHub issue #620).
+**Scale and auto-fit** — both output modes share one Scale row: a 1.00–8.00 slider, an unbounded two-decimal numeric editor constrained to values greater than 0.1, and a square action matching the numeric editor's height. In Digital mode the action matches the current canvas zoom. In Print mode it performs one auto-fit calculation — it does not activate an ongoing mode, so later sheet, margin, DPI, or maze changes leave the selected scale untouched. `computeAutoFitPrintScale(cfg, nodes, wallMargin, settings)` computes the scale that makes content (at `scale=1`) exactly fill the available (margin-inset) area; its result is floored to 2 decimals (`floor2` always rounds down, so the exact fit cannot spuriously enter the margin zone). The legacy `PrintExportSettings.scaleAutoFit` field is retained only to load old project files and is always normalized to `false`. When the scale is set manually, changing `density` rescales the stored `print.scale` by `newDpi / oldDpi`, so the displayed cell size in millimeters remains unchanged while only the raster resolution changes (GitHub issue #620).
 
 ### `ExportFrameOverlay` — on-canvas print frame, bidirectional pan/zoom sync
 
@@ -1213,15 +1213,15 @@ resolution, system/browser scaling) — the modal says so.
 **Formula.** `computePhysicalOneToOneViewportScale(printScale, density, calibratedCssPpi)`
 (`printFit.ts`) = `printScale * calibratedCssPpi / DPI_BY_DENSITY[density]`. Independent of
 `TILE_SIZE` (both the on-paper and on-screen cell size are `TILE_SIZE * scale`, so it cancels).
-`printScale` is the current `print.scale` (kept in lockstep with `computeAutoFitPrintScale` by the
-panel's own effect while `scaleAutoFit` is on).
+`printScale` is the current `print.scale`, including the result of a one-shot auto-fit action.
 
 **It is a pure viewport command** — it does **not** touch `print.scale`/`anchor`/`offset`; it
-centres the complete print layout and applies the physical viewport scale. Wired through the second slot of
+centres the sheet and applies the same physical zoom factor to the sheet and canvas, preserving
+their relative placement. Wired through the second slot of
 `viewportScaleBridge.ts` (`setPhysicalZoomApplier`/`applyPhysicalZoom` — the panel is reached
 propless via `exportFormatRegistry`, same reason the "match current zoom" getter exists) →
 `MazeScene.applyPrintPhysicalZoom` → `ExportFrameOverlay.applyViewportScaleAroundFrameCentre`, which
-centres and scales the complete layout and is
+centres the sheet, scales the complete layout, and is
 `syncingDepth`-guarded exactly like `syncViewportToPlacement` so `onViewportChanged` doesn't mistake
 it for a real pan/zoom. It is a no-op when the print frame is not active (export panel closed) or
 the target scale is non-positive. A later canvas-only pan/zoom flows through `syncPlacementToViewport`

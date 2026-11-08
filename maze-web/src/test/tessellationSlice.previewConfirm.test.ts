@@ -183,7 +183,7 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.edges).toHaveLength(0);
     expect(s.start).toBeNull();
     expect(s.finish).toBeNull();
-    expect(s.pngExportSettings.print.scaleAutoFit).toBe(true);
+    expect(s.pngExportSettings.print.scaleAutoFit).toBe(false);
   });
 
   it("confirmTessellation with different kind clears all incompatible presets", () => {

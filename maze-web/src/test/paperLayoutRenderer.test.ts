@@ -27,8 +27,8 @@ describe("paperLayoutWorldGeometry", () => {
     expect(geometry?.marginVertical).toBeCloseTo(12 * 40 / geometry!.cellSizeMm);
   });
 
-  it("uses the automatic 10 mm cell measure", () => {
-    expect(paperLayoutWorldGeometry(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), { ...settings, scaleAutoFit: true })?.cellSizeMm).toBe(10);
+  it("ignores the legacy auto-fit flag", () => {
+    expect(paperLayoutWorldGeometry(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), { ...settings, scaleAutoFit: true })?.cellSizeMm).toBeCloseTo(40 * 25.4 / 300);
   });
 
   it("rejects invalid margins", () => {

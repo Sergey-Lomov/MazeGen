@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { boundsInCellSides, calculatePrintFieldConfig, largestFitting, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { presetShapeExtents } from "../pixi/tessellationCells";
+import { displayTransform } from "../pixi/tessellationGeometry";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { FieldConfig, TessellationKind } from "../fieldConfig";
 import type { PredefinedFieldConfig } from "../pixi/fieldPrintSizing";
@@ -15,6 +17,20 @@ const printInput = {
   marginHMm: 5,
   marginVMm: 5,
 };
+
+/** Display-space size of the field in cell sides: core measures the shape along the rows of the
+ * display transform, so the field's orientation is only an instance of that transform. */
+function boundsInCellSides(config: FieldConfig): { width: number; height: number } {
+  const t = displayTransform(config);
+  const extents = presetShapeExtents(config, [[t.a, t.c], [t.b, t.d]]);
+  // A shape core refuses (too large to build) never fits.
+  if (!extents) return { width: Infinity, height: Infinity };
+  const side = TESSELLATION_UI[config.tessellation.kind].cellSidePx;
+  return {
+    width: (extents[0][1] - extents[0][0]) / side,
+    height: (extents[1][1] - extents[1][0]) / side,
+  };
+}
 
 describe("field print sizing", () => {
   it("never picks a size core refuses to build", () => {
@@ -181,33 +197,16 @@ describe("field print sizing", () => {
     expect(calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), { ...printInput, cellSizeMm: 11 })).not.toBe(first);
   });
 
-  it.each([
-    { limit: 37, hint: 1 },
-    { limit: 37, hint: 37 },
-    { limit: 37, hint: 500 },
-    { limit: 1, hint: 900 },
-    { limit: 0, hint: 5 },
-    { limit: 1000, hint: 1 },
-    { limit: 5000, hint: 10 },
-    { limit: 4, hint: 1, min: 3 },
-    { limit: 2, hint: 9, min: 3 },
-  ])("finds the largest fitting value from any hint: %o", ({ limit, hint, min = 1 }) => {
-    // 0 when even the smallest allowed value does not fit.
-    const expected = limit < min ? 0 : Math.min(limit, 1000);
-    expect(largestFitting((value) => value <= limit, hint, min, 1000)).toBe(expected);
-  });
-
   describe("rect search matches a full scan", () => {
     const smallSheet = { ...printInput, paperSize: "custom" as const, customWidthMm: 45, customHeightMm: 55 };
-    // Core has no parallelogram preset, and the radial and voronoi kinds have no rect.
-    const kinds = (Object.keys(TESSELLATION_UI) as TessellationKind[])
-      .filter((kind) => kind !== "radial" && kind !== "voronoi" && !TESSELLATION_UI[kind].editor.axisAlignedGrid);
+    // Every lattice is scanned in core (`print_sizing_tests.rs`); here two staggered ones check the wasm boundary.
+    const kinds: TessellationKind[] = ["hex", "trihexagonal"];
     const shape = "rect" as const;
 
     it.each(kinds)(
       "%s", (kind) => {
         const orientation = TESSELLATION_UI[kind].orientations[0];
-        for (const cellSizeMm of [4, 6]) {
+        for (const cellSizeMm of [6]) {
           const input = { ...smallSheet, cellSizeMm };
           const start = fieldOf(kind, { shape, cols: 2, rows: 2 }, orientation);
           const result = calculatePrintFieldConfig(start, input);

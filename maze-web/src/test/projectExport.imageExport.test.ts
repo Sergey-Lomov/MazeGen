@@ -56,6 +56,15 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     expect(reparsed.imageExport.pngExportSettings).toEqual(DEFAULT_PNG_EXPORT_SETTINGS);
   });
 
+  it("normalizes a legacy persistent print auto-fit setting to manual scale", () => {
+    const raw = toJson(makeState());
+    raw.imageExport.pngExportSettings.print.scaleAutoFit = true;
+
+    const reparsed = parseAndValidate(raw);
+
+    expect(reparsed.imageExport.pngExportSettings.print.scaleAutoFit).toBe(false);
+  });
+
   it("round-trips vectorByWallsSectionsExpanded", () => {
     const state = makeState({ vectorByWallsSectionsExpanded: { background: true, tiles: false } });
     const serialized = serializeProject(state);

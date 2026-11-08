@@ -243,7 +243,7 @@ describe("png export setters", () => {
     const p = useMazeStore.getState().pngExportSettings;
     expect(p.outputMode).toBe("print");
     expect(p.digital).toMatchObject({ scale: 3, canvasMode: "fixed", marginValue: 12, fixedWidth: 800, fixedHeight: 600 });
-    expect(p.print).toMatchObject({ paperSize: "a3", customWidthMm: 100, customHeightMm: 200, orientation: "landscape", marginHMm: 5, marginVMm: 6, scale: 2, scaleAutoFit: true, anchor: "top_left" });
+    expect(p.print).toMatchObject({ paperSize: "a3", customWidthMm: 100, customHeightMm: 200, orientation: "landscape", marginHMm: 5, marginVMm: 6, scale: 2, scaleAutoFit: false, anchor: "top_left" });
   });
 
   it("custom placement forces the custom anchor", () => {

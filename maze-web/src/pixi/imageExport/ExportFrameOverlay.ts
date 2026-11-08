@@ -52,7 +52,7 @@ export class ExportFrameOverlay implements ViewportListener {
 
   constructor(
     container: Container,
-    private readonly setViewportTransform: (x: number, y: number, scale: number, navigation?: "canvas") => void,
+    private readonly setViewportTransform: (x: number, y: number, scale: number, navigation?: "layout" | "canvas") => void,
     private readonly getScreenSize: () => { width: number; height: number },
     // Optional — lets the frame read a pixel-accurate margin off the same live mode-renderer
     // instance the on-screen canvas itself uses (GitHub issue #324 follow-up), instead of a
@@ -95,24 +95,33 @@ export class ExportFrameOverlay implements ViewportListener {
   applyViewportScaleAroundFrameCentre(targetScale: number): void {
     const world = this.printFrameWorldLayout;
     if (!world || targetScale <= 0) return;
-    // Same auto-centering as Fit to screen: centre the whole print layout (sheet plus its canvas)
-    // in the visible screen, with physical preview supplying the different zoom.
+    // Scale the existing layout around the sheet, rather than assigning the same transform to the
+    // sheet and canvas. They can intentionally differ after canvas-only navigation; assigning
+    // them a shared transform would discard that relative placement.
+    const previousViewport = this.lastViewport;
+    const previousFrame = this.frameViewport;
+    if (previousViewport.scale <= 0) return;
+    const ratio = targetScale / previousViewport.scale;
     const { width, height } = this.getScreenSize();
-    const newX = width / 2 - (world.x + world.w / 2) * targetScale;
-    const newY = height / 2 - (world.y + world.h / 2) * targetScale;
+    const newFrameScale = previousFrame.scale * ratio;
+    const newFrameX = width / 2 - (world.x + world.w / 2) * newFrameScale;
+    const newFrameY = height / 2 - (world.y + world.h / 2) * newFrameScale;
+    const newX = newFrameX + (previousViewport.x - previousFrame.x) * ratio;
+    const newY = newFrameY + (previousViewport.y - previousFrame.y) * ratio;
 
     this.syncingDepth++;
     try {
-      this.setViewportTransform(newX, newY, targetScale);
+      // Mark this as a layout zoom even if the scene forwards viewport changes asynchronously:
+      // it must never be interpreted as canvas-only navigation and written back to placement.
+      this.setViewportTransform(newX, newY, targetScale, "layout");
     } finally {
       this.syncingDepth--;
     }
     // The `setViewportTransform` callback moves the real Pixi viewport, but its `onViewportChanged`
     // echo is skipped while syncing — mirror the new transform into our own cache so a subsequent
     // real pan/zoom computes its delta from here.
-    const nextViewport = { x: newX, y: newY, scale: targetScale };
-    this.lastViewport = nextViewport;
-    this.frameViewport = nextViewport;
+    this.lastViewport = { x: newX, y: newY, scale: targetScale };
+    this.frameViewport = { x: newFrameX, y: newFrameY, scale: newFrameScale };
     this.redraw();
   }
 
@@ -246,9 +255,7 @@ export class ExportFrameOverlay implements ViewportListener {
    * path (`redraw()`'s other caller): that path fires on the resulting settings change too, which
    * would otherwise try to resync from its own output on every unrelated store update.
    *
-   * Turns off `scaleAutoFit` first: a real pan/zoom is the user manually choosing a scale, which
-   * would otherwise fight `PngExportSettingsPanel`'s auto-fit effect (that effect would immediately
-   * overwrite the scale this call is about to set, back to the auto-fit value, every render). */
+   * Clears the legacy `scaleAutoFit` project flag first. A real pan/zoom is a manual scale choice. */
   private syncPlacementToViewport(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
     const { margin, basis } = this.resolveContent(state);

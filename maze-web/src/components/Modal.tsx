@@ -37,6 +37,12 @@ function isNewlineTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.tagName === "TEXTAREA";
 }
 
+/** True for an input that ends its own edit on Enter (blur commits the value, e.g. `NumberInput`).
+ *  Enter there finishes the edit and leaves the dialog open instead of confirming it. */
+function isBlurOnEnterTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement && target.dataset.blurOnEnter !== undefined;
+}
+
 interface Props {
   title: string;
   size?: DialogSizeKey;
@@ -81,6 +87,7 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
         return;
       }
       if (!onConfirm) return;
+      if (e.key === "Enter" && isBlurOnEnterTarget(e.target)) return;
       if (e.key === "Enter" && !isNewlineTarget(e.target)) {
         e.preventDefault();
         onConfirm();

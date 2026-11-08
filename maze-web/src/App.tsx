@@ -12,9 +12,10 @@ import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { NotificationHost } from "./components/notifications/NotificationHost";
 import { Announcer } from "./components/Announcer";
+import { LoadingScreen } from "./components/LoadingScreen";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
-import { ui, typography, disabled, inset } from "./styles/theme";
+import { ui } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
@@ -33,6 +34,8 @@ export function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<"graphics" | "fonts">("graphics");
+  const [loadingLeaving, setLoadingLeaving] = useState(false);
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
   const debugMode = useMazeStore((s) => s.debugMode);
   const debugArena = useMazeStore((s) => s.debugArena);
@@ -88,7 +91,10 @@ export function App() {
       // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
       // later page load free. Blocking `setReady` on it avoids a flash of missing labels.
-      .then(() => loadMsdfFont())
+      .then(() => {
+        setLoadingStage("fonts");
+        return loadMsdfFont();
+      })
       .then(() => {
         if (cancelled) { app.destroy(); return; }
         canvasRef.current!.appendChild(app.canvas);
@@ -101,6 +107,7 @@ export function App() {
           sampleRegion: (clientX, clientY, radiusPx) => sceneRef.current?.sampleRegionAt(clientX, clientY, radiusPx) ?? null,
         });
         setReady(true);
+        setLoadingLeaving(true);
       })
       .catch((err) => {
         // A failed WebGL init or MSDF-font fetch would otherwise leave the app stuck on the
@@ -117,6 +124,12 @@ export function App() {
       sceneRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!loadingLeaving) return;
+    const timer = window.setTimeout(() => setLoadingLeaving(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [loadingLeaving]);
 
   return (
     <div style={styles.root}>
@@ -141,7 +154,7 @@ export function App() {
        * they're triggered from, so they always dock beside the canvas, never inside the left
        * features panel. */}
       <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
-      {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
+      {(!ready || loadingLeaving) && <LoadingScreen status={m[loadingStage === "graphics" ? "loading.graphics" : "loading.fonts"]()} leaving={loadingLeaving} />}
       {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
        * anchored to the canvas column's top-left corner. */}
       <NotificationHost canvasLeft={PANEL_WIDTH} />
@@ -167,14 +180,4 @@ const styles: Record<string, React.CSSProperties> = {
   // contents` would drop the positioning context, so keep it a plain block).
   sidePanelSlot: { position: "relative" },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: {
-    position: "fixed",
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: ui.bg.app,
-    padding: inset.panelInsetX,
-    ...disabled(typography.body),
-  },
 };

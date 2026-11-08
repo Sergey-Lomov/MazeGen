@@ -285,9 +285,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const oldDpi = DPI_BY_DENSITY[print.density];
       const newDpi = DPI_BY_DENSITY[density];
       // `scale` is a pixel-space value, while the user-facing print size is physical. Keep
-      // the latter stable when a manually selected DPI changes (GitHub issue #620). Auto-fit
-      // will recompute its own scale from the sheet/content ratio, which is DPI-independent.
-      const scale = print.scaleAutoFit ? print.scale : print.scale * newDpi / oldDpi;
+      // the latter stable when a manually selected DPI changes (GitHub issue #620).
+      const scale = print.scale * newDpi / oldDpi;
       return { pngExportSettings: { ...s.pngExportSettings, print: { ...print, density, scale } } };
     }),
   setPrintPaperSize: (size) =>
@@ -323,8 +322,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     }),
   setPrintScale: (scale) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale } } })),
-  setPrintScaleAutoFit: (autoFit) =>
-    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scaleAutoFit: autoFit } } })),
+  setPrintScaleAutoFit: (_autoFit) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scaleAutoFit: false } } })),
   setPrintAnchor: (anchor) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, anchor } } })),
   setPrintCustomPlacement: (scale, offsetXMm, offsetYMm) =>

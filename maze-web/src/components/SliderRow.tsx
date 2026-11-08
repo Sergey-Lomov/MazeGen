@@ -25,6 +25,8 @@ interface Props {
   preciseWidth?: React.CSSProperties["width"];
   /** Maximum for the precise editor; `null` leaves it unbounded. Defaults to the slider maximum. */
   preciseMax?: number | null;
+  /** Minimum for the precise editor. Defaults to the slider minimum. */
+  preciseMin?: number;
   disabled?: boolean;
   onPointerDown?: React.PointerEventHandler<HTMLInputElement>;
   onPointerUp?: React.PointerEventHandler<HTMLInputElement>;
@@ -38,7 +40,7 @@ interface Props {
   trailingAction?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, valueWidth, precise, preciseAriaLabel, preciseDecimals, preciseWidth, preciseMax, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, valueWidth, precise, preciseAriaLabel, preciseDecimals, preciseWidth, preciseMax, preciseMin, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -63,7 +65,7 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           <NumberInput
             name={`${label}-value`}
             ariaLabel={preciseAriaLabel ?? `${label} value`}
-            min={min}
+            min={preciseMin ?? min}
             max={preciseMax === undefined ? max : preciseMax ?? undefined}
             value={preciseDecimals === undefined ? String(value) : value.toFixed(preciseDecimals)}
             disabled={disabled}

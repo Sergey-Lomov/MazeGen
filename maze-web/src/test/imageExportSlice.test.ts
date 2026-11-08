@@ -123,7 +123,7 @@ describe("mazeStore image export", () => {
     expect(printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
   });
 
-  it("does not rescale the auto-fit print scale when density changes", () => {
+  it("rescales a legacy auto-fit print scale when density changes", () => {
     const scale = 12.5;
     useMazeStore.setState({
       pngExportSettings: {
@@ -134,7 +134,7 @@ describe("mazeStore image export", () => {
 
     useMazeStore.getState().setPrintDensity("high_600");
 
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(scale);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(scale * DPI_BY_DENSITY.high_600 / DPI_BY_DENSITY.print_300);
   });
 
   it("starts with no active render mode and no open settings panel", () => {

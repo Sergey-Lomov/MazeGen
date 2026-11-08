@@ -778,7 +778,9 @@ export function validatePrintExportSettings(v: unknown, path: string): PrintExpo
     marginHMm: optNumber(obj, "marginHMm", d.marginHMm),
     marginVMm: optNumber(obj, "marginVMm", d.marginVMm),
     scale: optNumber(obj, "scale", d.scale),
-    scaleAutoFit: optBool(obj, "scaleAutoFit", d.scaleAutoFit),
+    // Retained in the file format only for backward compatibility. Print auto-fit is now a
+    // one-shot panel action, so old persistent-auto-fit projects load as manual scale settings.
+    scaleAutoFit: false,
     anchor: optEnum(obj, "anchor", KNOWN_ANCHORS, d.anchor),
     offsetXMm: optNumber(obj, "offsetXMm", d.offsetXMm),
     offsetYMm: optNumber(obj, "offsetYMm", d.offsetYMm),

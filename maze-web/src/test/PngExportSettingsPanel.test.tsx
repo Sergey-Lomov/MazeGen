@@ -22,11 +22,17 @@ beforeEach(() => {
   setBaseState();
 });
 
+function getPrintScaleAction(): HTMLButtonElement {
+  const title = m["image_export.format.png.print.scale_auto_fit"]();
+  return screen.getByRole("button", { name: title });
+}
+
 describe("PngExportSettingsPanel", () => {
-  it("defaults to digital mode with edge_to_edge fields visible", () => {
+  it("defaults to digital mode with a one-cell margin", () => {
     render(<PngExportSettingsPanel />);
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeInTheDocument();
-    expect(screen.queryByText(m["image_export.format.png.digital.margin"]())).not.toBeInTheDocument();
+    expect(screen.getByText(m["image_export.format.png.digital.margin"]())).toBeInTheDocument();
+    expect(useMazeStore.getState().pngExportSettings.digital).toMatchObject({ canvasMode: "margin_cells", marginValue: 1 });
     expect(screen.queryByText(m["image_export.format.png.digital.width"]())).not.toBeInTheDocument();
   });
 
@@ -38,21 +44,77 @@ describe("PngExportSettingsPanel", () => {
     expect(screen.getByText(m["image_export.format.png.print.anchor"]())).toBeInTheDocument();
   });
 
-  it("provides a bounded, precise print-scale control and the Ctrl canvas-navigation hint", () => {
+  it("provides the shared bounded scale slider and precise print-scale editor", () => {
     setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
     render(<PngExportSettingsPanel />);
 
     const slider = screen.getByRole("slider");
-    expect(slider).toHaveAttribute("min", "0.1");
-    expect(slider).toHaveAttribute("max", "5");
-    expect(slider).toHaveAttribute("step", "0.01");
-    expect(screen.getByRole("spinbutton", { name: m["image_export.format.png.print.scale"]() })).not.toHaveAttribute("max");
+    expect(slider).toHaveAttribute("min", "1");
+    expect(slider).toHaveAttribute("max", "8");
+    expect(slider).toHaveAttribute("step", "0.1");
+    const input = screen.getByRole("spinbutton", { name: m["image_export.format.png.digital.scale"]() });
+    expect(input).toHaveAttribute("min", "0.11");
+    expect(input).not.toHaveAttribute("max");
     expect(document.body).toHaveTextContent(m["image_export.format.png.print.canvas_navigation_hint"]());
+  });
+
+  it("places the print scale row after positioning", () => {
+    setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
+    render(<PngExportSettingsPanel />);
+
+    const positionRow = screen.getByText(m["image_export.format.png.print.anchor"]()).parentElement!;
+    const scaleRow = screen.getByRole("slider").parentElement!.parentElement!;
+    expect(positionRow.compareDocumentPosition(scaleRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("clamps the precise scale editor above 0.1", () => {
+    setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
+    render(<PngExportSettingsPanel />);
+
+    const input = screen.getByRole("spinbutton", { name: m["image_export.format.png.digital.scale"]() });
+    fireEvent.change(input, { target: { value: "0.1" } });
+    fireEvent.blur(input);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(0.11);
+  });
+
+  it("keeps print scale edits manual", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false },
+      },
+    });
+    render(<PngExportSettingsPanel />);
+
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "2" } });
+    expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({ scale: 2, scaleAutoFit: false });
+  });
+
+  it("performs print auto-fit once without enabling a persistent mode", () => {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 7, scaleAutoFit: false },
+      },
+    });
+    render(<PngExportSettingsPanel />);
+
+    const button = getPrintScaleAction();
+    expect(button).toHaveStyle("aspect-ratio: 1 / 1");
+    fireEvent.click(button);
+    const fittedScale = useMazeStore.getState().pngExportSettings.print.scale;
+    expect(fittedScale).not.toBe(7);
+    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(false);
+
+    useMazeStore.getState().setPrintPaperSize("a3");
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(fittedScale);
   });
 
   it("shows margin input only for margin_px/margin_cells canvas modes, and sets default margin value on switch", () => {
     render(<PngExportSettingsPanel />);
-    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
+    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_margin_cells"]()) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "margin_px" } });
     expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(20);
     expect(screen.getByText(m["image_export.format.png.digital.margin"]())).toBeInTheDocument();
@@ -63,7 +125,7 @@ describe("PngExportSettingsPanel", () => {
 
   it("shows fixed width/height inputs only for fixed_size canvas mode", () => {
     render(<PngExportSettingsPanel />);
-    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
+    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_margin_cells"]()) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "fixed_size" } });
     expect(screen.getByText(m["image_export.format.png.digital.width"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.format.png.digital.height"]())).toBeInTheDocument();
@@ -71,9 +133,9 @@ describe("PngExportSettingsPanel", () => {
 
   it("keeps empty digital fields out of the store and clamps negative values on blur", () => {
     render(<PngExportSettingsPanel />);
-    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_edge_to_edge"]()) as HTMLSelectElement;
+    const select = screen.getByDisplayValue(m["image_export.format.png.digital.canvas_margin_cells"]()) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "margin_px" } });
-    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    const input = screen.getByDisplayValue("20") as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: "" } });
     expect(useMazeStore.getState().pngExportSettings.digital.marginValue).toBe(20);
@@ -124,15 +186,16 @@ describe("PngExportSettingsPanel", () => {
     expect(matches.length).toBeGreaterThan(0);
   });
 
-  it("auto-fit scale never leaves a spurious margin-zone warning (rounds the scale down, not up)", () => {
+  it("one-shot auto-fit never leaves a spurious margin-zone warning", () => {
     setBaseState({
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
         outputMode: "print",
-        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: true },
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 1000, scaleAutoFit: false },
       },
     });
     render(<PngExportSettingsPanel />);
+    fireEvent.click(getPrintScaleAction());
     const bubbleText = m["image_export.format.png.warning_in_margin_zone"]();
     expect(screen.queryByText((_, el) => !!el?.textContent?.startsWith(bubbleText))).not.toBeInTheDocument();
   });

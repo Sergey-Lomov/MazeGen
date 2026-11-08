@@ -206,6 +206,27 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
     expect(ns).toBe(target);
     expect(nx).toBeCloseTo(SCREEN.width / 2 - (world.x + world.w / 2) * target);
     expect(ny).toBeCloseTo(SCREEN.height / 2 - (world.y + world.h / 2) * target);
+    expect(setViewportTransform.mock.calls.at(-1)?.[3]).toBe("layout");
+  });
+
+  it("preserves the canvas-to-sheet transform after canvas-only navigation", () => {
+    printState();
+    const { overlay, setViewportTransform } = makeOverlay();
+    const [x, y, scale] = setViewportTransform.mock.calls.at(-1)!;
+    overlay.onViewportChanged(x + 80, y + 40, SCREEN.width, SCREEN.height, scale * 1.2, "canvas");
+
+    const beforeCanvas = (overlay as unknown as { lastViewport: { x: number; y: number; scale: number } }).lastViewport;
+    const beforeSheet = (overlay as unknown as { frameViewport: { x: number; y: number; scale: number } }).frameViewport;
+    const target = beforeCanvas.scale * 0.5;
+    const ratio = target / beforeCanvas.scale;
+    overlay.applyViewportScaleAroundFrameCentre(target);
+
+    const afterCanvas = (overlay as unknown as { lastViewport: { x: number; y: number; scale: number } }).lastViewport;
+    const afterSheet = (overlay as unknown as { frameViewport: { x: number; y: number; scale: number } }).frameViewport;
+    expect(afterCanvas.scale).toBeCloseTo(target);
+    expect(afterSheet.scale).toBeCloseTo(beforeSheet.scale * ratio);
+    expect(afterCanvas.x - afterSheet.x).toBeCloseTo((beforeCanvas.x - beforeSheet.x) * ratio);
+    expect(afterCanvas.y - afterSheet.y).toBeCloseTo((beforeCanvas.y - beforeSheet.y) * ratio);
   });
 
   it("does not touch print placement (scale / anchor / offset)", () => {

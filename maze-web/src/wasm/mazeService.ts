@@ -686,6 +686,66 @@ export function getFieldPresetExtents(
   return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
 }
 
+/// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939): the
+/// search runs in core. `null` when nothing fits. `width`/`height` are the result in cell sides.
+export interface PrintSizingRequest {
+  tessellation: WasmTessellationConfig;
+  preset: string;
+  params: Record<string, number>;
+  directions: [[number, number], [number, number]];
+  cellSide: number;
+  usableWidthMm: number;
+  usableHeightMm: number;
+  cellSideMm: number;
+  axisAligned: boolean;
+}
+
+export function getFieldPrintSizing(
+  request: PrintSizingRequest,
+): { params: Record<string, number>; width: number; height: number } | null {
+  return getWasm().field_print_sizing({
+    tessellation: request.tessellation,
+    preset: request.preset,
+    params: request.params,
+    directions: request.directions,
+    cell_side: request.cellSide,
+    usable_width_mm: request.usableWidthMm,
+    usable_height_mm: request.usableHeightMm,
+    cell_side_mm: request.cellSideMm,
+    axis_aligned: request.axisAligned,
+  }) as { params: Record<string, number>; width: number; height: number } | null;
+}
+
+/// Sizes of the cells of one cell type (`field_cell_sizes`, GitHub issue #948), in world units.
+/// `sides` and `diameter` are empty / `0` when the type's cells differ in size (`regular` false).
+export interface CellTypeSizes {
+  key: string;
+  count: number;
+  sides: number[];
+  diameter: number;
+  regular: boolean;
+}
+
+/// What `field_cell_sizes` reports: numbers only, never cells.
+export interface CellSizesReport {
+  types: CellTypeSizes[];
+  /** Cells of one floor of each requested preset, in request order (`0` for a refused preset). */
+  presetCounts: number[];
+}
+
+/// The count, sides and diameter of the cells of each cell type among the cells of `presets` (built
+/// by core, so they never cross the wasm boundary) and the hand-given `cells`, measured by core.
+export function getFieldCellSizes(
+  tessellation: WasmTessellationConfig,
+  source: { presets: { preset: string; params: Record<string, number>; times: number }[]; cells: [number, number][] },
+): CellSizesReport {
+  const report = getWasm().field_cell_sizes({ tessellation, presets: source.presets, cells: source.cells }) as {
+    types: CellTypeSizes[];
+    preset_counts: number[];
+  };
+  return { types: report.types, presetCounts: report.preset_counts };
+}
+
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
 export function translateFieldCells(
   tessellation: WasmTessellationConfig,

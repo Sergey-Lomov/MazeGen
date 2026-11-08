@@ -247,9 +247,8 @@ export function computeViewportFromPrintPlacement(
 
 /** Computes the scale that makes the maze content (at `scale=1`) exactly fill the available
  * (margin-inset) area on the limiting axis. A pure, one-shot calculation — it doesn't read or
- * write `print.scaleAutoFit` itself. `PngExportSettingsPanel`'s `useEffect` re-runs it on every
- * sheet/DPI/margin/maze change while `print.scaleAutoFit` is on, keeping `print.scale` in
- * lockstep; a one-time caller (e.g. a manual "fit now" action) can just call this once instead. */
+ * write `print.scaleAutoFit` itself. `PngExportSettingsPanel` applies its result only when the
+ * user presses the one-shot auto-fit action. */
 export function computeAutoFitPrintScale(
   cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
