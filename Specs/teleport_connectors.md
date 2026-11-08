@@ -61,6 +61,12 @@ nevertheless supplied to the automatic router's avoidance set, so subsequent aut
 do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
 not route through seams.
 
+A manual path whose teleport pair no longer exists among the maze's teleport edges (the teleport was
+deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops it whenever the store's
+`edges` change, so every way a teleport can disappear (post-edit, preset, regeneration) is covered in
+one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
+edges at all.
+
 The connector editor explains these interactions in place: left-click a point to select it or a path
 to insert a point; right-click a point to delete it; and hold the platform modifier while moving a
 point to snap it to a field anchor. In Cubic curve mode, holding Alt while moving a handle adjusts
