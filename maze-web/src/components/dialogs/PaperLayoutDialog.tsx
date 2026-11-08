@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
-import { DEFAULT_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
+import { DEFAULT_PRINT_CELL_SIZE_MM, MIN_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
@@ -12,6 +12,8 @@ import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, inset, radius, typography, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
+import { NumberInput } from "../NumberInput";
+import { normalizeNumberCommit } from "../inputNormalization";
 
 interface Props {
   config: Pick<FieldConfig, "tessellation">;
@@ -28,9 +30,12 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
   const [customWidth, setCustomWidth] = useState(String(print.customWidthMm));
   const [customHeight, setCustomHeight] = useState(String(print.customHeightMm));
   const [orientation, setOrientation] = useState<PaperOrientation>(print.orientation);
-  const [cellSize, setCellSize] = useState(String(round2(initialCellSizeMm)));
+  const [cellSize, setCellSize] = useState(String(round2(Math.max(MIN_PRINT_CELL_SIZE_MM, initialCellSizeMm))));
   const [marginH, setMarginH] = useState(String(print.marginHMm));
   const [marginV, setMarginV] = useState(String(print.marginVMm));
+
+  // What is typed in the cell size field until it is committed (on blur or on confirming the dialog).
+  const cellSizeDraft = useRef<string | null>(null);
 
   const values = {
     customWidthMm: parseNumber(customWidth),
@@ -46,9 +51,20 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
     && Number.isFinite(paper.widthMm) && Number.isFinite(paper.heightMm)
     && paper.widthMm > values.marginHMm * 2 && paper.heightMm > values.marginVMm * 2;
 
+  /** Commits the typed cell size as leaving the field does: an unreadable value goes back to the
+   * last committed one, a value under the minimum is raised to it. */
+  function commitCellSize(text: string): string {
+    cellSizeDraft.current = null;
+    const committed = normalizeNumberCommit(text, cellSize, { min: MIN_PRINT_CELL_SIZE_MM }).value;
+    setCellSize(committed);
+    return committed;
+  }
+
   function confirm() {
     if (!valid) return;
-    onApply({ paperSize, ...values, orientation });
+    // Confirming (Enter included) takes a value still being typed as if the field was left.
+    const cellSizeMm = cellSizeDraft.current === null ? values.cellSizeMm : parseNumber(commitCellSize(cellSizeDraft.current));
+    onApply({ paperSize, ...values, cellSizeMm, orientation });
     onClose();
   }
 
@@ -72,7 +88,22 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
           marginLabel={m["field.print_sizing.margin"]()}
           inputNamePrefix="field-paper-layout"
         />
-        <NumberInputRow label={TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()} value={cellSize} onChange={setCellSize} />
+        <Inline gap="itemGap" justify="space-between">
+          <span style={styles.label}>
+            {TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
+          </span>
+          <Inline gap="elementsGap">
+            <NumberInput
+              name="cell-size"
+              value={cellSize}
+              min={MIN_PRINT_CELL_SIZE_MM}
+              style={styles.input}
+              onChange={(text) => { cellSizeDraft.current = text; }}
+              onBlurCommit={commitCellSize}
+            />
+            <span style={typography.caption}>mm</span>
+          </Inline>
+        </Inline>
         {!valid && <span style={styles.error}>{m["field.paper_layout.invalid"]()}</span>}
       </Stack>
       <div style={styles.footer}>
@@ -85,10 +116,6 @@ export function PaperLayoutDialog({ config, onApply, onClose }: Props) {
 
 function parseNumber(value: string): number { return value.trim() === "" ? Number.NaN : Number(value); }
 function round2(value: number): number { return Math.round(value * 100) / 100; }
-
-function NumberInputRow({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <Inline gap="itemGap" justify="space-between"><span style={styles.label}>{label}</span><Inline gap="elementsGap"><input type="number" name={label} min={0} step="0.1" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} /><span style={typography.caption}>mm</span></Inline></Inline>;
-}
 
 const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },

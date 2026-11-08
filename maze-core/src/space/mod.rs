@@ -48,7 +48,7 @@ pub use elongated_triangular::{
 };
 pub use field_ops::{
     FieldOpError, FieldOperation, FieldOps, PresetDescriptor, PresetParam, PresetParams,
-    check_translation_basis, is_connected, validate_preset,
+    check_translation_basis, is_connected, validate_preset, with_extent_focus,
 };
 pub use geometry::{
     BoundaryPath, CellScope, DistanceError, DistancePolicy, DistanceResult, FOLD_ISOMETRY_EPS,

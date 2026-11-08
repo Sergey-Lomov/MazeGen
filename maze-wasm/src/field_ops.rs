@@ -2,6 +2,7 @@ use maze_runner::runner::field_ops::{
     self as runner_field_ops, CapabilitiesRequest, FieldOpWireError, PresetExtentsRequest,
     PresetRequest, ReflectRequest, TranslateRequest,
 };
+use maze_runner::runner::print_sizing::{self, PrintSizingRequest};
 use wasm_bindgen::prelude::*;
 
 /// Which field operations and preset shapes (with parameter schemas) a tessellation offers.
@@ -51,6 +52,25 @@ pub fn field_preset_extents(request: JsValue) -> Result<JsValue, JsValue> {
     let request: PresetExtentsRequest = decode(request)?;
     match runner_field_ops::preset_extents(&request) {
         Ok(extents) => Ok(serde_wasm_bindgen::to_value(&extents).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
+/// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939):
+/// the whole search runs next to the geometry. `null` when nothing fits. The error is
+/// `{ kind, message? }` (`FieldOpWireError`).
+#[wasm_bindgen]
+pub fn field_print_sizing(request: JsValue) -> Result<JsValue, JsValue> {
+    let request: PrintSizingRequest = decode(request)?;
+    match print_sizing::print_sizing(&request) {
+        // The shape params are a map; a plain object is what the caller spreads.
+        Ok(result) => Ok(serde::Serialize::serialize(
+            &result,
+            &serde_wasm_bindgen::Serializer::new()
+                .serialize_maps_as_objects(true)
+                .serialize_missing_as_null(true),
+        )
+        .unwrap()),
         Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
     }
 }

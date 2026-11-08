@@ -2,6 +2,7 @@ pub(crate) mod check_factory;
 pub mod field_ops;
 pub mod geometry;
 pub mod prepare;
+pub mod print_sizing;
 pub(crate) mod qc_kind_registry;
 pub(crate) mod rule_factory;
 pub(crate) mod rule_params;

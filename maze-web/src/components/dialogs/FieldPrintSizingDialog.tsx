@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
@@ -10,11 +10,13 @@ import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { configAllCells } from "../../pixi/tessellationCells";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
+import { NumberInput } from "../NumberInput";
+import { normalizeNumberCommit } from "../inputNormalization";
 
 interface Props {
   config: PredefinedFieldConfig;
@@ -28,7 +30,6 @@ interface Props {
   onClose: () => void;
 }
 
-const CALCULATION_DEBOUNCE_MS = 120;
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
   const floors = useMazeStore((s) => s.floors);
@@ -41,22 +42,23 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const [customWidthText, setCustomWidthText] = useState(() => String(print.customWidthMm));
   const [customHeightText, setCustomHeightText] = useState(() => String(print.customHeightMm));
   const [orientation, setOrientation] = useState<PaperOrientation>(() => print.orientation);
-  const [cellSizeText, setCellSizeText] = useState(() => String(round2(initialCellSizeMm)));
+  const [cellSizeText, setCellSizeText] = useState(() => String(round2(Math.max(MIN_PRINT_CELL_SIZE_MM, initialCellSizeMm))));
   const [marginHText, setMarginHText] = useState(() => String(print.marginHMm));
   const [marginVText, setMarginVText] = useState(() => String(print.marginVMm));
   const [applyToAllStandardFloors, setApplyToAllStandardFloors] = useState(() => hasMultipleFloors);
   const customWidthMm = parseNumber(customWidthText);
   const customHeightMm = parseNumber(customHeightText);
+  // What is typed in the cell size field until it is committed (on blur or on confirming the dialog).
+  const cellSizeDraft = useRef<string | null>(null);
   const cellSizeMm = parseNumber(cellSizeText);
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);
-  const debouncedCellSizeMm = useDebouncedValue(cellSizeMm, CALCULATION_DEBOUNCE_MS);
 
   const result = useMemo(
     () => calculatePrintFieldConfig(config, {
-      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: debouncedCellSizeMm, marginHMm, marginVMm,
+      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: cellSizeMm, marginHMm, marginVMm,
     }),
-    [config, paperSize, customWidthMm, customHeightMm, orientation, debouncedCellSizeMm, marginHMm, marginVMm],
+    [config, paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
   );
   const floorSummaries = useMemo(
     () => floors.map((floor, index) => ({ floor, index })).reverse().map(({ floor, index }) => ({
@@ -64,24 +66,33 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
       title: `${index + 1}: ${floor.title}`,
       info: floorPrintInfo(floorFields[floor.id], {
         paperSize, customWidthMm, customHeightMm, orientation,
-        cellSizeMm: debouncedCellSizeMm, marginHMm, marginVMm,
+        cellSizeMm: cellSizeMm, marginHMm, marginVMm,
       }),
     })),
-    [floors, floorFields, paperSize, customWidthMm, customHeightMm, orientation, debouncedCellSizeMm, marginHMm, marginVMm],
+    [floors, floorFields, paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
   );
   const hasInvalidTargetFloor = hasMultipleFloors
     && applyToAllStandardFloors
     && floorSummaries.some(({ info }) => !info.isValid);
   const canConfirm = result !== null
-    && Number.isFinite(cellSizeMm)
-    && cellSizeMm > 0
     && !hasInvalidTargetFloor;
 
+  /** Commits the typed cell size as leaving the field does: an unreadable value goes back to the
+   * last committed one, a value under the minimum is raised to it. */
+  function commitCellSize(text: string): string {
+    cellSizeDraft.current = null;
+    const committed = normalizeNumberCommit(text, cellSizeText, { min: MIN_PRINT_CELL_SIZE_MM }).value;
+    setCellSizeText(committed);
+    return committed;
+  }
+
   function handleApply() {
-    // The preview is debounced for responsive typing, but confirmation always uses the latest
-    // value instead of waiting for the debounce timer.
+    // Confirming (Enter included) takes a value still being typed as if the field was left.
+    const latestCellSizeMm = cellSizeDraft.current === null
+      ? cellSizeMm
+      : parseNumber(commitCellSize(cellSizeDraft.current));
     const latestResult = calculatePrintFieldConfig(config, {
-      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm,
+      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm,
     });
     if (!latestResult) return;
     const configsByFloor: Record<string, FieldConfig> = {};
@@ -90,7 +101,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
       const field = floorFields[floor.id];
       if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.fieldConfig)) continue;
       const floorResult = calculatePrintFieldConfig(field.fieldConfig, {
-        paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm,
+        paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm,
       });
       if (!floorResult || !isPredefinedFieldConfig(floorResult.config)) return;
       configsByFloor[floor.id] = floorResult.config;
@@ -98,7 +109,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     if (!configsByFloor[activeFloorId]) return;
     onApply(
       latestResult.config,
-      { paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm },
+      { paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm },
       applyToAllStandardFloors,
       configsByFloor,
     );
@@ -126,12 +137,23 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           inputNamePrefix="field-print"
         />
 
-        <NumberInputRow
-          label={TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
-          value={cellSizeText}
-          suffix="mm"
-          onChange={setCellSizeText}
-        />
+        <Inline gap="itemGap" justify="space-between">
+          <span style={styles.label}>
+            {TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
+          </span>
+          <Inline gap="elementsGap">
+            {/* Typing only buffers the value; the preview follows when the field is left. */}
+            <NumberInput
+              name="cell-size"
+              value={cellSizeText}
+              min={MIN_PRINT_CELL_SIZE_MM}
+              style={styles.input}
+              onChange={(text) => { cellSizeDraft.current = text; }}
+              onBlurCommit={commitCellSize}
+            />
+            <span style={typography.caption}>mm</span>
+          </Inline>
+        </Inline>
         {hasMultipleFloors && (
           <Stack gap="elementsGap">
             <Inline justify="space-between" gap="itemGap">
@@ -157,15 +179,10 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                 ))}
               </div>
               <div style={styles.floorTotal}>{m["field.print_sizing.floor_total"]({ count: formatCellCount(totalCellCount(floorSummaries)) })}</div>
-              {(!Number.isFinite(cellSizeMm) || cellSizeMm <= 0) && (
-                <span style={styles.error}>{m["field.print_sizing.invalid_cell_size"]()}</span>
-              )}
-              {Number.isFinite(cellSizeMm) && cellSizeMm > 0 && (!result || hasInvalidTargetFloor) && (
+              {(!result || hasInvalidTargetFloor) && (
                 <span style={styles.error}>{m["field.print_sizing.invalid"]()}</span>
               )}
             </Stack>
-          ) : !Number.isFinite(cellSizeMm) || cellSizeMm <= 0 ? (
-            <span style={styles.error}>{m["field.print_sizing.invalid_cell_size"]()}</span>
           ) : result ? (
             <Stack gap="elementsGap">
               <span style={typography.body}>{m["field.print_sizing.result"]({ description: configSizeDescription(result.config) })}</span>
@@ -187,35 +204,12 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   );
 }
 
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
-}
-
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
 function parseNumber(value: string): number {
   return value.trim() === "" ? Number.NaN : Number(value);
-}
-
-function NumberInputRow({ label, value, suffix, onChange }: { label: string; value: string; suffix?: string; onChange: (value: string) => void }) {
-  return (
-    <Inline gap="itemGap" justify="space-between">
-      <span style={styles.label}>{label}</span>
-      <Inline gap="elementsGap">
-        <input type="number" name={label} min={0} step="0.1" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
-        {suffix && <span style={typography.caption}>{suffix}</span>}
-      </Inline>
-    </Inline>
-  );
 }
 
 export function configSizeDescription(config: FieldConfig): string {

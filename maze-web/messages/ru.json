@@ -2767,7 +2767,6 @@
   "field.print_sizing.cell_diameter": "Диаметр описанной окружности",
   "field.print_sizing.cell_size_side": "Размер ячейки (сторона)",
   "field.print_sizing.cell_size_diameter": "Размер ячейки (диаметр)",
-  "field.print_sizing.invalid_cell_size": "Введите корректный размер ячейки больше нуля.",
   "field.print_sizing.apply_all_floors": "Применить ко всем этажам со стандартной формой",
   "field.print_sizing.floor_non_standard": "Нестандартная форма",
   "field.print_sizing.floor_total": "Итого: {count}",

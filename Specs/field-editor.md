@@ -115,27 +115,43 @@ single radius cannot match every paper aspect ratio exactly, the dialog displays
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side.
 
-`fieldPrintSizing.ts` selects a sizing strategy by shape family: axis-aligned rectangles,
-general rectangles/parallelograms, radial shapes, and Cairo rectangles. Shared code owns paper
-validation, margins, physical-unit conversion, final polygon-bound measurement, and result
-formatting. A `box` is scaled as a radial shape by its longest side: the three sides keep their
-proportions (each at least 1), `net` and `mode` stay as chosen, and the cache key includes the full
-box shape. For the compact net the sheet's usable width/height ratio is stored as the hidden `aspect`
-param (x100) so that core packs the faces to fit the sheet. A polyhedron (`tetrahedron`, `octahedron`, `icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf` (`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
-pentagon bounds without materializing a complete candidate field during the search.
+The search runs in core, in one wasm call (`field_print_sizing`, GitHub issue #939; `maze-runner`
+`print_sizing`). `fieldPrintSizing.ts` keeps the paper (format, orientation, margins) and sends the
+usable area in millimeters, the physical side of one cell, the display directions and whether the
+lattice is axis-aligned; core answers with the shape params and the size of the result in cell sides,
+or nothing when no size fits. Core selects a strategy by shape family: an axis-aligned rectangle is
+sized by division (no measuring); other rectangles and parallelograms (Cairo's fundamental squares
+included) by the rectangular search; the radial shapes (`circle`, `hexagon`, `triangle`) by a doubling
+and bisecting search over their size; a cylinder or torus is sized as the plane and moved down to a
+size that closes up (GitHub issue #894) and fits the sheet. A `box` is scaled as a radial shape by its
+longest side: the three sides keep their proportions (each at least 1), `net` and `mode` stay as
+chosen, and the cache key includes the full box shape. For the compact net the sheet's usable
+width/height ratio is stored as the hidden `aspect` param (x100) so that core packs the faces to fit
+the sheet (set by `packedForSheet` before the call). A polyhedron (`tetrahedron`, `octahedron`,
+`icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after
+its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf`
+(`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape.
 
-The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
-(`field_preset_extents`), so it keeps the number of measurements small: the widest
-column count and tallest row count are found by galloping from a linear estimate (sizes at 1 and
-3), then the columns are walked from the widest down, each column's row count starting from the
+The rectangular search measures candidate blocks (the extent of the cell boundaries, as
+`field_preset_extents`), keeping the number of measurements small: the widest column count and
+tallest row count are found by galloping from a linear estimate (sizes at the smallest block and two
+further), then the columns are walked from the widest down, each column's row count starting from the
 previous one. The walk stops once `cols * maxRows` cannot beat the best cell count; the most cells
 win, then the fullest sheet. The result is exact (checked against a full scan for every
 non-axis-aligned kind). It relies on bounds never shrinking as columns or rows grow. The search starts
-from the smallest block core accepts (3.12.12 refuses a single row), found by probing up to four
-columns/rows. Answers are cached by
+from the smallest block core accepts (3.12.12 refuses a single row, a trihexagonal triangle needs a
+side of 3), found by probing up to four columns/rows. A size core refuses to build (too large) measures
+as not fitting, so a size found is always one the field can have: the largest field is bounded by core's
+candidate limit (`MAX_REGION_CANDIDATES`, the bounding box of the shape), also when it is measured
+through the extent focus (`Specs/space.md`). The search is also capped (1000 per side of a
+rectangle, 500 for a radial size). Answers are cached by
 tessellation, orientation, shape kind and print input (not by the current size), so floors of one
 shape kind are calculated once; each caller receives its own copy. Invalid input or a cell too large for the printable area
 disables confirmation.
+
+The cell size input commits on blur or Enter only (`NumberInput`), not on every keystroke, and has a
+minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+does not confirm the dialog.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
 its paper format, custom dimensions, orientation, and margins are initialized from the current

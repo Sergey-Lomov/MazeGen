@@ -765,7 +765,6 @@
   "field.print_sizing.result_physical": "Field footprint: {width} × {height} mm",
   "field.print_sizing.result_area": "Usable area: {width} × {height} mm",
   "field.print_sizing.invalid": "The selected cell size and margins do not fit on this paper.",
-  "field.print_sizing.invalid_cell_size": "Enter a valid cell size greater than zero.",
   "field.print_sizing.apply_all_floors": "Apply to all floors with standard shape",
   "field.print_sizing.floor_non_standard": "Non-standard shape",
   "field.print_sizing.floor_total": "Total: {count}",

@@ -686,6 +686,36 @@ export function getFieldPresetExtents(
   return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
 }
 
+/// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939): the
+/// search runs in core. `null` when nothing fits. `width`/`height` are the result in cell sides.
+export interface PrintSizingRequest {
+  tessellation: WasmTessellationConfig;
+  preset: string;
+  params: Record<string, number>;
+  directions: [[number, number], [number, number]];
+  cellSide: number;
+  usableWidthMm: number;
+  usableHeightMm: number;
+  cellSideMm: number;
+  axisAligned: boolean;
+}
+
+export function getFieldPrintSizing(
+  request: PrintSizingRequest,
+): { params: Record<string, number>; width: number; height: number } | null {
+  return getWasm().field_print_sizing({
+    tessellation: request.tessellation,
+    preset: request.preset,
+    params: request.params,
+    directions: request.directions,
+    cell_side: request.cellSide,
+    usable_width_mm: request.usableWidthMm,
+    usable_height_mm: request.usableHeightMm,
+    cell_side_mm: request.cellSideMm,
+    axis_aligned: request.axisAligned,
+  }) as { params: Record<string, number>; width: number; height: number } | null;
+}
+
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
 export function translateFieldCells(
   tessellation: WasmTessellationConfig,

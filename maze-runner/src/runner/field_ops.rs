@@ -6,6 +6,7 @@ use crate::config::TessellationConfig;
 use crate::topology_wire::{TopologyDto, encode_topology, tessellation_fingerprint};
 use maze_core::space::{
     FieldOpError, FieldOperation, FieldOps, Point, Tessellation, TessellationGeometry, Topology,
+    with_extent_focus,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -296,8 +297,39 @@ impl TessellationVisitor for PresetExtents<'_> {
             .iter()
             .map(|(name, &value)| (name.as_str(), value))
             .collect();
-        let cells = tessellation.build_preset(&preset.preset, &params)?;
-        let directions = self.request.directions;
+        measure_extents(&*tessellation, &preset.preset, &params, self.request.directions)
+    }
+}
+
+/// `preset_extents` over an already built tessellation: the extent of the cell boundaries of
+/// preset `key` along `directions`.
+pub(super) fn measure_extents<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: &[(&str, u32)],
+    directions: [[f64; 2]; 2],
+) -> Result<[[f64; 2]; 2], FieldOpWireError> {
+    measure_extents_with(tessellation, key, params, directions, true)
+}
+
+/// `measure_extents`; `focused` builds the geometric shapes only near their extremes instead of
+/// in full (GitHub issue #939), which measures the same and does not scale with the shape's area.
+pub(super) fn measure_extents_with<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: &[(&str, u32)],
+    directions: [[f64; 2]; 2],
+    focused: bool,
+) -> Result<[[f64; 2]; 2], FieldOpWireError> {
+    {
+        let focused_cells = (focused
+            && matches!(key, "rect" | "parallelogram" | "circle" | "triangle" | "hexagon"))
+        .then(|| with_extent_focus(directions, || tessellation.build_preset(key, params)))
+        .filter(|(_, exact)| *exact);
+        let cells = match focused_cells {
+            Some((cells, _)) => cells?,
+            None => tessellation.build_preset(key, params)?,
+        };
         let along =
             |point: Point, direction: [f64; 2]| direction[0] * point.x + direction[1] * point.y;
 

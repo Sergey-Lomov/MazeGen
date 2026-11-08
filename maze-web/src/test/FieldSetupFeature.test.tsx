@@ -554,6 +554,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
     fireEvent.change(cellInput, { target: { value: "5" } });
+    // The preview follows the committed value, not every keystroke.
+    fireEvent.blur(cellInput);
 
     await waitFor(() => {
       expect(within(groundRow).getByText("40 × 57")).toBeInTheDocument();
