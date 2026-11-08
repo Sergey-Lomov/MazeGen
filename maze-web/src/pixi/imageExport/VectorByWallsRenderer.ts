@@ -33,7 +33,8 @@ import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { roundedContourCorners } from "./roundedContour";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
@@ -105,6 +106,16 @@ function drawTrimMask(mask: Graphics, cells: readonly [number, number][], cfg: F
   }
 }
 
+/** Adds `polygon` to `g` as a closed contour with softened corners (see `roundedContourCorners`). */
+function roundedContour(g: Graphics, polygon: readonly [number, number][], radius: number): void {
+  const corners = roundedContourCorners(polygon, radius);
+  corners.forEach(({ entry, corner, exit }, i) => {
+    if (i === 0) g.moveTo(entry[0], entry[1]); else g.lineTo(entry[0], entry[1]);
+    g.quadraticCurveTo(corner[0], corner[1], exit[0], exit[1]);
+  });
+  if (corners.length) g.closePath();
+}
+
 /** Owns the hover-highlight overlay for one mode renderer's export warnings — factored out (GitHub
  *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same draw-a-cell-fill
  *  logic `VectorByWallsRenderer` already had, down to the `RegionHighlightRenderer.render` call.
@@ -115,9 +126,12 @@ function drawTrimMask(mask: Graphics, cells: readonly [number, number][], cfg: F
  *  feature-renderer ownership rule, never a shared instance between the two mode renderers. */
 export class ExportWarningHighlight<TSettings> {
   private readonly highlight: RegionHighlightRenderer;
+  /** Shapes of a warning that marks parts of the drawn connectors rather than cells (`ExportWarning.floorPolygons`). */
+  private readonly shapes = new Graphics();
 
   constructor(container: Container) {
     this.highlight = new RegionHighlightRenderer(container);
+    container.addChild(this.shapes);
   }
 
   /** Draws the warning of `warnings` keyed `hoveredKey` (`null` or an unknown key clears). */
@@ -133,11 +147,21 @@ export class ExportWarningHighlight<TSettings> {
      * boundary; vector-by-walls keeps the boundary treatment. */
     boundaryWarningsAsRegions = false,
   ): void {
+    this.shapes.clear();
     if (!hoveredKey) {
       this.highlight.clear();
       return;
     }
     const warning = warnings.find((w) => w.key === hoveredKey);
+    if (warning?.floorPolygons?.length) {
+      // Like the topology highlight: a translucent fill plus an opaque outline, a closed contour with rounded corners.
+      const floorIndex = nodes[0]?.level ?? 0;
+      for (const { floorIndex: shapeFloor, polygon } of warning.floorPolygons) {
+        if (shapeFloor === floorIndex) roundedContour(this.shapes, polygon, POLYGON_HIGHLIGHT_RADIUS);
+      }
+      this.shapes.fill({ color: WARNING_HIGHLIGHT_COLOR, alpha: 0.25 });
+      this.shapes.stroke({ width: 3, color: WARNING_HIGHLIGHT_COLOR, join: "round", cap: "round" });
+    }
     if (!warning || (warning.nodes.length === 0 && (!warning.cells || warning.cells.length === 0))) {
       this.highlight.clear();
       return;
@@ -224,6 +248,7 @@ export class ExportWarningHighlight<TSettings> {
 
   destroy(): void {
     this.highlight.destroy();
+    this.shapes.destroy();
   }
 }
 

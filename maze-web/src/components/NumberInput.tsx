@@ -118,6 +118,7 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
         type="text"
         inputMode="decimal"
         role="spinbutton"
+        data-blur-on-enter=""
         name={name}
         id={id}
         aria-label={ariaLabel}

@@ -10,6 +10,11 @@ How a teleport pair's connecting line is drawn on the web canvas, for the `"orth
 `maze-web/src/pixi/renderers/teleportConnectorPlan.ts` — `routeTeleportConnectors`, the single entry that picks the router for a `connectorStyle` and derives marker clearances from the line style. Shared by `TeleportRenderer` and the export warning `teleport_connector_covers_one_way`, so the warning judges the path that is drawn.
 `maze-web/src/pixi/renderers/TeleportRenderer.ts` — draws the routed result.
 
+`maze-web/src/pixi/imageExport/TeleportConnectorEditController.ts` — canvas editor of manual paths.
+`maze-web/src/pixi/sceneTypes.ts` — `isTeleportConnectorEditActive` / `isFloorLabelDragActive`, the predicates deciding whether an export edit mode owns canvas input.
+`maze-web/src/store/exportEditStateSync.ts` — `installExportEditStateSync`, drops the export edit modes' state when the export card closes.
+`maze-web/src/store/teleportConnectorPathSync.ts` — `installTeleportConnectorPathSync`, drops stale manual paths.
+
 ## Connector styles
 
 - `"straight"` — a direct 2-point line, center to center. No collision avoidance; two collinear connectors can visually overlap.
@@ -60,6 +65,22 @@ Its intermediate points are
 nevertheless supplied to the automatic router's avoidance set, so subsequent automatic connectors
 do not cut through a manual bend. Manual paths are display-coordinate geometry and therefore do
 not route through seams.
+
+A manual path whose teleport pair no longer exists among the maze's teleport edges (the teleport was
+deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops it whenever the store's
+`edges` change, so every way a teleport can disappear (post-edit, preset, regeneration) is covered in
+one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
+edges at all.
+
+Connector editing belongs to the export feature (GitHub issue #947). The editor owns canvas input
+only while `isTeleportConnectorEditActive` holds: `teleportConnectorEdit` is set, the open card is
+`image_export` and the active render mode is the edited one. The controller router
+(`MazeScene.getController`), the editor's own pointer handler, its hit plane and the
+Escape/Delete keys all use this one predicate, so switching to another feature hands canvas input
+to that feature. `installExportEditStateSync` additionally drops the edit state when the
+open card changes away from `image_export`, so returning to export starts with editing off. The
+floor-label drag follows the same rule (`isFloorLabelDragActive`: export card, the drag's render
+mode and floor; its state is dropped by the same sync).
 
 The connector editor explains these interactions in place: left-click a point to select it or a path
 to insert a point; right-click a point to delete it; and hold the platform modifier while moving a

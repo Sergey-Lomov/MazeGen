@@ -1,6 +1,7 @@
 import { render, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Modal } from "../components/Modal";
+import { NumberInput } from "../components/NumberInput";
 
 describe("Modal Escape-to-close", () => {
   it("closes on Escape", () => {
@@ -119,6 +120,23 @@ describe("Modal Enter/Space confirmation shortcut", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Enter in a NumberInput to commit the value instead of confirming", () => {
+    const onConfirm = vi.fn();
+    const onBlurCommit = vi.fn();
+    render(
+      <Modal title="Dialog" onClose={vi.fn()} onConfirm={onConfirm}>
+        <NumberInput value="5" onChange={vi.fn()} onBlurCommit={onBlurCommit} />
+      </Modal>,
+    );
+
+    const input = screen.getByRole("spinbutton");
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onBlurCommit).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("lets Enter insert a newline in a textarea instead of confirming", () => {

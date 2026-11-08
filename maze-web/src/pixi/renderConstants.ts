@@ -45,6 +45,9 @@ export const GLUE_HOVER_LIGHTNESS = 10;
 export const EDGE_MARKER_SIZE_RANGE ={ min: 2, max: 40 } as const;
 export const TEXT_MARGIN_RANGE = { min: 0, max: 10, step: 0.5 } as const;
 
+/** Corner radius (display units) of a highlighted warning polygon (topology warnings, connector warnings). */
+export const POLYGON_HIGHLIGHT_RADIUS = 3;
+
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
  *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
  *  must not import the web-styling layer. */

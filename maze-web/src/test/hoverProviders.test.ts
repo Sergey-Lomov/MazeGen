@@ -976,6 +976,7 @@ describe("zoom reset controls", () => {
       onResetZoom: vi.fn(),
     });
     useMazeStore.setState({
+      openCard: "image_export",
       activeRenderMode: "vector_by_walls",
       vectorByWallsSettings: {
         ...previous.vectorByWallsSettings,

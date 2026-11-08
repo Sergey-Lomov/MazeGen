@@ -13,7 +13,7 @@
 //! hanging between it and its right neighbor ([`TriangleDown`](ElongatedTriangularKind::TriangleDown)).
 
 use super::exact_tiling::{Template, Tiling, Vertex};
-use super::field_ops::{Inclusion, convex_cells, param};
+use super::field_ops::{Inclusion, convex_cells, param, spoil_extent_focus};
 use super::multi_shape::{
     AnchoredPoint, CellFace, SQRT_3, TOPOLOGY_PRESETS, anchor_cells, expanded_box, impl_cell_kind,
     is_opposite_face, polygon_faces, preset_cells, regular_cell_shape, regular_polygon_area,
@@ -273,6 +273,7 @@ fn largest_component(
     tessellation: &ElongatedTriangularTessellation,
     cells: Vec<ElongatedTriangularPoint>,
 ) -> Vec<ElongatedTriangularPoint> {
+    spoil_extent_focus();
     let members: HashSet<_> = cells.iter().copied().collect();
     let mut seen = HashSet::new();
     let mut best: Vec<ElongatedTriangularPoint> = Vec::new();

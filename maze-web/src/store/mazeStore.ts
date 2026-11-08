@@ -15,6 +15,8 @@ import { createTopologySlice, initialTopologyState } from "./slices/topologySlic
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installEdgeMarkerSync } from "./edgeMarkerSync";
+import { installTeleportConnectorPathSync } from "./teleportConnectorPathSync";
+import { installExportEditStateSync } from "./exportEditStateSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
@@ -396,4 +398,6 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
 
 installTopologySync(useMazeStore);
 installFieldClipboardSync(useMazeStore);
+installExportEditStateSync(useMazeStore);
 installEdgeMarkerSync(useMazeStore);
+installTeleportConnectorPathSync(useMazeStore);

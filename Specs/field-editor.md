@@ -115,27 +115,43 @@ single radius cannot match every paper aspect ratio exactly, the dialog displays
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side.
 
-`fieldPrintSizing.ts` selects a sizing strategy by shape family: axis-aligned rectangles,
-general rectangles/parallelograms, radial shapes, and Cairo rectangles. Shared code owns paper
-validation, margins, physical-unit conversion, final polygon-bound measurement, and result
-formatting. A `box` is scaled as a radial shape by its longest side: the three sides keep their
-proportions (each at least 1), `net` and `mode` stay as chosen, and the cache key includes the full
-box shape. For the compact net the sheet's usable width/height ratio is stored as the hidden `aspect`
-param (x100) so that core packs the faces to fit the sheet. A polyhedron (`tetrahedron`, `octahedron`, `icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf` (`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape. The Cairo strategy keeps its direct `field_preset_extents` path, which measures real
-pentagon bounds without materializing a complete candidate field during the search.
+The search runs in core, in one wasm call (`field_print_sizing`, GitHub issue #939; `maze-runner`
+`print_sizing`). `fieldPrintSizing.ts` keeps the paper (format, orientation, margins) and sends the
+usable area in millimeters, the physical side of one cell, the display directions and whether the
+lattice is axis-aligned; core answers with the shape params and the size of the result in cell sides,
+or nothing when no size fits. Core selects a strategy by shape family: an axis-aligned rectangle is
+sized by division (no measuring); other rectangles and parallelograms (Cairo's fundamental squares
+included) by the rectangular search; the radial shapes (`circle`, `hexagon`, `triangle`) by a doubling
+and bisecting search over their size; a cylinder or torus is sized as the plane and moved down to a
+size that closes up (GitHub issue #894) and fits the sheet. A `box` is scaled as a radial shape by its
+longest side: the three sides keep their proportions (each at least 1), `net` and `mode` stay as
+chosen, and the cache key includes the full box shape. For the compact net the sheet's usable
+width/height ratio is stored as the hidden `aspect` param (x100) so that core packs the faces to fit
+the sheet (set by `packedForSheet` before the call). A polyhedron (`tetrahedron`, `octahedron`,
+`icosahedron`) is scaled the same way by its single `side` (the compact net of each is the one after
+its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf`
+(`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape.
 
-The rectangular search (`calculateBestRectConfig`) measures candidate blocks through core
-(`field_preset_extents`), so it keeps the number of measurements small: the widest
-column count and tallest row count are found by galloping from a linear estimate (sizes at 1 and
-3), then the columns are walked from the widest down, each column's row count starting from the
+The rectangular search measures candidate blocks (the extent of the cell boundaries, as
+`field_preset_extents`), keeping the number of measurements small: the widest column count and
+tallest row count are found by galloping from a linear estimate (sizes at the smallest block and two
+further), then the columns are walked from the widest down, each column's row count starting from the
 previous one. The walk stops once `cols * maxRows` cannot beat the best cell count; the most cells
 win, then the fullest sheet. The result is exact (checked against a full scan for every
 non-axis-aligned kind). It relies on bounds never shrinking as columns or rows grow. The search starts
-from the smallest block core accepts (3.12.12 refuses a single row), found by probing up to four
-columns/rows. Answers are cached by
+from the smallest block core accepts (3.12.12 refuses a single row, a trihexagonal triangle needs a
+side of 3), found by probing up to four columns/rows. A size core refuses to build (too large) measures
+as not fitting, so a size found is always one the field can have: the largest field is bounded by core's
+candidate limit (`MAX_REGION_CANDIDATES`, the bounding box of the shape), also when it is measured
+through the extent focus (`Specs/space.md`). The search is also capped (1000 per side of a
+rectangle, 500 for a radial size). Answers are cached by
 tessellation, orientation, shape kind and print input (not by the current size), so floors of one
 shape kind are calculated once; each caller receives its own copy. Invalid input or a cell too large for the printable area
 disables confirmation.
+
+The cell size input commits on blur or Enter only (`NumberInput`), not on every keystroke, and has a
+minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+does not confirm the dialog.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
 its paper format, custom dimensions, orientation, margins, and cell measure are initialized from
@@ -152,9 +168,42 @@ and cell count (for example, `Rectangle | 11 × 11 | 121 cells`). Custom-mode fl
 their cell count. A total cell count is shown below the rows. With one floor, the result shows
 the calculated field dimensions only.
 
-Changing the confirmed tessellation kind leaves the selected print scale unchanged. The next
-print-sizing dialog derives its cell measure from that scale and the newly selected tessellation's
-geometry.
+**Cell sizes (GitHub issue #948).** Below the cell size input, set off by a divider and before the
+result, the dialog lists the side length (several, longest first and separated by `/`, for a cell with
+unequal sides) and the diameter of every cell type of the tessellation that occurs in the calculated
+fields, in millimeters with one decimal for the entered size. The diameter is that of the circle centered at the
+cell's center (its centroid) through its farthest vertex, which for a cyclic polygon is the circumcircle. Mixed tessellations (3.3.3.3.6, 3.6.3.6) therefore show the real size of each
+polygon, whatever the entered measure (a side or a diameter) means for the tessellation. With several
+types the sizes form a headerless table (type, side, diameter) whose cells carry their own prefix
+(`Side 5.0 mm`, `Diameter 7.1 mm`); with a single type they are one line of text. The
+cell counts are not in this section: the total of the result (a single floor's cell count or the
+multi-floor total) is followed by the count of each type in parentheses when the field has several
+types, e.g. `Total: 1000 cells (Triangle 600, Square 300, Dodecagon 100)`; counts are summed over all
+floors, custom-mode floors included. The section is rendered by `CellSizesSection` (`components/dialogs/CellSizesSection.tsx`). The numbers are measured by core from the real cell geometry
+(`field_cell_sizes`, `maze-runner` `cell_sizes`). A preset floor is sent as its preset name and
+params, which core builds itself, so its cells never cross the wasm boundary; floors of one shape are
+sent once with their number (`times`) and measured once; only the cells of a custom-mode floor are
+sent, and they go from JS to wasm only. Nothing in this dialog gets a list of cells back from wasm:
+core answers with numbers (`CellSizesReport`: the per-type count, sides and diameter, and the cell count
+of each preset), and the dialog takes every floor's cell count and the totals from that answer, never
+from `configAllCells`. Core's answer is cached by tessellation and sources (it does not depend on the entered size), so
+editing the size back and forth does not measure the cells again. Core classifies the cells with
+`Tessellation::cell_type_of` and returns lengths in world units, which `printCellSizes.ts` scales by the
+millimeters per world unit (`cellSizeMm / cellMeasurePx * pixelsPerUnit`). A type whose cells differ in
+size or shape (Voronoi, the rings of a radial field) is irregular. When any type is, the section has no title, table or type rows: below the divider
+it is one explanation in the regular body font, saying that the entered size is nominal, the side of a
+square with the area of an average cell. A radial field has its own explanation: its cells are ring sectors and the entered size is the
+thickness of a ring. A failing core call leaves the section out (the error is logged and not cached)
+and the per-floor counts of preset floors at 0.
+
+A cell type whose shortest side is under 5 mm (`MIN_COMFORTABLE_CELL_SIDE_MM`, judged on the entered
+size, an irregular type is not judged) is flagged twice: its side value (not the whole row) turns orange
+with a warning icon beside it, and one warning bubble listing every such type with its side closes the
+dialog, set apart from the result by a larger gap, above the buttons. Warnings do not block confirmation.
+
+Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
+enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
+physical size was tied to the old tessellation geometry.
 
 ### Paper layout in custom mode (GitHub issue #641)
 

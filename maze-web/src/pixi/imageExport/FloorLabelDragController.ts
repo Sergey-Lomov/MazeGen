@@ -1,6 +1,6 @@
 import type { Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import type { PointerHandler } from "../sceneTypes";
+import { isFloorLabelDragActive, type PointerHandler } from "../sceneTypes";
 import { toViewportCoordinates } from "../pointerInteraction";
 import { exactCellBounds, nearestCellCoord } from "../tessellationGeometry";
 import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
@@ -17,8 +17,7 @@ export class FloorLabelDragController implements PointerHandler {
     if (button !== 0) return;
     const state = useMazeStore.getState();
     const drag = state.floorLabelDrag;
-    if (!drag || state.openCard !== "image_export" || state.activeRenderMode !== drag.renderMode
-      || state.activeFloorId !== drag.floorId) return;
+    if (!drag || !isFloorLabelDragActive(state)) return;
     const settings = drag.renderMode === "vector_by_walls"
       ? state.vectorByWallsSettings.floorLabel
       : state.vectorByCorridorsSettings.floorLabel;

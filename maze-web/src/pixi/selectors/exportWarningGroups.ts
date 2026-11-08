@@ -19,6 +19,8 @@ import { getProjectTeleportGroups } from "./projectTeleportGroups";
 import { buildColorVisibility, visibleColor, type ColorVisibilityContext, type ColorVisibilityMaze } from "./colorFieldRegistry";
 import { withLazyResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { computeTeleportConnectorCoversOneWayWarning } from "./teleportOneWayCoverage";
+import { computeTeleportConnectorWarnings } from "./teleportConnectorWarnings";
+import { buildTeleportConnectorContext, type TeleportConnectorInput } from "./teleportConnectorContext";
 import { collectTextFitEntries, pushTextOverflowWarnings } from "./exportTextFit";
 import { textMetricsKey } from "../textFit";
 import {
@@ -298,11 +300,22 @@ const NO_KEYS: ReadonlySet<string> = new Set();
 
 // --- "Vector by walls" ---
 
-const wallsCoversOneWay = group<VectorByWallsSettings>("teleportConnectorCoversOneWay", ["teleport_connector_covers_one_way"], (env, s) => (
-  maybe(computeTeleportConnectorCoversOneWayWarning({
+/** Warnings about the drawn teleport connectors (GitHub issue #862, #945): one group, so the connectors are laid out and routed once. */
+const TELEPORT_CONNECTOR_IDS: readonly ExportWarningId[] = [
+  "teleport_connector_covers_one_way", "teleport_connectors_overlap", "teleport_connector_endpoint_detached", "teleport_connector_leaves_field",
+  "teleport_connector_crosses_marker", "teleport_connector_arrow_sticks_out", "teleport_connector_too_short_for_arrow", "teleport_connector_covers_arrow", "teleport_connector_degenerate",
+];
+function connectorWarnings(input: TeleportConnectorInput): ExportWarning[] {
+  if (input.settings.teleportConnectorStyle === "none" || input.teleportEdges.length === 0) return [];
+  const context = buildTeleportConnectorContext(input);
+  return [...maybe(computeTeleportConnectorCoversOneWayWarning(input, context)), ...computeTeleportConnectorWarnings(input, context)];
+}
+
+const wallsTeleportConnectors = group<VectorByWallsSettings>("teleportConnectors", TELEPORT_CONNECTOR_IDS, (env, s) => (
+  connectorWarnings({
     mode: "walls", settings: withLazyResolvedGroupOverrides(s), nodes: env.nodes, edges: env.edges, cfg: env.cfg, start: env.start, finish: env.finish,
     teleportEdges: env.teleportEdges, unscopedNodes: env.unscopedNodes, unscopedEdges: env.unscopedEdges, activeFloorIndex: env.activeFloorIndex,
-  }))
+  })
 ));
 
 const wallsTeleportConnectorContrast = group<VectorByWallsSettings>(
@@ -398,7 +411,7 @@ const wallsMarkerIndexStopLine = group<VectorByWallsSettings>("markerIndexStopLi
 
 /** Every warning group of "Vector by walls", in the order their warnings are listed. */
 export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, wallsCoversOneWay,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, wallsTeleportConnectors,
   ...contrastGroups,
   wallsTeleportConnectorContrast, wallsSplitContrast, wallsSpecialSplit, wallsElevatorBadges,
   textOverflow, wallsMarkerIndexStopLine, elevatorIndistinguishable,
@@ -406,11 +419,11 @@ export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[
 
 // --- "Vector by corridors" ---
 
-const corridorsCoversOneWay = group<VectorByCorridorsSettings>("teleportConnectorCoversOneWay", ["teleport_connector_covers_one_way"], (env, s) => (
-  maybe(computeTeleportConnectorCoversOneWayWarning({
+const corridorsTeleportConnectors = group<VectorByCorridorsSettings>("teleportConnectors", TELEPORT_CONNECTOR_IDS, (env, s) => (
+  connectorWarnings({
     mode: "corridors", settings: withLazyResolvedGroupOverrides(s), nodes: env.nodes, edges: env.edges, cfg: env.cfg, start: env.start, finish: env.finish,
     teleportEdges: env.teleportEdges, unscopedNodes: env.unscopedNodes, unscopedEdges: env.unscopedEdges, activeFloorIndex: env.activeFloorIndex,
-  }))
+  })
 ));
 
 const corridorsMarkerExtension = group<VectorByCorridorsSettings>("markerExtensionHitsCorridor", ["marker_extension_hits_corridor"], (env, s) => {
@@ -507,7 +520,7 @@ const corridorsMarkerIndexStopLine = group<VectorByCorridorsSettings>("markerInd
 
 /** Every warning group of "Vector by corridors", in the order their warnings are listed. */
 export const CORRIDORS_WARNING_GROUPS: readonly WarningGroup<VectorByCorridorsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, corridorsCoversOneWay,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, corridorsTeleportConnectors,
   ...contrastGroups,
   corridorsMarkerExtension, corridorsCorridorColors, corridorsTeleportConnectorContrast, corridorsSplitContrast, corridorsSplitGapMayShrink,
   corridorsSpecialSplit, corridorsOneWayOverflow,
