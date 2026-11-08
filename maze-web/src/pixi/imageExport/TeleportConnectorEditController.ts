@@ -1,6 +1,6 @@
 import { Graphics, Rectangle, type Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import type { PointerHandler, ViewportListener } from "../sceneTypes";
+import { isTeleportConnectorEditActive, type PointerHandler, type ViewportListener } from "../sceneTypes";
 import { toViewportCoordinates } from "../pointerInteraction";
 import { getCellCenter, getCellVertices } from "../tessellationGeometry";
 import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
@@ -40,7 +40,7 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     this.view.clear();
     const st = useMazeStore.getState();
     const edit = st.teleportConnectorEdit;
-    const active = !!edit && st.openCard === "image_export" && st.activeRenderMode === edit.renderMode;
+    const active = isTeleportConnectorEditActive(st);
     this.view.eventMode = active ? "static" : "none";
     if (!active || !edit) return;
     const paths = this.paths();
@@ -75,7 +75,7 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const st = useMazeStore.getState();
-    if (!st.teleportConnectorEdit) return;
+    if (!isTeleportConnectorEditActive(st)) return;
     const p = toViewportCoordinates(canvasX, canvasY, this.getViewport());
     const hit = this.pointHit(p.x, p.y);
     if (button === 2) {

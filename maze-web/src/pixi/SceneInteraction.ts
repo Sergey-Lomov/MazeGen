@@ -3,7 +3,7 @@ import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
-import { backgroundImageEditMode, PanState } from "./sceneTypes";
+import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "./colorTokens";
@@ -35,13 +35,13 @@ export class SceneInteraction {
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
-    if (state.teleportConnectorEdit !== null && (e.code === "Escape" || e.code === "Delete")) {
+    if (isTeleportConnectorEditActive(state) && (e.code === "Escape" || e.code === "Delete")) {
       e.preventDefault();
       const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
       if (e.code === "Escape") controller?.escape?.(); else controller?.deleteSelected?.();
       return;
     }
-    if (state.floorLabelDrag !== null
+    if (isFloorLabelDragActive(state)
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
       if (e.code === "Escape") state.cancelFloorLabelDrag();
@@ -131,9 +131,6 @@ export class SceneInteraction {
       this.canvasOnlyNavigation = e.ctrlKey || e.metaKey;
       const st = useMazeStore.getState();
       const controller = getController(st);
-      if (st.teleportConnectorEdit !== null) {
-        console.info("[teleport-connector-edit] stage pointerdown", { x: e.globalX, y: e.globalY, button: e.button, hasController: controller !== null });
-      }
       const backgroundEditActive = backgroundImageEditMode(st) !== null;
       if (backgroundEditActive && e.button === 1) {
         this.defaultPan.begin(e.globalX, e.globalY);

@@ -20,7 +20,7 @@ import { NO_MARGIN, resolveActiveCutPlan } from "./imageExport/exportContent";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
-import { backgroundImageEditMode } from "./sceneTypes";
+import { backgroundImageEditMode, isFloorLabelDragActive, isTeleportConnectorEditActive } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
@@ -320,8 +320,8 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
-    if (st.teleportConnectorEdit !== null) return this.teleportConnectorEditController;
-    if (st.floorLabelDrag !== null) return this.floorLabelDragController;
+    if (isTeleportConnectorEditActive(st)) return this.teleportConnectorEditController;
+    if (isFloorLabelDragActive(st)) return this.floorLabelDragController;
     if (hasManualCutLine(st)) return this.cutLineDragController;
     if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
