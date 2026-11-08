@@ -7,6 +7,7 @@ import { initWasm } from "./wasm/wasmLoader";
 import { initLocale } from "./i18n/localeStore";
 import * as m from "~/paraglide/messages";
 import "./styles/global.css";
+import { setBootScreenStatus } from "./startup/bootScreen";
 
 // React DevTools' render-diff logger (dev-only instrumentation) runs JSON.stringify on component
 // props to log what changed — throws on any BigInt-valued prop (e.g. DebugRefBubble's `target`,
@@ -21,17 +22,16 @@ import "./styles/global.css";
 // Must run sync before createRoot to avoid first-render locale mismatch
 initLocale();
 
-// index.html ships an English splash inside #root so something shows while wasm and the app chunk load;
-// `createRoot(...).render` replaces it once the app mounts.
-const splash = document.getElementById("boot-splash");
-if (splash) splash.textContent = m["common.loading"]();
+// index.html ships the loading screen inside #root so something shows while wasm and the app chunk
+// load; `createRoot(...).render` replaces it once the app mounts.
 
 async function bootstrap() {
   const root = document.getElementById("root")!;
   const isCorridorGeometryRoute = window.location.pathname === "/corridor-geometry";
   document.documentElement.classList.toggle("corridor-geometry-route", isCorridorGeometryRoute);
   try {
-    await initWasm();
+    setBootScreenStatus(m["loading.wasm"]());
+    await initWasm(undefined, (loaded, total) => setBootScreenStatus(m["loading.wasm"](), total === null ? undefined : loaded / total));
   } catch (err) {
     root.textContent = `Failed to load WASM: ${err instanceof Error ? err.message : String(err)}`;
     return;
@@ -49,6 +49,7 @@ async function bootstrap() {
     return;
   }
 
+  setBootScreenStatus(m["loading.interface"]());
   const { App } = await import("./App");
   createRoot(root).render(
     <StrictMode>

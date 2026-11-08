@@ -3,6 +3,15 @@ input[type="number"] {
   appearance: textfield;
 }
 
+.loading-progress-indeterminate {
+  animation: loading-progress-slide 3s ease-in-out infinite;
+}
+
+@keyframes loading-progress-slide {
+  from { transform: translateX(-30%) scaleX(0.3); }
+  to { transform: translateX(100%) scaleX(0.3); }
+}
+
 /* The application shell intentionally occupies the viewport and clips its canvas. The geometry
    laboratory is a document-sized route, so let its complete combination list scroll normally. */
 html.corridor-geometry-route,
