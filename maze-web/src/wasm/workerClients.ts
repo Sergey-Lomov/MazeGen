@@ -1,5 +1,6 @@
 /** Main-thread clients of the WASM workers: one `WorkerPool` per worker entry point. */
 import { WorkerPool, type WorkerJob } from "./workerPool";
+import { compileWasmModule } from "./wasmLoader";
 import type { PrintSizingAnswer, PrintSizingRequest } from "../pixi/printSizingJob";
 import { validateSnapshot, type GenerateMazeResult } from "./mazeGeneration";
 import type { GenerationRequest } from "./generationWorker";
@@ -8,16 +9,19 @@ import type { GenerateConfig, ComputeAnalyticsConfig, MazeSnapshot } from "./typ
 
 const generationPool = new WorkerPool<GenerationRequest, GenerateMazeResult>({
   create: () => new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
   failureMessage: "Generation worker failed",
 });
 
 const analyticsPool = new WorkerPool<AnalyticsRequest, unknown>({
   create: () => new Worker(new URL("./analyticsWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
   failureMessage: "Analytics worker failed",
 });
 
 const printSizingPool = new WorkerPool<PrintSizingRequest, PrintSizingAnswer>({
   create: () => new Worker(new URL("./printSizingWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
   failureMessage: "Print sizing worker failed",
 });
 

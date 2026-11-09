@@ -17,9 +17,10 @@ export interface WorkerHandlerResult<Res> {
 export function serveWorker<Req, Res>(handler: (payload: Req) => WorkerHandlerResult<Res>): void {
   const scope = self as unknown as WorkerScope;
   scope.onmessage = async (event) => {
-    const { id, payload } = event.data;
+    const { id, payload, wasmModule } = event.data;
     try {
-      await initWasm();
+      // Only the first request of a worker carries the module; later calls hit the memoized init.
+      await initWasm(wasmModule);
       const { result, transfer = [] } = handler(payload as Req);
       scope.postMessage({ id, result } satisfies WorkerResponseMessage<Res>, transfer);
     } catch (error) {

@@ -29,6 +29,55 @@ function makePool(maxIdle?: number) {
   return { pool, workers };
 }
 
+describe("WorkerPool shared WASM module", () => {
+  function makeModulePool(wasmModule: () => Promise<WebAssembly.Module>) {
+    const workers: FakeWorker[] = [];
+    const pool = new WorkerPool<number, string>({
+      create: () => {
+        const worker = new FakeWorker();
+        workers.push(worker);
+        return worker as unknown as Worker;
+      },
+      wasmModule,
+    });
+    return { pool, workers };
+  }
+  const module = {} as WebAssembly.Module;
+
+  it("sends the module with the first request of a fresh worker only", async () => {
+    const provider = vi.fn(() => Promise.resolve(module));
+    const { pool, workers } = makeModulePool(provider);
+    const first = pool.run(1).promise;
+    await Promise.resolve();
+    expect((workers[0].sent[0] as { wasmModule?: unknown }).wasmModule).toBe(module);
+    workers[0].answer(0, { result: "a" });
+    await first;
+
+    const second = pool.run(2).promise;
+    expect((workers[0].sent[1] as { wasmModule?: unknown }).wasmModule).toBeUndefined();
+    workers[0].answer(1, { result: "b" });
+    await second;
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects and retires the worker when the module cannot be provided", async () => {
+    const { pool, workers } = makeModulePool(() => Promise.reject(new Error("compile failed")));
+    await expect(pool.run(1).promise).rejects.toThrow("compile failed");
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+    expect(pool.size).toBe(0);
+  });
+
+  it("does not post a request cancelled before the module arrived", async () => {
+    const { pool, workers } = makeModulePool(() => Promise.resolve(module));
+    const job = pool.run(1);
+    job.cancel(new Error("cancelled"));
+    await expect(job.promise).rejects.toThrow("cancelled");
+    await Promise.resolve();
+    expect(workers[0].sent).toHaveLength(0);
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("WorkerPool", () => {
   it("reuses an idle worker for sequential requests", async () => {
     const { pool, workers } = makePool();
