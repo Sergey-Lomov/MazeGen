@@ -3,8 +3,9 @@ import { act, render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { pickColorForLabel } from "./colorTestHelpers";
+import { pickColorForLabel, swatchForLabel } from "./colorTestHelpers";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
+import { PC } from "../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -263,6 +264,48 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).not.toBe(0x654321);
     act(() => useMazeStore.getState().patchVectorByCorridorsMarker("startMarker", { fillColor: 0x654321 }));
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
+  });
+
+  it("prioritizes the background fill for Start and Finish caption colors", () => {
+    useMazeStore.setState((state) => ({
+      vectorByCorridorsSettings: {
+        ...state.vectorByCorridorsSettings,
+        startMarker: { ...state.vectorByCorridorsSettings.startMarker, textEnabled: true },
+        finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, textEnabled: true },
+      },
+      vectorByCorridorsSectionsExpanded: {
+        ...state.vectorByCorridorsSectionsExpanded,
+        markers_start_text: true,
+        markers_finish_text: true,
+      },
+      openRenderModeSettings: "vector_by_corridors",
+    }));
+    render(<VectorByCorridorsSettingsPanel />);
+
+    for (const label of screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())) {
+      fireEvent.click(swatchForLabel(label));
+      fireEvent.click(screen.getByText(/^Project colors/));
+      expect(screen.getByText(PC.bgFill.name())).toBeInTheDocument();
+      fireEvent.click(screen.getByText(m["common.cancel"]()));
+    }
+  });
+
+  it("prioritizes the background fill for teleport floor-badge text", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      activeFloorId: "f1",
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 1, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "teleport" }],
+      vectorByCorridorsSectionsExpanded: { teleports: true },
+      openRenderModeSettings: "vector_by_corridors",
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+    expandTeleportSubsections();
+
+    const label = screen.getByText(m["image_export.vector_by_walls.marker_text_color"]());
+    fireEvent.click(swatchForLabel(label));
+    fireEvent.click(screen.getByText(/^Project colors/));
+    expect(screen.getByText(PC.bgFill.name())).toBeInTheDocument();
   });
 
   it("shows a warning bubble when a waypoint sits on a specially-rendered (bridge) split point", () => {
