@@ -72,6 +72,11 @@ deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops 
 one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
 edges at all.
 
+Project loading restores manual paths after the saved post-edit command log has been replayed and
+confirmed (GitHub issue #955). This ordering retains a path belonging to a teleport created by that
+log: it is not present in the regenerated baseline, but is present in the final loaded maze. Paths
+whose pairs remain absent from that final maze are still discarded.
+
 Connector editing belongs to the export feature (GitHub issue #947). The editor owns canvas input
 only while `isTeleportConnectorEditActive` holds: `teleportConnectorEdit` is set, the open card is
 `image_export` and the active render mode is the edited one. The controller router
