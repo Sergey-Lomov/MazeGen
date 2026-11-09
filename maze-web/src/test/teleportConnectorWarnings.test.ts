@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { computeVectorByCorridorsWarnings, computeVectorByWallsWarnings, type ExportWarning, type ExportWarningId } from "../pixi/selectors/exportWarnings";
+import { computeTeleportConnectorWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, type ExportWarning, type ExportWarningId } from "../pixi/selectors/exportWarnings";
 import { getCellCenter } from "../pixi/tessellationGeometry";
 import type { ManualTeleportConnectorPath } from "../pixi/renderers/teleportConnectorManual";
 import type { EdgeDto, NodeDto } from "../wasm/types";
@@ -251,5 +251,26 @@ describe("teleport connector warnings (GitHub issue #945)", () => {
       corridorsSettings({ teleportMergeMode: false, ...manual(["0:3", polyline([20, 20], [20, 20])]) }), null, null,
     );
     expect(has(warnings, "teleport_connector_degenerate")).toBe(true);
+  });
+});
+
+describe("computeTeleportConnectorWarningsAcrossFloors (GitHub issue #952)", () => {
+  const floors = [{ id: "f0", title: "F0" }];
+  const settings = wallsSettings({ teleportMergeMode: false, teleportConnectorStyle: "straight", ...manual(["0:3", polyline([20, 20], [20, 20])]) });
+  const args: Parameters<typeof computeTeleportConnectorWarningsAcrossFloors> = [row, [...rowPassages, ...endsPair], floors, squareCfg, settings, null, null];
+
+  it("returns the connector warnings of the full pass and nothing else", () => {
+    const only = computeTeleportConnectorWarningsAcrossFloors(...args);
+    const full = computeVectorByWallsWarningsAcrossFloors(...args);
+
+    expect(ids(only)).toContain("teleport_connector_degenerate");
+    expect(ids(only)).toEqual(ids(full).filter((id) => id.startsWith("teleport_connector") && !id.includes("low_contrast")));
+  });
+
+  it("keeps its merged list across an interleaved full pass", () => {
+    const first = computeTeleportConnectorWarningsAcrossFloors(...args);
+    computeVectorByWallsWarningsAcrossFloors(...args);
+
+    expect(computeTeleportConnectorWarningsAcrossFloors(...args)).toBe(first);
   });
 });
