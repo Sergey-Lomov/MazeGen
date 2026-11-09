@@ -277,6 +277,76 @@ export function specialSplitNodePoint(
     };
   }
 
+  if (binding.shape === "regular:8") {
+    const vertices = getCellVertices(point[0], point[1], cfg);
+    const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
+    if (!vertices) return null;
+    const localCenter = getCellCenter(point[0], point[1], cfg);
+    const faceCenters = canonicalFaces.map((face) => {
+      const [a, b] = edgeVerts[order[face]];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    });
+    const offset = (p: Pos): Pos => ({ x: center.x + p.x - localCenter.x, y: center.y + p.y - localCenter.y });
+
+    if (kind === "octagon_diagonal_divider" && canonicalFaces.length === 4) {
+      const ownCenter = {
+        x: faceCenters.reduce((sum, p) => sum + p.x, 0) / faceCenters.length,
+        y: faceCenters.reduce((sum, p) => sum + p.y, 0) / faceCenters.length,
+      };
+      const owned = new Set(canonicalFaces);
+      const corners: Pos[] = [];
+      for (let face = 0; face < 8; face++) {
+        const next = (face + 1) % 8;
+        if (owned.has(face) === owned.has(next)) continue;
+        const corner = sharedCorner(vertices, edgeVerts, order[face], order[next]);
+        if (corner) corners.push(corner);
+      }
+      if (corners.length !== 2) return null;
+      const wallMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+      const direction = { x: ownCenter.x - wallMid.x, y: ownCenter.y - wallMid.y };
+      const cross = (a: Pos, b: Pos) => a.x * b.y - a.y * b.x;
+      const rayToBoundary = vertices.reduce<Pos | null>((nearest, start, index) => {
+        const end = vertices[(index + 1) % vertices.length];
+        const edge = { x: end.x - start.x, y: end.y - start.y };
+        const denominator = cross(direction, edge);
+        if (Math.abs(denominator) < 1e-9) return nearest;
+        const delta = { x: start.x - wallMid.x, y: start.y - wallMid.y };
+        const rayT = cross(delta, edge) / denominator;
+        const edgeT = cross(delta, direction) / denominator;
+        if (rayT <= 1e-9 || edgeT < -1e-9 || edgeT > 1 + 1e-9) return nearest;
+        const candidate = { x: wallMid.x + direction.x * rayT, y: wallMid.y + direction.y * rayT };
+        return !nearest || Math.hypot(candidate.x - wallMid.x, candidate.y - wallMid.y) < Math.hypot(nearest.x - wallMid.x, nearest.y - wallMid.y)
+          ? candidate : nearest;
+      }, null);
+      if (!rayToBoundary) return null;
+      return offset({ x: (wallMid.x + rayToBoundary.x) / 2, y: (wallMid.y + rayToBoundary.y) / 2 });
+    }
+
+    if (kind === "bridge" && canonicalFaces.length === 2) {
+      // The deck node is centred at the crossing. The under-corridor anchor sits halfway through
+      // the genuinely empty side interval: deck edge at 30% of the radius, outer face at 100%.
+      if (slotIndex === 1) return center;
+      const ownFace = faceCenters[0];
+      return offset({
+        x: localCenter.x + (ownFace.x - localCenter.x) * 0.65,
+        y: localCenter.y + (ownFace.y - localCenter.y) * 0.65,
+      });
+    }
+
+    if ((kind === "octagon_double_bridge" || kind === "octagon_triple_bridge") && canonicalFaces.length === 2) {
+      // Match the hex double-bridge spacing: each node lies far along its own through axis,
+      // alternating ends so neighbouring bridge anchors do not stack at the crossing.
+      const reversed = slotIndex % 2 === 0;
+      const from = faceCenters[reversed ? 1 : 0];
+      const to = faceCenters[reversed ? 0 : 1];
+      // Four octagon axes need slightly more separation than the three hex axes. Keep the same
+      // alternating-end arrangement as the double bridge, but push each triple-bridge anchor
+      // further toward its own side.
+      const t = kind === "octagon_triple_bridge" ? 7 / 8 : 5 / 6;
+      return offset({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+    }
+  }
+
   if (binding.shape !== "regular:4") return null;
 
   if (kind === "diagonal") {
@@ -369,7 +439,7 @@ export function buildNodePositions<Id extends string | number>(
 
     let faceKindsByNode: SplitFaceKind[][] | null = null;
     let kind: SplitSpecialShapeKind | null = null;
-    if ((group.length === 2 || group.length === 3) && directed) {
+    if ((group.length === 2 || group.length === 3 || group.length === 4) && directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
       kind = detectSplitSpecialShapeKind(faceKindsByNode, splitShapeBinding(cfg, group[0].x, group[0].y));
     }

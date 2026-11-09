@@ -3,7 +3,7 @@ import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import type { PaperOrientation, PaperSize, PrintFieldSizingInput } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
-import { DEFAULT_PRINT_CELL_SIZE_MM, MIN_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
+import { MIN_PRINT_CELL_SIZE_MM, resolvePrintPaperSizeMm } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { Modal } from "../Modal";
 import { Button } from "../Button";

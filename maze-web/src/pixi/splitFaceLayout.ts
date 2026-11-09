@@ -124,6 +124,20 @@ export function detectSplitSpecialShapeKind(
       (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
       ? "cairo_adjacent_divider" : null;
   }
+  if (binding.shape === "regular:8") {
+    const connected = faceKindsByNode.map(connectedIndicesOf);
+    const isOppositePair = (faces: number[]) => faces.length === 2 && circularDist(faces[0], faces[1], 8) === 4;
+    const distinctPairs = new Set(connected.map((faces) => faces.join(","))).size === connected.length;
+    if (nodeCount === 4) return connected.every(isOppositePair) && distinctPairs ? "octagon_triple_bridge" : null;
+    if (nodeCount === 3) return connected.every(isOppositePair) && distinctPairs ? "octagon_double_bridge" : null;
+    if (nodeCount !== 2) return null;
+    if (connected.every(isOppositePair) && distinctPairs) return "bridge";
+    const isHalf = (faces: number[]) => faces.length === 4 && Array.from({ length: 8 }, (_, start) =>
+      [0, 1, 2, 3].every((offset) => faces.includes((start + offset) % 8)),
+    ).some(Boolean);
+    return connected.every(isHalf) && new Set(connected.flat()).size === 8
+      ? "octagon_diagonal_divider" : null;
+  }
   // Radial ring cells with one inner and one outer neighbor have the same four-face topology as
   // a square: outer/inner and previous/next form the two opposite pairs. Reuse the square bridge
   // and diagonal-divider treatment while keeping every other registered template opt-in.

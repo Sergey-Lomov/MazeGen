@@ -159,7 +159,7 @@ export type SplitPassage = {
  *  dedicated graph/marker anchors for the two halves. Cairo's "cairo_bridge_2x3" keeps its
  *  three-face fork as the underlay and replaces only the other node's two-face passage with the
  *  dedicated bridge deck. */
-export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
+export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "octagon_double_bridge" | "octagon_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "octagon_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
  *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`

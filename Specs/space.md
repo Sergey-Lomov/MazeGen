@@ -683,7 +683,7 @@ Status (GitHub issue #784): `space::square_octagon` (`SquareOctagonTessellation`
 - **Straightness.** A pass is straight iff it leaves through the opposite face (table, checked against the geometric definition).
 - **Geometry.** Every vertex coordinate is `(m + n·√2) / 2` for integers `m`, `n` derived from the lattice point, so a vertex shared by several cells is bit-identical from each. `candidate_cells` counts the valid lattice cells in the box exactly before building any.
 - **Presets.** `rect` (`cols × rows` octagons plus the squares between them, origin octagon at `size / 2`), `circle` and `triangle`; translate and reflect are derived geometrically.
-- **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. Tessellation-specific split templates are not part of this ticket.
+- **Wire and web.** `{ "kind": "square_octagon", "params": {} }`; points are `[x, y]` pairs. Web entry `TESSELLATION_UI.square_octagon` (no orientations, `pixelsPerUnit = TILE_SIZE`), connector axes at 0°, 45°, 90°, 135°. The `regular:8` built-in splits are the diagonal divider (`0..3` / `4..7`), bridge (`0-4` / `2-6`), double bridge (`0-4` / `1-5` / `2-6`), and triple bridge (`0-4` / `1-5` / `2-6` / `3-7`).
 
 ### Brick tessellation (offset-row squares)
 
