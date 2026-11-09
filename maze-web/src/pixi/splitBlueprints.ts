@@ -65,6 +65,14 @@ const HEX_BLUEPRINTS: SplitNodeBlueprint[] = [
   { id: 6, degree: 6, nodeFaces: [[0, 1, 2], [3, 4, 5]], titleKey: "split_pattern_title.diagonal_divider" },
 ];
 
+/** The regular octagon's canonical perimeter split: two contiguous four-face halves. */
+const OCTAGON_BLUEPRINTS: SplitNodeBlueprint[] = [
+  { id: 0, degree: 8, nodeFaces: [[0, 1, 2, 3], [4, 5, 6, 7]], titleKey: "split_pattern_title.diagonal_divider" },
+  { id: 1, degree: 8, nodeFaces: [[0, 4], [2, 6]], titleKey: "split_pattern_title.bridge" },
+  { id: 2, degree: 8, nodeFaces: [[0, 4], [1, 5], [2, 6]], titleKey: "split_pattern_title.double_bridge" },
+  { id: 3, degree: 8, nodeFaces: [[0, 4], [1, 5], [2, 6], [3, 7]], titleKey: "split_pattern_title.triple_bridge" },
+];
+
 const CAIRO_BLUEPRINTS: SplitNodeBlueprint[] = [
   {
     id: 0,
@@ -106,6 +114,7 @@ const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {
   4: SQUARE_BLUEPRINTS,
   5: CAIRO_BLUEPRINTS,
   6: HEX_BLUEPRINTS,
+  8: OCTAGON_BLUEPRINTS,
 };
 
 /** Every built-in blueprint for a tile of the given shape template and degree: the template's own
