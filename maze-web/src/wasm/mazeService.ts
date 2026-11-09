@@ -425,8 +425,9 @@ export function getFieldPresetExtents(
   preset: string,
   params: Record<string, number>,
   directions: [[number, number], [number, number]],
+  smooth = false,
 ): [[number, number], [number, number]] {
-  return getWasm().field_preset_extents({ tessellation, preset, params, directions }) as [[number, number], [number, number]];
+  return getWasm().field_preset_extents({ tessellation, preset, params, directions, smooth }) as [[number, number], [number, number]];
 }
 
 /// Size of a preset shape that fills a printable area with the most cells (GitHub issue #939): the
@@ -441,6 +442,8 @@ export interface PrintSizingRequest {
   usableHeightMm: number;
   cellSideMm: number;
   axisAligned: boolean;
+  /// Size the field without the cells smoothing removes (GitHub issue #957).
+  smooth: boolean;
 }
 
 /// `limit` is the search cap the answer sits on (the sheet may hold a larger field), else `null`.
@@ -462,6 +465,7 @@ export function getFieldPrintSizing(request: PrintSizingRequest): PrintSizingAns
     usable_height_mm: request.usableHeightMm,
     cell_side_mm: request.cellSideMm,
     axis_aligned: request.axisAligned,
+    smooth: request.smooth,
   }) as PrintSizingAnswer | null;
 }
 

@@ -31,6 +31,7 @@ fn request(
         usable_height_mm: SHEET.1,
         cell_side_mm,
         axis_aligned: false,
+        smooth: false,
     }
 }
 
@@ -48,6 +49,7 @@ fn measure(
             params: params(shape),
         },
         directions: request.directions,
+        smooth: request.smooth,
     })
     .ok()?;
     Some(Bounds {
@@ -73,9 +75,21 @@ fn kinds_with_rect() -> impl Iterator<Item = TessellationKind> {
 
 #[test]
 fn rect_search_matches_a_full_scan_on_every_lattice() {
+    rect_search_matches_a_full_scan(false);
+}
+
+/// Smoothing removes cells at the edges of a shape (GitHub issue #957), so the field is measured
+/// without them.
+#[test]
+fn smoothed_rect_search_matches_a_full_scan_on_every_lattice() {
+    rect_search_matches_a_full_scan(true);
+}
+
+fn rect_search_matches_a_full_scan(smooth: bool) {
     for kind in kinds_with_rect() {
         for cell_side_mm in [4.0, 6.0] {
-            let request = request(kind, "rect", &[("cols", 2), ("rows", 2)], cell_side_mm);
+            let mut request = request(kind, "rect", &[("cols", 2), ("rows", 2)], cell_side_mm);
+            request.smooth = smooth;
             let result = print_sizing(&request).unwrap().unwrap_or_else(|| {
                 panic!("{kind:?} at {cell_side_mm} mm: nothing fits");
             });
@@ -119,9 +133,19 @@ fn rect_search_matches_a_full_scan_on_every_lattice() {
 
 #[test]
 fn radial_search_finds_the_largest_fitting_radius() {
+    radial_search_matches_a_walk(false);
+}
+
+#[test]
+fn smoothed_radial_search_finds_the_largest_fitting_radius() {
+    radial_search_matches_a_walk(true);
+}
+
+fn radial_search_matches_a_walk(smooth: bool) {
     for kind in kinds_with_rect() {
         for (preset, name) in [("circle", "radius"), ("triangle", "side")] {
-            let request = request(kind, preset, &[(name, 1)], 5.0);
+            let mut request = request(kind, preset, &[(name, 1)], 5.0);
+            request.smooth = smooth;
             let shape_at = |size: u32| measure(kind, preset, &[(name, size)], &request);
             // Core refuses sizes below a shape's minimum; those are skipped, the first size that
             // does not fit ends the walk.
@@ -349,4 +373,30 @@ fn snapping_looks_only_at_sizes_at_or_below_within_the_range() {
     assert_eq!(around_size(3).collect::<Vec<_>>(), vec![3, 2, 1]);
     assert_eq!(around_size(0).count(), 0);
     assert_eq!(around_size(MAX_RECT_DIMENSION + 10).next(), Some(MAX_RECT_DIMENSION));
+}
+
+/// GitHub issue #957: 3.12.12 on A4 landscape with 5 mm margins and a 10.1 mm (circumcircle
+/// diameter) cell. The full 29x25 block is 200.2 mm high and does not fit, so 29x23 is chosen;
+/// smoothing removes the cells at its top and bottom, and 29x25 then fits.
+#[test]
+fn smoothing_gives_back_the_room_of_the_cells_it_removes() {
+    let kind = TessellationKind::TruncatedHexagonal;
+    let side = 10.1 * (std::f64::consts::PI / 12.0).sin();
+    let mut plain = request(kind, "rect", &[("cols", 2), ("rows", 2)], side);
+    plain.usable_width_mm = 287.0;
+    plain.usable_height_mm = 200.0;
+    let smooth = PrintSizingRequest { smooth: true, ..plain.clone() };
+
+    let plain_result = print_sizing(&plain).unwrap().unwrap();
+    let smooth_result = print_sizing(&smooth).unwrap().unwrap();
+    assert_eq!(
+        (get(&plain_result.params, "cols"), get(&plain_result.params, "rows")),
+        (29, 23)
+    );
+    assert_eq!(
+        (get(&smooth_result.params, "cols"), get(&smooth_result.params, "rows")),
+        (29, 25)
+    );
+    // The answer reports the size of the smoothed field, which fits the sheet.
+    assert!(smooth_result.height * side <= smooth.usable_height_mm + 1e-9);
 }

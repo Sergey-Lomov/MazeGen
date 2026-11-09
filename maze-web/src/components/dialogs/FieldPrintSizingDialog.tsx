@@ -43,6 +43,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  const smooth = useMazeStore((s) => s.smoothPrimitives);
   const initialCellSizeMm = printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(() => print.paperSize);
   const [customWidthText, setCustomWidthText] = useState(() => String(print.customWidthMm));
@@ -61,8 +62,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const marginVMm = parseNumber(marginVText);
 
   const input = useMemo<PrintFieldSizingInput>(
-    () => ({ paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm }),
-    [paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
+    () => ({ paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm, smooth }),
+    [paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm, smooth],
   );
   const request = useMemo<PrintSizingRequest>(
     () => ({ config, input, floors: floors.map((floor) => printSizingFloorOf(floor.id, floorFields[floor.id])) }),

@@ -5,7 +5,7 @@
 //! The caller keeps the paper (size, orientation, margins) and sends the usable area plus the
 //! physical side of one cell; the answer is the shape's parameters.
 
-use super::field_ops::{FieldOpWireError, measure_extents};
+use super::field_ops::{FieldOpWireError, measure_preset_extents};
 use super::tessellation_factory::{CellCodec, TessellationVisitor, build_tessellation};
 use crate::config::TessellationConfig;
 use maze_core::space::Tessellation;
@@ -45,6 +45,10 @@ pub struct PrintSizingRequest {
     pub cell_side_mm: f64,
     /// A rectangle of an axis-aligned lattice is sized by division, without measuring.
     pub axis_aligned: bool,
+    /// Size the shape as the editor shows it with smoothing on, without the cells smoothing removes
+    /// (GitHub issue #957). A preset built from exact cells is not smoothed.
+    #[serde(default)]
+    pub smooth: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -215,7 +219,14 @@ impl<T: Tessellation> Sizer<'_, T> {
     /// Display-space size of the shape in cell sides; infinite for a shape core refuses.
     fn bounds(&self, preset: &str, params: &ShapeParams) -> Result<Bounds, FieldOpWireError> {
         let list: Vec<(&str, u32)> = params.iter().map(|(n, &v)| (n.as_str(), v)).collect();
-        match measure_extents(self.tessellation, preset, &list, self.request.directions) {
+        let measured = measure_preset_extents(
+            self.tessellation,
+            preset,
+            &list,
+            self.request.directions,
+            self.request.smooth,
+        );
+        match measured {
             Ok(extents) => Ok(Bounds {
                 width: (extents[0][1] - extents[0][0]) / self.request.cell_side,
                 height: (extents[1][1] - extents[1][0]) / self.request.cell_side,

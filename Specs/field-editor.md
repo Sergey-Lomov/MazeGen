@@ -132,6 +132,14 @@ the sheet (set by `packedForSheet` before the call). A polyhedron (`tetrahedron`
 its unfolded nets, `net` param max published by core; `isSwitchedShape` / `compactNetOf`
 (`fieldOps.ts`) cover both box and polyhedra), with the cache key holding the full shape.
 
+**Smoothing (GitHub issue #957).** With `Smoothing` on, a Default-mode preset loses its terminal cells
+(see Primitive tools), so the field the editor shows is smaller than the full shape. The dialog sends
+`smooth` (`smoothPrimitives`, part of the input and so of the cache key) and core sizes the shape
+without those cells: `field_print_sizing` and `field_preset_extents` measure the shape through
+`maze_core::space::normalize_cells` (`smooth_preset_cells`), built in full rather than around its
+extremes, since a cell's neighbors decide whether it stays. A box, polyhedron, cylinder or torus is
+built from exact cells and is not smoothed (`preset_requires_exact_cells`, as `requiresExactCells`).
+
 The rectangular search measures candidate blocks (the extent of the cell boundaries, as
 `field_preset_extents`), keeping the number of measurements small: the widest column count and
 tallest row count are found by galloping from a linear estimate (sizes at the smallest block and two
@@ -567,6 +575,10 @@ count as neighbors but are never removed. For remove and select no existing cell
 the shape's own cells are normalized, and the result is then intersected with the field, so
 smoothing matches the outline the user sees. Default-mode tessellation normalization has no
 existing cells and runs without anchors.
+The rule also exists in core (`maze_core::space::normalize_cells`), which applies it to preset shapes
+for print sizing. The two implementations are kept equal by `fieldPrintSizing.test.ts` (core's measured
+extent against the extent of the cells `configAllCells` returns, for every tessellation and preset
+shape) and by `normalize` unit tests in core.
 The `Smoothing` toggle is available in both Default and Custom modes. It normalizes standard-field
 cells and primitive results; point-by-point editing is unchanged. Changing it in Default mode
 updates the displayed field and resets generation and post-edit results.

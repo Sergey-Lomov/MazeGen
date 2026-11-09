@@ -91,6 +91,7 @@ function computePrintFieldConfig(
     usableHeightMm,
     cellSideMm,
     axisAligned: TESSELLATION_UI[current.tessellation.kind].editor.axisAlignedGrid,
+    smooth: input.smooth ?? false,
   });
   if (!sized) return null;
 
