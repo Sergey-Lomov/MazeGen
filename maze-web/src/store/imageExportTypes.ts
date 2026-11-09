@@ -74,6 +74,9 @@ export interface PrintFieldSizingInput {
   cellSizeMm: number;
   marginHMm: number;
   marginVMm: number;
+  /** The field is sized as the editor shows it with smoothing on, without the cells smoothing
+   * removes (GitHub issue #957). */
+  smooth?: boolean;
 }
 
 /** PNG export settings — two independent output-mode branches (`digital`/`print`), only one

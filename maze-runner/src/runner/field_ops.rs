@@ -6,7 +6,7 @@ use crate::config::TessellationConfig;
 use crate::topology_wire::{TopologyDto, encode_topology, tessellation_fingerprint};
 use maze_core::space::{
     FieldOpError, FieldOperation, FieldOps, Point, Tessellation, TessellationGeometry, Topology,
-    with_extent_focus,
+    preset_requires_exact_cells, smooth_preset_cells, with_extent_focus,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -80,6 +80,9 @@ pub struct PresetExtentsRequest {
     #[serde(flatten)]
     pub preset: PresetRequest,
     pub directions: [[f64; 2]; 2],
+    /// Measure the shape as the editor shows it with smoothing on (GitHub issue #957).
+    #[serde(default)]
+    pub smooth: bool,
 }
 
 /// Flatten tolerance (world units, cell area 1) of the boundaries `preset_extents` measures.
@@ -297,7 +300,13 @@ impl TessellationVisitor for PresetExtents<'_> {
             .iter()
             .map(|(name, &value)| (name.as_str(), value))
             .collect();
-        measure_extents(&*tessellation, &preset.preset, &params, self.request.directions)
+        measure_preset_extents(
+            &*tessellation,
+            &preset.preset,
+            &params,
+            self.request.directions,
+            self.request.smooth,
+        )
     }
 }
 
@@ -330,6 +339,47 @@ pub(super) fn measure_extents_with<T: Tessellation>(
             Some((cells, _)) => cells?,
             None => tessellation.build_preset(key, params)?,
         };
+        extents_of_cells(tessellation, &cells, directions)
+    }
+}
+
+/// `measure_extents`, or `measure_smoothed_extents` when `smooth`.
+pub(super) fn measure_preset_extents<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: &[(&str, u32)],
+    directions: [[f64; 2]; 2],
+    smooth: bool,
+) -> Result<[[f64; 2]; 2], FieldOpWireError> {
+    if smooth {
+        measure_smoothed_extents(tessellation, key, params, directions)
+    } else {
+        measure_extents(tessellation, key, params, directions)
+    }
+}
+
+/// `measure_extents` of the preset as the editor shows it with smoothing on (GitHub issue #957):
+/// the cells smoothing removes do not count. Smoothing needs every neighbor of a cell, so the shape
+/// is built in full, not around its extremes. A preset built from exact cells is not smoothed.
+pub(super) fn measure_smoothed_extents<T: Tessellation>(
+    tessellation: &T,
+    key: &str,
+    params: &[(&str, u32)],
+    directions: [[f64; 2]; 2],
+) -> Result<[[f64; 2]; 2], FieldOpWireError> {
+    if preset_requires_exact_cells(key) {
+        return measure_extents(tessellation, key, params, directions);
+    }
+    let cells = smooth_preset_cells(tessellation, tessellation.build_preset(key, params)?);
+    extents_of_cells(tessellation, &cells, directions)
+}
+
+fn extents_of_cells<T: Tessellation>(
+    tessellation: &T,
+    cells: &[T::CellId],
+    directions: [[f64; 2]; 2],
+) -> Result<[[f64; 2]; 2], FieldOpWireError> {
+    {
         let along =
             |point: Point, direction: [f64; 2]| direction[0] * point.x + direction[1] * point.y;
 

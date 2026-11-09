@@ -61,17 +61,20 @@ function buildPresetCells(cfg: FieldConfig, preset: string, params: Record<strin
 /**
  * Extent of a preset shape along two world directions (`[min, max]` each), measured by core
  * without materializing the cells. `null` for a custom shape or one core refuses (empty field).
+ * With `smooth` the cells smoothing removes (`smoothPreset`) do not count; core applies the same
+ * rule (`maze_core::space::normalize_cells`, GitHub issue #957).
  */
 export function presetShapeExtents(
   cfg: FieldConfig,
   directions: [[number, number], [number, number]],
+  smooth = false,
 ): [[number, number], [number, number]] | null {
   const { shape } = cfg;
   if (shape.shape === "custom") return null;
   const { shape: preset, ...params } = shape;
   if (belowMinimum(cfg, preset, params)) return null;
   try {
-    return getFieldPresetExtents(cfg.tessellation, preset, params, directions);
+    return getFieldPresetExtents(cfg.tessellation, preset, params, directions, smooth && !requiresExactCells(shape));
   } catch (error) {
     if ((error as FieldOpError | undefined)?.kind === "invalid_preset") return null;
     throw error;

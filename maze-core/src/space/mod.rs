@@ -16,6 +16,7 @@ pub mod geometry;
 pub mod hex;
 pub mod multi_level;
 mod multi_shape;
+pub mod normalize;
 pub mod radial;
 mod rect_topology;
 pub mod rhombitrihexagonal;
@@ -58,6 +59,7 @@ pub use geometry::{
 };
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
+pub use normalize::{normalize_cells, preset_requires_exact_cells, smooth_preset_cells};
 pub use multi_shape::{AnchoredPoint, CellFace, CellKind};
 pub use radial::{
     DEFAULT_CELL_LIMIT, MAX_CELL_LIMIT, MIN_CELL_LIMIT, RadialFace, RadialLayout, RadialParams,

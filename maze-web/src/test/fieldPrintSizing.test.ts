@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
-import { presetShapeExtents } from "../pixi/tessellationCells";
-import { displayTransform } from "../pixi/tessellationGeometry";
+import { configAllCells, presetShapeExtents } from "../pixi/tessellationCells";
+import { availablePresetKeys } from "../pixi/fieldOps";
+import { cellBounds, displayTransform } from "../pixi/tessellationGeometry";
 import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import type { FieldConfig, TessellationKind } from "../fieldConfig";
 import type { PredefinedFieldConfig } from "../pixi/fieldPrintSizing";
@@ -308,3 +309,68 @@ function shapeCapacity(config: Pick<FieldConfig, "shape">): number {
   if ("radius" in shape) return Number(shape.radius);
   return "side" in shape ? Number(shape.side) : 0;
 }
+
+/** Smoothing exists twice (GitHub issue #957): `normalizeCells` in the editor and
+ * `maze_core::space::normalize_cells` in core, which sizes the field for the print sizing dialog.
+ * Both must leave the same cells, so the extent core measures equals the one of the cells the
+ * editor shows. */
+describe("smoothing of a preset field", () => {
+  const KINDS: TessellationKind[] = [
+    "square", "hex", "tri", "cairo", "square_octagon", "brick", "trihexagonal", "snub_hexagonal",
+    "rhombitrihexagonal", "truncated_hexagonal", "truncated_trihexagonal", "elongated_triangular",
+    "snub_square", "curved_quadrilateral",
+  ];
+  const SHAPES = [
+    { shape: "rect", cols: 9, rows: 8 },
+    { shape: "rect", cols: 4, rows: 3 },
+    { shape: "parallelogram", cols: 7, rows: 6 },
+    { shape: "circle", radius: 4 },
+    { shape: "triangle", side: 6 },
+    { shape: "hexagon", radius: 3 },
+  ] as const;
+
+  function editorExtents(config: FieldConfig, smooth: boolean): [[number, number], [number, number]] {
+    const cells = configAllCells(config, smooth);
+    const { minX, maxX, minY, maxY } = cellBounds(cells, config);
+    return [[minX, maxX], [minY, maxY]];
+  }
+
+  it("measures the same extent in core as the cells the editor shows", () => {
+    let smoothedSomething = false;
+    for (const kind of KINDS) {
+      const offered = availablePresetKeys({ kind, params: {} } as FieldConfig["tessellation"]);
+      for (const shape of SHAPES) {
+        if (!offered.includes(shape.shape)) continue;
+        const config = fieldOf(kind, shape as never, kind === "hex" ? "flat_top" : kind === "tri" ? "r0" : undefined);
+        const t = displayTransform(config);
+        const core = presetShapeExtents(config, [[t.a, t.c], [t.b, t.d]], true);
+        if (!core) continue;
+        const editor = editorExtents(config, true);
+        for (let axis = 0; axis < 2; axis++) {
+          for (let end = 0; end < 2; end++) {
+            // The editor flattens arcs coarsely, core finely: only curved sides differ (not smoothing).
+            const digits = kind === "curved_quadrilateral" ? 0 : 6;
+            expect(core[axis][end], `${kind} ${JSON.stringify(shape)}`).toBeCloseTo(editor[axis][end], digits);
+          }
+        }
+        if (configAllCells(config, true).length < configAllCells(config, false).length) smoothedSomething = true;
+      }
+    }
+    // The comparison is not vacuous: smoothing removes cells of some of the shapes above.
+    expect(smoothedSomething).toBe(true);
+  });
+
+  it("sizes 3.12.12 for the cells smoothing leaves (GitHub issue #957)", () => {
+    const current = fieldOf("truncated_hexagonal", { shape: "rect", cols: 8, rows: 8 });
+    const input = { ...printInput, orientation: "landscape" as const, cellSizeMm: 10.1 };
+    expect(calculatePrintFieldConfig(current, input)?.config.shape).toMatchObject({ cols: 29, rows: 23 });
+    const smoothed = calculatePrintFieldConfig(current, { ...input, smooth: true })!;
+    expect(smoothed.config.shape).toMatchObject({ cols: 29, rows: 25 });
+    expect(smoothed.fieldHeightMm).toBeLessThanOrEqual(smoothed.usableHeightMm + 1e-9);
+    // The field the editor shows (smoothed) is as high as core measured.
+    const config = smoothed.config;
+    const [, [minY, maxY]] = editorExtents(config, true);
+    const side = TESSELLATION_UI[config.tessellation.kind].cellSidePx;
+    expect((maxY - minY) / side).toBeCloseTo(smoothed.fieldHeightMm / (10.1 * Math.sin(Math.PI / 12)), 6);
+  });
+});

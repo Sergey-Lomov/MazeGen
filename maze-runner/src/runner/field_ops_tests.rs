@@ -139,6 +139,7 @@ fn preset_extents_measure_the_shape_along_each_direction() {
             &[("cols", 3), ("rows", 2)],
         ),
         directions: [[1.0, 0.0], [0.0, 2.0]],
+        smooth: false,
     })
     .unwrap();
     // A 3x2 block of unit cells: 3 along x, and 2 along y scaled by the direction's length 2.
@@ -289,6 +290,7 @@ fn preset_extents_match_a_brute_force_scan_on_every_lattice() {
         let request = PresetExtentsRequest {
             preset: preset(kind, key, &params),
             directions: [[0.8, 0.6], [-0.6, 0.8]],
+            smooth: false,
         };
         let expected =
             build_tessellation(&request.preset.tessellation, BruteForce(&request)).unwrap();
@@ -308,6 +310,7 @@ fn preset_extents_reject_non_finite_directions_and_empty_shapes() {
             &[("cols", 3), ("rows", 2)],
         ),
         directions: [[f64::NAN, 0.0], [0.0, 1.0]],
+        smooth: false,
     });
     assert!(matches!(bad, Err(FieldOpWireError::InvalidRequest { .. })));
 }
