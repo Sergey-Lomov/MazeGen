@@ -16,7 +16,7 @@ import { TRANSIENT_UI_STATE } from "./transientUiState";
 import { installTopologySync } from "./topologySync";
 import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installEdgeMarkerSync } from "./edgeMarkerSync";
-import { installTeleportConnectorPathSync } from "./teleportConnectorPathSync";
+import { installTeleportConnectorPathSync, retainLiveTeleportConnectorPaths } from "./teleportConnectorPathSync";
 import { installExportEditStateSync } from "./exportEditStateSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
@@ -364,6 +364,14 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
     // A later load (or post-edit action) supersedes this confirmation. It owns the selected card,
     // so an older async load must not reveal its own saved card over the newer state.
     if (get()._postEditRequestId !== confirmationRequestId) return;
+    // A saved post-edit teleport is absent from the regenerated baseline. Restore manual paths
+    // only after the command log has been confirmed, otherwise the stale-path synchronizer drops
+    // them before that teleport exists again (GitHub issue #955).
+    const paths = retainLiveTeleportConnectorPaths(
+      file.imageExport.vectorByWallsSettings.manualTeleportConnectorPaths ?? {},
+      get().edges,
+    );
+    get().setManualTeleportConnectorPaths(paths);
     set({ openCard: targetOpenCard });
   },
 }, a[0], a[1]));

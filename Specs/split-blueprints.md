@@ -14,9 +14,9 @@ settings); it is never itself sent to wasm and never stored in the project file.
 
 ## Wire type (`maze-web/src/pixi/splitBlueprints.ts`, TS-only — no Rust/wasm counterpart)
 
-- **`SplitNodeBlueprint`** — `{ id, degree, nodeFaces }`. `id` is unique only within its own
-  degree's list — used as a React `key`, nothing else; no label is shown anywhere, the preview
-  thumbnail itself is the only UI for picking a blueprint. `degree` is the tile degree
+- **`SplitNodeBlueprint`** — `{ id, degree, nodeFaces, titleKey? }`. `id` is unique only within its own
+  degree's list and gives an unnamed blueprint's one-based fallback number in the picker tooltip.
+  `titleKey`, when present, resolves a curated topology name (such as "Bridge"). `degree` is the tile degree
   (`getNeighborData(cfg, x, y).offsets.length`) the blueprint applies to. `nodeFaces[i]` is a list
   of 0-indexed face offsets that minted node `i` (node `0` is always the point's pre-existing
   original node, same convention as `SplitPattern`) gets a `Passage` on — every other face of the
@@ -118,10 +118,14 @@ entry" as `Wall`). `weight` is always `1.0`, matching a freshly added blank patt
   the point the blueprint will actually apply to. Clicking a thumbnail opens a confirm modal (full
   replace is destructive) before calling `applySplitBlueprint`/`applyPresetSplitBlueprint`. A
   blueprint with no fitting rotation renders disabled, with a shared hint below the strip
-  explaining why.
+  explaining why. Every thumbnail has an accessible tooltip: a blueprint with `titleKey` uses
+  its curated template name; an otherwise unnamed blueprint uses its localized one-based
+  "Blueprint {number}" fallback. This keeps the visual picker compact while making templates
+  distinguishable for mouse, touch, and keyboard users.
 - **`SplitSettingsDialog`**: the same strip style below the pattern list, labeled "add a standard
   pattern" — clicking a thumbnail calls `blueprintToSplitPattern` and appends the result directly,
   no confirmation (adding a pattern is non-destructive, unlike overwriting a split point).
+  Its thumbnails use the same names and fallback tooltips as the split-node panels.
 
 ## Semantic node names (`splitNodeNames.ts`, GitHub issue #487)
 
@@ -190,6 +194,9 @@ and `presetConnectionsSlice.splitNodes.test.ts` cover `applySplitBlueprint`/`app
 store-level behavior: full replace of stale slots/edges, occupied-element migration, the
 out-of-degree face skip, and (preset only) the boundary-face skip and the explicit-wall-on-unused-face
 behavior.
+
+`SplitSettingsDialog.test.tsx` and `ManageSplitNodesDialog.test.tsx` cover the named-template
+tooltips in the generation and shared split-node picker paths respectively.
 
 ## Cairo template (issue #718)
 

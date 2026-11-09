@@ -7,8 +7,9 @@ import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
 import { degreeFor, originCellOf, tileNodesForPattern } from "../../pixi/splitPatternTile";
-import { blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { blueprintNumber, blueprintsFor, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import { patternShapeOf } from "../../pixi/shapeTemplates";
+import { messageForTitleKey } from "../../pixi/splitPatternTitles";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 import { Tooltip } from "../Tooltip";
@@ -84,6 +85,10 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
     addPattern(blueprintToSplitPattern(blueprint, fieldConfig));
   }
+
+  const blueprintName = (blueprint: (typeof blueprints)[number]) => blueprint.titleKey
+    ? messageForTitleKey(blueprint.titleKey)
+    : m["post_edit.split_blueprint_unnamed"]({ number: blueprintNumber(blueprint) });
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
   // pattern itself, or for any pattern after it, must close/re-target accordingly, or it would
@@ -167,8 +172,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
             <span style={styles.label}>{m["generation.split_pattern_blueprints_label"]()}</span>
             <div style={styles.blueprintStrip}>
               {blueprints.map((blueprint) => (
-                <button
-                  key={blueprint.id}
+                <Tooltip key={blueprint.id} content={blueprintName(blueprint)}><button
                   className="hoverable"
                   style={styles.blueprintThumb}
                   onClick={() => handleAddBlueprint(blueprint)}
@@ -177,7 +181,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                     point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
-                </button>
+                </button></Tooltip>
               ))}
             </div>
           </div>

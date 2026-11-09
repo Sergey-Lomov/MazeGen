@@ -9,7 +9,7 @@ export type { TextFitKind } from "./exportTextFit";
 import { type ColorFieldKey } from "../colorFieldKeys";
 import { trackedMemo, inputMemo } from "./trackedMemo";
 import {
-  WarningFloorEnv, WALLS_WARNING_GROUPS, CORRIDORS_WARNING_GROUPS,
+  WarningFloorEnv, TELEPORT_CONNECTORS_GROUP, WALLS_WARNING_GROUPS, CORRIDORS_WARNING_GROUPS,
   type AnySettings, type WarningGroup, type WarningMode,
 } from "./exportWarningGroups";
 
@@ -283,6 +283,7 @@ function computeGroupsAcrossFloors<S extends AnySettings>(
   settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
   corridorFaceLimit?: () => number,
 ): ExportWarning[] {
+  const mergeSlot = `merge:${mode}:${groups.map((group) => group.name).join(",")}`;
   const project = { nodes, edges, floors, start, finish };
   // Scoping and teleport context read floor ids and their order only; a floor's title is a hidden input of the groups that show it.
   const floorsKey = floors.map((floor) => floor.id).join("\u0000");
@@ -309,7 +310,7 @@ function computeGroupsAcrossFloors<S extends AnySettings>(
     }
   }
   // Every group hit returns the same list object, so an unchanged pass hands back the same merged list: no O(nodes) rebuild and no new identity for the panel to re-render on.
-  return inputMemo(`merge:${mode}`, [nodes, ...warningLists], () => mergeWarningsAcrossFloors(warningLists, nodes));
+  return inputMemo(mergeSlot, [nodes, ...warningLists], () => mergeWarningsAcrossFloors(warningLists, nodes));
 }
 
 /** The shortest corridor face of the whole project: it depends on the maze alone, so it is kept apart from the settings-tracked groups. */
@@ -324,6 +325,18 @@ export function computeVectorByWallsWarningsAcrossFloors(
   hasGlues = true,
 ): ExportWarning[] {
   return computeGroupsAcrossFloors("walls", WALLS_WARNING_GROUPS, nodes, edges, floors, cfg, settings, start, finish, cutFloorIds, hasGlues);
+}
+
+/** Only the teleport connector warnings of "Vector by walls" (GitHub issue #952): the `teleportConnectors` group alone, run
+ *  through the same per-group cache as the full pass, so the teleport connector editor doesn't compute the other groups. */
+export function computeTeleportConnectorWarningsAcrossFloors(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
+  settings: VectorByWallsSettings, start: number | null, finish: number | null,
+  cutFloorIds: ReadonlySet<string> = NO_CUT_FLOORS,
+  hasGlues = true,
+): ExportWarning[] {
+  const groups = WALLS_WARNING_GROUPS.filter((group) => group.name === TELEPORT_CONNECTORS_GROUP);
+  return computeGroupsAcrossFloors("walls", groups, nodes, edges, floors, cfg, settings, start, finish, cutFloorIds, hasGlues);
 }
 
 export function computeVectorByCorridorsWarningsAcrossFloors(

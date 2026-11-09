@@ -54,8 +54,10 @@ optional `controls` (two cubic Bezier controls per consecutive node pair), and a
 `"polyline"` joins nodes and ignores controls. `"curve"` uses nodes and controls as ordinary
 cubic Bezier segments. Switching to curve mode creates straight controls only when they do not
 exist; switching back leaves controls persisted but ignored. A manual path is drawn exactly as
-authored. New controls sit a fixed one-and-a-half-tile distance from their anchors along the local path
-tangent, so the initial curve is smooth. Dragging an anchor translates its adjacent controls;
+authored. New controls sit up to one-and-a-half tiles from their anchors along the local path
+tangent, so the initial curve is smooth. The distance is capped at a third of the segment length so
+short segments never curl into a loop; a node without a direction of its own (coincident neighbours,
+backtracking path) uses the segment direction, and a zero-length segment gets controls on its anchors. Dragging an anchor translates its adjacent controls;
 dragging one control rotates its paired control around their common anchor while preserving that
 paired control's length, keeping a G1 join. Controls and dotted control-to-anchor guides are shown
 only for the selected anchor. Inserting a node on a curve splits its cubic segment with the
@@ -72,6 +74,11 @@ deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops 
 one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
 edges at all.
 
+Project loading restores manual paths after the saved post-edit command log has been replayed and
+confirmed (GitHub issue #955). This ordering retains a path belonging to a teleport created by that
+log: it is not present in the regenerated baseline, but is present in the final loaded maze. Paths
+whose pairs remain absent from that final maze are still discarded.
+
 Connector editing belongs to the export feature (GitHub issue #947). The editor owns canvas input
 only while `isTeleportConnectorEditActive` holds: `teleportConnectorEdit` is set, the open card is
 `image_export` and the active render mode is the edited one. The controller router
@@ -87,6 +94,14 @@ to insert a point; right-click a point to delete it; and hold the platform modif
 point to snap it to a field anchor. In Cubic curve mode, holding Alt while moving a handle adjusts
 it independently, while holding Shift adjusts its paired handles symmetrically. The left- and
 right-button hints use LMB/RMB keycaps.
+
+The editor panel also shows the connector geometry warnings (GitHub issue #952) as a collapsible "Warnings (N)"
+section above the connector list, always visible even at N = 0 and expanded by default; its expanded state is persisted in
+`vectorByWallsSectionsExpanded` under `teleportConnectorEditorWarnings`. The entries are the same `ExportWarningBubble`s
+as in the export settings panel, produced by `computeTeleportConnectorWarningsAcrossFloors`: it runs only the
+`teleportConnectors` warning group (through the shared per-group cache) and `useModeWarnings` feeds it, so the
+list is recomputed from the current settings and updates as paths change. Hovering one
+highlights the offending parts. The warnings cover all connectors of the project.
 
 ## Bend axes
 

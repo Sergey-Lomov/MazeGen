@@ -4,7 +4,9 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { messageForTitleKey } from "../../pixi/splitPatternTitles";
+import { Tooltip } from "../Tooltip";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -227,6 +229,9 @@ export function SplitNodesDialogView<E>({
     fitted: fittingRotation(bp, (faceIndex) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false, orientations),
   }));
   const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
+  const blueprintName = (blueprint: SplitNodeBlueprint) => blueprint.titleKey
+    ? messageForTitleKey(blueprint.titleKey)
+    : m["post_edit.split_blueprint_unnamed"]({ number: blueprintNumber(blueprint) });
 
   const markEdited = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
     setHasManualEdit(true);
@@ -260,8 +265,7 @@ export function SplitNodesDialogView<E>({
             <span style={typography.body}>{m["post_edit.split_blueprints_label"]()}</span>
             <div style={styles.blueprintStrip}>
               {fittedBlueprints.map(({ original, fitted }) => (
-                <button
-                  key={original.id}
+                <Tooltip key={original.id} content={blueprintName(original)}><button
                   data-testid={`blueprint-thumb-${original.id}`}
                   className={fitted ? "hoverable" : undefined}
                   style={{ ...styles.blueprintThumb, ...(!fitted ? sharedStyles.btnDisabled : {}) }}
@@ -283,7 +287,7 @@ export function SplitNodesDialogView<E>({
                     point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
-                </button>
+                </button></Tooltip>
               ))}
             </div>
             {anyDisabled && <span style={typography.caption}>{m["post_edit.split_blueprint_disabled_hint"]()}</span>}

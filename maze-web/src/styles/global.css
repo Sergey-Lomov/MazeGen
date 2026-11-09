@@ -37,6 +37,20 @@ select:focus {
   border-color: #666;
 }
 
+/* Keyboard focus must stay visible without changing an element's box metrics. This covers native
+   controls as well as explicitly focusable custom controls; mouse clicks retain the quieter
+   appearance because the ring is limited to `:focus-visible`. An inset offset keeps the ring on
+   feature-card headers and controls inside scrolling panels from being clipped at their edges. */
+a[href]:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #4a9eff;
+  outline-offset: -2px;
+}
+
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;

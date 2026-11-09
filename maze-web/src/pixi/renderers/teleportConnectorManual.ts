@@ -20,17 +20,27 @@ export function manualPathMode(path: ManualTeleportConnectorPath): ManualTelepor
 
 /** Generates smooth cubic controls at a stable, editor-friendly distance from each anchor. */
 export function straightCubicControls(nodes: readonly [number, number][]): [number, number][] {
-  const handleLength = TILE_SIZE * 1.5;
-  const tangent = (index: number): [number, number] => {
+  const maxHandleLength = TILE_SIZE * 1.5;
+  const unit = (from: readonly [number, number], to: readonly [number, number]): [number, number] | null => {
+    const dx = to[0] - from[0], dy = to[1] - from[1], length = Math.hypot(dx, dy);
+    return length === 0 ? null : [dx / length, dy / length];
+  };
+  // Nodes coincident with their neighbours (or a backtracking path) give no direction of their own;
+  // `fallback` (the segment direction) keeps the handle pointing into the segment instead of past an end.
+  const tangent = (index: number, fallback: [number, number] | null): [number, number] => {
     const before = nodes[index - 1] ?? nodes[index];
     const after = nodes[index + 1] ?? nodes[index];
-    const dx = after[0] - before[0], dy = after[1] - before[1], length = Math.hypot(dx, dy);
-    return length === 0 ? [1, 0] : [dx / length, dy / length];
+    return unit(before, after) ?? fallback ?? [1, 0];
   };
   const controls: [number, number][] = [];
   for (let i = 0; i + 1 < nodes.length; i++) {
     const a = nodes[i], b = nodes[i + 1];
-    const outgoing = tangent(i), incoming = tangent(i + 1);
+    const segmentLength = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const direction = unit(a, b);
+    if (!direction) { controls.push([a[0], a[1]], [b[0], b[1]]); continue; }
+    // A handle longer than a third of the segment overshoots the opposite end and curls into a loop.
+    const handleLength = Math.min(maxHandleLength, segmentLength / 3);
+    const outgoing = tangent(i, direction), incoming = tangent(i + 1, direction);
     controls.push([a[0] + outgoing[0] * handleLength, a[1] + outgoing[1] * handleLength]);
     controls.push([b[0] - incoming[0] * handleLength, b[1] - incoming[1] * handleLength]);
   }

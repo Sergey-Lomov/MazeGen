@@ -300,6 +300,8 @@ const NO_KEYS: ReadonlySet<string> = new Set();
 
 // --- "Vector by walls" ---
 
+/** Name of the group of the connector geometry warnings in both modes (`computeTeleportConnectorWarningsAcrossFloors` picks it). */
+export const TELEPORT_CONNECTORS_GROUP = "teleportConnectors";
 /** Warnings about the drawn teleport connectors (GitHub issue #862, #945): one group, so the connectors are laid out and routed once. */
 const TELEPORT_CONNECTOR_IDS: readonly ExportWarningId[] = [
   "teleport_connector_covers_one_way", "teleport_connectors_overlap", "teleport_connector_endpoint_detached", "teleport_connector_leaves_field",
@@ -311,7 +313,7 @@ function connectorWarnings(input: TeleportConnectorInput): ExportWarning[] {
   return [...maybe(computeTeleportConnectorCoversOneWayWarning(input, context)), ...computeTeleportConnectorWarnings(input, context)];
 }
 
-const wallsTeleportConnectors = group<VectorByWallsSettings>("teleportConnectors", TELEPORT_CONNECTOR_IDS, (env, s) => (
+const wallsTeleportConnectors = group<VectorByWallsSettings>(TELEPORT_CONNECTORS_GROUP, TELEPORT_CONNECTOR_IDS, (env, s) => (
   connectorWarnings({
     mode: "walls", settings: withLazyResolvedGroupOverrides(s), nodes: env.nodes, edges: env.edges, cfg: env.cfg, start: env.start, finish: env.finish,
     teleportEdges: env.teleportEdges, unscopedNodes: env.unscopedNodes, unscopedEdges: env.unscopedEdges, activeFloorIndex: env.activeFloorIndex,
@@ -419,7 +421,7 @@ export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[
 
 // --- "Vector by corridors" ---
 
-const corridorsTeleportConnectors = group<VectorByCorridorsSettings>("teleportConnectors", TELEPORT_CONNECTOR_IDS, (env, s) => (
+const corridorsTeleportConnectors = group<VectorByCorridorsSettings>(TELEPORT_CONNECTORS_GROUP, TELEPORT_CONNECTOR_IDS, (env, s) => (
   connectorWarnings({
     mode: "corridors", settings: withLazyResolvedGroupOverrides(s), nodes: env.nodes, edges: env.edges, cfg: env.cfg, start: env.start, finish: env.finish,
     teleportEdges: env.teleportEdges, unscopedNodes: env.unscopedNodes, unscopedEdges: env.unscopedEdges, activeFloorIndex: env.activeFloorIndex,
