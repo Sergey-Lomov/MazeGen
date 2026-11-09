@@ -44,7 +44,7 @@ describe("PngExportSettingsPanel", () => {
     expect(screen.getByText(m["image_export.format.png.print.anchor"]())).toBeInTheDocument();
   });
 
-  it("provides the shared bounded scale slider and precise print-scale editor", () => {
+  it("provides the shared bounded scale slider and click-to-edit print scale", () => {
     setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
     render(<PngExportSettingsPanel />);
 
@@ -52,6 +52,7 @@ describe("PngExportSettingsPanel", () => {
     expect(slider).toHaveAttribute("min", "1");
     expect(slider).toHaveAttribute("max", "8");
     expect(slider).toHaveAttribute("step", "0.1");
+    fireEvent.click(screen.getByRole("button", { name: m["common.exact_input"]() }));
     const input = screen.getByRole("spinbutton", { name: m["image_export.format.png.digital.scale"]() });
     expect(input).toHaveAttribute("min", "0.11");
     expect(input).not.toHaveAttribute("max");
@@ -67,10 +68,11 @@ describe("PngExportSettingsPanel", () => {
     expect(positionRow.compareDocumentPosition(scaleRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("clamps the precise scale editor above 0.1", () => {
+  it("clamps the exact scale input above 0.1", () => {
     setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
     render(<PngExportSettingsPanel />);
 
+    fireEvent.click(screen.getByRole("button", { name: m["common.exact_input"]() }));
     const input = screen.getByRole("spinbutton", { name: m["image_export.format.png.digital.scale"]() });
     fireEvent.change(input, { target: { value: "0.1" } });
     fireEvent.blur(input);

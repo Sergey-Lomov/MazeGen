@@ -1,6 +1,7 @@
 import * as m from "~/paraglide/messages";
 import type { ExportWarningId } from "../../pixi/selectors/exportWarnings";
 import type { ColorFieldKey } from "../../pixi/colorFieldKeys";
+import type { MarkerLookKind } from "../../pixi/selectors/exportMarkerLookAlike";
 import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
 
 /** Localized message/description per `ExportWarningId` (GitHub issue #298) — kept separate from
@@ -36,6 +37,8 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink"],
   marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable"],
+  markers_look_alike: m["image_export.warning.markers_look_alike"],
+  edge_marker_looks_like_marker: m["image_export.warning.edge_marker_looks_like_marker"],
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background"],
   teleport_connector_low_contrast_corridor: m["image_export.warning.teleport_connector_low_contrast_corridor"],
@@ -114,6 +117,9 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink_description"],
   marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor_description"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable_description"],
+  // Needs the alike pairs; `resolveExportWarningDescription` builds it from `markerPairs`.
+  markers_look_alike: () => "",
+  edge_marker_looks_like_marker: () => "",
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor_description"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background_description"],
   teleport_connector_low_contrast_corridor: m["image_export.warning.teleport_connector_low_contrast_corridor_description"],
@@ -171,11 +177,28 @@ function formatHex(color: number): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, "0").toUpperCase()}`;
 }
 
+const MARKER_KIND_NAMES: Record<MarkerLookKind, () => string> = {
+  edge_marker: m["image_export.warning.marker_kind_edge_marker"],
+  start: m["image_export.warning.marker_kind_start"],
+  finish: m["image_export.warning.marker_kind_finish"],
+  teleport: m["image_export.warning.marker_kind_teleport"],
+  two_way_passage: m["image_export.warning.marker_kind_two_way_passage"],
+  one_way_passage: m["image_export.warning.marker_kind_one_way_passage"],
+  elevator: m["image_export.warning.marker_kind_elevator"],
+};
+
 export function resolveExportWarningDescription(
   id: ExportWarningId,
   colorFields?: [ColorFieldKey, ColorFieldKey],
   colorValues?: [number, number],
+  markerPairs?: [MarkerLookKind, MarkerLookKind][],
 ): string {
+  if (id === "markers_look_alike" || id === "edge_marker_looks_like_marker") {
+    const pairs = (markerPairs ?? [])
+      .map(([first, second]) => m["image_export.warning.marker_pair"]({ first: MARKER_KIND_NAMES[first](), second: MARKER_KIND_NAMES[second]() }))
+      .join("; ");
+    return m["image_export.warning.markers_look_alike_description"]({ pairs });
+  }
   // Color names come from the project-color field registry, so a warning always names the same
   // "Section: Role" label the color picker and settings panels use.
   const foreground = colorFields && resolveColorField(colorFields[0]);

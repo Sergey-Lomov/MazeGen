@@ -193,9 +193,7 @@ export function PngExportSettingsPanel() {
       min={1}
       max={8}
       step={0.1}
-      precise
-      preciseDecimals={2}
-      preciseWidth={58}
+      preciseWidth={48}
       preciseMin={0.11}
       preciseMax={null}
       preciseAriaLabel={m["image_export.format.png.digital.scale"]()}

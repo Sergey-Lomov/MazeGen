@@ -226,7 +226,9 @@ Rows come from two sources, shown as two groups split by a divider:
     meaningful default (`defaultColor` unset).
   - Then `priorityColors` (threaded as `priorityColors?: ProjectColorEntry[]`), in the given
     order — the sibling colors that matter for *that* color decision (e.g. the other marker's
-    fill/border, the floor or corridor color). May be empty.
+    fill/border, the floor or corridor color). May be empty. In Vector by corridors, every
+    text-color association also includes `Background: Fill`, because the text can be read against
+    the export background.
 - **Bottom group** — the color fields of the currently active export profile
   (`selectActiveProfileColors`), i.e. the profile the picker was opened from.
 
@@ -466,19 +468,20 @@ swatches from the base color's OKLCH triple (`colorToOklch`):
   (Hue) and Monochromatic (Lightness) tools, adding Chroma as a third case. A `SelectRow` picks the
   **scale** (Hue / Lightness / Chroma — `color_picker.tools.scale.*`), the other two OKLCH channels
   stay fixed at the base's own values. Two independent rows, labeled "+" / "-", each with its own
-  shared `count` (1-10) and `step` slider (range and format depend on the scale: degrees for Hue,
-  0-50 for Lightness, `0..OKLCH_MAX_CHROMA/2` to 3 decimals for Chroma). Row *N* holds `count`
+  shared `count` (1-10) and `step` slider (range and format depend on the scale: 1-180° for Hue,
+  0-100 for Lightness, `0..OKLCH_MAX_CHROMA` to 3 decimals for Chroma). Row *N* holds `count`
   swatches at `step, 2*step, … count*step` off the base on that row's side of the chosen scale
   (`divergenceOffsets`); the base itself is not a swatch in either row. Hue only gets an auto-fit
   button (`Maximize2` icon, in the step slider's `resetButton` slot) that sets
   `step = min(60, 180 / count)` — the largest step that still fits `count` steps within 180° from
-  the base, capped at the slider's own max (`autoFitHueStep`); Lightness and Chroma have no natural
+  the base, independently capped at 60° (`autoFitHueStep`); Lightness and Chroma have no natural
   full-span target the way Hue's 180°-opposite point does, so they have no auto-fit control.
 - **Range split** ("Range split (OKLCH)" / "Разбиение диапазона (OKLCH)") — generalizes the old
   Tonal ramp (Lightness only). A `SelectRow` picks the **scale**; a `count` slider (3-12, default 7)
   and, for Lightness/Chroma, **min/max sliders** (each with a `RotateCcw`-icon reset-to-auto
   button, `color_picker.tools.reset_auto`) set the split range — defaulting to an auto range per
-  scale (`RANGE_SPLIT_AUTO_MIN`/`MAX`: L 15-95, C 0-`OKLCH_MAX_CHROMA`). Hue has no min/max
+  scale (`RANGE_SPLIT_AUTO_MIN`/`MAX`: L 15-95, C 0-`OKLCH_MAX_CHROMA`). Lightness min/max are
+  bounded to 0-100%; Chroma min/max are bounded to 0-`OKLCH_MAX_CHROMA`. Hue has no min/max
   sliders — its range is always the full 0-360° circle starting at the base hue (wrapping), so the
   base's own hue is implicitly one endpoint. `count` swatches are spaced evenly across
   `[min, max]` inclusive (`rangeSteps`) — the base's own value isn't necessarily one of them.

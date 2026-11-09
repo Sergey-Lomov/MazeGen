@@ -6,6 +6,7 @@ import type { ExportWarning } from "./exportWarnings";
 import { withResolvedEdgeMarkers } from "../../store/edgeMarkerLinks";
 import type { ParamLink } from "../../store/parameterLinks";
 import { selectAmbiguousGlueSections } from "./ambiguousGlueSections";
+import { markerLooksAlike, MARKER_KIND_ORDER, type MarkerLook, type MarkerLookKind } from "./exportMarkerLookAlike";
 
 /// Edge marker warnings (GitHub issue #902, `Specs/export-warnings.md`, "Edge alignment markers"): markers are matched by
 /// colour and shape, so two markers of different keys must not look alike (same shape, close colours), and a marker must stand
@@ -47,12 +48,12 @@ export function frameAround(marker: EdgeMarker, size: number): [number, number][
   return local.map(([x, y]) => markerPoint(marker, x, y * marker.side));
 }
 
-function warningOf(id: ExportWarning["id"], markers: readonly EdgeMarker[], size: number): ExportWarning {
-  return { id, key: id, nodes: [], edges: [], polygons: markers.map((marker) => frameAround(marker, size)) };
+function warningOf(id: ExportWarning["id"], markers: readonly EdgeMarker[], size: number, extra: Partial<ExportWarning> = {}): ExportWarning {
+  return { id, key: id, nodes: [], edges: [], polygons: markers.map((marker) => frameAround(marker, size)), ...extra };
 }
 
 /// The warnings of the active floor's markers; none while they are hidden. `style` carries the links-resolved overrides.
-export function computeEdgeMarkerWarnings(state: EdgeMarkerWarningState, style: FloorEdgeMarkerStyle, background: number): ExportWarning[] {
+export function computeEdgeMarkerWarnings(state: EdgeMarkerWarningState, style: FloorEdgeMarkerStyle, background: number, otherMarkers: readonly MarkerLook[] = []): ExportWarning[] {
   const markers = selectExportEdgeMarkers(state, style);
   if (markers.length === 0) return [];
   const warnings: ExportWarning[] = [];
@@ -70,6 +71,26 @@ export function computeEdgeMarkerWarnings(state: EdgeMarkerWarningState, style: 
   }
   if (alike.size > 0) warnings.push(warningOf("edge_marker_colors_similar", markers.filter((marker) => alike.has(marker.key)), style.size));
 
+  // A mark is a plain filled shape (no border, no inner elements), so it can pass for any other marker of that shape and color.
+  const likeOther = new Map<string, Set<MarkerLook["kind"]>>();
+  const alikeNodes = new Set<number>();
+  for (const key of keys) {
+    const { shape, color } = edgeMarkerLook(style, key);
+    const look: MarkerLook = { kind: "edge_marker", shape, fill: color, border: null, borderWidth: 0, size: style.size, sizeAdaptation: 0, inner: "", nodes: [] };
+    for (const other of otherMarkers) {
+      if (!markerLooksAlike(look, other)) continue;
+      for (const node of other.nodes) alikeNodes.add(node);
+      likeOther.set(key, (likeOther.get(key) ?? new Set()).add(other.kind));
+    }
+  }
+  if (likeOther.size > 0) {
+    const kinds = new Set([...likeOther.values()].flatMap((set) => [...set]));
+    warnings.push(warningOf(
+      "edge_marker_looks_like_marker", markers.filter((marker) => likeOther.has(marker.key)), style.size,
+      { nodes: [...alikeNodes], markerPairs: MARKER_KIND_ORDER.filter((kind) => kinds.has(kind)).map((kind) => ["edge_marker", kind] as [MarkerLookKind, MarkerLookKind]) },
+    ));
+  }
+
   const faint = markers.filter((marker) => hasLowContrast(edgeMarkerLook(style, marker.key).color, background));
   if (faint.length > 0) warnings.push(warningOf("edge_marker_low_contrast_background", faint, style.size));
   return warnings;
@@ -79,8 +100,9 @@ export function computeEdgeMarkerWarnings(state: EdgeMarkerWarningState, style: 
 export function computeEdgeMarkerWarningsOf<P extends string>(
   state: EdgeMarkerWarningState,
   settings: { edgeMarkers: EdgeMarkerStyle; links: ParamLink<P>[]; background: number },
+  otherMarkers: readonly MarkerLook[] = [],
 ): ExportWarning[] {
-  return computeEdgeMarkerWarnings(state, withResolvedEdgeMarkers(settings.edgeMarkers, settings.links as ParamLink<string>[], state.activeFloorId), settings.background);
+  return computeEdgeMarkerWarnings(state, withResolvedEdgeMarkers(settings.edgeMarkers, settings.links as ParamLink<string>[], state.activeFloorId), settings.background, otherMarkers);
 }
 
 /** Emits the warning presentation for reusable ambiguous-glue-section analysis. */

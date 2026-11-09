@@ -364,7 +364,7 @@ export function VectorByCorridorsSettingsPanel() {
             onToggle={toggleSection}
             showTextSection
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, corridor], borderColor: [startFill, startText, finishBorder, finishFill, corridor], textColor: [startFill, startBorder, finishText, corridor] }}
+            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, corridor], borderColor: [startFill, startText, finishBorder, finishFill, corridor], textColor: [startFill, startBorder, finishText, corridor, bg] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fields={{ fillColor: PC.startFill, borderColor: PC.startBorder, textColor: PC.startText }}
             onChange={(patch) => {
@@ -394,7 +394,7 @@ export function VectorByCorridorsSettingsPanel() {
             onToggle={toggleSection}
             showTextSection
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, corridor], borderColor: [finishFill, finishText, startBorder, startFill, corridor], textColor: [finishFill, finishBorder, startText, corridor] }}
+            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, corridor], borderColor: [finishFill, finishText, startBorder, startFill, corridor], textColor: [finishFill, finishBorder, startText, corridor, bg] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fields={{ fillColor: PC.finishFill, borderColor: PC.finishBorder, textColor: PC.finishText }}
             onChange={(patch) => {
@@ -565,7 +565,7 @@ export function VectorByCorridorsSettingsPanel() {
               connectorColorPriority={[PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), ...tpBadges, corridor]}
               floorBadgeFillColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), corridor]}
               floorBadgeBorderColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), corridor]}
-              floorBadgeTextColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), corridor]}
+              floorBadgeTextColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), corridor, bg]}
               edgeColorDefault={D.teleportMarker.fillColor}
               edgeBorderColorDefault={D.teleportMarker.borderColor}
               connectorColorDefault={D.teleportConnectorColor}

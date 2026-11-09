@@ -39,7 +39,10 @@ describe("VertexBasedSettingsPanel", () => {
     render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
 
     const slider = screen.getByText(m["generation.depth_first"]()).closest("div")!.parentElement!.querySelector("input[type=range]") as HTMLInputElement;
-    fireEvent.change(slider, { target: { value: "0.3" } });
+    expect(slider).toHaveAttribute("min", "0");
+    expect(slider).toHaveAttribute("max", "100");
+    expect(slider).toHaveAttribute("step", "0.1");
+    fireEvent.change(slider, { target: { value: "30" } });
 
     expect(setGenerationParam).toHaveBeenCalledWith("depth_first", 0.3);
   });
@@ -52,30 +55,33 @@ describe("VertexBasedSettingsPanel", () => {
     const oneWayHeader = screen.getByText(m["generation.category.one_way"]()).closest("div")!;
     const category = oneWayHeader.parentElement!;
     const slider = category.querySelector("input[type=range]") as HTMLInputElement;
-    fireEvent.change(slider, { target: { value: "0.5" } });
+    fireEvent.change(slider, { target: { value: "50" } });
 
     expect(setElementsParam).toHaveBeenCalledWith("one_way_chance", 0.5);
   });
 
-  it("adds precise density editors to every generation slider", () => {
-    const setElementsParam = vi.fn();
-    useMazeStore.setState({ setElementsParam });
+  it("renders every single-floor chance control on the 0-100% scale", () => {
     render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
 
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(9);
-
-    const densityInput = screen.getByRole("spinbutton", { name: `${m["generation.category.teleport"]()} ${m["generation.teleport_chance_short"]()}` });
-    fireEvent.change(densityInput, { target: { value: "0.0025" } });
-
-    expect(setElementsParam).toHaveBeenCalledWith("teleport_chance", 0.0025);
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders).toHaveLength(9);
+    for (const slider of sliders) {
+      expect(slider).toHaveAttribute("min", "0");
+      expect(slider).toHaveAttribute("max", "100");
+      expect(slider).toHaveAttribute("step", "0.1");
+    }
   });
 
-  it("adds precise density editors for multi-floor controls", () => {
+  it("uses the percentage scale for multi-floor controls", () => {
     useMazeStore.setState({ floors: [{ id: 1, title: "Floor 1" }, { id: 2, title: "Floor 2" }] as never });
     render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
 
-    expect(document.querySelectorAll('input[role="spinbutton"][aria-label]')).toHaveLength(15);
-    expect(screen.getByRole("spinbutton", { name: `${m["generation.category.vertical"]()} ${m["generation.vertical_chance_short"]()}` })).toBeInTheDocument();
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders).toHaveLength(15);
+    for (const slider of sliders) {
+      expect(slider).toHaveAttribute("min", "0");
+      expect(slider).toHaveAttribute("max", "100");
+    }
   });
 
   it("opens a CategoryInfoModal listing the category's params when the info icon is clicked", () => {

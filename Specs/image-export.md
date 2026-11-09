@@ -664,6 +664,11 @@ through every intermediate component. `linkTarget: null` marks a field that isn'
 `ParamDescriptor` registry at all (an enum with no modeled type, a toggle that actually drives a
 multi-value field underneath it, etc.) — linking is impossible for it, not merely unset.
 
+Every `LinkedSliderRow` inherits `SliderRow`'s exact-value editing: its displayed value is clickable,
+shows the `Click for exact input` tooltip and hover affordance, and becomes a compact numeric input
+on click. It preserves the slider's lower bound but has no slider-derived upper bound; the range
+slider remains the convenient coarse control within its configured range.
+
 Terminology: a **driving link** is the link where this field is the *target* (it follows another
 field's value); a **dependent link** is a link where this field is the *source* (another field
 follows it). The icon's core is a chain glyph (`Link`/`Unlink` from lucide-react) plus up to two
