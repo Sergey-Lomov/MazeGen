@@ -211,13 +211,12 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(cellInput).toHaveStyle({ width: "56px", boxSizing: "border-box" });
   });
 
-  it("shows a progress indicator in place of the results until the calculation ends", async () => {
+  it("shows no progress indicator when the calculation ends before the delay", async () => {
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(screen.getByRole("progressbar", { name: "Calculating the field size…" })).toBeInTheDocument();
-    expect(screen.queryByText(/Field size:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(await screen.findByText("Field size: 20 × 28 cells")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });

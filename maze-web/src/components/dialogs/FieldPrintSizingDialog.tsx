@@ -23,6 +23,7 @@ import { CellSizesSection, typeBreakdown } from "./CellSizesSection";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
+import { useDelayedIndicator } from "../useDelayedIndicator";
 import { normalizeNumberCommit } from "../inputNormalization";
 
 interface Props {
@@ -87,27 +88,34 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   useEffect(() => () => applyJob.current?.cancel(new Error("Print sizing dialog closed")), []);
 
   const answer = calculation.status === "done" ? calculation.answer : null;
+  // The progress indicator is delayed and held (GitHub issue #960): until it shows, the results of
+  // the previous calculation stay on screen. Confirming relies on `answer` only, never on them.
+  const showProgress = useDelayedIndicator(calculation.status === "pending");
+  const lastAnswer = useRef<PrintSizingAnswer | null>(null);
+  if (answer) lastAnswer.current = answer;
+  const shownAnswer = answer ?? lastAnswer.current;
   const result = answer?.result ?? null;
+  const shownResult = shownAnswer?.result ?? null;
   const floorSummaries = useMemo(
     () => floors.map((floor, index) => ({ floor, index })).reverse().map(({ floor, index }) => ({
       id: floor.id,
       title: `${index + 1}: ${floor.title}`,
-      info: floorPrintInfo(floorFields[floor.id], answer?.floors.find((entry) => entry.id === floor.id)),
+      info: floorPrintInfo(floorFields[floor.id], shownAnswer?.floors.find((entry) => entry.id === floor.id)),
     })),
-    [floors, floorFields, answer],
+    [floors, floorFields, shownAnswer],
   );
   // Core counts and measures the cells of all floors together: the count of a type is summed over
   // them, and only numbers come back.
-  const cellTypeSizes = useMemo(() => answer?.measure.types ?? [], [answer]);
-  const floorCellCounts = useMemo(() => new Map((answer?.floors ?? []).map((entry) => [entry.id, entry.cellCount])), [answer]);
+  const cellTypeSizes = useMemo(() => shownAnswer?.measure.types ?? [], [shownAnswer]);
+  const floorCellCounts = useMemo(() => new Map((shownAnswer?.floors ?? []).map((entry) => [entry.id, entry.cellCount])), [shownAnswer]);
   const smallSideTypes = useMemo(() => cellTypeSizes.filter(hasTooSmallSide), [cellTypeSizes]);
   const hasInvalidTargetFloor = hasMultipleFloors
     && applyToAllStandardFloors
     && floorSummaries.some(({ info }) => !info.isValid);
   const canConfirm = result !== null
     && !hasInvalidTargetFloor;
-  const searchLimit = answer
-    ? [result, ...answer.floors.map((entry) => entry.result)].reduce<number | null>((found, entry) => found ?? entry?.limit ?? null, null)
+  const searchLimit = shownAnswer
+    ? [shownResult, ...shownAnswer.floors.map((entry) => entry.result)].reduce<number | null>((found, entry) => found ?? entry?.limit ?? null, null)
     : null;
 
   /** Commits the typed cell size as leaving the field does: an unreadable value goes back to the
@@ -200,13 +208,13 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           </Stack>
         )}
 
-        {calculation.status === "pending" ? (<>
+        {showProgress ? (<>
           <div style={styles.divider} />
           <CalculationProgress />
         </>) : calculation.status === "failed" ? (<>
           <div style={styles.divider} />
           <span style={styles.error}>{m["field.print_sizing.failed"]({ reason: calculation.message })}</span>
-        </>) : (<>
+        </>) : shownAnswer === null ? null : (<>
         <CellSizesSection sizes={cellTypeSizes} tessellationKind={config.tessellation.kind} />
 
         <div style={styles.divider} />
@@ -227,18 +235,18 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
               <div style={styles.floorTotal}>{totalText(
                 "field.print_sizing.floor_total", "field.print_sizing.floor_total_types", formatCellCount(sumOf(floorCellCounts)), cellTypeSizes,
               )}</div>
-              {(!result || hasInvalidTargetFloor) && (
+              {answer && (!shownResult || hasInvalidTargetFloor) && (
                 <span style={styles.error}>{failureText(input)}</span>
               )}
             </Stack>
-          ) : result ? (
+          ) : shownResult ? (
             <Stack gap="elementsGap">
-              <span style={typography.body}>{m["field.print_sizing.result"]({ description: configSizeDescription(result.config) })}</span>
+              <span style={typography.body}>{m["field.print_sizing.result"]({ description: configSizeDescription(shownResult.config) })}</span>
               <span style={typography.body}>{totalText(
                 "field.print_sizing.result_cell_count", "field.print_sizing.result_cell_count_types", String(sumOf(floorCellCounts)), cellTypeSizes,
               )}</span>
             </Stack>
-          ) : (
+          ) : answer && (
             <span style={styles.error}>{failureText(input)}</span>
           )}
         </div>

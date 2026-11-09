@@ -51,12 +51,24 @@ beforeEach(() => {
 });
 
 describe("FieldPrintSizingDialog worker calculation", () => {
-  it("opens at once with a progress indicator and fills in when the first calculation ends", async () => {
+  it("shows a progress indicator only after the delay and holds it, then fills in", async () => {
     renderDialog();
 
     expect(started).toHaveLength(1);
-    expect(screen.getByRole("progressbar", { name: m["field.print_sizing.calculating"]() })).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: m["common.confirm"]() })).toBeDisabled();
+    expect(await screen.findByRole("progressbar", { name: m["field.print_sizing.calculating"]() })).toBeInTheDocument();
+
+    await act(async () => started[0].resolve());
+
+    // Held for its minimum duration, so still there right after the answer.
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), { timeout: 2000 });
+    expect(screen.getByRole("button", { name: m["common.confirm"]() })).not.toBeDisabled();
+  });
+
+  it("shows no progress indicator for a calculation that ends at once", async () => {
+    renderDialog();
 
     await act(async () => started[0].resolve());
 
@@ -82,11 +94,27 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     fireEvent.blur(cellSizeInput());
     await waitFor(() => expect(started).toHaveLength(2));
 
+    await screen.findByRole("progressbar");
     await act(async () => started[0].resolve());
-    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m["common.confirm"]() })).toBeDisabled();
 
     await act(async () => started[1].resolve());
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), { timeout: 2000 });
+    expect(screen.getByRole("button", { name: m["common.confirm"]() })).not.toBeDisabled();
+  });
+
+  it("keeps the previous results on screen, unconfirmable, while a new calculation is quick", async () => {
+    renderDialog();
+    await act(async () => started[0].resolve());
+    expect(screen.getByText(/Field size:/)).toBeInTheDocument();
+
+    fireEvent.change(cellSizeInput(), { target: { value: "12" } });
+    fireEvent.blur(cellSizeInput());
+    await waitFor(() => expect(started).toHaveLength(2));
+
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByText(/Field size:/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m["common.confirm"]() })).toBeDisabled();
   });
 
   it("cancels the running calculation when the dialog closes", () => {
