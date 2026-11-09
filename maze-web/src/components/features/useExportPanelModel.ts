@@ -21,19 +21,15 @@ import { useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 
 type FloorEntry = ReturnType<typeof useMazeStore.getState>["floors"][number];
 
-/** Store reads and derived data shared by the "Vector by walls" and "Vector by corridors" settings
- *  panels: effective endpoints, export warnings, text fit, color visibility, section gates and the
- *  active parameter-link paths. Every derivation reads the unscoped project nodes/edges, so a floor
- *  switch never changes which sections are shown. */
-export function useExportPanelModel<S extends ExportSettings, P extends string>(
-  settings: S,
-  registry: Record<P, ParamDescriptor>,
-  mode: LinkMode,
-  computeWarnings: (
-    nodes: NodeDto[], edges: EdgeDto[], floors: FloorEntry[], cfg: FieldConfig,
-    settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
-  ) => ExportWarning[],
-) {
+type ComputeWarnings<S extends ExportSettings> = (
+  nodes: NodeDto[], edges: EdgeDto[], floors: FloorEntry[], cfg: FieldConfig,
+  settings: S, start: number | null, finish: number | null, cutFloorIds: ReadonlySet<string>, hasGlues: boolean,
+) => ExportWarning[];
+
+/** The mode's own warnings of the whole project (`computeWarnings`) and the effective endpoints they were judged with.
+ *  Split out so a panel that needs a narrower set (the teleport connector editor, GitHub issue #952) doesn't derive the topology
+ *  warnings, text fit, teleport groups and color visibility too. */
+export function useModeWarnings<S extends ExportSettings>(settings: S, computeWarnings: ComputeWarnings<S>) {
   const rawNodes = useMazeStore((s) => s.nodes);
   const rawEdges = useMazeStore((s) => s.edges);
   const rawStart = useMazeStore((s) => s.start);
@@ -42,8 +38,6 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeFieldConfig);
   const floors = useMazeStore((s) => s.floors);
-  const activeFloorId = useMazeStore((s) => s.activeFloorId);
-
   // Effective start/finish: `postEditMeta`'s confirmed endpoints once post-edit has confirmed, else
   // the as-generated `start`/`finish` (GitHub issue #303).
   const rawEffectiveEndpoints = useMemo(
@@ -60,11 +54,23 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
   );
   // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
   const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
-  const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const modeWarnings = useMemo(
     () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues],
   );
+  return { modeWarnings, rawEffectiveEndpoints };
+}
+
+/** `useModeWarnings` plus the topology warnings: every export warning of the project. */
+export function useExportWarnings<S extends ExportSettings>(settings: S, computeWarnings: ComputeWarnings<S>) {
+  const { modeWarnings, rawEffectiveEndpoints } = useModeWarnings(settings, computeWarnings);
+  const rawNodes = useMazeStore((s) => s.nodes);
+  const rawEdges = useMazeStore((s) => s.edges);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  const floorTopology = useMazeStore((s) => s.floorTopology);
+  const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   // Warnings about the glue tabs (GitHub issue #913) and edge alignment marks (GitHub issue #902) need the tabs and marks themselves,
   // so they are computed apart from the mode's list.
   const floorCreases = useMazeStore((s) => s.floorCreases);
@@ -77,6 +83,29 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings],
   );
   const exportWarnings = useMemo(() => [...modeWarnings, ...topologyWarnings], [modeWarnings, topologyWarnings]);
+  return { exportWarnings, rawEffectiveEndpoints };
+}
+
+/** Store reads and derived data shared by the "Vector by walls" and "Vector by corridors" settings
+ *  panels: effective endpoints, export warnings, text fit, color visibility, section gates and the
+ *  active parameter-link paths. Every derivation reads the unscoped project nodes/edges, so a floor
+ *  switch never changes which sections are shown. */
+export function useExportPanelModel<S extends ExportSettings, P extends string>(
+  settings: S,
+  registry: Record<P, ParamDescriptor>,
+  mode: LinkMode,
+  computeWarnings: ComputeWarnings<S>,
+) {
+  const rawNodes = useMazeStore((s) => s.nodes);
+  const rawEdges = useMazeStore((s) => s.edges);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+
+  const { exportWarnings, rawEffectiveEndpoints } = useExportWarnings(settings, computeWarnings);
+  const floorTopology = useMazeStore((s) => s.floorTopology);
+  // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
+  const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
   // size control, so `fitAll` only covers the shared style label controls.

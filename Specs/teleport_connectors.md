@@ -93,6 +93,14 @@ point to snap it to a field anchor. In Cubic curve mode, holding Alt while movin
 it independently, while holding Shift adjusts its paired handles symmetrically. The left- and
 right-button hints use LMB/RMB keycaps.
 
+The editor panel also shows the connector geometry warnings (GitHub issue #952) as a collapsible "Warnings (N)"
+section above the connector list, always visible even at N = 0 and expanded by default; its expanded state is persisted in
+`vectorByWallsSectionsExpanded` under `teleportConnectorEditorWarnings`. The entries are the same `ExportWarningBubble`s
+as in the export settings panel, produced by `computeTeleportConnectorWarningsAcrossFloors`: it runs only the
+`teleportConnectors` warning group (through the shared per-group cache) and `useModeWarnings` feeds it, so the
+list is recomputed from the current settings and updates as paths change. Hovering one
+highlights the offending parts. The warnings cover all connectors of the project.
+
 ## Bend axes
 
 **Brick exception (GitHub issue #940).** Unlike the face-normal rule below, brick uses the three

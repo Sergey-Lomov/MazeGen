@@ -8,13 +8,21 @@ import { Tooltip } from "../Tooltip";
 import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 import type { ShortcutKey } from "../ToolIconButton";
 import { sharedStyles } from "../../styles/shared";
-import { radius, spacing, typography, ui } from "../../styles/theme";
+import { indent, radius, spacing, typography, ui } from "../../styles/theme";
+import { SectionHeader } from "../SectionHeader";
+import { ExportWarningBubble } from "./ExportWarningBubble";
+import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
+import { useModeWarnings } from "./useExportPanelModel";
+import { computeTeleportConnectorWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
+
+const WARNINGS_SECTION_ID = "teleportConnectorEditorWarnings";
 
 /** The manual-connector inventory deliberately reads the common walls copy: writes mirror it to
  * both export modes, so a path appears once regardless of the active renderer. */
 export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose: () => void; onFocusPath: (points: readonly [number, number][]) => void }) {
-  const paths = useMazeStore((s) => s.vectorByWallsSettings.manualTeleportConnectorPaths ?? {});
+  const settings = useMazeStore((s) => s.vectorByWallsSettings);
+  const paths = settings.manualTeleportConnectorPaths ?? {};
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
   const setPaths = useMazeStore((s) => s.setManualTeleportConnectorPaths);
@@ -22,6 +30,9 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const setHovered = useMazeStore((s) => s.setHoveredTeleportNodeIds);
+  const { modeWarnings: warnings } = useModeWarnings(settings, computeTeleportConnectorWarningsAcrossFloors);
+  const warningsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded[WARNINGS_SECTION_ID] ?? true);
+  const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
   // Object insertion order is the authored order: overwriting an existing path keeps its place,
   // while materialising a newly manual connector appends it. Do not sort by pair key.
   const rows = Object.keys(paths).map((key) => {
@@ -53,6 +64,15 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   };
   return (
     <SidePanel title={m["image_export.teleport_connector_editor.title"]()} stackKey="image-export-teleport-connectors" onClose={() => { setHovered(null); onClose(); }}>
+      <SectionHeader
+        label={<span className={warnings.length > 0 ? "problem-section-attention" : undefined}>{resolveExportWarningsSectionTitle(warnings.length)}</span>}
+        expanded={warningsExpanded}
+        onToggle={() => setSectionExpanded(WARNINGS_SECTION_ID, !warningsExpanded)}
+      />
+      {warningsExpanded && warnings.length > 0 && (
+        <div style={styles.warnings}>{warnings.map((warning) => <ExportWarningBubble key={warning.key} warning={warning} />)}</div>
+      )}
+      <div style={styles.divider} />
       {rows.length === 0 ? <div style={styles.empty}>{m["image_export.teleport_connector_editor.empty"]()}</div> : (
         <div style={styles.list}>{rows.map((row) => (
           <div key={row.key} style={hoveredKey === row.key ? { ...styles.row, background: ui.bg.hover } : styles.row} onMouseEnter={() => { setHoveredKey(row.key); setHovered(row.ids); }} onMouseLeave={() => { setHoveredKey(null); setHovered(null); }} onClick={() => onFocusPath(row.points)}>
@@ -108,5 +128,7 @@ const styles: Record<string, React.CSSProperties> = {
   bubble: { ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", border: `1px solid ${ui.debug.refHighlight.text}`, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`, background: ui.debug.refHighlight.bg, color: ui.debug.refHighlight.text, whiteSpace: "nowrap" },
   arrow: { ...typography.caption, color: ui.text.secondary },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
+  warnings: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
+  divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   instructions: { marginTop: spacing.groupGap * 3, padding: `0 ${spacing.groupGap}px ${spacing.groupGap}px`, display: "flex", flexDirection: "column", gap: spacing.groupGap },
 };
