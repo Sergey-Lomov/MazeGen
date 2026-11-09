@@ -20,6 +20,8 @@ export interface PrintFieldSizingResult {
   fieldHeightMm: number;
   usableWidthMm: number;
   usableHeightMm: number;
+  /** The search cap the size sits on, when the sheet may hold a larger field than core searches. */
+  limit: number | null;
 }
 
 export function resolvePrintPaperSizeMm(input: Pick<PrintFieldSizingInput, "paperSize" | "customWidthMm" | "customHeightMm" | "orientation">): { widthMm: number; heightMm: number } {
@@ -98,6 +100,7 @@ function computePrintFieldConfig(
     fieldHeightMm: sized.height * cellSideMm,
     usableWidthMm,
     usableHeightMm,
+    limit: sized.limit ?? null,
   };
 }
 

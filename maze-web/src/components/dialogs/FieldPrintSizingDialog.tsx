@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
@@ -11,10 +11,13 @@ import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { calculatePrintFieldConfig, isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { printSizingFailure, type PrintSizingAnswer, type PrintSizingFloor, type PrintSizingFloorAnswer, type PrintSizingRequest } from "../../pixi/printSizingJob";
+import { startPrintSizing } from "../../wasm/workerClients";
+import type { WorkerJob } from "../../wasm/workerPool";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
-import { cellSourceOf, hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, measurePrintCells, type CellSource, type PrintCellTypeSize } from "../../pixi/printCellSizes";
+import { hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
 import { cellTypeLabel } from "../../i18n/cellTypeLabel";
 import { CellSizesSection, typeBreakdown } from "./CellSizesSection";
 import * as m from "~/paraglide/messages";
@@ -56,37 +59,56 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);
 
-  const result = useMemo(
-    () => calculatePrintFieldConfig(config, {
-      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: cellSizeMm, marginHMm, marginVMm,
-    }),
-    [config, paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
+  const input = useMemo<PrintFieldSizingInput>(
+    () => ({ paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm }),
+    [paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
   );
+  const request = useMemo<PrintSizingRequest>(
+    () => ({ config, input, floors: floors.map((floor) => printSizingFloorOf(floor.id, floorFields[floor.id])) }),
+    [config, input, floors, floorFields],
+  );
+  // The calculation runs in a worker (GitHub issue #949): any change of the request cancels the
+  // running one and starts a new one, and closing the dialog cancels the running one.
+  const [calculation, setCalculation] = useState<Calculation>({ status: "pending" });
+  const applyJob = useRef<WorkerJob<PrintSizingAnswer> | null>(null);
+  useEffect(() => {
+    let current = true;
+    setCalculation({ status: "pending" });
+    const job = startPrintSizing(request);
+    job.promise.then(
+      (answer) => { if (current) setCalculation({ status: "done", answer }); },
+      (error) => { if (current) setCalculation({ status: "failed", message: error instanceof Error ? error.message : String(error) }); },
+    );
+    return () => {
+      current = false;
+      job.cancel(new Error("Print sizing superseded"));
+    };
+  }, [request]);
+  useEffect(() => () => applyJob.current?.cancel(new Error("Print sizing dialog closed")), []);
+
+  const answer = calculation.status === "done" ? calculation.answer : null;
+  const result = answer?.result ?? null;
   const floorSummaries = useMemo(
     () => floors.map((floor, index) => ({ floor, index })).reverse().map(({ floor, index }) => ({
       id: floor.id,
       title: `${index + 1}: ${floor.title}`,
-      info: floorPrintInfo(floorFields[floor.id], {
-        paperSize, customWidthMm, customHeightMm, orientation,
-        cellSizeMm: cellSizeMm, marginHMm, marginVMm,
-      }),
+      info: floorPrintInfo(floorFields[floor.id], answer?.floors.find((entry) => entry.id === floor.id)),
     })),
-    [floors, floorFields, paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm],
+    [floors, floorFields, answer],
   );
   // Core counts and measures the cells of all floors together: the count of a type is summed over
   // them, and only numbers come back.
-  const measure = useMemo(
-    () => measurePrintCells(config, floorSummaries.flatMap(({ info }) => info.sources), cellSizeMm),
-    [config, floorSummaries, cellSizeMm],
-  );
-  const cellTypeSizes = measure.types;
-  const floorCellCounts = useMemo(() => floorCountsOf(floorSummaries, measure.sourceCounts), [floorSummaries, measure]);
+  const cellTypeSizes = useMemo(() => answer?.measure.types ?? [], [answer]);
+  const floorCellCounts = useMemo(() => new Map((answer?.floors ?? []).map((entry) => [entry.id, entry.cellCount])), [answer]);
   const smallSideTypes = useMemo(() => cellTypeSizes.filter(hasTooSmallSide), [cellTypeSizes]);
   const hasInvalidTargetFloor = hasMultipleFloors
     && applyToAllStandardFloors
     && floorSummaries.some(({ info }) => !info.isValid);
   const canConfirm = result !== null
     && !hasInvalidTargetFloor;
+  const searchLimit = answer
+    ? [result, ...answer.floors.map((entry) => entry.result)].reduce<number | null>((found, entry) => found ?? entry?.limit ?? null, null)
+    : null;
 
   /** Commits the typed cell size as leaving the field does: an unreadable value goes back to the
    * last committed one, a value under the minimum is raised to it. */
@@ -97,38 +119,42 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     return committed;
   }
 
-  function handleApply() {
+  async function handleApply() {
+    // A second confirmation while the typed size is being calculated would apply twice.
+    if (applyJob.current) return;
     // Confirming (Enter included) takes a value still being typed as if the field was left.
     const latestCellSizeMm = cellSizeDraft.current === null
       ? cellSizeMm
       : parseNumber(commitCellSize(cellSizeDraft.current));
-    const latestResult = calculatePrintFieldConfig(config, {
-      paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm,
-    });
-    if (!latestResult) return;
+    const latestInput: PrintFieldSizingInput = { ...input, cellSizeMm: latestCellSizeMm };
+    let latest = answer;
+    if (!latest || !Object.is(latestCellSizeMm, cellSizeMm)) {
+      // The typed size is not calculated yet: calculate it for this one confirmation.
+      const job = startPrintSizing({ ...request, input: latestInput });
+      applyJob.current = job;
+      try {
+        latest = await job.promise;
+      } catch {
+        return;
+      } finally {
+        applyJob.current = null;
+      }
+    }
+    if (!latest.result) return;
     const configsByFloor: Record<string, FieldConfig> = {};
-    for (const floor of floors) {
+    for (const floor of latest.floors) {
       if (!applyToAllStandardFloors && floor.id !== activeFloorId) continue;
-      const field = floorFields[floor.id];
-      if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.fieldConfig)) continue;
-      const floorResult = calculatePrintFieldConfig(field.fieldConfig, {
-        paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm,
-      });
-      if (!floorResult || !isPredefinedFieldConfig(floorResult.config)) return;
-      configsByFloor[floor.id] = floorResult.config;
+      if (!floor.standard) continue;
+      if (!floor.result || !isPredefinedFieldConfig(floor.result.config)) return;
+      configsByFloor[floor.id] = floor.result.config;
     }
     if (!configsByFloor[activeFloorId]) return;
-    onApply(
-      latestResult.config,
-      { paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: latestCellSizeMm, marginHMm, marginVMm },
-      applyToAllStandardFloors,
-      configsByFloor,
-    );
+    onApply(latest.result.config, latestInput, applyToAllStandardFloors, configsByFloor);
     onClose();
   }
 
   return (
-    <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose} onConfirm={canConfirm ? handleApply : undefined}>
+    <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose} onConfirm={canConfirm ? () => void handleApply() : undefined}>
       <Stack gap="itemGap">
         <PaperLayoutFields
           paperSize={paperSize}
@@ -174,6 +200,13 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           </Stack>
         )}
 
+        {calculation.status === "pending" ? (<>
+          <div style={styles.divider} />
+          <CalculationProgress />
+        </>) : calculation.status === "failed" ? (<>
+          <div style={styles.divider} />
+          <span style={styles.error}>{m["field.print_sizing.failed"]({ reason: calculation.message })}</span>
+        </>) : (<>
         <CellSizesSection sizes={cellTypeSizes} tessellationKind={config.tessellation.kind} />
 
         <div style={styles.divider} />
@@ -195,7 +228,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                 "field.print_sizing.floor_total", "field.print_sizing.floor_total_types", formatCellCount(sumOf(floorCellCounts)), cellTypeSizes,
               )}</div>
               {(!result || hasInvalidTargetFloor) && (
-                <span style={styles.error}>{m["field.print_sizing.invalid"]()}</span>
+                <span style={styles.error}>{failureText(input)}</span>
               )}
             </Stack>
           ) : result ? (
@@ -206,9 +239,14 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
               )}</span>
             </Stack>
           ) : (
-            <span style={styles.error}>{m["field.print_sizing.invalid"]()}</span>
+            <span style={styles.error}>{failureText(input)}</span>
           )}
         </div>
+        {searchLimit !== null && (
+          <div style={styles.warnings}>
+            <WarningBubble message={m["field.print_sizing.limit_reached"]({ limit: String(searchLimit) })} />
+          </div>
+        )}
         {smallSideTypes.length > 0 && (
           <div style={styles.warnings}>
             <WarningBubble
@@ -221,11 +259,12 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
             />
           </div>
         )}
+        </>)}
       </Stack>
 
       <div style={styles.footer}>
         <Button variant="secondary" dialogAction layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="primary" dialogAction layoutStyle={styles.footerButton} disabled={!canConfirm} onClick={handleApply}>
+        <Button variant="primary" dialogAction layoutStyle={styles.footerButton} disabled={!canConfirm} onClick={() => void handleApply()}>
           {m["common.confirm"]()}
         </Button>
       </div>
@@ -262,35 +301,53 @@ export function configSizeDescription(config: FieldConfig): string {
 interface FloorPrintInfo {
   shape: string;
   size: string;
-  /** What core measures for the cell sizes: the floor preset, or the cells of a custom field. */
-  sources: CellSource[];
   isValid: boolean;
 }
 
-function floorPrintInfo(field: FloorFieldConfig | undefined, input: PrintFieldSizingInput): FloorPrintInfo {
-  if (!field || field.fieldEditMode === "custom") {
-    return {
-      shape: m["field.print_sizing.floor_non_standard"](),
-      size: "—",
-      sources: field ? [{ cells: Array.from(field.fieldPoints, decodePoint) }] : [],
-      isValid: true,
-    };
-  }
+type Calculation =
+  | { status: "pending" }
+  | { status: "done"; answer: PrintSizingAnswer }
+  | { status: "failed"; message: string };
 
-  const config = field.fieldConfig;
-  if (!isPredefinedFieldConfig(config)) {
-    return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", sources: [{ cells: Array.from(field.fieldPoints, decodePoint) }], isValid: true };
+function printSizingFloorOf(id: string, field: FloorFieldConfig | undefined): PrintSizingFloor {
+  if (field && field.fieldEditMode !== "custom" && isPredefinedFieldConfig(field.fieldConfig)) {
+    return { id, config: field.fieldConfig };
   }
-  const result = calculatePrintFieldConfig(config, input);
+  return { id, cells: field ? Array.from(field.fieldPoints, decodePoint) : [] };
+}
+
+/** `answer` is missing while the calculation is pending. */
+function floorPrintInfo(field: FloorFieldConfig | undefined, answer: PrintSizingFloorAnswer | undefined): FloorPrintInfo {
+  if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.fieldConfig)) {
+    return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", isValid: true };
+  }
+  const result = answer?.result;
   if (!result || !isPredefinedFieldConfig(result.config)) {
-    return { shape: printFieldShapeLabel(config), size: "—", sources: [], isValid: false };
+    return { shape: printFieldShapeLabel(field.fieldConfig), size: "—", isValid: false };
   }
-  return {
-    shape: printFieldShapeLabel(result.config),
-    size: printFieldSizeLabel(result.config),
-    sources: [cellSourceOf(result.config)],
-    isValid: true,
-  };
+  return { shape: printFieldShapeLabel(result.config), size: printFieldSizeLabel(result.config), isValid: true };
+}
+
+/** Why no size was found, in words. */
+function failureText(input: PrintFieldSizingInput): string {
+  switch (printSizingFailure(input)) {
+    case "invalid_input": return m["field.print_sizing.invalid_input"]();
+    case "margins": return m["field.print_sizing.margins_too_large"]();
+    case "cell_too_large": return m["field.print_sizing.invalid"]();
+  }
+}
+
+/** Stands in for the results while the worker calculates. */
+function CalculationProgress() {
+  const label = m["field.print_sizing.calculating"]();
+  return (
+    <div style={styles.progress} aria-live="polite" aria-busy="true">
+      <span role="status" style={typography.body}>{label}</span>
+      <div role="progressbar" aria-label={label} style={styles.progressTrack}>
+        <div className="loading-progress-indeterminate" style={styles.progressBar} />
+      </div>
+    </div>
+  );
 }
 
 /** A cell total with the per-type breakdown appended when the tessellation has several types in the field. */
@@ -302,18 +359,6 @@ function totalText(
 ): string {
   const types = typeBreakdown(sizes);
   return types ? m[typesKey]({ count, types }) : m[plainKey]({ count });
-}
-
-/** The cell count of each floor, by floor id; `sourceCounts` follows the order of the floors' sources. */
-function floorCountsOf(summaries: { id: string; info: FloorPrintInfo }[], sourceCounts: number[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  let offset = 0;
-  for (const { id, info } of summaries) {
-    const end = offset + info.sources.length;
-    counts.set(id, sourceCounts.slice(offset, end).reduce((sum, count) => sum + count, 0));
-    offset = end;
-  }
-  return counts;
 }
 
 function sumOf(counts: Map<string, number>): number {
@@ -366,6 +411,9 @@ const styles: Record<string, React.CSSProperties> = {
   result: { padding: 0 },
   error: { ...typography.body, color: ui.text.error },
   sectionLabel: typography.body,
+  progress: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  progressTrack: { width: "100%", height: 4, overflow: "hidden", borderRadius: 2, background: ui.bg.input },
+  progressBar: { width: "100%", height: "100%", borderRadius: "inherit", background: ui.accent.base, transformOrigin: "left", transform: "scaleX(0.3)" },
   divider: { borderTop: `1px solid ${ui.border.default}` },
   floorTable: {
     display: "grid",

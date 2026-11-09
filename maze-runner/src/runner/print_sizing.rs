@@ -53,6 +53,9 @@ pub struct PrintSizingResult {
     /// Display-space size of the result in cell sides.
     pub width: f64,
     pub height: f64,
+    /// The search cap the answer sits on (`MAX_RECT_DIMENSION` or `MAX_RADIUS`), when the sheet may
+    /// hold a larger field than the search covers.
+    pub limit: Option<u32>,
 }
 
 /// `None` when nothing fits the sheet.
@@ -142,6 +145,7 @@ impl<T: Tessellation> Sizer<'_, T> {
         let Some(planned) = self.plan(plane_preset, &plane_params)? else {
             return Ok(None);
         };
+        let limit = self.reached_limit(plane_preset, &planned);
         let sized = if glued {
             let gluing = with(
                 &request.params,
@@ -165,7 +169,24 @@ impl<T: Tessellation> Sizer<'_, T> {
             params: sized,
             width: bounds.width,
             height: bounds.height,
+            limit,
         }))
+    }
+
+    /// The search cap a planned size sits on. An axis-aligned rectangle is sized by division and
+    /// has none; a radial size under core's own maximum for the shape is not on the cap either.
+    fn reached_limit(&self, preset: &str, planned: &ShapeParams) -> Option<u32> {
+        match preset {
+            "rect" if self.request.axis_aligned => None,
+            "rect" | "parallelogram" => (get(planned, "cols") >= MAX_RECT_DIMENSION
+                || get(planned, "rows") >= MAX_RECT_DIMENSION)
+                .then_some(MAX_RECT_DIMENSION),
+            "box" => ["width", "height", "depth"]
+                .into_iter()
+                .any(|name| get(planned, name) >= MAX_RADIUS)
+                .then_some(MAX_RADIUS),
+            _ => (get(planned, size_param(preset)) >= MAX_RADIUS).then_some(MAX_RADIUS),
+        }
     }
 
     /// The strategy of the preset's family.
