@@ -238,6 +238,13 @@ describe("VectorByCorridorsSettingsPanel", () => {
   });
 
   it("renders the waypoints section's Start and Finish sub-groups when expanded", () => {
+    useMazeStore.setState((state) => ({
+      vectorByCorridorsSettings: {
+        ...state.vectorByCorridorsSettings,
+        startMarker: { ...state.vectorByCorridorsSettings.startMarker, markerEnabled: true },
+        finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, markerEnabled: true },
+      },
+    }));
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.markers_finish"]())).toBeInTheDocument();
@@ -311,7 +318,14 @@ describe("VectorByCorridorsSettingsPanel", () => {
           markers_start_marker: true, markers_finish_marker: true,
         },
       });
-      render(<VectorByCorridorsSettingsPanel />);
+      useMazeStore.setState((state) => ({
+        vectorByCorridorsSettings: {
+          ...state.vectorByCorridorsSettings,
+          startMarker: { ...state.vectorByCorridorsSettings.startMarker, markerEnabled: true },
+          finishMarker: { ...state.vectorByCorridorsSettings.finishMarker, markerEnabled: true },
+        },
+      }));
+render(<VectorByCorridorsSettingsPanel />);
       expandTeleportSubsections();
       // The Teleports section's own "Size" label — the last of the matching labels in document
       // order, same disambiguation convention as `VectorByWallsSettingsPanel`'s own teleport-size test.

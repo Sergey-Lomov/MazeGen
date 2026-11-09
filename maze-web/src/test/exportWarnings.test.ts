@@ -665,6 +665,14 @@ describe("computeVectorByCorridorsWarnings", () => {
       expect(warning?.edges).toEqual([]);
     });
 
+    it("does not flag a hidden start marker, which has no extension (GitHub issue #963)", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
+      const settings = baseCorridorsSettings({ markerWidenPadding: 34, startMarker: { ...defaultMarker, markerEnabled: false } });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(1, 2), e(2, 1)], squareCfg, settings, 0, null);
+
+      expect(warnings.some((item) => item.id === "marker_extension_hits_corridor")).toBe(false);
+    });
+
     it("uses the rendered contour instead of the requested corridor thickness", () => {
       const nodes = [n(0, 0, 0), n(1, 0, 1), n(2, 1, 1)];
       const settings = baseCorridorsSettings({ thickness: 10, markerWidenPadding: 28 });
@@ -1073,5 +1081,60 @@ describe("teleport_connector_covers_one_way (GitHub issue #862)", () => {
     const matches = warnings.filter(covering("teleport_connector_covers_one_way"));
     expect(matches).toHaveLength(1);
     expect(matches[0].edges).toEqual([[1, 2]]);
+  });
+});
+
+describe("start_invisible / finish_invisible (GitHub issue #963)", () => {
+  const nodes = [n(0, 0, 0), n(1, 5, 5)];
+  const shown = baseSettings().startMarker;
+  const hidden = { ...shown, markerEnabled: false, textEnabled: false, text: "S" };
+  const ids = (settings: VectorByWallsSettings) => computeVectorByWallsWarnings(nodes, [e(0, 1)], squareCfg, settings, 0, 1)
+    .filter((w) => w.id === "start_invisible" || w.id === "finish_invisible");
+
+  it("flags a start with neither marker nor caption, and only the start", () => {
+    const warnings = ids(baseSettings({ startMarker: hidden }));
+    expect(warnings.map((w) => w.id)).toEqual(["start_invisible"]);
+    expect(warnings[0].nodes).toEqual([0]);
+  });
+
+  it("flags a finish with no marker size and no caption", () => {
+    const warnings = ids(baseSettings({ finishMarker: { ...shown, size: 0, borderWidth: 0, textEnabled: false } }));
+    expect(warnings.map((w) => w.id)).toEqual(["finish_invisible"]);
+  });
+
+  it("does not flag while the caption or the marker is visible", () => {
+    expect(ids(baseSettings({ startMarker: { ...hidden, textEnabled: true } }))).toHaveLength(0);
+    expect(ids(baseSettings({ startMarker: { ...hidden, markerEnabled: true, size: 10 } }))).toHaveLength(0);
+  });
+
+  it("does not flag an empty caption as visible", () => {
+    expect(ids(baseSettings({ startMarker: { ...hidden, textEnabled: true, text: " " } })).map((w) => w.id)).toEqual(["start_invisible"]);
+  });
+});
+
+describe("hidden start/finish marker colors (GitHub issue #963)", () => {
+  const marker = { ...baseSettings().startMarker, fillColor: 0xffffff, borderColor: 0xffffff, borderWidth: 0, textColor: 0xffffff, text: "S", textEnabled: true };
+  const run = (startMarker: MarkerSettings) => computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({
+    background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff, markerLayout: "auto", markerScale: 1, startMarker,
+  }), 0, null);
+
+  it("skips the marker's own contrast warnings while the marker is off", () => {
+    expect(run(marker).some((w) => w.id.startsWith("marker_fill_low_contrast"))).toBe(true);
+    expect(run({ ...marker, markerEnabled: false }).some((w) => w.id.startsWith("marker_fill_low_contrast") || w.id.startsWith("marker_border_low_contrast"))).toBe(false);
+  });
+
+  it("checks the caption against the surface instead of the hidden fill", () => {
+    const warning = run({ ...marker, markerEnabled: false, fillColor: 0x000000, textColor: 0xffffff }).find((w) => w.id === "label_low_contrast");
+    expect(warning?.fields).toEqual(["startText", "tilesFloor"]);
+  });
+});
+
+describe("start marker of size 0 (saved before the toggle, GitHub issue #963)", () => {
+  it("compares the caption with the surface, not with the fill that is not drawn", () => {
+    const marker = { ...baseSettings().startMarker, size: 0, borderWidth: 0, fillColor: 0x545454, borderColor: 0x545454, textColor: 0x545454, text: "S", textEnabled: true };
+    const warnings = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({
+      background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff, markerLayout: "auto", markerScale: 1, startMarker: marker,
+    }), 0, null);
+    expect(warnings.some((w) => w.id === "label_low_contrast")).toBe(false);
   });
 });

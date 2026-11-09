@@ -129,6 +129,8 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
   return {
     ...readMarkerAppearance(obj, fallback),
     sizeAdaptation: optSizeAdaptation(obj, "sizeAdaptation", fallback.sizeAdaptation),
+    // No fallback here: a file without the field predates the toggle, so its marker stays drawn (`undefined`).
+    markerEnabled: obj?.markerEnabled === undefined ? undefined : optBool(obj, "markerEnabled", true),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
     textFontWeight: obj?.textFontWeight === undefined

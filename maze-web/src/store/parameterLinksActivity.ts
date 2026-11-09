@@ -52,8 +52,8 @@ export interface ParamActivitySettings {
   markerIndex?: { enabled: boolean; borderWidthFromMarker?: boolean; borderColorFromMarker?: boolean };
   teleportArrowMode?: string;
   splitSpecialShapes?: boolean;
-  startMarker?: { textEnabled?: boolean };
-  finishMarker?: { textEnabled?: boolean };
+  startMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
+  finishMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
   floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram" };
 }
 

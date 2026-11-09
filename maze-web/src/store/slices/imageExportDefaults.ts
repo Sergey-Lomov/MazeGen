@@ -40,6 +40,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
     ...(text !== undefined
       ? {
           text,
+          markerEnabled: true,
           textEnabled: false,
           textFontWeight: "bold" as const,
           textSize: DEFAULT_MARKER_TEXT_SIZE,
@@ -399,8 +400,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     junctionRadius: 4,
     join: "round",
     renderStyle: "contour",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
+    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.startMarker.size, markerEnabled: false, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
+    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.finishMarker.size, markerEnabled: false, text: "F", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
     markerWidenPadding: 4,
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,

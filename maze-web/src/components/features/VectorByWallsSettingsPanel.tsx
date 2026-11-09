@@ -369,6 +369,7 @@ export function VectorByWallsSettingsPanel() {
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
+            showMarkerToggle
             settings={settings.startMarker}
             priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, floor], borderColor: [startFill, startText, finishBorder, finishFill, floor], textColor: [startFill, startBorder, finishText, floor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
@@ -377,6 +378,7 @@ export function VectorByWallsSettingsPanel() {
               patchMarker("startMarker", patch);
             }}
             linkTargets={{
+              markerEnabled: "startMarker.markerEnabled",
               shape: "startMarker.shape",
               cornerStyle: "startMarker.cornerStyle",
               size: "startMarker.size",
@@ -399,6 +401,7 @@ export function VectorByWallsSettingsPanel() {
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
+            showMarkerToggle
             settings={settings.finishMarker}
             priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, floor], borderColor: [finishFill, finishText, startBorder, startFill, floor], textColor: [finishFill, finishBorder, startText, floor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
@@ -407,6 +410,7 @@ export function VectorByWallsSettingsPanel() {
               patchMarker("finishMarker", patch);
             }}
             linkTargets={{
+              markerEnabled: "finishMarker.markerEnabled",
               shape: "finishMarker.shape",
               cornerStyle: "finishMarker.cornerStyle",
               size: "finishMarker.size",

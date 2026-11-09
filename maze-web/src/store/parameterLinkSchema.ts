@@ -154,16 +154,16 @@ const VW = "image_export.vector_by_walls";
 const PL = "image_export.param_links";
 
 /** The eight fields of a `MarkerSettings` record shown in a "Marker" subsection. */
-function markerAppearance(labels: { cornerStyle: MsgKey; size: MsgKey; sizeAdaptation: MsgKey; borderWidth: MsgKey; gapWidth: MsgKey; shape: MsgKey; fillColor: MsgKey; borderColor: MsgKey }) {
+function markerAppearance(labels: { cornerStyle: MsgKey; size: MsgKey; sizeAdaptation: MsgKey; borderWidth: MsgKey; gapWidth: MsgKey; shape: MsgKey; fillColor: MsgKey; borderColor: MsgKey }, active?: ActivityRule) {
   return {
-    cornerStyle: f("cornerStyle", labels.cornerStyle),
-    size: f("number", labels.size),
-    sizeAdaptation: f("number", labels.sizeAdaptation, { spread: true }),
-    borderWidth: f("number", labels.borderWidth),
-    gapWidth: f("number", labels.gapWidth),
-    shape: f("markerShape", labels.shape),
-    fillColor: f("color", labels.fillColor),
-    borderColor: f("color", labels.borderColor),
+    cornerStyle: f("cornerStyle", labels.cornerStyle, { active }),
+    size: f("number", labels.size, { active }),
+    sizeAdaptation: f("number", labels.sizeAdaptation, { spread: true, active }),
+    borderWidth: f("number", labels.borderWidth, { active }),
+    gapWidth: f("number", labels.gapWidth, { active }),
+    shape: f("markerShape", labels.shape, { active }),
+    fillColor: f("color", labels.fillColor, { active }),
+    borderColor: f("color", labels.borderColor, { active }),
   };
 }
 
@@ -175,8 +175,9 @@ const PLAIN_MARKER_LABELS = {
 /** Start/finish marker: the marker appearance plus the optional symbol (text) block. */
 function endpointMarker(kind: "startMarker" | "finishMarker", markerGroup: Thunk<string[]>, symbolGroup: Thunk<string[]>) {
   const textOn = kind === "startMarker" ? R.startTextOn : R.finishTextOn;
+  const markerOn = kind === "startMarker" ? R.startMarkerOn : R.finishMarkerOn;
   return {
-    ...prefixed(kind, section(BOTH, { group: markerGroup }, markerAppearance(PLAIN_MARKER_LABELS))),
+    ...prefixed(kind, section(BOTH, { group: markerGroup }, { markerEnabled: f("boolean", `${VW}.marker_show`), ...markerAppearance(PLAIN_MARKER_LABELS, markerOn) })),
     ...prefixed(kind, section(BOTH, { group: symbolGroup }, {
       textEnabled: f("boolean", `${VW}.marker_text_show`),
       textFontWeight: f("labelFontWeight", `${VW}.marker_text_font_weight`, { active: textOn }),

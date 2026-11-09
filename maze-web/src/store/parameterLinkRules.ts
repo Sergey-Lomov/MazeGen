@@ -68,6 +68,8 @@ export const R = {
   floorLabelOn: (_, s) => s.floorLabel?.enabled !== false,
   floorLabelIndexMode: (_, s) => s.floorLabel?.labelMode === "index",
   floorLabelBackground: (_, s) => s.floorLabel?.backgroundShape !== "none",
+  startMarkerOn: (_, s) => s.startMarker?.markerEnabled !== false,
+  finishMarkerOn: (_, s) => s.finishMarker?.markerEnabled !== false,
   startTextOn: (_, s) => s.startMarker?.textEnabled !== false,
   finishTextOn: (_, s) => s.finishMarker?.textEnabled !== false,
 } satisfies Record<string, ActivityRule>;

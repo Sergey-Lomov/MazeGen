@@ -174,8 +174,8 @@ const SETTING_VALUES: { [K in keyof ParamActivitySettings]-?: NonNullable<ParamA
   markerIndex: [{ enabled: true }, { enabled: false }, { enabled: true, borderWidthFromMarker: true, borderColorFromMarker: true }, { enabled: true, borderWidthFromMarker: false, borderColorFromMarker: false }],
   teleportArrowMode: ["none", "center", "periodic"],
   splitSpecialShapes: [true, false],
-  startMarker: [{ textEnabled: true }, { textEnabled: false }],
-  finishMarker: [{ textEnabled: true }, { textEnabled: false }],
+  startMarker: [{ markerEnabled: true, textEnabled: true }, { markerEnabled: true, textEnabled: false }, { markerEnabled: false, textEnabled: true }],
+  finishMarker: [{ markerEnabled: true, textEnabled: true }, { markerEnabled: true, textEnabled: false }, { markerEnabled: false, textEnabled: true }],
   floorLabel: [
     { enabled: true, labelMode: "index", backgroundShape: "rectangle" },
     { enabled: true, labelMode: "title", backgroundShape: "none" },

@@ -6,6 +6,7 @@ import { hasLowContrast } from "../colorContrast";
 import { buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
 import { withLazyResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { buildVerticalConnectionMarkers, selectNodeLevelResolver, selectVerticalPassagePairSet, buildTeleportEdges, selectFloorScopedMaze } from "./mazeSelectors";
+import { withMarkerVisibility } from "./mazeSelectors/markers";
 import type { AnySettings } from "./exportWarningGroups";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import { buildPointFillStates } from "./exportTeleportWarnings";
@@ -43,6 +44,8 @@ interface WaypointStyle {
   text?: string;
   textEnabled?: boolean;
   textColor?: number;
+  markerEnabled?: boolean;
+  gapWidth?: number;
 }
 
 export interface VerticalMarkerEntry {
@@ -51,7 +54,8 @@ export interface VerticalMarkerEntry {
   fromNode: number;
 }
 
-function waypointLook(kind: "start" | "finish", style: WaypointStyle, node: number): MarkerLook {
+function waypointLook(kind: "start" | "finish", marker: WaypointStyle, node: number): MarkerLook {
+  const style = withMarkerVisibility(marker);
   const caption = style.textEnabled !== false ? (style.text ?? "").trim() : "";
   return {
     kind, shape: style.shape, fill: style.fillColor, border: style.borderWidth > 0 ? style.borderColor : null, borderWidth: Math.max(0, style.borderWidth),

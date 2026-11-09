@@ -1170,6 +1170,37 @@ describe("VectorByWallsSettingsPanel", () => {
   });
 });
 
+describe("VectorByWallsSettingsPanel start/finish marker toggle (GitHub issue #963)", () => {
+  const withMarker = (markerEnabled: boolean) => {
+    const st = useMazeStore.getState();
+    useMazeStore.setState({
+      vectorByWallsSettings: {
+        ...st.vectorByWallsSettings,
+        startMarker: { ...st.vectorByWallsSettings.startMarker, markerEnabled },
+        finishMarker: { ...st.vectorByWallsSettings.finishMarker, markerEnabled },
+      },
+      vectorByWallsSectionsExpanded: { ...st.vectorByWallsSectionsExpanded, markers_start_marker: true, markers_finish_marker: true },
+    });
+  };
+
+  it("hides the marker look rows when the marker is off, keeping the toggle", () => {
+    withMarker(false);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_show"]())).toHaveLength(2);
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_shape"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_fill_color"]())).toBeNull();
+  });
+
+  it("shows the marker look rows when the marker is on, and the toggle patches the start marker", () => {
+    withMarker(true);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_shape"]())).toHaveLength(2);
+    const toggle = screen.getAllByRole("checkbox", { name: m["image_export.vector_by_walls.marker_show"]() })[0];
+    fireEvent.click(toggle);
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.markerEnabled).toBe(false);
+  });
+});
+
 describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", () => {
   const withCaption = (textEnabled: boolean) => {
     const st = useMazeStore.getState();

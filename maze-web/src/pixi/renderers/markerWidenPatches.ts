@@ -44,6 +44,8 @@ export function drawMarkerWidenPatches(
   const halfWidth = lineWidth / 2;
   for (const marker of markers) {
     const borderWidth = marker.borderWidth ?? 0;
+    // A marker with no fill and no border draws nothing (a hidden start/finish, GitHub issue #963), so it has nothing to widen for.
+    if (marker.radius <= 0 && borderWidth <= 0) continue;
     // Marker size adaptation (GitHub issue #819): the patch follows the marker's scaled fill radius.
     const radius = marker.radius * scaler.factorAt(marker.pos, marker.sizeAdaptation ?? 0);
     const markerOuterRadius = radius + borderWidth;

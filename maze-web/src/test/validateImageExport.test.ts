@@ -15,6 +15,13 @@ describe("validateMarkerSettings", () => {
     expect(validateMarkerSettings({ sizeAdaptation: "x" }, "path", { ...fallback, sizeAdaptation: 0.3 }).sizeAdaptation).toBe(0.3);
   });
 
+  it("keeps a missing markerEnabled missing (a marker saved before the toggle stays drawn) and round-trips an explicit one (GitHub issue #963)", () => {
+    const off = { ...fallback, markerEnabled: false };
+    expect(validateMarkerSettings({ size: 10 }, "path", off).markerEnabled).toBeUndefined();
+    expect(validateMarkerSettings({ markerEnabled: false }, "path", fallback).markerEnabled).toBe(false);
+    expect(validateMarkerSettings({ markerEnabled: true }, "path", off).markerEnabled).toBe(true);
+  });
+
   it("round-trips text, textEnabled, textFontWeight, textSize and textColor", () => {
     const result = validateMarkerSettings(
       { ...fallback, text: "x", textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },

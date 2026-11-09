@@ -4,6 +4,7 @@ import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/
 import { verticalMarkerFootprint } from "../renderers/VerticalConnectionRenderer";
 import type { MarkerSettings, MarkerLayoutSettingsFields, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
+import { withMarkerVisibility } from "../selectors/mazeSelectors/markers";
 import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } from "../selectors/mazeSelectors/markerLayout";
 import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
 import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
@@ -154,7 +155,7 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
  *  panel's own floor color — `gapColor` always mirrors `floorColor` (GitHub issue #302 follow-up,
  *  not independently settable, same convention as the one-way indicator's own border color). */
 export function buildMarkerStyle(settings: MarkerSettings, floorColor: number): MarkerStyle {
-  return { ...settings, gapColor: floorColor };
+  return { ...withMarkerVisibility(settings), gapColor: floorColor };
 }
 
 /** Resolves the currently effective start/finish node ids — `postEditMeta`'s confirmed endpoints

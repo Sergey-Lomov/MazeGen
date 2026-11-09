@@ -28,6 +28,9 @@ export interface MarkerStyle {
    *  `gapWidth` at `0`, so `gapColor`'s value never actually shows. */
   gapWidth: number;
   gapColor: number;
+  /** "Show marker" toggle (GitHub issue #963) — `undefined`/`true` draws the marker, `false` hides
+   *  it (see `withMarkerVisibility`). Optional for the same reason as `text`. */
+  markerEnabled?: boolean;
   /** Custom one-text badge label (GitHub issue #697) — omitted/empty draws no label.
    *  Optional since only `startMarker`/`finishMarker` offer this in the UI so far — every other
    *  `MarkerStyle` caller (vertical connection markers) simply never sets it. */
@@ -46,6 +49,28 @@ export interface MarkerStyle {
   /** Text badge color (GitHub issue #697 second follow-up) — optional for the same
    *  reason as `text`. Defaults to `gapColor` (the floor-colored knockout look) when unset. */
   textColor?: number;
+}
+
+/** The marker geometry as drawn (GitHub issue #963): a marker with `markerEnabled === false` has no
+ *  size, border or gap, so every consumer (rendering, footprints, warnings) sees it as absent while
+ *  its caption stays governed by `textEnabled` alone. Returns `style` itself when the marker is on. */
+export function withMarkerVisibility<T extends { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean }>(style: T): T {
+  return style.markerEnabled === false ? { ...style, size: 0, borderWidth: 0, ...(style.gapWidth === undefined ? {} : { gapWidth: 0 }) } : style;
+}
+
+/** Whether a start/finish marker itself shows on the image (GitHub issue #963): enabled and with a size or a border
+ *  (projects saved before the toggle hide a marker by size `0`). */
+export function isMarkerDrawn(style: { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean }): boolean {
+  const marker = withMarkerVisibility(style);
+  return marker.size > 0 || marker.borderWidth > 0;
+}
+
+/** Whether a start/finish shows anything on the image (GitHub issue #963): a drawn marker or a caption (enabled and
+ *  non-empty). */
+export function isWaypointVisible(style: { size: number; borderWidth: number; gapWidth?: number; markerEnabled?: boolean; text?: string; textEnabled?: boolean }): boolean {
+  const markerDrawn = isMarkerDrawn(style);
+  const captionDrawn = style.textEnabled !== false && (style.text ?? "").trim() !== "";
+  return markerDrawn || captionDrawn;
 }
 
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */

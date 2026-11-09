@@ -369,10 +369,17 @@ drawn somewhere take part (start/finish when set, teleport when a teleport exist
 - One entry per mode; `markerPairs` lists the alike kind pairs (merged across floors) and the description names them. Hover highlights
   the nodes of every marker in those pairs.
 
+#### Invisible start / finish (GitHub issue #963)
+
+While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden in `colorFieldRegistry.ts`, so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
+
+`start_invisible` / `finish_invisible` (group `waypointInvisible`, both modes): the start (finish) of the floor draws nothing — no marker (`markerEnabled === false`, or size and border both `0`) and no caption (`textEnabled === false` or empty/blank `text`). One warning per endpoint, only when it is set on the floor; highlights its node. Checked by `isWaypointVisible` (`mazeSelectors/markers.ts`).
+
 ### Existing non-color warnings shared by both renderers
 
 - `teleport_marker_invisible`;
 - `markers_look_alike`;
+- `start_invisible`, `finish_invisible`;
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
 - `teleport_connector_covers_one_way`;

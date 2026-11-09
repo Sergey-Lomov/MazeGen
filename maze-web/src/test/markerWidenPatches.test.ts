@@ -18,6 +18,16 @@ function g() {
 }
 
 describe("drawMarkerWidenPatches", () => {
+  it("skips a marker that draws nothing (no fill radius, no border — a hidden start/finish, GitHub issue #963)", () => {
+    const graphics = g();
+    const markers: MarkerData[] = [
+      { pos: [0, 0], color: 0x111, radius: 0, borderWidth: 0 },
+      { pos: [20, 0], color: 0x222, radius: 8 },
+    ];
+    drawMarkerWidenPatches(graphics, markers, 0xabcdef, 4, 3);
+    expect(graphics.calls.filter((c) => c.fn === "fill")).toHaveLength(1);
+  });
+
   it("draws one filled patch per marker, in the line's own color", () => {
     const graphics = g();
     const markers: MarkerData[] = [

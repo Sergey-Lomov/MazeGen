@@ -9,6 +9,7 @@ import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilder
 import { nearestCellCoord } from "../tessellationGeometry";
 import { visibleColor, unownedColor, type ColorVisibilityContext, type VisibleColor } from "./colorFieldRegistry";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
+import { isMarkerDrawn } from "./mazeSelectors/markers";
 import type { ExportWarningId, ExportWarning } from "./exportWarnings";
 
 export type WarningEdge = [number, number];
@@ -403,17 +404,19 @@ export const pushTeleportBadgeTextContrastWarnings: ContrastCheck = (warnings, e
 /** `label_low_contrast`: every text label (elevator badge, start, finish, marker index) against its plate. */
 export const pushLabelContrastWarnings: ContrastCheck = (warnings, env, ctx) => {
   const settings = ctx.settings;
-  const { color } = colorReader(ctx);
+  const { color, base } = colorReader(ctx);
   const { start, finish, nodeById, warningNodeById } = env;
+  // A caption of a hidden marker (GitHub issue #963) sits on the surface itself, not on the marker fill.
+  const plate = (marker: Parameters<typeof isMarkerDrawn>[0], fill: ColorFieldKey) => (isMarkerDrawn(marker) ? color(fill) : base);
   const labelEntries: ContrastEntry[] = [];
   if (env.elevator.length > 0) {
     labelEntries.push({ foreground: color("elevatorBadgeText"), background: color("elevatorBadgeFill"), nodes: env.elevator.flatMap((edge) => [edge.from, edge.to]) });
   }
   if (start !== null && nodeById.has(start)) {
-    labelEntries.push({ foreground: color("startText"), background: color("startFill"), nodes: [start] });
+    labelEntries.push({ foreground: color("startText"), background: plate(settings.startMarker, "startFill"), nodes: [start] });
   }
   if (finish !== null && nodeById.has(finish)) {
-    labelEntries.push({ foreground: color("finishText"), background: color("finishFill"), nodes: [finish] });
+    labelEntries.push({ foreground: color("finishText"), background: plate(settings.finishMarker, "finishFill"), nodes: [finish] });
   }
   const indexedEdges = env.edges.filter((edge) => {
     if (edge.kind === "elevator") return settings.markerIndex.coverage.elevator;

@@ -111,6 +111,10 @@ export type ExportWarningId =
   /** Both vector modes (GitHub issue #959) — markers of different kinds (start, finish, teleport, vertical passages, elevator)
    *  render alike: close fill and border colors, same shape and inner elements. Lists the alike kinds as `markerPairs`. */
   | "markers_look_alike"
+  /** Both vector modes (GitHub issue #963) — the start (finish) has neither a visible marker nor a caption, so it is not
+   *  drawn on the exported image at all. */
+  | "start_invisible"
+  | "finish_invisible"
   | "one_way_low_contrast_corridor"
   | "corridor_low_contrast_background"
   | "teleport_connector_low_contrast_corridor"

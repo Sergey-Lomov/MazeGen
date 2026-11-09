@@ -33,7 +33,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, textFitKind }: {
+export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, showMarkerToggle, textFitKind }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -48,6 +48,9 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
    *  `true` only for callers whose `MarkerSettings` actually models a user-facing text (start/
    *  finish); every other caller passes `false`. */
   showTextSection: boolean;
+  /** Whether to render the "Show marker" toggle (GitHub issue #963) — start/finish only, like
+   *  `showTextSection`; requires `linkTargets.markerEnabled`. */
+  showMarkerToggle?: boolean;
   /** "Priority" project colors (GitHub issue #503) for this group's fill/border/text color
    *  rows — forwarded to the picker's "Project colors" section. Omitted fields render with no
    *  priority. */
@@ -71,7 +74,7 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
    *  other field its registry doesn't model. */
   /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
   textFitKind?: "start" | "finish";
-  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
+  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; markerEnabled?: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;
@@ -133,6 +136,14 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
           {sectionId && <SectionHeader label={m["image_export.vector_by_walls.markers_marker_subsection"]()} expanded={subExpanded(markerId)} onToggle={() => toggle(markerId)} />}
           {subExpanded(markerId) && (
             <div style={sectionId ? styles.subsectionGroup : styles.markerGroupNoIndent}>
+              {showMarkerToggle && (
+                <LinkedToggleRow
+                  label={m["image_export.vector_by_walls.marker_show"]()}
+                  checked={settings.markerEnabled ?? true}
+                  onChange={(markerEnabled) => onChange({ markerEnabled })}
+                  linkTarget={linkTargets.markerEnabled ?? null}
+                />
+              )}
               <MarkerAppearanceRows
                 settings={settings}
                 onChange={onChange}

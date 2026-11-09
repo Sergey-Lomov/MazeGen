@@ -9,6 +9,7 @@ import { canvas } from "../colorTokens";
 import { parseColorFieldKey, type ColorFieldKey, type StaticColorFieldKey } from "../colorFieldKeys";
 import { maxSplitNodeCount } from "./mazeSelectors";
 import { hasCrossFloorTeleport } from "./mazeSelectors/teleport";
+import { isMarkerDrawn } from "./mazeSelectors/markers";
 
 // The single source of truth for *what a color field is*, minus its display name: when it is
 // visible, where its value lives in the settings, and where an edit writes back (GitHub issue
@@ -252,15 +253,15 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
 
   oneWaysMarker: { visible: (c) => c.oneWayIndicator, get: (s) => s.oneWayColor, set: (s, v) => { s.oneWayColor = v; } },
 
-  startFill: { visible: always, get: (s) => s.startMarker.fillColor, set: (s, v) => { s.startMarker.fillColor = v; } },
-  startBorder: { visible: always, get: (s) => s.startMarker.borderColor, set: (s, v) => { s.startMarker.borderColor = v; } },
+  startFill: { visible: (c) => isMarkerDrawn(c.settings.startMarker), get: (s) => s.startMarker.fillColor, set: (s, v) => { s.startMarker.fillColor = v; } },
+  startBorder: { visible: (c) => isMarkerDrawn(c.settings.startMarker), get: (s) => s.startMarker.borderColor, set: (s, v) => { s.startMarker.borderColor = v; } },
   startText: {
     visible: (c) => c.settings.startMarker.textEnabled !== false,
     get: (s) => s.startMarker.textColor,
     set: (s, v) => { s.startMarker.textColor = v; },
   },
-  finishFill: { visible: always, get: (s) => s.finishMarker.fillColor, set: (s, v) => { s.finishMarker.fillColor = v; } },
-  finishBorder: { visible: always, get: (s) => s.finishMarker.borderColor, set: (s, v) => { s.finishMarker.borderColor = v; } },
+  finishFill: { visible: (c) => isMarkerDrawn(c.settings.finishMarker), get: (s) => s.finishMarker.fillColor, set: (s, v) => { s.finishMarker.fillColor = v; } },
+  finishBorder: { visible: (c) => isMarkerDrawn(c.settings.finishMarker), get: (s) => s.finishMarker.borderColor, set: (s, v) => { s.finishMarker.borderColor = v; } },
   finishText: {
     visible: (c) => c.settings.finishMarker.textEnabled !== false,
     get: (s) => s.finishMarker.textColor,

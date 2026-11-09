@@ -83,6 +83,7 @@ const ALLOWED_CONDITIONS: Record<string, string> = {
   "MarkerFieldRows.tsx: linkTargets.sizeAdaptation !== undefined": "the caller opts into the size-adaptation row (the schema gates it by `hasAreaSpread`)",
   "MarkerSettingsGroup.tsx: fields.textColor": "the caller opts into the text-colour row",
   "MarkerSettingsGroup.tsx: sectionId": "the caller opts into a collapsible section",
+  "MarkerSettingsGroup.tsx: showMarkerToggle": "the caller opts into the show-marker row (start/finish only)",
   "MarkerSettingsGroup.tsx: showTextSection": "the caller opts into the text subsection",
   "MarkerSettingsGroup.tsx: title": "the caller opts into a section title",
   "TeleportSettingsSection.tsx: activeRenderMode": "the connector editor button needs a render mode to edit; it is not a field",

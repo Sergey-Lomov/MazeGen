@@ -223,6 +223,28 @@ describe("isPathActive: size adaptation (GitHub issue #819)", () => {
   });
 });
 
+describe("isPathActive: start/finish marker (GitHub issue #963)", () => {
+  const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, "walls", baseCtx, settings);
+
+  it("deactivates the marker look when the marker is off, keeps the toggle and the caption fields", () => {
+    const off = { startMarker: { markerEnabled: false, textEnabled: true }, finishMarker: { markerEnabled: false, textEnabled: true } };
+    for (const kind of ["startMarker", "finishMarker"]) {
+      for (const field of ["shape", "cornerStyle", "size", "sizeAdaptation", "fillColor", "borderColor", "borderWidth", "gapWidth"]) {
+        expect(check(`${kind}.${field}`, off)).toBe(false);
+      }
+      expect(check(`${kind}.markerEnabled`, off)).toBe(true);
+      expect(check(`${kind}.textColor`, off)).toBe(true);
+    }
+  });
+
+  it("keeps the marker look active when the marker is on or unset, and gates start/finish independently", () => {
+    expect(check("startMarker.size", { startMarker: {} })).toBe(true);
+    expect(check("startMarker.size", { startMarker: { markerEnabled: true } })).toBe(true);
+    expect(check("finishMarker.fillColor", { startMarker: { markerEnabled: false }, finishMarker: { markerEnabled: true } })).toBe(true);
+    expect(check("startMarker.fillColor", { startMarker: { markerEnabled: false }, finishMarker: { markerEnabled: true } })).toBe(false);
+  });
+});
+
 describe("isPathActive: start/finish caption", () => {
   const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, "walls", baseCtx, settings);
 

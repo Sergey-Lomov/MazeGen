@@ -516,6 +516,11 @@ export interface SizeAdaptationField {
  *  optional free-text caption. `borderWidth: 0` (the default) draws no border, so there is no
  *  separate show-border toggle. */
 export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, Partial<TextStyleFields> {
+  /** "Show marker" toggle (GitHub issue #963) — independent of the caption's own `textEnabled`, so
+   *  the caption can be shown without the marker and vice versa. `undefined`/`true` draws the marker
+   *  (matches pre-toggle behavior); `false` draws none (size, border and gap count as `0` in every
+   *  consumer, see `withMarkerVisibility`). Only start/finish markers offer it in the UI. */
+  markerEnabled?: boolean;
   /** Custom badge label (GitHub issue #697), e.g. a start/finish marker's "S"/"F". Empty/omitted
    *  draws no label. Currently restricted to a single glyph — UI input truncates to the first
    *  one and restricts to the baked MSDF charset (`tools/msdf/generate.mjs`), uppercased — but the

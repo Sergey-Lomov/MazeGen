@@ -2,6 +2,7 @@ import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import { buildCorridorSegments, getSplitAwareNodePosition } from "./mazeSelectors";
+import { isMarkerDrawn, withMarkerVisibility } from "./mazeSelectors/markers";
 import { pointToSegmentDistance } from "../renderers/teleportGeometryUtils";
 import { pointInPolygon } from "../tessellationGeometry";
 import { buildCorridorContourInstances, contourToPolyline } from "../imageExport/vectorByCorridorsContour";
@@ -42,8 +43,8 @@ export function computeMarkerExtensionHitsCorridorWarning(
   if (settings.markerWidenPadding <= 0) return null;
 
   const markers = [
-    { nodeId: start, style: settings.startMarker },
-    { nodeId: finish, style: settings.finishMarker },
+    { nodeId: start, style: withMarkerVisibility(settings.startMarker) },
+    { nodeId: finish, style: withMarkerVisibility(settings.finishMarker) },
   ];
   const flaggedNodes = new Set<number>();
 
@@ -52,7 +53,7 @@ export function computeMarkerExtensionHitsCorridorWarning(
   const contourThickness = usesContourTiles ? Math.min(settings.thickness, corridorFaceLimit) : 0;
 
   for (const marker of markers) {
-    if (marker.nodeId === null) continue;
+    if (marker.nodeId === null || !isMarkerDrawn(marker.style)) continue;
     const pos = getSplitAwareNodePosition(Array.from(nodeById.values()), marker.nodeId, cfg, edges);
     if (!pos) continue;
     const patchRadius = Math.max(

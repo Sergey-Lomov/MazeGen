@@ -5,6 +5,7 @@ import {
   buildTeleportEdges, buildSplitPassages, buildCorridorSegments, shortestCorridorFace, maxSplitNodeCount, selectNodeLevelResolver,
   selectVerticalPassagePairSet, buildVerticalConnectionMarkers,
 } from "./mazeSelectors";
+import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers";
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
@@ -256,14 +257,31 @@ const teleportGroupAmbiguous = group("teleportGroupAmbiguous", ["teleport_group_
   maybe(computeTeleportGroupAmbiguousWarning(env.teleportEdges, withLazyResolvedGroupOverrides(s)))
 ));
 
+function waypointExtent(marker: VectorByWallsSettings["startMarker"]): { size: number; borderWidth: number } {
+  const { size, borderWidth } = withMarkerVisibility(marker);
+  return { size, borderWidth };
+}
+
 const teleportWaypointOverlap = group("teleportWaypointOverlap", ["teleport_waypoint_overlap"], (env, s) => (
   maybe(computeTeleportWaypointOverlapWarning(
     env.teleportEdges, withLazyResolvedGroupOverrides(s),
-    { id: env.start, size: s.startMarker.size, borderWidth: s.startMarker.borderWidth },
-    { id: env.finish, size: s.finishMarker.size, borderWidth: s.finishMarker.borderWidth },
+    { id: env.start, ...waypointExtent(s.startMarker) },
+    { id: env.finish, ...waypointExtent(s.finishMarker) },
     env.allNodes, env.cfg, env.edges,
   ))
 ));
+
+/** `start_invisible` / `finish_invisible` (GitHub issue #963): a start/finish with neither a visible marker nor a caption. */
+const waypointInvisible = group("waypointInvisible", ["start_invisible", "finish_invisible"], (env, s) => {
+  const out: ExportWarning[] = [];
+  const check = (id: "start_invisible" | "finish_invisible", node: number | null, marker: AnySettings["startMarker"]) => {
+    if (node === null || !env.nodeById.has(node) || isWaypointVisible(marker)) return;
+    out.push({ id, key: id, nodes: [node], edges: [] });
+  };
+  check("start_invisible", env.start, s.startMarker);
+  check("finish_invisible", env.finish, s.finishMarker);
+  return out;
+});
 
 /** `markers_look_alike` (GitHub issue #959): markers of different kinds on the floor that render the same. */
 const markersLookAlike = group("markersLookAlike", ["markers_look_alike"], (env, s) => {
@@ -424,7 +442,7 @@ const wallsMarkerIndexStopLine = group<VectorByWallsSettings>("markerIndexStopLi
 
 /** Every warning group of "Vector by walls", in the order their warnings are listed. */
 export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, wallsTeleportConnectors,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, wallsTeleportConnectors,
   ...contrastGroups,
   wallsTeleportConnectorContrast, wallsSplitContrast, wallsSpecialSplit, wallsElevatorBadges,
   textOverflow, wallsMarkerIndexStopLine, elevatorIndistinguishable,
@@ -533,7 +551,7 @@ const corridorsMarkerIndexStopLine = group<VectorByCorridorsSettings>("markerInd
 
 /** Every warning group of "Vector by corridors", in the order their warnings are listed. */
 export const CORRIDORS_WARNING_GROUPS: readonly WarningGroup<VectorByCorridorsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, corridorsTeleportConnectors,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, corridorsTeleportConnectors,
   ...contrastGroups,
   corridorsMarkerExtension, corridorsCorridorColors, corridorsTeleportConnectorContrast, corridorsSplitContrast, corridorsSplitGapMayShrink,
   corridorsSpecialSplit, corridorsOneWayOverflow,

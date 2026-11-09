@@ -38,6 +38,8 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   marker_extension_hits_corridor: m["image_export.vector_by_corridors.warning_marker_extension_hits_corridor"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable"],
   markers_look_alike: m["image_export.warning.markers_look_alike"],
+  start_invisible: m["image_export.warning.start_invisible"],
+  finish_invisible: m["image_export.warning.finish_invisible"],
   edge_marker_looks_like_marker: m["image_export.warning.edge_marker_looks_like_marker"],
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background"],
@@ -119,6 +121,8 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable_description"],
   // Needs the alike pairs; `resolveExportWarningDescription` builds it from `markerPairs`.
   markers_look_alike: () => "",
+  start_invisible: m["image_export.warning.start_invisible_description"],
+  finish_invisible: m["image_export.warning.finish_invisible_description"],
   edge_marker_looks_like_marker: () => "",
   one_way_low_contrast_corridor: m["image_export.warning.one_way_low_contrast_corridor_description"],
   corridor_low_contrast_background: m["image_export.warning.corridor_low_contrast_background_description"],
