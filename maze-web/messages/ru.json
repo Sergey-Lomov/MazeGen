@@ -2060,6 +2060,7 @@
   "post_edit.split_rotate_ccw": "Повернуть против часовой",
   "post_edit.split_rotate_cw": "Повернуть по часовой",
   "post_edit.split_blueprints_label": "Шаблоны",
+  "post_edit.split_blueprint_unnamed": "Шаблон {number}",
   "post_edit.split_blueprint_disabled_hint": "Часть шаблонов недоступна: их обязательные связи выходят за границу поля в этой точке.",
   "post_edit.confirm_apply_blueprint": "Это заменит все текущие узлы и связи в этой точке. Продолжить?",
   "post_edit.confirm_rotate_breaks_neighbor_shape": "Поворот этой ячейки разрушит форму соседней разделённой ячейки. Дальнейшее вращение может восстановить её, но это не гарантировано. Продолжить?",
