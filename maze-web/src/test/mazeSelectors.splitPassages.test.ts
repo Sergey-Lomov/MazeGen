@@ -46,6 +46,72 @@ describe("buildSplitPassages", () => {
     expect(taperLength / bridgeLength).toBeCloseTo(0.08, 5);
   });
 
+  it("lays out an octagon divider as two geometry-anchored four-face corridor halves", () => {
+    const cfg = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const point: [number, number] = [0, 0];
+    const neighbors = getNeighborData(cfg, ...point).offsets
+      .map(([dx, dy], index) => n(200 + index, point[0] + dx, point[1] + dy));
+    const nodes = [n(100, ...point), n(101, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 200 + face), e(200 + face, node)]);
+    const { passages, specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(100, [0, 1, 2, 3]), ...connect(101, [4, 5, 6, 7])],
+      cfg,
+    );
+    expect(passages).toHaveLength(2);
+    expect(passages.map((passage) => passage.wallSegments.length)).toEqual([4, 4]);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("diagonal");
+    if (shape.kind !== "diagonal") throw new Error("unreachable");
+    expect(shape.dividerJunctions).toHaveLength(2);
+    expect(shape.dividerJunctions?.[0]).not.toEqual(shape.dividerJunctions?.[1]);
+    expect(shape.corner0).not.toEqual(shape.corner1);
+
+    const rotated = buildSplitPassages(
+      nodes,
+      [...connect(100, [1, 2, 3, 4]), ...connect(101, [5, 6, 7, 0])],
+      cfg,
+    ).specialShapes[0];
+    expect(rotated.kind).toBe("diagonal");
+    if (rotated.kind !== "diagonal") throw new Error("unreachable");
+    // Rotation moves both separator corners; they must not stay at the unrotated 3/4 and 7/0 cut.
+    expect([rotated.corner0, rotated.corner1]).not.toEqual(expect.arrayContaining([shape.corner0, shape.corner1]));
+  });
+
+  it("renders the octagon double bridge as two ordered bridge decks", () => {
+    const cfg = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const point: [number, number] = [0, 0];
+    const neighbors = getNeighborData(cfg, ...point).offsets
+      .map(([dx, dy], index) => n(300 + index, point[0] + dx, point[1] + dy));
+    const nodes = [n(110, ...point), n(111, ...point), n(112, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 300 + face), e(300 + face, node)]);
+    const { specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(110, [0, 4]), ...connect(111, [1, 5]), ...connect(112, [2, 6])],
+      cfg,
+    );
+    // The two entries are deliberately ordered: the second deck is drawn after (and above) the first.
+    expect(specialShapes).toHaveLength(2);
+    expect(specialShapes.every((shape) => shape.kind === "bridge")).toBe(true);
+  });
+
+  it("renders the octagon triple bridge as three ordered bridge decks", () => {
+    const cfg = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const point: [number, number] = [0, 0];
+    const neighbors = getNeighborData(cfg, ...point).offsets
+      .map(([dx, dy], index) => n(400 + index, point[0] + dx, point[1] + dy));
+    const nodes = [n(120, ...point), n(121, ...point), n(122, ...point), n(123, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 400 + face), e(400 + face, node)]);
+    const { specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(120, [0, 4]), ...connect(121, [1, 5]), ...connect(122, [2, 6]), ...connect(123, [3, 7])],
+      cfg,
+    );
+    expect(specialShapes).toHaveLength(3);
+    expect(specialShapes.every((shape) => shape.kind === "bridge")).toBe(true);
+  });
+
   it("unsplit point produces no passages", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     expect(buildSplitPassages(nodes, [...twoWay(0, 1)], squareCfg).passages).toEqual([]);

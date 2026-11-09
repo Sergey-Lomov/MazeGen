@@ -11,7 +11,7 @@ import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { cellSourceOf, hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, measurePrintCells, type CellSource, type PrintCellTypeSize } from "../../pixi/printCellSizes";

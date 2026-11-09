@@ -240,7 +240,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(inputs[4].value).toBe("12");
   });
 
-  it("opens with a 10 mm cell size before the user sets a print size", () => {
+  it("opens with a cell size derived from the print scale even when auto-fit is on", () => {
     useMazeStore.setState({
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
@@ -251,7 +251,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("10");
+    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("8.47");
   });
 
   it("allows the last numeric character to be cleared", () => {
@@ -595,6 +595,30 @@ describe("FieldSetupFeature — Copy floor button", () => {
       marginVMm: 5,
     });
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / 40);
+  });
+
+  it("opens the paper layout dialog with a cell size derived from the print scale even when legacy auto-fit is on", () => {
+    useMazeStore.setState({
+      showPaperLayout: true,
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0]),
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
+        }),
+      },
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 2.5, scaleAutoFit: true },
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
+    const dialog = screen.getAllByText("Paper layout")[1].parentElement?.parentElement;
+    const inputs = within(dialog!).getAllByRole("spinbutton") as HTMLInputElement[];
+    expect(inputs[4].value).toBe("8.47");
   });
 });
 

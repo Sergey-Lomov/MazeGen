@@ -332,6 +332,48 @@ describe("specialSplitNodePoint", () => {
     });
   });
 
+  it("octagon divider centers each anchor on the normal from the divider wall to its outer boundary", () => {
+    const octagonCfg: FieldConfig = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const center = getCellCenter(0, 0, octagonCfg);
+    const faces = [[0, 1, 2, 3], [4, 5, 6, 7]];
+    const points = faces.map((nodeFaces, slot) => specialSplitNodePoint(
+      octagonCfg, center, "octagon_diagonal_divider", nodeFaces, slot, faces,
+    )!);
+    const vertices = getCellVertices(0, 0, octagonCfg)!;
+    const { edgeVerts } = getNeighborData(octagonCfg, 0, 0);
+    faces.forEach((nodeFaces, slot) => {
+      const outerCenter = nodeFaces.map((face) => {
+        const [a, b] = edgeVerts[face];
+        return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+      }).reduce((sum, p) => ({ x: sum.x + p.x / 4, y: sum.y + p.y / 4 }), { x: 0, y: 0 });
+      const oldAnchor = { x: (center.x + outerCenter.x) / 2, y: (center.y + outerCenter.y) / 2 };
+      expect(Math.hypot(points[slot].x - center.x, points[slot].y - center.y))
+        .toBeGreaterThan(Math.hypot(oldAnchor.x - center.x, oldAnchor.y - center.y));
+    });
+  });
+
+  it("octagon double and triple bridges place each node along its own connection axis", () => {
+    const octagonCfg: FieldConfig = fieldOf("square_octagon", { shape: "rect", cols: 3, rows: 3 });
+    const center = getCellCenter(0, 0, octagonCfg);
+    for (const [kind, faces] of [
+      ["octagon_double_bridge", [[0, 4], [1, 5], [2, 6]]],
+      ["octagon_triple_bridge", [[0, 4], [1, 5], [2, 6], [3, 7]]],
+    ] as const) {
+      const mutableFaces = faces.map((pair) => Array.from(pair));
+      const points = mutableFaces.map((pair, slot) => specialSplitNodePoint(octagonCfg, center, kind, pair, slot, mutableFaces)!);
+      expect(points.every((point) => Math.hypot(point.x - center.x, point.y - center.y) > 0)).toBe(true);
+      if (kind === "octagon_triple_bridge") {
+        const doublePoints = [[0, 4], [1, 5], [2, 6]].map((pair, slot) =>
+          specialSplitNodePoint(octagonCfg, center, "octagon_double_bridge", pair, slot, [[0, 4], [1, 5], [2, 6]])!,
+        );
+        for (let slot = 0; slot < doublePoints.length; slot++) {
+          expect(Math.hypot(points[slot].x - center.x, points[slot].y - center.y))
+            .toBeGreaterThan(Math.hypot(doublePoints[slot].x - center.x, doublePoints[slot].y - center.y));
+        }
+      }
+    }
+  });
+
   it("hex diagonal divider uses the same anchors as the equivalent 0-2 / 3-5 double passage", () => {
     const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);

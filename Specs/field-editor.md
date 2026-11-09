@@ -201,10 +201,6 @@ size, an irregular type is not judged) is flagged twice: its side value (not the
 with a warning icon beside it, and one warning bubble listing every such type with its side closes the
 dialog, set apart from the result by a larger gap, above the buttons. Warnings do not block confirmation.
 
-Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
-enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
-physical size was tied to the old tessellation geometry.
-
 ### Paper layout in custom mode (GitHub issue #641)
 
 Custom mode provides a paper-layout switch and a gear button for configuration. The switch and gear
@@ -215,8 +211,7 @@ overlay, while remaining in the editor's world coordinate system. It is centered
 origin and follows the editor viewport's pan/zoom. Its paper
 size, orientation, margins, and cell measure are read from the shared `pngExportSettings.print`
 configuration, so changing the layout in this dialog changes the print calculator and PNG Print
-settings as well. With automatic print scale enabled, the guide uses a 10 mm cell measure until
-the user confirms a physical size. The guide is hidden outside custom mode and is not part of the
+settings as well. The cell measure is derived from `print.scale` and the print DPI. The guide is hidden outside custom mode and is not part of the
 generated field or export image.
 
 ### Background image print fitting (GitHub issue #675)

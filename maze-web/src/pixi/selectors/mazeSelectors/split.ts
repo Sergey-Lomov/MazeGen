@@ -519,21 +519,38 @@ export function buildSplitPassagesCore<Id>(
           ));
         }
       }
-    } else if (specialShapeKind === "hex_triple_bridge") {
+    } else if (specialShapeKind === "octagon_diagonal_divider") {
+      // Find the actual ownership transitions in local face order. A rotated pattern may cross
+      // canonical face 7 -> 0, so fixed canonical corners would leave its visual divider behind.
+      const verts = getCellVertices(px, py, cfg);
+      const ownerByFace = faceKindsByNode[0].map((_, face) =>
+        faceKindsByNode.findIndex((kinds) => kinds[face] !== "wall"),
+      );
+      const dividerCorners = ownerByFace.flatMap((owner, face) =>
+        owner !== ownerByFace[(face + 1) % ownerByFace.length]
+          ? [sharedCornerIndex(edgeVerts, face, (face + 1) % ownerByFace.length)] : [],
+      );
+      const allFaces = faceKindsByNode.map(connectedFaces);
+      const dividerJunctions = allFaces.map((faces, slot) =>
+        specialSplitNodePoint(cfg, center, "octagon_diagonal_divider", faces, slot, allFaces, [px, py]),
+      );
+      if (verts && dividerCorners.length === 2 && dividerCorners.every((corner): corner is number => corner !== null) && dividerJunctions.every((point): point is Point => point !== null)) {
+        specialShapes.push(buildDiagonalShape(pointKey, verts[dividerCorners[0]], verts[dividerCorners[1]], undefined, undefined, dividerJunctions));
+      }
+    } else if (specialShapeKind === "hex_triple_bridge" || specialShapeKind === "octagon_double_bridge" || specialShapeKind === "octagon_triple_bridge") {
       // GitHub issue #319 — three nodes, all opposite-face pairs, three corridors crossing at the
       // same tile center point (every opposite-face axis of a regular hexagon passes through its
       // own center). Node 0 is the "through" pair for node 1's bridge (drawn first, plain); node 1
       // is in turn the "through" pair for node 2's bridge — since both crossings sit at the exact
       // same point, node 2's own bridge silhouette (drawn last, on top) already reads as clearing
       // both of the corridors underneath it, without needing to know about node 0 separately.
-      const idx0 = connectedFaces(faceKindsByNode[0]);
-      const idx1 = connectedFaces(faceKindsByNode[1]);
-      const idx2 = connectedFaces(faceKindsByNode[2]);
-      const faces0: [Seg, Seg] = [faceInputs[idx0[0]], faceInputs[idx0[1]]];
-      const faces1: [Seg, Seg] = [faceInputs[idx1[0]], faceInputs[idx1[1]]];
-      const faces2: [Seg, Seg] = [faceInputs[idx2[0]], faceInputs[idx2[1]]];
-      specialShapes.push(buildBridgeShape(pointKey, faces0, faces1, TRIPLE_BRIDGE_TAPER_FRAC, TRIPLE_BRIDGE_DECK_WIDTH_FRAC));
-      specialShapes.push(buildBridgeShape(pointKey, faces0, faces2, TRIPLE_BRIDGE_TAPER_FRAC, TRIPLE_BRIDGE_DECK_WIDTH_FRAC));
+      const bridgeFaces = faceKindsByNode.map((kinds): [Seg, Seg] => {
+        const indices = connectedFaces(kinds);
+        return [faceInputs[indices[0]], faceInputs[indices[1]]];
+      });
+      for (let index = 1; index < bridgeFaces.length; index++) {
+        specialShapes.push(buildBridgeShape(pointKey, bridgeFaces[0], bridgeFaces[index], TRIPLE_BRIDGE_TAPER_FRAC, TRIPLE_BRIDGE_DECK_WIDTH_FRAC));
+      }
     } else if (specialShapeKind === "hex_triple_corridor") {
       // GitHub issue #319 — three nodes: one opposite-face pair (the "through" corridor, drawn as
       // an ordinary passage, same role as `"bridge"`'s node 0) plus two adjacent-face pairs, each

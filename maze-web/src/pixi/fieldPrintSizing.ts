@@ -7,8 +7,6 @@ import { compactNetOf } from "./fieldOps";
 import { displayTransform } from "./tessellationGeometry";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 
-/** Initial physical cell measure used by print-layout previews before a manual size is confirmed. */
-export const DEFAULT_PRINT_CELL_SIZE_MM = 10;
 /** Smallest physical cell measure the print sizing dialog accepts. */
 export const MIN_PRINT_CELL_SIZE_MM = 3;
 
