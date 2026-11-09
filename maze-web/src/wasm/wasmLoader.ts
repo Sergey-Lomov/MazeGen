@@ -4,14 +4,36 @@ export type WasmLoadProgress = (loaded: number, total: number | null) => void;
 let wasmModule: WasmModule | null = null;
 let initPromise: Promise<void> | null = null;
 
-/** `source` overrides how the binary is fetched (the unit tests pass the file's bytes, since there
- *  is no `fetch` of `import.meta.url` under Node). */
-export function initWasm(source?: BufferSource, onProgress?: WasmLoadProgress): Promise<void> {
+let compilePromise: Promise<WebAssembly.Module> | null = null;
+
+/** Fetches and compiles the WASM binary once per thread; later callers share the first attempt
+ *  (and its `onProgress`). A `WebAssembly.Module` is structured-cloneable, so the main thread
+ *  instantiates it itself and hands it to every worker, which then only instantiates it instead of
+ *  fetching and compiling the binary again (GitHub issue #951). */
+export function compileWasmModule(onProgress?: WasmLoadProgress): Promise<WebAssembly.Module> {
+  if (!compilePromise) {
+    compilePromise = (async () => {
+      const { response, progress } = await fetchWasm(onProgress);
+      const compiled = response.headers.get("Content-Type")?.startsWith("application/wasm")
+        ? await WebAssembly.compileStreaming(response)
+        : await WebAssembly.compile(await response.arrayBuffer());
+      await progress;
+      return compiled;
+    })().catch((error: unknown) => {
+      // A rejected attempt must not poison later retries.
+      compilePromise = null;
+      throw error;
+    });
+  }
+  return compilePromise;
+}
+
+/** `source` overrides how the binary is obtained: the unit tests pass the file's bytes (there is no
+ *  `fetch` of `import.meta.url` under Node), a worker passes the module compiled by the main thread. */
+export function initWasm(source?: BufferSource | WebAssembly.Module, onProgress?: WasmLoadProgress): Promise<void> {
   if (!initPromise) {
     initPromise = import("./pkg/maze_wasm").then(async (pkg) => {
-      const fetched = source ? null : await fetchWasm(onProgress);
-      await pkg.default({ module_or_path: source ?? fetched!.response });
-      await fetched?.progress;
+      await pkg.default({ module_or_path: source ?? await compileWasmModule(onProgress) });
       wasmModule = pkg;
     }).catch((error: unknown) => {
       // A rejected promise must not poison later user-initiated retries. Concurrent callers

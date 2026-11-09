@@ -149,6 +149,25 @@ tessellation, orientation, shape kind and print input (not by the current size),
 shape kind are calculated once; each caller receives its own copy. Invalid input or a cell too large for the printable area
 disables confirmation.
 
+**Worker calculation (GitHub issue #949).** The dialog never calls core on the main thread: the field
+size search and the cell size measurement (#948) are one request to the print sizing worker
+(`wasm/printSizingWorker.ts`, a `WorkerPool` in `workerClients.ts`, `startPrintSizing`), whose body is
+`computePrintSizing` (`pixi/printSizingJob.ts`): the size of the current shape and of every standard
+floor, plus the cells measured for all floors together. The dialog opens at once. An
+indeterminate progress bar with a comment ("Calculating the field size…") replaces the cell sizes and
+the results only if a calculation is still running after the delay of `useDelayedIndicator` (200 ms), and
+once shown stays for its minimum duration (750 ms), as the Generate button's spinner does (GitHub issue
+#960, `Specs/generation.md`). Until it shows, the results of the previous calculation stay on screen
+(nothing on the first one); Confirm follows only the current answer, never the stale one. Any change of the request (paper, margins, cell size, floors)
+cancels the running job and starts a new one; closing the dialog cancels the running job. A cancelled job
+terminates its worker (a synchronous wasm call cannot be interrupted), and the pool starts a fresh one.
+Confirming takes the answer on screen; if a typed cell size is not calculated yet it is calculated by
+its own job first; confirming again while that job runs does nothing, so the result is applied once. An unsuccessful end is explained: a failed worker shows its message; no size shows
+why (unreadable input, margins that leave no printable area, a cell too large for the sheet); a result
+sitting on the search cap (1000 per side of a non-axis-aligned rectangle, 500 for a radial size)
+shows a warning; core reports the cap in the answer (`limit`, `null` when the size is not on a cap), so
+the web side does not repeat the constants that the sheet may hold a larger field.
+
 The cell size input commits on blur or Enter only (`NumberInput`), not on every keystroke, and has a
 minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
 does not confirm the dialog.

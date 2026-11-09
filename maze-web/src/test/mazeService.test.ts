@@ -5,9 +5,10 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
   getWasm: vi.fn(),
   initWasm: vi.fn(() => Promise.resolve()),
+  compileWasmModule: vi.fn(() => Promise.resolve({} as WebAssembly.Module)),
 }));
 
-import { getWasm } from "../wasm/wasmLoader";
+import { getWasm, initWasm } from "../wasm/wasmLoader";
 
 const mockGenerate = vi.fn();
 
@@ -165,6 +166,10 @@ describe("serveWorker", () => {
 
     expect(compute).toHaveBeenCalledWith(config);
     expect(workerScope.postMessage).toHaveBeenCalledWith({ id: 7, result: validSnapshot }, []);
+
+    const wasmModule = {} as WebAssembly.Module;
+    await workerScope.onmessage?.({ data: { id: 9, payload: { config }, wasmModule } } as MessageEvent);
+    expect(initWasm).toHaveBeenLastCalledWith(wasmModule);
 
     compute.mockImplementation(() => { throw new Error("analytics failed in worker"); });
     await workerScope.onmessage?.({ data: { id: 8, payload: { config } } } as MessageEvent);

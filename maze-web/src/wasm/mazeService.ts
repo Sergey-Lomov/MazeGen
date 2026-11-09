@@ -443,9 +443,15 @@ export interface PrintSizingRequest {
   axisAligned: boolean;
 }
 
-export function getFieldPrintSizing(
-  request: PrintSizingRequest,
-): { params: Record<string, number>; width: number; height: number } | null {
+/// `limit` is the search cap the answer sits on (the sheet may hold a larger field), else `null`.
+export interface PrintSizingAnswer {
+  params: Record<string, number>;
+  width: number;
+  height: number;
+  limit: number | null;
+}
+
+export function getFieldPrintSizing(request: PrintSizingRequest): PrintSizingAnswer | null {
   return getWasm().field_print_sizing({
     tessellation: request.tessellation,
     preset: request.preset,
@@ -456,7 +462,7 @@ export function getFieldPrintSizing(
     usable_height_mm: request.usableHeightMm,
     cell_side_mm: request.cellSideMm,
     axis_aligned: request.axisAligned,
-  }) as { params: Record<string, number>; width: number; height: number } | null;
+  }) as PrintSizingAnswer | null;
 }
 
 /// Sizes of the cells of one cell type (`field_cell_sizes`, GitHub issue #948), in world units.

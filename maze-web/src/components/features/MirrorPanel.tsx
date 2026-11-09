@@ -1,7 +1,7 @@
 import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { mirrorStatus } from "../../pixi/mirror";
-import { fieldOpErrorMessage } from "../../pixi/fieldOps";
+import { fieldOpErrorMessage } from "../../pixi/fieldOpErrorMessage";
 import { Button } from "../Button";
 import { SidePanel } from "../SidePanel";
 import { WarningBubble } from "../WarningBubble";

@@ -16,17 +16,13 @@ import { ToolTooltip } from "../ToolIconButton";
 import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
+import { useDelayedIndicator } from "../useDelayedIndicator";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
 interface Props {
   canGenerate: boolean;
 }
-
-const SPINNER_SHOW_DELAY = 200;
-const SPINNER_MIN_VISIBLE = 750;
-
-type TimerHandle = ReturnType<typeof setTimeout>;
 
 export function GenerationFeature({ canGenerate }: Props) {
   const seed = useMazeStore((s) => s.seed);
@@ -57,84 +53,28 @@ export function GenerationFeature({ canGenerate }: Props) {
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
   const [generationInProgress, setGenerationInProgress] = useState(false);
-  const [spinnerVisible, setSpinnerVisible] = useState(false);
+  const spinnerVisible = useDelayedIndicator(generationInProgress);
   const generationToken = useRef(0);
   const generationInProgressRef = useRef(false);
-  const spinnerVisibleRef = useRef(false);
-  const spinnerShownAt = useRef<number | null>(null);
-  const showTimer = useRef<TimerHandle | null>(null);
-  const hideTimer = useRef<TimerHandle | null>(null);
 
   useEffect(() => { setSeedDraft(String(seed)); }, [seed]);
 
-  useEffect(() => () => {
-    if (showTimer.current !== null) clearTimeout(showTimer.current);
-    if (hideTimer.current !== null) clearTimeout(hideTimer.current);
-    generationToken.current += 1;
-  }, []);
+  useEffect(() => () => { generationToken.current += 1; }, []);
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
 
-  function clearGenerationTimers() {
-    if (showTimer.current !== null) {
-      clearTimeout(showTimer.current);
-      showTimer.current = null;
-    }
-    if (hideTimer.current !== null) {
-      clearTimeout(hideTimer.current);
-      hideTimer.current = null;
-    }
-  }
-
   function finishGeneration(token: number) {
     if (token !== generationToken.current) return;
-
     generationInProgressRef.current = false;
     setGenerationInProgress(false);
-    if (showTimer.current !== null) {
-      clearTimeout(showTimer.current);
-      showTimer.current = null;
-    }
-
-    if (!spinnerVisibleRef.current) return;
-    const shownAt = spinnerShownAt.current ?? Date.now();
-    const remaining = Math.max(0, SPINNER_MIN_VISIBLE - (Date.now() - shownAt));
-    if (remaining === 0) {
-      spinnerVisibleRef.current = false;
-      spinnerShownAt.current = null;
-      setSpinnerVisible(false);
-      return;
-    }
-    hideTimer.current = setTimeout(() => {
-      if (token !== generationToken.current) return;
-      hideTimer.current = null;
-      spinnerVisibleRef.current = false;
-      spinnerShownAt.current = null;
-      setSpinnerVisible(false);
-    }, remaining);
   }
 
   function startGeneration() {
     if (generationInProgressRef.current) return;
-    const keepVisibleSpinner = spinnerVisibleRef.current;
-    clearGenerationTimers();
-
     const token = ++generationToken.current;
     generationInProgressRef.current = true;
     setGenerationInProgress(true);
-    if (!keepVisibleSpinner) {
-      spinnerVisibleRef.current = false;
-      spinnerShownAt.current = null;
-      setSpinnerVisible(false);
-    }
-    showTimer.current = setTimeout(() => {
-      showTimer.current = null;
-      if (token !== generationToken.current || !generationInProgressRef.current) return;
-      spinnerVisibleRef.current = true;
-      spinnerShownAt.current = Date.now();
-      setSpinnerVisible(true);
-    }, SPINNER_SHOW_DELAY);
 
     try {
       const result = generateAsync() as unknown;

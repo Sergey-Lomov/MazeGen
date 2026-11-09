@@ -10,8 +10,17 @@ import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import { getCartesian } from "../pixi/cartesianCache";
 import { baseStoreState, baseFloorFieldConfig, emptyFreePoints, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import { computePrintSizing } from "../pixi/printSizingJob";
 import { getTooltipAnchor, getTooltipAnchors, getTooltipControlWithin } from "./tooltipTestUtils";
 import * as m from "~/paraglide/messages";
+
+// The print sizing worker is not available under jsdom: the job runs inline, still asynchronously.
+vi.mock("../wasm/workerClients", () => ({
+  startPrintSizing: (request: Parameters<typeof computePrintSizing>[0]) => ({
+    promise: Promise.resolve().then(() => computePrintSizing(request)),
+    cancel: () => {},
+  }),
+}));
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -166,7 +175,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(configSizeDescription(config)).toBe(expected);
   });
 
-  it("calculates the current predefined shape for print", () => {
+  it("calculates the current predefined shape for print", async () => {
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
@@ -176,7 +185,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
     fireEvent.change(inputs[4], { target: { value: "10" } });
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
+    // The typed size is still a draft: confirming takes it and calculates it before applying.
+    await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 })));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
     expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({
@@ -199,12 +211,22 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(cellInput).toHaveStyle({ width: "56px", boxSizing: "border-box" });
   });
 
-  it("shows only the field size in the single-floor result", () => {
+  it("shows no progress indicator when the calculation ends before the delay", async () => {
     render(<FieldSetupFeature />);
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(screen.getByText("Field size: 20 × 28 cells")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(await screen.findByText("Field size: 20 × 28 cells")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("shows only the field size in the single-floor result", async () => {
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(await screen.findByText("Field size: 20 × 28 cells")).toBeInTheDocument();
     expect(screen.getByText("Cell count: 560")).toBeInTheDocument();
     expect(screen.queryByText(/Field footprint:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Usable area:/)).not.toBeInTheDocument();
@@ -467,7 +489,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(description).toHaveTextContent("Connected AreaAAffects all connected cells.");
   });
 
-  it("applies print sizing to standard floors but preserves custom floors", () => {
+  it("applies print sizing to standard floors but preserves custom floors", async () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -503,10 +525,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(cellInput.value).toBe("10");
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     expect(dialogQueries.getByRole("checkbox")).toBeChecked();
-    expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled();
+    await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
+    await waitFor(() => expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 })));
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig.shape.shape).toBe("triangle");
     expect((useMazeStore.getState().floorFields.floor_2.fieldConfig.shape as { side: number }).side).toBeGreaterThan(0);
     expect(useMazeStore.getState().floorFields.floor_3.fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[0, 0]] }));
@@ -536,7 +558,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(screen.getByText("Floors")).toBeInTheDocument();
+    expect(await screen.findByText("Floors")).toBeInTheDocument();
     const groundRow = screen.getByText("1: Ground floor").parentElement!;
     const upperRow = screen.getByText("2: Upper floor").parentElement!;
     const customRow = screen.getByText("3: Custom floor").parentElement!;
@@ -557,10 +579,12 @@ describe("FieldSetupFeature — Copy floor button", () => {
     // The preview follows the committed value, not every keystroke.
     fireEvent.blur(cellInput);
 
+    // The rows are rebuilt once the new calculation ends.
     await waitFor(() => {
-      expect(within(groundRow).getByText("40 × 57")).toBeInTheDocument();
-      expect(within(groundRow).getByText("2280 cells")).toBeInTheDocument();
-      expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
+      const row = screen.getByText("1: Ground floor").parentElement!;
+      expect(within(row).getByText("40 × 57")).toBeInTheDocument();
+      expect(within(row).getByText("2280 cells")).toBeInTheDocument();
+      expect(within(screen.getByText("2: Upper floor").parentElement!).getByText("Triangle")).toBeInTheDocument();
     });
   });
 
