@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { generateMaze, generateMazeAsync, computeAnalyticsAsync } from "../wasm/mazeService";
+import { generateMaze, generateMazeAsync, computeAnalyticsAsync, disposeWorkers } from "../wasm/mazeService";
 
 vi.mock("../wasm/wasmLoader", async (importActual) => ({
   ...(await importActual<typeof import("../wasm/wasmLoader")>()),
@@ -34,137 +34,123 @@ beforeEach(() => {
   mockGenerate.mockReset();
 });
 
-describe("generateMazeAsync", () => {
-  it("resolves the result returned by the generation worker", async () => {
-    let request: unknown;
-    const terminate = vi.fn();
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
+interface Sent { id: number; payload: unknown }
 
-      postMessage(value: unknown) {
-        request = value;
-        this.onmessage?.({ data: { snapshot: validSnapshot, debugTape: undefined } } as MessageEvent);
-      }
+/** Fake pooled worker: answers each request through `reply`, or stays silent when it returns undefined. */
+function stubWorkers(reply: (sent: Sent) => unknown) {
+  const workers: FakeWorker[] = [];
+  class FakeWorker {
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    sent: Sent[] = [];
+    terminate = vi.fn();
 
-      terminate = terminate;
+    constructor() {
+      workers.push(this);
     }
-    vi.stubGlobal("Worker", FakeWorker);
+
+    postMessage(value: Sent) {
+      this.sent.push(value);
+      const data = reply(value);
+      if (data !== undefined) this.onmessage?.({ data } as MessageEvent);
+    }
+  }
+  vi.stubGlobal("Worker", FakeWorker);
+  return workers;
+}
+
+describe("generateMazeAsync", () => {
+  beforeEach(() => disposeWorkers());
+
+  it("routes the request to a worker and resolves its result", async () => {
+    const workers = stubWorkers(({ id }) => ({ id, result: { snapshot: validSnapshot, debugTape: undefined } }));
 
     const result = await generateMazeAsync(42, defaultConfig);
 
-    expect(request).toEqual({ seed: 42, config: defaultConfig });
+    expect(workers[0].sent[0].payload).toEqual({ seed: 42, config: defaultConfig });
     expect(result.snapshot).toEqual(validSnapshot);
-    expect(terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses one worker across runs", async () => {
+    const workers = stubWorkers(({ id }) => ({ id, result: { snapshot: validSnapshot, debugTape: undefined } }));
+
+    await generateMazeAsync(1, defaultConfig);
+    await generateMazeAsync(2, defaultConfig);
+
+    expect(workers).toHaveLength(1);
+    expect(workers[0].sent).toHaveLength(2);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an error response and replaces the worker", async () => {
+    let fail = true;
+    const workers = stubWorkers(({ id }) => fail ? { id, error: "boom" } : { id, result: { snapshot: validSnapshot } });
+
+    await expect(generateMazeAsync(1, defaultConfig)).rejects.toThrow("boom");
+    fail = false;
+    await generateMazeAsync(2, defaultConfig);
+
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("computeAnalyticsAsync", () => {
-  it("resolves the snapshot returned by the analytics worker", async () => {
-    let request: unknown;
-    const terminate = vi.fn();
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
+  const config = { nodes: [], edges: [], rule_groups: [] } as never;
+  beforeEach(() => disposeWorkers());
 
-      postMessage(value: unknown) {
-        request = value;
-        this.onmessage?.({ data: validSnapshot } as MessageEvent);
-      }
+  it("routes the request and resolves the validated snapshot", async () => {
+    const workers = stubWorkers(({ id }) => ({ id, result: validSnapshot }));
 
-      terminate = terminate;
-    }
-    vi.stubGlobal("Worker", FakeWorker);
-
-    const config = { nodes: [], edges: [], rule_groups: [] } as never;
     const result = await computeAnalyticsAsync(config);
 
-    expect(request).toEqual({ config });
+    expect(workers[0].sent[0].payload).toEqual({ config });
     expect(result).toEqual(validSnapshot);
-    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid snapshot", async () => {
+    stubWorkers(({ id }) => ({ id, result: { nodes: 1 } }));
+    await expect(computeAnalyticsAsync(config)).rejects.toThrow("invalid nodes");
   });
 
   it("terminates and rejects a superseded worker", async () => {
-    const workers: Array<{ onmessage: ((event: MessageEvent) => void) | null; terminate: ReturnType<typeof vi.fn> }> = [];
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
-      terminate = vi.fn();
+    const workers = stubWorkers(() => undefined);
 
-      constructor() {
-        workers.push(this);
-      }
-
-      postMessage(_value: unknown) {}
-    }
-    vi.stubGlobal("Worker", FakeWorker);
-
-    const config = { nodes: [], edges: [], rule_groups: [] } as never;
     const first = computeAnalyticsAsync(config);
     const second = computeAnalyticsAsync(config);
 
     await expect(first).rejects.toThrow("Analytics request superseded");
-    workers[1].onmessage?.({ data: validSnapshot } as MessageEvent);
-    await expect(second).resolves.toEqual(validSnapshot);
     expect(workers[0].terminate).toHaveBeenCalledTimes(1);
-    expect(workers[1].terminate).toHaveBeenCalledTimes(1);
+    workers[1].onmessage?.({ data: { id: workers[1].sent[0].id, result: validSnapshot } } as MessageEvent);
+    await expect(second).resolves.toEqual(validSnapshot);
+    expect(workers[1].terminate).not.toHaveBeenCalled();
   });
 
   it("cleans up when posting to the worker fails", async () => {
-    const terminate = vi.fn();
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
-      terminate = terminate;
-
-      postMessage(_value: unknown) {
-        throw new Error("cannot clone analytics config");
-      }
-    }
-    vi.stubGlobal("Worker", FakeWorker);
-
-    const config = { nodes: [], edges: [], rule_groups: [] } as never;
+    const workers = stubWorkers(() => { throw new Error("cannot clone analytics config"); });
     await expect(computeAnalyticsAsync(config)).rejects.toThrow("cannot clone analytics config");
-    expect(terminate).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects an error response from the worker", async () => {
-    const terminate = vi.fn();
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
-      terminate = terminate;
-
-      postMessage(_value: unknown) {
-        this.onmessage?.({ data: { error: "analytics worker failed" } } as MessageEvent);
-      }
-    }
-    vi.stubGlobal("Worker", FakeWorker);
-
-    const config = { nodes: [], edges: [], rule_groups: [] } as never;
-    await expect(computeAnalyticsAsync(config)).rejects.toThrow("analytics worker failed");
-    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a worker runtime error", async () => {
-    const terminate = vi.fn();
-    class FakeWorker {
-      onmessage: ((event: MessageEvent) => void) | null = null;
-      onerror: ((event: ErrorEvent) => void) | null = null;
-      terminate = terminate;
-
-      postMessage(_value: unknown) {
-        this.onerror?.({ message: "worker crashed" } as ErrorEvent);
-      }
-    }
-    vi.stubGlobal("Worker", FakeWorker);
-
-    const config = { nodes: [], edges: [], rule_groups: [] } as never;
-    await expect(computeAnalyticsAsync(config)).rejects.toThrow("worker crashed");
-    expect(terminate).toHaveBeenCalledTimes(1);
+    const workers = stubWorkers(() => undefined);
+    const pending = computeAnalyticsAsync(config);
+    workers[0].onerror?.({ message: "worker crashed" } as ErrorEvent);
+    await expect(pending).rejects.toThrow("worker crashed");
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
   });
 
-  it("runs the analytics worker's WASM call after initialization", async () => {
+  it("terminates every worker on dispose", async () => {
+    const workers = stubWorkers(({ id }) => ({ id, result: validSnapshot }));
+    await computeAnalyticsAsync(config);
+    disposeWorkers();
+    expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("serveWorker", () => {
+  it("initializes WASM and answers by request id, reporting errors as responses", async () => {
     const workerScope = {
       onmessage: null as ((event: MessageEvent) => void) | null,
       postMessage: vi.fn(),
@@ -175,14 +161,14 @@ describe("computeAnalyticsAsync", () => {
 
     await import("../wasm/analyticsWorker");
     const config = { nodes: [], edges: [], rule_groups: [] } as never;
-    await workerScope.onmessage?.({ data: { config } } as MessageEvent);
+    await workerScope.onmessage?.({ data: { id: 7, payload: { config } } } as MessageEvent);
 
     expect(compute).toHaveBeenCalledWith(config);
-    expect(workerScope.postMessage).toHaveBeenCalledWith(validSnapshot);
+    expect(workerScope.postMessage).toHaveBeenCalledWith({ id: 7, result: validSnapshot }, []);
 
     compute.mockImplementation(() => { throw new Error("analytics failed in worker"); });
-    await workerScope.onmessage?.({ data: { config } } as MessageEvent);
-    expect(workerScope.postMessage).toHaveBeenLastCalledWith({ error: "analytics failed in worker" });
+    await workerScope.onmessage?.({ data: { id: 8, payload: { config } } } as MessageEvent);
+    expect(workerScope.postMessage).toHaveBeenLastCalledWith({ id: 8, error: "analytics failed in worker" });
   });
 });
 

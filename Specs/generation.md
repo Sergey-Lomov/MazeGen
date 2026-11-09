@@ -278,6 +278,18 @@ The seed field's previous/next history buttons use the shared tool-tooltip layou
 
 The web generation action runs WASM generation in a module worker so the main thread can render progress feedback. The Generate/Re-Generate button uses independent timing defaults: `spinnerShowDelay = 200 ms` and `spinnerMinVisible = 750 ms`. A generation that completes before the show delay leaves the button unchanged. If it is still running at the delay, one spinner replaces the button title; it remains visible for at least the minimum duration and is hidden immediately afterward. While the generation card is open, `Enter` or `Space` invokes the same action unless focus is in a text-entry control; this capture-phase handler takes precedence over a focused non-text control's native activation and clears feature-card focus. The button is disabled while the operation is running, and also while `registryError` is set (the WASM registry failed to load, GitHub issue #769): the card then shows a persistent "maze engine failed to load" status line, the button is wrapped in a `Tooltip` giving that reason, and the card header status is `critical`. Timers are cleaned up on unmount, and generation tokens prevent stale completions from changing the current button state.
 
+### Worker lifecycle
+
+Every worker that hosts the WASM module is owned by a `WorkerPool` (`maze-web/src/wasm/workerPool.ts`); the pools live in `workerClients.ts`, while worker entry points import only `mazeGeneration.ts` (the synchronous WASM calls and snapshot validation), so a worker never loads the main-thread clients. `mazeService.ts` re-exports both; new consumers create a pool and write their worker with `serveWorker` (`workerHost.ts`) instead of calling `new Worker` directly. There is one pool per worker entry point (generation, analytics); pools do not share workers.
+
+- A worker initializes WASM once and then serves many requests, one at a time. Requests and responses carry an `id`; a response with a foreign id is ignored. Transferables of the response are moved, not copied.
+- After a successful response the worker returns to the pool as idle (at most `maxIdle`, default 1; extras are terminated). Concurrent requests get separate workers.
+- A worker is retired (terminated, never reused) after an error response, a runtime error, a failed `postMessage`, or a cancellation, since its WASM instance may be mid-call or corrupted. An idle worker that errors is dropped at once.
+- Cancelling a job (`cancel`, `cancelAll`) terminates its worker and rejects the job with the given reason; a synchronous WASM call cannot be interrupted otherwise.
+- `disposeWorkers()` (on `pagehide` and hot module replacement) cancels running jobs and terminates idle workers. Pools stay usable and spawn workers on demand, so a page restored from the back/forward cache keeps working.
+
+Production delivery: `maze-web/public/_headers` marks the content-hashed `/assets/*` (including the WASM binary) `Cache-Control: public, max-age=31536000, immutable` (Netlify / Cloudflare Pages format; other hosts need the same header configured).
+
 Generation failures appear in a persistent error card. Its expandable technical details show up to three 16 px lines before becoming vertically scrollable. The Copy control sits in the Details header, outside the scrollable region, and copies every occurrence from newest to oldest. The detail scrollbar uses the card's severity palette, so any future warning card with details receives warning colors automatically.
 
 ## QC Experiment Mode

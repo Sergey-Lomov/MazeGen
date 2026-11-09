@@ -12,9 +12,11 @@ Opening the Analytics card sets `analyticsOpen = true` in the store; closing it 
 ## Recomputing analytics after rule edits
 
 When the Quality panel changes `rules` or `stages`, the post-edit analytics snapshot is refreshed
-after a 300 ms debounce. The analytics-only WASM call runs in a dedicated module worker so cycle
-analysis and QC issue collection do not block rule editing or canvas input on the main thread.
-Starting a newer refresh terminates the previous worker; only the latest completed request may
+after a 300 ms debounce. The analytics-only WASM call runs in a module worker from the analytics
+`WorkerPool` (see `Specs/generation.md`, "Worker lifecycle") so cycle analysis and QC issue
+collection do not block rule editing or canvas input on the main thread. Starting a newer refresh
+cancels the running request: its worker is terminated and its promise rejects with "Analytics
+request superseded"; the next request starts a fresh worker. Only the latest completed request may
 update the store. Leaving the Quality panel flushes the pending refresh immediately.
 
 ### Card comment
