@@ -28,6 +28,7 @@
   "common.next": "Далее",
   "common.apply": "Применить",
   "common.problems": "Проблемы",
+  "common.exact_input": "Нажмите для точного ввода",
 
   "color_picker.title": "Цвет",
   "color_picker.hex_label": "Hex",

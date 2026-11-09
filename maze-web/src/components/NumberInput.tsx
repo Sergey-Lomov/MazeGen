@@ -19,6 +19,7 @@ interface Props {
   name?: string;
   id?: string;
   ariaLabel?: string;
+  autoFocus?: boolean;
   style?: React.CSSProperties;
   /** Forwarded to the underlying input (callers stop row-level click propagation with this). */
   onClick?: (e: React.MouseEvent<HTMLInputElement>) => void;
@@ -34,7 +35,7 @@ interface Props {
 // last valid value. Integer fields additionally reject decimal separators and round+clamp on
 // blur; float fields only clamp. Rejected drafts stay visible like TextInput drafts and are never
 // committed, so the field hint explains why the typed character was not accepted.
-export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, ariaLabel, style, onClick, onBlurCommit }: Props) {
+export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, ariaLabel, autoFocus, style, onClick, onBlurCommit }: Props) {
   const hint = useFieldHint();
   // Local display string — decoupled from `value` while the field is focused so the user can
   // clear it and type a new number without the prop snapping it back mid-edit.
@@ -122,6 +123,7 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
         name={name}
         id={id}
         aria-label={ariaLabel}
+        autoFocus={autoFocus}
         style={{ ...style, ...hint.fieldStyle }}
         value={draft}
         min={min}

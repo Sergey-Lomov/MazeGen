@@ -870,11 +870,43 @@ describe("ColorSwatch", () => {
     const [countSlider, stepSlider] = Array.from(
       screen.getByTestId("color-picker-divergence-swatches").parentElement!.querySelectorAll('input[type="range"]'),
     ) as HTMLInputElement[];
-    // 180 / 1 = 180, which would exceed the step slider's max=60 (Hue scale) if uncapped.
+    // Automatic hue spread remains capped at 60, even though manual input can reach 180.
     fireEvent.change(countSlider, { target: { value: "1" } });
     fireEvent.click(getTooltipControl(m["color_picker.tools.auto_step"]()));
     expect(stepSlider.value).toBe("60");
-    expect(Number(stepSlider.max)).toBe(60);
+    expect(Number(stepSlider.max)).toBe(180);
+  });
+
+  it("limits divergence and range-split scale controls to their displayed units", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+
+    let [, stepSlider] = divergenceSliders();
+    expect(Number(stepSlider.max)).toBe(180);
+    expect(getTooltipControl(m["color_picker.tools.auto_step"]())).toHaveStyle({ height: "22px" });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    [, stepSlider] = divergenceSliders();
+    expect(Number(stepSlider.max)).toBe(100);
+    fireEvent.change(scaleSelect(), { target: { value: "c" } });
+    [, stepSlider] = divergenceSliders();
+    expect(Number(stepSlider.max)).toBe(0.4);
+    fireEvent.click(stepSlider.parentElement!.querySelector('button[aria-label="Click for exact input"]')!);
+    expect(screen.getByRole("spinbutton", { name: `${m["color_picker.tools.step"]()} value` })).toHaveAttribute("max", "0.4");
+
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    let [, minSlider, maxSlider] = rangeSplitSliders();
+    expect(Number(minSlider.max)).toBe(100);
+    expect(Number(maxSlider.max)).toBe(100);
+    for (const reset of getTooltipControls(m["color_picker.tools.reset_auto"]())) {
+      expect(reset).toHaveStyle({ height: "22px" });
+    }
+    fireEvent.change(scaleSelect(), { target: { value: "c" } });
+    [, minSlider, maxSlider] = rangeSplitSliders();
+    expect(Number(minSlider.max)).toBe(0.4);
+    expect(Number(maxSlider.max)).toBe(0.4);
   });
 
   function divergenceSliders() {

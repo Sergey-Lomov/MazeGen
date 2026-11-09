@@ -231,7 +231,8 @@ When the field editor is open in custom mode, the background-image settings pane
 **Auto-fill field** section. The section is not shown in other editors or for predefined fields.
 It contains a background detection mode (transparent pixels or a selected RGB color), the selected
 background color, and a threshold describing the required share of non-background pixels inside a
-cell. When the selected-color mode is entered, its default color is read from the source image's
+cell. The threshold is displayed and edited as a 0.0%-100.0% percentage, while the calculation
+continues to receive its 0.0-1.0 fractional value. When the selected-color mode is entered, its default color is read from the source image's
 top-left pixel. This inferred color is refreshed only when the detection mode changes; changing
 the threshold or manually editing the color does not replace it. The calculation uses the current
 grid geometry and the underlay's current crop, scale, and position, classifying the pixels covered

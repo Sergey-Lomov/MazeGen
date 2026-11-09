@@ -1,7 +1,9 @@
-import type React from "react";
+import React, { useState } from "react";
 import { NumberInput } from "./NumberInput";
+import { Tooltip } from "./Tooltip";
 import { sharedStyles } from "../styles/shared";
-import { typography, spacing } from "../styles/theme";
+import { controlRowHeight, typography, spacing } from "../styles/theme";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   label: string;
@@ -11,21 +13,19 @@ interface Props {
   min?: number;
   max?: number;
   step?: number;
+  /** Renders a 0..1 probability as a 0..100% control without changing its stored value. */
+  percent?: boolean;
   /** Value display formatter. Defaults to `toFixed(2)`, matching the default 0..1/0.01 range. */
   format?: (v: number) => string;
   /** Fixed width of the value label, for a formatter whose output is wider than the default (it then neither wraps nor moves the slider). */
   valueWidth?: React.CSSProperties["width"];
-  /** Adds a bounded numeric editor for values that need more precision than the range input. */
-  precise?: boolean;
-  /** Accessible name for the precise editor when the visible row label is contextual or repeated. */
+  /** Accessible name for the exact input when the visible row label is contextual or repeated. */
   preciseAriaLabel?: string;
-  /** Limits a precise editor to a fixed number of decimal places. */
-  preciseDecimals?: number;
-  /** Width of the precise editor. */
+  /** Width of the exact input. */
   preciseWidth?: React.CSSProperties["width"];
-  /** Maximum for the precise editor; `null` leaves it unbounded. Defaults to the slider maximum. */
+  /** Optional upper bound for the exact input; omitted leaves its upper end unbounded. */
   preciseMax?: number | null;
-  /** Minimum for the precise editor. Defaults to the slider minimum. */
+  /** Overrides the slider minimum for the exact input. */
   preciseMin?: number;
   disabled?: boolean;
   onPointerDown?: React.PointerEventHandler<HTMLInputElement>;
@@ -40,7 +40,14 @@ interface Props {
   trailingAction?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, valueWidth, precise, preciseAriaLabel, preciseDecimals, preciseWidth, preciseMax, preciseMin, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, percent, format, valueWidth, preciseAriaLabel, preciseWidth, preciseMax, preciseMin, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+  const [editingValue, setEditingValue] = useState(false);
+  const factor = percent ? 100 : 1;
+  const displayedValue = percent ? `${(value * factor).toFixed(1)}%` : format ? format(value) : value.toFixed(2);
+  const valueStyle = valueWidth === undefined
+    ? percent ? { ...sharedStyles.sliderRowValue, width: 48 } : sharedStyles.sliderRowValue
+    : { ...sharedStyles.sliderRowValue, width: valueWidth, whiteSpace: "nowrap" as const };
+  const preciseInputMax = preciseMax === null ? undefined : preciseMax ?? (percent ? max : undefined);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -50,33 +57,47 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           name={label}
           className="maze-slider"
           style={{ flex: 1 }}
-          min={min}
-          max={max}
-          step={step}
-          value={value}
+          min={min * factor}
+          max={max * factor}
+          step={percent ? 0.1 : step}
+          value={value * factor}
           disabled={disabled}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(e) => onChange(Number(e.target.value) / factor)}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
           onBlur={onBlur}
         />
-        {precise ? (
+        {editingValue && !disabled ? (
           <NumberInput
             name={`${label}-value`}
             ariaLabel={preciseAriaLabel ?? `${label} value`}
-            min={preciseMin ?? min}
-            max={preciseMax === undefined ? max : preciseMax ?? undefined}
-            value={preciseDecimals === undefined ? String(value) : value.toFixed(preciseDecimals)}
-            disabled={disabled}
-            style={{ ...sharedStyles.input, width: preciseWidth ?? 64, textAlign: "right" }}
+            autoFocus
+            min={(preciseMin ?? min) * factor}
+            max={preciseInputMax === undefined ? undefined : preciseInputMax * factor}
+            value={percent ? (value * factor).toFixed(1) : String(value)}
+            style={{ ...sharedStyles.input, width: preciseWidth ?? 48, height: controlRowHeight, boxSizing: "border-box", textAlign: "right" }}
             onChange={(raw) => {
               const next = Number(raw);
-              if (Number.isFinite(next)) onChange(preciseDecimals === undefined ? next : Number(next.toFixed(preciseDecimals)));
+              if (!Number.isFinite(next)) return;
+              const normalized = next / factor;
+              onChange(percent ? Math.min(max, Math.max(min, normalized)) : normalized);
             }}
+            onBlurCommit={() => setEditingValue(false)}
           />
         ) : (
-          <span style={valueWidth === undefined ? sharedStyles.sliderRowValue : { ...sharedStyles.sliderRowValue, width: valueWidth, whiteSpace: "nowrap" }}>{format ? format(value) : value.toFixed(2)}</span>
+          <Tooltip content={disabled ? undefined : m["common.exact_input"]()}>
+            <button
+              type="button"
+              className="hoverable"
+              aria-label={m["common.exact_input"]()}
+              disabled={disabled}
+              onClick={() => setEditingValue(true)}
+              style={{ ...valueStyle, height: controlRowHeight, boxSizing: "border-box", border: "none", borderRadius: 3, padding: "2px 3px", fontFamily: "inherit", cursor: disabled ? "not-allowed" : "text" }}
+            >
+              {displayedValue}
+            </button>
+          </Tooltip>
         )}
         {trailingAction}
         {resetButton}
