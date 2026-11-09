@@ -18,6 +18,7 @@ import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSel
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
+import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
@@ -874,11 +875,11 @@ export class VectorByWallsRenderer {
     const { nodes } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
-    const warnings = computeVectorByWallsWarningsAcrossFloors(
+    const warnings = [...computeVectorByWallsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByWallsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
       hasAnyGlue(state.floorTopology),
-    );
+    ), ...computeTopologyWarnings(state, state.vectorByWallsSettings, rawEndpoints)];
     const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
     this.warningHighlight.render(hoveredExportWarningKey, warnings, nodes, state.activeFieldConfig, state.vectorByWallsSettings, wallInset,
       // Boundary band as wide as the live one-way indicator, like the analytics highlight; without it the band spans the whole distance between the two cell centers.

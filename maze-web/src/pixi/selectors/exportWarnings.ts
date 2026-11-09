@@ -4,6 +4,7 @@ import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../sto
 import { shortestCorridorFaceAcrossFloors, selectNodeLevelResolver, selectFloorScopedMaze } from "./mazeSelectors";
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportGroup } from "./teleportGroups";
+import type { MarkerLookKind } from "./exportMarkerLookAlike";
 export { computeTextFitItemsAcrossFloors } from "./exportTextFit";
 export type { TextFitKind } from "./exportTextFit";
 import { type ColorFieldKey } from "../colorFieldKeys";
@@ -107,6 +108,9 @@ export type ExportWarningId =
    *  cell (one elevator shaft has at most one node per floor, so two elevator nodes in one cell are
    *  always distinct shafts). */
   | "elevator_indistinguishable"
+  /** Both vector modes (GitHub issue #959) — markers of different kinds (start, finish, teleport, vertical passages, elevator)
+   *  render alike: close fill and border colors, same shape and inner elements. Lists the alike kinds as `markerPairs`. */
+  | "markers_look_alike"
   | "one_way_low_contrast_corridor"
   | "corridor_low_contrast_background"
   | "teleport_connector_low_contrast_corridor"
@@ -128,6 +132,8 @@ export type ExportWarningId =
   | "edge_marker_colors_similar"
   /** Both vector modes (GitHub issue #902) — an edge marker colour is too close to the background. Highlights those markers as `polygons`. */
   | "edge_marker_low_contrast_background"
+  /** Both vector modes (GitHub issue #959) — an edge alignment mark looks like another kind of marker (same shape, close color, nothing else to tell them apart). Highlights those marks as `polygons`; `markerPairs` names the kinds. */
+  | "edge_marker_looks_like_marker"
   /** Both vector modes (GitHub issue #920) — alignment marks are hidden and runs from different, disconnected glues have the same wall/passage pattern. Highlights the ambiguous runs as `bands`. */
   | "seam_matching_ambiguous_without_markers"
   | "inner_grid_low_contrast_floor"
@@ -198,6 +204,8 @@ export type ExportWarning = {
    *  machinery, which has no node id to resolve here. Omitted (or empty) for every other warning
    *  id — no bubbles drawn. */
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+  /** `markers_look_alike` (GitHub issue #959): the pairs of marker kinds that look the same, for the description. */
+  markerPairs?: [MarkerLookKind, MarkerLookKind][];
   /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
   polygons?: [number, number][][];
   /** Like `polygons`, but each shape belongs to one floor (GitHub issue #945): the connector warnings are computed per floor and merged
@@ -224,6 +232,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
           fields: warning.fields ? [...warning.fields] : undefined,
           crossFloorTargets: warning.crossFloorTargets ? [...warning.crossFloorTargets] : undefined,
           floorPolygons: warning.floorPolygons ? [...warning.floorPolygons] : undefined,
+          markerPairs: warning.markerPairs ? [...warning.markerPairs] : undefined,
         });
         continue;
       }
@@ -236,6 +245,10 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
       existing.crossFloorTargets = [...(existing.crossFloorTargets ?? []), ...(warning.crossFloorTargets ?? [])];
       existing.cells = [...(existing.cells ?? []), ...(warning.cells ?? [])];
       if (warning.floorPolygons) existing.floorPolygons = [...(existing.floorPolygons ?? []), ...warning.floorPolygons];
+      if (warning.markerPairs) {
+        const known = new Set((existing.markerPairs ?? []).map((pair) => pair.join("|")));
+        existing.markerPairs = [...(existing.markerPairs ?? []), ...warning.markerPairs.filter((pair) => !known.has(pair.join("|")))];
+      }
       if (warning.fields) existing.fields = Array.from(new Set([...(existing.fields ?? []), ...warning.fields]));
     }
   }

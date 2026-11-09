@@ -10,6 +10,7 @@ import type { EdgeMarkerStyle, FloorEdgeMarkerStyle } from "../store/imageExport
 import type { WireTopology } from "../wasm/types";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { fieldOf } from "./fieldConfigFixtures";
+import type { MarkerLook } from "../pixi/selectors/exportMarkerLookAlike";
 import { getSeamModel, pointOnHalfEdge } from "../pixi/selectors/seams";
 import { displayTransform } from "../pixi/tessellationGeometry";
 import { applyTransform } from "../pixi/geometry/worldTransform";
@@ -369,9 +370,28 @@ describe("computeTopologyWarnings", () => {
     const { DEFAULT_GLUE_TAB_STYLE } = await import("../store/slices/imageExportDefaults");
     const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const creases = [{ id: 0, a: [0, 0] as const, b: [2, 0] as const }, { id: 1, a: [0, 2] as const, b: [2, 2] as const }];
-    const state = { activeFloorId: "f", activeFieldConfig: cfg, floorTopology: {}, floorCreases: { f: creases }, pngExportSettings: { cuts: { lines: {} } }, nodes: [], floors: [] };
-    const settings = { glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: style({ mode: "all", color: 0x808080 }), links: [], background: 0xffffff };
-    expect(computeTopologyWarnings(state as never, settings).map((w) => w.id)).toContain("edge_marker_colors_similar");
+    const state = { activeFloorId: "f", activeFieldConfig: cfg, floorTopology: {}, floorCreases: { f: creases }, pngExportSettings: { cuts: { lines: {} } }, nodes: [], edges: [], floors: [] };
+    const { DEFAULT_VECTOR_BY_WALLS_SETTINGS } = await import("../store/slices/imageExportDefaults");
+    const settings = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: style({ mode: "all", color: 0x808080 }), background: 0xffffff };
+    expect(computeTopologyWarnings(state as never, settings, { start: null, finish: null }).map((w) => w.id)).toContain("edge_marker_colors_similar");
+  });
+
+  it("flags marks that look like another kind of marker, and only those", () => {
+    const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+    const creases = [{ id: 0, a: [0, 0] as const, b: [2, 0] as const }, { id: 1, a: [0, 2] as const, b: [2, 2] as const }];
+    const state = { activeFloorId: "f", activeFieldConfig: cfg, floorTopology: {}, floorCreases: { f: creases }, pngExportSettings: { cuts: { lines: {} } }, nodes: [], floors: [] } as never;
+    const markStyle = { ...style({ mode: "all", shape: "circle", color: 0x808080, overrides: { f: { c1: { shape: "star" } } } }), overrides: {} } as FloorEdgeMarkerStyle;
+    const start: MarkerLook = { kind: "start", shape: "circle" as const, fill: 0x808081, border: null, borderWidth: 0, size: markStyle.size, sizeAdaptation: 0, inner: "", nodes: [1] };
+    const captioned = { ...start, kind: "finish" as const, inner: "text:F:" };
+    const bordered = { ...start, kind: "teleport" as const, border: 0 };
+    const bigger = { ...start, kind: "finish" as const, size: markStyle.size * 2 };
+    const ids = (others: MarkerLook[]) => computeEdgeMarkerWarnings(state, markStyle, 0xffffff, others).map((w) => w.id);
+    expect(ids([])).not.toContain("edge_marker_looks_like_marker");
+    expect(ids([captioned, bordered, bigger])).not.toContain("edge_marker_looks_like_marker");
+    const warning = computeEdgeMarkerWarnings(state, markStyle, 0xffffff, [start]).find((w) => w.id === "edge_marker_looks_like_marker");
+    expect(warning?.markerPairs).toEqual([["edge_marker", "start"]]);
+    expect(warning?.polygons?.length).toBeGreaterThan(0);
+    expect(warning?.nodes).toEqual([1]);
   });
 });
 

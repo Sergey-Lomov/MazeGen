@@ -34,7 +34,7 @@ export function ExportWarningBubble({ warning, interactive = true }: { warning: 
   const [open, setOpen] = useState(false);
   const setHoveredExportWarningKey = useMazeStore((s) => s.setHoveredExportWarningKey);
   const message = resolveExportWarningMessage(warning.id);
-  const description = resolveExportWarningDescription(warning.id, warning.colorFields, warning.colorValues);
+  const description = resolveExportWarningDescription(warning.id, warning.colorFields, warning.colorValues, warning.markerPairs);
   const palette = notificationPalette("warning");
   const levels = resolveWarningFloorLevels(warning);
 
