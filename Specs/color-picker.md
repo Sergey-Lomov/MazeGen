@@ -226,7 +226,9 @@ Rows come from two sources, shown as two groups split by a divider:
     meaningful default (`defaultColor` unset).
   - Then `priorityColors` (threaded as `priorityColors?: ProjectColorEntry[]`), in the given
     order — the sibling colors that matter for *that* color decision (e.g. the other marker's
-    fill/border, the floor or corridor color). May be empty.
+    fill/border, the floor or corridor color). May be empty. In Vector by corridors, every
+    text-color association also includes `Background: Fill`, because the text can be read against
+    the export background.
 - **Bottom group** — the color fields of the currently active export profile
   (`selectActiveProfileColors`), i.e. the profile the picker was opened from.
 
