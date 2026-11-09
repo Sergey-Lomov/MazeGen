@@ -54,8 +54,10 @@ optional `controls` (two cubic Bezier controls per consecutive node pair), and a
 `"polyline"` joins nodes and ignores controls. `"curve"` uses nodes and controls as ordinary
 cubic Bezier segments. Switching to curve mode creates straight controls only when they do not
 exist; switching back leaves controls persisted but ignored. A manual path is drawn exactly as
-authored. New controls sit a fixed one-and-a-half-tile distance from their anchors along the local path
-tangent, so the initial curve is smooth. Dragging an anchor translates its adjacent controls;
+authored. New controls sit up to one-and-a-half tiles from their anchors along the local path
+tangent, so the initial curve is smooth. The distance is capped at a third of the segment length so
+short segments never curl into a loop; a node without a direction of its own (coincident neighbours,
+backtracking path) uses the segment direction, and a zero-length segment gets controls on its anchors. Dragging an anchor translates its adjacent controls;
 dragging one control rotates its paired control around their common anchor while preserving that
 paired control's length, keeping a G1 join. Controls and dotted control-to-anchor guides are shown
 only for the selected anchor. Inserting a node on a curve splits its cubic segment with the

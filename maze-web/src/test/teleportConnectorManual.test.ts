@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
 import { routeTeleportConnectors } from "../pixi/renderers/teleportConnectorPlan";
-import { curveControls, manualConnectorPoints, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
+import { curveControls, editableCurvePoints, manualConnectorPoints, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
@@ -52,6 +52,34 @@ describe("manual teleport connector paths", () => {
     const toNode: [number, number] = [outgoing[0] - 100, outgoing[1]];
     expect(fromNode[0] * toNode[1] - fromNode[1] * toNode[0]).toBeCloseTo(0);
     expect(fromNode[0] * toNode[0] + fromNode[1] * toNode[1]).toBeLessThan(0);
+  });
+
+  it("keeps handles inside short or degenerate segments so no end curls into a loop", () => {
+    const cases: [number, number][][] = [
+      [[0, 0], [100, 0], [100, 0]],
+      [[0, 0], [0, 0], [100, 0]],
+      [[0, 0], [100, 0], [0, 0]],
+      [[0, 0], [5, 0], [100, 0]],
+    ];
+    for (const nodes of cases) {
+      const controls = straightCubicControls(nodes);
+      for (let i = 0; i + 1 < nodes.length; i++) {
+        const a = nodes[i], b = nodes[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+        for (const c of [controls[i * 2], controls[i * 2 + 1]]) {
+          const t = len2 === 0 ? 0 : ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / len2;
+          expect(t).toBeGreaterThanOrEqual(-1e-9);
+          expect(t).toBeLessThanOrEqual(1 + 1e-9);
+        }
+      }
+    }
+  });
+
+  it("lays out editable curve points as anchor, two controls, anchor", () => {
+    const nodes: [number, number][] = [[0, 0], [100, 0], [100, 100]];
+    const controls = straightCubicControls(nodes);
+    expect(editableCurvePoints({ mode: "curve", nodes, controls })).toEqual([
+      0, 0, ...controls[0], ...controls[1], 100, 0, ...controls[2], ...controls[3], 100, 100,
+    ]);
   });
 
   it("samples a cubic manual path for the renderer while retaining its editable control points", () => {
