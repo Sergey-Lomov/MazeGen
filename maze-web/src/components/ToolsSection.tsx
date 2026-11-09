@@ -34,7 +34,8 @@ const SCALES: { key: Scale; label: () => string }[] = [
 
 const DIVERGENCE_DEFAULT_COUNT = 4;
 const DIVERGENCE_DEFAULT_STEP: Record<Scale, number> = { h: 30, l: 15, c: OKLCH_MAX_CHROMA / 8 };
-const DIVERGENCE_MAX_STEP: Record<Scale, number> = { h: 60, l: 50, c: OKLCH_MAX_CHROMA / 2 };
+const SCALE_MAX: Record<Scale, number> = { h: 360, l: 100, c: OKLCH_MAX_CHROMA };
+const DIVERGENCE_MAX_STEP: Record<Scale, number> = { ...SCALE_MAX, h: 180 };
 const DIVERGENCE_HUE_MAX_SPREAD = 60;
 const RANGE_SPLIT_COUNT_MIN = 3;
 const RANGE_SPLIT_COUNT_MAX = 12;
@@ -177,6 +178,7 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
     setDivCountState(next);
   }
   function setDivStep(next: number) {
+    next = Math.min(DIVERGENCE_MAX_STEP[divScale], Math.max(divScale === "h" ? 1 : 0, next));
     persisted.divergence.step[divScale] = next;
     setDivStepState({ ...persisted.divergence.step });
   }
@@ -189,10 +191,12 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
     setRangeCountState(next);
   }
   function setRangeMin(next: number) {
+    next = Math.min(SCALE_MAX[rangeScale], Math.max(0, next));
     persisted.rangeSplit.min[rangeScale] = next;
     setRangeMinState({ ...persisted.rangeSplit.min });
   }
   function setRangeMax(next: number) {
+    next = Math.min(SCALE_MAX[rangeScale], Math.max(0, next));
     persisted.rangeSplit.max[rangeScale] = next;
     setRangeMaxState({ ...persisted.rangeSplit.max });
   }
@@ -238,7 +242,7 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
   const divStepMax = DIVERGENCE_MAX_STEP[divScale];
   const divStepFormat = divScale === "h" ? (v: number) => `${v}°` : divScale === "c" ? (v: number) => v.toFixed(3) : (v: number) => String(v);
   const rangeFormat = rangeScale === "h" ? (v: number) => `${Math.round(v)}°` : rangeScale === "c" ? (v: number) => v.toFixed(3) : (v: number) => `${Math.round(v)}%`;
-  const rangeMax0 = rangeScale === "c" ? OKLCH_MAX_CHROMA : rangeScale === "h" ? 360 : 100;
+  const rangeMax0 = SCALE_MAX[rangeScale];
   const rangeStep0 = rangeScale === "c" ? 0.001 : 1;
 
   return (
@@ -287,8 +291,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                 max={divStepMax}
                 step={divScale === "c" ? 0.001 : 1}
                 format={divStepFormat}
+                preciseMax={divStepMax}
                 resetButton={divScale === "h" ? (
-                  <HoverIconButton onClick={() => setDivStep(autoFitHueStep(divCount))} title={m["color_picker.tools.auto_step"]()}>
+                  <HoverIconButton fixedHeight onClick={() => setDivStep(autoFitHueStep(divCount))} title={m["color_picker.tools.auto_step"]()}>
                     <Maximize2 size={13} />
                   </HoverIconButton>
                 ) : undefined}
@@ -322,8 +327,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                     max={rangeMax0}
                     step={rangeStep0}
                     format={rangeFormat}
+                    preciseMax={rangeMax0}
                     resetButton={
-                      <HoverIconButton onClick={() => setRangeMin(RANGE_SPLIT_AUTO_MIN[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
+                      <HoverIconButton fixedHeight onClick={() => setRangeMin(RANGE_SPLIT_AUTO_MIN[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
                         <RotateCcw size={13} />
                       </HoverIconButton>
                     }
@@ -336,8 +342,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                     max={rangeMax0}
                     step={rangeStep0}
                     format={rangeFormat}
+                    preciseMax={rangeMax0}
                     resetButton={
-                      <HoverIconButton onClick={() => setRangeMax(RANGE_SPLIT_AUTO_MAX[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
+                      <HoverIconButton fixedHeight onClick={() => setRangeMax(RANGE_SPLIT_AUTO_MAX[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
                         <RotateCcw size={13} />
                       </HoverIconButton>
                     }

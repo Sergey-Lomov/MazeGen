@@ -169,6 +169,21 @@ fn an_axis_aligned_rect_is_sized_by_division() {
 }
 
 #[test]
+fn a_result_on_the_search_cap_reports_it() {
+    let tiny = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 0.01);
+    let capped = print_sizing(&tiny).unwrap().unwrap();
+    assert_eq!(capped.limit, Some(MAX_RECT_DIMENSION));
+
+    let normal = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 5.0);
+    assert_eq!(print_sizing(&normal).unwrap().unwrap().limit, None);
+
+    // An axis-aligned rectangle is sized by division and has no cap.
+    let mut divided = request(TessellationKind::Square, "rect", &[("cols", 1), ("rows", 1)], 0.01);
+    divided.axis_aligned = true;
+    assert_eq!(print_sizing(&divided).unwrap().unwrap().limit, None);
+}
+
+#[test]
 fn nothing_fits_a_cell_larger_than_the_sheet() {
     let request = request(TessellationKind::Hex, "rect", &[("cols", 1), ("rows", 1)], 300.0);
     assert_eq!(print_sizing(&request).unwrap(), None);

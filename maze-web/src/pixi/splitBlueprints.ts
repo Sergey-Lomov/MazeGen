@@ -123,6 +123,12 @@ export function blueprintsFor(shape: string | null, degree: number): SplitNodeBl
   return (shape === null ? undefined : BLUEPRINTS_BY_SHAPE[shape]) ?? BLUEPRINTS_BY_DEGREE[degree] ?? [];
 }
 
+/** The selection UI supplies the localized "Blueprint" prefix. IDs are zero-based implementation
+ * details, so the displayed fallback number is one-based. */
+export function blueprintNumber(blueprint: SplitNodeBlueprint): number {
+  return blueprint.id + 1;
+}
+
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for `blueprint`'s preview thumbnail — same
  *  role as `splitPatternTile.ts`'s `tileNodesForPattern`, simpler here since a blueprint only ever
  *  declares `passage` faces (everything else defaults to `wall`), no `one_way`/`undefined`. */

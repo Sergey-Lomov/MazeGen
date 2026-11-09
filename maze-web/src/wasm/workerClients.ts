@@ -1,5 +1,7 @@
 /** Main-thread clients of the WASM workers: one `WorkerPool` per worker entry point. */
-import { WorkerPool } from "./workerPool";
+import { WorkerPool, type WorkerJob } from "./workerPool";
+import { compileWasmModule } from "./wasmLoader";
+import type { PrintSizingAnswer, PrintSizingRequest } from "../pixi/printSizingJob";
 import { validateSnapshot, type GenerateMazeResult } from "./mazeGeneration";
 import type { GenerationRequest } from "./generationWorker";
 import type { AnalyticsRequest } from "./analyticsWorker";
@@ -7,13 +9,28 @@ import type { GenerateConfig, ComputeAnalyticsConfig, MazeSnapshot } from "./typ
 
 const generationPool = new WorkerPool<GenerationRequest, GenerateMazeResult>({
   create: () => new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
   failureMessage: "Generation worker failed",
 });
 
 const analyticsPool = new WorkerPool<AnalyticsRequest, unknown>({
   create: () => new Worker(new URL("./analyticsWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
   failureMessage: "Analytics worker failed",
 });
+
+const printSizingPool = new WorkerPool<PrintSizingRequest, PrintSizingAnswer>({
+  create: () => new Worker(new URL("./printSizingWorker.ts", import.meta.url), { type: "module" }),
+  wasmModule: compileWasmModule,
+  failureMessage: "Print sizing worker failed",
+});
+
+/** Starts the print field size and cell size calculation in a worker (GitHub issue #949). The
+ *  caller cancels the job when its parameters change or its dialog closes; a cancelled job
+ *  terminates its worker, because a synchronous WASM call cannot be interrupted. */
+export function startPrintSizing(request: PrintSizingRequest): WorkerJob<PrintSizingAnswer> {
+  return printSizingPool.run(request);
+}
 
 /** Runs generation off the main thread so long WASM calls can provide responsive UI feedback. The
  *  worker stays alive afterwards, so WASM is initialized once per worker rather than per run. */
@@ -34,6 +51,7 @@ export function computeAnalyticsAsync(config: ComputeAnalyticsConfig): Promise<M
 export function disposeWorkers(): void {
   generationPool.dispose();
   analyticsPool.dispose();
+  printSizingPool.dispose();
 }
 
 if (typeof window !== "undefined") window.addEventListener("pagehide", disposeWorkers);

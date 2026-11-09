@@ -84,7 +84,7 @@ describe("textFit", () => {
     const wide = item("18", "circle", 20);
     const narrow = item("1", "circle", 20);
     expect(maxFittingFontSize([wide, narrow])).toBe(maxFittingFontSize([wide]));
-    expect(maxFittingFontSize([item("1", "circle", 5000)])).toBe(32);
+    expect(maxFittingFontSize([item("1", "circle", 5000)])).toBe(40);
     expect(maxFittingFontSize([item("18", "circle", 1)])).toBe(6);
     expect(maxFittingFontSize([])).toBeNull();
     expect(textOverflows(item("", "circle", 20), 100)).toBe(false);
@@ -111,8 +111,8 @@ describe("textFit", () => {
     const spy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as never);
     try {
       // Same plate: the dot (ink) fits at the range maximum while the "1" bounding rectangle does not.
-      expect(maxFittingFontSize([item("I", "circle", 10)])).toBe(32);
-      expect(maxFittingFontSize([item("1", "circle", 10)])!).toBeLessThan(32);
+      expect(maxFittingFontSize([item("I", "circle", 10)])).toBe(40);
+      expect(maxFittingFontSize([item("1", "circle", 10)])!).toBeLessThan(40);
       expect(textOverflows(item("I", "star", 10), 32)).toBe(false);
       expect(textOverflows(item("I", "circle", 1), 32)).toBe(true);
     } finally {

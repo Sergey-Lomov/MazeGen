@@ -2,6 +2,8 @@
 export interface WorkerRequestMessage<Req> {
   id: number;
   payload: Req;
+  /** Compiled WASM module, attached to the first request of a fresh worker only. */
+  wasmModule?: WebAssembly.Module;
 }
 
 export type WorkerResponseMessage<Res> =
@@ -11,6 +13,9 @@ export type WorkerResponseMessage<Res> =
 export interface WorkerPoolOptions {
   /** Creates one module worker. Called only when no idle worker is available. */
   create: () => Worker;
+  /** Supplies the compiled WASM module (compiled once, shared by all workers). When set, a fresh
+   *  worker receives it with its first request and only instantiates it. */
+  wasmModule?: () => Promise<WebAssembly.Module>;
   /** Idle workers kept alive for reuse; extra ones are terminated on release. Default 1. */
   maxIdle?: number;
   /** Used when a worker fails with an event that carries no message. */
@@ -51,7 +56,8 @@ export class WorkerPool<Req, Res> {
   run(payload: Req, transfer: Transferable[] = []): WorkerJob<Res> {
     let cancel: (reason: Error) => void = () => {};
     const promise = new Promise<Res>((resolve, reject) => {
-      const entry = this.idle.pop() ?? this.adopt(this.options.create());
+      const reused = this.idle.pop();
+      const entry = reused ?? this.adopt(this.options.create());
       this.busy.add(entry);
       const id = this.nextId++;
       let settled = false;
@@ -82,10 +88,19 @@ export class WorkerPool<Req, Res> {
       entry.worker.onerror = (event) => {
         finish("retire", () => reject(new Error(event.message || this.options.failureMessage || "Worker failed")));
       };
-      try {
-        entry.worker.postMessage({ id, payload } satisfies WorkerRequestMessage<Req>, transfer);
-      } catch (error) {
-        finish("retire", () => reject(error));
+      const send = (wasmModule?: WebAssembly.Module): void => {
+        try {
+          entry.worker.postMessage({ id, payload, wasmModule } satisfies WorkerRequestMessage<Req>, transfer);
+        } catch (error) {
+          finish("retire", () => reject(error));
+        }
+      };
+      if (reused || !this.options.wasmModule) send();
+      else {
+        this.options.wasmModule().then(
+          (module) => { if (!settled) send(module); },
+          (error: unknown) => finish("retire", () => reject(error)),
+        );
       }
     });
     return { promise, cancel: (reason) => cancel(reason) };
