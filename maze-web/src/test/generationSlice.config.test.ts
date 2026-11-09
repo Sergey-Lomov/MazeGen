@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
@@ -25,6 +26,7 @@ vi.mock("../wasm/mazeService", async (importActual) => ({
   reflectFieldCells: (await importActual<typeof import("../wasm/mazeService")>()).reflectFieldCells,
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
+  computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
   getGeometrySnapshot: (await importActual<typeof import("../wasm/mazeService")>()).getGeometrySnapshot,
@@ -36,7 +38,7 @@ vi.mock("../wasm/wasmLoader", async (importActual) => ({
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
-import { generateMaze, computeAnalytics } from "../wasm/mazeService";
+import { generateMaze, computeAnalytics, computeAnalyticsAsync } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 import { fieldOf } from "./fieldConfigFixtures";
 import { configAllCells } from "../pixi/tessellationCells";
@@ -44,6 +46,8 @@ import { configAllCells } from "../pixi/tessellationCells";
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  vi.mocked(computeAnalyticsAsync).mockReset();
+  vi.mocked(computeAnalyticsAsync).mockResolvedValue(mockSnapshot);
 });
 
 describe("buildGenerateConfig — preset_start/preset_finish", () => {
@@ -370,6 +374,54 @@ describe("mazeStore generation misc actions", () => {
       join: "miter",
     });
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded).toEqual({ cells: true });
+  });
+
+  it("loadProject preserves manual paths for generated teleports", async () => {
+    const teleportSnapshot = {
+      ...mockSnapshot,
+      edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+    };
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: teleportSnapshot, debugTape: undefined });
+    vi.mocked(computeAnalyticsAsync).mockResolvedValue(teleportSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().generate();
+    useMazeStore.getState().setManualTeleportConnectorPaths({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+    const file = serializeProject(useMazeStore.getState());
+
+    await useMazeStore.getState().loadProject(file);
+
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "polyline", nodes: [[0, 0], [25, -10], [50, 0]] },
+    });
+  });
+
+  it("loadProject preserves a manual path for a restored post-edit teleport", async () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    vi.mocked(computeAnalyticsAsync).mockResolvedValue({
+      ...mockSnapshot,
+      edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+    });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], postEditAutoConfirm: false });
+    useMazeStore.getState().generate();
+    useMazeStore.getState().addPostEditTeleport(nodeEndpoint(0), nodeEndpoint(1), "two_way");
+    useMazeStore.getState().setManualTeleportConnectorPaths({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
+    const file = serializeProject(useMazeStore.getState());
+
+    await useMazeStore.getState().loadProject(file);
+
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.manualTeleportConnectorPaths).toEqual({
+      "0:1": { mode: "curve", nodes: [[0, 0], [50, 0]], controls: [[10, -20], [40, -20]] },
+    });
   });
 
   it("loadProject restores the saved activeFloorId (GitHub issue #354)", () => {

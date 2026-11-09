@@ -64,6 +64,13 @@ renderer works under a strict CSP without adding `unsafe-eval` to `script-src`.
 
 See [renderer.md](renderer.md).
 
+## Keyboard focus
+
+The shared stylesheet gives native controls and explicitly focusable custom controls a consistent
+inset blue `:focus-visible` ring. Keep keyboard focus styling in CSS rather than changing layout
+metrics on focus; this prevents scroll-panel clipping and layout shifts, especially on feature-card
+headers.
+
 ## State
 
 See [store.md](store.md).
