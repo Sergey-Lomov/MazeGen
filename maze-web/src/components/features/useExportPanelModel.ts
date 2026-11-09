@@ -77,10 +77,10 @@ export function useExportWarnings<S extends ExportSettings>(settings: S, compute
   const topologyWarnings = useMemo(
     () => computeTopologyWarnings(
       { activeFloorId, activeFieldConfig: cfg, floorTopology, floorCreases, pngExportSettings, nodes: rawNodes, edges: rawEdges, floors },
-      settings,
+      settings, rawEffectiveEndpoints,
     ),
     // The settings are a dependency as a whole: `computeTopologyWarnings` caches each group on the fields it reads (GitHub issue #928).
-    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings],
+    [activeFloorId, cfg, floorTopology, floorCreases, pngExportSettings, rawNodes, rawEdges, floors, settings, rawEffectiveEndpoints],
   );
   const exportWarnings = useMemo(() => [...modeWarnings, ...topologyWarnings], [modeWarnings, topologyWarnings]);
   return { exportWarnings, rawEffectiveEndpoints };

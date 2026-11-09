@@ -346,9 +346,33 @@ Elevator badge text warnings highlight only
 the affected elevators; marker-index text warnings highlight only connections where an index is
 actually rendered.
 
+#### Different markers that look the same (GitHub issue #959)
+
+`markers_look_alike` (group `markersLookAlike`, `exportMarkerLookAlike.ts`): markers of different kinds whose rendered look
+matches, so a reader of the exported image cannot tell which is which. Kinds: start, finish, teleport, two-way vertical passage,
+one-way vertical passage, elevator. Markers of **every floor** are compared with one another (a start on one floor and a finish on
+another can still pass for each other), so the warning is computed once, by the first floor's pass (`projectMarkerLooks`). Only kinds
+drawn somewhere take part (start/finish when set, teleport when a teleport exists, a vertical kind when such a marker exists).
+
+- Two markers look alike when all hold: same `shape`; same `sizeAdaptation` and `size` within 15% of the bigger one (edge marks have the edge marker `size` and no adaptation); a border of the fill's own color (`hasLowContrast`) is invisible, so it is dropped and adds its width twice to the size (size 18 with border 1 is a borderless 20); fill colors closer than the shared color threshold (`hasLowContrast`); both
+  have no border, or both have one and the border colors are close too; same inner elements. Inner elements are the start/finish
+  caption (text and color, only when enabled and non-empty) and, for abstract vertical markers, the direction arrow (style, corner
+  style, color). A one-way passage always has a stop line no other marker has. Gap and corner style of the marker itself do
+  not count.
+- A teleport group takes its override fill/border/shape into account. The two ends of a one-way teleport are separate looks: the entry is
+  filled, the exit-only end is an outline (fill of the floor/corridor color) and takes part only with a border. Only the ends whose look
+  matches are highlighted. Teleport groups are never compared with each other here
+  (that is `teleport_group_ambiguous`); each is compared with the other kinds.
+- Decorative vertical style is skipped (line pictograms differ by construction). Edge alignment marks are not part of this list: they are
+  compared with these markers by `edge_marker_looks_like_marker` (see **Edge alignment markers**), and with each other by
+  `edge_marker_colors_similar`.
+- One entry per mode; `markerPairs` lists the alike kind pairs (merged across floors) and the description names them. Hover highlights
+  the nodes of every marker in those pairs.
+
 ### Existing non-color warnings shared by both renderers
 
 - `teleport_marker_invisible`;
+- `markers_look_alike`;
 - `teleport_group_ambiguous`;
 - `teleport_waypoint_overlap`;
 - `teleport_connector_covers_one_way`;
@@ -407,6 +431,7 @@ When alignment markers are hidden, `seam_matching_ambiguous_without_markers` (Gi
 The hover highlight of the glue tab and edge mark warnings (`polygons`, `bands`) is not drawn by the mode renderers but by `TopologyWarningHighlight` (`pixi/imageExport/`, mounted by `MazeScene` in the layer above the cut sheet, after the crease overlay): these warnings concern the net itself, so the highlight is drawn in display space and never clipped to the cut region. It follows the cut transfer, though: the shape is drawn once per cut-plan offset whose shifted copy has its centre inside the plan's region (the copies the markers and tabs themselves are drawn in), so a half mark moved onto its twin line is highlighted there, not on the empty spot it came from. Without a cut plan the shape is drawn as is. It redraws from `computeTopologyWarnings` for the active mode when the hovered warning, the floor's geometry or the settings change. The mode renderers keep the maze highlights (nodes, cells, boundaries).
 
 - `edge_marker_colors_similar` — two markers with different keys have the same shape and colours that are too close (`hasLowContrast`); a different shape alone avoids it. The cards of the markers show the same check. The two halves of a glue's marker share a key, so they are never compared. Highlights every indistinguishable marker with a rounded square (half side = marker radius + 4); a half marker gets only the half of it on its face's side of the edge.
+- `edge_marker_looks_like_marker` (GitHub issue #959) — a mark is a plain filled shape (no border, no inner elements), so it passes for another kind of marker (start, finish, teleport, two-way/one-way passage, elevator; the kinds and the look of each are those of `markers_look_alike`, collected for the whole project by `stateMarkerLooks`, with start and finish at the effective endpoints that `computeTopologyWarnings` takes as an argument and keys its cache on) of the same shape whose fill is close to the mark's colour and which has no border and no inner element (caption, arrow). Each mark is compared on its own, so two marks of different colours can each match a different marker. The topology group reads the whole render mode's settings for this. Highlights the marks that look like another marker (same rounded square) and the markers they look like (by node: the topology highlight draws the marks, the mode renderers' cell highlight draws the nodes, which they find by key among their own warnings plus `computeTopologyWarnings`; nodes of other floors are skipped); the description names the pairs (`markerPairs`: alignment mark and the kind).
 - `edge_marker_low_contrast_background` — a marker's colour is too close to the mode's background colour. Highlights those markers with the same rounded square.
 
 ## Explicitly out of scope

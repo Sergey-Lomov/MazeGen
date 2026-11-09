@@ -18,6 +18,7 @@ import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, layoutExportMarkers, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
+import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import { isHiddenSpecialMirror, type Viewport, type TeleportEdge, type SplitPassage, type SplitSpecialShape, type VerticalConnectionMarker } from "../renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
@@ -1371,11 +1372,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const { nodes } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
-    const warnings = computeVectorByCorridorsWarningsAcrossFloors(
+    const warnings = [...computeVectorByCorridorsWarningsAcrossFloors(
       state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish, floorIdsWithCut(state.floors, state.activeFieldConfig, state.floorTopology, state.pngExportSettings.cuts),
       hasAnyGlue(state.floorTopology),
-    );
+    ), ...computeTopologyWarnings(state, state.vectorByCorridorsSettings, rawEndpoints)];
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
     this.warningHighlight.render(hoveredExportWarningKey, warnings, nodes, state.activeFieldConfig, state.vectorByCorridorsSettings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { TOPOLOGY_WARNING_GROUPS, computeTopologyWarnings, type TopologyWarningSettings, type TopologyWarningState } from "../pixi/selectors/topologyWarnings";
+import { TOPOLOGY_WARNING_GROUPS, computeTopologyWarnings as computeWith, type TopologyWarningSettings, type TopologyWarningState } from "../pixi/selectors/topologyWarnings";
 import { resetTrackedMemo, setTrackedMemoParanoid, trackedMemoMisses } from "../pixi/selectors/trackedMemo";
 import { DEFAULT_EDGE_MARKER_STYLE, DEFAULT_GLUE_TAB_STYLE } from "../store/slices/imageExportDefaults";
 import type { EdgeMarkerStyle, GlueTabStyle } from "../store/imageExportTypes";
@@ -12,6 +12,8 @@ const creases = [{ id: 0, a: [0, 0] as const, b: [2, 0] as const }, { id: 1, a: 
 const state = {
   activeFloorId: "f", activeFieldConfig: cfg, floorTopology: {}, floorCreases: { f: creases }, pngExportSettings: { cuts: { lines: {} } }, nodes: [], edges: [], floors: [],
 } as unknown as TopologyWarningState;
+
+const computeTopologyWarnings = (st: TopologyWarningState, settings: TopologyWarningSettings<string>) => computeWith(st, settings, { start: null, finish: null });
 
 const markers = (patch: Partial<EdgeMarkerStyle> = {}): EdgeMarkerStyle => ({ ...DEFAULT_EDGE_MARKER_STYLE, mode: "all", color: 0x808080, ...patch });
 const settingsOf = (patch: Partial<TopologyWarningSettings<string>> = {}): TopologyWarningSettings<string> => ({

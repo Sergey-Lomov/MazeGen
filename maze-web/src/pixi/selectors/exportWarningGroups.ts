@@ -32,6 +32,7 @@ import {
   computeTeleportWaypointOverlapWarning, computeElevatorIndistinguishableWarning,
 } from "./exportTeleportWarnings";
 import { computeMarkerExtensionHitsCorridorWarning } from "./exportCorridorWarnings";
+import { markersLookAlikeWarningOf, projectMarkerLooks } from "./exportMarkerLookAlike";
 import type { ExportWarning, ExportWarningId, WarningFloor } from "./exportWarnings";
 
 /** The export warnings of one render mode as independent groups (GitHub issue #928). A group is a pure
@@ -105,6 +106,8 @@ export class WarningFloorEnv {
   }
 
   get cfg(): FieldConfig { return this.options.cfg; }
+  /** The whole project this floor belongs to, when the caller gave it. */
+  get project(): WarningEnvOptions["project"] { return this.options.project; }
   get floorTitle(): string | undefined { return this.options.floorTitle; }
   get highlightSeamMirrors(): boolean { return this.options.highlightSeamMirrors; }
   get scoped(): ScopedFloor { return this.once("scoped", this.load); }
@@ -262,6 +265,14 @@ const teleportWaypointOverlap = group("teleportWaypointOverlap", ["teleport_wayp
   ))
 ));
 
+/** `markers_look_alike` (GitHub issue #959): markers of different kinds on the floor that render the same. */
+const markersLookAlike = group("markersLookAlike", ["markers_look_alike"], (env, s) => {
+  // Markers of every floor are compared with one another, so the warning is computed once, on the first floor, and only where the
+  // whole project is known (the across-floors entry points; the single-floor ones have nothing to compare against).
+  const project = env.project;
+  return project && env.activeFloorIndex === 0 ? maybe(markersLookAlikeWarningOf(projectMarkerLooks(s, project, env.cfg))) : [];
+});
+
 const contrastGroups = COMMON_CONTRAST_CHECKS.map(({ name, ids, check }) => (
   group(`contrast.${name}`, ids, (env, s) => collect((out) => check(out, env.contrast, env.colors(s))))
 ));
@@ -413,7 +424,7 @@ const wallsMarkerIndexStopLine = group<VectorByWallsSettings>("markerIndexStopLi
 
 /** Every warning group of "Vector by walls", in the order their warnings are listed. */
 export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, wallsTeleportConnectors,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, wallsTeleportConnectors,
   ...contrastGroups,
   wallsTeleportConnectorContrast, wallsSplitContrast, wallsSpecialSplit, wallsElevatorBadges,
   textOverflow, wallsMarkerIndexStopLine, elevatorIndistinguishable,
@@ -522,7 +533,7 @@ const corridorsMarkerIndexStopLine = group<VectorByCorridorsSettings>("markerInd
 
 /** Every warning group of "Vector by corridors", in the order their warnings are listed. */
 export const CORRIDORS_WARNING_GROUPS: readonly WarningGroup<VectorByCorridorsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, corridorsTeleportConnectors,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, corridorsTeleportConnectors,
   ...contrastGroups,
   corridorsMarkerExtension, corridorsCorridorColors, corridorsTeleportConnectorContrast, corridorsSplitContrast, corridorsSplitGapMayShrink,
   corridorsSpecialSplit, corridorsOneWayOverflow,

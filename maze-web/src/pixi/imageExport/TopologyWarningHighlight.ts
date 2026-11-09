@@ -7,6 +7,7 @@ import { computeTopologyWarnings } from "../selectors/topologyWarnings";
 import { watchStoreInputs } from "../storeWatch";
 import { pointInPolygonBy } from "../tessellationGeometry";
 import { resolveActiveCutPlan } from "./exportContent";
+import { resolveEffectiveEndpoints } from "./exportStyleBuilders";
 import type { ExportMargin } from "./exportMargins";
 import type { CutPlan } from "./cutLines";
 import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
@@ -14,7 +15,7 @@ import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderCons
 /// What the highlight is drawn from: it redraws only when one of these changes.
 function highlightInputs(st: MazeStore): readonly unknown[] {
   return [
-    st.hoveredExportWarningKey, st.activeRenderMode, st.openCard, st.nodes, st.floors, st.activeFloorId, st.activeFieldConfig,
+    st.hoveredExportWarningKey, st.activeRenderMode, st.openCard, st.nodes, st.floors, st.activeFloorId, st.activeFieldConfig, st.start, st.finish, st.postEditMeta, st.postEditDraftSplitPoints,
     st.floorTopology, st.floorCreases, st.pngExportSettings, st.vectorByWallsSettings, st.vectorByCorridorsSettings,
   ];
 }
@@ -62,7 +63,7 @@ export class TopologyWarningHighlight implements ViewportListener {
     const mode = st.activeRenderMode;
     if (!mode || !st.hoveredExportWarningKey || st.openCard !== "image_export" || st.nodes.length === 0) return;
     const settings = mode === "vector_by_walls" ? st.vectorByWallsSettings : st.vectorByCorridorsSettings;
-    const warning = computeTopologyWarnings(st, settings).find((w) => w.key === st.hoveredExportWarningKey);
+    const warning = computeTopologyWarnings(st, settings, resolveEffectiveEndpoints(st)).find((w) => w.key === st.hoveredExportWarningKey);
     if (!warning) return;
     // Like the cell highlight: translucent fill plus an opaque 3px outline, a closed contour with rounded corners.
     const plan = resolveActiveCutPlan(st, this.getMargin);
