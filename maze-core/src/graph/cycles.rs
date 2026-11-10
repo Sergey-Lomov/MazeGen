@@ -3,7 +3,8 @@ use super::gf2_basis::{GF2Basis, set_bit};
 use super::nav::{NavEdge, NavGraph, NavNodeId};
 use crate::dsu::Dsu;
 use crate::ids::EdgeId;
-use std::collections::{HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 /// Result of `find_all_simple_cycles`: either the full list of simple cycles plus the
 /// independent GF(2) basis derived incrementally alongside it (see `GF2Basis`), or a signal
@@ -118,13 +119,27 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     // loop calls it up to O(n) times, and fresh n-sized `Vec`s every call was O(n^2) total.
     let mut scc_scratch = SccScratch::new(n);
 
+    // Scratch for `peel_dead_ends`, reused across every call for the same reason as above.
+    let mut peel_alive: Vec<bool> = vec![false; n];
+    let mut peel_degree: Vec<u32> = vec![0; n];
+
     // Maintained incrementally across iterations instead of a full Tarjan rerun on every
     // outer-loop step (see issue #25 / `Specs/graph-analytics.md` complexity section).
     // Removing a single vertex can only split the SCC it belonged to — every other SCC is
     // unaffected, since a path between two nodes in different SCCs never routes through a
     // third SCC's interior (otherwise they'd already be one SCC) — so only the affected
     // SCC's subgraph needs re-running through Tarjan, not the whole remaining graph.
-    let mut sccs = strongly_connected_components(&adjacency, &remaining, &mut scc_scratch);
+    // Holds only SCCs that can contain a cycle: each one is peeled of dead ends and dropped if
+    // `is_nontrivial` is then false (GitHub issue #175, see `peel_dead_ends`). A min-heap keyed on
+    // each SCC's smallest node (see `scc_queue_entry`), so picking the next SCC doesn't rescan
+    // every node of every SCC on each outer-loop iteration.
+    let mut sccs: BinaryHeap<Reverse<(NavNodeId, Vec<NavNodeId>)>> =
+        strongly_connected_components(&adjacency, &remaining, &mut scc_scratch)
+            .into_iter()
+            .map(|scc| peel_dead_ends(scc, &adjacency, &edges, &mut peel_alive, &mut peel_degree))
+            .filter(|scc| is_nontrivial(scc, &adjacency))
+            .map(scc_queue_entry)
+            .collect();
 
     // GF(2) basis over the canonical (undirected) edge universe (see `canonical_index`) — ONE
     // instance for the whole call, with a target rank computed ONCE up front from the initial
@@ -141,8 +156,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     // known in full before any vertex is consumed — computed here from the initial `sccs`.
     let global_basis_target: usize = sccs
         .iter()
-        .filter(|scc| is_nontrivial(scc, &adjacency))
-        .map(|scc| {
+        .map(|Reverse((_, scc))| {
             let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
             let mut e_canonical: HashSet<usize> = HashSet::new();
             for &node in &scc_set {
@@ -171,19 +185,10 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let mut path_elevator_groups: Vec<bool> = vec![false; elevator_group_count];
 
     while !remaining.is_empty() {
-        // Smallest-index nontrivial SCC first (deterministic order); also handles
-        // self-loop size-1 SCCs and drops size-1-no-self-loop SCCs from `remaining`.
-        let Some((scc_pos, _)) = sccs
-            .iter()
-            .enumerate()
-            .filter(|(_, scc)| is_nontrivial(scc, &adjacency))
-            .min_by_key(|(_, scc)| *scc.iter().min().unwrap())
-        else {
+        // Smallest-index SCC first (deterministic order); also handles self-loop size-1 SCCs.
+        let Some(Reverse((start, scc))) = sccs.pop() else {
             break; // no SCC has any cycle left
         };
-
-        let scc = &sccs[scc_pos];
-        let start = *scc.iter().min().unwrap();
         let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
 
         if scc_set.len() == 1 {
@@ -274,8 +279,13 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         let mut remainder_set = scc_set;
         remainder_set.remove(&start);
         let split_sccs =
-            strongly_connected_components(&adjacency, &remainder_set, &mut scc_scratch);
-        sccs.swap_remove(scc_pos);
+            strongly_connected_components(&adjacency, &remainder_set, &mut scc_scratch)
+                .into_iter()
+                .map(|scc| {
+                    peel_dead_ends(scc, &adjacency, &edges, &mut peel_alive, &mut peel_degree)
+                })
+                .filter(|scc| is_nontrivial(scc, &adjacency))
+                .map(scc_queue_entry);
         sccs.extend(split_sccs);
     }
 
@@ -316,6 +326,74 @@ fn elevator_edge_groups(edges: &[&NavEdge], n: usize) -> (Vec<Option<usize>>, us
         })
         .collect();
     (groups, dense_id.len())
+}
+
+/// Strips dead ends from the strongly connected `scc`: repeatedly removes a node whose only
+/// incident canonical edge (a bidirectional pair counts once, see `canonical_index`) is a single
+/// bidirectional corridor. Such a node hangs off the rest by one edge, so every walk into it must
+/// leave by the same edge: it lies on no simple cycle except the trivial "walk out and back"
+/// 2-cycle, which `johnson_circuit` never records. Removing it therefore changes neither the
+/// recorded cycles nor Johnson's blocking bookkeeping for the remaining nodes, and it keeps the
+/// rest strongly connected. Without this, a tree-like SCC (one huge SCC of bidirectional edges)
+/// made the outer loop of `find_all_simple_cycles` consume one start vertex per iteration, each
+/// running Johnson's and Tarjan over the whole remainder, for zero cycles: O(n^2) (GitHub issue
+/// #175). A pure tree collapses to a single node here, a tree with a few loops to its loops.
+///
+/// `alive`/`degree` are caller-owned scratch buffers indexed by `NavNodeId`; both are restored to
+/// all-`false`/stale-irrelevant for the nodes of `scc` before returning (`O(|scc| + edges)`).
+fn peel_dead_ends(
+    scc: Vec<NavNodeId>,
+    adjacency: &[Vec<(usize, NavNodeId)>],
+    edges: &[&NavEdge],
+    alive: &mut [bool],
+    degree: &mut [u32],
+) -> Vec<NavNodeId> {
+    if scc.len() == 1 {
+        return scc;
+    }
+    for &node in &scc {
+        alive[node] = true;
+        degree[node] = 0;
+    }
+    for &node in &scc {
+        for &(idx, to) in &adjacency[node] {
+            // A bidirectional pair is counted once, by its lower-indexed edge; both edges of the
+            // pair join the same two nodes, so both are visited here.
+            if !alive[to] || edges[idx].reverse_edge.is_some_and(|rev| rev < idx) {
+                continue;
+            }
+            degree[node] += 1;
+            degree[to] += 1;
+        }
+    }
+
+    let mut dead_ends: Vec<NavNodeId> = scc.iter().copied().filter(|&v| degree[v] == 1).collect();
+    while let Some(node) = dead_ends.pop() {
+        // Skipped when the neighbor it hung from was itself peeled meanwhile (degree 0: the last
+        // node of a tree, which stays).
+        if !alive[node] || degree[node] != 1 {
+            continue;
+        }
+        alive[node] = false;
+        if let Some(&(_, to)) = adjacency[node].iter().find(|&&(_, to)| alive[to]) {
+            degree[to] -= 1;
+            if degree[to] == 1 {
+                dead_ends.push(to);
+            }
+        }
+    }
+
+    let kept: Vec<NavNodeId> = scc.iter().copied().filter(|&v| alive[v]).collect();
+    for &node in &scc {
+        alive[node] = false;
+    }
+    kept
+}
+
+/// Heap entry for `scc`: ordered by its smallest node (unique across disjoint SCCs, so the node
+/// lists themselves are never compared), reversed so `BinaryHeap` pops the smallest first.
+fn scc_queue_entry(scc: Vec<NavNodeId>) -> Reverse<(NavNodeId, Vec<NavNodeId>)> {
+    Reverse((*scc.iter().min().unwrap(), scc))
 }
 
 /// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
