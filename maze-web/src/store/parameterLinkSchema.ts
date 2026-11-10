@@ -346,7 +346,7 @@ export const LINK_SCHEMA = {
     gap: f("number", "image_export.floors.gap"),
     borderWidth: f("number", "image_export.floors.border_width"),
     fillColor: f("color", "image_export.floors.color"),
-    borderColor: f("color", "image_export.floors.border_color"),
+    borderColor: f("color", "image_export.floors.border_color", { active: R.floorLabelBorder }),
   })),
 
   // ---- vertical passages
@@ -483,7 +483,7 @@ export const LINK_SCHEMA = {
   // ---- "Vector by walls" tiles
   ...section(WALLS, { group: G.tiles }, {
     floorColor: f("color", `${VW}.floor_color`),
-    wallColor: f("color", `${VW}.wall_color`),
+    wallColor: f("color", `${VW}.wall_color`, { active: R.singleWallColor }),
     wallThickness: f("number", `${VW}.wall_thickness`),
   }),
 
@@ -523,6 +523,12 @@ export function schemaEntriesFor(mode: LinkMode): [LinkPath, LinkFieldDef][] {
 /** The paths written through the `patch*` action `group` in `mode`. */
 export function patchPaths<P extends string>(mode: LinkMode, group: PatchGroup): readonly P[] {
   return schemaEntriesFor(mode).filter(([, def]) => def.update === group).map(([path]) => path as string as P);
+}
+
+/** Whether `path` is declared for `mode` — a path of the other render mode has no row there. */
+export function isSchemaPathInMode(path: string, mode: LinkMode): boolean {
+  const def = (LINK_SCHEMA as Record<string, LinkFieldDef | undefined>)[path];
+  return def?.modes.includes(mode) ?? false;
 }
 
 /** Whether `path` is shown in the settings panel — a path outside the schema is always active. */

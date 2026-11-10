@@ -237,6 +237,20 @@ what a color field *is* (GitHub issue #717): `pixi/selectors/colorFieldRegistry.
 holds `STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef>` — for every field its
 `visible(ctx)` predicate, `get(settings)` value reader and `set(settings, color)` writer. Because it
 is a `Record` over the key union, a field without a predicate, getter or setter does not compile.
+**A field that has a settings-panel row takes its `visible` from the parameter link schema** (GitHub
+issue #965): `schemaField(path, { get, set })` stores the row's `LinkPath` in `ColorFieldDef.path` and
+evaluates `isPathActive(path, mode, ctx.activity, ctx.settings)`, so the panel row, the parameter-links
+dialog, the "Project colors" list and the export warnings cannot disagree about whether the color
+exists. A path declared only for the other render mode is hidden (`isSchemaPathInMode`). A new
+activity condition of such a field is added once, as a rule in `parameterLinkRules.ts`; the registry
+needs no change. `ctx.activity` is a `ParamActivityContext` over the whole project (a floor switch
+never changes it): the glue gate is "some floor has a glue", and the floor-scoped flags
+(`hasAreaSpread`, `hasSeams`, `hasCreases`) throw when read, so a color field cannot map a path whose
+rule depends on them. The only static fields without a `path` are `bgGrid` and `innerGrid`: the
+panel always shows their rows so a color can be chosen before the grid is switched on, but a grid
+that is not drawn must stay out of warnings, so they keep their own `visible` (`showGrid` /
+`showInnerGrid`). `parameterLinkPanels.test.tsx` renders both panels over every scenario and fails
+when a mapped field's `visible` differs from the schema's `active`.
 `PC.*` (`projectColorsSelector.ts`) adds only the localized names and `ColorField.isVisible(ctx)`
 (delegating to the registry). `ctx` is a `ColorVisibilityContext` from
 `buildColorVisibility({ nodes, edges, floors }, settings)`, built from the *unscoped* project graph
