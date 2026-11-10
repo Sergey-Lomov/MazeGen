@@ -240,6 +240,189 @@ fn linear_chain_has_no_cycles() {
 }
 
 #[test]
+fn bidirectional_tree_has_no_cycles() {
+    // A branching tree: junctions, spurs and a long corridor, every edge bidirectional. It is one
+    // SCC with no loop, so nothing but trivial reverse-pairs exists (GitHub issue #175).
+    let mut g = Graph::new();
+    for id in 0..12u64 {
+        g.add_node(id);
+    }
+    for (a, b) in [
+        (0, 1),
+        (1, 2),
+        (1, 3),
+        (3, 4),
+        (4, 5),
+        (4, 6),
+        (6, 7),
+        (7, 8),
+        (0, 9),
+        (9, 10),
+        (10, 11),
+    ] {
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    }
+
+    assert!(all_cycles(&g).is_empty());
+    assert!(basis_cycles(&g).is_empty());
+}
+
+#[test]
+fn loop_with_branching_trees_attached_finds_only_the_loop() {
+    // Dead-end trees hang off a square loop (0-1-2-3) and off a junction of one of them; peeling
+    // them must leave the loop's single cycle (and basis entry) intact.
+    let mut g = Graph::new();
+    for id in 0..12u64 {
+        g.add_node(id);
+    }
+    for (a, b) in [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (0, 4),
+        (4, 5),
+        (4, 6),
+        (2, 7),
+        (7, 8),
+        (8, 9),
+        (8, 10),
+        (10, 11),
+    ] {
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    }
+
+    assert_eq!(all_cycles(&g).len(), 1);
+    assert_eq!(basis_cycles(&g).len(), 1);
+}
+
+#[test]
+fn one_way_loop_with_bidirectional_trees_attached_finds_the_loop() {
+    // A one-way triangle (0->1->2->0) with bidirectional dead-end trees on two of its corners:
+    // peeling must remove the trees but keep every node of the one-way loop.
+    let mut g = Graph::new();
+    for id in 0..8u64 {
+        g.add_node(id);
+    }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Basic);
+    for (a, b) in [(1, 3), (3, 4), (3, 5), (2, 6), (6, 7)] {
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    }
+
+    assert_eq!(all_cycles(&g).len(), 1);
+    assert_eq!(basis_cycles(&g).len(), 1);
+}
+
+/// Every non-trivial simple directed cycle of `nav`, found by plain DFS from each cycle's smallest
+/// node, as a sorted list of canonical edge indices (the key `dedup_bidirectional_pairs` uses).
+/// Independent of Johnson's blocking and of dead-end peeling.
+fn brute_force_cycle_keys(nav: &NavGraph) -> HashSet<Vec<usize>> {
+    fn extend(
+        nav: &NavGraph,
+        start: NavNodeId,
+        node: NavNodeId,
+        path: &mut Vec<usize>,
+        on_path: &mut Vec<bool>,
+        keys: &mut HashSet<Vec<usize>>,
+    ) {
+        for idx in nav.outgoing_edge_indices(node).collect::<Vec<_>>() {
+            let edge = nav.edge_by_idx(idx);
+            if edge.to == start {
+                let trivial = path.len() == 1 && nav.edge_by_idx(path[0]).reverse_edge == Some(idx);
+                if !trivial {
+                    path.push(idx);
+                    let mut key: Vec<usize> = path
+                        .iter()
+                        .map(|&i| canonical_index(nav.edge_by_idx(i), i))
+                        .collect();
+                    key.sort_unstable();
+                    keys.insert(key);
+                    path.pop();
+                }
+            } else if edge.to > start && !on_path[edge.to] {
+                on_path[edge.to] = true;
+                path.push(idx);
+                extend(nav, start, edge.to, path, on_path, keys);
+                path.pop();
+                on_path[edge.to] = false;
+            }
+        }
+    }
+
+    let mut keys = HashSet::new();
+    for start in 0..nav.nodes.len() {
+        let mut on_path = vec![false; nav.nodes.len()];
+        on_path[start] = true;
+        extend(nav, start, start, &mut Vec::new(), &mut on_path, &mut keys);
+    }
+    keys
+}
+
+#[test]
+fn johnson_with_dead_end_peeling_matches_brute_force_on_random_graphs() {
+    // Small random graphs mixing bidirectional corridors (tree branches, loops, spurs) and
+    // one-way edges: the cycle set must equal a brute-force enumeration, which is independent of
+    // both Johnson's blocking and `peel_dead_ends` (GitHub issue #175).
+    let mut state = 0x9E37_79B9_7F4A_7C15u64;
+    let mut next = move |bound: u64| {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (state >> 33) % bound
+    };
+
+    let mut with_cycles = 0usize;
+    for case in 0..300 {
+        let nodes = 5 + next(5);
+        let mut g = Graph::new();
+        for id in 0..nodes {
+            g.add_node(id);
+        }
+        for a in 0..nodes {
+            for b in (a + 1)..nodes {
+                match next(10) {
+                    0..=2 => {
+                        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+                    }
+                    3 => {
+                        g.add_edge(a, b, EdgeKind::Basic);
+                    }
+                    4 => {
+                        g.add_edge(b, a, EdgeKind::Basic);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let nav = build_nav_graph(&g);
+        let CycleSearchResult::Cycles { cycles, .. } = find_all_simple_cycles(&nav) else {
+            panic!("case {case}: unexpectedly exceeded MAX_SIMPLE_CYCLES");
+        };
+        let found: HashSet<Vec<usize>> = cycles
+            .iter()
+            .map(|cycle| {
+                let mut key: Vec<usize> = cycle
+                    .iter()
+                    .map(|&i| canonical_index(nav.edge_by_idx(i), i))
+                    .collect();
+                key.sort_unstable();
+                key
+            })
+            .collect();
+        assert_eq!(found, brute_force_cycle_keys(&nav), "case {case}");
+        with_cycles += usize::from(!found.is_empty());
+    }
+    // Guard against a vacuous comparison: the generator must produce both cyclic and acyclic graphs.
+    assert!(
+        (50..300).contains(&with_cycles),
+        "{with_cycles} of 300 cases had cycles"
+    );
+}
+
+#[test]
 fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
     // A 5x5 grid, all edges bidirectional — every junction has up to 4 neighbors. Dense
     // enough that the number of simple cycles grows quickly with grid size; this test

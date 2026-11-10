@@ -25,6 +25,32 @@ fn test_simple_ring() {
     assert_eq!(nav.edges().count(), 2, "pure ring → 2 self-edges");
 }
 
+// A pure ring while some pinned node exists elsewhere in the graph: `build_ring` takes the
+// pinned-aware anchor path (`find_ring_anchor`), finds no pinned node on the ring, and falls back
+// to the ring's own start as the single nav node with two self-edges.
+#[test]
+fn test_pure_ring_with_pinned_node_elsewhere() {
+    let mut g = Graph::new();
+    for id in [1u64, 2, 3, 9] {
+        g.add_node(id);
+    }
+    add_bidir(&mut g, 1, 2);
+    add_bidir(&mut g, 2, 3);
+    add_bidir(&mut g, 3, 1);
+
+    let nav = build_nav_graph_pinned(&g, &HashSet::from([9u64]));
+    assert_eq!(nav.nodes.len(), 2, "ring anchor + the isolated pinned node");
+    assert!(nav.nav_node_for(9).is_some());
+    let ring_anchor = nav.nav_node_for(1).expect("ring start is its nav node");
+    assert_eq!(
+        nav.edges()
+            .filter(|e| e.from == ring_anchor && e.to == ring_anchor)
+            .count(),
+        2,
+        "ring → CW and CCW self-edges on its anchor"
+    );
+}
+
 // Ring A⇄B⇄C⇄A, plus junction J⇄A (J has 1 neighbor = dead-end).
 // A: out={B,C,J} in={B,C,J} — junction (3 neighbors). B,C: corridor.
 // Nav nodes: J, A, plus B/C should be absorbed.
@@ -220,6 +246,32 @@ fn reverse_edge_none_for_one_way_corridor() {
             "one-way edge must not have a reverse_edge"
         );
     }
+}
+
+// A node with two outgoing and two incoming neighbors is a corridor node only when both neighbor
+// sets match: here node 1 has out {0, 2} but in {0, 3}, so it must stay a nav node, while the
+// symmetric node 5 (between 4 and 6) is absorbed into a corridor.
+#[test]
+fn corridor_node_requires_matching_in_and_out_neighbors() {
+    let mut g = Graph::new();
+    for id in 0..7u64 {
+        g.add_node(id);
+    }
+    add_bidir(&mut g, 0, 1);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(3, 1, EdgeKind::Basic);
+    add_bidir(&mut g, 4, 5);
+    add_bidir(&mut g, 5, 6);
+
+    let nav = build_nav_graph(&g);
+    assert!(
+        nav.nav_node_for(1).is_some(),
+        "asymmetric node is a junction"
+    );
+    assert!(
+        nav.nav_node_for(5).is_none(),
+        "symmetric node is a corridor node"
+    );
 }
 
 // GitHub issue #197: with a Basic and a Teleport edge coexisting in the same direction between
