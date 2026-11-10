@@ -54,7 +54,8 @@ export interface ParamActivitySettings {
   splitSpecialShapes?: boolean;
   startMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
   finishMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
-  floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram" };
+  floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram"; borderWidth?: number };
+  randomWallColorMode?: "off" | "per_pass" | "per_segment";
 }
 
 /** Whether `path` is currently shown in the settings panel, given `ctx` (maze-derived section

@@ -82,14 +82,14 @@ describe("marker index availability (GitHub issue #730)", () => {
   it("is available for any teleport / vertical passage / elevator edge, whatever the coverage", () => {
     for (const kind of ["teleport", "vertical_passage", "elevator"]) {
       const ctx = withEdge(kind);
-      expect(ctx.markerIndexAvailable).toBe(true);
+      expect(ctx.activity.hasMarkerIndexSource).toBe(true);
       expect(PC.markerIndexFill.isVisible(ctx)).toBe(true);
     }
   });
 
   it("is unavailable without such edges, hiding the layer's colors even when enabled", () => {
     const ctx = withEdge("basic");
-    expect(ctx.markerIndexAvailable).toBe(false);
+    expect(ctx.activity.hasMarkerIndexSource).toBe(false);
     expect(PC.markerIndexFill.isVisible(ctx)).toBe(false);
   });
 });
@@ -144,6 +144,62 @@ describe("LayoutGate (GitHub issue #717)", () => {
     expect(screen.getByText("x")).toBeTruthy();
     rerender(<LayoutGate gate="verticalAbstract"><i>y</i></LayoutGate>);
     expect(screen.getByText("y")).toBeTruthy();
+  });
+});
+
+describe("schema-derived color visibility (GitHub issue #965)", () => {
+  it("every static field is derived from a schema path, except the two grid colors that keep their own rule", () => {
+    const own = STATIC_COLOR_FIELD_KEYS.filter((key) => STATIC_FIELD_DEFS[key].path === undefined);
+    expect(own.sort()).toEqual(["bgGrid", "innerGrid"]);
+  });
+
+  it("hides a walls-only field in Vector by corridors, whatever the settings say", () => {
+    const ctx = buildColorVisibility(emptyMaze, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
+    expect(visibleColor(ctx, "tilesFloor")).toBeNull();
+    expect(visibleColor(ctx, "tilesWall")).toBeNull();
+    expect(visibleColor(ctx, "corridorFill")).not.toBeNull();
+  });
+
+  it("hides the single wall color while random wall colors replace it", () => {
+    const s = structuredClone(DEFAULT_VECTOR_BY_WALLS_SETTINGS);
+    expect(visibleColor(buildColorVisibility(emptyMaze, s), "tilesWall")).not.toBeNull();
+    s.randomWallColorMode = "per_pass";
+    expect(visibleColor(buildColorVisibility(emptyMaze, s), "tilesWall")).toBeNull();
+  });
+
+  it("hides the floor label border color at zero border width", () => {
+    const s = structuredClone(DEFAULT_VECTOR_BY_WALLS_SETTINGS);
+    s.floorLabel = { ...s.floorLabel, enabled: true, backgroundShape: "rectangle", borderWidth: 2 };
+    const twoFloors = { nodes: [], edges: [], floors: [{ id: "a" }, { id: "b" }] } as never;
+    expect(visibleColor(buildColorVisibility(twoFloors, s), "floorLabelBorder")).not.toBeNull();
+    s.floorLabel.borderWidth = 0;
+    expect(visibleColor(buildColorVisibility(twoFloors, s), "floorLabelBorder")).toBeNull();
+  });
+
+  it("the activity bridge answers project-wide flags and throws on floor-scoped ones", () => {
+    const { activity } = buildColorVisibility({ nodes: [], edges: [], floors: [{ id: "a" }, { id: "b" }], hasGlues: false } as never, DEFAULT_VECTOR_BY_WALLS_SETTINGS);
+    expect(activity.hasMultipleFloors).toBe(true);
+    // Several floors alone do not make a "Vertical connections" section, unlike the registry's own `vertical` flag.
+    expect(activity.hasVerticalSection).toBe(false);
+    expect(activity.hasGlues).toBe(false);
+    expect(() => activity.hasSeams).toThrow();
+    expect(() => activity.hasCreases).toThrow();
+    expect(() => activity.hasAreaSpread).toThrow();
+  });
+
+  it("an unknown glue state counts as having glues", () => {
+    expect(buildColorVisibility(emptyMaze, DEFAULT_VECTOR_BY_WALLS_SETTINGS).activity.hasGlues).toBe(true);
+  });
+
+  it("edge marker colour fields, shared and own, need a glue like their panel rows", () => {
+    const s = structuredClone(DEFAULT_VECTOR_BY_WALLS_SETTINGS);
+    s.edgeMarkers = { ...s.edgeMarkers, mode: "all", overrides: { f: { a: { color: 1 } } } };
+    const noGlue = buildColorVisibility({ ...(emptyMaze as object), hasGlues: false } as never, s);
+    expect(visibleColor(noGlue, "edgeMarker")).toBeNull();
+    expect(visibleColor(noGlue, "edgeMarker:f|a")).toBeNull();
+    const glued = buildColorVisibility({ ...(emptyMaze as object), hasGlues: true } as never, s);
+    expect(visibleColor(glued, "edgeMarker")).not.toBeNull();
+    expect(visibleColor(glued, "edgeMarker:f|a")).not.toBeNull();
   });
 });
 

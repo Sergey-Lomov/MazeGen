@@ -68,6 +68,10 @@ export const R = {
   floorLabelOn: (_, s) => s.floorLabel?.enabled !== false,
   floorLabelIndexMode: (_, s) => s.floorLabel?.labelMode === "index",
   floorLabelBackground: (_, s) => s.floorLabel?.backgroundShape !== "none",
+  /** The background plate has an outline — the border color matters only then. */
+  floorLabelBorder: (_, s) => s.floorLabel?.backgroundShape !== "none" && (s.floorLabel?.borderWidth ?? 1) > 0,
+  /** The random wall color palette replaces the single wall color (GitHub issue #965). */
+  singleWallColor: (_, s) => s.randomWallColorMode === undefined || s.randomWallColorMode === "off",
   startMarkerOn: (_, s) => s.startMarker?.markerEnabled !== false,
   finishMarkerOn: (_, s) => s.finishMarker?.markerEnabled !== false,
   startTextOn: (_, s) => s.startMarker?.textEnabled !== false,

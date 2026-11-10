@@ -371,7 +371,7 @@ drawn somewhere take part (start/finish when set, teleport when a teleport exist
 
 #### Invisible start / finish (GitHub issue #963)
 
-While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden in `colorFieldRegistry.ts`, so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
+While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden — their visibility is the schema's `active` rule of the matching panel row (`startMarker.fillColor` etc., GitHub issue #965), which `colorFieldRegistry.ts` evaluates — so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
 
 `start_invisible` / `finish_invisible` (group `waypointInvisible`, both modes): the start (finish) of the floor draws nothing — no marker (`markerEnabled === false`, or size and border both `0`) and no caption (`textEnabled === false` or empty/blank `text`). One warning per endpoint, only when it is set on the floor; highlights its node. Checked by `isWaypointVisible` (`mazeSelectors/markers.ts`).
 

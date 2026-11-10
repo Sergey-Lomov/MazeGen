@@ -75,7 +75,11 @@ describe("syncEdgeMarkers", () => {
 describe("project colour rows of edge markers", () => {
   it("lists every floor's own colours, bottom floor first, numbered by the floor's marker order and labelled with the level", () => {
     setState({ up: { c0: { color: 0x222222 } }, [TEST_FLOOR_ID]: { c1: { color: 0x111111 } } });
-    useMazeStore.setState({ openRenderModeSettings: "vector_by_walls", edgeMarkerOrder: { [TEST_FLOOR_ID]: ["c0", "c1"] } } as never);
+    // The marker colours are listed only while some floor has a glue, as their panel rows are (GitHub issue #965).
+    useMazeStore.setState({
+      openRenderModeSettings: "vector_by_walls", edgeMarkerOrder: { [TEST_FLOOR_ID]: ["c0", "c1"] },
+      floorTopology: { [TEST_FLOOR_ID]: { folds: [], groups: [{ id: 0, folds: [] }] } },
+    } as never);
     const rows = selectActiveProfileColors(useMazeStore.getState()).filter((row) => row.key.startsWith("edgeMarker:"));
     expect(rows.map((row) => row.key)).toEqual([`edgeMarker:${TEST_FLOOR_ID}|c1`, "edgeMarker:up|c0"]);
     expect(rows[0].name).toMatch(/ 2 \(L1\)$/);

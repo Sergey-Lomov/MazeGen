@@ -7,6 +7,7 @@ import { schemaEntriesFor, type LinkMode } from "../store/parameterLinkSchema";
 import type { ParamActivityContext, ParamActivitySettings } from "../store/parameterLinksActivity";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { useMazeStore } from "../store/mazeStore";
+import { STATIC_FIELD_DEFS, buildColorVisibility, type ExportSettings } from "../pixi/selectors/colorFieldRegistry";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 
 // GitHub issue #927 — the settings panels are rendered whole, with every section opened, and what
@@ -180,7 +181,9 @@ const SETTING_VALUES: { [K in keyof ParamActivitySettings]-?: NonNullable<ParamA
     { enabled: true, labelMode: "index", backgroundShape: "rectangle" },
     { enabled: true, labelMode: "title", backgroundShape: "none" },
     { enabled: false, labelMode: "index", backgroundShape: "parallelogram" },
+    { enabled: true, labelMode: "index", backgroundShape: "rectangle", borderWidth: 0 },
   ],
+  randomWallColorMode: ["off", "per_pass", "per_segment"],
 };
 
 interface Scenario {
@@ -204,6 +207,8 @@ interface Observation {
   rendered: Set<string>;
   /** Paths the panel's own model reports as active. */
   active: Set<string>;
+  /** The color registry's `visible` of every field mapped to a schema path, by that path. */
+  colorVisible: Map<string, boolean>;
 }
 
 function observe(mode: LinkMode, scenario: Scenario): Observation {
@@ -234,7 +239,18 @@ function observe(mode: LinkMode, scenario: Scenario): Observation {
   const model = spied.model as { activePaths: Set<string> } | null;
   const active = new Set<string>(model?.activePaths ?? []);
   view.unmount();
-  return { rendered, active };
+  const colors = buildColorVisibility(
+    {
+      nodes: maze.nodes, edges: maze.edges, floors: maze.floors,
+      hasGlues: Object.values(maze.floorTopology).some((topology) => ((topology as { groups: unknown[] }).groups.length > 0)),
+    } as never,
+    settings as unknown as ExportSettings,
+  );
+  const colorVisible = new Map<string, boolean>();
+  for (const def of Object.values(STATIC_FIELD_DEFS)) {
+    if (def.path !== undefined) colorVisible.set(def.path, def.visible(colors));
+  }
+  return { rendered, active, colorVisible };
 }
 
 beforeEach(() => {
@@ -247,13 +263,16 @@ describe.each(MODES)("%s settings panel against the link schema", (mode) => {
   it.each(SCENARIOS.map((scenario) => [scenario.name, scenario] as const))(
     "shows exactly the fields the schema marks active: %s",
     (_name, scenario) => {
-      const { rendered, active } = observe(mode, scenario);
+      const { rendered, active, colorVisible } = observe(mode, scenario);
       expect(rendered.size, "the panel rendered no link icon at all").toBeGreaterThan(0);
 
       const undeclared = [...rendered].filter((path) => !declared.has(path));
       const hiddenButActive = [...declared].filter((path) => active.has(path) && !rendered.has(path));
       const shownButInactive = [...rendered].filter((path) => declared.has(path) && !active.has(path));
-      expect({ undeclared, hiddenButActive, shownButInactive }).toEqual({ undeclared: [], hiddenButActive: [], shownButInactive: [] });
+      // GitHub issue #965 — a color field mapped to a schema path is visible exactly when its panel row is.
+      const colorDisagreeing = [...colorVisible].filter(([path, visible]) => visible !== active.has(path)).map(([path]) => path);
+      expect({ undeclared, hiddenButActive, shownButInactive, colorDisagreeing })
+        .toEqual({ undeclared: [], hiddenButActive: [], shownButInactive: [], colorDisagreeing: [] });
     },
   );
 
