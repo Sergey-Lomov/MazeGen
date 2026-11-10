@@ -718,3 +718,32 @@ fn sampling_params_are_gone() {
     .collect();
     assert_eq!(ids, vec![PARAM_SELECTION_MODE]);
 }
+
+fn group_requirement(
+    nested: &[NestedStrategyConfig<SquareTessellation>],
+) -> InvalidLoopGroupRequirement {
+    <InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidLoopGroupIssue>>::requirement(
+        &InvalidLoopGroupSelectStrategy,
+        &no_params(),
+        nested,
+    )
+}
+
+/// See GitHub issue #283 — the group's requirement follows the nested `cut_target` strategy's.
+#[test]
+fn requirement_follows_nested_strategy() {
+    // Random needs no valid cycles, so the group does not either.
+    assert_eq!(
+        group_requirement(&cut_target_nested()),
+        InvalidLoopGroupRequirement::empty()
+    );
+    // Scored reads valid cycles, so the group must request them.
+    assert_eq!(
+        group_requirement(&nested_with(Box::new(
+            crate::repair::strategies::InvalidLoopScoredStrategy
+        ))),
+        InvalidLoopGroupRequirement::VALID_CYCLES
+    );
+    // No nested strategy: safe fallback to everything.
+    assert_eq!(group_requirement(&[]), InvalidLoopGroupRequirement::all());
+}

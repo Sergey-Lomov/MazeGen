@@ -3,10 +3,12 @@ use crate::generation::PresetState;
 use crate::ids::EdgeId;
 use crate::quality_control::{
     INVALID_LOOP, InvalidGroupIssue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
-    InvalidLoopIssue, Issue, LoopGroupKind, SharedCycle,
+    InvalidLoopIssue, InvalidLoopRequirement, Issue, LoopGroupKind, SharedCycle,
 };
 use crate::repair::command::{MutationCommand, removed_edge_ids};
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{
+    StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params,
+};
 use crate::repair::result::RepairResult;
 use crate::repair::strategies::group_select::group_select_apply;
 use crate::repair::strategy::{
@@ -70,14 +72,35 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopGroupIssue> for InvalidLoopGr
         NESTED_SLOTS
     }
 
-    /// Cannot translate the nested strategy's own `requirement()` here — `Rule::new` resolves
-    /// `requirement()` from `&self, params` alone (see `rule.rs`), before `nested` is known to
-    /// this strategy at all, so there is no nested `RepairStrategy` to consult yet. Always
-    /// requests `all()` ("compute everything"), same as every other unmigrated strategy's
-    /// default — safe (never wrong, just potentially wasted computation), and correct regardless
-    /// of what the eventually-configured nested strategy turns out to need.
-    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopGroupRequirement {
-        InvalidLoopGroupRequirement::all()
+    /// See GitHub issue #283. `apply` reads `issue.valid` only to append it to each nested
+    /// `InvalidLoopIssue`'s `all` (see `build_nested_issue`), so the group needs `VALID_CYCLES`
+    /// exactly when the nested `cut_target` strategy does. No nested strategy configured (or one
+    /// whose requirement is not an `InvalidLoopRequirement`) falls back to `all()` — safe, just
+    /// potentially wasted computation.
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> InvalidLoopGroupRequirement {
+        let Some(cut_target) = nested.iter().find(|n| n.slot.slot_id == SLOT_CUT_TARGET) else {
+            return InvalidLoopGroupRequirement::all();
+        };
+        let nested_params = build_params(
+            cut_target.strategy.params(),
+            Some(&cut_target.param_overrides),
+        );
+        let Ok(nested_requirement) = cut_target
+            .strategy
+            .requirement_erased(&nested_params, &cut_target.nested)
+            .downcast::<InvalidLoopRequirement>()
+        else {
+            return InvalidLoopGroupRequirement::all();
+        };
+        let mut requirement = InvalidLoopGroupRequirement::empty();
+        if nested_requirement.contains(InvalidLoopRequirement::VALID_CYCLES) {
+            requirement |= InvalidLoopGroupRequirement::VALID_CYCLES;
+        }
+        requirement
     }
 
     fn apply(
