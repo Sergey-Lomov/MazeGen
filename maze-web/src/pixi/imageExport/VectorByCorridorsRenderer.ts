@@ -1,7 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
@@ -547,15 +548,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     this.markers.render({ markers: markerData, scaler });
 
-    this.verticalConnections.render({
-      markers: layout.verticalMarkers,
-      style: verticalStyle,
-      scaler,
-      // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
-      // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
-      interactive: true,
-    });
-
+    let markerIndexPlates: ElevatorBadgeObstacle[] = [];
     if (settings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
@@ -571,10 +564,23 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         mergeTeleports: settings.teleportMergeMode,
       });
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
-      this.markerIndex.render({ ...indexLabels, labels: shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales), style: settings.markerIndex, floorColor: settings.color });
+      const shiftedLabels = shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales);
+      markerIndexPlates = shiftedLabels.map((label) => markerIndexPlateFootprint(label, settings.markerIndex));
+      this.markerIndex.render({ ...indexLabels, labels: shiftedLabels, style: settings.markerIndex, floorColor: settings.color });
     } else {
       this.markerIndex.clear();
     }
+
+    this.verticalConnections.render({
+      markers: layout.verticalMarkers,
+      style: verticalStyle,
+      scaler,
+      // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
+      // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
+      interactive: true,
+      // Elevator floor badges keep clear of the index plates drawn above the markers (GitHub issue #964).
+      badgeObstacles: markerIndexPlates,
+    });
 
     this.floorLabel.render(
       settings.floorLabel,

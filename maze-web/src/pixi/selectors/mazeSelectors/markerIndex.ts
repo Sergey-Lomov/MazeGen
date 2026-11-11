@@ -6,6 +6,7 @@ import { formatIndexLabel } from "../../renderers/indexLabel";
 import { elevatorComponent } from "../../postEditVerticalUtils";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../../markerScale";
 import { teleportNodePairKey, type TeleportGroup } from "../teleportGroups";
+import type { RoundedRectGeometry } from "../../renderers/verticalConnectionGeometry";
 
 /** Link kind of a cross-floor connection an index label hangs off. */
 export type MarkerIndexLinkKind = "teleport" | "vertical" | "elevator";
@@ -261,6 +262,15 @@ export interface MarkerIndexPlateBox {
   /** Marker-layout shrink factor (GitHub issue #735) already applied to this box; the renderer also
    *  shrinks the gap ring and the caption text by it. */
   scale: number;
+}
+
+/** The plate's drawn footprint — body plus border, never the floor-colored gap ring (it draws under
+ *  the markers) — as one rounded rect. What other geometry (stop lines, elevator badges) must not
+ *  hide behind. */
+export function markerIndexPlateFootprint(label: MarkerIndexLabel, style: MarkerIndexSettings): RoundedRectGeometry {
+  const box = markerIndexPlateBox(label, style);
+  const border = box.borderWidth;
+  return { x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border, radius: box.cornerRadius + border };
 }
 
 /** Where `MarkerIndexRenderer` draws `label`'s plate: a fixed `style.width` x `style.height`

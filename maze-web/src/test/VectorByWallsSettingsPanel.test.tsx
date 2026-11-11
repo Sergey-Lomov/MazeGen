@@ -911,6 +911,10 @@ describe("VectorByWallsSettingsPanel", () => {
             ...useMazeStore.getState().vectorByWallsSectionsExpanded,
             vertical: true,
             vertical_elevator: true,
+            vertical_elevator_badges: true,
+            elevator_badges_placement: true,
+            elevator_badges_text: true,
+            elevator_badges_backplate: true,
           },
           vectorByWallsSettings: {
             ...useMazeStore.getState().vectorByWallsSettings,
@@ -926,6 +930,40 @@ describe("VectorByWallsSettingsPanel", () => {
         setElevatorState();
         render(<VectorByWallsSettingsPanel />);
         expect(screen.getByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())).toBeInTheDocument();
+      });
+
+      it("keeps Placement, Text and Backplate collapsed until opened, each hiding only its own rows", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        useMazeStore.setState({
+          vectorByWallsSectionsExpanded: {
+            ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+            elevator_badges_placement: false,
+            elevator_badges_text: false,
+            elevator_badges_backplate: false,
+          },
+        });
+        render(<VectorByWallsSettingsPanel />);
+        const distance = m["image_export.vector_by_walls.elevator_badges_distance"]();
+        const labelType = m["image_export.vector_by_walls.elevator_badges_label_type"]();
+        expect(screen.queryByText(distance)).not.toBeInTheDocument();
+        expect(screen.queryByText(labelType)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges_subsection_placement"]()));
+        expect(useMazeStore.getState().vectorByWallsSectionsExpanded.elevator_badges_placement).toBe(true);
+        expect(screen.getByText(distance)).toBeInTheDocument();
+        expect(screen.queryByText(labelType)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges_subsection_text"]()));
+        expect(screen.getByText(labelType)).toBeInTheDocument();
+      });
+
+      it("collapsing the Floor badges subsection hides the toggle and its sub-groups", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        render(<VectorByWallsSettingsPanel />);
+        fireEvent.click(screen.getByText(m["image_export.vector_by_walls.elevator_badges"]()));
+        expect(useMazeStore.getState().vectorByWallsSectionsExpanded.vertical_elevator_badges).toBe(false);
+        expect(screen.queryByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())).not.toBeInTheDocument();
+        expect(screen.queryByText(m["image_export.vector_by_walls.elevator_badges_subsection_text"]())).not.toBeInTheDocument();
       });
 
       it("hides the rest of the elevator badges fields when disabled", () => {

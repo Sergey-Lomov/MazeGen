@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany, formatElevatorBadgeLabel, slotsPerRow } from "../pixi/renderers/elevatorBadgeLayout";
+import { computeElevatorBadgeLayout, computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany, formatElevatorBadgeLabel, slotsPerRow } from "../pixi/renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../pixi/constants";
+import { circleOverlapsRoundedRect } from "../pixi/renderers/verticalConnectionGeometry";
+import { markerIndexPlateBox, markerIndexPlateFootprint, type MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
+import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("slotsPerRow", () => {
   it("floor((TILE_SIZE + gap) / (2*radius + gap)), minimum 1", () => {
@@ -202,5 +205,137 @@ describe("formatElevatorBadgeLabel", () => {
     expect(formatElevatorBadgeLabel(0, "letters")).toBe("A");
     expect(formatElevatorBadgeLabel(25, "letters")).toBe("Z");
     expect(formatElevatorBadgeLabel(26, "letters")).toBe("AA");
+  });
+});
+
+describe("computeElevatorBadgeLayout with obstacles (GitHub issue #964)", () => {
+  const radius = 5;
+  const base = { cx: 0, cy: 0, markerRadius: 10, radius, distance: 4, gap: 2 } as const;
+  // A marker-index plate right below the marker, covering the whole bottom side.
+  const plate = { x: -40, y: 12, w: 80, h: 30, radius: 4 };
+  const clear = (positions: { x: number; y: number }[]) => positions.every((p) => !circleOverlapsRoundedRect(p.x, p.y, radius, plate));
+
+  it("no obstacles: same positions as computeElevatorBadgePositions", () => {
+    const input = { ...base, count: 3, placement: "top_bottom", evenDistribution: true } as const;
+    expect(computeElevatorBadgeLayout(input).positions).toEqual(computeElevatorBadgePositions(0, 0, 10, 3, radius, 4, 2, "top_bottom", true));
+    expect(computeElevatorBadgeLayout({ ...input, obstacles: [] }).positions).toEqual(computeElevatorBadgeLayout(input).positions);
+  });
+
+  it("an obstacle far from every slot changes nothing", () => {
+    const input = { ...base, count: 3, placement: "left_right", evenDistribution: true } as const;
+    const far = { x: 500, y: 500, w: 10, h: 10, radius: 0 };
+    expect(computeElevatorBadgeLayout({ ...input, obstacles: [far] })).toEqual(computeElevatorBadgeLayout(input));
+  });
+
+  it.each(["left_right", "right_left", "top_bottom", "bottom_top", "full_circle"] as const)("%s: no badge overlaps the plate and every floor keeps a badge", (placement) => {
+    for (const evenDistribution of [true, false]) {
+      for (const count of [1, 2, 3, 4]) {
+        const { positions } = computeElevatorBadgeLayout({ ...base, count, placement, evenDistribution, obstacles: [plate] });
+        expect(positions).toHaveLength(count);
+        expect(clear(positions)).toBe(true);
+      }
+    }
+  });
+
+  it("bottom_top: a badge whose slot is under the plate moves to the free opposite side", () => {
+    const free = computeElevatorBadgeLayout({ ...base, count: 1, placement: "bottom_top", evenDistribution: true }).positions[0];
+    expect(circleOverlapsRoundedRect(free.x, free.y, radius, plate)).toBe(true);
+    const { positions } = computeElevatorBadgeLayout({ ...base, count: 1, placement: "bottom_top", evenDistribution: true, obstacles: [plate] });
+    expect(positions[0].y).toBe(-free.y);
+    expect(positions[0].x).toBe(free.x);
+  });
+
+  it("two-sided: a blocked leading side spills onto the free side when evenDistribution is off", () => {
+    const wide = { x: -200, y: 12, w: 400, h: 60, radius: 0 };
+    const { positions, overflow } = computeElevatorBadgeLayout({ ...base, count: 2, placement: "bottom_top", evenDistribution: false, obstacles: [wide] });
+    expect(overflow).toBe(false);
+    expect(positions.every((p) => p.y < 0)).toBe(true);
+  });
+
+  it("overflow: a side whose free slots are fewer than its badges reports too many", () => {
+    // Plate covers all of the bottom row except its edges, so 3 badges per side cannot fit.
+    const input = { ...base, count: 6, placement: "top_bottom", evenDistribution: true } as const;
+    expect(computeElevatorBadgeLayout(input).overflow).toBe(false);
+    const blockingBottom = { x: -200, y: 12, w: 400, h: 60, radius: 0 };
+    expect(computeElevatorBadgeLayout({ ...input, obstacles: [blockingBottom] }).overflow).toBe(true);
+  });
+
+  it("full_circle: stays on the ring and skips the blocked arc", () => {
+    const ring = 10 + 4 + radius;
+    const { positions, overflow } = computeElevatorBadgeLayout({ ...base, count: 4, placement: "full_circle", evenDistribution: true, obstacles: [plate] });
+    expect(overflow).toBe(false);
+    for (const p of positions) expect(Math.hypot(p.x, p.y)).toBeCloseTo(ring);
+    expect(clear(positions)).toBe(true);
+  });
+
+  it.each([true, false])("full_circle (evenDistribution %s): badges stay mirror-symmetric around the vertical axis", (evenDistribution) => {
+    for (const count of [1, 2, 3, 4, 5, 6, 7]) {
+      const { positions } = computeElevatorBadgeLayout({ ...base, count, placement: "full_circle", evenDistribution, obstacles: [plate] });
+      const left = positions.filter((p) => p.x < -1e-6).length;
+      const right = positions.filter((p) => p.x > 1e-6).length;
+      expect(left).toBe(right);
+    }
+  });
+
+  it("two-sided even split: a side with fewer free slots passes its surplus to the other side instead of spreading out", () => {
+    // Many small badges: the unobstructed split is 4 + 4; a plate under the marker takes slots of the bottom row.
+    const small = { ...base, radius: 2, gap: 1, distance: 2 } as const;
+    const bottomPlate = { x: -14, y: 12, w: 28, h: 20, radius: 0 };
+    const plain = computeElevatorBadgeLayout({ ...small, count: 8, placement: "top_bottom", evenDistribution: true });
+    expect(plain.positions.filter((p) => p.y < 0)).toHaveLength(4);
+    const withPlate = computeElevatorBadgeLayout({ ...small, count: 8, placement: "top_bottom", evenDistribution: true, obstacles: [bottomPlate] });
+    const top = withPlate.positions.filter((p) => p.y < 0).length;
+    const bottom = withPlate.positions.filter((p) => p.y > 0).length;
+    expect(top + bottom).toBe(8);
+    expect(top).toBeGreaterThan(bottom);
+    // No spreading: the bottom row stays inside the cell.
+    for (const p of withPlate.positions.filter((q) => q.y > 0)) expect(Math.abs(p.x) + 2).toBeLessThanOrEqual(TILE_SIZE / 2 + 1e-6);
+  });
+
+  it("full_circle: a fully blocked ring falls back to the plain layout", () => {
+    const everything = { x: -500, y: -500, w: 1000, h: 1000, radius: 0 };
+    const plain = computeElevatorBadgeLayout({ ...base, count: 3, placement: "full_circle", evenDistribution: true }).positions;
+    expect(computeElevatorBadgeLayout({ ...base, count: 3, placement: "full_circle", evenDistribution: true, obstacles: [everything] }).positions).toEqual(plain);
+  });
+});
+
+describe("circleOverlapsRoundedRect", () => {
+  const rect = { x: 0, y: 0, w: 10, h: 10, radius: 0 };
+  it("false when only touching, true when overlapping", () => {
+    expect(circleOverlapsRoundedRect(15, 5, 5, rect)).toBe(false);
+    expect(circleOverlapsRoundedRect(14, 5, 5, rect)).toBe(true);
+  });
+  it("respects rounded corners", () => {
+    const round = { ...rect, radius: 5 };
+    expect(circleOverlapsRoundedRect(13, 13, 5, rect)).toBe(true);
+    expect(circleOverlapsRoundedRect(13, 13, 5, round)).toBe(false);
+  });
+});
+
+describe("ring layout ignores obstacles out of reach", () => {
+  it("a far plate leaves the ring identical to the obstacle-free one", () => {
+    const base = { cx: 100, cy: 100, markerRadius: 10, count: 5, radius: 6, distance: 4, gap: 2, placement: "full_circle" as const, evenDistribution: true };
+    const far = { x: 5000, y: 5000, w: 40, h: 20, radius: 4 };
+    expect(computeElevatorBadgeLayout({ ...base, obstacles: [far] })).toEqual(computeElevatorBadgeLayout(base));
+  });
+});
+
+describe("ring blocked all around", () => {
+  it("draws as if free instead of dropping badges", () => {
+    const base = { cx: 0, cy: 0, markerRadius: 10, count: 4, radius: 6, distance: 4, gap: 2, placement: "full_circle" as const, evenDistribution: true };
+    const cover = { x: -500, y: -500, w: 1000, h: 1000, radius: 0 };
+    const blocked = computeElevatorBadgeLayout({ ...base, obstacles: [cover] });
+    expect(blocked.positions).toHaveLength(4);
+    expect(blocked).toEqual(computeElevatorBadgeLayout(base));
+  });
+});
+
+describe("markerIndexPlateFootprint (GitHub issue #964)", () => {
+  it("is the plate body inflated by the border on every side", () => {
+    const style = { ...DEFAULT_MARKER_INDEX_SETTINGS, borderWidthFromMarker: false, borderWidth: 3 };
+    const label = { pos: [50, 40], markerOuterRadius: 8 } as unknown as MarkerIndexLabel;
+    const box = markerIndexPlateBox(label, style);
+    const foot = markerIndexPlateFootprint(label, style);
+    expect(foot).toEqual({ x: box.x - 3, y: box.y - 3, w: box.w + 6, h: box.h + 6, radius: box.cornerRadius + 3 });
   });
 });

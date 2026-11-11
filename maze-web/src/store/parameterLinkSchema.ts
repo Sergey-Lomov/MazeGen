@@ -134,6 +134,9 @@ const G = {
   // `verticalStyle` (GitHub issue #677) — one shared group.
   verticalElevator: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.elevator_marker"),
   verticalElevatorBadges: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.elevator_marker", "image_export.vector_by_walls.elevator_badges"),
+  verticalElevatorBadgesPlacement: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.elevator_marker", "image_export.vector_by_walls.elevator_badges", "image_export.vector_by_walls.elevator_badges_subsection_placement"),
+  verticalElevatorBadgesText: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.elevator_marker", "image_export.vector_by_walls.elevator_badges", "image_export.vector_by_walls.elevator_badges_subsection_text"),
+  verticalElevatorBadgesBackplate: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.elevator_marker", "image_export.vector_by_walls.elevator_badges", "image_export.vector_by_walls.elevator_badges_subsection_backplate"),
   verticalSharedStyle: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.vertical_subsection_shared_style"),
   verticalTwoWayMarker: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.two_way_passage_marker", "image_export.vector_by_walls.vertical_subsection_marker"),
   verticalTwoWayArrows: g("image_export.vector_by_walls.section_vertical", "image_export.vector_by_walls.two_way_passage_marker", "image_export.vector_by_walls.vertical_subsection_arrows"),
@@ -367,24 +370,32 @@ export const LINK_SCHEMA = {
     replaceTwoFloorElevatorsWithStairs: f("boolean", `${VW}.replace_two_floor_elevators_with_stairs`, { groupBy: { corridors: G.verticalRoot } }),
   }),
   ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadges, active: R.elevators }, {
-    cornerStyle: f("cornerStyle", `${VW}.marker_corner_style`, { active: R.elevatorBadgesOn }),
     enabled: f("boolean", `${VW}.elevator_badges_enabled`, { update: "elevatorBadges" }),
   })),
-  ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadges, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
-    evenDistribution: f("boolean", `${VW}.elevator_badges_even_distribution`),
-    size: f("number", `${VW}.elevator_badges_size`),
+  // The badge fields sit in three panel subsections: "Placement", "Text" and "Backplate".
+  ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesPlacement, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
     distance: f("number", `${VW}.elevator_badges_distance`),
+    evenDistribution: f("boolean", `${VW}.elevator_badges_even_distribution`),
     gap: f("number", `${VW}.elevator_badges_gap`, { active: R.elevatorBadgeGap }),
-    gapWidth: f("number", `${VW}.elevator_badges_gap_width`),
-    shape: f("markerShape", `${VW}.elevator_badges_shape`),
+  })),
+  ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesText, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
     labelType: f("indexLabelStyle", `${VW}.elevator_badges_label_type`),
     textFontWeight: f("labelFontWeight", `${VW}.elevator_badges_font_weight`),
+    textSize: f("number", `${VW}.elevator_badges_text_size`),
+    textMargin: f("number", `${VW}.marker_text_margin`),
+    textColor: f("color", `${VW}.elevator_badges_text_color`),
+  })),
+  ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesBackplate, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
+    shape: f("markerShape", `${VW}.elevator_badges_shape`),
+    size: f("number", `${VW}.elevator_badges_size`),
+    gapWidth: f("number", `${VW}.elevator_badges_gap_width`),
     fillColor: f("color", `${VW}.elevator_badges_fill_color`),
     borderColor: f("color", `${VW}.marker_border_color`),
     borderWidth: f("number", `${VW}.marker_border_width`),
-    textColor: f("color", `${VW}.elevator_badges_text_color`),
-    textSize: f("number", `${VW}.elevator_badges_text_size`),
-    textMargin: f("number", `${VW}.marker_text_margin`),
+  })),
+  // `cornerStyle` keeps its own update path ("Shared style"-linked, see `setElevatorBadgesCornerStyle`).
+  ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesBackplate, active: and(R.elevators, R.elevatorBadgesOn) }, {
+    cornerStyle: f("cornerStyle", `${VW}.marker_corner_style`),
   })),
 
   // ---- marker indices
