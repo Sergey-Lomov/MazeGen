@@ -24,6 +24,37 @@ function hasDistinctGlyphMetrics(family: string): boolean {
   return ["monospace", "sans-serif", "serif"].every((fallback) => Math.abs(candidate - width(`16px ${fallback}`)) > 0.01);
 }
 
+let localFamiliesPromise: Promise<string[] | null> | null = null;
+
+type LocalFontQuery = () => Promise<Array<{ family: string }>>;
+const localFontQuery = (): LocalFontQuery | undefined => (typeof window === "undefined" ? undefined : (window as Window & { queryLocalFonts?: LocalFontQuery }).queryLocalFonts);
+
+/** Whether the browser has the Local Font Access API at all (Chromium only). */
+export function isLocalFontAccessSupported(): boolean {
+  return !!localFontQuery();
+}
+
+/** Every font family installed on this machine, sorted, via the Local Font Access API. Resolves to
+ * `null` when the browser has no such API or the user denied access. Cached for the page lifetime;
+ * `retry` drops a cached failure and asks again, which re-prompts unless the browser has already
+ * blocked the site. Call it from a user gesture. */
+export function loadLocalFontFamilies(retry = false): Promise<string[] | null> {
+  if (retry) localFamiliesPromise = null;
+  if (!localFamiliesPromise) {
+    const query = localFontQuery();
+    localFamiliesPromise = query
+      ? query.call(window).then((fonts) => [...new Set(fonts.map((font) => font.family.trim()).filter(Boolean))].sort()).catch(() => null)
+      : Promise.resolve(null);
+  }
+  return localFamiliesPromise;
+}
+
+/** Whether a font family is actually installed on this machine: its glyph metrics differ from every
+ * generic fallback. Synchronous, so a candidate list can be filtered without loading each font. */
+export function isFontFamilyInstalled(family: string): boolean {
+  return typeof document !== "undefined" && hasDistinctGlyphMetrics(family);
+}
+
 export function isLabelFontFamilyLoaded(family: string | undefined): boolean {
   return !!family?.trim() && loadedFamilies.has(family.trim());
 }
