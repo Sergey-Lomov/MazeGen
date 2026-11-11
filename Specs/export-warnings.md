@@ -177,7 +177,8 @@ drawn over the floor and the floor remains the relevant base surface even when a
   shape.
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
-- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity.
+- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity. Slots under a marker-index
+  plate are unavailable (GitHub issue #964), so a plate lowers the capacity of the side it sits on.
 - `marker_text_overflow` / `elevator_badge_text_overflow` / `teleport_badge_text_overflow` (GitHub
   issue #707) — a start/finish caption, elevator floor-number badge or cross-floor teleport badge
   label does not fit its plate. Shared by both renderers. "Fits" means every point of the label's glyph-ink outline (boundary pixels of the baked MSDF
@@ -371,7 +372,7 @@ drawn somewhere take part (start/finish when set, teleport when a teleport exist
 
 #### Invisible start / finish (GitHub issue #963)
 
-While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden in `colorFieldRegistry.ts`, so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
+While a start/finish marker is off (`markerEnabled === false`) its `startFill`/`startBorder` (`finishFill`/`finishBorder`) colour fields are hidden — their visibility is the schema's `active` rule of the matching panel row (`startMarker.fillColor` etc., GitHub issue #965), which `colorFieldRegistry.ts` evaluates — so no contrast warning reads them (`visibleColor` gives `null`); its caption is checked by `label_low_contrast` against the surface instead of the hidden fill.
 
 `start_invisible` / `finish_invisible` (group `waypointInvisible`, both modes): the start (finish) of the floor draws nothing — no marker (`markerEnabled === false`, or size and border both `0`) and no caption (`textEnabled === false` or empty/blank `text`). One warning per endpoint, only when it is set on the floor; highlights its node. Checked by `isWaypointVisible` (`mazeSelectors/markers.ts`).
 

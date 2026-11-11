@@ -81,7 +81,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
     /// Needs every valid cycle, not just invalid ones — `apply` walks the full `all` to compute
     /// `valid_overlap` (how many valid cycles a candidate edge would also break), so
     /// `VALID_CYCLES` is required by the algorithm itself, not left set out of inertia.
-    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        _nested: &[NestedStrategyConfig<T>],
+    ) -> InvalidLoopRequirement {
         InvalidLoopRequirement::VALID_CYCLES
     }
 

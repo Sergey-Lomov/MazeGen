@@ -125,8 +125,10 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into every
     /// `Check::repair_check` call in that rule. Default `I::Requirement::default()` — which
     /// `IssueRequirement`'s contract fixes to mean "compute everything" — so an unmigrated
-    /// strategy changes nothing.
-    fn requirement(&self, _params: &StrategyParams) -> I::Requirement { I::Requirement::default() }
+    /// strategy changes nothing. `nested` is the same list `apply()` later receives (GitHub issue
+    /// #283): a coordinator strategy consults it to translate its nested strategies' requirements
+    /// into its own `I::Requirement`; a strategy with no nested slots ignores it.
+    fn requirement(&self, _params: &StrategyParams, _nested: &[NestedStrategyConfig<T>]) -> I::Requirement { I::Requirement::default() }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
     fn is_experimental(&self) -> bool { false }
@@ -164,14 +166,13 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn expected_nested(&self) -> &'static [NestedSlot];
     fn nested_suppressed_params(&self) -> &'static [&'static str];
     /// Erased form of `RepairStrategy::requirement` — returns `Box<dyn Any>` wrapping the
-    /// strategy's own `I::Requirement`. The only caller, `maze-runner`'s `downcast_strategy`,
-    /// already knows the concrete `I` (generic over it) and downcasts this back via
-    /// `downcast::<I::Requirement>()`. Needed because `requirement()`'s return type is generic
-    /// over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
-    /// `&dyn Issue` erasure. **A parent strategy delegating to a nested slot never calls this** —
-    /// a nested strategy's issue is synthesized directly by the parent (see "Nested strategies"
-    /// below), never produced by a `Check::repair_check` call, so there is no requirement to pass.
-    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
+    /// strategy's own `I::Requirement`. Callers know the concrete `I` and downcast this back via
+    /// `downcast::<I::Requirement>()`: `maze-runner`'s `downcast_strategy` (generic over `I`).
+    /// Needed because `requirement()`'s return type is generic over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
+    /// `&dyn Issue` erasure. A coordinator strategy (currently `InvalidLoopGroupSelectStrategy`,
+    /// GitHub issue #283) calls this on its nested strategy from its own `requirement()` and
+    /// translates the result into its own `I::Requirement`; every other parent ignores it.
+    fn requirement_erased(&self, params: &StrategyParams, nested: &[NestedStrategyConfig<T>]) -> Box<dyn std::any::Any>;
     fn apply(
         &self, issue: &dyn Issue, maze: &Maze<T>,
         rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
@@ -283,7 +284,7 @@ See GitHub issue #68. A repair strategy can delegate part of its work to other, 
 pub enum NestedDispatchKind {
     /// No ordering convention — either the slot holds at most one entry (`max: Some(1)`), or
     /// there's exactly one required fixer with nothing to pick between. Default for every slot
-    /// that isn't `Weighted`/`Priority`.
+    /// that isn't `Weighted`/`Priority`/`SizeThreshold`.
     Unordered,
     /// Candidates are picked weighted-randomly, with retry-on-`Failed` — see `dispatch_weighted`
     /// below (GitHub issue #90).
@@ -291,6 +292,9 @@ pub enum NestedDispatchKind {
     /// Candidates are tried strictly in configured list order, falling through to the next on
     /// `Failed` — see `dispatch_priority` below (GitHub issue #259).
     Priority,
+    /// One candidate picked by the flagged region's own size — see
+    /// `SizeThresholdRegionMergeStrategy` (GitHub issue #91).
+    SizeThreshold,
 }
 
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
@@ -897,7 +901,7 @@ There is no per-apply batch limit: every flagged cycle is a candidate. (The form
 
 **Result**: `Fixed` (with every successful nested call's commands, in order) only if at least one nested repair succeeded; `Failed` (no commands) if every nested call failed or no `cut_target` nested strategy is configured. An empty `invalid` list returns `Fixed` with no commands, even without a nested strategy.
 
-Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
+`requirement()` follows the nested `cut_target` strategy (GitHub issue #283): `Rule::new` passes `nested` into `requirement()`, and the group requests `VALID_CYCLES` exactly when the nested strategy's own `InvalidLoopRequirement` does (`apply` only forwards `issue.valid` into each nested issue's `all`). With no nested strategy configured it falls back to `InvalidLoopGroupRequirement::all()`. Note: the group-producing checks (`max_loops_count`, `max_loop_density`) do not yet read the requirement, so today this only fixes what is asked for, not what is computed.
 
 ### dead_end_priority (shared, not a strategy)
 
@@ -1085,7 +1089,7 @@ Direction is picked per `constraint`: `RequireUp`/`RequireDown` (used by `AddVer
 - `PARAM_TARGET_MODE` / `MODE_LARGEST` / `MODE_SMALLEST` / `MODE_RANDOM` / `MODE_PREFER_NEEDY` / `MODE_OPTIONS`, `PARAM_PREFER_PARTIALLY_CONNECTED` — the shared param ids/enum values both strategies expose under these exact names.
 - `pick_by_mode(pool, scc, mode, needy, rng) -> Option<ComponentId>` — `largest`/`smallest` by `components[i].len()`, `prefer_needy` biased toward flagged neighbors (falls back to the whole pool if none are needy), `random` (or any unrecognized mode) uniform via `rng`. `pool` must already be sorted by the caller for reproducible tie-breaking (component ids are typically collected from a `HashMap`'s randomized-per-process iteration order).
 - `narrow_to_partial(pool, partial, prefer_partial) -> &[ComponentId]` — the `prefer_partially_connected` pre-filter: returns `partial` if the flag is on and non-empty, otherwise the full `pool`. Each strategy computes its own `partial` subset (what "partially connected" means is strategy-specific — bridging-pair state for `ExpandRegionPassageStrategy`, any-edge-kind state for `TeleportRegionMergeStrategy`) and passes it in.
-- `run_merge_loop(invalid, find_candidate) -> bool` — the shared "merge every flagged region into a chosen neighbor" loop: pops region ids from `invalid` (LIFO), skips ones already absorbed by an earlier merge in the same call (`merged_away`), and calls the caller-supplied `find_candidate(region_idx, needy, excluded) -> Option<(neighbor_idx, applied)>` closure for each remaining one. A candidate that is found but not applied (`applied == false`: preset-blocked pair, no second pair for `one_way`, ...) is added to `excluded` and `find_candidate` is called again for the same region until one applies or none is left (`None`), so a blocked preferred neighbor (`target_mode`, `prefer_partially_connected`, `direction_balance`) falls back to the remaining neighbors; `find_candidate` must drop `excluded` neighbors before narrowing and picking, and a finder that keeps returning an excluded neighbor ends the retry. The first call for a region always has an empty `excluded`, so the success path consumes `rng` exactly as before (GitHub issue #278). If the chosen neighbor was itself a needy (flagged) region, it's marked `merged_away` so a later iteration doesn't try to expand it again. Returns `true` if at least one region was successfully merged (`applied == true` for at least one call) — callers map this to `Fixed`/`Failed`. `find_candidate` owns everything strategy-specific: candidate discovery, target selection (via `pick_by_mode`/`narrow_to_partial`), and the actual connection.
+- `run_merge_loop(invalid, find_candidate) -> bool` — the shared "merge every flagged region into a chosen neighbor" loop: walks region ids in `invalid` order (front to back, so a caller that sorted the batch — e.g. `ReduceSccCountStrategy`'s `merge_priority` — gets it processed in exactly that order), skips ones already absorbed by an earlier merge in the same call (`merged_away`), and calls the caller-supplied `find_candidate(region_idx, needy, excluded) -> Option<(neighbor_idx, applied)>` closure for each remaining one. A candidate that is found but not applied (`applied == false`: preset-blocked pair, no second pair for `one_way`, ...) is added to `excluded` and `find_candidate` is called again for the same region until one applies or none is left (`None`), so a blocked preferred neighbor (`target_mode`, `prefer_partially_connected`, `direction_balance`) falls back to the remaining neighbors; `find_candidate` must drop `excluded` neighbors before narrowing and picking, and a finder that keeps returning an excluded neighbor ends the retry. The first call for a region always has an empty `excluded`, so the success path consumes `rng` exactly as before (GitHub issue #278). If the chosen neighbor was itself a needy (flagged) region, it's marked `merged_away` so a later iteration doesn't try to expand it again. Returns `true` if at least one region was successfully merged (`applied == true` for at least one call) — callers map this to `Fixed`/`Failed`. `find_candidate` owns everything strategy-specific: candidate discovery, target selection (via `pick_by_mode`/`narrow_to_partial`), and the actual connection.
 
 ### ExpandRegionPassageStrategy
 
@@ -1224,7 +1228,7 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 **Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
 
-**One dispatch per region, not per `apply()` call** (GitHub issue #120): the original #90 design dispatched the *whole* `invalid` batch to a single weighted pick, so a low-weight candidate that happened to win controlled the outcome for every region still left in the batch, not just its own configured share — a rare 1%-odds win could still absorb most of a large batch, making the configured weight ratio not track the actual per-region merge frequency. This strategy now runs its own `invalid`-batch loop directly (`Vec::pop`, skipping any region already merged away by an earlier region's own merge in the same call), synthesizing a single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always governs exactly one region's outcome. A merged-away neighbor is tracked via `region_merge_core::mutation_command_endpoints` — each proposed command's endpoints resolved back to their SCC component index, computed once from a single fixed snapshot taken at the start of `apply()` (shared with `PriorityRegionMergeStrategy`, see below).
+**One dispatch per region, not per `apply()` call** (GitHub issue #120): the original #90 design dispatched the *whole* `invalid` batch to a single weighted pick, so a low-weight candidate that happened to win controlled the outcome for every region still left in the batch, not just its own configured share — a rare 1%-odds win could still absorb most of a large batch, making the configured weight ratio not track the actual per-region merge frequency. This strategy now runs its own `invalid`-batch loop directly (in `invalid` order, skipping any region already merged away by an earlier region's own merge in the same call), synthesizing a single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always governs exactly one region's outcome. A merged-away neighbor is tracked via `region_merge_core::mutation_command_endpoints` — each proposed command's endpoints resolved back to their SCC component index, computed once from a single fixed snapshot taken at the start of `apply()` (shared with `PriorityRegionMergeStrategy`, see below).
 
 - If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
 - Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
@@ -1255,7 +1259,7 @@ passes the whole `invalid` batch through to a single `dispatch_weighted` call, t
 its own batch loop directly: `issue.invalid` can carry several independent undersized regions, and
 folding the whole batch into one dispatch would let the first-in-priority candidate's success or
 failure govern every region still left in the batch, not just decide the mechanism once per
-region. For each region still pending (processed via `Vec::pop`, skipping any already merged away
+region. For each region in `invalid` order (skipping any already merged away
 by an earlier region's own merge in the same call), a single-region `RegionNeedsExpansionIssue` is
 synthesized and passed to its own `dispatch_priority` call against the shared candidate list. A
 merged-away neighbor is tracked the same way `WeightedRegionMergeStrategy` does — via
@@ -1268,6 +1272,34 @@ their SCC component index, computed once from a single fixed snapshot at the sta
   `WeightedRegionMergeStrategy`. If no candidate fills the slot after filtering: returns `Failed`.
 - Returns `Fixed` if at least one region in the batch was successfully merged (even if others
   failed); `Failed` only if every region in the batch failed every candidate.
+
+### SizeThresholdRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #91. Third `merge_target` dispatcher beside
+`WeightedRegionMergeStrategy` and `PriorityRegionMergeStrategy`: it picks *which* nested
+region-merge strategy runs, deterministically by the flagged region's own size
+(`scc.components[region].len()`), not randomly or unconditionally.
+
+No configurable parameters of its own. **Nested slot**: `slot_id = "merge_target"` (its own
+constant), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = None`,
+`dispatch_kind = SizeThreshold`.
+
+**Configuration**: each nested entry carries `param_overrides["max_size"]` — a non-negative
+integer string (`SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE`; like `"weight"`, the dispatcher's own
+convention, not a declared `StrategyParam`). Entries are an ordered list, expected sorted ascending
+by `max_size` (the strategy never reorders it; the UI lets the user reorder). A region of size `s`
+goes to the first entry, excluding the last, with `s <= max_size`; if none matches it goes to the
+last entry — the fallback for every larger region, whose own `max_size` is ignored (the UI hides
+it). Missing, unparsable or negative `max_size` is unbounded, so such an entry captures every
+size not already taken by an earlier one. A single entry handles every region.
+
+**No fallback on `Failed`**: the size range fully determines the mechanism, so a failing candidate
+leaves its region unmerged instead of handing it to a strategy configured for another size.
+
+Batching, empty-`invalid` idempotency (`Fixed`, no `rng` use), no-candidate `Failed`, merged-away
+neighbor tracking and `Fixed`-if-any-region-merged semantics are shared with the other dispatchers
+via `region_merge_core::run_per_region_dispatch`, whose closure receives each region's id and the
+single SCC snapshot taken at the start of `apply()`.
 
 ### graph::bisect (shared, not a strategy)
 

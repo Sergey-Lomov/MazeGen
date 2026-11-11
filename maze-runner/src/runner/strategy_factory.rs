@@ -23,7 +23,7 @@ use maze_core::{
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
+        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::Tessellation,
 };
@@ -81,6 +81,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(
         "weighted_region_merge" => Box::new(WeightedRegionMergeStrategy),
         "weighted_dead_end" => Box::new(WeightedDeadEndStrategy),
         "priority_region_merge" => Box::new(PriorityRegionMergeStrategy),
+        "size_threshold_region_merge" => Box::new(SizeThresholdRegionMergeStrategy),
         "priority_dead_end" => Box::new(PriorityDeadEndStrategy),
         "priority_missing_loops" => Box::new(PriorityMissingLoopsStrategy),
         "remove_teleport" => Box::new(RemoveTeleportStrategy),
@@ -201,8 +202,12 @@ pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + I
         // downcasting back to this rule's concrete I::Requirement. Without this override the
         // default (Full) would silently win here regardless of what the real strategy declares,
         // since build_qc_and_repair resolves every registry strategy through this wrapper.
-        fn requirement(&self, params: &maze_core::repair::StrategyParams) -> I::Requirement {
-            *self.inner.requirement_erased(params)
+        fn requirement(
+            &self,
+            params: &maze_core::repair::StrategyParams,
+            nested: &[NestedStrategyConfig<T>],
+        ) -> I::Requirement {
+            *self.inner.requirement_erased(params, nested)
                 .downcast::<I::Requirement>()
                 .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
         }

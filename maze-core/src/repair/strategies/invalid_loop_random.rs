@@ -41,7 +41,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
     /// no valid-cycle entry in `owners` is ever read. `invalid_sources` isn't read at all. A
     /// re-indexed `all` containing only the invalid cycles produces the identical result — so the
     /// `VALID_CYCLES` layer is never needed.
-    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        _nested: &[NestedStrategyConfig<T>],
+    ) -> InvalidLoopRequirement {
         InvalidLoopRequirement::empty()
     }
 

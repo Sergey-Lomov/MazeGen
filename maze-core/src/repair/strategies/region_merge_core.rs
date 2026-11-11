@@ -80,8 +80,9 @@ pub fn narrow_to_partial<'a>(
     }
 }
 
-/// Runs the shared "merge every flagged region into a chosen neighbor" loop: pops region ids
-/// from `invalid` (LIFO), skips ones already absorbed by an earlier merge in this call
+/// Runs the shared "merge every flagged region into a chosen neighbor" loop: walks region ids
+/// in `invalid` order (front to back, so a caller that sorted the batch — e.g.
+/// `ReduceSccCountStrategy`'s `merge_priority` — gets it processed in exactly that order), skips ones already absorbed by an earlier merge in this call
 /// (`merged_away`), and calls `find_candidate` for each remaining one to pick a neighbor and
 /// apply the actual connection. `find_candidate` receives the region's id and the current
 /// `needy` set (every other still-unmerged flagged region) plus the `excluded` set (neighbors
@@ -102,11 +103,10 @@ pub fn run_merge_loop(
         &HashSet<ComponentId>,
     ) -> Option<(ComponentId, bool)>,
 ) -> bool {
-    let mut pending: Vec<ComponentId> = invalid.to_vec();
     let mut merged_away: HashSet<ComponentId> = HashSet::new();
     let mut any_fixed = false;
 
-    while let Some(region_idx) = pending.pop() {
+    for &region_idx in invalid {
         if merged_away.contains(&region_idx) {
             continue;
         }
@@ -201,30 +201,35 @@ fn merged_neighbor(
 }
 
 /// Shared batch loop of the dispatcher strategies (`WeightedRegionMergeStrategy`,
-/// `PriorityRegionMergeStrategy`): one `dispatch` call per region in `invalid`, each on a
-/// synthetic single-region issue, skipping regions already merged away by an earlier dispatch.
+/// `PriorityRegionMergeStrategy`, `SizeThresholdRegionMergeStrategy`): one `dispatch` call per
+/// region in `invalid`, in order (receiving that region's id and the SCC snapshot), each on a synthetic
+/// single-region issue, skipping regions already merged away by an earlier dispatch.
 /// One `scc()` snapshot taken up front stays valid for the whole call, since nested strategies
 /// only propose commands and never mutate `maze.graph`. `Fixed` if any dispatch succeeded.
 pub fn run_per_region_dispatch<T: Tessellation>(
     invalid: &[ComponentId],
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
-    mut dispatch: impl FnMut(&dyn Issue, &mut dyn RngCore) -> (RepairResult, Vec<MutationCommand>),
+    mut dispatch: impl FnMut(
+        ComponentId,
+        &ConnectedComponents,
+        &dyn Issue,
+        &mut dyn RngCore,
+    ) -> (RepairResult, Vec<MutationCommand>),
 ) -> (RepairResult, Vec<MutationCommand>) {
     let scc = maze.analysis.scc(&maze.graph);
 
-    let mut pending: Vec<ComponentId> = invalid.to_vec();
     let mut merged_away: HashSet<ComponentId> = HashSet::new();
     let mut all_commands: Vec<MutationCommand> = Vec::new();
     let mut any_fixed = false;
 
-    while let Some(region_idx) = pending.pop() {
+    for &region_idx in invalid {
         if merged_away.contains(&region_idx) {
             continue;
         }
 
         let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
-        let (result, commands) = dispatch(&single_region_issue, rng);
+        let (result, commands) = dispatch(region_idx, &scc, &single_region_issue, rng);
 
         if matches!(result, RepairResult::Fixed { .. }) {
             any_fixed = true;
@@ -398,10 +403,10 @@ mod tests {
     #[test]
     fn run_merge_loop_skips_a_region_already_merged_away_as_someone_elses_neighbor() {
         // Region 0 merges into region 1 (itself in `invalid`, hence "needy") -- region 1 must
-        // then be marked merged_away and skipped when its own turn comes up in the LIFO pop
+        // then be marked merged_away and skipped when its own turn comes up in the batch
         // order, never calling find_candidate for it a second time.
         use std::cell::RefCell;
-        let invalid = vec![1, 0]; // pop order: 0 first, then 1
+        let invalid = vec![0, 1]; // processed in this order: 0 first, then 1
         let calls: RefCell<Vec<ComponentId>> = RefCell::new(Vec::new());
         let any_fixed = run_merge_loop(&invalid, |region, _needy, _excluded| {
             calls.borrow_mut().push(region);
@@ -421,33 +426,57 @@ mod tests {
 
     #[test]
     fn run_merge_loop_passes_the_correct_needy_set_excluding_self_and_merged_away() {
-        // 3 flagged regions: 0, 1, 2. When region 2 (popped first, LIFO) is dispatched, needy
-        // must be {0, 1} (everyone else in `invalid`, excluding itself). Region 2 merges into
-        // region 1 (needy), marking it merged_away; when region 0 is dispatched next (region 1
-        // popped in between but skipped since merged_away, never reaching find_candidate),
-        // needy must be {2} -- region 1 excluded (merged_away), region 2 still included (it
+        // 3 flagged regions: 0, 1, 2, processed in that order. Region 0 is dispatched first, so
+        // its needy set is {1, 2} (everyone else in `invalid`). It merges into region 1 (needy),
+        // marking it merged_away; region 1 is then skipped (never reaching find_candidate), and
+        // region 2 sees needy {0} -- region 1 excluded (merged_away), region 0 still included (it
         // was processed itself, but processing doesn't merge it away; only being *chosen as
         // someone else's neighbor* does). Captures the needy set seen at each dispatched call.
         use std::cell::RefCell;
-        let invalid = vec![0, 1, 2]; // pop order: 2, 1, 0
+        let invalid = vec![0, 1, 2];
         let seen: RefCell<Vec<(ComponentId, Vec<ComponentId>)>> = RefCell::new(Vec::new());
         run_merge_loop(&invalid, |region, needy, _excluded| {
             let mut sorted: Vec<ComponentId> = needy.iter().copied().collect();
             sorted.sort_unstable();
             seen.borrow_mut().push((region, sorted));
-            if region == 2 { Some((1, true)) } else { None }
+            if region == 0 { Some((1, true)) } else { None }
         });
         let seen = seen.into_inner();
         assert_eq!(
             seen[0],
-            (2, vec![0, 1]),
-            "region 2's needy set is every other flagged region"
+            (0, vec![1, 2]),
+            "region 0's needy set is every other flagged region"
         );
         assert_eq!(
             seen[1],
-            (0, vec![2]),
-            "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy"
+            (2, vec![0]),
+            "region 1 is now merged_away and excluded, but region 0 (not merged_away itself) still counts as needy"
         );
+    }
+
+    #[test]
+    fn run_per_region_dispatch_processes_regions_in_batch_order() {
+        // `ReduceSccCountStrategy` sorts the batch by `merge_priority`; the loop must walk it
+        // front to back so e.g. `smallest` really starts with the smallest region.
+        use crate::IdGenerator;
+        use crate::graph::Graph;
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+        use std::sync::Arc;
+        let mut ids = IdGenerator::new();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let mut rng = crate::random::MazeRng::seed_from_u64(1);
+        let mut seen: Vec<ComponentId> = Vec::new();
+        run_per_region_dispatch(&[2, 0, 3], &maze, &mut rng, |region, _scc, _issue, _rng| {
+            seen.push(region);
+            (RepairResult::Failed, vec![])
+        });
+        assert_eq!(seen, vec![2, 0, 3]);
     }
 
     #[test]

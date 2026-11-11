@@ -7,7 +7,7 @@ import {
   arrowThickness, arrowMidpointFraction, oneWayTickCenteringFraction, oneWayWallTickRect, stairsArrowGeometry, stairsTickSegment,
 } from "./verticalConnectionGeometry";
 import { navigateToFloor } from "./floorNavigation";
-import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
+import { computeElevatorBadgePositions, formatElevatorBadgeLabel, type ElevatorBadgeObstacle } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
@@ -303,6 +303,7 @@ function drawElevatorBadges(
   gapColor: number,
   hitLayer?: Container,
   navigable?: boolean,
+  obstacles?: readonly ElevatorBadgeObstacle[],
 ): void {
   if (!settings.enabled || marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length === 0) return;
   // `settings.size` is the badge diameter in px (GitHub issue #701, like every `MarkerAppearance`);
@@ -311,7 +312,7 @@ function drawElevatorBadges(
   const badgeRadius = fillRadius + settings.borderWidth;
   const rounded = settings.cornerStyle === "round";
   const targetFloorIndices = marker.targetFloorIndices;
-  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
+  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution, obstacles);
   const labels = targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
   for (const pos of positions) {
     drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
@@ -409,6 +410,9 @@ export class VerticalConnectionRenderer {
     interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean);
     /** Marker size adaptation (GitHub issue #819) — scales each marker's radius by its cell's factor. */
     scaler?: MarkerScaler;
+    /** Regions elevator floor badges keep clear of (GitHub issue #964) — the marker-index plates
+     *  drawn on top of the markers, whose footprint would otherwise hide a badge. */
+    badgeObstacles?: readonly ElevatorBadgeObstacle[];
   }): void {
     const scaler = data.scaler ?? NO_MARKER_SCALING;
     this.g.clear();
@@ -420,7 +424,7 @@ export class VerticalConnectionRenderer {
 
     for (const marker of data.markers) {
       if (decorative) {
-        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler);
+        this.renderDecorativeMarker(marker, data.style, data.interactive, scaler, data.badgeObstacles);
         continue;
       }
 
@@ -542,7 +546,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(data.style.elevatorBadges, factor), data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker), data.badgeObstacles);
     }
   }
 
@@ -583,6 +587,7 @@ export class VerticalConnectionRenderer {
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
     scaler: MarkerScaler,
+    badgeObstacles?: readonly ElevatorBadgeObstacle[],
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
@@ -595,7 +600,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, scaleElevatorBadges(style.elevatorBadges, factor), style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker), badgeObstacles);
       return;
     }
 

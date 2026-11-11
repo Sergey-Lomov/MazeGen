@@ -319,6 +319,15 @@ function segmentBoxDistance(s: SegmentGeometry, b: Box): number {
 /** Float slack so shapes that exactly touch never read as overlapping. */
 const OVERLAP_EPSILON = 1e-6;
 
+/** Whether the disc of `radius` around `(cx, cy)` overlaps the rounded rect `rect` — strictly, so a
+ *  disc that only touches the rect does not count. Exact: the disc is a point grown by `radius`, the
+ *  rect a convex core grown by its corner radius. */
+export function circleOverlapsRoundedRect(cx: number, cy: number, radius: number, rect: RoundedRectGeometry): boolean {
+  const target = roundedRectCore(rect);
+  const point: Box = { x0: cx, y0: cy, x1: cx, y1: cy };
+  return boxBoxDistance(point, target.core) < radius + target.radius - OVERLAP_EPSILON;
+}
+
 /** Whether a stop line's drawn footprint overlaps the rounded rect `rect` — strictly, so shapes
  *  that only touch along an edge do not count. Exact for rounded corners and round stroke caps:
  *  both shapes are a convex core grown by a radius, so they overlap iff their cores are closer

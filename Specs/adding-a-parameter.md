@@ -56,6 +56,10 @@ call site the ticket named — then wire the distinction through an explicit pro
 
 - **Register it in the project-colors list** (`projectColorsSelector.ts`, the `PC.*` entries) so it shows
   up in the color picker's "Project colors" section like every other named color in the project.
+- **Give its registry entry the schema path** (`colorFieldRegistry.ts`, `schemaField("<link path>", { get, set })`):
+  the color's visibility then comes from the field's `active` rule in `LINK_SCHEMA`, never from a second
+  predicate. Use a hand-written `visible` only when the row is shown on purpose while the color is not
+  drawn (the grid colors), and say why next to it.
 - **Survey the existing colors for semantic neighbors.** Find colors that are conceptually close to the
   new one (e.g. a new badge text color is close to that badge's own fill/border colors, and to any
   sibling badge's text color) and add them to the new color's own `priorityColors` list, so picking the

@@ -160,7 +160,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       seedAttachedToHistory: file.generation.seedHistory.length > 0
         && file.generation.seedHistory[file.generation.seedHistoryIndex] === file.generation.seed,
       // quality
-      rules: rulesFromFile(file.quality.rules),
+      rules: rulesFromFile(file.quality.rules, get().availableStrategies),
       stages: file.quality.stages,
       repairMaxIterations: file.quality.repairMaxIterations,
       repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,

@@ -18,6 +18,7 @@ import {
   type ProjectFileQuality,
 } from "../store/projectExport";
 import type { QcRuleState, RepairStageState } from "../store/storeTypes";
+import { rulesFromFile } from "../store/slices/generationSliceHelpers";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
@@ -84,6 +85,7 @@ const checks = ["min_loop_length", "max_loop_length"].map((id) => ({ id, issue_k
 const strategies = [
   { id: "invalid_loop_random", handles: "invalid_loop", nested_slots: [] },
   { id: "dispatcher", handles: "invalid_loop", nested_slots: [{ slot_id: "a" }, { slot_id: "c" }] },
+  { id: "size_dispatcher", handles: "invalid_loop", nested_slots: [{ slot_id: "t", dispatch_kind: "size_threshold" }, { slot_id: "u" }] },
 ] as unknown as StrategyDescriptor[];
 const registry = { registryLoaded: true, availableChecks: checks, availableStrategies: strategies };
 
@@ -162,6 +164,32 @@ describe("quality preset (GitHub issue #751)", () => {
   it("rejects unrelated JSON with a plain error", () => {
     expect(() => parseQualityPreset({ foo: 1 })).toThrow("Not a quality preset file");
     expect(() => parseQualityPreset({ foo: 1 })).not.toThrow(FileKindMismatchError);
+  });
+});
+
+describe("rulesFromFile", () => {
+  it("makes a size-threshold slot's missing max_size explicit, leaving other slots alone", () => {
+    const entry = (slotId: string, params: Record<string, string>) => ({ slotId, strategyId: "invalid_loop_random", params, nested: [] });
+    const fileRules = [rule("r", [], "size_dispatcher", {
+      nestedStrategies: [entry("t", {}), entry("u", {}), entry("t", { max_size: "20" }), entry("t", {})],
+    })].map(({ nextLocalCheckId: _n, ...r }) => r);
+    const out = rulesFromFile(fileRules, strategies)[0].nestedStrategies;
+    expect(out.map((n) => [n.slotId, n.params.max_size])).toEqual([["t", "5"], ["u", undefined], ["t", "20"], ["t", undefined]]);
+    // Without a registry there is nothing to tell which slots are size-threshold: left as is.
+    expect(rulesFromFile(fileRules)[0].nestedStrategies.map((n) => n.params.max_size)).toEqual([undefined, undefined, "20", undefined]);
+  });
+
+  it("normalizes size-threshold slots nested deeper, and leaves rules without a strategy alone", () => {
+    const leaf = (params: Record<string, string>) => ({ slotId: "t", strategyId: "invalid_loop_random", params, nested: [] });
+    const fileRules = [
+      rule("deep", [], "dispatcher", {
+        nestedStrategies: [{ slotId: "a", strategyId: "size_dispatcher", params: {}, nested: [leaf({}), leaf({})] }],
+      }),
+      rule("bare", [], null),
+    ].map(({ nextLocalCheckId: _n, ...r }) => r);
+    const out = rulesFromFile(fileRules, strategies);
+    expect(out[0].nestedStrategies[0].nested.map((n) => n.params.max_size)).toEqual(["5", undefined]);
+    expect(out[1].nestedStrategies).toEqual([]);
   });
 });
 

@@ -118,7 +118,7 @@ export interface RuleParamDescriptor {
 /** Mirrors `maze_core::repair::NestedDispatchKind` — how the parent strategy picks which of a
  * slot's several nested candidates to run. Drives which controls/labels `NestedStrategyPanel`
  * renders per candidate (weight vs. priority-rank vs. neither). */
-export type NestedDispatchKind = "unordered" | "weighted" | "priority";
+export type NestedDispatchKind = "unordered" | "weighted" | "priority" | "size_threshold";
 
 export interface NestedSlotDescriptor {
   slot_id: string;

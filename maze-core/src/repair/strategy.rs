@@ -52,6 +52,11 @@ pub enum NestedDispatchKind {
     /// `Failed` — see `dispatch_priority` (GitHub issue #259). UI shows each candidate's rank and
     /// lets the user reorder the list.
     Priority,
+    /// Exactly one candidate is picked by the flagged region's own size: each candidate carries
+    /// a `max_size` bound, ranges are consecutive in list order and the last entry is the
+    /// unbounded fallback — see `SizeThresholdRegionMergeStrategy` (GitHub issue #91). UI shows
+    /// each candidate's `max_size` input (none for the last entry) and lets the user reorder.
+    SizeThreshold,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +120,16 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// every `Check::repair_check` call in that rule. Default `I::Requirement::default()` —
     /// which `IssueRequirement`'s contract fixes to mean "compute everything" — so an
     /// unmigrated strategy changes nothing.
-    fn requirement(&self, _params: &StrategyParams) -> I::Requirement {
+    ///
+    /// `nested` is the same list `apply()` later receives (GitHub issue #283): a coordinator
+    /// strategy that forwards to nested candidates consults it to translate the nested
+    /// strategies' own requirements into its own `I::Requirement`. A strategy with no nested
+    /// slots ignores it.
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        _nested: &[NestedStrategyConfig<T>],
+    ) -> I::Requirement {
         I::Requirement::default()
     }
 
@@ -183,12 +197,17 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn is_experimental(&self) -> bool;
     fn expected_nested(&self) -> &'static [NestedSlot];
     /// Erased form of `RepairStrategy::requirement` — see GitHub issue #105. Returns
-    /// `Box<dyn Any>` wrapping the strategy's own `I::Requirement`; the only caller,
-    /// `maze-runner`'s `downcast_strategy`, already knows the concrete `I` (it's generic over it)
-    /// and downcasts this back via `downcast_ref::<I::Requirement>()`. Needed because
+    /// `Box<dyn Any>` wrapping the strategy's own `I::Requirement`. Callers know the concrete
+    /// `I` and downcast this back: `maze-runner`'s `downcast_strategy` (generic over `I`), and
+    /// a coordinator strategy translating its nested strategy's requirement into its own (GitHub
+    /// issue #283, `InvalidLoopGroupSelectStrategy`). Needed because
     /// `RepairStrategy::requirement()`'s return type is generic over `I` and can't cross the
     /// erased boundary any other way — same rationale as `apply`'s `&dyn Issue` erasure.
-    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
+    fn requirement_erased(
+        &self,
+        params: &StrategyParams,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> Box<dyn std::any::Any>;
     fn apply(
         &self,
         issue: &dyn Issue,
@@ -231,8 +250,12 @@ macro_rules! impl_erased_repair_strategy {
             fn expected_nested(&self) -> &'static [$crate::repair::NestedSlot] {
                 <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::expected_nested(self)
             }
-            fn requirement_erased(&self, params: &$crate::repair::StrategyParams) -> Box<dyn ::std::any::Any> {
-                Box::new(<Self as $crate::repair::RepairStrategy<T, $IssueTy>>::requirement(self, params))
+            fn requirement_erased(
+                &self,
+                params: &$crate::repair::StrategyParams,
+                nested: &[$crate::repair::NestedStrategyConfig<T>],
+            ) -> Box<dyn ::std::any::Any> {
+                Box::new(<Self as $crate::repair::RepairStrategy<T, $IssueTy>>::requirement(self, params, nested))
             }
             fn apply(
                 &self,

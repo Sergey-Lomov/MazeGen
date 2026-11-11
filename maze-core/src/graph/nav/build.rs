@@ -64,14 +64,22 @@ fn is_corridor_node(
     if non_corridor_endpoints.contains(&node) {
         return false;
     }
-    let out: Vec<NodeId> = graph.outgoing_neighbors(node).collect();
-    let inc: Vec<NodeId> = graph.incoming_neighbors(node).collect();
-    if out.len() != 2 || inc.len() != 2 {
+    let (Some(out), Some(inc)) = (
+        exactly_two(graph.outgoing_neighbors(node)),
+        exactly_two(graph.incoming_neighbors(node)),
+    ) else {
         return false;
-    }
-    let out_set: HashSet<NodeId> = out.into_iter().collect();
-    let inc_set: HashSet<NodeId> = inc.into_iter().collect();
-    out_set == inc_set
+    };
+    // Two-element sets are equal exactly when the pairs match in either order (a duplicated
+    // neighbor, `[a, a]`, only matches `[a, a]`).
+    (out.0 == inc.0 && out.1 == inc.1) || (out.0 == inc.1 && out.1 == inc.0)
+}
+
+/// The two items of `iter`, or `None` if it yields fewer or more. Allocation-free: this runs
+/// several times per node during nav-graph construction (GitHub issue #175).
+fn exactly_two(mut iter: impl Iterator<Item = NodeId>) -> Option<(NodeId, NodeId)> {
+    let (first, second) = (iter.next()?, iter.next()?);
+    iter.next().is_none().then_some((first, second))
 }
 
 /// Advance one step along a chain: pick the outgoing neighbor of `current` that is not `prev`.

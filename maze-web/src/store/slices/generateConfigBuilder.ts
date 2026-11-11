@@ -18,6 +18,7 @@ import { adapterForKind } from "../../debug/algorithmRegistry";
 import { notify } from "../../notifications/notificationStore";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";
+import { MAX_SIZE_PARAM_ID } from "../sizeThresholdIntervals";
 
 const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
 const GENERATION_RUN_FAILED = "generation.run_failed";
@@ -61,6 +62,10 @@ export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
 // normal "only descriptor-known ids" filter would silently drop it.
 export const NESTED_STRATEGY_WEIGHT_PARAM_ID = "weight";
 
+// Same forwarding rule for `size_threshold_region_merge`'s per-candidate size bound
+// (`max_size`, maze-core `SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE`).
+export const NESTED_STRATEGY_MAX_SIZE_PARAM_ID = MAX_SIZE_PARAM_ID;
+
 function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): StrategyConfig {
   const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
   const params: Record<string, string> = {};
@@ -71,6 +76,9 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   }
   if (n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID] !== undefined) {
     params[NESTED_STRATEGY_WEIGHT_PARAM_ID] = n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID];
+  }
+  if (n.params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID] !== undefined) {
+    params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID] = n.params[NESTED_STRATEGY_MAX_SIZE_PARAM_ID];
   }
   return {
     id: n.strategyId,

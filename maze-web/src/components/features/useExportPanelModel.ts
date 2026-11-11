@@ -138,26 +138,27 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
     () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors, hasGlues }, settings),
     [rawNodes, rawEdges, floors, settings, hasGlues],
   );
-  const hasOneWays = colorVisibility.oneWayIndicator;
-  const hasTeleports = colorVisibility.teleports;
+  const { activity } = colorVisibility;
+  const hasOneWays = activity.hasOneWays;
+  const hasTeleports = activity.hasTeleports;
   // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross floor teleport.
-  const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
+  const hasCrossFloorTeleports = activity.hasCrossFloorTeleports;
   // "Route through seams" (GitHub issue #873) only makes sense when some floor has a fold.
   const hasSeams = useMemo(() => Object.values(floorTopology).some((topology) => topology.folds.length > 0), [floorTopology]);
-  const hasTwoWayPassages = colorVisibility.twoWayPassages;
-  const hasOneWayPassages = colorVisibility.oneWayPassages;
-  const hasElevators = colorVisibility.elevators;
-  const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
+  const hasTwoWayPassages = activity.hasTwoWayPassages;
+  const hasOneWayPassages = activity.hasOneWayPassages;
+  const hasElevators = activity.hasElevators;
+  const hasVerticalSection = activity.hasVerticalSection;
   // "Marker indices" is shown only when some marker could ever carry an index (GitHub issue #730).
-  const hasMarkerIndexSource = colorVisibility.markerIndexAvailable;
+  const hasMarkerIndexSource = activity.hasMarkerIndexSource;
   // Marker size adaptation only matters when cells differ in area (GitHub issue #819).
   const hasAreaSpread = useMemo(() => hasCellAreaSpread(cfg), [cfg]);
 
   // Every maze-derived gate of the panel, in one object: the panels branch on these flags only, and the
   // parameter-links activity rules read the very same ones, so a field can't be shown by one and hidden
   // by the other (GitHub issue #927).
-  const hasMultipleFloors = floors.length > 1;
-  const hasSplits = maxSplit > 0;
+  const hasMultipleFloors = activity.hasMultipleFloors;
+  const hasSplits = activity.hasSplits;
   const activityContext = useMemo<ParamActivityContext>(() => ({
     hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
     hasVerticalSection, hasMarkerIndexSource, hasAreaSpread, hasSeams, hasMultipleFloors,

@@ -117,6 +117,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.priority_region_merge.label"] as MessageFn,
     description: m["strategy.priority_region_merge.description"] as MessageFn,
   },
+  size_threshold_region_merge: {
+    label: m["strategy.size_threshold_region_merge.label"] as MessageFn,
+    description: m["strategy.size_threshold_region_merge.description"] as MessageFn,
+  },
   one_way_to_passage: {
     label: m["strategy.one_way_to_passage.label"] as MessageFn,
     description: m["strategy.one_way_to_passage.description"] as MessageFn,

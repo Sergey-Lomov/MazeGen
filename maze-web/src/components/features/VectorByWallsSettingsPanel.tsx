@@ -14,6 +14,7 @@ import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
+import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection } from "./TeleportSettingsSection";
@@ -891,6 +892,8 @@ export function VectorByWallsSettingsPanel() {
                       lineColorField={PC.decorLineElevator}
                     />
                     <ElevatorBadgesSubsection
+                      isExpanded={isExpanded}
+                      onToggle={toggleSection}
                       settings={settings.elevatorBadges}
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
@@ -1128,92 +1131,88 @@ export function VectorByWallsSettingsPanel() {
                       onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
                       linkTarget="replaceTwoFloorElevatorsWithStairs"
                     />
-                    <div style={styles.subGroupWrap}>
-                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
-                      <div style={styles.subGroup}>
-                        <MarkerSettingsGroup
-                          title=""
-                          showTextSection={false}
-                          settings={settings.elevatorMarker}
-                          priorityColors={{
-                            fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
-                            borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
-                          }}
-                          defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
-                          fields={{
-                            fillColor: PC.elevatorFill,
-                            borderColor: PC.elevatorBorder,
-                          }}
-                          onChange={(patch) => {
-                            patchMarker("elevatorMarker", patch);
-                          }}
-                          linkTargets={{
-                            shape: "elevatorMarker.shape",
-                            cornerStyle: "elevatorMarker.cornerStyle",
-                            size: "elevatorMarker.size",
-                            sizeAdaptation: "elevatorMarker.sizeAdaptation",
-                            fillColor: "elevatorMarker.fillColor",
-                            borderColor: "elevatorMarker.borderColor",
-                            borderWidth: "elevatorMarker.borderWidth",
-                            gapWidth: "elevatorMarker.gapWidth",
-                            textEnabled: null,
-                            textFontWeight: null,
-                            textSize: null,
-                            textMargin: null,
-                            textColor: null,
-                          }}
-                        />
-                      </div>
-                    </div>
+                    <CollapsibleSubGroup id="vertical_elevator_marker" label={m["image_export.vector_by_walls.vertical_subsection_marker"]()} isExpanded={isExpanded} onToggle={toggleSection}>
+                      <MarkerSettingsGroup
+                        title=""
+                        showTextSection={false}
+                        settings={settings.elevatorMarker}
+                        priorityColors={{
+                          fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                          borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                        }}
+                        defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
+                        fields={{
+                          fillColor: PC.elevatorFill,
+                          borderColor: PC.elevatorBorder,
+                        }}
+                        onChange={(patch) => {
+                          patchMarker("elevatorMarker", patch);
+                        }}
+                        linkTargets={{
+                          shape: "elevatorMarker.shape",
+                          cornerStyle: "elevatorMarker.cornerStyle",
+                          size: "elevatorMarker.size",
+                          sizeAdaptation: "elevatorMarker.sizeAdaptation",
+                          fillColor: "elevatorMarker.fillColor",
+                          borderColor: "elevatorMarker.borderColor",
+                          borderWidth: "elevatorMarker.borderWidth",
+                          gapWidth: "elevatorMarker.gapWidth",
+                          textEnabled: null,
+                          textFontWeight: null,
+                          textSize: null,
+                          textMargin: null,
+                          textColor: null,
+                        }}
+                      />
+                    </CollapsibleSubGroup>
 
-                    <div style={styles.subGroupWrap}>
-                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
-                      <div style={styles.subGroup}>
-                        <LinkedColorRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
-                          color={settings.elevatorArrowColor}
-                          onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
-                          priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
-                          defaultColor={D.elevatorArrowColor}
-                          field={PC.elevatorArrow}
-                          linkTarget="elevatorArrowColor"
-                        />
-                        <LinkedSliderRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
-                          value={settings.elevatorArrowSize}
-                          onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
-                          min={0.2}
-                          max={1}
-                          step={0.05}
-                          format={(v) => v.toFixed(2)}
-                          linkTarget="elevatorArrowSize"
-                        />
-                        <LinkedSelectRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
-                          value={settings.elevatorArrowStyle}
-                          options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
-                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
-                          ]}
-                          onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
-                          linkTarget="elevatorArrowStyle"
-                        />
-                        <LinkedSelectRow
-                          label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
-                          value={settings.elevatorArrowCornerStyle}
-                          options={[
-                            { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
-                            { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
-                          ]}
-                          onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
-                          linkTarget="elevatorArrowCornerStyle"
-                        />
-                      </div>
-                    </div>
+                    <CollapsibleSubGroup id="vertical_elevator_arrows" label={m["image_export.vector_by_walls.vertical_subsection_arrows"]()} isExpanded={isExpanded} onToggle={toggleSection}>
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                        color={settings.elevatorArrowColor}
+                        onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
+                        priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
+                        defaultColor={D.elevatorArrowColor}
+                        field={PC.elevatorArrow}
+                        linkTarget="elevatorArrowColor"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                        value={settings.elevatorArrowSize}
+                        onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
+                        min={0.2}
+                        max={1}
+                        step={0.05}
+                        format={(v) => v.toFixed(2)}
+                        linkTarget="elevatorArrowSize"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                        value={settings.elevatorArrowStyle}
+                        options={[
+                          { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                          { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                          { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
+                        ]}
+                        onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
+                        linkTarget="elevatorArrowStyle"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                        value={settings.elevatorArrowCornerStyle}
+                        options={[
+                          { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                          { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                        ]}
+                        onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
+                        linkTarget="elevatorArrowCornerStyle"
+                      />
+                    </CollapsibleSubGroup>
 
                     <ElevatorBadgesSubsection
+                      isExpanded={isExpanded}
+                      onToggle={toggleSection}
                       settings={settings.elevatorBadges}
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}

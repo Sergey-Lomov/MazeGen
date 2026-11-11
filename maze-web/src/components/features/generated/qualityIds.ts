@@ -127,6 +127,7 @@ export const STRATEGY_IDS = [
   "remove_vertical_passage",
   "replace_elevator_with_passages",
   "scored_endpoints",
+  "size_threshold_region_merge",
   "split_group_select",
   "split_node_connection_group_select",
   "split_node_group_select",

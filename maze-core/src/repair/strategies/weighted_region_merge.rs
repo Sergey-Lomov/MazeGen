@@ -99,7 +99,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
             invalid,
             maze,
             rng,
-            |single_region_issue, rng| {
+            |_region, _scc, single_region_issue, rng| {
                 dispatch_weighted(
                     single_region_issue,
                     maze,

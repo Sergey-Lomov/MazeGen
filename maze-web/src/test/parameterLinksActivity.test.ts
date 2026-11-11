@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { isPathActive, computeActivePaths, type ParamActivityContext, type ParamActivitySettings } from "../store/parameterLinksActivity";
 import type { ParamDescriptor } from "../store/parameterLinks";
+import { isSchemaPathInMode } from "../store/parameterLinkSchema";
 
 type P =
   | "teleportMarker.fillColor"
@@ -223,6 +224,36 @@ describe("isPathActive: size adaptation (GitHub issue #819)", () => {
 
   it("keeps an adaptation path active when the spread exists", () => {
     expect(check("startMarker.sizeAdaptation", true)).toBe(true);
+  });
+});
+
+describe("isPathActive: color rules shared with the color registry (GitHub issue #965)", () => {
+  it("hides the wall color while a random wall color mode is on, keeps it otherwise", () => {
+    expect(active("wallColor" as P, {}, {})).toBe(true);
+    expect(active("wallColor" as P, {}, { randomWallColorMode: "off" })).toBe(true);
+    expect(active("wallColor" as P, {}, { randomWallColorMode: "per_pass" })).toBe(false);
+    expect(active("wallColor" as P, {}, { randomWallColorMode: "per_segment" })).toBe(false);
+  });
+
+  it("hides the floor label border color without a background plate or at zero border width", () => {
+    const label = { enabled: true, labelMode: "index" as const };
+    const on = (extra: object) => active("floorLabel.borderColor" as P, { hasMultipleFloors: true }, { floorLabel: { ...label, backgroundShape: "rectangle", ...extra } as never });
+    expect(on({})).toBe(true);
+    expect(on({ borderWidth: 2 })).toBe(true);
+    expect(on({ borderWidth: 0 })).toBe(false);
+    expect(on({ backgroundShape: "none" })).toBe(false);
+  });
+});
+
+describe("isSchemaPathInMode (GitHub issue #965)", () => {
+  it("tells a walls-only, a corridors-only, a shared and an unknown path apart", () => {
+    expect(isSchemaPathInMode("floorColor", "walls")).toBe(true);
+    expect(isSchemaPathInMode("floorColor", "corridors")).toBe(false);
+    expect(isSchemaPathInMode("color", "corridors")).toBe(true);
+    expect(isSchemaPathInMode("color", "walls")).toBe(false);
+    expect(isSchemaPathInMode("startMarker.fillColor", "walls")).toBe(true);
+    expect(isSchemaPathInMode("startMarker.fillColor", "corridors")).toBe(true);
+    expect(isSchemaPathInMode("no.such.path", "walls")).toBe(false);
   });
 });
 
