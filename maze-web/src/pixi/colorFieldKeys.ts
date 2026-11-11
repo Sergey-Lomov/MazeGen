@@ -13,7 +13,7 @@ export const STATIC_COLOR_FIELD_KEYS = [
   "decorLineTwoWay", "decorLineOneWay", "decorLineElevator",
   "decorArrowTwoWay", "decorArrowOneWay",
   "sharedMarkerFill", "sharedMarkerBorder",
-  "verticalFill", "verticalArrow", "verticalDecorLine",
+  "verticalFill", "verticalBorder", "verticalArrow", "verticalDecorLine",
   "twoWayFill", "twoWayBorder", "twoWayArrow",
   "oneWayFill", "oneWayBorder", "oneWayArrow",
   "elevatorFill", "elevatorBorder", "elevatorArrow",

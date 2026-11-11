@@ -126,8 +126,9 @@ export class FloorLabelRenderer {
       msdfFontFamily(settings.textFontWeight),
       settings.textSize,
       settings.textColor,
+      settings.textFontFamily,
     );
-    label.x = floorLabelTextX(settings, center.x, measureText(text, settings.textFontWeight, settings.textSize));
+    label.x = floorLabelTextX(settings, center.x, measureText(text, settings.textFontWeight, settings.textSize, settings.textFontFamily));
     label.y = center.y;
 
     if (settings.backgroundShape === "none") {

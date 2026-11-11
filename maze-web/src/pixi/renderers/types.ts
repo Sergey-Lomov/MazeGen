@@ -273,6 +273,7 @@ export type MarkerData = {
    *  existed. `textColor` defaults to `color` (the marker's own fill) when unset. */
   text?: string;
   textColor?: number;
+  textFontFamily?: string;
   /** Label font weight — resolved to a baked MSDF atlas family by `msdfFontFamily`, same convention
    *  as every other label in this codebase (floor badges, elevator badges, marker index). Defaults
    *  to `"bold"` when unset. */

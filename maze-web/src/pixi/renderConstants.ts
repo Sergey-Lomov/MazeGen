@@ -17,10 +17,10 @@ export const MARKER_INDEX_MIN_HEIGHT = 8;
 
 /** Settings-slider range for every label font size (px) — marker captions, elevator badges,
  *  teleport floor badges and marker indices share it. */
-export const TEXT_SIZE_RANGE = { min: 6, max: 40, step: 0.5 } as const;
+export const TEXT_SIZE_RANGE = { min: 6, max: 40, step: 1 } as const;
 
 /** Floor-label font size range (floor labels may be substantially larger than marker captions). */
-export const FLOOR_LABEL_TEXT_SIZE_RANGE = { min: 6, max: 72, step: 0.5 } as const;
+export const FLOOR_LABEL_TEXT_SIZE_RANGE = { min: 6, max: 40, step: 1 } as const;
 
 /** Floor-label backplate width range in px. */
 export const FLOOR_LABEL_WIDTH_RANGE = { min: 20, max: 250, step: 1 } as const;

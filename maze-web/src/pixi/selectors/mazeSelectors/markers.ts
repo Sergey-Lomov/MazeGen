@@ -40,6 +40,8 @@ export interface MarkerStyle {
    *  Optional for the same reason as `text`; `undefined`/`true` draws the badge (matches
    *  pre-toggle behavior), `false` suppresses it. */
   textEnabled?: boolean;
+  /** Optional local family; absent means bundled Roboto MSDF. */
+  textFontFamily?: string;
   /** Text badge font weight (GitHub issue #697 follow-up) — optional for the same reason as
    *  `text`. Defaults to `"bold"` when unset. */
   textFontWeight?: LabelFontWeight;
@@ -80,7 +82,7 @@ export function buildMarkerData(pos: [number, number], style: MarkerStyle): Mark
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
     text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,
-    textFontWeight: style.textFontWeight, textSize: style.textSize,
+    textFontFamily: style.textFontFamily, textFontWeight: style.textFontWeight, textSize: style.textSize,
   };
 }
 

@@ -22,17 +22,18 @@ describe("validateMarkerSettings", () => {
     expect(validateMarkerSettings({ markerEnabled: true }, "path", off).markerEnabled).toBe(true);
   });
 
-  it("round-trips text, textEnabled, textFontWeight, textSize and textColor", () => {
+  it("round-trips text, textEnabled, text family/weight, integer textSize and textColor", () => {
     const result = validateMarkerSettings(
-      { ...fallback, text: "x", textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },
+      { ...fallback, text: "x", textEnabled: false, textFontFamily: "  Arial  ", textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },
       "path",
       fallback,
     );
     // sanitizeMarkerGlyph uppercases on the way through, same as the settings-panel input.
     expect(result.text).toBe("X");
     expect(result.textEnabled).toBe(false);
+    expect(result.textFontFamily).toBe("Arial");
     expect(result.textFontWeight).toBe("regular");
-    expect(result.textSize).toBe(1.5);
+    expect(result.textSize).toBe(6);
     expect(result.textColor).toBe(0xabcdef);
   });
 
@@ -226,13 +227,13 @@ describe("validateTeleportFloorBadgeSettings", () => {
 
   it("reads a valid object's fields as-is", () => {
     expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 }, "path", fallback))
-      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 });
+      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontFamily: "", textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin, sizeAdaptation: fallback.sizeAdaptation });
+      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontFamily: fallback.textFontFamily, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin, sizeAdaptation: fallback.sizeAdaptation });
   });
 
   it("clamps the text margin into its range", () => {
@@ -383,6 +384,17 @@ describe("validateVectorByWallsSettings shared marker sources (GitHub issue #701
   });
 });
 
+describe("vertical shared border color validation (GitHub issue #968)", () => {
+  it.each([
+    ["walls", validateVectorByWallsSettings],
+    ["corridors", validateVectorByCorridorsSettings],
+  ] as const)("keeps a valid value and recovers missing or invalid input for %s", (_mode, validate) => {
+    expect(validate({ verticalBorderColor: 0x112233 }, "path", []).verticalBorderColor).toBe(0x112233);
+    expect(validate({ verticalBorderColor: "invalid" }, "path", []).verticalBorderColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.verticalBorderColor);
+    expect(validate({}, "path", []).verticalBorderColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.verticalBorderColor);
+  });
+});
+
 describe("validateMarkerIndexSettings", () => {
   it("clamps the fixed plate width and height into their ranges and keeps a fractional margin", () => {
     const fb = DEFAULT_MARKER_INDEX_SETTINGS;
@@ -416,7 +428,7 @@ describe("marker layout settings validation (GitHub issue #735)", () => {
 describe("validateFloorLabelSettings", () => {
   it("clamps persisted floor-label size and width to the panel ranges", () => {
     const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel;
-    expect(validateFloorLabelSettings({ textSize: 999, width: 999 }, "path", fallback)).toMatchObject({ textSize: 72, width: 250 });
+    expect(validateFloorLabelSettings({ textSize: 999, width: 999 }, "path", fallback)).toMatchObject({ textSize: 40, width: 250 });
     expect(validateFloorLabelSettings({ textSize: 1, width: 1 }, "path", fallback)).toMatchObject({ textSize: 6, width: 20 });
   });
 
@@ -425,6 +437,12 @@ describe("validateFloorLabelSettings", () => {
     expect(validateFloorLabelSettings({}, "path", fallback).textAlignment).toBe("center");
     expect(validateFloorLabelSettings({ textAlignment: "right" }, "path", fallback).textAlignment).toBe("right");
     expect(validateFloorLabelSettings({ textAlignment: "diagonal" }, "path", fallback).textAlignment).toBe("center");
+  });
+
+  it("trims a saved local text family and keeps old files without one readable", () => {
+    const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel;
+    expect(validateFloorLabelSettings({ textFontFamily: "  Fira Sans  " }, "path", fallback).textFontFamily).toBe("Fira Sans");
+    expect(validateFloorLabelSettings({}, "path", fallback).textFontFamily).toBe(fallback.textFontFamily);
   });
 
   it("keeps old floor labels index-based and validates the title mode", () => {

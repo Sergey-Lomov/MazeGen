@@ -228,6 +228,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     verticalBorderWidth: 0,
     verticalGapWidth: 3,
     verticalFillColor: 0x33bbff,
+    verticalBorderColor: 0x33bbff,
     verticalArrowColor: 0x111111,
     verticalArrowSize: 0.6,
     verticalArrowStyle: "triangle",

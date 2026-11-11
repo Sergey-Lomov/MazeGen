@@ -230,6 +230,8 @@ export type TextHorizontalAlignment = "left" | "center" | "right";
 
 export interface TextStyleFields {
   textColor: number;
+  /** Optional for old project files; absent means the bundled Roboto MSDF family. */
+  textFontFamily?: string;
   textFontWeight: LabelFontWeight;
   /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
   textAlignment?: TextHorizontalAlignment;
@@ -597,6 +599,8 @@ export interface FloorLabelDragState {
  *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
  *  comment. */
 export interface SharedStyleSourceFields {
+  /** Source family for every linked canvas-label style. Empty uses bundled Roboto MSDF. */
+  labelFontFamily?: string;
   /** GitHub issue #701: the "Markers" sub-section of "Shared style" carries every property all
    *  markers share — shape, corner style, size, fill/border color, border width, gap width. The
    *  shape and color sources only drive their (disabled-by-default) links. */
@@ -624,9 +628,7 @@ export interface SharedStyleSourceFields {
  *  with `startMarker`/`finishMarker`/teleport fields. Every link to these sources starts disabled
  *  (`parameterLinksDefaults.ts`), same as the panel-level "Shared style" links into this section's
  *  own fields — the three markers' defaults are pinned to `GenerationRenderer`'s fixed look, not
- *  this group. `borderColor` is deliberately excluded — a future follow-up could fold it in now
- *  that all three marker groups share the same ordinary fill/border semantics (GitHub issue #693
- *  removed the one-way marker's former accent-color distinction). */
+ *  this group. */
 export interface VerticalSharedStyleFields {
   verticalCornerStyle: CornerStyle;
   verticalShape: MarkerShape;
@@ -635,6 +637,7 @@ export interface VerticalSharedStyleFields {
   verticalBorderWidth: number;
   verticalGapWidth: number;
   verticalFillColor: number;
+  verticalBorderColor: number;
   verticalArrowColor: number;
   verticalArrowSize: number;
   verticalArrowStyle: VerticalArrowStyle;

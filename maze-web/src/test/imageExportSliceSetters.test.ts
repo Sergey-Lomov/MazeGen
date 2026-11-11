@@ -189,8 +189,12 @@ describe("patch actions", () => {
   });
 
   it.each(MODES)("%s: vertical shared style patch applies", (mode) => {
-    actions()[`patchVectorBy${mode}VerticalSharedStyle`]({ twoWayArrowColor: 0x0a0b0c });
-    expect(useMazeStore.getState()[settingsKey(mode)].twoWayArrowColor).toBe(0x0a0b0c);
+    actions()[`patchVectorBy${mode}VerticalSharedStyle`]({ verticalBorderColor: 0x0a0b0c });
+    const settings = useMazeStore.getState()[settingsKey(mode)];
+    expect(settings.verticalBorderColor).toBe(0x0a0b0c);
+    expect(settings.twoWayPassageMarker.borderColor).toBe(0x0a0b0c);
+    expect(settings.oneWayPassageMarker.borderColor).toBe(0x0a0b0c);
+    expect(settings.elevatorMarker.borderColor).toBe(0x0a0b0c);
   });
 });
 

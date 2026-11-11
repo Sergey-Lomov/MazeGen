@@ -36,7 +36,7 @@ export class WaypointsRenderer {
       }
       drawMarkerWithBorder(this.g, shape, m.pos[0], m.pos[1], radius, rounded, m.color, m.borderColor ?? m.color, borderWidth);
       if (m.text) {
-        const label = makeCenteredLabel(m.text, msdfFontFamily(m.textFontWeight ?? "bold"), (m.textSize ?? DEFAULT_MARKER_TEXT_SIZE) * factor, m.textColor ?? m.color);
+        const label = makeCenteredLabel(m.text, msdfFontFamily(m.textFontWeight ?? "bold"), (m.textSize ?? DEFAULT_MARKER_TEXT_SIZE) * factor, m.textColor ?? m.color, m.textFontFamily);
         label.x = m.pos[0];
         label.y = m.pos[1];
         this.labels.addChild(label);

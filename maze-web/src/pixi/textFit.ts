@@ -2,6 +2,7 @@ import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import type { LabelFontWeight } from "./renderers/indexLabel";
 import { msdfFontFamily } from "./renderers/msdfFont";
+import { isLabelFontFamilyLoaded } from "./renderers/labelFont";
 import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 import type { MarkerShape } from "./renderers/types";
 import { markerPolygonPoints } from "./renderers/markerShapes";
@@ -38,6 +39,8 @@ export interface TextExtent {
 export interface TextFitItem {
   text: string;
   fontWeight: LabelFontWeight;
+  /** A loaded local family is measured with browser text metrics; otherwise bundled Roboto MSDF. */
+  fontFamily?: string;
   /** Plate shape (`MarkerAppearance.shape`). */
   shape: MarkerShape;
   /** Plate fill diameter in px (`MarkerAppearance.size`). For a rectangular plate (`plateWidth` /
@@ -56,7 +59,19 @@ export interface TextFitItem {
 
 /** Ink extent of `text` at `fontSize` px. Falls back to a rough per-glyph estimate when the font
  *  isn't installed (e.g. before `loadMsdfFont` resolves). */
-export function measureText(text: string, fontWeight: LabelFontWeight, fontSize: number): TextExtent {
+export function measureText(text: string, fontWeight: LabelFontWeight, fontSize: number, requestedFamily?: string): TextExtent {
+  const runtimeFamily = isLabelFontFamilyLoaded(requestedFamily) ? requestedFamily!.trim() : null;
+  if (runtimeFamily && typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.font = `${fontWeight === "bold" ? "bold" : "normal"} ${fontSize}px ${JSON.stringify(runtimeFamily)}`;
+      const metrics = context.measureText(text);
+      const width = metrics.width;
+      const height = (metrics.actualBoundingBoxAscent || fontSize * 0.7) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);
+      return { width, height, left: -width / 2, right: width / 2 };
+    }
+  }
   const cacheKey = `${msdfFontFamily(fontWeight)}-bitmap`;
   const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
     ? Cache.get<AbstractBitmapFont<unknown>>(cacheKey)
@@ -222,7 +237,8 @@ function glyphInk(family: string, ch: string, texture: AtlasTexture): number[] |
  *  origin (`makeCenteredLabel`: `anchor 0.5` centres horizontally on the advance box, the pivot
  *  centres vertically on the quads' extent), plus the atlas base font size they are measured at.
  *  `null` when any glyph's ink is unavailable — callers fall back to the bounding rectangle. */
-function textInk(text: string, fontWeight: LabelFontWeight): { points: number[]; base: number } | null {
+function textInk(text: string, fontWeight: LabelFontWeight, requestedFamily?: string): { points: number[]; base: number } | null {
+  if (isLabelFontFamilyLoaded(requestedFamily)) return null;
   const family = msdfFontFamily(fontWeight);
   const cacheKey = `${family}-bitmap`;
   const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
@@ -311,9 +327,9 @@ function parallelogramInnerHalfExtents(item: TextFitItem): { hw: number; hh: num
 /** Whether `item` drawn at `fontSize` px exceeds its plate shape. */
 export function textOverflows(item: TextFitItem, fontSize: number): boolean {
   if (item.text.length === 0) return false;
-  const ink = textInk(item.text, item.fontWeight);
+  const ink = textInk(item.text, item.fontWeight, item.fontFamily);
   if (ink) return !inkFitsPlate(item, ink.points, fontSize / ink.base);
-  const extent = measureText(item.text, item.fontWeight, fontSize);
+  const extent = measureText(item.text, item.fontWeight, fontSize, item.fontFamily);
   return !extentFitsPlate(item, extent.width, extent.height);
 }
 
@@ -376,11 +392,11 @@ export function maxFittingFontSize(items: readonly TextFitItem[], range: { min: 
   const seen = new Set<string>();
   for (const item of items) {
     if (item.text.length === 0) continue;
-    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${item.plateShape}|${itemMargin(item)}`;
+    const key = `${item.text}|${item.fontFamily ?? ""}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${item.plateShape}|${itemMargin(item)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const reachLimit = plateReach(item);
-    const ink = textInk(item.text, item.fontWeight);
+    const ink = textInk(item.text, item.fontWeight, item.fontFamily);
     if (ink) {
       let reach = 0;
       for (const v of ink.points) reach = Math.max(reach, Math.abs(v));
@@ -396,7 +412,7 @@ export function maxFittingFontSize(items: readonly TextFitItem[], range: { min: 
       continue;
     }
     const probeSize = 100;
-    const extent = measureText(item.text, item.fontWeight, probeSize);
+    const extent = measureText(item.text, item.fontWeight, probeSize, item.fontFamily);
     if (extent.width <= 0 || extent.height <= 0) continue;
     best = Math.min(best, probeSize * maxFitScale(item, extent.width, extent.height));
   }
@@ -416,7 +432,7 @@ export function requiredTextPlateDimensions(items: readonly TextFitItem[], fontS
   let found = false;
   for (const item of items) {
     if (!item.text) continue;
-    const extent = measureText(item.text, item.fontWeight, fontSize);
+    const extent = measureText(item.text, item.fontWeight, fontSize, item.fontFamily);
     if (extent.width <= 0 || extent.height <= 0) continue;
     const margin = item.margin ?? DEFAULT_TEXT_MARGIN;
     const baseWidth = extent.width + margin * 2;

@@ -332,6 +332,7 @@ export function TeleportSettingsSection<P extends LinkPath>({
     floorBadgeGapWidth: P | null;
     floorBadgeTextSize: P | null;
     floorBadgeTextMargin: P | null;
+    floorBadgeTextFontFamily?: P | null;
     floorBadgeTextFontWeight: P | null;
     groupCustomization: P | null;
   };
@@ -598,6 +599,7 @@ export function TeleportSettingsSection<P extends LinkPath>({
               settings={settings.teleportFloorBadge}
               onChange={(patch) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, ...patch } })}
               linkTargets={{
+                textFontFamily: linkTargets.floorBadgeTextFontFamily ?? null,
                 textFontWeight: linkTargets.floorBadgeTextFontWeight,
                 textColor: linkTargets.floorBadgeTextColor,
                 textSize: linkTargets.floorBadgeTextSize,

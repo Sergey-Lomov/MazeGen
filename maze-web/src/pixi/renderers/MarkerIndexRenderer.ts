@@ -87,7 +87,7 @@ export class MarkerIndexRenderer {
       g.fill(style.fillColor);
       this.bodyLayer.addChild(g);
 
-      const text = makeCenteredLabel(labels[i].label, fontFamily, style.textSize * b.scale, style.textColor);
+      const text = makeCenteredLabel(labels[i].label, fontFamily, style.textSize * b.scale, style.textColor, style.textFontFamily);
       text.x = b.x + b.w / 2;
       text.y = b.y + b.h / 2;
       this.bodyLayer.addChild(text);

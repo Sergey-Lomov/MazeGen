@@ -177,7 +177,8 @@ drawn over the floor and the floor remains the relevant base surface even when a
   shape.
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
-- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity.
+- `elevator_badges_too_many` — a badge row exceeds its available per-side capacity. Slots under a marker-index
+  plate are unavailable (GitHub issue #964), so a plate lowers the capacity of the side it sits on.
 - `marker_text_overflow` / `elevator_badge_text_overflow` / `teleport_badge_text_overflow` (GitHub
   issue #707) — a start/finish caption, elevator floor-number badge or cross-floor teleport badge
   label does not fit its plate. Shared by both renderers. "Fits" means every point of the label's glyph-ink outline (boundary pixels of the baked MSDF

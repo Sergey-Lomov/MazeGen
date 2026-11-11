@@ -113,6 +113,7 @@ function formatBoolean(value: unknown): string {
 
 
 const FORMAT_BY_TYPE: Record<ParamType, (value: unknown) => string> = {
+  labelFontFamily: (value) => (typeof value === "string" && value) || "Roboto",
   cornerStyle: formatCornerStyle,
   markerShape: formatMarkerShape,
   verticalArrowStyle: formatVerticalArrowStyle,

@@ -696,4 +696,5 @@ describe("patchVectorBy{Walls,Corridors}SharedStyle (GitHub issue #701)", () => 
       expect(l?.enabled, target).toBe(false);
     }
   });
+
 });

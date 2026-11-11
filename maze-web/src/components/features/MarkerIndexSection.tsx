@@ -4,7 +4,7 @@ import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
-import { SectionHeader } from "../SectionHeader";
+import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useGate } from "./LinkContext";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -34,6 +34,7 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
     coverageVerticalPassage: P | null;
     coverageElevator: P | null;
     labelStyle: P | null;
+    textFontFamily?: P | null;
     textFontWeight: P | null;
     width: P | null;
     textSize: P | null;
@@ -84,7 +85,7 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
       />
       {indexOn && (
         <>
-          <SubGroup id="marker_index_coverage" label={m["image_export.vector_by_walls.marker_index_subsection_coverage"]()} isExpanded={isExpanded} onToggle={onToggle}>
+          <CollapsibleSubGroup id="marker_index_coverage" label={m["image_export.vector_by_walls.marker_index_subsection_coverage"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"]()}
                 checked={cov.singleFloorTeleport}
@@ -109,9 +110,9 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
                 onChange={(elevator) => setCoverage({ elevator })}
                 linkTarget={linkTargets.coverageElevator}
               />
-          </SubGroup>
+          </CollapsibleSubGroup>
 
-          <SubGroup id="marker_index_caption" label={m["image_export.vector_by_walls.marker_index_subsection_caption"]()} isExpanded={isExpanded} onToggle={onToggle}>
+          <CollapsibleSubGroup id="marker_index_caption" label={m["image_export.vector_by_walls.marker_index_subsection_caption"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedSelectRow
                 label={m["image_export.vector_by_walls.marker_index_label_style"]()}
                 value={settings.labelStyle}
@@ -126,15 +127,15 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
               <TextStyleRows
                 settings={settings}
                 onChange={onChange}
-                linkTargets={{ textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
+                linkTargets={{ textFontFamily: linkTargets.textFontFamily ?? null, textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
                 priorityColors={textColorPriority}
                 defaultColor={textColorDefault}
                 field={textColorField}
                 autoFitKind="markerIndex"
               />
-          </SubGroup>
+          </CollapsibleSubGroup>
 
-          <SubGroup id="marker_index_backplate" label={m["image_export.vector_by_walls.marker_index_subsection_backplate"]()} isExpanded={isExpanded} onToggle={onToggle}>
+          <CollapsibleSubGroup id="marker_index_backplate" label={m["image_export.vector_by_walls.marker_index_subsection_backplate"]()} isExpanded={isExpanded} onToggle={onToggle}>
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_width"]()}
                 value={settings.width}
@@ -213,31 +214,13 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
                 field={borderColorField}
                 linkTarget={linkTargets.borderColor}
               />
-          </SubGroup>
+          </CollapsibleSubGroup>
         </>
       )}
     </div>
   );
 }
 
-/** One collapsible sub-group: header plus an indented body shown only while `id` is expanded. */
-function SubGroup({ id, label, isExpanded, onToggle, children }: {
-  id: string;
-  label: string;
-  isExpanded: (id: string) => boolean;
-  onToggle: (id: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={styles.subGroupWrap}>
-      <SectionHeader label={label} expanded={isExpanded(id)} onToggle={() => onToggle(id)} />
-      {isExpanded(id) && <div style={styles.subGroup}>{children}</div>}
-    </div>
-  );
-}
-
 const styles: Record<string, React.CSSProperties> = {
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
-  subGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };

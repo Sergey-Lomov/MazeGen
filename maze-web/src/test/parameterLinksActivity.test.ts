@@ -123,13 +123,16 @@ describe("isPathActive", () => {
   it("gates vertical shared-style fields on hasVerticalSection, abstract/decorative split by verticalStyle", () => {
     expect(active("verticalCornerStyle", { hasVerticalSection: false }, { verticalStyle: "abstract" })).toBe(false);
     expect(active("verticalSize", { hasVerticalSection: true }, { verticalStyle: "abstract" })).toBe(true);
+    expect(active("verticalBorderColor", { hasVerticalSection: true }, { verticalStyle: "abstract" })).toBe(true);
     expect(active("verticalSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(false);
+    expect(active("verticalBorderColor", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(false);
     expect(active("verticalArrowSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(false);
     expect(active("verticalDecorativeSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(true);
     expect(active("verticalDecorativeSize", { hasVerticalSection: true }, { verticalStyle: "abstract" })).toBe(false);
     expect(active("verticalDecorativeArrowSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(true);
     // Corridors mode has no `verticalStyle` (undefined) — abstract-only fields stay active there.
     expect(active("verticalSize", { hasVerticalSection: true }, {})).toBe(true);
+    expect(active("verticalBorderColor", { hasVerticalSection: true }, {})).toBe(true);
     expect(active("verticalCornerStyle", { hasVerticalSection: true }, {})).toBe(true);
   });
 

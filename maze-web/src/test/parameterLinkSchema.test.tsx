@@ -296,3 +296,29 @@ describe("activity rules", () => {
     expect(isPathActive("glueTabs.lineColor", "walls", ctx, { glueTabs: { showTabs: true, lineWidth: 0 } })).toBe(false);
   });
 });
+
+describe("elevator badge link groups mirror the panel subsections", () => {
+  const groupOf = (mode: LinkMode, path: string) => {
+    const entry = schemaEntriesFor(mode).find(([p]) => p === path);
+    expect(entry, path).toBeDefined();
+    return entry![1].group(mode);
+  };
+  const badgesPrefix = (mode: LinkMode) => groupOf(mode, "elevatorBadges.enabled");
+
+  it.each(MODES)("%s: placement, text and backplate fields sit one level below Floor badges", (mode) => {
+    const root = badgesPrefix(mode);
+    const sub = (path: string) => {
+      const group = groupOf(mode, path);
+      expect(group.slice(0, root.length), path).toEqual(root);
+      expect(group.length, path).toBe(root.length + 1);
+      return group[root.length];
+    };
+    const placement = sub("elevatorBadges.distance");
+    const text = sub("elevatorBadges.labelType");
+    const backplate = sub("elevatorBadges.shape");
+    expect(new Set([placement, text, backplate]).size).toBe(3);
+    for (const path of ["elevatorBadges.evenDistribution", "elevatorBadges.gap"]) expect(sub(path)).toBe(placement);
+    for (const path of ["elevatorBadges.textSize", "elevatorBadges.textColor", "elevatorBadges.textMargin"]) expect(sub(path)).toBe(text);
+    for (const path of ["elevatorBadges.fillColor", "elevatorBadges.borderWidth", "elevatorBadges.cornerStyle"]) expect(sub(path)).toBe(backplate);
+  });
+});

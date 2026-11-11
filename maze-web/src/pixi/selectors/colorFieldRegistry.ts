@@ -296,6 +296,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
 
   // "Vertical connections" section's own "Shared style" colors (GitHub issue #668).
   verticalFill: schemaField("verticalFillColor", { get: (s) => s.verticalFillColor, set: (s, v) => { s.verticalFillColor = v; } }),
+  verticalBorder: schemaField("verticalBorderColor", { get: (s) => s.verticalBorderColor, set: (s, v) => { s.verticalBorderColor = v; } }),
   verticalArrow: schemaField("verticalArrowColor", { get: (s) => s.verticalArrowColor, set: (s, v) => { s.verticalArrowColor = v; } }),
   verticalDecorLine: schemaField("verticalDecorativeLineColor", {
     get: (s) => ("verticalDecorativeLineColor" in s ? s.verticalDecorativeLineColor : undefined),
@@ -338,7 +339,7 @@ export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
     "teleportBadgeFill", "teleportBadgeBorder", "teleportBadgeText",
   ],
   [
-    "verticalDecorLine", "verticalFill", "verticalArrow",
+    "verticalDecorLine", "verticalFill", "verticalBorder", "verticalArrow",
     "twoWayFill", "twoWayBorder", "twoWayArrow",
     "oneWayFill", "oneWayBorder", "oneWayArrow",
     "elevatorFill", "elevatorBorder", "elevatorArrow",

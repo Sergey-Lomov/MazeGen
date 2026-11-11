@@ -57,7 +57,7 @@ export function collectTextFitEntries(
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
     if (id === null || !marker.text || marker.textEnabled === false) return;
     entries.push({
-      kind, text: marker.text, fontWeight: marker.textFontWeight ?? "bold", shape: marker.shape, plateSize: marker.size,
+      kind, text: marker.text, fontWeight: marker.textFontWeight ?? "bold", fontFamily: marker.textFontFamily, shape: marker.shape, plateSize: marker.size,
       fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, margin: marker.textMargin ?? DEFAULT_TEXT_MARGIN, nodes: [id],
     });
   };
@@ -72,7 +72,7 @@ export function collectTextFitEntries(
       if (marker.kind !== "elevator" || !marker.targetFloorIndices) continue;
       for (const [i, floorIndex] of marker.targetFloorIndices.entries()) {
         entries.push({
-          kind: "elevator", text: formatIndexLabel(floorIndex, badges.labelType), fontWeight: badges.textFontWeight,
+          kind: "elevator", text: formatIndexLabel(floorIndex, badges.labelType), fontWeight: badges.textFontWeight, fontFamily: badges.textFontFamily,
           shape: badges.shape, plateSize: badges.size, fontSize: badges.textSize, margin: badges.textMargin, nodes: [marker.fromNode],
           crossFloorTargets: [{ nodeId: marker.fromNode, targetFloorIndex: marker.targetFloorIndices[i] }],
         });
@@ -85,7 +85,7 @@ export function collectTextFitEntries(
     const addTeleport = (point: [number, number], floorIndex: number) => {
       const [x, y] = nearestCellCoord(point[0], point[1], cfg);
       entries.push({
-        kind: "teleport", text: formatIndexLabel(floorIndex, badge.labelType), fontWeight: badge.textFontWeight,
+        kind: "teleport", text: formatIndexLabel(floorIndex, badge.labelType), fontWeight: badge.textFontWeight, fontFamily: badge.textFontFamily,
         shape: badge.shape, plateSize: badge.size, fontSize: badge.textSize, margin: badge.textMargin, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
       });
     };
@@ -102,7 +102,7 @@ export function collectTextFitEntries(
     for (const label of labels) {
       const [x, y] = nearestCellCoord(label.pos[0], label.pos[1], cfg);
       entries.push({
-        kind: "markerIndex", text: label.label, fontWeight: index.textFontWeight, shape: "circle", plateSize: 0,
+        kind: "markerIndex", text: label.label, fontWeight: index.textFontWeight, fontFamily: index.textFontFamily, shape: "circle", plateSize: 0,
         plateWidth: index.width, plateHeight: index.height, fontSize: index.textSize, margin: index.textMargin, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
       });
     }
@@ -116,6 +116,7 @@ export function collectTextFitEntries(
       kind: "floorLabel",
       text: floorLabelText(floorLabel, displayFloorIndex, displayFloorTitle),
       fontWeight: floorLabel.textFontWeight,
+      fontFamily: floorLabel.textFontFamily,
       shape: "square",
       plateSize: 0,
       plateWidth: floorLabel.width,
@@ -192,7 +193,7 @@ function computeTextFitItems(
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
     for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges }, floor.title, teleportGroups)) {
       result[entry.kind].push({
-        text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
+        text: entry.text, fontWeight: entry.fontWeight, fontFamily: entry.fontFamily, shape: entry.shape, plateSize: entry.plateSize,
         plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,
       });
     }

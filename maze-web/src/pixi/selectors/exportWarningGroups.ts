@@ -9,12 +9,12 @@ import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
-import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
+import { computeElevatorBadgeLayout, elevatorBadgesOverlap } from "../renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../constants";
 import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
-import { oneWayStopLineShape, stopLineOverlapsRoundedRect } from "../renderers/verticalConnectionGeometry";
+import { oneWayStopLineShape, stopLineOverlapsRoundedRect, type RoundedRectGeometry } from "../renderers/verticalConnectionGeometry";
 import type { VerticalConnectionStyle } from "../renderers/types";
-import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
+import { buildMarkerIndexLabels, markerIndexPlateFootprint } from "./mazeSelectors/markerIndex";
 import type { TeleportGroup } from "./teleportGroups";
 import { getProjectTeleportGroups } from "./projectTeleportGroups";
 import { buildColorVisibility, visibleColor, type ColorVisibilityContext, type ColorVisibilityMaze } from "./colorFieldRegistry";
@@ -198,12 +198,26 @@ function filterNodesOnSpecialSplit(
   return result;
 }
 
+/** Footprints of every marker-index plate on the displayed floor (body plus border), as the mode
+ *  renderers place them — `[]` while `markerIndex` is off. Plate placement depends only on each
+ *  endpoint marker's outer radius, never on its colors, so the teleport gap color and group
+ *  customization are irrelevant here. */
+function markerIndexPlates(env: WarningFloorEnv, settings: AnySettings, verticalStyle: VerticalConnectionStyle): RoundedRectGeometry[] {
+  const index = settings.markerIndex;
+  if (!index.enabled) return [];
+  const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
+    teleportEdges: env.teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, mergeTeleports: settings.teleportMergeMode, groupOverrides: {}, verticalStyle,
+  });
+  const { labels } = buildMarkerIndexLabels(env.unscopedNodes, env.unscopedEdges, env.cfg, env.activeFloorIndex, index, resolveEndpointVisual, undefined, env.projectTeleportGroups(settings));
+  return labels.map((label) => markerIndexPlateFootprint(label, index));
+}
+
 /** `marker_index_covers_stop_line` (GitHub issue #744): on the displayed floor, every one-way
  *  vertical passage marker whose stop line (wall tick) is overlapped by any marker-index plate —
  *  its body plus border, never its floor-colored gap ring, which is drawn under the markers. The
  *  plate body is drawn above the markers, so an overlap hides part of the stop line. Mirrors both
  *  mode renderers: markers from `buildVerticalConnectionMarkers`, plates from
- *  `buildMarkerIndexLabels` + `markerIndexPlateBox`. Highlights the affected markers. */
+ *  `markerIndexPlates`. Highlights the affected markers. */
 function computeMarkerIndexStopLineWarning(
   env: WarningFloorEnv,
   settings: AnySettings,
@@ -222,20 +236,7 @@ function computeMarkerIndexStopLineWarning(
   });
   if (stopLines.length === 0) return null;
 
-  // Plate placement depends only on each endpoint marker's outer radius, never on its colors, so
-  // the teleport gap color and group customization are irrelevant here.
-  const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
-    teleportEdges: env.teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, mergeTeleports: settings.teleportMergeMode, groupOverrides: {}, verticalStyle,
-  });
-  const { labels } = buildMarkerIndexLabels(env.unscopedNodes, env.unscopedEdges, cfg, displayFloorIndex, index, resolveEndpointVisual, undefined, env.projectTeleportGroups(settings));
-  const plates = labels.map((label) => {
-    const box = markerIndexPlateBox(label, index);
-    const border = box.borderWidth;
-    return {
-      x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border,
-      radius: box.cornerRadius + border,
-    };
-  });
+  const plates = markerIndexPlates(env, settings, verticalStyle);
   const flagged = stopLines
     .filter(({ shape }) => plates.some((plate) => stopLineOverlapsRoundedRect(shape, plate)))
     .map(({ node }) => node);
@@ -393,7 +394,9 @@ const wallsSpecialSplit = group<VectorByWallsSettings>(
 
 /** `elevator_badges_overlap` / `elevator_badges_too_many`: an Elevator marker's own floor-number
  *  badge ring either visually overlaps itself, or has more floors on one side than that side's
- *  single row can hold (GitHub issue #430, #430 follow-ups). One warning total per id, covering
+ *  single row can hold (GitHub issue #430, #430 follow-ups). Slots under a marker-index plate are
+ *  unavailable (GitHub issue #964), exactly as the renderers lay badges out, so a plate shrinks a
+ *  side's capacity instead of hiding a badge. One warning total per id, covering
  *  every affected marker; each warning's own `crossFloorTargets` carries every reached floor of
  *  every flagged marker so the hover highlight can show a click-to-navigate bubble per floor. Mirrors
  *  `VerticalConnectionRenderer.drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation. */
@@ -403,6 +406,8 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
     if (!s.elevatorBadges.enabled) return;
     const verticalPairs = selectVerticalPassagePairSet(env.edges);
     const markers = buildVerticalConnectionMarkers(env.nodeById, env.edges, env.cfg, env.resolveNodeLevel, 0, verticalPairs, env.edges);
+    const resolved = withLazyResolvedGroupOverrides(s);
+    const obstacles = markerIndexPlates(env, resolved, buildVerticalConnectionStyle(resolved, resolved.floorColor, resolved));
     const markerRadius = s.elevatorMarker.size / 2;
     const badgeRadius = s.elevatorBadges.size / 2 + s.elevatorBadges.borderWidth;
     const overlappingNodeIds: number[] = [];
@@ -412,16 +417,16 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
     for (const marker of markers) {
       if (marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length < 2) continue;
       const count = marker.targetFloorIndices.length;
-      const positions = computeElevatorBadgePositions(
-        marker.pos[0], marker.pos[1], markerRadius, count, badgeRadius,
-        s.elevatorBadges.distance, s.elevatorBadges.gap, s.elevatorBadges.placement,
-        s.elevatorBadges.evenDistribution,
-      );
+      const { positions, overflow } = computeElevatorBadgeLayout({
+        cx: marker.pos[0], cy: marker.pos[1], markerRadius, count, radius: badgeRadius,
+        distance: s.elevatorBadges.distance, gap: s.elevatorBadges.gap, placement: s.elevatorBadges.placement,
+        evenDistribution: s.elevatorBadges.evenDistribution, obstacles,
+      });
       if (elevatorBadgesOverlap(positions, badgeRadius)) {
         overlappingNodeIds.push(marker.fromNode);
         for (const targetFloorIndex of marker.targetFloorIndices) overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
       }
-      if (elevatorBadgesTooMany(count, badgeRadius, s.elevatorBadges.gap, s.elevatorBadges.placement, s.elevatorBadges.evenDistribution)) {
+      if (overflow) {
         tooManyNodeIds.push(marker.fromNode);
         for (const targetFloorIndex of marker.targetFloorIndices) tooManyTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
       }

@@ -307,6 +307,7 @@ export class TeleportRenderer {
           textColor: style.floorBadge.textColor,
           fontWeight: style.floorBadge.textFontWeight,
           fontSize: style.floorBadge.textSize * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation),
+          fontFamily: style.floorBadge.textFontFamily,
           borderWidth: style.floorBadge.borderWidth,
           rounded: style.floorBadge.cornerStyle === "round",
         });

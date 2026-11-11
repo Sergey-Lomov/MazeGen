@@ -102,7 +102,7 @@ export function drawFloorBadge(
   borderColor: number,
   floorColor: number,
   floorNumber: number,
-  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontWeight?: LabelFontWeight; fontSize?: number; borderWidth?: number; rounded?: boolean },
+  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontWeight?: LabelFontWeight; fontSize?: number; fontFamily?: string; borderWidth?: number; rounded?: boolean },
 ): void {
   const borderWidth = opts?.borderWidth ?? FLOOR_BADGE_STROKE_WIDTH;
   drawMarkerWithBorder(g, opts?.shape ?? "circle", cx, cy, r, opts?.rounded ?? true, color, borderColor, borderWidth);
@@ -111,6 +111,7 @@ export function drawFloorBadge(
     msdfFontFamily(opts?.fontWeight ?? "bold"),
     opts?.fontSize ?? r * 1.6,
     opts?.textColor ?? floorColor,
+    opts?.fontFamily,
   );
   label.x = cx;
   label.y = cy;
