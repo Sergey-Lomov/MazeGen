@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { baseStoreState, mockGenerateMazeResult, mockSnapshot, resetGenerationMocks, makeRule } from "./storeTestHelpers";
+import { baseStoreState, mockGenerateMazeResult, mockSnapshot, resetGenerationMocks, makeRule, makeCheck } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -25,6 +25,8 @@ import { generateMaze, computeAnalytics, getAvailableChecks, getAvailableStrateg
 import { initWasm } from "../wasm/wasmLoader";
 import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
 import { errorCards, errorDetails } from "./notificationTestHelpers";
+import { serializeProject } from "../store/projectExport";
+import type { StrategyDescriptor } from "../wasm/types";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
@@ -365,5 +367,70 @@ describe("mazeStore.loadRegistry", () => {
     await useMazeStore.getState().loadRegistry();
     expect(initWasm).toHaveBeenCalledTimes(2);
     expect(useMazeStore.getState().registryError).toBeNull();
+  });
+});
+
+describe("mazeStore.loadProject registry gating (GitHub issue #967)", () => {
+  const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [], allow_multiple_instances: false }];
+
+  it("waits for a registry that is still loading and keeps the saved rules", async () => {
+    useMazeStore.setState({ seed: 7, randomSeed: false, mazeDirty: false, postEditDirty: false });
+    const file = serializeProject(useMazeStore.getState());
+    file.quality.rules = [];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    const registry = useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadProject(file);
+    await registry;
+    expect(useMazeStore.getState().registryLoaded).toBe(true);
+    expect(useMazeStore.getState().rules).toEqual([]);
+  });
+
+  it("interprets saved rules against the registry it waited for", async () => {
+    const dispatcher: StrategyDescriptor = {
+      id: "merge_dispatch", handles: "kind_a", params: [], experimental: false,
+      nested_slots: [{ slot_id: "merge", kind: "kind_a", min: 1, max: null, dispatch_kind: "size_threshold" }],
+    };
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([dispatcher]);
+    useMazeStore.setState({ seed: 7, randomSeed: false, mazeDirty: false, postEditDirty: false });
+    const file = serializeProject(useMazeStore.getState());
+    file.quality.rules = [{
+      ...makeRule({ id: "saved", kind: "kind_a", checks: [makeCheck()], strategyId: "merge_dispatch" }),
+      nestedStrategies: [
+        { slotId: "merge", strategyId: "leaf", params: {}, nested: [] },
+        { slotId: "merge", strategyId: "leaf", params: {}, nested: [] },
+      ],
+    }];
+    const registry = useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadProject(file);
+    await registry;
+    const [rule] = useMazeStore.getState().rules;
+    expect(rule.id).toBe("saved");
+    expect(rule.strategyId).toBe("merge_dispatch");
+    // A non-last size-threshold entry without `max_size` is made explicit only when the descriptor is known.
+    expect(rule.nestedStrategies[0].params.max_size).toBeDefined();
+  });
+
+  it("retries a failed registry load before applying the project", async () => {
+    useMazeStore.setState({ seed: 7, randomSeed: false, mazeDirty: false, postEditDirty: false });
+    const file = serializeProject(useMazeStore.getState());
+    vi.mocked(initWasm).mockRejectedValueOnce(new Error("first failure"));
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().registryLoaded).toBe(false);
+    await useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().registryLoaded).toBe(true);
+    expect(useMazeStore.getState().tessellationConfirmed).toBe(true);
+  });
+
+  it("refuses to load and raises an error toast when the registry cannot be loaded", async () => {
+    useMazeStore.setState({ seed: 7, randomSeed: false, mazeDirty: false, postEditDirty: false });
+    const file = serializeProject(useMazeStore.getState());
+    file.generation.seed = 12345;
+    resetNotifications();
+    vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
+    await useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().seed).toBe(7);
+    expect(errorCards()).toContain("project_load/project.load_error_engine_not_loaded");
   });
 });

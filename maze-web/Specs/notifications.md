@@ -37,6 +37,7 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 |---|---|---|---|
 | `generation` | `generation.registry_load_failed` | error | `loadRegistry` failed (details: message) |
 | `generation` | `generation.free_field_too_small`, `generation.run_failed` | error | generation cannot start / generation execution failed (details: message for the latter) |
+| `project_load` | `project.load_error_engine_not_loaded` | error | `loadProject` refused because the registry could not be loaded (#967) |
 | `post_edit` | `post_edit.refresh_failed` | error | `confirmPostEdit` analytics refresh failed (details: message) |
 | `post_edit` | `post_edit.remove_endpoint_node_rejected` | warning | removing a split node assigned as start/finish |
 | `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | warning | removing a preset split node assigned as start/finish/gen-source |

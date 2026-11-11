@@ -61,7 +61,7 @@ const editedSnapshot = {
 
 describe("Cairo application pipeline", () => {
   beforeEach(() => {
-    useMazeStore.setState(baseStoreState());
+    useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
     vi.mocked(generateMaze).mockReset();
     vi.mocked(generateMaze).mockReturnValue({ snapshot: generatedSnapshot, debugTape: undefined });
     vi.mocked(computeAnalyticsAsync).mockReset();
