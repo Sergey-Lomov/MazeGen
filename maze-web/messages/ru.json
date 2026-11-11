@@ -2340,6 +2340,7 @@
   "image_export.param_links.shared_marker_text_margin": "Отступ текста",
   "image_export.param_links.shared_marker_text_font_weight": "Насыщенность шрифта",
   "image_export.vector_by_walls.shared_style_subsection_text": "Текст",
+  "image_export.label_font_family": "Шрифт",
   "image_export.floors.section": "Этажи",
   "image_export.floors.show": "Показывать подписи этажей",
   "image_export.floors.position_subsection": "Позиция ({floor})",

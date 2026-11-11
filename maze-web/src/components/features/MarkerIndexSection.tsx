@@ -34,6 +34,7 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
     coverageVerticalPassage: P | null;
     coverageElevator: P | null;
     labelStyle: P | null;
+    textFontFamily?: P | null;
     textFontWeight: P | null;
     width: P | null;
     textSize: P | null;
@@ -126,7 +127,7 @@ export function MarkerIndexSection<P extends LinkPath>({ settings, onChange, lin
               <TextStyleRows
                 settings={settings}
                 onChange={onChange}
-                linkTargets={{ textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
+                linkTargets={{ textFontFamily: linkTargets.textFontFamily ?? null, textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
                 priorityColors={textColorPriority}
                 defaultColor={textColorDefault}
                 field={textColorField}

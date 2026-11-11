@@ -409,7 +409,7 @@ describe("export floor labels", () => {
     expect(items.floorLabel.map((item) => item.text)).toEqual(["Ground", "Observation deck"]);
   });
 
-  it("allows floor-label auto-fit to use the larger font-size range", () => {
-    expect(maxFittingFontSize([{ text: "I", fontWeight: "regular", shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(72);
+  it("keeps floor-label auto-fit within the shared font-size range", () => {
+    expect(maxFittingFontSize([{ text: "I", fontWeight: "regular", shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(40);
   });
 });

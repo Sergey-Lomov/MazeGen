@@ -242,11 +242,11 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  The label is an MSDF `BitmapText` (GitHub issue #352) — stays crisp at any viewport zoom, unlike
  *  the plain `Text` this used to draw. `fontWeight` picks the regular vs. bold baked atlas
  *  (`msdfFontFamily`). */
-function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
+function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight, fontFamily?: string): void {
   const g = new Graphics();
   drawMarkerWithBorder(g, shape, pos.x, pos.y, radius, rounded, fillColor, borderColor, borderWidth);
   container.addChild(g);
-  const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor);
+  const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor, fontFamily);
   text.x = pos.x;
   text.y = pos.y;
   container.addChild(text);
@@ -317,7 +317,7 @@ function drawElevatorBadges(
     drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
   }
   for (const [i, label] of labels.entries()) {
-    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFontWeight);
+    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFontWeight, settings.textFontFamily);
   }
   // Click-to-switch-floor hit area per badge (GitHub issue #478 follow-up) — `computeElevatorBadgePositions`
   // returns positions in the same ascending order as `targetFloorIndices`, so `positions[i]` is the

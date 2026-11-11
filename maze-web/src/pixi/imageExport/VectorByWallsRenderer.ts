@@ -421,6 +421,10 @@ export class VectorByWallsRenderer {
   private renderPass: RenderPass = "full";
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
+  private readonly rerenderLoadedFont = () => {
+    const state = useMazeStore.getState();
+    if (state.openCard === "image_export") this.renderAll(state);
+  };
 
   private geometryCache: {
     // Tracks the *unscoped* `state.nodes`/`state.edges`/`activeFloorId` identities (GitHub issue
@@ -446,6 +450,7 @@ export class VectorByWallsRenderer {
   } | null = null;
 
   constructor(root: Container) {
+    window.addEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
     this.backgroundGrid = new BackgroundGridLayer(root);
     const container = this.backgroundGrid.content;
     this.mazeContent = new Container();
@@ -887,6 +892,7 @@ export class VectorByWallsRenderer {
   }
 
   destroy(): void {
+    window.removeEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
     this.unsubscribe?.();
     this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();

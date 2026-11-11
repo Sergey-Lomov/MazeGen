@@ -2348,6 +2348,7 @@
   "image_export.param_links.shared_marker_text_margin": "Text margin",
   "image_export.param_links.shared_marker_text_font_weight": "Font weight",
   "image_export.vector_by_walls.shared_style_subsection_text": "Text",
+  "image_export.label_font_family": "Font",
   "image_export.floors.section": "Floors",
   "image_export.floors.show": "Show floor captions",
   "image_export.floors.position_subsection": "Position ({floor})",

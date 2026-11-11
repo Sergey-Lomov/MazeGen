@@ -5,6 +5,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ColorField, ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
+import { FontFamilyRow } from "./FontFamilyRow";
 import { useGate } from "./LinkContext";
 import { FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import { SectionHeader } from "../SectionHeader";
@@ -113,6 +114,7 @@ export function FloorLabelSection<P extends LinkPath>({ renderMode, settings, on
                 linkTarget={"floorLabel.labelType" as P}
               />
             </>}
+            <FontFamilyRow value={settings.textFontFamily} onChange={(textFontFamily) => onChange({ textFontFamily })} linkTarget={"floorLabel.textFontFamily" as P} />
             <LinkedSelectRow
               label={m["image_export.floors.weight"]()}
               value={settings.textFontWeight}

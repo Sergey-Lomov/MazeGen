@@ -388,6 +388,7 @@ export function VectorByWallsSettingsPanel() {
               borderWidth: "startMarker.borderWidth",
               gapWidth: "startMarker.gapWidth",
               textEnabled: "startMarker.textEnabled",
+              textFontFamily: "startMarker.textFontFamily",
               textFontWeight: "startMarker.textFontWeight",
               textSize: "startMarker.textSize",
               textMargin: "startMarker.textMargin",
@@ -420,6 +421,7 @@ export function VectorByWallsSettingsPanel() {
               borderWidth: "finishMarker.borderWidth",
               gapWidth: "finishMarker.gapWidth",
               textEnabled: "finishMarker.textEnabled",
+              textFontFamily: "finishMarker.textFontFamily",
               textFontWeight: "finishMarker.textFontWeight",
               textSize: "finishMarker.textSize",
               textMargin: "finishMarker.textMargin",
@@ -559,6 +561,7 @@ export function VectorByWallsSettingsPanel() {
                 floorBadgeTextSize: "teleportFloorBadge.textSize",
                 floorBadgeTextMargin: "teleportFloorBadge.textMargin",
                 floorBadgeTextFontWeight: "teleportFloorBadge.textFontWeight",
+                floorBadgeTextFontFamily: "teleportFloorBadge.textFontFamily",
                 groupCustomization: "teleportGroupCustomization",
               }}
               edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
@@ -885,6 +888,7 @@ export function VectorByWallsSettingsPanel() {
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
+                        textFontFamily: "elevatorBadges.textFontFamily",
                         textFontWeight: "elevatorBadges.textFontWeight",
                         placement: null,
                         shape: "elevatorBadges.shape",
@@ -1207,6 +1211,7 @@ export function VectorByWallsSettingsPanel() {
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
+                        textFontFamily: "elevatorBadges.textFontFamily",
                         textFontWeight: "elevatorBadges.textFontWeight",
                         placement: null,
                         shape: "elevatorBadges.shape",
@@ -1307,6 +1312,7 @@ export function VectorByWallsSettingsPanel() {
                 coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
                 coverageElevator: "markerIndex.coverage.elevator",
                 labelStyle: "markerIndex.labelStyle",
+                textFontFamily: "markerIndex.textFontFamily",
                 textFontWeight: "markerIndex.textFontWeight",
                 width: "markerIndex.width",
                 textSize: "markerIndex.textSize",

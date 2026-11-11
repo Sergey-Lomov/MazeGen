@@ -276,6 +276,19 @@ describe("validateLinkGraph", () => {
 });
 
 describe("round-trip persistence of the four shared-style source values", () => {
+  it("links the shared font-family source to every label style by default", () => {
+    const targets = [
+      "startMarker.textFontFamily",
+      "finishMarker.textFontFamily",
+      "teleportFloorBadge.textFontFamily",
+      "elevatorBadges.textFontFamily",
+      "markerIndex.textFontFamily",
+      "floorLabel.textFontFamily",
+    ];
+    expect(targets.every((target) => DEFAULT_VECTOR_BY_WALLS_LINKS.some((link) => link.source === "labelFontFamily" && link.target === target && link.enabled))).toBe(true);
+    expect(targets.every((target) => DEFAULT_VECTOR_BY_CORRIDORS_LINKS.some((link) => link.source === "labelFontFamily" && link.target === target && link.enabled))).toBe(true);
+  });
+
   it("VectorByWallsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
     const saved = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, cornerStyle: "miter" as const, markerSize: 0.42, markerBorderWidth: 4, gapWidth: 5 };
     const loaded = validateVectorByWallsSettings(saved, "vectorByWallsSettings", []);

@@ -6,7 +6,7 @@ import {
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -97,6 +97,11 @@ function clampTextMargin(value: number): number {
   return Math.min(TEXT_MARGIN_RANGE.max, Math.max(TEXT_MARGIN_RANGE.min, value));
 }
 
+/** Canvas labels are rasterized; integer CSS pixels avoid soft sampling at common DPR/zoom pairs. */
+function clampTextSize(value: number, range = TEXT_SIZE_RANGE): number {
+  return Math.min(range.max, Math.max(range.min, Math.round(value)));
+}
+
 function readTextMargin(obj: Record<string, unknown> | null, fallback: number): number {
   return clampTextMargin(optNumber(obj, "textMargin", fallback));
 }
@@ -112,8 +117,9 @@ function readBadgeSettings(obj: Record<string, unknown> | null, fallback: BadgeS
     ...readMarkerAppearance(obj, fallback),
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textColor: optNumber(obj, "textColor", fallback.textColor),
+    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
-    textSize: optNumber(obj, "textSize", fallback.textSize),
+    textSize: clampTextSize(optNumber(obj, "textSize", fallback.textSize)),
     textMargin: readTextMargin(obj, fallback.textMargin),
   };
 }
@@ -133,10 +139,11 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
     markerEnabled: obj?.markerEnabled === undefined ? undefined : optBool(obj, "markerEnabled", true),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
+    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
     textFontWeight: obj?.textFontWeight === undefined
       ? fallback.textFontWeight
       : optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight ?? "bold"),
-    textSize: obj?.textSize === undefined ? fallback.textSize : optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE),
+    textSize: obj?.textSize === undefined ? fallback.textSize : clampTextSize(optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE)),
     textMargin: obj?.textMargin === undefined ? fallback.textMargin : readTextMargin(obj, fallback.textMargin ?? DEFAULT_TEXT_MARGIN),
     textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
   };
@@ -306,11 +313,12 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
     offset: optNumber(obj, "offset", fallback.offset),
     cornerRadius: optNumber(obj, "cornerRadius", fallback.cornerRadius),
     width: Math.min(MARKER_INDEX_WIDTH_RANGE.max, Math.max(MARKER_INDEX_WIDTH_RANGE.min, optNumber(obj, "width", fallback.width))),
-    textSize: optNumber(obj, "textSize", fallback.textSize),
+    textSize: clampTextSize(optNumber(obj, "textSize", fallback.textSize)),
     textMargin: readTextMargin(obj, fallback.textMargin),
     gap: optNumber(obj, "gap", fallback.gap),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     textColor: optNumber(obj, "textColor", fallback.textColor),
+    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
     borderColorFromMarker: optBool(obj, "borderColorFromMarker", fallback.borderColorFromMarker),
     borderWidthFromMarker: optBool(obj, "borderWidthFromMarker", fallback.borderWidthFromMarker),
@@ -334,8 +342,9 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
     prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
     textAlignment: readTextAlignment(obj, fallback.textAlignment),
-    textSize: Math.min(FLOOR_LABEL_TEXT_SIZE_RANGE.max, Math.max(FLOOR_LABEL_TEXT_SIZE_RANGE.min, optNumber(obj, "textSize", fallback.textSize))),
+    textSize: clampTextSize(optNumber(obj, "textSize", fallback.textSize), FLOOR_LABEL_TEXT_SIZE_RANGE),
     textMargin: readTextMargin(obj, fallback.textMargin),
     textColor: optNumber(obj, "textColor", fallback.textColor),
     backgroundShape: optEnum(obj, "backgroundShape", ["none", "rectangle", "parallelogram"] as const, fallback.backgroundShape),
@@ -648,6 +657,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     return { ...d, links };
   }
   return {
+    labelFontFamily: typeof obj.labelFontFamily === "string" ? obj.labelFontFamily.trim() : d.labelFontFamily,
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -852,6 +862,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
   return {
+    labelFontFamily: typeof obj?.labelFontFamily === "string" ? obj.labelFontFamily.trim() : d.labelFontFamily,
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),

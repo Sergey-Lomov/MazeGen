@@ -230,6 +230,8 @@ export type TextHorizontalAlignment = "left" | "center" | "right";
 
 export interface TextStyleFields {
   textColor: number;
+  /** Optional for old project files; absent means the bundled Roboto MSDF family. */
+  textFontFamily?: string;
   textFontWeight: LabelFontWeight;
   /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
   textAlignment?: TextHorizontalAlignment;
@@ -597,6 +599,8 @@ export interface FloorLabelDragState {
  *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
  *  comment. */
 export interface SharedStyleSourceFields {
+  /** Source family for every linked canvas-label style. Empty uses bundled Roboto MSDF. */
+  labelFontFamily?: string;
   /** GitHub issue #701: the "Markers" sub-section of "Shared style" carries every property all
    *  markers share — shape, corner style, size, fill/border color, border width, gap width. The
    *  shape and color sources only drive their (disabled-by-default) links. */

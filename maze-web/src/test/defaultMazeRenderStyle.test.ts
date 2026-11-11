@@ -21,7 +21,10 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
 
     expect(buildWallStyle(settings)).toEqual(DEFAULT_MAZE_RENDER_STYLE.wall);
     expect(buildOneWayStyle(settings)).toEqual(DEFAULT_MAZE_RENDER_STYLE.oneWay);
-    expect(buildTeleportLineStyle(settings, settings.floorColor)).toEqual(DEFAULT_MAZE_RENDER_STYLE.teleport);
+    expect(buildTeleportLineStyle(settings, settings.floorColor)).toEqual({
+      ...DEFAULT_MAZE_RENDER_STYLE.teleport,
+      floorBadge: { ...DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge, textFontFamily: "" },
+    });
     // `text`/`textEnabled`/`textFontWeight`/`textSize`/`textColor`
     // deliberately diverge (GitHub issue #697, second follow-up): the live canvas stays textless
     // (`DEFAULT_MAZE_RENDER_STYLE` marker text is always `""`, no symbol fields) while the
@@ -32,6 +35,7 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
       text: "S",
       markerEnabled: true,
       textEnabled: false,
+      textFontFamily: "",
       textFontWeight: "bold",
       textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: 1,
       textColor: settings.startMarker.textColor,
@@ -41,6 +45,7 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
       text: "F",
       markerEnabled: true,
       textEnabled: false,
+      textFontFamily: "",
       textFontWeight: "bold",
       textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: 1,
       textColor: settings.finishMarker.textColor,

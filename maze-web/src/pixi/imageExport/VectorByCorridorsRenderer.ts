@@ -124,6 +124,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
+  private readonly rerenderLoadedFont = () => {
+    const state = useMazeStore.getState();
+    if (state.openCard === "image_export") this.renderAll(state);
+  };
 
   private geometryCache: {
     rawNodes: NodeDto[];
@@ -166,6 +170,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly contourShapeCache: CorridorShapeCache = new Map();
 
   constructor(root: Container) {
+    window.addEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
     this.backgroundGrid = new BackgroundGridLayer(root);
     this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     // Only the corridors are content; everything else sits in the overlay, above the corridors of every cut copy (GitHub issue #888).
@@ -1382,6 +1387,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   destroy(): void {
+    window.removeEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
     this.unsubscribe?.();
     this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();

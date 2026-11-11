@@ -5,6 +5,7 @@ import type { MarkerAppearance, SizeAdaptationField, TextStyleFields } from "../
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
+import { FontFamilyRow } from "./FontFamilyRow";
 import { TILE_SIZE } from "../../pixi/constants";
 import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
@@ -119,7 +120,7 @@ export function MarkerAppearanceRows<P extends LinkPath>({ settings, onChange, l
 export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
-  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]: P | null };
+  linkTargets: { [K in Exclude<keyof TextStyleFields, "textAlignment">]?: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
   field: ColorField;
@@ -128,6 +129,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
 }): React.ReactElement {
   return (
     <>
+      <FontFamilyRow value={settings.textFontFamily} onChange={(textFontFamily) => onChange({ textFontFamily })} linkTarget={linkTargets.textFontFamily ?? null} />
       <LinkedSelectRow
         label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
         value={settings.textFontWeight}
@@ -136,7 +138,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
           { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
         ]}
         onChange={(textFontWeight) => onChange({ textFontWeight })}
-        linkTarget={linkTargets.textFontWeight}
+        linkTarget={linkTargets.textFontWeight ?? null}
       />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_text_size"]()}
@@ -146,7 +148,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
         max={TEXT_SIZE_RANGE.max}
         step={TEXT_SIZE_RANGE.step}
         format={(v) => String(Math.round(v * 10) / 10)}
-        linkTarget={linkTargets.textSize}
+        linkTarget={linkTargets.textSize ?? null}
         trailingAction={autoFitKind && <AutoFitButton resolve={(ctx) => ctx.fitFor(autoFitKind)} onApply={(textSize) => onChange({ textSize })} />}
       />
       <LinkedSliderRow
@@ -157,7 +159,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
         max={TEXT_MARGIN_RANGE.max}
         step={TEXT_MARGIN_RANGE.step}
         format={(v) => String(v)}
-        linkTarget={linkTargets.textMargin}
+        linkTarget={linkTargets.textMargin ?? null}
       />
       <LinkedColorRow
         label={m["image_export.vector_by_walls.marker_text_color"]()}
@@ -166,7 +168,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
         priorityColors={priorityColors}
         defaultColor={defaultColor}
         field={field}
-        linkTarget={linkTargets.textColor}
+        linkTarget={linkTargets.textColor ?? null}
       />
     </>
   );

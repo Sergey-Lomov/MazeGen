@@ -1,6 +1,7 @@
-import { Assets, BitmapText, Cache } from "pixi.js";
+import { Assets, Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import type { LabelFontWeight } from "./indexLabel";
+import { isLabelFontFamilyLoaded, makeLabelText } from "./labelFont";
 
 /** MSDF (multi-channel signed distance field) bitmap fonts for canvas labels (GitHub issue #352).
  *
@@ -89,10 +90,10 @@ function inkCentreOffset(text: string, fontFamily: string, fontSize: number): nu
 /** Creates a label `BitmapText` centred on its glyph ink (not the font line box) under
  *  `anchor.set(0.5)` — the vertical correction ({@link inkCentreOffset}) is folded into `.pivot.y`
  *  so it survives later `.x`/`.y` writes by the caller. */
-export function makeCenteredLabel(text: string, fontFamily: string, fontSize: number, fill: number): BitmapText {
-  const label = new BitmapText({ text, style: { fontFamily, fontSize, fill } });
-  label.anchor.set(0.5);
-  label.pivot.y = inkCentreOffset(text, fontFamily, fontSize);
+export function makeCenteredLabel(text: string, fontFamily: string, fontSize: number, fill: number, requestedFamily?: string) {
+  const label = makeLabelText(text, fontFamily, fontSize, fill, fontFamily === msdfFontFamily("bold") ? "bold" : "normal", requestedFamily);
+  // Browser text uses its own line metrics; the MSDF-only correction must not be applied to it.
+  if (!isLabelFontFamilyLoaded(requestedFamily)) label.pivot.y = inkCentreOffset(text, fontFamily, fontSize);
   return label;
 }
 

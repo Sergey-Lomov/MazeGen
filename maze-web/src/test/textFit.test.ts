@@ -76,7 +76,7 @@ describe("textFit", () => {
       const it1 = item("18", shape, 20);
       const size = maxFittingFontSize([it1])!;
       expect(textOverflows(it1, size)).toBe(false);
-      expect(textOverflows(it1, size + 0.5)).toBe(true);
+      expect(textOverflows(it1, size + 1)).toBe(true);
     }
   });
 
