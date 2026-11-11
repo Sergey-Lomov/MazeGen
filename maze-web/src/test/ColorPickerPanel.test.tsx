@@ -313,7 +313,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
     // The SidePanel header also shows field name as its title -- only that one occurrence
     // may exist; the list itself must contain none.
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
-    expect(document.querySelector(".project-color-row")).toBeNull();
+    expect(document.querySelector(".picker-list-row")).toBeNull();
   });
 
   it("clicking a project-color row sets the working color without committing", () => {

@@ -2,6 +2,7 @@ import { SelectRow } from "../SelectRow";
 import type { LinkPath } from "../../store/parameterLinkSchema";
 import { SliderRow } from "../SliderRow";
 import { ColorRow, UnregisteredColorRow } from "../ColorRow";
+import { FontRow } from "../FontRow";
 import { ToggleRow } from "../ToggleRow";
 import { TextFieldRow } from "../TextFieldRow";
 import { LinkStatusIcon } from "../LinkStatusIcon";
@@ -78,6 +79,30 @@ export function LinkedColorRow<P extends LinkPath>({ linkTarget, unsupportedHint
       }}
       onCancel={() => {
         if (linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
+      }}
+      resetButton={<LinkIcon linkTarget={linkTarget} unsupportedHint={unsupportedHint} />}
+    />
+  );
+}
+
+type FontRowProps = React.ComponentProps<typeof FontRow>;
+/** Font-picker row with a link-status icon. Like `LinkedColorRow` (GitHub issue #666): a preview tick
+ *  disables the field's incoming link as an override, so Cancel re-enables it when it was enabled on open. */
+export function LinkedFontRow<P extends LinkPath>({ linkTarget, unsupportedHint, ...rest }: FontRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
+  const { links, onSetLinkEnabled } = useLinkContext<P>();
+  const shown = useIsLinkedRowShown(linkTarget);
+  const wasLinkEnabledRef = useRef(false);
+  if (!shown) return null;
+  return (
+    <FontRow
+      {...rest}
+      onOpen={() => {
+        wasLinkEnabledRef.current = linkTarget !== null && (links.find((l) => l.target === linkTarget)?.enabled ?? false);
+        rest.onOpen?.();
+      }}
+      onCancel={() => {
+        if (linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
+        rest.onCancel?.();
       }}
       resetButton={<LinkIcon linkTarget={linkTarget} unsupportedHint={unsupportedHint} />}
     />

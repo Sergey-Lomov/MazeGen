@@ -860,6 +860,20 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) }), null, null)).toHaveLength(0);
   });
 
+  it("skips captions on hidden start and finish markers in warnings and auto-fit (GitHub issue #977)", () => {
+    const hiddenMarkers = {
+      startMarker: marker({ markerEnabled: false, textSize: 32, textMargin: 1 }),
+      finishMarker: marker({ markerEnabled: false, textSize: 32, textMargin: 1 }),
+    };
+    const settings = baseSettings(hiddenMarkers);
+    expect(overflow(settings)).toHaveLength(0);
+    expect(computeVectorByCorridorsWarnings(nodes, edges, squareCfg, baseCorridorsSettings(hiddenMarkers), 0, 1)
+      .filter((warning) => warning.id === "marker_text_overflow")).toHaveLength(0);
+    const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
+    expect(items.start).toEqual([]);
+    expect(items.finish).toEqual([]);
+  });
+
   it("reports the same caveat in corridors mode", () => {
     const settings = baseCorridorsSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) });
     const w = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null).filter((x) => x.id === "marker_text_overflow");

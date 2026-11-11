@@ -1,0 +1,76 @@
+import React, { useState } from "react";
+import { sharedStyles } from "../styles/shared";
+import { FontPickerPanel, VECTOR_FONT_FAMILY } from "./FontPickerPanel";
+
+interface Props {
+  /** Current family; the empty string is the bundled vector (MSDF) Roboto. */
+  family: string;
+  onChange: (family: string) => void;
+  disabled?: boolean;
+  /** Picker header, usually the row label. */
+  title?: string;
+  /** Live-preview handler for the open picker, same contract as `ColorSwatch`: called with the
+   *  highlighted family on every change and once with the open-time family on cancel. Defaults to
+   *  `onChange`, so the live stream is the commit and Apply only closes the panel. */
+  onPreview?: (family: string) => void;
+  /** Called once right before the picker opens, to snapshot state the call site restores on cancel. */
+  onOpen?: () => void;
+  /** Called once when the user cancels the open picker. */
+  onCancel?: () => void;
+}
+
+/** Display name of a stored family. */
+export function fontDisplayName(family: string): string {
+  return family === VECTOR_FONT_FAMILY ? "Roboto" : family;
+}
+
+/** Button showing the current font name; clicking opens `FontPickerPanel`. Replaces the family
+ *  dropdown / text field, the font counterpart of `ColorSwatch`. */
+export function FontButton({ family, onChange, disabled, title, onPreview, onOpen, onCancel }: Props) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  function open() {
+    onOpen?.();
+    setPickerOpen(true);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        style={{ ...sharedStyles.selectSm, ...styles.button, ...(disabled ? styles.disabled : {}) }}
+        disabled={disabled}
+        onClick={open}
+        data-testid="font-button"
+      >
+        {fontDisplayName(family)}
+      </button>
+      {pickerOpen && (
+        <FontPickerPanel
+          family={family}
+          title={title}
+          // Same commit timing as `ColorSwatch`: with a distinct `onPreview` channel Apply is the one
+          // and only `onChange` commit; with the default the live stream already committed.
+          onApply={(next) => { if (onPreview) onChange(next); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+          onPreview={onPreview ?? onChange}
+          onCancel={onCancel}
+        />
+      )}
+    </>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  button: {
+    width: 140,
+    padding: "2px 6px",
+    textAlign: "left",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    backgroundImage: "none",
+    cursor: "default",
+  },
+  disabled: { opacity: 0.4 },
+};

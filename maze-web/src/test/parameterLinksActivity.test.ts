@@ -15,6 +15,7 @@ type P =
   | "innerGridColor"
   | "verticalCornerStyle"
   | "verticalSize"
+  | "verticalBorderColor"
   | "verticalArrowSize"
   | "verticalDecorativeSize"
   | "verticalDecorativeArrowSize"
@@ -41,7 +42,7 @@ type P =
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
     "teleportMarker.fillColor", "teleportFloorBadge.shape", "teleportThroughSeams", "teleportCurveStrength", "teleportCurveDirection", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
-    "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
+    "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalBorderColor", "verticalArrowSize",
     "verticalDecorativeSize", "verticalDecorativeArrowSize",
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.lineColor",
