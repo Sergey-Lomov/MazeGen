@@ -352,6 +352,9 @@ function scaleElevatorBadges(settings: ElevatorBadgeSettings, factor: number): E
   };
 }
 
+/** What `VerticalConnectionRenderer.render` draws from. */
+export type VerticalConnectionRenderData = Parameters<VerticalConnectionRenderer["render"]>[0];
+
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
  *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
  *  `GenerationRenderer` can own its own instance the same way it already does for those (per
