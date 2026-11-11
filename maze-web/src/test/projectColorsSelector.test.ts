@@ -235,6 +235,7 @@ describe("selectActiveProfileColors", () => {
     expect(abstractNames).toContain(PC.elevatorFill.name());
     expect(abstractNames).not.toContain(PC.decorLineElevator.name());
     expect(abstractNames).toContain(PC.verticalFill.name());
+    expect(abstractNames).toContain(PC.verticalBorder.name());
     expect(abstractNames).toContain(PC.verticalArrow.name());
     expect(abstractNames).not.toContain(PC.verticalDecorLine.name());
 
@@ -250,6 +251,7 @@ describe("selectActiveProfileColors", () => {
     expect(decorativeNames).not.toContain(PC.elevatorFill.name());
     expect(decorativeNames).toContain(PC.verticalDecorLine.name());
     expect(decorativeNames).not.toContain(PC.verticalFill.name());
+    expect(decorativeNames).not.toContain(PC.verticalBorder.name());
     expect(decorativeNames).not.toContain(PC.verticalArrow.name());
   });
 
@@ -262,6 +264,7 @@ describe("selectActiveProfileColors", () => {
     });
     const names = selectActiveProfileColors(state).map((c) => c.name);
     expect(names).toContain(PC.verticalFill.name());
+    expect(names).toContain(PC.verticalBorder.name());
     expect(names).toContain(PC.verticalArrow.name());
     expect(names).not.toContain(PC.verticalDecorLine.name());
   });

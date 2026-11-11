@@ -324,6 +324,7 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
 
   // "Vertical connections" section's own "Shared style" colors (GitHub issue #668).
   verticalFill: { visible: abstractShared, get: (s) => s.verticalFillColor, set: (s, v) => { s.verticalFillColor = v; } },
+  verticalBorder: { visible: abstractShared, get: (s) => s.verticalBorderColor, set: (s, v) => { s.verticalBorderColor = v; } },
   verticalArrow: { visible: abstractShared, get: (s) => s.verticalArrowColor, set: (s, v) => { s.verticalArrowColor = v; } },
   verticalDecorLine: {
     visible: LAYOUT_GATES.verticalDecorative,
@@ -368,7 +369,7 @@ export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
     "teleportBadgeFill", "teleportBadgeBorder", "teleportBadgeText",
   ],
   [
-    "verticalDecorLine", "verticalFill", "verticalArrow",
+    "verticalDecorLine", "verticalFill", "verticalBorder", "verticalArrow",
     "twoWayFill", "twoWayBorder", "twoWayArrow",
     "oneWayFill", "oneWayBorder", "oneWayArrow",
     "elevatorFill", "elevatorBorder", "elevatorArrow",

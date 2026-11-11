@@ -2414,6 +2414,7 @@
   "image_export.param_links.vertical_shared_border_width": "Marker border",
   "image_export.param_links.vertical_shared_gap_width": "Gap",
   "image_export.param_links.vertical_shared_fill_color": "Fill color",
+  "image_export.param_links.vertical_shared_border_color": "Border color",
   "image_export.param_links.vertical_shared_arrow_color": "Arrow color",
   "image_export.param_links.vertical_shared_arrow_size": "Arrow size",
   "image_export.param_links.vertical_shared_arrow_style": "Style",

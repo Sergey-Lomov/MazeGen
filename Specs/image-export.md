@@ -123,11 +123,13 @@ Sections:
   **Vertical "Shared style" group** (GitHub issue #668) — one level up from the per-group
   `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` links above: a dedicated "Shared
   style" subsection inside the "Vertical connections" section itself, so all three sub-groups'
+  Border colors are the exception to the older per-marker independence: `verticalBorderColor` drives
+  each abstract vertical marker's `borderColor` through enabled-by-default links (GitHub issue #968).
   marker look and arrow look can be driven from one place without touching the panel-level
   "Shared style" section (which stays reserved for fields shared with the start/finish/teleport
   markers too). `VerticalSharedStyleFields` (`imageExportTypes.ts`) mirrors `MarkerSettings`' own
   shape, for both `VectorByWallsSettings` and `VectorByCorridorsSettings`: `verticalCornerStyle`,
-  `verticalShape`, `verticalSize`, `verticalBorderWidth`, `verticalGapWidth`, `verticalFillColor`,
+  `verticalShape`, `verticalSize`, `verticalBorderWidth`, `verticalGapWidth`, `verticalFillColor`, `verticalBorderColor`,
   `verticalArrowColor`, `verticalArrowSize`, `verticalArrowStyle`, `verticalArrowCornerStyle` — plus,
   walls-only, `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`/`verticalDecorativeSize`/
   `verticalDecorativeArrowSize` for the decorative pictogram style. `verticalSize`/`verticalArrowSize`
@@ -140,8 +142,8 @@ Sections:
   matching `<kind>Arrow*`/`decorativeStairs*`/`decorativeElevator.lineColor`/`lineWidth`/`size` field;
   `verticalDecorativeArrowSize` links only to `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize`
   — `decorativeElevator` has no arrow of its own, see "Vertical connections" above) via
-  `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, same disabled-by-default
-  convention as every other vertical link — editing a sub-group's own field through its per-group
+  `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, with every link disabled by
+  default except `verticalBorderColor` to each marker's `borderColor`, which starts enabled — editing a sub-group's own field through its per-group
   setter disables just that one link, leaving the other two groups still following the shared value.
   The panel splits this subsection's fields the same way the per-group sub-groups do: a "Marker" row
   block (shape/corner style/size/border/gap/fill) shown only for `verticalStyle === "abstract"`
@@ -159,13 +161,13 @@ Sections:
   used throughout the "Vertical connections" section below for every field that exists in only one
   `verticalStyle` mode, not just here; fields that render identically in both modes
   (`elevatorBadges.*`, `replaceTwoFloorElevatorsWithStairs`) carry no suffix, having no same-group
-  counterpart to disambiguate from. `verticalFillColor`/
+  counterpart to disambiguate from. `verticalFillColor`/`verticalBorderColor`/
   `verticalArrowColor`/`verticalDecorativeLineColor` are registered in the color picker's "Project
-  colors" list as `PC.verticalFill`/`PC.verticalArrow`/`PC.verticalDecorLine` (`projectColorsSelector.ts`,
+  colors" list as `PC.verticalFill`/`PC.verticalBorder`/`PC.verticalArrow`/`PC.verticalDecorLine` (`projectColorsSelector.ts`,
   `verticalSharedStyleColors`) under the dedicated `vertical` section label "Верт. общий стиль" — shown
-  only for the matching `verticalStyle` (`verticalFill`/`verticalArrow` for abstract, `verticalDecorLine`
+  only for the matching `verticalStyle` (`verticalFill`/`verticalBorder`/`verticalArrow` for abstract, `verticalDecorLine`
   for decorative; corridors is always abstract), same mode-gating as the panel rows themselves. Every
-  per-group marker/arrow fill/border/arrow color row's own `priorityColors` ends with these two shared
+  per-group marker/arrow fill/border/arrow color row's own `priorityColors` ends with these three shared
   colors (then the floor/background tail) so a user editing e.g. `twoWayPassageMarker.fillColor` sees
   the vertical shared-style fill/arrow colors as nearby picks; symmetrically, `verticalFillColor`'s own
   priority list leads with `verticalArrowColor` (and vice versa), never both at once via a shared tail
@@ -567,7 +569,7 @@ separately on every marker-like field that conceptually shares them:
 
 | Shared value | Default | Drives |
 |---|---|---|
-| `markerShape` / `markerFillColor` / `markerBorderColor` (GitHub issue #701) | circle / start marker colors | `shape` / `fillColor` / `borderColor` of `startMarker`, `finishMarker`, `teleportMarker`, `teleportFloorBadge`, `elevatorBadges`, plus `verticalShape` / `verticalFillColor` (the per-kind vertical `borderColor`s directly) — **all links disabled by default**, since each marker kind has its own look; enable per field via its row's link control |
+| `markerShape` / `markerFillColor` / `markerBorderColor` (GitHub issues #701, #968) | circle / start marker colors | `shape` / `fillColor` / `borderColor` of `startMarker`, `finishMarker`, `teleportMarker`, `teleportFloorBadge`, `elevatorBadges`, plus `verticalShape` / `verticalFillColor` / `verticalBorderColor` — **all links disabled by default**, since each marker kind has its own look; enable per field via its row's link control |
 | `cornerStyle` (`CornerStyle` = `"round" \| "miter"`) | round | `startMarker`/`finishMarker.cornerStyle`, `teleportMarker.cornerStyle`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges.cornerStyle` (GitHub issue #347/#430 follow-ups), and each mode's own wall/corridor join field (`wallJoin`+`oneWayJoin` for "Vector by walls", `join`+`oneWayJoin` for "Vector by corridors") |
 | `markerSize` | 17 (px diameter) | `startMarker`/`finishMarker.size`, `teleportMarker.size`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.size` |
 | `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportMarker.borderWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
@@ -947,8 +949,8 @@ These three sub-objects are registered only in `VECTOR_BY_WALLS_PARAM_REGISTRY` 
 decorative/abstract `verticalStyle` toggle), so neither these three sub-objects nor
 `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize` exist for corridors.
 
-The vertical "Shared style" group's own ten (fourteen for walls) fields (`verticalCornerStyle`/
-`verticalShape`/`verticalSize`/`verticalBorderWidth`/`verticalGapWidth`/`verticalFillColor`/
+The vertical "Shared style" group's own eleven (fifteen for walls) fields (`verticalCornerStyle`/
+`verticalShape`/`verticalSize`/`verticalBorderWidth`/`verticalGapWidth`/`verticalFillColor`/`verticalBorderColor`/
 `verticalArrowColor`/`verticalArrowSize`/`verticalArrowStyle`/`verticalArrowCornerStyle`, plus
 walls-only `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`/`verticalDecorativeSize`/
 `verticalDecorativeArrowSize`, see "Vertical 'Shared style' group" above) are registered in both

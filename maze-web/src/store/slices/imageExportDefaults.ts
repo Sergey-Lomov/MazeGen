@@ -126,6 +126,7 @@ export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
   verticalBorderWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.borderWidth,
   verticalGapWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.gapWidth,
   verticalFillColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.fillColor,
+  verticalBorderColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.borderColor,
   verticalArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowColor,
   verticalArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowSize,
   verticalArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowStyle,
@@ -362,7 +363,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
     "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
   ],
@@ -426,7 +427,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
     "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
-    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],
 ) as unknown as VectorByCorridorsSettings;

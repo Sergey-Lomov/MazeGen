@@ -203,6 +203,7 @@ const STATIC_FIELDS = defineFields({
   sharedMarkerBorder: [["shared_style"], "border"],
 
   verticalFill: [["vertical"], "fill"],
+  verticalBorder: [["vertical"], "border"],
   verticalArrow: [["vertical"], "arrow"],
   verticalDecorLine: [["vertical"], "line"],
 

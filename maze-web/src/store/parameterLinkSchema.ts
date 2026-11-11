@@ -254,6 +254,7 @@ export const LINK_SCHEMA = {
     verticalBorderWidth: f("number", `${PL}.vertical_shared_border_width`),
     verticalGapWidth: f("number", `${PL}.vertical_shared_gap_width`),
     verticalFillColor: f("color", `${PL}.vertical_shared_fill_color`),
+    verticalBorderColor: f("color", `${PL}.vertical_shared_border_color`),
     verticalArrowColor: f("color", `${PL}.vertical_shared_arrow_color`),
     verticalArrowStyle: f("verticalArrowStyle", `${PL}.vertical_shared_arrow_style`),
     verticalArrowCornerStyle: f("cornerStyle", `${PL}.vertical_shared_arrow_corner_style`),

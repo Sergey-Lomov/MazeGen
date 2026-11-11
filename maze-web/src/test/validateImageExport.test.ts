@@ -384,6 +384,17 @@ describe("validateVectorByWallsSettings shared marker sources (GitHub issue #701
   });
 });
 
+describe("vertical shared border color validation (GitHub issue #968)", () => {
+  it.each([
+    ["walls", validateVectorByWallsSettings],
+    ["corridors", validateVectorByCorridorsSettings],
+  ] as const)("keeps a valid value and recovers missing or invalid input for %s", (_mode, validate) => {
+    expect(validate({ verticalBorderColor: 0x112233 }, "path", []).verticalBorderColor).toBe(0x112233);
+    expect(validate({ verticalBorderColor: "invalid" }, "path", []).verticalBorderColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.verticalBorderColor);
+    expect(validate({}, "path", []).verticalBorderColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.verticalBorderColor);
+  });
+});
+
 describe("validateMarkerIndexSettings", () => {
   it("clamps the fixed plate width and height into their ranges and keeps a fractional margin", () => {
     const fb = DEFAULT_MARKER_INDEX_SETTINGS;

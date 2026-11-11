@@ -880,8 +880,7 @@ describe("VectorByWallsSettingsPanel", () => {
         },
       });
       render(<VectorByWallsSettingsPanel />);
-      // "Border color" appears for Start/Finish markers, the "Vertical connections" shared-style
-      // marker row, and the one-way sub-group's own marker.
+      // "Border color" appears for Start/Finish markers and the one-way sub-group's own marker.
       expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(3);
     });
 

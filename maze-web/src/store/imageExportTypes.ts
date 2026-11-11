@@ -628,9 +628,7 @@ export interface SharedStyleSourceFields {
  *  with `startMarker`/`finishMarker`/teleport fields. Every link to these sources starts disabled
  *  (`parameterLinksDefaults.ts`), same as the panel-level "Shared style" links into this section's
  *  own fields — the three markers' defaults are pinned to `GenerationRenderer`'s fixed look, not
- *  this group. `borderColor` is deliberately excluded — a future follow-up could fold it in now
- *  that all three marker groups share the same ordinary fill/border semantics (GitHub issue #693
- *  removed the one-way marker's former accent-color distinction). */
+ *  this group. */
 export interface VerticalSharedStyleFields {
   verticalCornerStyle: CornerStyle;
   verticalShape: MarkerShape;
@@ -639,6 +637,7 @@ export interface VerticalSharedStyleFields {
   verticalBorderWidth: number;
   verticalGapWidth: number;
   verticalFillColor: number;
+  verticalBorderColor: number;
   verticalArrowColor: number;
   verticalArrowSize: number;
   verticalArrowStyle: VerticalArrowStyle;

@@ -151,10 +151,10 @@ export function VectorByWallsSettingsPanel() {
     PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
   ];
   // Every vertical-connection / elevator color row ends with the "Vertical connections" section's
-  // own "Shared style" fill/arrow colors (GitHub issue #668 — these feed all three marker groups
-  // via disabled-by-default links), then the floor color (the corridor-color analogue this mode
+  // own "Shared style" fill/border/arrow colors (GitHub issues #668, #968 — these feed all three marker groups
+  // via their vertical shared-style links), then the floor color (the corridor-color analogue this mode
   // has), then (for the rows that already carry it) the background — GitHub issue #503.
-  const vShared = [PC.verticalFill.at(settings.verticalFillColor), PC.verticalArrow.at(settings.verticalArrowColor)];
+  const vShared = [PC.verticalFill.at(settings.verticalFillColor), PC.verticalBorder.at(settings.verticalBorderColor), PC.verticalArrow.at(settings.verticalArrowColor)];
   const vTail = [...vShared, floor];
   const vTailBg = [...vShared, floor, background];
   // Elevator floor-badge fill / text prioritize each other first (they sit one on the other), then
@@ -703,6 +703,15 @@ export function VectorByWallsSettingsPanel() {
                         defaultColor={D.verticalFillColor}
                         field={PC.verticalFill}
                         linkTarget="verticalFillColor"
+                      />
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.marker_border_color"]()}
+                        color={settings.verticalBorderColor}
+                        onChange={(verticalBorderColor) => patchVerticalSharedStyle({ verticalBorderColor })}
+                        priorityColors={[PC.verticalFill.at(settings.verticalFillColor), PC.verticalArrow.at(settings.verticalArrowColor), floor]}
+                        defaultColor={D.verticalBorderColor}
+                        field={PC.verticalBorder}
+                        linkTarget="verticalBorderColor"
                       />
                       <LinkedSliderRow
                         label={m["image_export.vector_by_walls.marker_border_width"]()}
