@@ -21,7 +21,7 @@ registerNotificationCode(REGISTRY_LOAD_FAILED, { severity: "error", message: () 
  *  effect twice in dev) so one failure is reported once, not as a second toast occurrence. */
 let registryLoadInFlight: Promise<void> | null = null;
 
-export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
+export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID, NESTED_STRATEGY_MAX_SIZE_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 
 /** Selection, hover and search state tied to the maze and debug run being replaced (GitHub issue #946). */
@@ -254,7 +254,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   loadQualityPreset: (quality) => set((state) => ({
-    rules: rulesFromFile(quality.rules),
+    rules: rulesFromFile(quality.rules, state.availableStrategies),
     stages: quality.stages,
     repairMaxIterations: quality.repairMaxIterations,
     repairTimeBudgetSecs: quality.repairTimeBudgetSecs,

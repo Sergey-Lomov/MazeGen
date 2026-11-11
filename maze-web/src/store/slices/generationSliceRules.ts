@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import { entriesForSlot } from "../storeTypes";
 import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
+import { NESTED_STRATEGY_MAX_SIZE_PARAM_ID, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 import {
   newStage, nextStageIndex, resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
   newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName,
@@ -133,7 +134,14 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
     const transform = (target: NestedStrategyState): NestedStrategyState[] => {
       if (strategyId === null) return [];
       const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-      const params = descriptor ? defaultParamsFor(descriptor) : {};
+      // Dispatcher-owned params describe the entry's place in its slot, not the strategy, so they
+      // survive a swap (a lost `max_size` would silently turn the entry's range unbounded).
+      const kept = Object.fromEntries(
+        [NESTED_STRATEGY_WEIGHT_PARAM_ID, NESTED_STRATEGY_MAX_SIZE_PARAM_ID]
+          .filter((id) => target.params[id] !== undefined)
+          .map((id) => [id, target.params[id]]),
+      );
+      const params = { ...(descriptor ? defaultParamsFor(descriptor) : {}), ...kept };
       const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
       return [{ slotId: target.slotId, strategyId, params, nested }];
     };

@@ -232,6 +232,24 @@ Each entry (`NestedStrategyEntryRow`) renders up to three stacked rows:
    and, if it itself declares nested slots, one more `NestedStrategyPanel` per such slot,
    recursively, up to `MAX_NESTED_STRATEGY_DEPTH`.
 
+**Size-threshold slots** (`dispatchKind: "size_threshold"`, `size_threshold_region_merge`, GitHub
+issue #91): the weight row is replaced by an *interval row*, and list order (no reordering) defines
+consecutive region-size intervals — entry `i` covers `lo..=hi`, where `lo` is the previous entry's
+`hi + 1` (1 for the first) and `hi` is the entry's own `param_overrides["max_size"]`. The last
+entry has no bound and reads "from {lo} and above"; every other entry shows "from {lo} to"
+followed by a `NumberInput` (integer, `min = lo`, committed on blur only, so a cascade never acts
+on a half-typed value). Pure interval math lives in `store/sizeThresholdIntervals.ts`
+(`resolveIntervals`, `editMaxSize`, `cascadedIndices`): a missing/invalid bound resolves to
+`lo + DEFAULT_INTERVAL_SPAN - 1` (5-wide), a bound below `lo` is raised to `lo`, and committing a
+bound that pushes later ones below their own `lo` raises those too (each raised entry gets a
+`raised_above_previous` hint via `NumberInput`'s `externalReason`). Adding an entry gives the
+previous last entry an explicit `max_size = lo + DEFAULT_INTERVAL_SPAN - 1` and makes the new one
+the "and above" entry. `maze-core` treats a missing/unparsable `max_size` as unbounded (see
+`Specs/repair.md`), so the store keeps every non-last entry's `max_size` explicit: `withExplicitBounds`
+/ `withExplicitBoundsInSlots` fill it on project and quality-preset load (`rulesFromFile`, which both go through; skipped while the strategy registry is not loaded), and
+`setNestedStrategy` keeps the dispatcher-owned `weight`/`max_size` when it swaps an entry's
+strategy.
+
 Hovering or clicking anywhere in rows 2–3 (the strategy row and everything under it, not just the
 strategy's name) highlights/selects that entry — `onSelect({ type: "nested_strategy", ruleId,
 path })`. Clicks on an actual control inside the params block (`input`/`select`/the `Switch`
@@ -257,7 +275,7 @@ removeNestedStrategy(ruleId: string, path: PathSegment[]): void
 
 - `setNestedStrategy`: replaces (or clears, if `strategyId` is `null`) the entry at `path` in
   place — never appends. Replacing rebuilds `params` from the new strategy's declared defaults
-  (`defaultParamsFor`) and auto-fills that strategy's own mandatory nested slots
+  (`defaultParamsFor`) (apart from the old entry's dispatcher-owned `weight`/`max_size`, which are kept) and auto-fills that strategy's own mandatory nested slots
   (`buildDefaultNestedStrategies`), discarding whatever was there before. A no-op if `path`
   doesn't resolve to an existing entry (stale path — e.g. the entry was removed elsewhere in the
   same render).

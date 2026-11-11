@@ -52,6 +52,11 @@ pub enum NestedDispatchKind {
     /// `Failed` — see `dispatch_priority` (GitHub issue #259). UI shows each candidate's rank and
     /// lets the user reorder the list.
     Priority,
+    /// Exactly one candidate is picked by the flagged region's own size: each candidate carries
+    /// a `max_size` bound, ranges are consecutive in list order and the last entry is the
+    /// unbounded fallback — see `SizeThresholdRegionMergeStrategy` (GitHub issue #91). UI shows
+    /// each candidate's `max_size` input (none for the last entry) and lets the user reorder.
+    SizeThreshold,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

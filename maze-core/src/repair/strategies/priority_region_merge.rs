@@ -85,7 +85,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
             invalid,
             maze,
             rng,
-            |single_region_issue, rng| {
+            |_region, _scc, single_region_issue, rng| {
                 dispatch_priority(
                     single_region_issue,
                     maze,
