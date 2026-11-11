@@ -65,6 +65,7 @@ pub mod teleport_region_merge;
 pub mod vertical_passage_group_select;
 pub mod vertical_passage_region_merge;
 pub mod vertical_target;
+pub mod size_threshold_region_merge;
 pub mod weighted_dead_end;
 pub mod weighted_region_merge;
 
@@ -246,6 +247,11 @@ pub use vertical_passage_region_merge::{
     PARAM_CONNECTION_MODE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_CONNECTION_MODE,
     PARAM_DIRECTION_BALANCE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE,
     VerticalPassageRegionMergeStrategy,
+};
+pub use size_threshold_region_merge::{
+    PARAM_MAX_SIZE as SIZE_THRESHOLD_REGION_MERGE_PARAM_MAX_SIZE,
+    SLOT_MERGE_TARGET as SIZE_THRESHOLD_REGION_MERGE_SLOT_MERGE_TARGET,
+    SizeThresholdRegionMergeStrategy,
 };
 pub use weighted_dead_end::{
     SLOT_REPAIR_TARGET as WEIGHTED_DEAD_END_SLOT_REPAIR_TARGET, WeightedDeadEndStrategy,

@@ -207,6 +207,15 @@ describe("NumberInput", () => {
     });
   });
 
+  describe("externalReason", () => {
+    it("shows the owner-supplied adjustment as the field hint", () => {
+      const { rerender } = render(<NumberInput value="5" onChange={vi.fn()} />);
+      expect(screen.queryByText(m["input_hint.raised_above_previous"]({ value: "9" }))).toBeNull();
+      rerender(<NumberInput value="9" onChange={vi.fn()} externalReason={{ kind: "raised_above_previous", value: "9" }} />);
+      expect(screen.getByText(m["input_hint.raised_above_previous"]({ value: "9" }))).toBeTruthy();
+    });
+  });
+
   describe("onBlurCommit", () => {
     it("fires on blur with the normalized value", () => {
       const onBlurCommit = vi.fn();

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useFieldHint } from "./FieldHint";
-import { inputHintReason, isParseableNumber, normalizeNumberCommit, type NormalizerResult } from "./inputNormalization";
+import { inputHintReason, isParseableNumber, normalizeNumberCommit, type InputNormalizationReason, type NormalizerResult } from "./inputNormalization";
 
 interface Props {
   /** Current committed value as a string (the same encoding the rest of the param pipeline uses). */
@@ -27,6 +27,10 @@ interface Props {
    * callers that need a further cross-field adjustment — e.g. an interval's min/max inversion
    * clamp, which this component can't know about on its own. */
   onBlurCommit?: (normalized: string) => void;
+  /** An adjustment the owner made to this field's value (e.g. a cross-field cascade the field
+   * can't see). Shown as the field hint whenever a new object is passed; `null`/`undefined` is
+   * ignored. */
+  externalReason?: InputNormalizationReason | null;
 }
 
 // A numeric `<input>` that never lets a transiently-empty field escape as a committed value.
@@ -35,7 +39,7 @@ interface Props {
 // last valid value. Integer fields additionally reject decimal separators and round+clamp on
 // blur; float fields only clamp. Rejected drafts stay visible like TextInput drafts and are never
 // committed, so the field hint explains why the typed character was not accepted.
-export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, ariaLabel, autoFocus, style, onClick, onBlurCommit }: Props) {
+export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, ariaLabel, autoFocus, style, onClick, onBlurCommit, externalReason }: Props) {
   const hint = useFieldHint();
   // Local display string — decoupled from `value` while the field is focused so the user can
   // clear it and type a new number without the prop snapping it back mid-edit.
@@ -50,6 +54,11 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
     // Only mirror an incoming prop change into the field when the user isn't editing it.
     if (!focusedRef.current) setDraft(value);
   }, [value]);
+
+  useEffect(() => {
+    if (externalReason) hint.show(inputHintReason(externalReason));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- show on each new reason object only
+  }, [externalReason]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;

@@ -396,6 +396,14 @@ fn sweep_combos() -> Vec<Combo> {
                 "min_region_size",
                 json!({"min_region_size": "5", "region_class": "all"}),
             )],
+            "size_threshold_region_merge",
+            Some("expand_region_passage"),
+        ),
+        (
+            vec![(
+                "min_region_size",
+                json!({"min_region_size": "5", "region_class": "all"}),
+            )],
             "expand_region_passage",
             None,
         ),
@@ -475,7 +483,10 @@ fn sweep_rules((checks, strategy, nested): &Combo) -> Vec<Value> {
     let mut main = rule("r3", checks, Some(strategy));
     if let Some(nested) = nested {
         let slot = match *strategy {
-            "reduce_scc_count" | "weighted_region_merge" | "priority_region_merge" => {
+            "reduce_scc_count"
+            | "weighted_region_merge"
+            | "priority_region_merge"
+            | "size_threshold_region_merge" => {
                 "merge_target"
             }
             _ => "fix_target",

@@ -111,6 +111,17 @@ describe("mazeStore generation strategy actions", () => {
     ]);
   });
 
+  it("setNestedStrategy keeps the dispatcher-owned weight and max_size, drops other old params", () => {
+    const rule = {
+      ...ruleWithReduceSccCount(),
+      nestedStrategies: [{ slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest", weight: "3", max_size: "7" }, nested: [] }],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().setNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], "other_expand_strategy");
+    const params = useMazeStore.getState().rules.find((g) => g.id === "g1")?.nestedStrategies[0].params;
+    expect(params).toEqual({ weight: "3", max_size: "7" });
+  });
+
   it("setNestedStrategy with null removes the slot's assignment entirely", () => {
     useMazeStore.setState({ rules: [ruleWithReduceSccCount()], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().setNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], null);

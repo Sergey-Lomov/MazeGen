@@ -12,7 +12,8 @@ export type InputNormalizationReason =
   | { kind: "restored"; value: string }
   | { kind: "text_truncated" }
   | { kind: "character_rejected" }
-  | { kind: "range_reverted"; min: string; max: string; value: string };
+  | { kind: "range_reverted"; min: string; max: string; value: string }
+  | { kind: "raised_above_previous"; value: string };
 
 /** Canonical result returned by field normalizers (GitHub issue #770). `raw` is always the exact
  * user input, while `value` is the value accepted or restored by the field. */
@@ -49,6 +50,8 @@ export function inputHintReason(reason: InputNormalizationReason): FieldHintReas
         key: reason.kind,
         message: () => m["input_hint.range_reverted"]({ min: reason.min, max: reason.max }),
       };
+    case "raised_above_previous":
+      return { key: reason.kind, message: () => m["input_hint.raised_above_previous"]({ value: reason.value }) };
   }
 }
 

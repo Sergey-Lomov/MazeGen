@@ -33,7 +33,7 @@ use maze_core::{
         SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
         SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
         VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
-        WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
+        SizeThresholdRegionMergeStrategy, WeightedDeadEndStrategy, WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -71,6 +71,7 @@ pub enum NestedDispatchKindDto {
     Unordered,
     Weighted,
     Priority,
+    SizeThreshold,
 }
 
 fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatchKindDto {
@@ -78,6 +79,7 @@ fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatch
         maze_core::repair::NestedDispatchKind::Unordered => NestedDispatchKindDto::Unordered,
         maze_core::repair::NestedDispatchKind::Weighted => NestedDispatchKindDto::Weighted,
         maze_core::repair::NestedDispatchKind::Priority => NestedDispatchKindDto::Priority,
+        maze_core::repair::NestedDispatchKind::SizeThreshold => NestedDispatchKindDto::SizeThreshold,
     }
 }
 
@@ -1009,6 +1011,34 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 maze_core::quality_control::RegionNeedsExpansionIssue,
             >>::expected_nested(
                 &PriorityRegionMergeStrategy
+            )),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "size_threshold_region_merge",
+            handles: REGION_NEEDS_EXPANSION.as_str(),
+            params: strategy_params_dto(
+                <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::RegionNeedsExpansionIssue,
+                >>::params(&SizeThresholdRegionMergeStrategy),
+                &[],
+            ),
+            experimental: <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::is_experimental(&SizeThresholdRegionMergeStrategy),
+            nested_suppressed_params: <SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::nested_suppressed_params(
+                &SizeThresholdRegionMergeStrategy
+            ),
+            nested_slots: nested_slots_dto(<SizeThresholdRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::RegionNeedsExpansionIssue,
+            >>::expected_nested(
+                &SizeThresholdRegionMergeStrategy
             )),
             visibility: None,
         },
