@@ -123,7 +123,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
             // does not (`attempts_limit`, GitHub issue #486).
             let mut failed_attempts: usize = 0;
 
-            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
+            // GitHub issue #976: also stops on the QC deadline, keeping the edges already proposed.
+            while added < target
+                && !pool.is_empty()
+                && failed_attempts < max_failed_attempts
+                && !crate::deadline::expired()
+            {
                 // Pop from the end, not a random index — `apply_src_mode` orders the pool so
                 // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
                 // issue #278's exhaustion-fallback fix); a random-index pick would destroy that

@@ -9,7 +9,8 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 /// Result of `find_all_simple_cycles`: either the full list of simple cycles plus the
 /// independent GF(2) basis derived incrementally alongside it (see `GF2Basis`), or a signal
 /// that enumeration was aborted because it exceeded `MAX_SIMPLE_CYCLES` — see that constant's
-/// doc comment for why this exists.
+/// doc comment for why this exists — or because the QC time limit passed (`crate::deadline`,
+/// GitHub issue #976). A result computed under an expired deadline must not be cached.
 ///
 /// `basis` is a subset of `cycles`' own raw traversal-order `Vec<usize>` values (cloned, not
 /// indices into `cycles`) — deliberately not index-based, so any later filtering of `cycles`
@@ -267,7 +268,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             }
         }
 
-        if cycles.len() > MAX_SIMPLE_CYCLES {
+        if cycles.len() > MAX_SIMPLE_CYCLES || crate::deadline::expired() {
             return CycleSearchResult::TooManyCycles;
         }
 
@@ -482,7 +483,8 @@ fn johnson_circuit(
     let first_edge = path_edges.first().copied();
 
     for &(edge_idx, w) in &adjacency[v] {
-        if cycles.len() > MAX_SIMPLE_CYCLES {
+        // GitHub issue #976: the QC deadline aborts exactly like the cycle cap does.
+        if cycles.len() > MAX_SIMPLE_CYCLES || crate::deadline::expired() {
             return None;
         }
         if !scc_mask[w] {
