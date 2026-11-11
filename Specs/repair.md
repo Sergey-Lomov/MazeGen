@@ -2178,6 +2178,21 @@ Two rules producing the same concrete `Issue` type are fully independent through
 
 `RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `run_full` call via the single `RepairBudget` constructed in `run_repair_stages`, not reset per stage — `iterations_done`/`start_ms` are set once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage sequence stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start.
 
+#### Cooperative deadline inside long-running steps (GitHub issue #976)
+
+`budget.exhausted` is only checked between fixpoint iterations, so on its own `time_budget_secs` is not an upper bound: one slow check or strategy would run to completion. `run_repair_stages` therefore also installs a thread-local deadline (`crate::deadline::install`, absolute `clock::now_ms` time = start + `time_budget_secs`; none when no time budget is set) for the duration of the repair loop. The guard is dropped before the final report pass, so that pass is not cut short.
+
+Long-running loops call `crate::deadline::expired()` (reads the clock once per 64 calls; latches to `true` once the deadline passes) and bail out with their existing "no result" outcome — a strategy returns `RepairResult::Failed` with no commands, so nothing is half-applied. `Stage::check_and_dispatch` also stops dispatching further rules once expired and reports progress, so `run_repair` does not return `Done`; its next `budget.exhausted` check yields `LimitReached(TimeBudget)`. `RepairBudget::exhausted` treats a latched `deadline::expired()` as `TimeBudget` too (only when a time budget is configured), so an injected `now_ms` that lags the real clock cannot leave the loop spinning after the deadline fired.
+
+Instrumented so far:
+- `ScoredEndpointsStrategy::best_pair` (per start and per candidate pair) — returns `None`, i.e. `Failed`.
+- `group_select`'s candidate pass (`run_group_candidate_pass`) — stops and returns the fixes collected so far.
+- `dispatch_weighted` / `dispatch_priority` — no further nested candidate is tried; result `Failed`.
+- `InvalidLoopScoredStrategy`'s per-cycle cut loop and `MissingLoopsRandomStrategy`'s source-pool loop — stop and keep what was collected.
+- `find_all_simple_cycles` (Johnson's DFS and the per-SCC loop) — aborts as `CycleSearchResult::TooManyCycles`, which every caller already treats as "analysis unavailable / no issue", so an aborted check reports nothing. `MazeAnalysis::graph_analytics` does not cache a result computed after the deadline expired, so a deadline abort never poisons the per-graph-version cache.
+
+Any other loop that can run long should call `deadline::expired()` the same way; a check that bails out must not report a bogus issue, and nothing computed under an expired deadline may be cached.
+
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 
 ## Timing Instrumentation

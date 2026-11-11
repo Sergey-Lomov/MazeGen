@@ -142,6 +142,40 @@ fn empty_candidates_returns_failed_without_touching_rng() {
 }
 
 #[test]
+fn expired_qc_deadline_stops_both_dispatchers_before_any_candidate() {
+    let maze = maze_2_nodes();
+    let mut rng = MazeRng::seed_from_u64(1);
+    let config = no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy));
+    let weighted = [WeightedCandidate {
+        config: &config,
+        weight: 1.0,
+    }];
+    let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+
+    let (result, commands) = dispatch_weighted(
+        &issue(),
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        &weighted,
+        &std::collections::HashMap::new(),
+    );
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(commands.is_empty());
+
+    let (result, commands) = dispatch_priority(
+        &issue(),
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        &[&config],
+        &std::collections::HashMap::new(),
+    );
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(commands.is_empty());
+}
+
+#[test]
 fn all_failed_candidates_exhaust_pool_and_return_failed() {
     let maze = maze_2_nodes();
     let mut rng = MazeRng::seed_from_u64(1);

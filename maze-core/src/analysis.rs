@@ -196,6 +196,11 @@ impl MazeAnalysis {
         if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
             let nav = self.nav_graph(graph, meta);
             let analytics = graph::graph_analytics::compute_graph_analytics(&nav);
+            // GitHub issue #976: cycle enumeration aborts on the QC deadline, so a result computed
+            // after it expired may be a bogus "too many cycles" — hand it back uncached.
+            if crate::deadline::expired() {
+                return analytics;
+            }
             *cache = Some((key.0, key.1, key.2, analytics));
         }
         cache.as_ref().unwrap().3.clone()
@@ -305,5 +310,36 @@ impl MazeAnalysis {
             *cache = Some((version, finish, reachable));
         }
         Some(cache.as_ref().unwrap().2.clone())
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    use crate::graph::{EdgeKind, Graph};
+
+    fn triangle() -> Graph {
+        let mut g = Graph::new();
+        for id in [0, 1, 2] {
+            g.add_node(id);
+        }
+        g.add_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(1, 2, EdgeKind::Basic);
+        g.add_edge(2, 0, EdgeKind::Basic);
+        g
+    }
+
+    #[test]
+    fn graph_analytics_computed_under_an_expired_deadline_is_not_cached() {
+        let graph = triangle();
+        let meta = MazeMeta::empty();
+        let analysis = MazeAnalysis::default();
+        {
+            let _deadline =
+                crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+            assert!(analysis.graph_analytics(&graph, &meta).cycle_analysis_overflowed);
+        }
+        // Same graph version, deadline gone: a poisoned cache would still say "overflowed".
+        assert!(!analysis.graph_analytics(&graph, &meta).cycle_analysis_overflowed);
     }
 }

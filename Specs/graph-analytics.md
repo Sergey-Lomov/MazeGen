@@ -80,6 +80,8 @@ It aborts and returns `TooManyCycles` once the running cycle count exceeds `MAX_
 - **`cycle_core`** (`graph_analytics.rs`, used by `compute_graph_analytics` — no toggle, runs unconditionally) returns `None` on `TooManyCycles`. `compute_graph_analytics` then returns a `GraphAnalytics` with `cycle_analysis_overflowed: true` and empty/zero placeholders for the other cycle fields, instead of hanging.
 - **`LoopLengthCheck`** (toggleable) silently skips the check on `TooManyCycles` — same effect as if the check were disabled for that maze.
 
+The same abort (same checks, same `TooManyCycles` result) also fires when the QC time limit passes (`crate::deadline::expired()`, GitHub issue #976 — see `Specs/repair.md`'s "Cooperative deadline inside long-running steps"). That is not a property of the graph, so `MazeAnalysis::graph_analytics` returns such a result without caching it: a deadline abort never leaves a stale `cycle_analysis_overflowed: true` behind for the rest of the graph version.
+
 ### Surfacing the overflow as an `Issue`
 
 `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) computes `graph_analytics` first, then — if `cycle_analysis_overflowed` is true — pushes `Box::new(CycleAnalysisOverflowedIssue::default())` directly into the issue list, after `QualityControlEngine` (or `issues_override`) has already run. This bypasses the QC engine entirely: unlike every other `IssueKind`, `CycleAnalysisOverflowed` has no `Check<T, I>` and no toggle — it surfaces unconditionally whenever the analytics computation itself overflows. See `quality_control.md` for the full `IssueKind` contract. On the web side this is just another entry in `IssuesBlock`/the analytics `FeatureCard`, resolved to `critical` severity via `issueRegistry.ts`.

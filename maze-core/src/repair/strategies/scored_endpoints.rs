@@ -446,6 +446,11 @@ impl<'a> ScoredPathContext<'a> {
         let mut dijkstra_scratch = DijkstraScratch::new(n);
 
         for &s in &starts {
+            // GitHub issue #976: abort the whole search (reported as `Failed`) once the QC time
+            // budget is gone, instead of finishing all `starts.len()` Dijkstra runs.
+            if crate::deadline::expired() {
+                return None;
+            }
             let (dist, prev_edge) = dijkstra_with_prev_into(
                 s,
                 &self.edges,
@@ -456,6 +461,9 @@ impl<'a> ScoredPathContext<'a> {
             for &f in &finishes {
                 if f == s {
                     continue;
+                }
+                if crate::deadline::expired() {
+                    return None;
                 }
                 if dist[f] == usize::MAX {
                     continue;

@@ -42,6 +42,14 @@ impl RepairBudget {
         }
     }
 
+    /// Absolute deadline on the `clock::now_ms` clock derived from `time_budget_secs` — what
+    /// `deadline::install` needs so long-running checks/strategies can stop inside one iteration.
+    fn deadline_ms(&self) -> Option<f64> {
+        self.limits
+            .time_budget_secs()
+            .map(|secs| crate::clock::now_ms() + secs * 1000.0)
+    }
+
     /// `Some(kind)` for the first bound that has already been exhausted (max_iterations checked
     /// before time_budget, matching the pre-#106 flat pipeline's check order), `None` if neither
     /// bound is configured or both still have room.
@@ -54,8 +62,11 @@ impl RepairBudget {
         {
             return Some(RepairLimitKind::MaxIterations);
         }
+        // `deadline::expired()` is the same bound on the real clock, latched by a check/strategy
+        // that already bailed out on it — consulted too so a lagging injected `now_ms` can never
+        // leave `Stage::run_repair` spinning after the deadline fired (GitHub issue #976).
         if let Some(budget_secs) = self.limits.time_budget_secs()
-            && now_ms() - self.start_ms >= budget_secs * 1000.0
+            && (now_ms() - self.start_ms >= budget_secs * 1000.0 || crate::deadline::expired())
         {
             return Some(RepairLimitKind::TimeBudget);
         }
@@ -168,6 +179,8 @@ impl<T: Tessellation> QualityControlEngine<T> {
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RepairStagesResult {
         let mut budget = RepairBudget::new(limits, now_ms);
+        // Dropped when this function returns, so the final report pass runs without the latch.
+        let _deadline = crate::deadline::install(budget.deadline_ms());
         let mut timing: HashMap<String, HashMap<String, RuleTimingAcc>> = HashMap::new();
         let mut iterations: HashMap<String, u32> = HashMap::new();
         for stage in &self.stages {
@@ -302,6 +315,37 @@ mod repair_budget_tests {
             budget.exhausted(&clock_at(2000.0)),
             Some(RepairLimitKind::TimeBudget)
         );
+    }
+
+    #[test]
+    fn time_budget_is_exhausted_by_an_expired_qc_deadline_even_when_the_injected_clock_lags() {
+        let limits = RepairLimits::new(None, Some(1000.0)).unwrap();
+        let budget = RepairBudget::new(limits, &clock_at(0.0));
+        let _deadline =
+            crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+        assert_eq!(
+            budget.exhausted(&clock_at(0.0)),
+            Some(RepairLimitKind::TimeBudget)
+        );
+    }
+
+    #[test]
+    fn expired_qc_deadline_is_ignored_without_a_time_budget() {
+        let limits = RepairLimits::new(Some(3), None).unwrap();
+        let budget = RepairBudget::new(limits, &clock_at(0.0));
+        let _deadline =
+            crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+        assert_eq!(budget.exhausted(&clock_at(0.0)), None);
+    }
+
+    #[test]
+    fn deadline_is_derived_from_the_time_budget_only() {
+        let now = crate::clock::now_ms();
+        let timed = RepairBudget::new(RepairLimits::new(None, Some(2.0)).unwrap(), &clock_at(0.0));
+        let deadline = timed.deadline_ms().expect("time budget configured");
+        assert!(deadline >= now + 2000.0 && deadline < now + 2000.0 + 5000.0);
+        let untimed = RepairBudget::new(RepairLimits::new(Some(3), None).unwrap(), &clock_at(0.0));
+        assert_eq!(untimed.deadline_ms(), None);
     }
 
     #[test]

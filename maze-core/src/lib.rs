@@ -1,5 +1,7 @@
 pub mod analysis;
+pub mod clock;
 pub mod comparison;
+pub mod deadline;
 pub mod diag;
 pub mod dsu;
 pub mod event_log;
