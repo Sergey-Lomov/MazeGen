@@ -2,6 +2,8 @@
 
 The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today. Below the export formats, "Save style" / "Load style" buttons save and load the card's whole visual configuration as a standalone style file (GitHub issue #750 — see `Specs/project-file.md`'s "Visual preset" section).
 
+**Floor-label backplate corners.** With corner radius `0`, the body, border, and surface-colour gap cutout all retain sharp corners. A non-zero radius expands consistently through the border and gap layers for both rectangle and parallelogram backplates.
+
 ## Feature Card Status
 
 | Condition | Status | Comment |

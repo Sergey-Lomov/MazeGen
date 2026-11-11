@@ -7,7 +7,7 @@ import { initWasm } from "./wasm/wasmLoader";
 import { initLocale } from "./i18n/localeStore";
 import * as m from "~/paraglide/messages";
 import "./styles/global.css";
-import { setBootScreenStatus } from "./startup/bootScreen";
+import { setBootScreenStatus, showBootScreenError } from "./startup/bootScreen";
 
 // React DevTools' render-diff logger (dev-only instrumentation) runs JSON.stringify on component
 // props to log what changed — throws on any BigInt-valued prop (e.g. DebugRefBubble's `target`,
@@ -29,12 +29,17 @@ async function bootstrap() {
   const root = document.getElementById("root")!;
   const isCorridorGeometryRoute = window.location.pathname === "/corridor-geometry";
   document.documentElement.classList.toggle("corridor-geometry-route", isCorridorGeometryRoute);
-  try {
-    setBootScreenStatus(m["loading.wasm"]());
-    await initWasm(undefined, (loaded, total) => setBootScreenStatus(m["loading.wasm"](), total === null ? undefined : loaded / total));
-  } catch (err) {
-    root.textContent = `Failed to load WASM: ${err instanceof Error ? err.message : String(err)}`;
-    return;
+  // The app cannot start without the engine (the store builds its initial field through wasm), so a
+  // failed load keeps the boot screen up with the reason and a retry button (GitHub issue #967).
+  for (;;) {
+    try {
+      setBootScreenStatus(m["loading.wasm"]());
+      await initWasm(undefined, (loaded, total) => setBootScreenStatus(m["loading.wasm"](), total === null ? undefined : loaded / total));
+      break;
+    } catch (err) {
+      console.error("Failed to load WASM:", err);
+      await showBootScreenError(m["loading.wasm_failed"](), m["loading.retry"]());
+    }
   }
 
   // The store builds its initial field through wasm at module load, so the app modules must be

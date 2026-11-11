@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { notify } from "../notifications/notificationStore";
+import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "./projectLoadNotifications";
 import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
 import { guardPresetEdits } from "./presetEditGuard";
@@ -54,6 +56,15 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
 
   loadProject: async (file) => {
     const [set, get] = a;
+    // The registry loads asynchronously on app start. Applying a file before it settles would skip
+    // everything that needs `availableStrategies`, and the first registry load would then replace the
+    // loaded quality rules with the defaults (GitHub issue #967). `loadRegistry` joins a load in
+    // flight and starts a fresh one after a failure, so one call covers both waiting and retrying.
+    if (!get().registryLoaded) await get().loadRegistry();
+    if (!get().registryLoaded) {
+      notify({ source: PROJECT_LOAD_SOURCE, code: PROJECT_LOAD_CODES.engineNotLoaded });
+      return;
+    }
     const targetOpenCard = file.ui.openCard;
     const { kind, params, hexOrientation, triOrientation } = file.tessellation;
     const tessellation = { kind, params };

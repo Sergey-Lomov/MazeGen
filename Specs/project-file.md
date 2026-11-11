@@ -44,7 +44,15 @@ rejects the file instead of falling back to `square`. Failures are
 (`file_load.read_failed`), invalid JSON (`file_load.invalid_json`), a file of another kind
 (`project.load_error_quality_preset` / `project.load_error_visual_preset`) or a validation error
 (`project.load_error`, validator message in the toast details). Validation runs before
-`loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
+`loadProject`, so a rejected file changes no state.
+
+GitHub issue #967. `loadProject` first waits for the strategy registry: unless `registryLoaded` is
+already true it awaits `loadRegistry()`, which joins a load in flight or retries a failed one. Without
+this, a file applied before the startup load finished would be interpreted without `availableStrategies`,
+and the first registry load would then replace the loaded rules with the defaults. If the registry still
+is not loaded, the file is refused before any state change with an `error` toast
+(`project.load_error_engine_not_loaded`, source `project_load`) telling the user the engine is not
+loaded and to reload the page and try again. The style and quality preset loads follow the
 same rules under sources `visual_preset_load` / `quality_preset_load`.
 
 GitHub issue #946. Loading ends every UI mode, pending placement, prompt, hover and open panel of the

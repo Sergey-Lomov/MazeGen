@@ -142,17 +142,20 @@ export class FloorLabelRenderer {
     const y = center.y - height / 2;
     const gap = Math.max(0, settings.gap);
     const borderWidth = Math.max(0, settings.borderWidth);
+    // A sharp body must retain sharp corners in its outward border and gap layers. For a rounded
+    // body, grow the radius alongside the offset so the layers stay concentric.
+    const offsetRadius = (radius: number, outset: number) => radius === 0 ? 0 : radius + outset;
     const body = new Graphics();
 
     if (settings.backgroundShape === "rectangle") {
       const radius = Math.min(Math.max(0, settings.cornerRadius), width / 2, height / 2);
       if (gap > 0) {
         const outset = borderWidth + gap;
-        drawRoundedRect(body, x - outset, y - outset, width + outset * 2, height + outset * 2, radius + outset);
+        drawRoundedRect(body, x - outset, y - outset, width + outset * 2, height + outset * 2, offsetRadius(radius, outset));
         body.fill(surfaceColor);
       }
       if (borderWidth > 0) {
-        drawRoundedRect(body, x - borderWidth, y - borderWidth, width + borderWidth * 2, height + borderWidth * 2, radius + borderWidth);
+        drawRoundedRect(body, x - borderWidth, y - borderWidth, width + borderWidth * 2, height + borderWidth * 2, offsetRadius(radius, borderWidth));
         body.fill(settings.borderColor);
       }
       drawRoundedRect(body, x, y, width, height, radius);
@@ -166,11 +169,11 @@ export class FloorLabelRenderer {
         // Offset the four sharp vertices first, then round those four vertices. Using a rounded
         // offset join here creates extra arc points that `drawRoundedPolygon` treats as corners,
         // which leaves the parallelogram's border visibly less rounded than its fill.
-        drawRoundedPolygon(body, offsetPolygonPath(points, outset, 4, "miter"), radius + outset);
+        drawRoundedPolygon(body, offsetPolygonPath(points, outset, 4, "miter"), offsetRadius(radius, outset));
         body.fill(surfaceColor);
       }
       if (borderWidth > 0) {
-        drawRoundedPolygon(body, offsetPolygonPath(points, borderWidth, 4, "miter"), radius + borderWidth);
+        drawRoundedPolygon(body, offsetPolygonPath(points, borderWidth, 4, "miter"), offsetRadius(radius, borderWidth));
         body.fill(settings.borderColor);
       }
       drawRoundedPolygon(body, points, radius);

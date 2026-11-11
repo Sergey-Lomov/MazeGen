@@ -36,9 +36,9 @@ export type TextFitEntry = TextFitItem & {
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
 };
 
-/** Every label drawn on one floor, with the plate it must fit and the elements to highlight when it
- *  does not. Mirrors the renderers' own draw rules: start/finish text honors `textEnabled`, elevator
- *  badges `enabled`, teleport floor badges need a visible connector (`teleportConnectorStyle`). */
+/** Every label checked on one floor, with the plate it must fit and the elements to highlight when it
+ *  does not. Start/finish captions belong only to enabled markers and honor `textEnabled`; elevator
+ *  badges need `enabled`, and teleport floor badges need a visible connector (`teleportConnectorStyle`). */
 export function collectTextFitEntries(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
@@ -55,7 +55,7 @@ export function collectTextFitEntries(
 ): TextFitEntry[] {
   const entries: TextFitEntry[] = [];
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
-    if (id === null || !marker.text || marker.textEnabled === false) return;
+    if (id === null || marker.markerEnabled === false || !marker.text || marker.textEnabled === false) return;
     entries.push({
       kind, text: marker.text, fontWeight: marker.textFontWeight ?? "bold", fontFamily: marker.textFontFamily, shape: marker.shape, plateSize: marker.size,
       fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, margin: marker.textMargin ?? DEFAULT_TEXT_MARGIN, nodes: [id],

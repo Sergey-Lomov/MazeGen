@@ -44,7 +44,8 @@ import { fieldOf } from "./fieldConfigFixtures";
 import { configAllCells } from "../pixi/tessellationCells";
 
 beforeEach(() => {
-  useMazeStore.setState(baseStoreState());
+  // `loadProject` waits for the registry unless it is already loaded (GitHub issue #967).
+  useMazeStore.setState({ ...baseStoreState(), registryLoaded: true });
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
   vi.mocked(computeAnalyticsAsync).mockReset();
   vi.mocked(computeAnalyticsAsync).mockResolvedValue(mockSnapshot);

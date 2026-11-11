@@ -18,8 +18,8 @@ import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
 import { readJsonFile } from "./jsonFile";
-import { registerNotificationCode } from "../notifications/notificationRegistry";
 import { notify } from "../notifications/notificationStore";
+import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
@@ -30,17 +30,6 @@ import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
-
-const PROJECT_LOAD_SOURCE = "project_load";
-
-const PROJECT_LOAD_CODES = {
-  invalid: "project.load_error",
-  qualityPreset: "project.load_error_quality_preset",
-  visualPreset: "project.load_error_visual_preset",
-} as const;
-for (const code of Object.values(PROJECT_LOAD_CODES)) {
-  registerNotificationCode(code, { severity: "error", message: () => m[code]() });
-}
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,

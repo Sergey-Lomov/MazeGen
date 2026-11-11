@@ -187,7 +187,7 @@ drawn over the floor and the floor remains the relevant base surface even when a
   the allowed size therefore depends on `shape`) shrunk by the label's text margin (`textMargin`, px per side,
   0–10 in 0.5 steps, default 1; one field of `TextStyleFields` on every text, also in Shared style as `markerTextMargin`).
   Only labels that are actually drawn count:
-  captions honor `textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
+  captions honor `markerEnabled`/`textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
   badges need `elevatorBadges.enabled`, teleport badges need a visible connector. One warning per
   id; hover highlights the offending nodes (captions, elevator markers, with cross-floor targets)
   or cells (teleport badges).
