@@ -63,7 +63,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     ) -> Self {
         let strategy = strategy.map(|strategy| {
             let params = build_params(strategy.params(), Some(&param_overrides));
-            let requirement = strategy.requirement(&params);
+            let requirement = strategy.requirement(&params, &nested);
             RuleStrategy {
                 strategy,
                 nested,

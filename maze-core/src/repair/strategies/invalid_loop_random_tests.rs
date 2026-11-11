@@ -71,7 +71,7 @@ fn requirement_requests_no_layers() {
     let requirement = <InvalidLoopRandomStrategy as RepairStrategy<
         SquareTessellation,
         InvalidLoopIssue,
-    >>::requirement(&InvalidLoopRandomStrategy, &no_params());
+    >>::requirement(&InvalidLoopRandomStrategy, &no_params(), &[]);
     assert_eq!(requirement, InvalidLoopRequirement::empty());
 }
 

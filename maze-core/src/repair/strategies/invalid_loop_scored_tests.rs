@@ -125,7 +125,7 @@ fn requirement_requests_valid_cycles() {
     let requirement = <InvalidLoopScoredStrategy as RepairStrategy<
         SquareTessellation,
         InvalidLoopIssue,
-    >>::requirement(&InvalidLoopScoredStrategy, &no_params());
+    >>::requirement(&InvalidLoopScoredStrategy, &no_params(), &[]);
     assert_eq!(requirement, InvalidLoopRequirement::VALID_CYCLES);
 }
 

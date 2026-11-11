@@ -125,8 +125,10 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into every
     /// `Check::repair_check` call in that rule. Default `I::Requirement::default()` — which
     /// `IssueRequirement`'s contract fixes to mean "compute everything" — so an unmigrated
-    /// strategy changes nothing.
-    fn requirement(&self, _params: &StrategyParams) -> I::Requirement { I::Requirement::default() }
+    /// strategy changes nothing. `nested` is the same list `apply()` later receives (GitHub issue
+    /// #283): a coordinator strategy consults it to translate its nested strategies' requirements
+    /// into its own `I::Requirement`; a strategy with no nested slots ignores it.
+    fn requirement(&self, _params: &StrategyParams, _nested: &[NestedStrategyConfig<T>]) -> I::Requirement { I::Requirement::default() }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
     fn is_experimental(&self) -> bool { false }
@@ -164,14 +166,13 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn expected_nested(&self) -> &'static [NestedSlot];
     fn nested_suppressed_params(&self) -> &'static [&'static str];
     /// Erased form of `RepairStrategy::requirement` — returns `Box<dyn Any>` wrapping the
-    /// strategy's own `I::Requirement`. The only caller, `maze-runner`'s `downcast_strategy`,
-    /// already knows the concrete `I` (generic over it) and downcasts this back via
-    /// `downcast::<I::Requirement>()`. Needed because `requirement()`'s return type is generic
-    /// over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
-    /// `&dyn Issue` erasure. **A parent strategy delegating to a nested slot never calls this** —
-    /// a nested strategy's issue is synthesized directly by the parent (see "Nested strategies"
-    /// below), never produced by a `Check::repair_check` call, so there is no requirement to pass.
-    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
+    /// strategy's own `I::Requirement`. Callers know the concrete `I` and downcast this back via
+    /// `downcast::<I::Requirement>()`: `maze-runner`'s `downcast_strategy` (generic over `I`).
+    /// Needed because `requirement()`'s return type is generic over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
+    /// `&dyn Issue` erasure. A coordinator strategy (currently `InvalidLoopGroupSelectStrategy`,
+    /// GitHub issue #283) calls this on its nested strategy from its own `requirement()` and
+    /// translates the result into its own `I::Requirement`; every other parent ignores it.
+    fn requirement_erased(&self, params: &StrategyParams, nested: &[NestedStrategyConfig<T>]) -> Box<dyn std::any::Any>;
     fn apply(
         &self, issue: &dyn Issue, maze: &Maze<T>,
         rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
@@ -900,7 +901,7 @@ There is no per-apply batch limit: every flagged cycle is a candidate. (The form
 
 **Result**: `Fixed` (with every successful nested call's commands, in order) only if at least one nested repair succeeded; `Failed` (no commands) if every nested call failed or no `cut_target` nested strategy is configured. An empty `invalid` list returns `Fixed` with no commands, even without a nested strategy.
 
-Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
+`requirement()` follows the nested `cut_target` strategy (GitHub issue #283): `Rule::new` passes `nested` into `requirement()`, and the group requests `VALID_CYCLES` exactly when the nested strategy's own `InvalidLoopRequirement` does (`apply` only forwards `issue.valid` into each nested issue's `all`). With no nested strategy configured it falls back to `InvalidLoopGroupRequirement::all()`. Note: the group-producing checks (`max_loops_count`, `max_loop_density`) do not yet read the requirement, so today this only fixes what is asked for, not what is computed.
 
 ### dead_end_priority (shared, not a strategy)
 

@@ -202,8 +202,12 @@ pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + I
         // downcasting back to this rule's concrete I::Requirement. Without this override the
         // default (Full) would silently win here regardless of what the real strategy declares,
         // since build_qc_and_repair resolves every registry strategy through this wrapper.
-        fn requirement(&self, params: &maze_core::repair::StrategyParams) -> I::Requirement {
-            *self.inner.requirement_erased(params)
+        fn requirement(
+            &self,
+            params: &maze_core::repair::StrategyParams,
+            nested: &[NestedStrategyConfig<T>],
+        ) -> I::Requirement {
+            *self.inner.requirement_erased(params, nested)
                 .downcast::<I::Requirement>()
                 .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
         }

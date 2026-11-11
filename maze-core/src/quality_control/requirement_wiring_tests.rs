@@ -1,7 +1,10 @@
 use super::*;
 use crate::generation::PresetState;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+use crate::quality_control::{
+    InvalidLoopGroupIssue, InvalidLoopGroupRequirement, InvalidLoopIssue, InvalidLoopRequirement,
+};
 use crate::repair::params::StrategyParams;
+use crate::repair::strategies::{InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy};
 use crate::repair::{MutationCommand, NestedStrategyConfig, RepairResult, RepairStrategy};
 use crate::space::SquareTessellation;
 use rand::SeedableRng;
@@ -33,7 +36,11 @@ impl RepairStrategy<SquareTessellation, InvalidLoopIssue> for InvalidOnlyStrateg
     fn strategy_id(&self) -> &'static str {
         "invalid_only_test_strategy"
     }
-    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+    fn requirement(
+        &self,
+        _params: &StrategyParams,
+        _nested: &[NestedStrategyConfig<SquareTessellation>],
+    ) -> InvalidLoopRequirement {
         InvalidLoopRequirement::empty()
     }
     fn apply(
@@ -133,5 +140,70 @@ fn no_fix_rule_falls_back_to_full() {
         received.borrow().as_slice(),
         &[InvalidLoopRequirement::all()],
         "a rule with no strategy (no_fix) must still pass all() to its checks"
+    );
+}
+
+struct RecordingGroupCheck {
+    received: std::rc::Rc<RefCell<Vec<InvalidLoopGroupRequirement>>>,
+}
+impl Check<SquareTessellation, InvalidLoopGroupIssue> for RecordingGroupCheck {
+    fn check_type_id(&self) -> &'static str {
+        "recording_group_check"
+    }
+    fn repair_check(
+        &self,
+        _maze: &Maze<SquareTessellation>,
+        _issues: &mut Vec<InvalidLoopGroupIssue>,
+        _rng: &mut dyn RngCore,
+        requirement: InvalidLoopGroupRequirement,
+    ) {
+        self.received.borrow_mut().push(requirement);
+    }
+}
+
+/// See GitHub issue #283 — `Rule::new` must hand the rule's `nested` list to the strategy's
+/// `requirement()`, so a coordinator's requirement reflects its nested strategy.
+#[test]
+fn rule_new_passes_nested_into_a_coordinators_requirement() {
+    let strategy = InvalidLoopGroupSelectStrategy;
+    let slot = &<InvalidLoopGroupSelectStrategy as RepairStrategy<
+        SquareTessellation,
+        InvalidLoopGroupIssue,
+    >>::expected_nested(&strategy)[0];
+    let received = std::rc::Rc::new(RefCell::new(Vec::new()));
+    let rule: Rule<SquareTessellation, InvalidLoopGroupIssue> = Rule::new(
+        "r".to_string(),
+        vec![(
+            "a".to_string(),
+            Box::new(RecordingGroupCheck {
+                received: received.clone(),
+            }) as Box<dyn Check<SquareTessellation, InvalidLoopGroupIssue>>,
+        )],
+        Some(Box::new(strategy)),
+        HashMap::new(),
+        vec![NestedStrategyConfig {
+            slot,
+            strategy: Box::new(InvalidLoopRandomStrategy),
+            param_overrides: HashMap::new(),
+            nested: vec![],
+        }],
+    );
+
+    let maze = empty_maze();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    let mut timing = HashMap::new();
+    rule.run_checks_typed(
+        &maze,
+        &mut rng,
+        &PresetState::empty(),
+        &mut timing,
+        &|| 0.0,
+        None,
+    );
+
+    assert_eq!(
+        received.borrow().as_slice(),
+        &[InvalidLoopGroupRequirement::empty()],
+        "the nested random strategy needs no valid cycles, so the group check must be asked for none"
     );
 }
