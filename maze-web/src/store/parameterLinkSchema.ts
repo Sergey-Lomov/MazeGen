@@ -380,6 +380,7 @@ export const LINK_SCHEMA = {
   // The badge fields sit in three panel subsections: "Placement", "Text" and "Backplate".
   ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesPlacement, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
     distance: f("number", `${VW}.elevator_badges_distance`),
+    startAngle: f("number", `${VW}.elevator_badges_start_angle`, { active: R.elevatorBadgeCircle }),
     evenDistribution: f("boolean", `${VW}.elevator_badges_even_distribution`),
     gap: f("number", `${VW}.elevator_badges_gap`, { active: R.elevatorBadgeGap }),
   })),
@@ -392,6 +393,7 @@ export const LINK_SCHEMA = {
     textColor: f("color", `${VW}.elevator_badges_text_color`),
   })),
   ...prefixed("elevatorBadges", section(BOTH, { group: G.verticalElevatorBadgesBackplate, active: and(R.elevators, R.elevatorBadgesOn), update: "elevatorBadges" }, {
+    backing: f("elevatorBadgeBacking", `${VW}.elevator_badges_backing`),
     shape: f("markerShape", `${VW}.elevator_badges_shape`),
     size: f("number", `${VW}.elevator_badges_size`),
     gapWidth: f("number", `${VW}.elevator_badges_gap_width`),

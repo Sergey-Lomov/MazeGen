@@ -221,6 +221,8 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
     gapWidth: 2,
     cornerStyle: "round",
     evenDistribution: false,
+    backing: "individual",
+    startAngle: 0,
     shape: "circle",
     fillColor: 0xf0c900,
     borderColor: 0xf0c900,

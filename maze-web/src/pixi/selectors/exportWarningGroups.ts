@@ -9,7 +9,8 @@ import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
-import { computeElevatorBadgeLayout, elevatorBadgesOverlap } from "../renderers/elevatorBadgeLayout";
+import { computeElevatorBadgeLayout, elevatorBadgesOverlap, formatElevatorBadgeLabel } from "../renderers/elevatorBadgeLayout";
+import { measureText } from "../textFit";
 import { TILE_SIZE } from "../constants";
 import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
 import { oneWayStopLineShape, stopLineOverlapsRoundedRect, type RoundedRectGeometry } from "../renderers/verticalConnectionGeometry";
@@ -392,16 +393,27 @@ const wallsSpecialSplit = group<VectorByWallsSettings>(
   }),
 );
 
-/** `elevator_badges_overlap` / `elevator_badges_too_many`: an Elevator marker's own floor-number
+/** `true` when the unjoined ends of a circular run are closer than its ordinary neighbours. Center
+ * distance is sufficient because all elevator badges in a run have the same radius. */
+function elevatorBadgeEndGapTooSmall(positions: readonly { x: number; y: number }[]): boolean {
+  if (positions.length < 2) return false;
+  const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  const ordinaryGap = Math.min(...positions.slice(1).map((position, i) => distance(positions[i], position)));
+  return distance(positions[0], positions.at(-1)!) < ordinaryGap - 1e-6;
+}
+
+/** `elevator_badges_overlap` / `elevator_badges_merged_end_gap_too_small` /
+ * `elevator_badges_gap_falls_back_to_even_distribution` / `elevator_badges_too_many`: an Elevator marker's own floor-number
  *  badge ring either visually overlaps itself, or has more floors on one side than that side's
  *  single row can hold (GitHub issue #430, #430 follow-ups). Slots under a marker-index plate are
  *  unavailable (GitHub issue #964), exactly as the renderers lay badges out, so a plate shrinks a
  *  side's capacity instead of hiding a badge. One warning total per id, covering
- *  every affected marker; each warning's own `crossFloorTargets` carries every reached floor of
- *  every flagged marker so the hover highlight can show a click-to-navigate bubble per floor. Mirrors
- *  `VerticalConnectionRenderer.drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation. */
+ *  every affected marker. The warning is scoped to the floor on which its marker is rendered;
+ *  aggregation derives that floor from the flagged node rather than listing every destination
+ *  floor the elevator reaches. Mirrors `VerticalConnectionRenderer.drawElevatorBadges`'s own
+ *  `markerRadius`/`badgeRadius` computation. */
 const wallsElevatorBadges = group<VectorByWallsSettings>(
-  "elevatorBadges", ["elevator_badges_overlap", "elevator_badges_too_many"],
+  "elevatorBadges", ["elevator_badges_overlap", "elevator_badges_merged_end_gap_too_small", "elevator_badges_gap_falls_back_to_even_distribution", "elevator_badges_too_many"],
   (env, s) => collect((out) => {
     if (!s.elevatorBadges.enabled) return;
     const verticalPairs = selectVerticalPassagePairSet(env.edges);
@@ -412,27 +424,62 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
     const badgeRadius = s.elevatorBadges.size / 2 + s.elevatorBadges.borderWidth;
     const overlappingNodeIds: number[] = [];
     const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];
+    const tightEndGapNodeIds: number[] = [];
+    const tightEndGapTargets: { nodeId: number; targetFloorIndex: number }[] = [];
+    const fallbackNodeIds: number[] = [];
+    const fallbackTargets: { nodeId: number; targetFloorIndex: number }[] = [];
     const tooManyNodeIds: number[] = [];
     const tooManyTargets: { nodeId: number; targetFloorIndex: number }[] = [];
     for (const marker of markers) {
       if (marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length < 2) continue;
       const count = marker.targetFloorIndices.length;
-      const { positions, overflow } = computeElevatorBadgeLayout({
+      const { positions, overflow, usedEvenDistributionFallback } = computeElevatorBadgeLayout({
         cx: marker.pos[0], cy: marker.pos[1], markerRadius, count, radius: badgeRadius,
         distance: s.elevatorBadges.distance, gap: s.elevatorBadges.gap, placement: s.elevatorBadges.placement,
-        evenDistribution: s.elevatorBadges.evenDistribution, obstacles,
+        evenDistribution: s.elevatorBadges.evenDistribution, obstacles, startAngle: s.elevatorBadges.startAngle,
       });
-      if (elevatorBadgesOverlap(positions, badgeRadius)) {
+      // Merged bands replace the individual bodies. Their only independently colliding content is
+      // the floor label, so retain this warning only for overlapping label ink bounds.
+      const merged = (s.elevatorBadges.backing ?? "individual") !== "individual";
+      const overlaps = merged
+        ? positions.some((position, i) => {
+          const label = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i], s.elevatorBadges.labelType), s.elevatorBadges.textFontWeight, s.elevatorBadges.textSize, s.elevatorBadges.textFontFamily);
+          return positions.slice(i + 1).some((other, j) => {
+            const otherLabel = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i + j + 1], s.elevatorBadges.labelType), s.elevatorBadges.textFontWeight, s.elevatorBadges.textSize, s.elevatorBadges.textFontFamily);
+            return Math.abs(position.x - other.x) < (label.width + otherLabel.width) / 2 && Math.abs(position.y - other.y) < (label.height + otherLabel.height) / 2;
+          });
+        })
+        : elevatorBadgesOverlap(positions, badgeRadius);
+      if (overlaps) {
         overlappingNodeIds.push(marker.fromNode);
-        for (const targetFloorIndex of marker.targetFloorIndices) overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
+        overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
+      }
+      if (
+        (s.elevatorBadges.backing ?? "individual") !== "individual"
+        && s.elevatorBadges.placement === "full_circle"
+        && !s.elevatorBadges.evenDistribution
+        && elevatorBadgeEndGapTooSmall(positions)
+      ) {
+        tightEndGapNodeIds.push(marker.fromNode);
+        tightEndGapTargets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
+      }
+      if (usedEvenDistributionFallback) {
+        fallbackNodeIds.push(marker.fromNode);
+        fallbackTargets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
       }
       if (overflow) {
         tooManyNodeIds.push(marker.fromNode);
-        for (const targetFloorIndex of marker.targetFloorIndices) tooManyTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
+        tooManyTargets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
       }
     }
     if (overlappingNodeIds.length > 0) {
       out.push({ id: "elevator_badges_overlap", key: "elevator_badges_overlap", nodes: overlappingNodeIds, edges: [], crossFloorTargets: overlappingTargets });
+    }
+    if (tightEndGapNodeIds.length > 0) {
+      out.push({ id: "elevator_badges_merged_end_gap_too_small", key: "elevator_badges_merged_end_gap_too_small", nodes: tightEndGapNodeIds, edges: [], crossFloorTargets: tightEndGapTargets });
+    }
+    if (fallbackNodeIds.length > 0) {
+      out.push({ id: "elevator_badges_gap_falls_back_to_even_distribution", key: "elevator_badges_gap_falls_back_to_even_distribution", nodes: fallbackNodeIds, edges: [], crossFloorTargets: fallbackTargets });
     }
     if (tooManyNodeIds.length > 0) {
       out.push({ id: "elevator_badges_too_many", key: "elevator_badges_too_many", nodes: tooManyNodeIds, edges: [], crossFloorTargets: tooManyTargets });

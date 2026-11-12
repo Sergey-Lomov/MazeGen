@@ -66,7 +66,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44, sizeAdaptation: 0 },
     decorativeStairsArrowColor: canvas.floor.default, decorativeStairsArrowSize: 0.75,
     decorativeStairsOneWayArrowColor: DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK, decorativeStairsOneWayArrowSize: 0.75,
-    elevatorBadges: { enabled: false, labelType: "letters", size: DEFAULT_ELEVATOR_BADGE_SIZE, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, borderColor: 0xf0c900, borderWidth: 0, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
+    elevatorBadges: { enabled: false, labelType: "letters", size: DEFAULT_ELEVATOR_BADGE_SIZE, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, backing: "individual", startAngle: 0, shape: "circle", fillColor: 0xf0c900, borderColor: 0xf0c900, borderWidth: 0, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
   },
   split: { nodeColors: [], specialShapes: true },
 };

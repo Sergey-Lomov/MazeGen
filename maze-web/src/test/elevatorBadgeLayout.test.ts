@@ -96,6 +96,45 @@ describe("computeElevatorBadgePositions", () => {
     expect(positions[1].y).toBeCloseTo(0);
   });
 
+  it("full_circle rotates its starting point clockwise by startAngle", () => {
+    const positions = computeElevatorBadgePositions(0, 0, 10, 4, 5, 4, 0, "full_circle", true, undefined, 90);
+    const ring = 10 + 4 + 5;
+    expect(positions[0].x).toBeCloseTo(ring);
+    expect(positions[0].y).toBeCloseTo(0);
+  });
+
+  it("full_circle even distribution keeps floor-slot order when the start angle leaves zero", () => {
+    const input = { cx: 0, cy: 0, markerRadius: 10, count: 4, radius: 5, distance: 4, gap: 0, placement: "full_circle" as const, evenDistribution: true };
+    const atZero = computeElevatorBadgeLayout({ ...input, startAngle: 0 }).positions;
+    const atOne = computeElevatorBadgeLayout({ ...input, startAngle: 1 }).positions;
+    const turn = Math.PI / 180;
+    for (let i = 0; i < input.count; i++) {
+      expect(atOne[i].x).toBeCloseTo(atZero[i].x * Math.cos(turn) - atZero[i].y * Math.sin(turn), 6);
+      expect(atOne[i].y).toBeCloseTo(atZero[i].x * Math.sin(turn) + atZero[i].y * Math.cos(turn), 6);
+    }
+  });
+
+  it("full_circle even distribution keeps its ordered slots continuous at zero around an obstacle", () => {
+    const input = { cx: 0, cy: 0, markerRadius: 10, count: 4, radius: 5, distance: 4, gap: 0, placement: "full_circle" as const, evenDistribution: true };
+    const plate = { x: -40, y: 12, w: 80, h: 30, radius: 4 };
+    const atZero = computeElevatorBadgeLayout({ ...input, startAngle: 0, obstacles: [plate] }).positions;
+    const atOne = computeElevatorBadgeLayout({ ...input, startAngle: 1, obstacles: [plate] }).positions;
+    for (let i = 0; i < input.count; i++) {
+      expect(Math.hypot(atOne[i].x - atZero[i].x, atOne[i].y - atZero[i].y)).toBeLessThan(1);
+    }
+  });
+
+  it("full_circle advances through every start angle even while that angle faces a blocked arc", () => {
+    const input = { cx: 0, cy: 0, markerRadius: 10, count: 4, radius: 5, distance: 4, gap: 0, placement: "full_circle" as const, evenDistribution: true };
+    const plate = { x: -40, y: 12, w: 80, h: 30, radius: 4 };
+    const firstBadgeAt = (startAngle: number) => computeElevatorBadgeLayout({ ...input, startAngle, obstacles: [plate] }).positions[0];
+    const at135 = firstBadgeAt(135);
+    const at180 = firstBadgeAt(180);
+    const at225 = firstBadgeAt(225);
+    expect(Math.hypot(at180.x - at135.x, at180.y - at135.y)).toBeGreaterThan(1);
+    expect(Math.hypot(at225.x - at180.x, at225.y - at180.y)).toBeGreaterThan(1);
+  });
+
   it("full_circle (evenDistribution off) lays badges out as a contiguous arc centered on 12 o'clock, gap apart", () => {
     const positions = computeElevatorBadgePositions(0, 0, 10, 2, 5, 4, 6, "full_circle", false);
     expect(positions).toHaveLength(2);
@@ -138,6 +177,7 @@ describe("computeElevatorBadgePositions", () => {
     expect(positions[0].y).toBeCloseTo(-ring);
     expect(positions[3].x).toBeCloseTo(0);
     expect(positions[3].y).toBeCloseTo(ring);
+    expect(computeElevatorBadgeLayout({ cx: 0, cy: 0, markerRadius: 1, count: 6, radius: 5, distance: 0, gap: 8, placement: "full_circle", evenDistribution: false }).usedEvenDistributionFallback).toBe(true);
   });
 });
 

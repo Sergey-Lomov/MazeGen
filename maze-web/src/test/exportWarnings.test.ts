@@ -411,11 +411,9 @@ describe("computeVectorByWallsWarnings", () => {
       const matches = warnings.filter((w) => w.id === "elevator_badges_overlap");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
-      expect(matches[0].crossFloorTargets).toEqual([
-        { nodeId: 0, targetFloorIndex: 1 },
-        { nodeId: 0, targetFloorIndex: 2 },
-        { nodeId: 0, targetFloorIndex: 3 },
-      ]);
+      // The overlap is rendered around node 0 itself, so the warning lists only that floor;
+      // reaching other floors does not make their elevator marker invalid.
+      expect(matches[0].crossFloorTargets).toEqual([{ nodeId: 0, targetFloorIndex: 0 }]);
     });
 
     it("does not flag when badges is disabled", () => {
@@ -432,6 +430,26 @@ describe("computeVectorByWallsWarnings", () => {
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+    });
+
+    it("flags a merged uneven ring when its closing gap is tighter than its ordinary badge gaps", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.5, backing: "shared", placement: "full_circle", distance: 0, gap: 8, gapWidth: 0, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_merged_end_gap_too_small");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
+    });
+
+    it("warns when an uneven circular layout must fall back to even distribution", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 10, gapWidth: 0, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_gap_falls_back_to_even_distribution");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
     });
 
     it("when only the floor-scoped source node is visible (targets' floors unresolvable), no overlap can be detected", () => {
@@ -464,11 +482,7 @@ describe("computeVectorByWallsWarnings", () => {
       const matches = warnings.filter((w) => w.id === "elevator_badges_too_many");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
-      expect(matches[0].crossFloorTargets).toEqual([
-        { nodeId: 0, targetFloorIndex: 1 },
-        { nodeId: 0, targetFloorIndex: 2 },
-        { nodeId: 0, targetFloorIndex: 3 },
-      ]);
+      expect(matches[0].crossFloorTargets).toEqual([{ nodeId: 0, targetFloorIndex: 0 }]);
     });
 
     it("never fires for full_circle", () => {

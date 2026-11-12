@@ -92,6 +92,12 @@ export type ExportWarningId =
    *  given the current size/distance/placement settings and the number of floors that elevator
    *  reaches. One warning total, covering every affected elevator marker. */
   | "elevator_badges_overlap"
+  /** "Vector by walls" only — an uneven circular layout with merged elevator badges leaves a
+   * smaller gap between its last and first slots than between ordinary neighbouring slots. */
+  | "elevator_badges_merged_end_gap_too_small"
+  /** "Vector by walls" only — an uneven circular layout overflowed its available ring and is
+   * therefore being rendered with even distribution. */
+  | "elevator_badges_gap_falls_back_to_even_distribution"
   /** "Vector by walls" only (GitHub issue #430 follow-ups) — a two-sided elevator badge placement
    *  has more floors on one side than `slotsPerRow` capacity can hold in a single row (after
    *  `evenDistribution`'s own split/fallback rules, see `elevatorBadgesTooMany`) — that side draws

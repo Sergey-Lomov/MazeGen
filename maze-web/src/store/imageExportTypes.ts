@@ -270,6 +270,9 @@ export type ElevatorBadgeLabelType = IndexLabelStyle;
  *  radius `distance` — see `ElevatorBadgeSettings.evenDistribution` for the two ring layouts. */
 export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left" | "top_bottom" | "bottom_top";
 
+/** Whether elevator badge bodies are individual or joined into one backing per contiguous group. */
+export type ElevatorBadgeBacking = "individual" | "shared";
+
 /** "Floor-number badges" (GitHub issue #430) — an independent decorative layer drawn on top of an
  *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative): one small
  *  badge per floor the elevator's fan actually reaches (`VerticalConnectionMarker.
@@ -313,6 +316,10 @@ export interface ElevatorBadgeSettings extends BadgeSettings {
   distance: number;
   gap: number;
   evenDistribution: boolean;
+  /** Replaces individual badge bodies with a shared backing in every placement. */
+  backing?: ElevatorBadgeBacking;
+  /** Clockwise degrees from 12 o'clock for the first circular badge. */
+  startAngle?: number;
 }
 
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges

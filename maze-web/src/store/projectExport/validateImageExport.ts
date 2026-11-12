@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
@@ -270,6 +270,11 @@ export function optElevatorBadgePlacement(obj: Record<string, unknown> | null, k
   return v === "left_right" || v === "right_left" || v === "top_bottom" || v === "bottom_top" || v === "full_circle" ? v : fallback;
 }
 
+export function optElevatorBadgeBacking(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgeBacking): ElevatorBadgeBacking {
+  const v = obj?.[key];
+  return v === "individual" || v === "shared" ? v : fallback;
+}
+
 export function optElevatorBadgeFontWeight(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgeFontWeight): ElevatorBadgeFontWeight {
   const v = obj?.[key];
   return v === "regular" || v === "bold" ? v : fallback;
@@ -289,9 +294,11 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
     ...readBadgeSettings(obj, fallback),
     enabled: optBool(obj, "enabled", fallback.enabled),
     placement: optElevatorBadgePlacement(obj, "placement", fallback.placement),
-    distance: optNumber(obj, "distance", fallback.distance),
+    distance: Math.max(0, optNumber(obj, "distance", fallback.distance)),
     gap: optNumber(obj, "gap", fallback.gap),
     evenDistribution: optBool(obj, "evenDistribution", fallback.evenDistribution),
+    backing: optElevatorBadgeBacking(obj, "backing", fallback.backing ?? "individual"),
+    startAngle: Math.max(0, Math.min(359, optNumber(obj, "startAngle", fallback.startAngle ?? 0))),
   };
 }
 
