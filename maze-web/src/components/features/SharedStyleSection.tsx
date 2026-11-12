@@ -19,7 +19,11 @@ import { MarkerLayoutRows } from "./MarkerLayoutRows";
 import type { MarkerLayoutMode } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import type { LinkIconVisibility, MarkerLayoutSettingsFields, SharedStyleSourceFields } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
+import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
+
+/** The texts the Shared style font reaches: what its text-size Auto-fit fits (floor labels have an independent style). */
+const SHARED_TEXT_KINDS: TextFitKind[] = ["start", "finish", "elevator", "teleport", "markerIndex"];
 
 /** Explains the parameter-link system to end users (GitHub issue #669) — plain-language only, no
  *  internal terminology (driving/dependent link, `ParamModifier`, etc.) and no mention of
@@ -183,7 +187,7 @@ export function SharedStyleSection<P extends LinkPath>({
       </div>
       <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
       <div style={styles.group}>
-        <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} />
+        <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} warningKinds={SHARED_TEXT_KINDS} />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_text_size"]()}
           value={settings.markerTextSize}

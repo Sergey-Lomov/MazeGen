@@ -3,16 +3,19 @@ import type { LinkPath } from "../../store/parameterLinkSchema";
 import { DEFAULT_LABEL_FONT, labelFontEquals, type LabelFont } from "../../pixi/renderers/fontChoice";
 import { isLabelFontLoaded, loadLabelFont } from "../../pixi/renderers/labelFont";
 import { LinkedFontRow } from "./LinkedRows";
+import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
 
 /** The one link-aware font control for every canvas text style: a row whose button shows the current
  *  font (family and weight, GitHub issue #973) and opens `FontPickerPanel`. Every text settings group
  *  renders this row and passes only its value, setter and link target, so the loading and preview
  *  behavior lives here once. */
-export function LabelFontRow<P extends LinkPath>({ value, onChange, linkTarget }: {
+export function LabelFontRow<P extends LinkPath>({ value, onChange, linkTarget, warningKinds }: {
   value: LabelFont | undefined;
   onChange: (value: LabelFont) => void;
   linkTarget: P | null;
+  /** The canvas texts this font drives (GitHub issue #971): the picker shows their overflow warnings. */
+  warningKinds?: TextFitKind[];
 }) {
   const font = value ?? DEFAULT_LABEL_FONT;
   // A preview tick for a font that is still loading must not land after a newer pick (arrow keys
@@ -36,5 +39,5 @@ export function LabelFontRow<P extends LinkPath>({ value, onChange, linkTarget }
     }
     void loadLabelFont(next).then(() => { if (request === latestRequest.current) onChange(next); });
   };
-  return <LinkedFontRow label={m["image_export.label_font_family"]()} font={font} onChange={commit} onOpen={() => { openFont.current = font; }} linkTarget={linkTarget} />;
+  return <LinkedFontRow label={m["image_export.label_font_family"]()} font={font} onChange={commit} onOpen={() => { openFont.current = font; }} linkTarget={linkTarget} warningKinds={warningKinds} />;
 }

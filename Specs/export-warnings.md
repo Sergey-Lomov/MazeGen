@@ -73,6 +73,9 @@ that and that every emitted id is declared.
   identity of every group's list): while every group hits, the same list object comes back, so a settings edit that touches no group costs
   no merge and gives the panel no new list to re-render on. The topology list is kept the same way. A returned list is shared: callers
   must not mutate it. The tracker keeps at most 4096 slots, least recently used first, and drops an evicted slot's counters with it.
+- **Single-group entries.** `computeTeleportConnectorWarningsAcrossFloors` (the `teleportConnectors` group) and
+  `computeTextOverflowWarningsAcrossFloors` (GitHub issue #971, the `textOverflow` group of either mode, used by the font picker) run
+  one group through the same per-group slots as the full pass, so a consumer that needs one family of warnings computes no other group.
 - **Adding a warning.** Put its id in exactly one group (a new group when no existing one reads the same settings fields), keep the group's
   `ids` list complete, and read settings only through the group's `settings` argument. Tests: `exportWarningCache.test.ts` (partition,
   warm-vs-cold equality under paranoid mode, recomputation).
@@ -194,6 +197,10 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `marker_index_text_overflow` (GitHub issue #725) — a marker-index label does not fit its fixed
   `width` x `height` plate (same ink-outline rule and `textMargin` as the other text overflow
   warnings, against the rectangle). Only when `markerIndex.enabled`; hover highlights the plate cells.
+- `floor_label_text_overflow` — a floor label does not fit its backplate (same ink-outline rule and
+  `textMargin`). The label has no node or cell to highlight, so the warning carries the affected floors
+  in `ExportWarning.floors` (merged across floors) and its bubble shows a floor badge per floor; there
+  is no hover highlight.
 - `marker_index_covers_stop_line` (GitHub issue #744) — a marker-index plate, border included,
   overlaps the stop line (wall tick) of a one-way vertical passage marker on the same floor. The
   plate body draws above the markers, so the overlap hides part of the line and that end of the

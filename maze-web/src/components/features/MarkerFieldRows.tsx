@@ -129,7 +129,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
 }): React.ReactElement {
   return (
     <>
-      <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={linkTargets.textFont ?? null} />
+      <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={linkTargets.textFont ?? null} warningKinds={autoFitKind && [autoFitKind]} />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_text_size"]()}
         value={settings.textSize}

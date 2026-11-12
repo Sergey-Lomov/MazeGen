@@ -363,6 +363,8 @@ describe("export floor labels", () => {
       fieldOf("square", { shape: "rect", cols: 4, rows: 4 }), settings, null, null,
     );
     expect(warnings.map((warning) => warning.id)).toContain("floor_label_text_overflow");
+    // The floor label has no node or cell to mark, so the warning names the floors itself for its badges.
+    expect(warnings.find((warning) => warning.id === "floor_label_text_overflow")?.floors).toEqual([0, 1]);
   });
 
   it("uses the widest and tallest floor label when fitting the backplate", () => {

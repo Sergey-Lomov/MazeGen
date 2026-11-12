@@ -73,7 +73,7 @@ describe("ColorSwatch", () => {
     const title = m["image_export.vector_by_walls.section_warnings"]({ count: "0" });
     expect(screen.getByText(title)).toBeInTheDocument();
     fireEvent.click(screen.getByText(title));
-    expect(screen.getByText(m["color_picker.no_export_warnings"]())).toBeInTheDocument();
+    expect(screen.getByText(m["picker.no_export_warnings"]())).toBeInTheDocument();
     act(() => useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode }));
   });
 
