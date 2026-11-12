@@ -437,6 +437,10 @@ impl Tessellation for RadialTessellation {
     type CellId = RadialPoint;
     type Face = RadialFace;
 
+    fn cells_vary_in_size(&self) -> bool {
+        true
+    }
+
     fn is_valid_cell(&self, cell: RadialPoint) -> bool {
         if cell.ring == 0 {
             return cell.index == 0;

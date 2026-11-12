@@ -65,7 +65,7 @@ fn one_way_forbidden_by_placement_rules_produces_a_bidirectional_passage() {
         field.tessellation(),
         &BTreeMap::from([(
             "one_way".to_string(),
-            BTreeMap::from([("cell".to_string(), false)]),
+            BTreeMap::from([("square".to_string(), false)]),
         )]),
     )
     .expect("known element and cell type must resolve");
@@ -96,7 +96,7 @@ fn one_way_forbidden_by_placement_rules_produces_a_bidirectional_passage() {
     let tape = log.finish();
     let skipped: Vec<_> = tape
         .iter()
-        .filter(|event| matches!(event, VertexBasedEvent::ElementRollSkipped { element, cell_type, .. } if element == "one_way" && cell_type == "cell"))
+        .filter(|event| matches!(event, VertexBasedEvent::ElementRollSkipped { element, cell_type, .. } if element == "one_way" && cell_type == "square"))
         .collect();
     assert_eq!(skipped.len(), 2);
 }

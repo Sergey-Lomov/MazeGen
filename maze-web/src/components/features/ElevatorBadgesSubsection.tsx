@@ -36,7 +36,9 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
     cornerStyle: P | null;
     size: P | null;
     distance: P | null;
+    startAngle: P | null;
     evenDistribution: P | null;
+    backing: P | null;
     gap: P | null;
     gapWidth: P | null;
     fillColor: P | null;
@@ -64,6 +66,7 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
   onToggle: (id: string) => void;
 }) {
   const badgesOn = useGate("elevatorBadgesOn");
+  const circularLayout = useGate("elevatorBadgeCircle");
   return (
     <CollapsibleSubGroup id="vertical_elevator_badges" label={m["image_export.vector_by_walls.elevator_badges"]()} isExpanded={isExpanded} onToggle={onToggle}>
       <LinkedToggleRow
@@ -93,11 +96,22 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
               value={settings.distance}
               onChange={(distance) => onChange({ distance })}
               min={0}
-              max={30}
+              max={10}
+              preciseMax={null}
               step={1}
               format={(v) => String(v)}
               linkTarget={linkTargets.distance}
             />
+            {circularLayout && <LinkedSliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_start_angle"]()}
+              value={settings.startAngle ?? 0}
+              onChange={(startAngle) => onChange({ startAngle })}
+              min={0}
+              max={359}
+              step={1}
+              format={(v) => `${v}°`}
+              linkTarget={linkTargets.startAngle}
+            />}
             <LinkedToggleRow
               label={m["image_export.vector_by_walls.elevator_badges_even_distribution"]()}
               checked={settings.evenDistribution}
@@ -108,8 +122,10 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
               label={m["image_export.vector_by_walls.elevator_badges_gap"]()}
               value={settings.gap}
               onChange={(gap) => onChange({ gap })}
-              min={0}
-              max={20}
+              min={-10}
+              max={10}
+              preciseMin={-10}
+              preciseMax={null}
               step={1}
               format={(v) => String(v)}
               linkTarget={linkTargets.gap}
@@ -140,6 +156,12 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
           </CollapsibleSubGroup>
 
           <CollapsibleSubGroup id="elevator_badges_backplate" label={m["image_export.vector_by_walls.elevator_badges_subsection_backplate"]()} isExpanded={isExpanded} onToggle={onToggle}>
+            <LinkedToggleRow
+              label={m["image_export.vector_by_walls.elevator_badges_backing"]()}
+              checked={(settings.backing ?? "individual") !== "individual"}
+              onChange={(merged) => onChange({ backing: merged ? "shared" : "individual" })}
+              linkTarget={linkTargets.backing}
+            />
             <MarkerAppearanceRows
               settings={settings}
               onChange={(patch) => {

@@ -124,6 +124,7 @@ const FORMAT_BY_TYPE: Record<ParamType, (value: unknown) => string> = {
   verticalArrowStyle: formatVerticalArrowStyle,
   teleportCurveDirection: formatTeleportCurveDirection,
   indexLabelStyle: formatElevatorBadgesLabelType,
+  elevatorBadgeBacking: (value) => value === "shared" ? m["image_export.vector_by_walls.elevator_badges_backing_shared"]() : m["image_export.vector_by_walls.elevator_badges_backing_individual"](),
   lineStyle: formatLineStyle,
   number: formatNumber,
   color: formatColor,

@@ -49,9 +49,16 @@ const HEX_LOCAL_TO_CANONICAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("hexagon")];
+
 impl Tessellation for HexTessellation {
     type CellId = HexPoint;
     type Face = HexFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: HexPoint) -> bool {
         true

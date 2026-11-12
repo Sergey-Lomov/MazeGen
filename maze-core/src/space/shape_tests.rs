@@ -671,7 +671,7 @@ fn cell_type_contract_holds_for_every_tessellation() {
 }
 
 #[test]
-fn single_type_tessellations_use_the_default_type() {
+fn single_type_tessellations_use_the_only_type() {
     assert_eq!(SquareTessellation.cell_types().len(), 1);
     assert_eq!(
         SquareTessellation
@@ -679,6 +679,24 @@ fn single_type_tessellations_use_the_default_type() {
             .index(),
         0
     );
+}
+
+#[test]
+fn only_voronoi_and_radial_cells_vary_in_size() {
+    assert!(!SquareTessellation.cells_vary_in_size());
+    assert!(!SquareOctagonTessellation.cells_vary_in_size());
+    assert!(!BrickTessellation.cells_vary_in_size());
+    for (tessellation, _) in radial_cases() {
+        assert!(tessellation.cells_vary_in_size());
+    }
+}
+
+#[test]
+fn uniform_polygon_tessellations_name_their_only_type_by_the_polygon() {
+    let keys = |types: &[CellType]| types.iter().map(CellType::key).collect::<Vec<_>>();
+    assert_eq!(keys(SquareTessellation.cell_types()), ["square"]);
+    assert_eq!(keys(HexTessellation.cell_types()), ["hexagon"]);
+    assert_eq!(keys(TriTessellation.cell_types()), ["triangle"]);
 }
 
 #[test]

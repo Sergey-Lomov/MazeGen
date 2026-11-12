@@ -12,7 +12,7 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
 // arrow side-by-side offset are only observable through the exact coordinates each draw call
 // receives, unlike most other mocked-pixi tests in this repo that only assert *that* something was
 // drawn.
-type Call = { method: "circle" | "poly" | "roundPoly" | "roundRect" | "moveTo" | "lineTo"; args: number[] };
+type Call = { method: "circle" | "poly" | "roundPoly" | "roundRect" | "moveTo" | "lineTo" | "bezierCurveTo"; args: number[] };
 type StrokeCall = { width?: number; color?: number; cap?: string; join?: string; alignment?: number };
 interface FakeGraphics {
   clear: () => FakeGraphics;
@@ -24,6 +24,8 @@ interface FakeGraphics {
   rect: (x: number, y: number, w: number, h: number) => FakeGraphics;
   moveTo: (x: number, y: number) => FakeGraphics;
   lineTo: (x: number, y: number) => FakeGraphics;
+  bezierCurveTo: (cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number) => FakeGraphics;
+  closePath: () => FakeGraphics;
   fill: (arg: unknown) => FakeGraphics;
   stroke: (arg: StrokeCall) => FakeGraphics;
   strokeCalls: StrokeCall[];
@@ -56,6 +58,8 @@ function installFakeGraphics(target: FakeGraphics): void {
   target.rect = () => target;
   target.moveTo = (x, y) => { target.calls.push({ method: "moveTo", args: [x, y] }); return target; };
   target.lineTo = (x, y) => { target.calls.push({ method: "lineTo", args: [x, y] }); return target; };
+  target.bezierCurveTo = (cp1x, cp1y, cp2x, cp2y, x, y) => { target.calls.push({ method: "bezierCurveTo", args: [cp1x, cp1y, cp2x, cp2y, x, y] }); return target; };
+  target.closePath = () => target;
   target.fillCalls = [];
   target.fill = (arg) => { target.fillCalls.push(arg as number); return target; };
   target.strokeCalls = [];
@@ -990,6 +994,53 @@ describe("VerticalConnectionRenderer", () => {
       expect(graphicsChildren).toHaveLength(6); // 3 gap rings + 3 bodies
       expect(textChildren).toHaveLength(3);
       expect(textChildren.map((t) => t.text)).toEqual(["1", "2", "5"]); // formatElevatorBadgeLabel, 1-based
+    });
+
+    it("draws a merged circular backing as one ring, without circles at former badge slots", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({
+        elevatorBadges: {
+          ...baseStyle().elevatorBadges,
+          enabled: true,
+          backing: "shared",
+          placement: "full_circle",
+          evenDistribution: true,
+          gapWidth: 2,
+        },
+      });
+      render(renderer, { markers: [marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1, 2] })], style });
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
+      const graphics = badgeLayer.children.filter((c) => !("text" in c)) as FakeGraphics[];
+      const labels = badgeLayer.children.filter((c) => "text" in c);
+      expect(graphics).toHaveLength(1);
+      expect(labels).toHaveLength(3);
+      // One stroke for the shared gap ring and one for the shared backing: no circle per slot.
+      expect(graphics[0].calls.filter((call) => call.method === "circle")).toHaveLength(2);
+    });
+
+    it("closes an uneven merged run when its end slots become nearer than ordinary neighbours", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({
+        elevatorBadges: {
+          ...baseStyle().elevatorBadges,
+          enabled: true,
+          backing: "shared",
+          placement: "full_circle",
+          evenDistribution: false,
+          // Exact input permits this value although the slider ends at 10. Three slots then span
+          // most of the ring, leaving their end slots as neighbours across its final short gap.
+          gap: 16,
+          gapWidth: 0,
+        },
+      });
+      render(renderer, { markers: [marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1, 2] })], style });
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
+      const graphics = badgeLayer.children.filter((c) => !("text" in c)) as FakeGraphics[];
+      // With no border or gap, a closed ring needs one fill stroke only, not an open four-arc
+      // contour with an accidental seam.
+      expect(graphics[0].calls.filter((call) => call.method === "circle")).toHaveLength(1);
     });
 
     it("shares one font size across every elevator's badges in the same render pass, scaled down only as far as the widest label needs", () => {

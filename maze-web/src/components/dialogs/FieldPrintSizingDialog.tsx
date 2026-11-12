@@ -14,12 +14,14 @@ import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from ".
 import { isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { printSizingFailure, type PrintSizingAnswer, type PrintSizingFloor, type PrintSizingFloorAnswer, type PrintSizingRequest } from "../../pixi/printSizingJob";
 import { startPrintSizing } from "../../wasm/workerClients";
+import { getTessellationCellTypes } from "../../wasm/mazeService";
 import type { WorkerJob } from "../../wasm/workerPool";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
 import { cellTypeLabel } from "../../i18n/cellTypeLabel";
 import { CellSizesSection, typeBreakdown } from "./CellSizesSection";
+import { PLACEHOLDER, ValueSkeleton, VALUE_SLOT, withValueNode } from "./valueSlot";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
 import { NumberInput } from "../NumberInput";
@@ -37,6 +39,9 @@ interface Props {
   ) => void;
   onClose: () => void;
 }
+
+/** Pause in typing the cell size after which it is committed and calculated. */
+const CELL_SIZE_IDLE_MS = 1000;
 
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
@@ -57,6 +62,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const customHeightMm = parseNumber(customHeightText);
   // What is typed in the cell size field until it is committed (on blur or on confirming the dialog).
   const cellSizeDraft = useRef<string | null>(null);
+  const cellSizeIdleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(cellSizeIdleTimer.current), []);
   const cellSizeMm = parseNumber(cellSizeText);
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);
@@ -94,7 +101,17 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const showProgress = useDelayedIndicator(calculation.status === "pending");
   const lastAnswer = useRef<PrintSizingAnswer | null>(null);
   if (answer) lastAnswer.current = answer;
-  const shownAnswer = answer ?? lastAnswer.current;
+  const shownAnswer = calculation.status === "failed" ? null : answer ?? lastAnswer.current;
+  // Every cell type of the tessellation, known before any calculation: the rows the cell sizes
+  // will have, and whether core says the cells of a type vary in size. Cheap: no cells are sent.
+  const cellTypes = useMemo(() => {
+    try {
+      const { keys, cells_vary_in_size } = getTessellationCellTypes({ tessellation: config.tessellation, points: [] });
+      return { keys, cellsVary: cells_vary_in_size };
+    } catch {
+      return { keys: [], cellsVary: false };
+    }
+  }, [config.tessellation]);
   const result = answer?.result ?? null;
   const shownResult = shownAnswer?.result ?? null;
   const floorSummaries = useMemo(
@@ -123,6 +140,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
    * last committed one, a value under the minimum is raised to it. */
   function commitCellSize(text: string): string {
     cellSizeDraft.current = null;
+    clearTimeout(cellSizeIdleTimer.current);
     const committed = normalizeNumberCommit(text, cellSizeText, { min: MIN_PRINT_CELL_SIZE_MM }).value;
     setCellSizeText(committed);
     return committed;
@@ -188,13 +206,20 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
             {TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
           </span>
           <Inline gap="elementsGap">
-            {/* Typing only buffers the value; the preview follows when the field is left. */}
+            {/* Typing buffers the value; the preview follows when the field is left or typing pauses. */}
             <NumberInput
               name="cell-size"
               value={cellSizeText}
               min={MIN_PRINT_CELL_SIZE_MM}
               style={styles.input}
-              onChange={(text) => { cellSizeDraft.current = text; }}
+              onChange={(text) => {
+                cellSizeDraft.current = text;
+                clearTimeout(cellSizeIdleTimer.current);
+                // A value that is still being typed (unreadable, under the minimum) waits for the field to be left.
+                const typed = parseNumber(text);
+                if (!(typed >= MIN_PRINT_CELL_SIZE_MM)) return;
+                cellSizeIdleTimer.current = setTimeout(() => commitCellSize(text), CELL_SIZE_IDLE_MS);
+              }}
               onBlurCommit={commitCellSize}
             />
             <span style={typography.caption}>mm</span>
@@ -209,14 +234,11 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           </Stack>
         )}
 
-        {showProgress ? (<>
-          <div style={styles.divider} />
-          <CalculationProgress />
-        </>) : calculation.status === "failed" ? (<>
-          <div style={styles.divider} />
-          <span style={styles.error}>{m["field.print_sizing.failed"]({ reason: calculation.message })}</span>
-        </>) : shownAnswer === null ? null : (<>
-        <CellSizesSection sizes={cellTypeSizes} tessellationKind={config.tessellation.kind} />
+        {/* The layout of the results is the same before, during and after the calculation (GitHub issue
+            #961): numbers it has not produced yet are `—`, numbers being recalculated give way to
+            indicators, and the progress has a slot of its own. */}
+        <CalculationProgress active={showProgress} />
+        <CellSizesSection sizes={cellTypeSizes} tessellationKind={config.tessellation.kind} placeholderTypes={cellTypes.keys} cellsVary={cellTypes.cellsVary} loading={showProgress} />
 
         <div style={styles.divider} />
         <div style={styles.result}>
@@ -228,17 +250,24 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                   <div key={id} style={styles.floorRow}>
                     <span>{title}</span>
                     <span>{info.shape}</span>
-                    <span>{info.size}</span>
-                    <span>{formatCellCount(floorCellCounts.get(id) ?? 0)}</span>
+                    <span>{showProgress ? <ValueSkeleton width="3.5em" /> : info.size}</span>
+                    <span>{showProgress ? <ValueSkeleton width="4em" /> : shownAnswer ? formatCellCount(floorCellCounts.get(id) ?? 0) : PLACEHOLDER}</span>
                   </div>
                 ))}
               </div>
-              <div style={styles.floorTotal}>{totalText(
+              <div style={styles.floorTotal}>{showProgress || !shownAnswer ? withValueNode(
+                m["field.print_sizing.floor_total"]({ count: VALUE_SLOT }), showProgress ? <ValueSkeleton width="5em" /> : PLACEHOLDER,
+              ) : totalText(
                 "field.print_sizing.floor_total", "field.print_sizing.floor_total_types", formatCellCount(sumOf(floorCellCounts)), cellTypeSizes,
               )}</div>
               {answer && (!shownResult || hasInvalidTargetFloor) && (
-                <span style={styles.error}>{failureText(input)}</span>
+                <WarningBubble severity="critical" message={failureText(input)} />
               )}
+            </Stack>
+          ) : showProgress ? (
+            <Stack gap="elementsGap">
+              <span style={typography.body}>{resultPlaceholder(config, <ValueSkeleton width="3em" />)}</span>
+              <span style={typography.body}>{withValueNode(m["field.print_sizing.result_cell_count"]({ count: VALUE_SLOT }), <ValueSkeleton width="3em" />)}</span>
             </Stack>
           ) : shownResult ? (
             <Stack gap="elementsGap">
@@ -247,16 +276,27 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                 "field.print_sizing.result_cell_count", "field.print_sizing.result_cell_count_types", String(sumOf(floorCellCounts)), cellTypeSizes,
               )}</span>
             </Stack>
-          ) : answer && (
-            <span style={styles.error}>{failureText(input)}</span>
+          ) : answer ? (
+            <WarningBubble severity="critical" message={failureText(input)} />
+          ) : (
+            <Stack gap="elementsGap">
+              <span style={typography.body}>{resultPlaceholder(config, PLACEHOLDER)}</span>
+              <span style={typography.body}>{withValueNode(m["field.print_sizing.result_cell_count"]({ count: VALUE_SLOT }), PLACEHOLDER)}</span>
+            </Stack>
           )}
         </div>
-        {searchLimit !== null && (
+        {calculation.status === "failed" && (
+          <div style={styles.warnings}>
+            <WarningBubble severity="critical" message={m["field.print_sizing.failed"]({ reason: calculation.message })} />
+          </div>
+        )}
+        {/* Warnings belong to the answer on screen, so they wait for the one being calculated. */}
+        {!showProgress && searchLimit !== null && (
           <div style={styles.warnings}>
             <WarningBubble message={m["field.print_sizing.limit_reached"]({ limit: String(searchLimit) })} />
           </div>
         )}
-        {smallSideTypes.length > 0 && (
+        {!showProgress && smallSideTypes.length > 0 && (
           <div style={styles.warnings}>
             <WarningBubble
               message={m["field.print_sizing.warning_small_side"]({
@@ -268,7 +308,6 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
             />
           </div>
         )}
-        </>)}
       </Stack>
 
       <div style={styles.footer}>
@@ -289,22 +328,28 @@ function parseNumber(value: string): number {
   return value.trim() === "" ? Number.NaN : Number(value);
 }
 
-export function configSizeDescription(config: FieldConfig): string {
+/** `sizeOverride` replaces the numbers of the shape, for a result that is not calculated yet. */
+export function configSizeDescription(config: FieldConfig, sizeOverride?: string): string {
   const { shape } = config;
   switch (shape.shape) {
     case "rect":
     case "cylinder":
     case "torus":
-    case "parallelogram": return m["field.print_sizing.result_size"]({ size: `${shape.cols} × ${shape.rows}` });
+    case "parallelogram": return m["field.print_sizing.result_size"]({ size: sizeOverride ?? `${shape.cols} × ${shape.rows}` });
     case "circle":
-    case "hexagon": return m["field.print_sizing.result_radius"]({ size: String(shape.radius) });
+    case "hexagon": return m["field.print_sizing.result_radius"]({ size: sizeOverride ?? String(shape.radius) });
     case "triangle":
     case "tetrahedron":
     case "octahedron":
-    case "icosahedron": return m["field.print_sizing.result_side"]({ size: String(shape.side) });
-    case "box": return m["field.print_sizing.result_size"]({ size: `${shape.width} × ${shape.height} × ${shape.depth}` });
+    case "icosahedron": return m["field.print_sizing.result_side"]({ size: sizeOverride ?? String(shape.side) });
+    case "box": return m["field.print_sizing.result_size"]({ size: sizeOverride ?? `${shape.width} × ${shape.height} × ${shape.depth}` });
     case "custom": return "";
   }
+}
+
+/** The result line of the shape being sized with `node` in place of its numbers. */
+function resultPlaceholder(config: FieldConfig, node: React.ReactNode): React.ReactNode {
+  return withValueNode(m["field.print_sizing.result"]({ description: configSizeDescription(config, VALUE_SLOT) }), node);
 }
 
 interface FloorPrintInfo {
@@ -328,11 +373,11 @@ function printSizingFloorOf(id: string, field: FloorFieldConfig | undefined): Pr
 /** `answer` is missing while the calculation is pending. */
 function floorPrintInfo(field: FloorFieldConfig | undefined, answer: PrintSizingFloorAnswer | undefined): FloorPrintInfo {
   if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.fieldConfig)) {
-    return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", isValid: true };
+    return { shape: m["field.print_sizing.floor_non_standard"](), size: PLACEHOLDER, isValid: true };
   }
   const result = answer?.result;
   if (!result || !isPredefinedFieldConfig(result.config)) {
-    return { shape: printFieldShapeLabel(field.fieldConfig), size: "—", isValid: false };
+    return { shape: printFieldShapeLabel(field.fieldConfig), size: PLACEHOLDER, isValid: false };
   }
   return { shape: printFieldShapeLabel(result.config), size: printFieldSizeLabel(result.config), isValid: true };
 }
@@ -346,15 +391,17 @@ function failureText(input: PrintFieldSizingInput): string {
   }
 }
 
-/** Stands in for the results while the worker calculates. */
-function CalculationProgress() {
+/** The slot above the results: an indeterminate bar while the worker calculates, an empty slot of
+ * the same height otherwise, so showing it moves nothing. */
+function CalculationProgress({ active }: { active: boolean }) {
   const label = m["field.print_sizing.calculating"]();
   return (
-    <div style={styles.progress} aria-live="polite" aria-busy="true">
-      <span role="status" style={typography.body}>{label}</span>
-      <div role="progressbar" aria-label={label} style={styles.progressTrack}>
-        <div className="loading-progress-indeterminate" style={styles.progressBar} />
-      </div>
+    <div style={styles.progressSlot} aria-live="polite" aria-busy={active}>
+      {active && (
+        <div role="progressbar" aria-label={label} style={styles.progressTrack}>
+          <div className="loading-progress-indeterminate" style={styles.progressBar} />
+        </div>
+      )}
     </div>
   );
 }
@@ -418,9 +465,8 @@ const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },
   input: { ...sharedStyles.input, width: 56, boxSizing: "border-box" },
   result: { padding: 0 },
-  error: { ...typography.body, color: ui.text.error },
   sectionLabel: typography.body,
-  progress: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  progressSlot: { height: 4 },
   progressTrack: { width: "100%", height: 4, overflow: "hidden", borderRadius: 2, background: ui.bg.input },
   progressBar: { width: "100%", height: "100%", borderRadius: "inherit", background: ui.accent.base, transformOrigin: "left", transform: "scaleX(0.3)" },
   divider: { borderTop: `1px solid ${ui.border.default}` },

@@ -76,6 +76,58 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     expect(screen.getByRole("button", { name: m["common.confirm"]() })).not.toBeDisabled();
   });
 
+  it("lays out the results before the answer with — for the numbers and the labels kept (GitHub issue #961)", async () => {
+    renderDialog();
+
+    expect(screen.getByText(/Field size: — cells|Размер поля: — клеток/)).toBeInTheDocument();
+    expect(screen.getByText(/Cell count: —|Количество ячеек: —/)).toBeInTheDocument();
+    expect(screen.getByText(m["field.print_sizing.cell_sizes_title"]())).toBeInTheDocument();
+    expect(screen.getByText(m["generation.cell_type.square"]())).toBeInTheDocument();
+
+    await act(async () => started[0].resolve());
+
+    expect(screen.queryAllByText(/—/)).toHaveLength(0);
+    expect(screen.getByText(m["field.print_sizing.cell_sizes_title"]())).toBeInTheDocument();
+    expect(screen.getByText(m["generation.cell_type.square"]())).toBeInTheDocument();
+  });
+
+  it("keeps the floor table and its total in place before the answer and while recalculating", async () => {
+    render(<FieldPrintSizingDialog config={config} hasMultipleFloors onApply={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getByText(/Total: —|Итого: —/)).toBeInTheDocument();
+
+    await act(async () => started[0].resolve());
+    expect(screen.queryByText(/Total: —|Итого: —/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Total:|Итого:/)).toBeInTheDocument();
+
+    fireEvent.change(cellSizeInput(), { target: { value: "12" } });
+    fireEvent.blur(cellSizeInput());
+    await screen.findByRole("progressbar");
+    expect(screen.getByText(/Total:|Итого:/)).toBeInTheDocument();
+    expect(screen.getAllByTestId("value-skeleton").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("explains the cell size at once on a tessellation whose cells vary in size, without rows", () => {
+    const radial = fieldOf("radial", { shape: "circle", radius: 4 }) as PredefinedFieldConfig;
+    render(<FieldPrintSizingDialog config={radial} hasMultipleFloors={false} onApply={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getByText(/thickness of a ring|толщина кольца/)).toBeInTheDocument();
+    expect(screen.queryByText(m["field.print_sizing.cell_sizes_title"]())).not.toBeInTheDocument();
+  });
+
+  it("replaces the numbers with indicators once the progress shows", async () => {
+    renderDialog();
+    await act(async () => started[0].resolve());
+    expect(screen.queryAllByTestId("value-skeleton")).toHaveLength(0);
+
+    fireEvent.change(cellSizeInput(), { target: { value: "12" } });
+    fireEvent.blur(cellSizeInput());
+    await screen.findByRole("progressbar");
+
+    expect(screen.getAllByTestId("value-skeleton").length).toBeGreaterThan(0);
+    expect(screen.getByText(m["field.print_sizing.cell_sizes_title"]())).toBeInTheDocument();
+  });
+
   it("cancels the running calculation and starts a new one when a parameter changes", async () => {
     renderDialog();
 
@@ -86,6 +138,51 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     expect(started[0].cancel).toHaveBeenCalledTimes(1);
     expect(started[1].cancel).not.toHaveBeenCalled();
     expect(started[1].request.input.cellSizeMm).toBe(12);
+  });
+
+  it("calculates the typed cell size once typing pauses for a second, without leaving the field", async () => {
+    vi.useFakeTimers();
+    try {
+      renderDialog();
+      fireEvent.change(cellSizeInput(), { target: { value: "1" } });
+      act(() => { vi.advanceTimersByTime(900); });
+      fireEvent.change(cellSizeInput(), { target: { value: "12" } });
+      act(() => { vi.advanceTimersByTime(900); });
+      expect(started).toHaveLength(1);
+
+      act(() => { vi.advanceTimersByTime(100); });
+      expect(started).toHaveLength(2);
+      expect(started[1].request.input.cellSizeMm).toBe(12);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves a value that is still being typed (under the minimum) to the blur, not the pause", () => {
+    vi.useFakeTimers();
+    try {
+      renderDialog();
+      fireEvent.change(cellSizeInput(), { target: { value: "1" } });
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(started).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("commits at once on blur and does not commit again when the pause elapses", () => {
+    vi.useFakeTimers();
+    try {
+      renderDialog();
+      fireEvent.change(cellSizeInput(), { target: { value: "12" } });
+      fireEvent.blur(cellSizeInput());
+      expect(started).toHaveLength(2);
+
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(started).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not show the result of a superseded calculation", async () => {

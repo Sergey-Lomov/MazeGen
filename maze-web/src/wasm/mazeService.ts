@@ -366,6 +366,8 @@ export function getTessellationShapes(config: { tessellation: WasmTessellationCo
 export interface TessellationCellTypes {
   keys: string[];
   point_types: string[];
+  /** The cells of one type differ in size or shape (Voronoi, the rings of a radial field). */
+  cells_vary_in_size: boolean;
 }
 
 /// Cell types of the tessellation instance `config.tessellation` builds (GitHub issue #822): every

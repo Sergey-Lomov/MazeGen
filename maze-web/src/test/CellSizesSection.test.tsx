@@ -13,9 +13,52 @@ describe("CellSizesSection", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("describes a single type in one line with one decimal", () => {
+  it("keeps the layout with — for the numbers when only the cell types are known", () => {
+    render(<CellSizesSection sizes={[]} tessellationKind="square" placeholderTypes={["triangle", "hexagon"]} />);
+    expect(screen.getByText("Triangle")).toBeInTheDocument();
+    expect(screen.getByText("Hexagon")).toBeInTheDocument();
+    expect(screen.getAllByText(/Side — mm|Сторона — мм/)).toHaveLength(2);
+    expect(screen.getAllByText(/Diameter — mm|Диаметр — мм/)).toHaveLength(2);
+  });
+
+  it("replaces the numbers with indicators while loading, keeping the type names", () => {
+    render(<CellSizesSection sizes={[type("triangle"), type("hexagon")]} tessellationKind="square" placeholderTypes={["triangle", "hexagon"]} loading />);
+    expect(screen.getByText("Triangle")).toBeInTheDocument();
+    expect(screen.getAllByTestId("value-skeleton")).toHaveLength(4);
+    expect(screen.getAllByText(/Side|Сторона/)).toHaveLength(2);
+    expect(screen.getAllByText(/Diameter|Диаметр/)).toHaveLength(2);
+    expect(screen.queryByText(/8\.0/)).toBeNull();
+  });
+
+  it("keeps the rows of the answer on screen while loading, not the types of the tessellation", () => {
+    render(<CellSizesSection sizes={[type("triangle"), type("hexagon")]} tessellationKind="square" placeholderTypes={["triangle", "hexagon", "square"]} loading />);
+    expect(screen.queryByText("Square")).toBeNull();
+    expect(screen.getAllByTestId("value-skeleton")).toHaveLength(4);
+  });
+
+  it("renders nothing when the types are not known and the cells are regular", () => {
+    const { container } = render(<CellSizesSection sizes={[]} tessellationKind="square" placeholderTypes={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows a row of — for one known type", () => {
+    render(<CellSizesSection sizes={[]} tessellationKind="square" placeholderTypes={["cell"]} />);
+    expect(screen.getByText(/Side — mm|Сторона — мм/)).toBeInTheDocument();
+    expect(screen.getByText(/Diameter — mm|Диаметр — мм/)).toBeInTheDocument();
+    expect(screen.getByText(/^(Cell|Ячейка)$/)).toBeInTheDocument();
+  });
+
+  it("shows the explanation at once for an irregular tessellation", () => {
+    render(<CellSizesSection sizes={[]} tessellationKind="voronoi" placeholderTypes={["cell"]} cellsVary />);
+    expect(screen.getByText(/nominal|условный/)).toBeInTheDocument();
+  });
+
+  it("lists a single type as a table row with its name and one decimal", () => {
     render(<CellSizesSection sizes={[type("cell")]} tessellationKind="square" />);
-    expect(screen.getByText(/8\.0.*11\.3/)).toBeInTheDocument();
+    expect(screen.getByText(/Cell sizes|Размеры ячеек/)).toBeInTheDocument();
+    expect(screen.getByText(/^(Cell|Ячейка)$/)).toBeInTheDocument();
+    expect(screen.getByText(/8\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/11\.3/)).toBeInTheDocument();
   });
 
   it("lists every type of a mixed tessellation with prefixed values", () => {

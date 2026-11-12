@@ -1,10 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
 import { DEFAULT_LABEL_FONT } from "../pixi/renderers/fontChoice";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, optLabelFont, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport } from "../store/projectExport/validateImageExport";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, optLabelFont, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport, validateElevatorBadgeSettings } from "../store/projectExport/validateImageExport";
 import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
+
+describe("validateElevatorBadgeSettings", () => {
+  const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.elevatorBadges;
+
+  it("preserves unbounded positive distance and spacing while rejecting an obsolete backing mode", () => {
+    const result = validateElevatorBadgeSettings({ distance: 42, gap: 27, backing: "split", startAngle: 120 }, "path", fallback);
+    expect(result.distance).toBe(42);
+    expect(result.gap).toBe(27);
+    expect(result.backing).toBe("individual");
+    expect(result.startAngle).toBe(120);
+  });
+});
 
 describe("validateMarkerSettings", () => {
   const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker;

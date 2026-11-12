@@ -130,11 +130,13 @@ impl TessellationVisitor for Shapes<'_> {
 /// Cell types of one tessellation instance (GitHub issue #822): `keys` lists every
 /// `CellType::key` the instance provides (`Tessellation::cell_types`), and `point_types[i]` is the
 /// type key of `points[i]` (`Tessellation::cell_type_key_of`). Configs that parametrize generation or
-/// quality control by cell type name types by these keys.
+/// quality control by cell type name types by these keys. `cells_vary_in_size` is
+/// `Tessellation::cells_vary_in_size`: the cells of one type differ in size or shape.
 #[derive(Serialize, Debug, PartialEq)]
 struct TessellationCellTypes {
     keys: Vec<String>,
     point_types: Vec<String>,
+    cells_vary_in_size: bool,
 }
 
 #[wasm_bindgen]
@@ -175,6 +177,7 @@ impl TessellationVisitor for CellTypes<'_> {
                 .into_iter()
                 .map(|cell| tessellation.cell_type_key_of(cell).to_string())
                 .collect(),
+            cells_vary_in_size: tessellation.cells_vary_in_size(),
         })
     }
 }
@@ -224,12 +227,13 @@ mod tests {
                     "square".to_string(),
                     "octagon".to_string()
                 ],
+                cells_vary_in_size: false,
             })
         );
     }
 
     #[test]
-    fn tessellation_cell_types_of_a_uniform_tessellation_is_the_single_default_type() {
+    fn tessellation_cell_types_of_a_uniform_tessellation_is_named_by_its_polygon() {
         let cfg = TessellationPointsConfig {
             tessellation: TessellationConfig {
                 kind: TessellationKind::Square,
@@ -240,8 +244,9 @@ mod tests {
         assert_eq!(
             tessellation_cell_types_for(&cfg),
             Ok(TessellationCellTypes {
-                keys: vec!["cell".to_string()],
-                point_types: vec!["cell".to_string(), "cell".to_string()],
+                keys: vec!["square".to_string()],
+                point_types: vec!["square".to_string(), "square".to_string()],
+                cells_vary_in_size: false,
             })
         );
     }

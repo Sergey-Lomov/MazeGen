@@ -30,6 +30,8 @@ export interface ElevatorBadgeLayoutInput {
   gap: number;
   placement: ElevatorBadgePlacement;
   evenDistribution: boolean;
+  /** Clockwise degrees from 12 o'clock for the circular layout's first/center point. */
+  startAngle?: number;
   /** Regions no badge may overlap; none = every slot is free. */
   obstacles?: readonly ElevatorBadgeObstacle[];
 }
@@ -39,6 +41,8 @@ export interface ElevatorBadgeLayoutInput {
 export interface ElevatorBadgeLayout {
   positions: ElevatorBadgePos[];
   overflow: boolean;
+  /** An uneven circular run could not fit around the available ring, so it was rendered evenly. */
+  usedEvenDistributionFallback: boolean;
 }
 
 /** How many badges of `radius` (each `2*radius` wide/tall, `gap` between consecutive ones' own
@@ -255,8 +259,9 @@ function thetaAtFreeOffset(arcs: readonly RingArc[], total: number, offset: numb
  *  shares centered in their slots — mirror-symmetric around the opposite point — and the contiguous
  *  arc stays centered on 12 o'clock measured over free ring. With nothing in the way the free ring
  *  is the whole circle and this is the plain layout. A ring fully blocked draws as if free. */
-function layoutRing(input: ElevatorBadgeLayoutInput, isBlocked: ((x: number, y: number) => boolean) | undefined): ElevatorBadgePos[] {
+function layoutRing(input: ElevatorBadgeLayoutInput, isBlocked: ((x: number, y: number) => boolean) | undefined): Pick<ElevatorBadgeLayout, "positions" | "usedEvenDistributionFallback"> {
   const { cx, cy, count, radius, gap, evenDistribution } = input;
+  const startTheta = ((input.startAngle ?? 0) * Math.PI) / 180;
   const ringRadius = input.markerRadius + input.distance + radius;
   const pointAt = (theta: number): ElevatorBadgePos => ({ x: cx + Math.sin(theta) * ringRadius, y: cy - Math.cos(theta) * ringRadius });
   const found = isBlocked ? freeRingArcs((theta) => { const p = pointAt(theta); return isBlocked(p.x, p.y); }) : [];
@@ -268,15 +273,22 @@ function layoutRing(input: ElevatorBadgeLayoutInput, isBlocked: ((x: number, y: 
   const angleStep = ringRadius > 0 && chordStep > 0 ? 2 * Math.asin(Math.min(1, chordStep / (2 * ringRadius))) : 0;
   const arcSpan = angleStep * (count - 1);
   const offsets: number[] = [];
-  if (evenDistribution || arcSpan >= total) {
-    // Plain ring: first badge at 12 o'clock. Obstructed: the seam is not 12 o'clock, so slot centers.
+  const usedEvenDistributionFallback = !evenDistribution && arcSpan >= total;
+  if (evenDistribution || usedEvenDistributionFallback) {
+    // With an obstacle, free-ring coordinates deliberately omit its blocked interval. Mapping the
+    // requested physical angle with `freeOffsetOfTheta` would therefore map every angle in that
+    // interval to one value, freezing the control. Scale the whole turn into the usable length
+    // instead: each degree advances continuously while no badge can enter the blocked arc.
     const share = total / count;
-    for (let i = 0; i < count; i++) offsets.push(obstructed ? (i + 0.5) * share : i * share);
+    const start = obstructed ? startTheta * total / FULL_TURN : startTheta;
+    for (let i = 0; i < count; i++) offsets.push(obstructed ? start + (i + 0.5) * share : start + i * share);
   } else {
-    const center = obstructed ? (freeOffsetOfTheta(arcs, 0) ?? total / 2) : 0;
+    const center = obstructed
+      ? (freeOffsetOfTheta(arcs, 0) ?? total / 2) + startTheta * total / FULL_TURN
+      : startTheta;
     for (let i = 0; i < count; i++) offsets.push(center + (i - (count - 1) / 2) * angleStep);
   }
-  return offsets.map((offset) => pointAt(thetaAtFreeOffset(arcs, total, offset)));
+  return { positions: offsets.map((offset) => pointAt(thetaAtFreeOffset(arcs, total, offset))), usedEvenDistributionFallback };
 }
 
 /** The obstacles whose bounding box reaches the ring's outer edge — the rest can never block a ring
@@ -300,13 +312,13 @@ function obstaclesNearRing(input: ElevatorBadgeLayoutInput): readonly ElevatorBa
  *  yields no positions. The single source of badge geometry for drawing and the export warnings. */
 export function computeElevatorBadgeLayout(input: ElevatorBadgeLayoutInput): ElevatorBadgeLayout {
   const { count, radius, placement, evenDistribution } = input;
-  if (count <= 0) return { positions: [], overflow: false };
+  if (count <= 0) return { positions: [], overflow: false, usedEvenDistributionFallback: false };
   const obstacles = placement === "full_circle" ? obstaclesNearRing(input) : input.obstacles ?? [];
   const isBlocked = obstacles.length > 0
     ? (x: number, y: number) => obstacles.some((obstacle) => circleOverlapsRoundedRect(x, y, radius, obstacle))
     : undefined;
 
-  if (placement === "full_circle") return { positions: layoutRing(input, isBlocked), overflow: false };
+  if (placement === "full_circle") return { ...layoutRing(input, isBlocked), overflow: false };
 
   const horizontal = placement === "left_right" || placement === "right_left";
   const base = { cx: input.cx, cy: input.cy, markerRadius: input.markerRadius, radius, distance: input.distance, gap: input.gap, rowAxis: horizontal ? "y" : "x", offsetAxis: horizontal ? "x" : "y" } as const;
@@ -320,7 +332,7 @@ export function computeElevatorBadgeLayout(input: ElevatorBadgeLayoutInput): Ele
     ...pickSideSlots(leadingSide, leadingCount, isBlocked),
     ...pickSideSlots(otherSide, otherCount, isBlocked),
   ].map(({ x, y }) => ({ x, y }));
-  return { positions, overflow: leadingCount > leadingCapacity || otherCount > otherCapacity };
+  return { positions, overflow: leadingCount > leadingCapacity || otherCount > otherCapacity, usedEvenDistributionFallback: false };
 }
 
 /** Badge centers only — `computeElevatorBadgeLayout` for callers that don't need `overflow`. */
@@ -335,8 +347,9 @@ export function computeElevatorBadgePositions(
   placement: ElevatorBadgePlacement,
   evenDistribution: boolean,
   obstacles?: readonly ElevatorBadgeObstacle[],
+  startAngle = 0,
 ): ElevatorBadgePos[] {
-  return computeElevatorBadgeLayout({ cx, cy, markerRadius, count, radius, distance, gap, placement, evenDistribution, obstacles }).positions;
+  return computeElevatorBadgeLayout({ cx, cy, markerRadius, count, radius, distance, gap, placement, evenDistribution, obstacles, startAngle }).positions;
 }
 
 /** `true` when any two badges in `positions` (all sharing `radius`) visually overlap — their

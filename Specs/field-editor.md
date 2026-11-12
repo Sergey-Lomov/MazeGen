@@ -162,11 +162,22 @@ size search and the cell size measurement (#948) are one request to the print si
 (`wasm/printSizingWorker.ts`, a `WorkerPool` in `workerClients.ts`, `startPrintSizing`), whose body is
 `computePrintSizing` (`pixi/printSizingJob.ts`): the size of the current shape and of every standard
 floor, plus the cells measured for all floors together. The dialog opens at once. An
-indeterminate progress bar with a comment ("Calculating the field size…") replaces the cell sizes and
-the results only if a calculation is still running after the delay of `useDelayedIndicator` (200 ms), and
+indeterminate progress bar (no text, `aria-label` "Calculating the field size…") appears in a slot of
+its own above the cell sizes only if a calculation is still running after the delay of `useDelayedIndicator` (200 ms), and
 once shown stays for its minimum duration (750 ms), as the Generate button's spinner does (GitHub issue
-#960, `Specs/generation.md`). Until it shows, the results of the previous calculation stay on screen
-(nothing on the first one); Confirm follows only the current answer, never the stale one. Any change of the request (paper, margins, cell size, floors)
+#960, `Specs/generation.md`). The slot keeps its height when the bar is hidden. Until it shows, the results of the previous calculation stay on screen; once it shows, every number (cell sizes, floor dimensions and counts, totals, the result lines) is replaced by a pulsing bar (`ValueSkeleton`) and the warnings wait, while the labels and units of the numbers ("Side … mm", "Diameter … mm", "Field size: … cells", "Cell count: …", "Total: …"), type names and floor titles stay (`withValueNode` in `components/dialogs/valueSlot.tsx` puts the bar or `—` into the message formatted with `VALUE_SLOT`, at every occurrence of the slot). Confirm follows only the current answer, never the stale one.
+
+**Stable layout (GitHub issue #961).** The dialog is centered, so any change of its height moves its
+top edge. The results block therefore has the same rows before, during and after a calculation: before the
+first answer (and after a failed one) the numbers are `—`. What is known on opening gives the rows: one row
+per floor, one row per cell type of the tessellation (`tessellation_cell_types` called with no cells, so
+it is cheap and runs on the main thread; it may list a type the field does not contain, and the answer then
+has fewer rows; while a calculation runs, the rows of the answer on screen stay; a single type is one row,
+and no row at all when the types cannot be read), and the explanation at once when the same call reports `cells_vary_in_size`, core's
+`Tessellation::cells_vary_in_size` (Voronoi, radial): the web side keeps no list of such tessellations. Only the error and the warnings
+(search limit, small side) appear after a calculation and change the height; they get no reserved space.
+
+Any change of the request (paper, margins, cell size, floors)
 cancels the running job and starts a new one; closing the dialog cancels the running job. A cancelled job
 terminates its worker (a synchronous wasm call cannot be interrupted), and the pool starts a fresh one.
 Confirming takes the answer on screen; if a typed cell size is not calculated yet it is calculated by
@@ -176,8 +187,9 @@ sitting on the search cap (1000 per side of a non-axis-aligned rectangle, 500 fo
 shows a warning; core reports the cap in the answer (`limit`, `null` when the size is not on a cap), so
 the web side does not repeat the constants that the sheet may hold a larger field.
 
-The cell size input commits on blur or Enter only (`NumberInput`), not on every keystroke, and has a
-minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+The cell size input commits on blur, on Enter, or once typing has paused for a second (`CELL_SIZE_IDLE_MS`;
+only a value that already reads as a size of at least the minimum, so a half-typed `1` is left to the blur),
+not on every keystroke, and has a minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
 does not confirm the dialog.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
@@ -202,7 +214,8 @@ fields, in millimeters with one decimal for the entered size. The diameter is th
 cell's center (its centroid) through its farthest vertex, which for a cyclic polygon is the circumcircle. Mixed tessellations (3.3.3.3.6, 3.6.3.6) therefore show the real size of each
 polygon, whatever the entered measure (a side or a diameter) means for the tessellation. With several
 types the sizes form a headerless table (type, side, diameter) whose cells carry their own prefix
-(`Side 5.0 mm`, `Diameter 7.1 mm`); with a single type they are one line of text. The
+(`Side 5.0 mm`, `Diameter 7.1 mm`); a single type is a table of one row, named by its polygon (`Square`,
+`Hexagon`, `Triangle` for the uniform tilings; `Cell` for the rest). The
 cell counts are not in this section: the total of the result (a single floor's cell count or the
 multi-floor total) is followed by the count of each type in parentheses when the field has several
 types, e.g. `Total: 1000 cells (Triangle 600, Square 300, Dodecagon 100)`; counts are summed over all
