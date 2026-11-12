@@ -16,7 +16,9 @@ import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloo
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
-import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
+import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/MarkerIndexRenderer";
+import { SeamCopyRenderer } from "../renderers/SeamCopyRenderer";
+import { buildSeamCopySources } from "./seamCopySources";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import { computeTopologyWarnings } from "../selectors/topologyWarnings";
@@ -26,8 +28,8 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape,
 import type { FieldConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import type { ModeRenderer, RenderPass } from "./modeRendererFactory";
-import { exactCellBounds, getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
-import { getSeamModel } from "../selectors/seams";
+import { exactCellBounds } from "../tessellationGeometry";
+import { drawTrimMask } from "./seamTrim";
 import { canvas } from "../colorTokens";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides, getProjectTeleportGroups } from "../selectors/projectTeleportGroups";
@@ -50,63 +52,7 @@ const BOUNDARY_WARNING_IDS: ReadonlySet<string> = new Set([
   "one_way_low_contrast_corridor", "one_way_arrows_overflow_corridor", "teleport_connector_covers_one_way",
 ]);
 
-export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldConfig, margin: number): number[][] {
-  const polygons: number[][] = [];
-  const cellKeys = new Set(cells.map(([x, y]) => `${x},${y}`));
-  const boundaryVertices = new Map<string, { cell: string; x: number; y: number; nx: number; ny: number }[]>();
-  const seams = getSeamModel(cfg);
-  // The union of cells keeps every interior edge. Add an outward strip only for an ordinary field
-  // edge; a glued face intentionally has no strip, so all artwork is cut at that exact boundary.
-  for (const [x, y] of cells) {
-    const vertices = getCellVertices(x, y, cfg);
-    polygons.push(vertices.flatMap(({ x: px, y: py }) => [px, py]));
-    const center = getCellCenter(x, y, cfg);
-    for (const [face, [dx, dy]] of getCellNeighborOffsets(cfg, x, y).entries()) {
-      if (seams.halfEdgeAt([x, y], face) || (dx !== 0 || dy !== 0) && cellKeys.has(`${x + dx},${y + dy}`)) continue;
-      const edge = getFaceEdgeSegment([x, y], face, cfg);
-      if (!edge) continue;
-      for (let index = 1; index < edge.polyline.length; index++) {
-        const [x0, y0] = edge.polyline[index - 1];
-        const [x1, y1] = edge.polyline[index];
-        const mx = (x0 + x1) / 2;
-        const my = (y0 + y1) / 2;
-        const length = Math.hypot(mx - center.x, my - center.y);
-        if (length === 0) continue;
-        const nx = (mx - center.x) / length;
-        const ny = (my - center.y) / length;
-        polygons.push([x0, y0, x1, y1, x1 + nx * margin, y1 + ny * margin, x0 + nx * margin, y0 + ny * margin]);
-        for (const [px, py] of [[x0, y0], [x1, y1]]) {
-          const key = `${Math.round(px * 100)},${Math.round(py * 100)}`;
-          const entries = boundaryVertices.get(key) ?? [];
-          entries.push({ cell: `${x},${y}`, x: px, y: py, nx, ny });
-          boundaryVertices.set(key, entries);
-        }
-      }
-    }
-  }
-
-  // A face strip alone leaves the diagonal quadrant at a convex field corner uncovered. An
-  // export-only trim mask would therefore cut off the miter that `WallRenderer` has already drawn.
-  // Join each pair of boundary faces belonging to the same cell with its outward corner wedge.
-  for (const entries of boundaryVertices.values()) {
-    for (let i = 0; i < entries.length; i++) {
-      for (let j = i + 1; j < entries.length; j++) {
-        const a = entries[i];
-        const b = entries[j];
-        if (a.cell !== b.cell || a.nx * b.nx + a.ny * b.ny > 0.999) continue;
-        polygons.push([a.x, a.y, a.x + a.nx * margin, a.y + a.ny * margin, b.x + b.nx * margin, b.y + b.ny * margin]);
-      }
-    }
-  }
-  return polygons;
-}
-
-function drawTrimMask(mask: Graphics, cells: readonly [number, number][], cfg: FieldConfig, margin: number): void {
-  mask.clear();
-  for (const polygon of trimMaskPolygons(cells, cfg, margin)) {
-    mask.poly(polygon).fill(0xffffff);
-  }
-}
+export { trimMaskPolygons } from "./seamTrim";
 
 /** Adds `polygon` to `g` as a closed contour with softened corners (see `roundedContourCorners`). */
 function roundedContour(g: Graphics, polygon: readonly [number, number][], radius: number): void {
@@ -411,6 +357,8 @@ export class VectorByWallsRenderer {
   private readonly markers: WaypointsRenderer;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #471). */
   private readonly markerIndex: MarkerIndexRenderer;
+  /** Marker index plates and elevator badges carried over a glued face (GitHub issue #981). */
+  private readonly seamCopies: SeamCopyRenderer;
   private readonly floorLabel: FloorLabelRenderer;
   /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay or
    *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
@@ -480,6 +428,7 @@ export class VectorByWallsRenderer {
     this.mazeContent.addChild(this.verticalContainer);
     this.mazeContent.addChild(this.markersContainer);
     this.mazeContent.addChild(this.markerIndexBodyContainer);
+    this.seamCopies = new SeamCopyRenderer(this.mazeContent);
     this.mazeContent.addChild(this.floorLabelContainer);
     this.warningHighlightContainer = new Container();
     this.backgroundGrid.highlight.addChild(this.warningHighlightContainer);
@@ -544,6 +493,7 @@ export class VectorByWallsRenderer {
     this.markersContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.seamCopies.container.visible = visible;
     this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
@@ -811,9 +761,11 @@ export class VectorByWallsRenderer {
       manualPaths: state.vectorByWallsSettings.manualTeleportConnectorPaths,
     });
 
-    this.markers.render({ markers: markerData, scaler });
+    const waypointData = { markers: markerData, scaler };
+    this.markers.render(waypointData);
 
     let markerIndexPlates: ElevatorBadgeObstacle[] = [];
+    let markerIndexData: MarkerIndexRenderData | null = null;
     if (state.vectorByWallsSettings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
@@ -831,12 +783,13 @@ export class VectorByWallsRenderer {
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       const shiftedLabels = shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales);
       markerIndexPlates = shiftedLabels.map((label) => markerIndexPlateFootprint(label, state.vectorByWallsSettings.markerIndex));
-      this.markerIndex.render({ ...indexLabels, labels: shiftedLabels, style: state.vectorByWallsSettings.markerIndex, floorColor });
+      markerIndexData = { ...indexLabels, labels: shiftedLabels, style: state.vectorByWallsSettings.markerIndex, floorColor };
+      this.markerIndex.render(markerIndexData);
     } else {
       this.markerIndex.clear();
     }
 
-    this.verticalConnections.render({
+    const verticalData = {
       markers: layout.verticalMarkers,
       style: verticalStyle,
       scaler,
@@ -845,7 +798,13 @@ export class VectorByWallsRenderer {
       interactive: true,
       // Elevator floor badges keep clear of the index plates drawn above the markers (GitHub issue #964).
       badgeObstacles: markerIndexPlates,
-    });
+    };
+    this.verticalConnections.render(verticalData);
+    // The trim mask cuts the plates and badges at a glued face; what they lose is drawn on the other side (GitHub issue #981).
+    this.seamCopies.render(
+      cfg,
+      this.mazeContent.mask ? buildSeamCopySources({ markerIndex: markerIndexData, vertical: verticalData, waypoints: waypointData }) : [],
+    );
 
     this.floorLabel.render(
       state.vectorByWallsSettings.floorLabel,
@@ -911,6 +870,7 @@ export class VectorByWallsRenderer {
     this.verticalConnections.destroy();
     this.markers.destroy();
     this.markerIndex.destroy();
+    this.seamCopies.destroy();
     this.floorLabel.destroy();
     this.warningHighlight.destroy();
     this.trimMask.destroy();

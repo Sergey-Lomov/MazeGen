@@ -91,6 +91,24 @@ fn apply_fails_on_single_isolated_node_no_reachable_pair() {
 }
 
 #[test]
+fn apply_fails_without_mutating_when_qc_deadline_already_expired() {
+    let (mut maze, _nodes) = make_connected_maze(5);
+    let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+    let result = apply_and_commit(
+        &ScoredEndpointsStrategy,
+        &issue(true, true),
+        &mut maze,
+        &mut rng(),
+        &default_params(),
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(maze.meta.start.is_none());
+    assert!(maze.meta.finish.is_none());
+}
+
+#[test]
 fn apply_picks_best_pair_when_neither_endpoint_set() {
     let (mut maze, nodes) = make_connected_maze(5);
     let result = apply_and_commit(

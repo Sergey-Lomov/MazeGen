@@ -15,13 +15,70 @@ function hasDistinctGlyphMetrics(family: string): boolean {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return false;
-  const probe = "Wm@#0123456789ЖЩ字🙂";
-  const width = (font: string) => { context.font = font; return context.measureText(probe).width; };
-  const candidate = width(`16px ${JSON.stringify(family)}, monospace`);
-  // A missing family resolves to one of the generic fallbacks. It is genuine only when its
-  // metrics differ from every one of them; `some` would accept a missing family that fell back
-  // to monospace merely because monospace and sans-serif differ from each other.
-  return ["monospace", "sans-serif", "serif"].every((fallback) => Math.abs(candidate - width(`16px ${fallback}`)) > 0.01);
+  const width = (font: string, probe: string) => { context.font = font; return context.measureText(probe).width; };
+  // A font may cover only one script (a Cyrillic-only or runic face renders Latin through the
+  // fallback), so each script is probed on its own and one distinct probe is enough.
+  return PROBES.some((probe) => {
+    const candidate = width(`16px ${JSON.stringify(family)}, monospace`, probe);
+    // A missing family resolves to one of the generic fallbacks. It is genuine only when its
+    // metrics differ from every one of them; `some` would accept a missing family that fell back
+    // to monospace merely because monospace and sans-serif differ from each other.
+    return ["monospace", "sans-serif", "serif"].every((fallback) => Math.abs(candidate - width(`16px ${fallback}`, probe)) > 0.01);
+  });
+}
+
+const PROBES = ["Wm@#0123456789", "ЖЩшюЯ"];
+
+/** Font families, in order, for a browser font: the font itself, then the generic sans-serif. The one
+ *  stack behind the canvas labels, their measuring and the font picker preview, so a glyph the chosen
+ *  font lacks (Cyrillic in a Latin-only face) falls back to the same face in both. */
+export function labelFontFamilies(family: string): string[] {
+  const normalized = family.trim();
+  return normalized ? [normalized, "sans-serif"] : ["sans-serif"];
+}
+
+/** `labelFontFamilies` as a CSS `font-family` / canvas `font` value. */
+export function labelFontCss(family: string): string {
+  return labelFontFamilies(family).map((name) => (name === "sans-serif" ? name : JSON.stringify(name))).join(", ");
+}
+
+let localFamiliesPromise: Promise<string[] | null> | null = null;
+/** Families the machine reported through the Local Font Access API, once that query has resolved. An
+ *  exact name here proves the font is installed even when its glyph metrics cannot be told apart
+ *  from a generic fallback (a face that covers neither probe script). */
+let reportedLocalFamilies: Set<string> | null = null;
+
+type LocalFontQuery = () => Promise<Array<{ family: string }>>;
+const localFontQuery = (): LocalFontQuery | undefined => (typeof window === "undefined" ? undefined : (window as Window & { queryLocalFonts?: LocalFontQuery }).queryLocalFonts);
+
+/** Whether the browser has the Local Font Access API at all (Chromium only). */
+export function isLocalFontAccessSupported(): boolean {
+  return !!localFontQuery();
+}
+
+/** Every font family installed on this machine, sorted, via the Local Font Access API. Resolves to
+ * `null` when the browser has no such API or the user denied access. Cached for the page lifetime;
+ * `retry` drops a cached failure and asks again, which re-prompts unless the browser has already
+ * blocked the site. Call it from a user gesture. */
+export function loadLocalFontFamilies(retry = false): Promise<string[] | null> {
+  if (retry) localFamiliesPromise = null;
+  if (!localFamiliesPromise) {
+    const query = localFontQuery();
+    localFamiliesPromise = query
+      ? query.call(window).then((fonts) => {
+          const families = [...new Set(fonts.map((font) => font.family.trim()).filter(Boolean))].sort();
+          reportedLocalFamilies = new Set(families);
+          return families;
+        }).catch(() => null)
+      : Promise.resolve(null);
+  }
+  return localFamiliesPromise;
+}
+
+/** Whether a font family is actually installed on this machine: its glyph metrics differ from every
+ * generic fallback. Synchronous, so a candidate list can be filtered without loading each font. */
+export function isFontFamilyInstalled(family: string): boolean {
+  return typeof document !== "undefined" && (reportedLocalFamilies?.has(family) === true || hasDistinctGlyphMetrics(family));
 }
 
 export function isLabelFontFamilyLoaded(family: string | undefined): boolean {
@@ -46,7 +103,7 @@ export async function loadLabelFontFamily(family: string): Promise<boolean> {
         document.fonts.load(`700 16px ${familyCss}`),
       ]);
       if (!document.fonts.check(`400 16px ${familyCss}`) || !document.fonts.check(`700 16px ${familyCss}`)) return false;
-      if (!hasDistinctGlyphMetrics(normalized)) return false;
+      if (!isFontFamilyInstalled(normalized)) return false;
       loadedFamilies.add(normalized);
       if (typeof window !== "undefined") window.dispatchEvent(new Event("mazegen:label-font-loaded"));
       return true;
@@ -67,7 +124,7 @@ export function makeLabelText(text: string, msdfFamily: string, fontSize: number
   const label = family
     // `Text` otherwise defaults to a 1x canvas texture. The application canvas uses the device
     // pixel ratio, so matching it prevents a 1x label from being stretched and blurred at 100%.
-    ? new Text({ text, style: { fontFamily: family, fontSize, fontWeight: fontWeight === "bold" ? "700" : "400", fontStyle: "normal", fill }, resolution })
+    ? new Text({ text, style: { fontFamily: labelFontFamilies(family), fontSize, fontWeight: fontWeight === "bold" ? "700" : "400", fontStyle: "normal", fill }, resolution })
     : new BitmapText({ text, style: { fontFamily: msdfFamily, fontSize, fill } });
   label.anchor.set(0.5);
   label.roundPixels = true;

@@ -51,8 +51,9 @@ pub struct CellTypeSizes {
     /// Diameter of the circle centered at the cell's center through its farthest vertex (the
     /// circumcircle of a cyclic polygon); `0` when `regular` is false.
     pub diameter: f64,
-    /// Every cell of the type has the same sides and diameter. A type whose cells differ (Voronoi,
-    /// the rings of a radial field) has no well-defined size.
+    /// Every cell of the type has the same sides and diameter, as the tessellation guarantees unless
+    /// `Tessellation::cells_vary_in_size` (Voronoi, the rings of a radial field): then the type has no
+    /// well-defined size.
     pub regular: bool,
 }
 
@@ -105,41 +106,35 @@ impl TessellationVisitor for CellSizes<'_> {
                 Err(error) => return Err(error.into()),
             }
         }
+        // The cells of a type are congruent unless the tessellation says they vary (then there is
+        // no size to measure), so one cell of each type is measured.
+        let varies = tessellation.cells_vary_in_size();
         let types = tessellation.cell_types();
-        let mut measured: Vec<Option<Measure>> = vec![None; types.len()];
+        let mut counts = vec![0usize; types.len()];
+        let mut sizes: Vec<Option<Size>> = vec![None; types.len()];
         for (cell, times) in cells {
             let index = tessellation.cell_type_of(cell).index();
-            let size = measure(&*tessellation, cell);
-            match &mut measured[index] {
-                slot @ None => {
-                    *slot = Some(Measure {
-                        count: times,
-                        size,
-                        regular: true,
-                    })
-                }
-                Some(known) => {
-                    known.count += times;
-                    known.regular &= same_size(&known.size, &size);
-                }
+            counts[index] += times;
+            if !varies && sizes[index].is_none() {
+                sizes[index] = Some(measure(&*tessellation, cell));
             }
         }
         let types = types
             .iter()
-            .zip(measured)
-            .filter_map(|(cell_type, measure)| {
-                let Measure {
-                    count,
-                    size,
-                    regular,
-                } = measure?;
-                Some(CellTypeSizes {
+            .zip(counts.into_iter().zip(sizes))
+            .filter(|(_, (count, _))| *count > 0)
+            .map(|(cell_type, (count, size))| {
+                let size = size.unwrap_or(Size {
+                    sides: Vec::new(),
+                    diameter: 0.0,
+                });
+                CellTypeSizes {
                     key: cell_type.key().to_string(),
                     count,
-                    sides: if regular { size.sides } else { Vec::new() },
-                    diameter: if regular { size.diameter } else { 0.0 },
-                    regular,
-                })
+                    sides: size.sides,
+                    diameter: size.diameter,
+                    regular: !varies,
+                }
             })
             .collect();
         Ok(CellSizesReport {
@@ -147,14 +142,6 @@ impl TessellationVisitor for CellSizes<'_> {
             preset_counts,
         })
     }
-}
-
-#[derive(Clone)]
-struct Measure {
-    count: usize,
-    /// The size of the first cell met; the others are compared against it.
-    size: Size,
-    regular: bool,
 }
 
 #[derive(Clone)]
@@ -184,15 +171,6 @@ fn measure<T: Tessellation>(tessellation: &T, cell: T::CellId) -> Size {
         sides,
         diameter: 2.0 * radius,
     }
-}
-
-fn same_size(a: &Size, b: &Size) -> bool {
-    a.sides.len() == b.sides.len()
-        && a.sides
-            .iter()
-            .zip(&b.sides)
-            .all(|(x, y)| (x - y).abs() <= LENGTH_TOLERANCE)
-        && (a.diameter - b.diameter).abs() <= LENGTH_TOLERANCE
 }
 
 #[cfg(test)]

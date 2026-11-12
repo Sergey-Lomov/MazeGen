@@ -33,6 +33,16 @@ fn basis_cycles(g: &Graph) -> Vec<Vec<usize>> {
 }
 
 #[test]
+fn expired_qc_deadline_aborts_enumeration_as_too_many_cycles() {
+    let nav = build_nav_graph(&triangle(0, 1, 2));
+    let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+    assert!(matches!(
+        find_all_simple_cycles(&nav),
+        CycleSearchResult::TooManyCycles
+    ));
+}
+
+#[test]
 fn finds_simple_cycle() {
     let g = triangle(0, 1, 2);
     let nav = build_nav_graph(&g);

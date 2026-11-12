@@ -162,6 +162,10 @@ pub fn dispatch_weighted<T: Tessellation>(
     let mut pool: Vec<&WeightedCandidate<T>> = candidates.iter().collect();
 
     while !pool.is_empty() {
+        // GitHub issue #976: no further candidate is tried once the QC deadline has passed.
+        if crate::deadline::expired() {
+            break;
+        }
         let total: f64 = pool.iter().map(|c| c.weight).sum();
         let mut pick = rng.random_range(0.0..total);
         let mut chosen_idx = pool.len() - 1;
@@ -217,6 +221,10 @@ pub fn dispatch_priority<T: Tessellation>(
     inherited_overrides: &HashMap<String, String>,
 ) -> (RepairResult, Vec<MutationCommand>) {
     for config in candidates {
+        // GitHub issue #976: no further candidate is tried once the QC deadline has passed.
+        if crate::deadline::expired() {
+            break;
+        }
         let params = nested_params(config, inherited_overrides);
         let (result, commands) =
             config

@@ -435,6 +435,10 @@ impl Tessellation for VoronoiTessellation {
     type CellId = VoronoiPoint;
     type Face = VoronoiFace;
 
+    fn cells_vary_in_size(&self) -> bool {
+        true
+    }
+
     fn is_valid_cell(&self, cell: VoronoiPoint) -> bool {
         self.slot(cell.q, cell.r).is_some()
     }

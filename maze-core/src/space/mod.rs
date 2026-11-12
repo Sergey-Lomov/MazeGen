@@ -232,6 +232,13 @@ pub trait Tessellation: Send + Sync + 'static {
         &cell_type::UNIFORM_TYPES
     }
 
+    /// Whether the cells of one type differ in size or shape (Voronoi, the rings of a radial field),
+    /// so the size a user enters is not the size of every cell. Defaults to `false`: the cells of a
+    /// type are congruent.
+    fn cells_vary_in_size(&self) -> bool {
+        false
+    }
+
     /// The type of `cell`: an index into `cell_types`. Defaults to the only type. An invalid
     /// `cell` is a precondition violation.
     fn cell_type_of(&self, cell: Self::CellId) -> CellTypeId {

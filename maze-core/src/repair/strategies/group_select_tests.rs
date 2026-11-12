@@ -623,6 +623,16 @@ fn all_candidates_failing_yields_failed_with_no_commands() {
 }
 
 #[test]
+fn expired_qc_deadline_stops_the_pass_before_any_nested_call() {
+    let (trace, cfg) = recording_config(vec![], vec![]);
+    let _deadline = crate::deadline::install(Some(crate::clock::now_ms() - 1.0));
+    let (result, commands) = run_pass(vec![(vec![0, 1, 2], 1)], &cfg, 1, |_| true, no_order);
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(commands.is_empty());
+    assert!(trace.borrow().is_empty());
+}
+
+#[test]
 fn disallowed_element_is_neither_a_target_nor_in_others() {
     let (trace, cfg) = recording_config(vec![], vec![]);
     let (result, _) = run_pass(vec![(vec![0, 1, 2], 1)], &cfg, 1, |e| *e != 1, no_order);

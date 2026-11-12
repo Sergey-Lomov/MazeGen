@@ -2989,5 +2989,21 @@
   "image_export.cuts.unavailable.topological_only": "The sides of this glue do not match in shape.",
   "image_export.cuts.unavailable.not_translation": "This glue turns or flips the surface; only a shift can be cut.",
   "image_export.cuts.unavailable.inconsistent": "The sides of this glue are shifted by different amounts.",
-  "image_export.cuts.unavailable.parallel": "The run of this glue lies along its shift, so it cannot be cut."
+  "image_export.cuts.unavailable.parallel": "The run of this glue lies along its shift, so it cannot be cut.",
+  "font_picker.title": "Font",
+  "font_picker.type_vector": "MSDF",
+  "font_picker.type_raster": "TTF/OTF",
+  "font_picker.loading": "Loading fonts",
+  "font_picker.local_fonts_permission": "To show the full list of local fonts, grant the permission.",
+  "font_picker.info_title": "Font types",
+  "font_picker.info_vector": "Text stays sharp at any zoom level and looks the same on every device. Only a small set of fonts is available.",
+  "font_picker.info_raster": "Any font installed on your device. Text can look slightly blurry when zoomed in, and if the project is opened on a device without this font, the default font is used instead.",
+  "font_picker.grant_access": "Grant access",
+  "font_picker.local_fonts_blocked": "Access to local fonts is blocked. Allow it in the site settings (the icon left of the address bar), then reload the page.",
+  "font_picker.local_fonts_unsupported": "This browser cannot show the list of local fonts.",
+  "font_picker.preview_input_placeholder": "Type a phrase to preview",
+  "font_picker.preview_text_color": "Text color",
+  "font_picker.preview_background_color": "Background color",
+  "font_picker.section_preview": "Preview",
+  "font_picker.section_family": "Family"
 }

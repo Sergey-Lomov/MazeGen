@@ -323,6 +323,11 @@ fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind, 
     let mut any_succeeded = false;
 
     for target in candidates {
+        // GitHub issue #976: stop on the QC deadline, keeping the fixes already collected — every
+        // nested fix so far is independent and valid against the same snapshot.
+        if crate::deadline::expired() {
+            break;
+        }
         let Some(&target_idx) = index_of.get(&target) else {
             continue;
         };

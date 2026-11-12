@@ -157,6 +157,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
         let mut commands = Vec::new();
 
         while let Some(idx) = pending.pop() {
+            // GitHub issue #976: stop on the QC deadline, keeping the cuts already collected.
+            if crate::deadline::expired() {
+                break;
+            }
             let Some(cycle) = all.get(idx) else { continue };
             if let Some((cut, reverse)) = apply_cut(
                 cycle,

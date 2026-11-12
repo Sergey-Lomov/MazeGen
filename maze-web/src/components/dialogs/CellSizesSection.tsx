@@ -4,14 +4,31 @@ import { WarningIcon } from "../WarningIcon";
 import { indent, spacing, typography, ui } from "../../styles/theme";
 import { hasIrregularType, hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
 import { cellTypeLabel } from "../../i18n/cellTypeLabel";
+import type { TessellationKind } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
+import { PLACEHOLDER, ValueSkeleton, VALUE_SLOT, withValueNode } from "./valueSlot";
 
 /** The cells of each cell type with their printed sides and diameter (GitHub issue #948). Cells that
- * differ in size within a type get an explanation of what the entered size means instead of numbers. */
-export function CellSizesSection({ sizes, tessellationKind }: { sizes: PrintCellTypeSize[]; tessellationKind: string }) {
-  if (sizes.length === 0) return null;
+ * differ in size within a type get an explanation of what the entered size means instead of numbers.
+ * Without `sizes` (not calculated yet, or no usable size) and with `placeholderTypes`, the section
+ * keeps the layout of the answer, with `—` for the numbers (GitHub issue #961). */
+export function CellSizesSection({ sizes, tessellationKind, placeholderTypes, cellsVary = false, loading = false }: {
+  sizes: PrintCellTypeSize[];
+  tessellationKind: TessellationKind;
+  placeholderTypes?: string[];
+  /** Core says the cells of a type differ in size (`tessellation_cell_types`): the explanation stands in before any answer. */
+  cellsVary?: boolean;
+  /** The numbers are being recalculated: they give way to indicators, the type names stay. */
+  loading?: boolean;
+}) {
+  if (sizes.length === 0 && !placeholderTypes) return null;
+  const mark = loading ? <ValueSkeleton width="3em" /> : PLACEHOLDER;
+  const markedSide = withValueNode(m["field.print_sizing.cell_sizes_side_value"]({ value: VALUE_SLOT }), mark);
+  const markedDiameter = withValueNode(m["field.print_sizing.cell_sizes_diameter_value"]({ value: VALUE_SLOT }), mark);
+  // While recalculating, the rows of the answer on screen stay; the types of the tessellation stand in before any answer.
+  const markedTypes = sizes.length > 0 ? sizes.map((type) => type.key) : placeholderTypes ?? [];
   // Cells that differ in size have no sides or diameter to list: only the explanation is shown.
-  if (hasIrregularType(sizes)) {
+  if (hasIrregularType(sizes) || (sizes.length === 0 && cellsVary)) {
     return (
       <>
         <div style={styles.divider} />
@@ -22,29 +39,32 @@ export function CellSizesSection({ sizes, tessellationKind }: { sizes: PrintCell
       </>
     );
   }
-  const [only] = sizes;
+  if (markedTypes.length === 0) return null;
+  const title = m["field.print_sizing.cell_sizes_title"]();
   return (
     <>
       <div style={styles.divider} />
       <Stack gap="elementsGap">
-        <span style={styles.sectionLabel}>{m["field.print_sizing.cell_sizes_title"]()}</span>
-        {sizes.length === 1 ? (
-          only.regular && (
-            <span style={typography.body}>
-              <SideValue type={only} />, {diameterText(only)}
-            </span>
-          )
-        ) : (
-          <div style={styles.cellSizeTable}>
-            {sizes.map((type) => (
+        <span style={styles.sectionLabel}>{title}</span>
+        <div style={styles.cellSizeTable}>
+          {sizes.length === 0 || loading ? (
+            markedTypes.map((key) => (
+              <div key={key} style={styles.floorRow}>
+                <span>{cellTypeLabel(key)}</span>
+                <span>{markedSide}</span>
+                <span>{markedDiameter}</span>
+              </div>
+            ))
+          ) : (
+            sizes.map((type) => (
               <div key={type.key} style={styles.floorRow}>
                 <span>{cellTypeLabel(type.key)}</span>
                 <span>{type.regular ? <SideValue type={type} /> : "-"}</span>
                 <span>{type.regular ? diameterText(type) : "-"}</span>
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </Stack>
     </>
   );

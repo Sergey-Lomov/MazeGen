@@ -12,6 +12,16 @@ input[type="number"] {
   to { transform: translateX(100%) scaleX(0.3); }
 }
 
+/* Stands in for a value that is being recalculated (GitHub issue #961). */
+.value-skeleton {
+  animation: value-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes value-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
 /* The application shell intentionally occupies the viewport and clips its canvas. The geometry
    laboratory is a document-sized route, so let its complete combination list scroll normally. */
 html.corridor-geometry-route,
@@ -170,17 +180,18 @@ input[type="number"]::-webkit-inner-spin-button {
   opacity: 0.4;
 }
 
-/* "Project colors" section rows in the color picker (GitHub issue #503) — clickable, so they take
-   a pointer cursor and a hover highlight (inline styles can't express :hover). */
-.project-color-row {
+/* Clickable rows of picker lists (project colors in the color picker, GitHub issue #503; fonts in
+   the font picker, #970) — they take a pointer cursor and a hover highlight (inline styles can't
+   express :hover). */
+.picker-list-row {
   cursor: pointer;
 }
 
-.project-color-row:hover {
+.picker-list-row:hover {
   background: #2f2f2f;
 }
 
-.project-color-row:focus-visible {
+.picker-list-row:focus-visible {
   outline: 2px solid #6a6a6a;
   outline-offset: -2px;
 }

@@ -5,7 +5,11 @@ import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarke
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
-import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
+import { MarkerIndexRenderer, type MarkerIndexRenderData } from "../renderers/MarkerIndexRenderer";
+import { SeamCopyRenderer } from "../renderers/SeamCopyRenderer";
+import { buildSeamCopySources } from "./seamCopySources";
+import { drawTrimMask } from "./seamTrim";
+import { getSeamModel } from "../selectors/seams";
 import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { buildMarkerScaler } from "../markerScale";
@@ -112,6 +116,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  Two layers: gap rings below the connection markers, plate bodies above. */
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
+  /** Marker index plates and elevator badges carried over a glued face (GitHub issue #981). */
+  private readonly seamCopies: SeamCopyRenderer;
+  /** Cuts the plates and badges at a glued face, one mask per masked layer; set only while the floor has glues. */
+  private readonly seamTrimMasks: readonly { mask: Graphics; target: Container }[];
+  private seamTrimInputs: { nodes: NodeDto[]; floorId: string; cfg: FieldConfig; topology: unknown } | null = null;
   private readonly markerIndex: MarkerIndexRenderer;
   private readonly floorLabelContainer: Container;
   private readonly floorLabel: FloorLabelRenderer;
@@ -213,6 +222,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.markerIndexBodyContainer = new Container();
     container.addChild(this.markerIndexBodyContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
+    this.seamCopies = new SeamCopyRenderer(container);
+    this.seamTrimMasks = [this.markerIndexGapContainer, this.verticalContainer, this.markersContainer, this.markerIndexBodyContainer].map((target) => {
+      const mask = new Graphics();
+      container.addChild(mask);
+      return { mask, target };
+    });
 
     this.floorLabelContainer = new Container();
     container.addChild(this.floorLabelContainer);
@@ -267,6 +282,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.seamCopies.container.visible = visible;
     this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
@@ -551,9 +567,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       manualPaths: settings.manualTeleportConnectorPaths,
     });
 
-    this.markers.render({ markers: markerData, scaler });
+    const waypointData = { markers: markerData, scaler };
+    this.markers.render(waypointData);
 
     let markerIndexPlates: ElevatorBadgeObstacle[] = [];
+    let markerIndexData: MarkerIndexRenderData | null = null;
     if (settings.markerIndex.enabled) {
       const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
         teleportEdges: layout.teleportEdges,
@@ -571,12 +589,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual, scaler, projectGroups);
       const shiftedLabels = shiftMarkerIndexLabels(indexLabels.labels, layout.shifts, layout.scales);
       markerIndexPlates = shiftedLabels.map((label) => markerIndexPlateFootprint(label, settings.markerIndex));
-      this.markerIndex.render({ ...indexLabels, labels: shiftedLabels, style: settings.markerIndex, floorColor: settings.color });
+      markerIndexData = { ...indexLabels, labels: shiftedLabels, style: settings.markerIndex, floorColor: settings.color };
+      this.markerIndex.render(markerIndexData);
     } else {
       this.markerIndex.clear();
     }
 
-    this.verticalConnections.render({
+    const verticalData = {
       markers: layout.verticalMarkers,
       style: verticalStyle,
       scaler,
@@ -585,7 +604,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       interactive: true,
       // Elevator floor badges keep clear of the index plates drawn above the markers (GitHub issue #964).
       badgeObstacles: markerIndexPlates,
-    });
+    };
+    this.verticalConnections.render(verticalData);
+    // A glued face cuts the plates and badges; what they lose is drawn on the other side (GitHub issue #981).
+    const glued = this.updateSeamTrim(state, nodes);
+    this.seamCopies.render(cfg, glued ? buildSeamCopySources({ markerIndex: markerIndexData, vertical: verticalData, waypoints: waypointData }) : []);
 
     this.floorLabel.render(
       settings.floorLabel,
@@ -597,6 +620,31 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     );
 
     this.renderWarningHighlight(state);
+  }
+
+  /** Masks the marker index plates and vertical markers at the glued faces of the active floor (GitHub issue #981);
+   *  the same mask as "Vector by walls" (`trimMaskPolygons`). No mask without glues. Returns whether the floor has any. */
+  private updateSeamTrim(state: ReturnType<typeof useMazeStore.getState>, nodes: NodeDto[]): boolean {
+    const cfg = state.activeFieldConfig;
+    if (getSeamModel(cfg).isEmpty) {
+      for (const { mask, target } of this.seamTrimMasks) {
+        target.mask = null;
+        mask.clear();
+      }
+      this.seamTrimInputs = null;
+      return false;
+    }
+    const inputs = { nodes: state.nodes, floorId: state.activeFloorId, cfg, topology: state.floorTopology?.[state.activeFloorId] };
+    const previous = this.seamTrimInputs;
+    if (!previous || previous.nodes !== inputs.nodes || previous.floorId !== inputs.floorId || previous.cfg !== inputs.cfg || previous.topology !== inputs.topology) {
+      const bounds = exactCellBounds(nodes, cfg);
+      const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
+      const cells = nodes.map((node): [number, number] => [node.x, node.y]);
+      for (const { mask } of this.seamTrimMasks) drawTrimMask(mask, cells, cfg, span + 512);
+      this.seamTrimInputs = inputs;
+    }
+    for (const { mask, target } of this.seamTrimMasks) target.mask = mask;
+    return true;
   }
 
   /** Draws every split point's own corridor lines (GitHub issue #314) — each node's connector
@@ -1412,6 +1460,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalConnections.destroy();
     this.verticalContainer.destroy();
     this.markerIndex.destroy();
+    this.seamCopies.destroy();
+    for (const { mask } of this.seamTrimMasks) mask.destroy();
     this.floorLabel.destroy();
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
