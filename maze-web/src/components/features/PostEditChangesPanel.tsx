@@ -5,6 +5,8 @@ import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { EntityBubbleRow } from "./EntityBubbleRow";
+import { IdBubble } from "../Bubble";
+import { ListCell, ListCellAction } from "../ListCell";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditLifelines";
@@ -155,32 +157,30 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
             const isDeletePreviewed = previewIndices !== null
               && (row.commandIndex === hoveredPreview!.commandIndex || previewIndices.has(row.commandIndex));
             const rowStyle = isDeletePreviewed
-              ? { ...styles.row, ...styles.rowDeletePreview }
+              ? styles.rowDeletePreview
               : row.entityId !== undefined && row.entityId === hoveredEntityId
-                ? { ...styles.row, ...styles.rowEntityHighlight }
-                : styles.row;
+                ? styles.rowEntityHighlight
+                : undefined;
             return (
-              <div
+              <ListCell
                 key={row.commandIndex}
                 style={rowStyle}
                 onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
                 onMouseLeave={clearHover}
-              >
-                <div style={styles.titleRow}>
-                  <span style={styles.action}>{row.action}</span>
-                  {row.entityId !== undefined && (
-                    <ToolTooltip title={m["post_edit.changes_id_bubble_primary"]()}><span
+                title={row.action}
+                badge={row.entityId !== undefined && (
+                  <ToolTooltip title={m["post_edit.changes_id_bubble_primary"]()}>
+                    <IdBubble
+                      id={row.entityId}
+                      interactive
                       className="hoverable"
-                      style={styles.idBubble}
                       onMouseEnter={() => setHoveredEntityId(row.entityId!)}
                       onMouseLeave={() => setHoveredEntityId(null)}
                       onClick={() => setEntityFilter(row.entityId!)}
-                    >
-                      id: {row.entityId}
-                    </span></ToolTooltip>
-                  )}
-                </div>
-                <div style={styles.bubblesRow}>
+                    />
+                  </ToolTooltip>
+                )}
+                details={(
                   <EntityBubbleRow
                     bubbles={row.bubbles}
                     arrow={row.showArrow ? row.arrow : undefined}
@@ -188,32 +188,29 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                     onBubbleLeave={() => (row.rowHighlight ? setPostEditHoveredEntity(row.rowHighlight) : clearHover())}
                     onBubbleClick={clickBubble}
                   />
-                  <div style={styles.rowActions}>
-                    <Tooltip content={m["post_edit.changes_reset_title"]()}><button
-                      type="button"
-                      className="hoverable"
-                      onClick={() => setPendingRowAction({ kind: "reset", commandIndex: row.commandIndex })}
+                )}
+                actions={(
+                  <>
+                    <ListCellAction
+                      title={m["post_edit.changes_reset_title"]()}
+                      onAction={() => setPendingRowAction({ kind: "reset", commandIndex: row.commandIndex })}
                       onMouseEnter={() => setHoveredPreview({ kind: "reset", commandIndex: row.commandIndex })}
                       onMouseLeave={() => setHoveredPreview(null)}
-                      aria-label={m["post_edit.changes_reset_title"]()}
-                      style={sharedStyles.closeBtn}
                     >
                       <RotateCcw size={ROW_ACTION_ICON_SIZE} />
-                    </button></Tooltip>
-                    <Tooltip content={m["post_edit.changes_delete_title"]()}><button
-                      type="button"
-                      className="hoverable"
-                      onClick={() => setPendingRowAction({ kind: "delete", commandIndex: row.commandIndex, cascade: row.cascade })}
+                    </ListCellAction>
+                    <ListCellAction
+                      title={m["post_edit.changes_delete_title"]()}
+                      danger
+                      onAction={() => setPendingRowAction({ kind: "delete", commandIndex: row.commandIndex, cascade: row.cascade })}
                       onMouseEnter={() => setHoveredPreview({ kind: "delete", commandIndex: row.commandIndex })}
                       onMouseLeave={() => setHoveredPreview(null)}
-                      aria-label={m["post_edit.changes_delete_title"]()}
-                      style={{ ...sharedStyles.closeBtn, color: ui.text.error }}
                     >
                       <Trash2 size={ROW_ACTION_ICON_SIZE} />
-                    </button></Tooltip>
-                  </div>
-                </div>
-              </div>
+                    </ListCellAction>
+                  </>
+                )}
+              />
             );
           })}
         </div>
@@ -293,33 +290,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.panel,
     flexShrink: 0,
   },
-  row: {
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    gap: spacing.itemGap / 2,
-    padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
-    borderBottom: `1px solid ${ui.border.default}`,
-  },
-  // Bubbles + Reset/Delete buttons share one flex row (GitHub issue #547 follow-up: buttons moved
-  // off the row's own pinned bottom-right corner into this same line) — `bubbles` wraps and grows,
-  // `rowActions` stays pinned to the line's own right edge via `marginLeft: auto`.
-  bubblesRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-  },
-  // Reset ("undo everything after this point")/Delete ("remove just this change") buttons (GitHub
-  // issue #547). Delete is tinted red (`ui.text.error`) since it can cascade an entire entity's
-  // lifeline away; Reset keeps the neutral `closeBtn` color since it only ever affects commands
-  // strictly after this row. `flexShrink: 0` keeps both icons from squeezing when `bubbles` wraps
-  // to more than one line.
-  rowActions: {
-    display: "flex",
-    gap: spacing.itemGap,
-    marginLeft: "auto",
-    flexShrink: 0,
-  },
   // GitHub issue #573: every OTHER row sharing the currently-hovered id bubble's entity id — same
   // generic hover background other panels use (`NestedStrategyPanel`/quality canvas), not a
   // dedicated hue, since this is "related row" not a semantic (error/warning/info) state.
@@ -332,43 +302,6 @@ const styles: Record<string, React.CSSProperties> = {
   // neutral tint and the point bubbles' own cyan.
   rowDeletePreview: {
     background: ui.bg.error,
-  },
-  // Same title-row layout as `PresetCell`: the badge stays in normal flow and therefore cannot
-  // overlap the action controls on the details row.
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-    minWidth: 0,
-  },
-  action: {
-    ...typography.body,
-    flex: "1 1 auto",
-    minWidth: 0,
-  },
-  // The entity id bubble (GitHub issue #573) — split out of `action`'s own text (previously
-  // `"Action (#id)"`) into its own hoverable/clickable chip in the title row, so it reads as a
-  // row-level tag rather than part of the action's own sentence. Green (`ui.bg.success`/
-  // `ui.text.success` — same pairing convention
-  // `debug.refHighlight`/`debug.issueHighlight` use, a dedicated bg+text pair rather than a computed
-  // alpha) rather than the point bubbles' cyan (`debug.refHighlight`) so it reads as a distinct kind
-  // of reference at a glance. Hovering highlights every other row sharing this id (`hoveredEntityId`,
-  // local panel state — never the canvas); clicking sets the entity-id filter (GitHub issue #574's
-  // `setPostEditChangesEntityFilter`) to narrow the log down to just this entity.
-  idBubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.bg.success,
-    borderColor: ui.text.success,
-    color: ui.text.success,
-    whiteSpace: "nowrap",
-    cursor: "pointer",
   },
   empty: {
     ...muted(typography.body),

@@ -30,4 +30,19 @@ describe("PresetSplitNodesDialog", () => {
 
     expect(screen.getByText("Gen source")).toBeInTheDocument();
   });
+
+  it.each(["wall", "undefined"] as const)("shows a %s edge as a two-way link whichever way the entry is stored", (state) => {
+    const ends = [
+      { from: presetEndpoint([2, 2], 0), to: presetEndpoint([3, 2]) },
+      { from: presetEndpoint([3, 2]), to: presetEndpoint([2, 2], 0) },
+    ];
+    for (const entry of ends) {
+      useMazeStore.setState({ presetConnections: new Map([["k", { ...entry, state, source: "user" }]]) });
+      const { unmount } = render(<PresetSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+
+      const links = screen.getAllByText(/^2:2 \(N\d\) (<->|->|<-) \d:\d$/);
+      for (const link of links) expect(link.textContent).toContain("<->");
+      unmount();
+    }
+  });
 });

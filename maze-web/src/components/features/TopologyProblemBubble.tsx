@@ -1,11 +1,11 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import type { FieldConfig } from "../../fieldConfig";
 import type { InactiveFoldReason } from "../../wasm/mazeService";
 import { faceLabel } from "../../pixi/topologyLabels";
 import { useMazeStore } from "../../store/mazeStore";
 import { problemSides, type TopologyProblem } from "../../store/topologyProblem";
+import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { WarningBubble } from "../WarningBubble";
-import { typography, radius, spacing, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 export const REASON_LABELS: Record<InactiveFoldReason, () => string> = {
@@ -53,42 +53,19 @@ export function TopologyProblemBubble({ problem, cfg }: { problem: TopologyProbl
     <div onMouseEnter={() => setFlagged(named)} onMouseLeave={() => setFlagged([])}>
       <WarningBubble severity="critical" message={problemMessage(problem)}>
         {cfg && named.length > 0 && (
-          <div style={styles.sides} data-testid="topology-problem-sides">
+          <BubbleHoverZones data-testid="topology-problem-sides">
             {named.map((end, i) => (
-              <span
+              <BubbleHoverZone
                 key={i}
-                style={styles.hoverZone}
                 onMouseEnter={() => setFlagged([end])}
                 onMouseLeave={() => setFlagged(named)}
               >
-                <span style={styles.bubble}>{faceLabel(end, cfg)}</span>
-              </span>
+                <Bubble variant="danger">{faceLabel(end, cfg)}</Bubble>
+              </BubbleHoverZone>
             ))}
-          </div>
+          </BubbleHoverZones>
         )}
       </WarningBubble>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  // Hover zones touch (no gap), so moving between bubbles never flashes the whole-problem flag.
-  sides: { display: "flex", flexWrap: "wrap" },
-  hoverZone: { display: "inline-flex", padding: spacing.itemGap / 4, cursor: "default" },
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    whiteSpace: "nowrap",
-    cursor: "default",
-    userSelect: "none",
-    background: "transparent",
-    borderColor: ui.text.error,
-    color: ui.text.error,
-  },
-};

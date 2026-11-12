@@ -101,7 +101,11 @@ overlay that closes it on click (stopped by clicking inside the dialog itself).
 
 Props: `title`, `size?` (a `dialogSize` key), `rawBody?` (raw full-bleed container for content that
 manages its own layout, e.g. split-pane dialogs — replaces the default padded body), `onClose`,
-`children?`.
+`onConfirm?` (Enter/Space shortcut, issue #638), `children?`.
+
+On mount the dialog box (`tabIndex={-1}`) takes focus so Enter/Space reach its own shortcuts instead of
+re-activating the trigger that opened it — unless a child already took focus during its own mount
+effect (an `autoFocus` `SelectableList`, so its arrow keys work at once); that child keeps it.
 
 ### Stack and Escape
 
@@ -122,3 +126,57 @@ preset entity/elevator/vertical-direction/reset/split-target dialogs, `SeedHisto
 `ScreenDpiCalibrationModal`, warning-bubble popups (`ExportWarningBubble`,
 `PngOverflowWarningBubble`), `ParamFields`' pattern/split-config list editors, `DebugRefBubble`,
 `IssuesBlock`.
+
+## Shared list and bubble primitives (issue #978)
+
+Small presentational components that the side panels and dialogs share. They lay out and style;
+hover, click and highlight behavior stays with the caller through the usual DOM props (`style` is
+always merged last).
+
+### `Bubble` (`components/Bubble.tsx`)
+
+The monospace chip. `variant`: `neutral` (references an entity, `ui.debug.refHighlight`), `success`
+(tags an id) or `danger` (marks a problem); `colors` overrides the variant (the glue runs' own hues);
+`size`: `caption` (default) or `body` (a bubble inside a line of body text); `interactive` shows the
+pointer cursor, otherwise the cursor is `default`. Bubble text is never selectable. `IdBubble` is the
+`id: N` tag (a `success` bubble). `bubbleColors(variant)` gives a variant's colours for something
+that sits inside a bubble (a floor badge).
+
+`BubbleHoverZones` / `BubbleHoverZone` wrap bubbles whose hover highlights something on the canvas:
+the zones **touch** (the visual spacing is padding on each zone, never a gap), so moving between two
+bubbles never passes a spot that hovers the whole group and the highlight does not flicker.
+`BubbleArrow` is the muted `->`, `<-` or `<->` glyph between two bubbles.
+
+### `ListCell` / `ListCellAction` (`components/ListCell.tsx`)
+
+One entry of a side-panel list: a title row (title, optional addon such as a colour dot, `badge`
+pinned right — an `IdBubble`), an optional details row, an optional body, and an `actions` area at the
+right end of the title row or of the details row (`actionsPlacement`). `ListCellAction` is the 22×22
+icon button: `title` is both tooltip and accessible name, `danger` tints it with the error colour,
+`selected` marks the active mode button (and sets `aria-pressed`; leave it out for a plain button).
+It never clicks the cell it sits in. With `activateOnPress` the action runs on `pointerdown`
+(with `preventDefault` + `stopPropagation`) and keyboard activation (`click` with `detail === 0`) still
+works — the SidePanel hit-testing workaround of issue #679 for rows that re-render between press and
+release.
+
+### `SelectableList` / `SelectableRow` (`components/SelectableList.tsx`)
+
+Single-select `role="listbox"` over `role="option"` rows (option ids contain no whitespace, so
+`aria-activedescendant` is valid for any value). The listbox itself holds focus (`tabIndex={0}`,
+`autoFocus` takes it on mount). `values` is the arrow-key walk order of the selectable values;
+without it the list has no key handling at all (a list that applies its selection at once). Up/Down
+clamp at both ends; from no selection Down lands on the first value and Up on the last. `onSelect`
+gets `"pointer"` or `"keyboard"` as the source. The selected row is scrolled into view when the
+selection moves (not on a re-render that only rebuilds `values`). `footer` is sticky content that is
+not an option. `SelectableRow` is memoized (moving the highlight re-renders two rows) and `disabled`
+rows are dimmed, `aria-disabled` and not selectable.
+
+`appearance="panel"` is the framed list of a side panel (`FontPickerPanel`); `appearance="dialog"`
+is bare rows spanning a dialog (`ItemSelectDialog` — `compact`, with `indented` rows under
+`role="group"` section headers —, `CopyFloorDialog`, `SeedHistoryDialog`). In dialog lists the
+selected row does not react to hover unless `hoverSelected` is set (`SeedHistoryDialog`, which
+brightens it like the other rows).
+
+`SeedHistoryDialog` highlights only the history entry the seed field currently shows (none when the
+typed seed is not in the history). A click jumps to the seed and closes; Up/Down move the highlight
+without jumping and Enter then jumps to the highlighted seed.

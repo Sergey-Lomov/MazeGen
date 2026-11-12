@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { Spline, Trash2, Waypoints } from "lucide-react";
 import { manualPathMode, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
-import { Tooltip } from "../Tooltip";
+import { Bubble, BubbleArrow } from "../Bubble";
+import { ListCell, ListCellAction } from "../ListCell";
 import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 import type { ShortcutKey } from "../ToolIconButton";
-import { sharedStyles } from "../../styles/shared";
-import { indent, radius, spacing, typography, ui } from "../../styles/theme";
+import { indent, spacing, typography, ui } from "../../styles/theme";
 import { SectionHeader } from "../SectionHeader";
 import { ExportWarningBubble } from "./ExportWarningBubble";
 import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
@@ -41,8 +42,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   });
   const label = (node: typeof nodes[number] | undefined) => {
     if (!node) return m["image_export.teleport_connector_editor.missing_endpoint"]();
-    const floor = floors[node.level ?? 0];
-    return `${floors.length > 1 ? `${floor?.title ?? node.level ?? 0} ` : ""}${node.x}:${node.y}`;
+    return formatTargetLabel([node.x, node.y], node.level ?? 0, floors.length > 1, undefined);
   };
   const remove = () => {
     if (pendingKey === null) return;
@@ -75,27 +75,39 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
       <div style={styles.divider} />
       {rows.length === 0 ? <div style={styles.empty}>{m["image_export.teleport_connector_editor.empty"]()}</div> : (
         <div style={styles.list}>{rows.map((row) => (
-          <div key={row.key} style={hoveredKey === row.key ? { ...styles.row, background: ui.bg.hover } : styles.row} onMouseEnter={() => { setHoveredKey(row.key); setHovered(row.ids); }} onMouseLeave={() => { setHoveredKey(null); setHovered(null); }} onClick={() => onFocusPath(row.points)}>
-            <div style={styles.bubbles}>
-              <span style={styles.bubble} onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[0]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.a)}</span>
-              <span style={styles.arrow} onMouseEnter={(e) => { e.stopPropagation(); setHovered(row.ids); }}>↔</span>
-              <span style={styles.bubble} onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[1]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.b)}</span>
-            </div>
-            <div style={styles.modeActions}>
-              <Tooltip content={m["image_export.teleport_connector_editor.mode_polyline"]()}><button
-                type="button" className="hoverable" style={manualPathMode(row.path) === "polyline" ? { ...sharedStyles.closeBtn, ...styles.modeButton, ...styles.modeSelected } : { ...sharedStyles.closeBtn, ...styles.modeButton }}
-                aria-label={m["image_export.teleport_connector_editor.mode_polyline"]()} onClick={(e) => { e.stopPropagation(); setMode(row.key, "polyline"); }}
-              ><Waypoints size={16} /></button></Tooltip>
-              <Tooltip content={m["image_export.teleport_connector_editor.mode_curve"]()}><button
-                type="button" className="hoverable" style={manualPathMode(row.path) === "curve" ? { ...sharedStyles.closeBtn, ...styles.modeButton, ...styles.modeSelected } : { ...sharedStyles.closeBtn, ...styles.modeButton }}
-                aria-label={m["image_export.teleport_connector_editor.mode_curve"]()} onClick={(e) => { e.stopPropagation(); setMode(row.key, "curve"); }}
-              ><Spline size={16} /></button></Tooltip>
-              <Tooltip content={m["image_export.teleport_connector_editor.reset_title"]()}><button
-                type="button" className="hoverable" style={{ ...sharedStyles.closeBtn, color: ui.text.error }}
-                aria-label={m["image_export.teleport_connector_editor.reset_title"]()} onClick={(e) => { e.stopPropagation(); setPendingKey(row.key); }}
-              ><Trash2 size={16} /></button></Tooltip>
-            </div>
-          </div>
+          <ListCell
+            key={row.key}
+            style={hoveredKey === row.key ? { ...styles.row, background: ui.bg.hover } : styles.row}
+            onMouseEnter={() => { setHoveredKey(row.key); setHovered(row.ids); }}
+            onMouseLeave={() => { setHoveredKey(null); setHovered(null); }}
+            onClick={() => onFocusPath(row.points)}
+            details={(
+              <div style={styles.bubbles}>
+                <Bubble onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[0]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.a)}</Bubble>
+                <BubbleArrow onMouseEnter={(e) => { e.stopPropagation(); setHovered(row.ids); }}>↔</BubbleArrow>
+                <Bubble onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[1]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.b)}</Bubble>
+              </div>
+            )}
+            actions={(
+              <>
+                <ListCellAction
+                  title={m["image_export.teleport_connector_editor.mode_polyline"]()}
+                  selected={manualPathMode(row.path) === "polyline"}
+                  onAction={() => setMode(row.key, "polyline")}
+                ><Waypoints size={16} /></ListCellAction>
+                <ListCellAction
+                  title={m["image_export.teleport_connector_editor.mode_curve"]()}
+                  selected={manualPathMode(row.path) === "curve"}
+                  onAction={() => setMode(row.key, "curve")}
+                ><Spline size={16} /></ListCellAction>
+                <ListCellAction
+                  title={m["image_export.teleport_connector_editor.reset_title"]()}
+                  danger
+                  onAction={() => setPendingKey(row.key)}
+                ><Trash2 size={16} /></ListCellAction>
+              </>
+            )}
+          />
         ))}</div>
       )}
       <div style={styles.instructions}>
@@ -120,13 +132,8 @@ function Instruction({ keys, text }: { keys: readonly ShortcutKey[]; text: strin
 
 const styles: Record<string, React.CSSProperties> = {
   list: { display: "flex", flexDirection: "column" },
-  row: { display: "flex", alignItems: "center", gap: spacing.itemGap, padding: `${spacing.itemGap}px ${spacing.groupGap}px`, borderBottom: `1px solid ${ui.border.default}`, cursor: "pointer" },
-  modeActions: { display: "flex", alignItems: "center", gap: 2 },
-  modeButton: { display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, boxSizing: "border-box" },
-  modeSelected: { background: ui.bg.hover, color: ui.text.primary, borderRadius: radius.sm },
+  row: { cursor: "pointer" },
   bubbles: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0, flex: 1 },
-  bubble: { ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", border: `1px solid ${ui.debug.refHighlight.text}`, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`, background: ui.debug.refHighlight.bg, color: ui.debug.refHighlight.text, whiteSpace: "nowrap" },
-  arrow: { ...typography.caption, color: ui.text.secondary },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
   warnings: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },

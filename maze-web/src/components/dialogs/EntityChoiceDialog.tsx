@@ -1,7 +1,8 @@
 import type React from "react";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
-import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
+import { Bubble, BubbleArrow } from "../Bubble";
+import { ui, radius, dialogSpacing, spacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 export interface EntityChoiceRow {
@@ -36,12 +37,12 @@ export function EntityChoiceDialog({ title, hint, rows, deleteAllLabel, onSelect
         {rows.map((row) => (
           <Button key={row.key} variant="secondary" layoutStyle={compact ? { ...styles.item, ...styles.compactItem } : styles.item} onClick={() => onSelect(row)}>
             <span style={styles.action}>{row.title}</span>
-            {row.entityId !== undefined && <span style={styles.idBubble}>id: {row.entityId}</span>}
+            {row.entityId !== undefined && <Bubble variant="success">id: {row.entityId}</Bubble>}
             <div style={compact ? { ...styles.bubbles, ...styles.compactBubbles } : styles.bubbles}>
               {row.bubbles.map((bubble, index) => (
                 <span key={`${row.key}:${index}`} style={styles.bubbleGroup}>
-                  {index > 0 && row.showArrow && <span style={styles.arrow}>{row.arrow}</span>}
-                  <span style={styles.bubble}>{bubble}</span>
+                  {index > 0 && row.showArrow && <BubbleArrow>{row.arrow}</BubbleArrow>}
+                  <Bubble>{bubble}</Bubble>
                 </span>
               ))}
             </div>
@@ -69,20 +70,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   compactItem: { flexWrap: "nowrap" },
   action: { ...typography.body, whiteSpace: "nowrap" },
-  idBubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex", alignItems: "center",
-    borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`,
-    background: ui.bg.success, borderColor: ui.text.success, color: ui.text.success, whiteSpace: "nowrap",
-  },
   bubbles: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.itemGap / 2 },
   compactBubbles: { flexWrap: "nowrap" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.itemGap },
-  arrow: { ...muted(typography.caption) },
-  bubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex", alignItems: "center",
-    borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg, padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg, borderColor: ui.debug.refHighlight.text, color: ui.debug.refHighlight.text, whiteSpace: "nowrap",
-  },
   footer: { display: "flex", justifyContent: "flex-end", gap: dialogSpacing.gap, paddingTop: dialogSpacing.paddingY, borderTop: `1px solid ${ui.border.default}` },
   footerButton: { ...typography.control, padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`, cursor: "default", borderRadius: radius.sm },
 };

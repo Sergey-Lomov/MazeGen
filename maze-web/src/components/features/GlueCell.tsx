@@ -7,12 +7,13 @@ import type { TopologyHover } from "../../store/topologyTypes";
 import type { FieldConfig } from "../../fieldConfig";
 import { faceLabel } from "../../pixi/topologyLabels";
 import { glueColorsByGroup } from "../../pixi/selectors/glueColors";
+import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
-import { Tooltip } from "../Tooltip";
+import { ListCell, ListCellAction } from "../ListCell";
 import { REASON_LABELS } from "./TopologyProblemBubble";
 import { sharedStyles } from "../../styles/shared";
-import { typography, muted, radius, spacing, indent, ui } from "../../styles/theme";
+import { typography, muted, spacing, indent, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 /// The CSS colour of each glue's arrow on the canvas, by glue id: the same hue the arrow layer draws it in.
@@ -60,48 +61,50 @@ export function GlueCell({ glue, topology, info, fieldConfig, dotColor, setHover
   const runSection = (title: string, side: "a" | "b") => (
     <div style={styles.run}>
       <div style={sharedStyles.sectionHeader}>{title}</div>
-      <div style={styles.sides}>
+      <BubbleHoverZones style={styles.sides}>
         {glue.folds.map((index) => {
           const end = topology.folds[index][side];
           const inactive = info.activity[index]?.state === "inactive";
           const color = ui.topology[side === "a" ? "runA" : "runB"];
           return (
-            <span
+            <BubbleHoverZone
               key={index}
-              style={styles.hoverZone}
               onMouseEnter={() => inactive ? setFlagged([topology.folds[index].a, topology.folds[index].b]) : setHover({ glue: glue.id, fold: index })}
               onMouseLeave={() => inactive ? setFlagged([]) : setHover({ glue: glue.id, fold: null })}
             >
-              <span data-testid="topology-side" style={inactive ? styles.bubbleInactive : { ...styles.bubble, ...runColors(color) }}>
+              <Bubble data-testid="topology-side" {...(inactive ? { variant: "danger" } : { colors: color })}>
                 {fieldConfig ? faceLabel(end, fieldConfig) : ""}
-              </span>
-            </span>
+              </Bubble>
+            </BubbleHoverZone>
           );
         })}
-      </div>
+      </BubbleHoverZones>
     </div>
   );
 
   return (
     <>
-    <div
+    <ListCell
       data-testid="topology-glue"
-      style={styles.cell}
       onMouseEnter={() => setHover({ glue: glue.id, fold: null })}
       onMouseLeave={() => setHover(null)}
+      title={m["topology.glue_title"]({ id: String(glue.id + 1) })}
+      titleAddon={dotColor !== null && <span data-testid="topology-glue-dot" style={{ ...styles.colorDot, background: dotColor }} />}
+      actionsPlacement="title"
+      actions={editing && (
+        <>
+          <EditIconButton title={disabledTitle ?? m["topology.edit"]()} disabled={!editing.canEdit} onClick={editing.onEdit} />
+          <ListCellAction
+            title={disabledTitle ?? m["topology.remove"]()}
+            danger
+            disabled={!editing.canEdit}
+            onAction={() => setConfirmingRemove(true)}
+          >
+            <Trash2 size={16} />
+          </ListCellAction>
+        </>
+      )}
     >
-      <div style={styles.titleRow}>
-        <span style={typography.body}>
-          {m["topology.glue_title"]({ id: String(glue.id + 1) })}
-        </span>
-        {dotColor !== null && <span data-testid="topology-glue-dot" style={{ ...styles.colorDot, background: dotColor }} />}
-        {editing && (
-          <div style={styles.actions}>
-            <EditIconButton title={disabledTitle ?? m["topology.edit"]()} disabled={!editing.canEdit} onClick={editing.onEdit} />
-            <RemoveButton title={disabledTitle ?? m["topology.remove"]()} disabled={!editing.canEdit} onClick={() => setConfirmingRemove(true)} />
-          </div>
-        )}
-      </div>
       <div style={styles.cellBody}>
       <div style={styles.hint}>
         {m[twisted ? "topology.glue_meta_twisted" : "topology.glue_meta"]({ size: glue.folds.length })}
@@ -113,7 +116,7 @@ export function GlueCell({ glue, topology, info, fieldConfig, dotColor, setHover
       {runSection(m["topology.run_b_name"](), "b")}
       {children}
       </div>
-    </div>
+    </ListCell>
     {editing && confirmingRemove && (
       <ConfirmModal
         message={m["topology.remove_confirm"]({ id: String(glue.id + 1) })}
@@ -125,72 +128,12 @@ export function GlueCell({ glue, topology, info, fieldConfig, dotColor, setHover
   );
 }
 
-function RemoveButton({ title, disabled, onClick }: { title: string; disabled: boolean; onClick: () => void }) {
-  return (
-    <Tooltip content={title}>
-      <button
-        type="button"
-        className="hoverable"
-        disabled={disabled}
-        aria-label={title}
-        style={{ ...styles.iconButton, color: ui.text.error, ...(disabled ? { opacity: 0.4 } : {}) }}
-        onClick={onClick}
-      >
-        <Trash2 size={16} style={styles.iconGlyph} />
-      </button>
-    </Tooltip>
-  );
-}
-
-const runColors = (color: { bg: string; text: string }): React.CSSProperties => ({ background: color.bg, borderColor: color.text, color: color.text });
-
-const bubbleBase: React.CSSProperties = {
-  ...typography.caption,
-  fontFamily: "Consolas, Menlo, Monaco, monospace",
-  display: "inline-flex",
-  alignItems: "center",
-  borderStyle: "solid",
-  borderWidth: 1,
-  borderRadius: radius.lg,
-  padding: `0 ${spacing.itemGap}px`,
-  whiteSpace: "nowrap",
-  cursor: "default",
-  userSelect: "none",
-};
-
 const styles: Record<string, React.CSSProperties> = {
   hint: { ...muted(typography.body) },
   error: { ...typography.body, color: ui.text.error, overflowWrap: "anywhere" },
-  cell: {
-    display: "flex", flexDirection: "column", gap: spacing.itemGap / 2,
-    padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
-    borderBottom: `1px solid ${ui.border.default}`,
-  },
   // Everything in a glue cell but its title is one level in; the side bubbles add their own level.
   cellBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2, paddingLeft: indent.tree },
   colorDot: { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
-  titleRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
-  actions: { display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto", flexShrink: 0 },
   run: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2 },
-  // Bubble hover zones touch (no gap), so moving between bubbles never passes a spot that
-  // hovers the whole glue; the padding keeps the visual spacing.
-  sides: { display: "flex", flexWrap: "wrap", paddingLeft: indent.tree },
-  hoverZone: { display: "inline-flex", padding: spacing.itemGap / 4, cursor: "default" },
-  bubble: { ...bubbleBase, background: ui.debug.refHighlight.bg, borderColor: ui.debug.refHighlight.text, color: ui.debug.refHighlight.text },
-  bubbleInactive: { ...bubbleBase, background: ui.bg.error, borderColor: ui.text.error, color: ui.text.error },
-  iconButton: {
-    ...typography.icon,
-    width: 22,
-    height: 22,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    border: "none",
-    background: "none",
-    lineHeight: 1,
-    cursor: "default",
-    flexShrink: 0,
-  },
-  iconGlyph: { pointerEvents: "none" },
+  sides: { paddingLeft: indent.tree },
 };

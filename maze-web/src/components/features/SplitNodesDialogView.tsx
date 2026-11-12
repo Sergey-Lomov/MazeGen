@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
+import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { blueprintNumber, fittingRotation, orientationsOf, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
@@ -341,14 +342,13 @@ export function SplitNodesDialogView<E>({
                         <span style={typography.body}>{SECTION_LABEL[category]()}</span>
                         <div style={styles.linksCell}>
                           {links.map((link, i) => (
-                              <span
+                              <Bubble
                                 key={i}
-                                style={styles.bubble}
                                 onMouseEnter={onHoverLink ? () => onHoverLink(row, link) : undefined}
                                 onMouseLeave={onUnhoverLink}
                               >
                                 {row.ownLabel} {link.arrow} {link.otherLabel}
-                              </span>
+                              </Bubble>
                             ))}
                         </div>
                       </div>
@@ -368,27 +368,26 @@ export function SplitNodesDialogView<E>({
                               const floorClickable = floor !== undefined && floor !== currentLevel;
                               return (
                               <span key={j} style={styles.bubbleGroup}>
-                                {j === 0 && element.showArrow && <span style={styles.arrow}>{element.arrow}</span>}
-                                <span
-                                  style={{ ...styles.bubble, ...(floorClickable ? styles.clickableBubble : {}) }}
+                                {j === 0 && element.showArrow && <BubbleArrow>{element.arrow}</BubbleArrow>}
+                                <Bubble
+                                  interactive={floorClickable}
                                   onClick={floorClickable ? (event) => {
                                     event.stopPropagation();
                                     onUnhoverElement?.();
                                     onUnhoverLink?.();
                                     navigateToFloor(floor);
                                   } : undefined}
-                                >{bubble}</span>
+                                >{bubble}</Bubble>
                               </span>
                               );
                             })}
                             {element.entityId !== undefined && (
-                              <span
+                              <IdBubble
+                                id={element.entityId}
+                                interactive={onEntityIdClick !== undefined}
                                 className={onEntityIdClick ? "hoverable" : undefined}
-                                style={{ ...styles.idBubble, ...(onEntityIdClick ? styles.clickableBubble : {}) }}
                                 onClick={onEntityIdClick ? (event) => { event.stopPropagation(); onEntityIdClick(element.entityId!); } : undefined}
-                              >
-                                id: {element.entityId}
-                              </span>
+                              />
                             )}
                           </span>
                         ))}
@@ -581,37 +580,12 @@ const styles: Record<string, React.CSSProperties> = {
     paddingLeft: indent.tree,
     marginTop: 2,
   },
-  // Same shape as `DebugRefBubble`'s coordinate bubble — reused for visual consistency, not its
-  // hover/click behavior (this dialog's bubbles are plain, non-interactive labels).
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
-    whiteSpace: "nowrap",
-  },
-  clickableBubble: { cursor: "pointer" },
   badge: {
     ...typography.control,
     fontSize: 11,
     padding: "0 6px",
     borderRadius: radius.sm,
     whiteSpace: "nowrap",
-  },
-  startBadge: {
-    background: ui.text.success,
-    color: ui.text.inverse,
-  },
-  finishBadge: {
-    background: ui.text.error,
-    color: ui.text.inverse,
   },
   elementsSection: {
     display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap,
@@ -620,12 +594,6 @@ const styles: Record<string, React.CSSProperties> = {
   elementRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.rowGap },
   elementTitle: { ...muted(typography.body), whiteSpace: "nowrap" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.rowGap },
-  idBubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex",
-    alignItems: "center", borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`, background: ui.bg.success, borderColor: ui.text.success,
-    color: ui.text.success, whiteSpace: "nowrap",
-  },
   lockBadge: {
     background: ui.text.secondary,
     color: ui.bg.app,

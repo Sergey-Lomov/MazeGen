@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ui, typography, radius, muted, spacing } from "../styles/theme";
+import { ui, typography, muted, spacing } from "../styles/theme";
 import { darken } from "../styles/palette";
 import { useMazeStore } from "../store/mazeStore";
+import { Bubble } from "./Bubble";
 import { Modal } from "./Modal";
 import { FloorBadgeRow } from "./FloorBadgeRow";
 import * as m from "~/paraglide/messages";
@@ -59,8 +60,10 @@ export function DebugRefBubble({
 
   return (
     <>
-      <span
-        style={isIssue ? styles.bubbleWrap : styles.bubble}
+      <Bubble
+        size="body"
+        variant={isIssue ? "danger" : "neutral"}
+        style={isIssue ? styles.issueLayout : undefined}
         onMouseEnter={hoverable ? () => setHoveredDebugRef(target) : undefined}
         onMouseLeave={hoverable ? () => setHoveredDebugRef(null) : undefined}
         onClick={(e) => {
@@ -82,7 +85,7 @@ export function DebugRefBubble({
             text={ui.debug.issueHighlight.bg}
           />
         )}
-      </span>
+      </Bubble>
       {clickable && open && (
         <Modal title={label} onClose={() => setOpen(false)}>
           {reasons.length === 1 ? (
@@ -104,28 +107,6 @@ export function DebugRefBubble({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  // Same shape as `IssueBubble`'s bubble/label in `IssuesBlock.tsx` (Analytics' equivalent
-  // reference bubble) — `typography.body`'s own `lineHeight` untouched, no `verticalAlign`
-  // override. `display: inline-flex` + `alignItems: center` (instead of `IssueBubble`'s plain
-  // `flex`, since this bubble sits inline inside a text line rather than as its own block row).
-  bubble: {
-    ...typography.body,
-    // Monospace, not the app's default `system-ui` stack — coordinate labels ("(3,18)") read
-    // better with fixed-width digits, and `system-ui`'s font metrics (ascent/descent) were
-    // pushing the label visibly off the bubble's vertical center; this stack centers cleanly.
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
-    cursor: "default",
-    whiteSpace: "nowrap",
-  },
   // Issue-kind bubbles carry a resolved display name (`resolveIssue(kind).label`), not a short
   // coordinate — those can run long, so unlike the coordinate bubbles above this one wraps instead
   // of overflowing the row (GitHub issue #204). Red (`ui.debug.issueHighlight`, GitHub issue
@@ -134,24 +115,14 @@ const styles: Record<string, React.CSSProperties> = {
   // second row inside the bubble's border below it, matching Analytics' `IssueBubble` layout. Stays
   // `inline-flex` (not block `flex`) since the bubble sits inline inside the narration text line;
   // `verticalAlign: top` keeps it from riding up on the baseline once it's taller than one line.
-  bubbleWrap: {
-    ...typography.body,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
+  issueLayout: {
     flexDirection: "column",
     alignItems: "flex-start",
     gap: spacing.itemGap / 2,
     verticalAlign: "top",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
     padding: `${spacing.itemGap / 2}px ${spacing.itemGap}px`,
-    background: ui.debug.issueHighlight.bg,
-    borderColor: ui.debug.issueHighlight.text,
-    color: ui.debug.issueHighlight.text,
-    cursor: "default",
     whiteSpace: "normal",
-    wordBreak: "break-word" as const,
+    wordBreak: "break-word",
   },
   bubbleLabel: {
     lineHeight: 1.3,
