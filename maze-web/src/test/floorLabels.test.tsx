@@ -14,6 +14,7 @@ import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../pixi/renderConstants";
 import { computeTextFitItemsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipAnchors } from "./tooltipTestUtils";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -172,6 +173,24 @@ describe("export floor labels", () => {
     const select = document.querySelector(`select[name="${m["image_export.floors.alignment"]()}"]`)!;
     fireEvent.change(select, { target: { value: "right" } });
     expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.textAlignment).toBe("right");
+  });
+
+  it("describes floor-label background auto-fit controls as resizing the background to the text", () => {
+    const current = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      vectorByWallsSectionsExpanded: { floors: true },
+      vectorByWallsSettings: {
+        ...current,
+        floorLabel: { ...current.floorLabel, backgroundShape: "rectangle" },
+      },
+    });
+    render(<VectorByWallsSettingsPanel />);
+
+    expect(getTooltipAnchors(m["image_export.floors.autofit_width_primary"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_width_tooltip"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_height_primary"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_height_tooltip"]())).toHaveLength(1);
   });
 
   it("edits the active floor's placement without changing shared label style", () => {
