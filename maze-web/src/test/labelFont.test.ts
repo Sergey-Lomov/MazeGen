@@ -10,7 +10,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function mockFontEnvironment(widthFor: (font: string) => number) {
+function mockFontEnvironment(widthFor: (font: string, text: string) => number) {
   const load = vi.fn().mockResolvedValue([]);
   Object.defineProperty(document, "fonts", {
     configurable: true,
@@ -18,7 +18,7 @@ function mockFontEnvironment(widthFor: (font: string) => number) {
   });
   HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
     font: "",
-    measureText(this: { font: string }) { return { width: widthFor(this.font) }; },
+    measureText(this: { font: string }, text: string) { return { width: widthFor(this.font, text) }; },
   }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   return load;
 }
@@ -32,6 +32,29 @@ describe("loadLabelFontFamily", () => {
     expect(isLabelFontFamilyLoaded("Missing")).toBe(false);
   });
 
+  it("accepts a font that covers only one script, told apart from the fallbacks by that script's probe", async () => {
+    // Latin probes fall back to monospace for this face (as a runic or Cyrillic-only font does);
+    // the Cyrillic probe is the only one that measures differently.
+    const cyrillic = /[А-Яа-я]/;
+    mockFontEnvironment((font, text) => font.includes("Runes") && cyrillic.test(text) ? 150 : font.includes("Runes") || font.includes("monospace") ? 100 : 80);
+    const { loadLabelFontFamily } = await import("../pixi/renderers/labelFont");
+
+    await expect(loadLabelFontFamily("Runes")).resolves.toBe(true);
+  });
+
+  it("accepts a family the machine reports even when its metrics match a fallback everywhere", async () => {
+    mockFontEnvironment((font) => font.includes("Twin") || font.includes("monospace") ? 100 : 80);
+    (window as Window & { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts = () => Promise.resolve([{ family: "Twin" }]);
+    try {
+      const { loadLabelFontFamily, loadLocalFontFamilies } = await import("../pixi/renderers/labelFont");
+      await expect(loadLabelFontFamily("Twin")).resolves.toBe(false);
+      await loadLocalFontFamilies();
+      await expect(loadLabelFontFamily("Twin")).resolves.toBe(true);
+    } finally {
+      delete (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
+    }
+  });
+
   it("shares concurrent loading of the same real family", async () => {
     const load = mockFontEnvironment((font) => font.includes("Fira Sans") ? 110 : font.includes("monospace") ? 100 : 80);
     const { loadLabelFontFamily, isLabelFontFamilyLoaded } = await import("../pixi/renderers/labelFont");
@@ -39,5 +62,14 @@ describe("loadLabelFontFamily", () => {
     await expect(Promise.all([loadLabelFontFamily("Fira Sans"), loadLabelFontFamily("Fira Sans")])).resolves.toEqual([true, true]);
     expect(load).toHaveBeenCalledTimes(2);
     expect(isLabelFontFamilyLoaded("Fira Sans")).toBe(true);
+  });
+});
+
+describe("labelFontCss", () => {
+  it("puts the generic sans-serif behind a browser font", async () => {
+    const { labelFontCss, labelFontFamilies } = await import("../pixi/renderers/labelFont");
+    expect(labelFontCss("Fira Sans")).toBe('"Fira Sans", sans-serif');
+    expect(labelFontFamilies("  Arial ")).toEqual(["Arial", "sans-serif"]);
+    expect(labelFontCss("")).toBe("sans-serif");
   });
 });

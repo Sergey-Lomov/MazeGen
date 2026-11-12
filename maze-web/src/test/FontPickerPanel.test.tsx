@@ -19,7 +19,16 @@ vi.mock("../pixi/renderers/labelFont", async (importActual) => ({
   loadLocalFontFamilies: (retry?: boolean) => Promise.resolve(retry ? localFamilies.retryValue : localFamilies.value),
 }));
 
-afterEach(() => { vi.useRealTimers(); });
+// A real pixi canvas needs WebGL, which jsdom lacks. The stand-in reports itself unavailable on demand.
+const msdfPreview = vi.hoisted(() => ({ unavailable: false }));
+vi.mock("../components/MsdfFontPreview", () => ({
+  MsdfFontPreview: ({ onUnavailable, testId }: { onUnavailable?: () => void; testId?: string }) => {
+    if (msdfPreview.unavailable) queueMicrotask(() => onUnavailable?.());
+    return <div data-testid={testId} />;
+  },
+}));
+
+afterEach(() => { vi.useRealTimers(); msdfPreview.unavailable = false; });
 
 beforeEach(() => { localFamilies.value = ["Arial", "Consolas", "Georgia"]; localFamilies.supported = true; localFamilies.retryValue = null; localFamilies.missing = new Set(); });
 
@@ -35,6 +44,42 @@ const vectorToggle = () => screen.getByRole("button", { name: m["font_picker.typ
 const rasterToggle = () => screen.getByRole("button", { name: m["font_picker.type_raster"]() });
 
 describe("FontPickerPanel", () => {
+  it("previews the phrase, starting with Lorem ipsum, in the highlighted font at a fixed 32 px", async () => {
+    await renderPanel({ family: "Consolas" });
+    const input = screen.getByTestId("font-picker-preview-input") as HTMLInputElement;
+    expect(input.value).toBe("Lorem ipsum");
+    fireEvent.change(input, { target: { value: "Hello" } });
+    const line = screen.getByTestId("font-picker-preview-line");
+    expect(line.textContent).toBe("Hello");
+    expect(line.style.fontSize).toBe("32px");
+    expect(line.style.fontFamily).toContain("Consolas");
+    fireEvent.click(screen.getByRole("option", { name: "Georgia" }));
+    expect(line.style.fontFamily).toContain("Georgia");
+  });
+
+  it("draws the MSDF font on a pixi canvas and TTF/OTF fonts as DOM text", async () => {
+    await renderPanel({ family: "" });
+    expect(screen.getByTestId("font-picker-preview-msdf")).toBeTruthy();
+    expect(screen.queryByTestId("font-picker-preview-line")).toBeNull();
+    fireEvent.click(rasterToggle());
+    fireEvent.click(screen.getByRole("option", { name: "Georgia" }));
+    expect(screen.queryByTestId("font-picker-preview-msdf")).toBeNull();
+    expect(screen.getByTestId("font-picker-preview-line")).toBeTruthy();
+  });
+
+  it("falls back to DOM text for the MSDF font when the canvas is unavailable", async () => {
+    msdfPreview.unavailable = true;
+    await renderPanel({ family: "" });
+    await act(async () => {});
+    expect(screen.getByTestId("font-picker-preview-line").style.fontFamily).toContain("Roboto");
+  });
+
+  it("offers text and background color rows for the preview", async () => {
+    await renderPanel({ family: "" });
+    expect(screen.getByText(m["font_picker.preview_text_color"]())).toBeTruthy();
+    expect(screen.getByText(m["font_picker.preview_background_color"]())).toBeTruthy();
+  });
+
   it("opens on the vector list holding only Roboto for the default family", async () => {
     await renderPanel({ family: "" });
     expect(optionNames()).toEqual(["Roboto"]);

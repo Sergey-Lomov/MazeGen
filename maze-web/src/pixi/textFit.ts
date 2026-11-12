@@ -2,7 +2,7 @@ import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import type { LabelFontWeight } from "./renderers/indexLabel";
 import { msdfFontFamily } from "./renderers/msdfFont";
-import { isLabelFontFamilyLoaded } from "./renderers/labelFont";
+import { isLabelFontFamilyLoaded, labelFontCss } from "./renderers/labelFont";
 import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 import type { MarkerShape } from "./renderers/types";
 import { markerPolygonPoints } from "./renderers/markerShapes";
@@ -65,7 +65,7 @@ export function measureText(text: string, fontWeight: LabelFontWeight, fontSize:
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (context) {
-      context.font = `${fontWeight === "bold" ? "bold" : "normal"} ${fontSize}px ${JSON.stringify(runtimeFamily)}`;
+      context.font = `${fontWeight === "bold" ? "bold" : "normal"} ${fontSize}px ${labelFontCss(runtimeFamily)}`;
       const metrics = context.measureText(text);
       const width = metrics.width;
       const height = (metrics.actualBoundingBoxAscent || fontSize * 0.7) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);

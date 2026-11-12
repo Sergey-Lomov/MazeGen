@@ -3,8 +3,12 @@ import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
-import { ui, radius, typography, spacing, font } from "../styles/theme";
-import { isFontFamilyInstalled, isLocalFontAccessSupported, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
+import { ui, radius, typography, spacing, font, indent } from "../styles/theme";
+import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
+import { MsdfFontPreview } from "./MsdfFontPreview";
+import { UnregisteredColorRow } from "./ColorRow";
+import { colorToHex, hexToColor } from "./colorFormat";
+import { sharedStyles } from "../styles/shared";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -16,6 +20,20 @@ type FontType = "vector" | "raster";
  *  rewrites a store value and rebuilds the canvas labels. The highlight follows each key press at
  *  once, but the canvas preview waits until the moves pause for this long. */
 const KEYBOARD_PREVIEW_DELAY_MS = 100;
+
+/** Fixed preview text size in px, independent of the size setting being edited. */
+const PREVIEW_FONT_SIZE = 32;
+
+/** Phrase the preview input starts with, the same in every UI language. */
+const DEFAULT_PREVIEW_PHRASE = "Lorem ipsum";
+
+/** Preview colors the panel opens with: the project's own input background and primary text, so the
+ *  preview matches the panel style. Local to the panel, never stored. */
+const DEFAULT_PREVIEW_TEXT_COLOR = hexToColor(ui.text.primary);
+const DEFAULT_PREVIEW_BACKGROUND = hexToColor(ui.bg.input);
+
+/** Fixed height of the single-line preview, so the panel layout does not move with the font size. */
+const PREVIEW_HEIGHT = 48;
 
 /** Family value that stands for the bundled MSDF Roboto in every `textFontFamily` field. */
 export const VECTOR_FONT_FAMILY = "";
@@ -55,6 +73,11 @@ interface Props {
  *  through `onPreview`, and commits through `onApply`. A toggle switches between the vector (MSDF)
  *  and raster lists; up / down arrows move the highlight within the active list. */
 export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel, title }: Props) {
+  // Set when a WebGL canvas cannot be created: the MSDF preview then falls back to DOM text in Roboto.
+  const [msdfUnavailable, setMsdfUnavailable] = useState(false);
+  const [phrase, setPhrase] = useState(DEFAULT_PREVIEW_PHRASE);
+  const [previewTextColor, setPreviewTextColor] = useState(DEFAULT_PREVIEW_TEXT_COLOR);
+  const [previewBackground, setPreviewBackground] = useState(DEFAULT_PREVIEW_BACKGROUND);
   const [working, setWorking] = useState(family);
   const [type, setType] = useState<FontType>(family === VECTOR_FONT_FAMILY ? "vector" : "raster");
   const [infoOpen, setInfoOpen] = useState(false);
@@ -167,46 +190,101 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
         onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } }}
       >
         <div style={styles.content}>
-          <div style={styles.typeRow}>
-            <div style={styles.typeSwitcher}>
-              {(["vector", "raster"] as const).map((key) => (
-                <Button key={key} variant={type === key ? "toggle-selected" : "toggle"} onClick={() => setType(key)}>
-                  {key === "vector" ? m["font_picker.type_vector"]() : m["font_picker.type_raster"]()}
-                </Button>
-              ))}
-            </div>
-            <InfoIconButton onClick={() => setInfoOpen(true)} />
-          </div>
-          {localFamilies === undefined && type === "raster" ? (
-            <span style={styles.loading}>{m["font_picker.loading"]()}</span>
-          ) : (
-            <FontList
-              // Remount per type so the new list takes keyboard focus (arrow keys keep working
-              // after the toggle button was clicked).
-              key={type}
-              options={options}
-              selected={working}
-              onSelect={select}
-              onKeyDown={handleListKeyDown}
-              testId={`font-picker-list-${type}`}
-              footer={showPermissionNote && (
-                // Muted caption note pinned to the bottom of the list body, in the same quiet style
-                // as the embedded hotkey hints (`EmbeddedHotkeyHint`).
-                <div style={styles.permissionNote} data-testid="font-picker-permission-note">
-                  <span style={styles.permissionText}>
-                    {!isLocalFontAccessSupported()
-                      ? m["font_picker.local_fonts_unsupported"]()
-                      : accessBlocked ? m["font_picker.local_fonts_blocked"]() : m["font_picker.local_fonts_permission"]()}
+          <div style={styles.section}>
+            <div style={typography.body}>{m["font_picker.section_preview"]()}</div>
+            <div style={styles.sectionBody}>
+              <input
+                type="text"
+                value={phrase}
+                onChange={(e) => setPhrase(e.target.value)}
+                placeholder={m["font_picker.preview_input_placeholder"]()}
+                style={styles.previewInput}
+                data-testid="font-picker-preview-input"
+              />
+              {working === VECTOR_FONT_FAMILY && !msdfUnavailable ? (
+                // The MSDF font cannot be shown by the DOM, so it is drawn on a pixi canvas the way
+                // the maze canvas draws it.
+                <MsdfFontPreview
+                  text={phrase}
+                  textColor={previewTextColor}
+                  background={previewBackground}
+                  fontSize={PREVIEW_FONT_SIZE}
+                  style={styles.previewCanvasBox}
+                  onUnavailable={() => setMsdfUnavailable(true)}
+                  testId="font-picker-preview-msdf"
+                />
+              ) : (
+                <div
+                  style={{
+                    ...styles.previewText,
+                    background: colorToHex(previewBackground),
+                    color: colorToHex(previewTextColor),
+                  }}
+                  data-testid="font-picker-preview-text"
+                >
+                  {/* The font is set on the text element itself: the global `* { font-family }` rule
+                      would override a family inherited from the box. */}
+                  <span
+                    style={{
+                      ...styles.previewLine,
+                      fontFamily: working === VECTOR_FONT_FAMILY ? "Roboto, sans-serif" : labelFontCss(working),
+                      fontSize: PREVIEW_FONT_SIZE,
+                    }}
+                    data-testid="font-picker-preview-line"
+                  >
+                    {phrase}
                   </span>
-                  {isLocalFontAccessSupported() && !accessBlocked && (
-                    <Button variant="secondary" layoutStyle={styles.permissionButton} onClick={requestAccess} data-testid="font-picker-grant-access">
-                      {m["font_picker.grant_access"]()}
-                    </Button>
-                  )}
                 </div>
               )}
-            />
-          )}
+              <UnregisteredColorRow label={m["font_picker.preview_text_color"]()} color={previewTextColor} onChange={setPreviewTextColor} />
+              <UnregisteredColorRow label={m["font_picker.preview_background_color"]()} color={previewBackground} onChange={setPreviewBackground} />
+            </div>
+          </div>
+          <div style={{ ...styles.section, ...styles.familySection }}>
+            <div style={styles.familyHeader}>
+              <div style={typography.body}>{m["font_picker.section_family"]()}</div>
+              <InfoIconButton onClick={() => setInfoOpen(true)} />
+            </div>
+            <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
+              <div style={styles.typeSwitcher}>
+                {(["vector", "raster"] as const).map((key) => (
+                  <Button key={key} variant={type === key ? "toggle-selected" : "toggle"} onClick={() => setType(key)}>
+                    {key === "vector" ? m["font_picker.type_vector"]() : m["font_picker.type_raster"]()}
+                  </Button>
+                ))}
+              </div>
+              {localFamilies === undefined && type === "raster" ? (
+                <span style={styles.loading}>{m["font_picker.loading"]()}</span>
+              ) : (
+                <FontList
+                  // Remount per type so the new list takes keyboard focus (arrow keys keep working
+                  // after the toggle button was clicked).
+                  key={type}
+                  options={options}
+                  selected={working}
+                  onSelect={select}
+                  onKeyDown={handleListKeyDown}
+                  testId={`font-picker-list-${type}`}
+                  footer={showPermissionNote && (
+                    // Muted caption note pinned to the bottom of the list body, in the same quiet style
+                    // as the embedded hotkey hints (`EmbeddedHotkeyHint`).
+                    <div style={styles.permissionNote} data-testid="font-picker-permission-note">
+                      <span style={styles.permissionText}>
+                        {!isLocalFontAccessSupported()
+                          ? m["font_picker.local_fonts_unsupported"]()
+                          : accessBlocked ? m["font_picker.local_fonts_blocked"]() : m["font_picker.local_fonts_permission"]()}
+                      </span>
+                      {isLocalFontAccessSupported() && !accessBlocked && (
+                        <Button variant="secondary" layoutStyle={styles.permissionButton} onClick={requestAccess} data-testid="font-picker-grant-access">
+                          {m["font_picker.grant_access"]()}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                />
+              )}
+            </div>
+          </div>
         </div>
         <div style={styles.footer}>
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={cancel}>
@@ -302,8 +380,36 @@ const styles: Record<string, React.CSSProperties> = {
     padding: spacing.sectionGap,
     minHeight: 0,
   },
-  typeRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },
-  typeSwitcher: { display: "flex", gap: spacing.itemGap, flex: 1 },
+  section: { display: "flex", flexDirection: "column", gap: spacing.itemGap, flexShrink: 0 },
+  sectionBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, minHeight: 0 },
+  familySection: { flex: 1, minHeight: 0 },
+  familyBody: { flex: 1 },
+  familyHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
+  // not selectable, it is only a sample.
+  previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.2, userSelect: "none", WebkitUserSelect: "none" },
+  previewInput: { ...sharedStyles.input, width: "100%", boxSizing: "border-box" },
+  previewCanvasBox: {
+    height: PREVIEW_HEIGHT,
+    flexShrink: 0,
+    boxSizing: "border-box",
+    overflow: "hidden",
+    border: `1px solid ${ui.border.strong}`,
+    borderRadius: radius.sm,
+  },
+  previewText: {
+    height: PREVIEW_HEIGHT,
+    flexShrink: 0,
+    boxSizing: "border-box",
+    display: "flex",
+    alignItems: "center",
+    padding: `0 ${spacing.groupGap}px`,
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    border: `1px solid ${ui.border.strong}`,
+    borderRadius: radius.sm,
+  },
+  typeSwitcher: { display: "flex", gap: spacing.itemGap, flexShrink: 0 },
   listFooter: {
     position: "sticky",
     bottom: 0,
