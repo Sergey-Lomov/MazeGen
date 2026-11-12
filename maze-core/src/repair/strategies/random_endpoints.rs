@@ -140,7 +140,7 @@ mod tests {
                 &SquareTessellation,
                 &BTreeMap::from([(
                     kind.key().to_string(),
-                    BTreeMap::from([("cell".to_string(), false)]),
+                    BTreeMap::from([("square".to_string(), false)]),
                 )]),
             )
             .expect("a known element and cell type must resolve"),

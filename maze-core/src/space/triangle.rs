@@ -61,9 +61,16 @@ fn pointing_up(cell: TriPoint) -> bool {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TriTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("triangle")];
+
 impl Tessellation for TriTessellation {
     type CellId = TriPoint;
     type Face = TriFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: TriPoint) -> bool {
         true

@@ -12,6 +12,16 @@ input[type="number"] {
   to { transform: translateX(100%) scaleX(0.3); }
 }
 
+/* Stands in for a value that is being recalculated (GitHub issue #961). */
+.value-skeleton {
+  animation: value-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes value-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
 /* The application shell intentionally occupies the viewport and clips its canvas. The geometry
    laboratory is a document-sized route, so let its complete combination list scroll normally. */
 html.corridor-geometry-route,

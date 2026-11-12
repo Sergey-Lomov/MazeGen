@@ -46,9 +46,16 @@ const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [0, 1, 2, 3];
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("square")];
+
 impl Tessellation for SquareTessellation {
     type CellId = SquarePoint;
     type Face = SquareFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, _cell: SquarePoint) -> bool {
         true
