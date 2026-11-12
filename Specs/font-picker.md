@@ -73,8 +73,11 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
       covering only one script still counts), and a hint under the list asks
       the user to grant the permission to see the full list of local fonts. The MSDF list never
       shows the hint.
-    - The list is a `listbox` that keeps focus; `aria-activedescendant` names the highlighted option.
-      Switching the type remounts the list so it takes keyboard focus again.
+    - The list is a `SelectableList` (`components/SelectableList.tsx`, see `side-panel.md`'s "Shared list
+      and bubble primitives") with `autoFocus` and the font names as its `values`: a `listbox` that keeps
+      focus, `aria-activedescendant` names the highlighted option, Up/Down walk the fonts and report a
+      `"keyboard"` selection (which the picker previews without the heavy per-key work). Switching the
+      type remounts the list (`key={type}`) so it takes keyboard focus again.
     - The hint comes with a **"Grant access"** button when the browser has the API: it calls
       `loadLocalFontFamilies(true)` (a retry from a user gesture), which re-prompts if the browser still
       allows it and replaces the list with the full local one on success. If the retry still gives no

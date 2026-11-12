@@ -34,7 +34,9 @@ describe("CopyFloorDialog", () => {
 
   it("disables the active floor's own row", () => {
     render(<CopyFloorDialog onClose={vi.fn()} />);
-    expect(screen.getByText("Floor 2").closest("button")).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Floor 2" }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByText("Floor 2"));
+    expect(screen.getByText("Confirm")).toBeDisabled();
   });
 
   it("Confirm is disabled until a floor is selected", () => {
@@ -73,6 +75,19 @@ describe("CopyFloorDialog", () => {
     render(<CopyFloorDialog onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("Floor 2"));
     expect(screen.getByText("Confirm")).toBeDisabled();
+  });
+
+  it("focuses the list on open, so the arrow keys walk the floors and skip the active one", () => {
+    render(<CopyFloorDialog onClose={vi.fn()} />);
+    const list = screen.getByRole("listbox");
+    expect(document.activeElement).toBe(list);
+
+    // Displayed Floor 3, Floor 2 (active, disabled), Floor 1.
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Floor 3" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Floor 1" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Confirm")).not.toBeDisabled();
   });
 
   it("Cancel closes without copying", () => {

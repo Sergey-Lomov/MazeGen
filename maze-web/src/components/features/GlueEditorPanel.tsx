@@ -5,6 +5,7 @@ import type { TopologyProblem } from "../../store/topologyProblem";
 import { TopologyProblemBubble } from "./TopologyProblemBubble";
 import type { WireFoldEnd } from "../../wasm/types";
 import { faceLabel } from "../../pixi/topologyLabels";
+import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
 import { ConfirmModal } from "../ConfirmModal";
@@ -75,17 +76,15 @@ export function GlueEditorPanel() {
             onClick={() => startPick(editing ? null : target)}
           />
         </div>
-        <div style={styles.sides} data-testid={`topology-run-${target}`}>
+        <BubbleHoverZones style={styles.sides} data-testid={`topology-run-${target}`}>
           {faces === null
             ? <span style={{ ...typography.body, color: ui.text.disabled }}>{m["topology.run.empty"]()}</span>
             : faces.map((end, i) => (
-              <span key={i} style={styles.hoverZone} onMouseEnter={() => hoverSide(target, i)} onMouseLeave={() => setSideHover(null)}>
-                <span style={{ ...styles.bubble, background: color.bg, borderColor: color.text, color: color.text }}>
-                  {fieldConfig ? faceLabel(end, fieldConfig) : ""}
-                </span>
-              </span>
+              <BubbleHoverZone key={i} onMouseEnter={() => hoverSide(target, i)} onMouseLeave={() => setSideHover(null)}>
+                <Bubble colors={color}>{fieldConfig ? faceLabel(end, fieldConfig) : ""}</Bubble>
+              </BubbleHoverZone>
             ))}
-        </div>
+        </BubbleHoverZones>
       </Stack>
     );
   };
@@ -137,22 +136,7 @@ const styles: Record<string, React.CSSProperties> = {
   infoText: { ...typography.body, ...muted(typography.body) },
   row: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  // Touching hover zones (padding instead of gaps) keep the highlight from flickering between bubbles.
-  sides: { display: "flex", flexWrap: "wrap", paddingLeft: indent.tree },
-  hoverZone: { display: "inline-flex", padding: spacing.itemGap / 4, cursor: "default" },
+  sides: { paddingLeft: indent.tree },
   // A square, roomy hit and highlight area for the edit glyph.
   editZone: { width: 28, height: 28, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: radius.lg },
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    whiteSpace: "nowrap",
-    cursor: "default",
-    userSelect: "none",
-  },
 };

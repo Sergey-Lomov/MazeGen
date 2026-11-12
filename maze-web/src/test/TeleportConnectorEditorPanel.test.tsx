@@ -36,6 +36,23 @@ describe("TeleportConnectorEditorPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSectionsExpanded["teleportConnectorEditorWarnings"]).toBe(false);
   });
 
+  it("labels endpoints with the short L<n> floor prefix, not the floor title, on a multi-floor maze", () => {
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Ground" }, { id: "f2", title: "Attic" }],
+      nodes: [{ id: 1, x: 3, y: 4, level: 0 }, { id: 2, x: 5, y: 6, level: 1 }] as unknown as typeof state.nodes,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2": { mode: "polyline", nodes: [[0, 0], [1, 1]] } },
+      } as typeof state.vectorByWallsSettings,
+    });
+    render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);
+
+    expect(screen.getByText("L1 3:4")).toBeInTheDocument();
+    expect(screen.getByText("L2 5:6")).toBeInTheDocument();
+    expect(screen.queryByText(/Ground|Attic/)).toBeNull();
+  });
+
   it("lists the connector warnings, counted in the header, open by default", () => {
     warningsMock.list = [{ id: "teleport_connector_degenerate", key: "teleport_connector_degenerate", nodes: [], edges: [] }];
     render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);

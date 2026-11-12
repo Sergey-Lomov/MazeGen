@@ -1,8 +1,9 @@
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
+import { SelectableList, SelectableRow } from "./SelectableList";
 import { ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
 import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
 import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type LabelFont } from "../pixi/renderers/fontChoice";
@@ -156,6 +157,8 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     return [...extra, ...families].map((value) => ({ value, label: value }));
   }, [type, hasLocalFamilies, localFamilies, installedWebSafe, originalFamily]);
 
+  const optionValues = useMemo(() => options.map((o) => o.value), [options]);
+
   function requestAccess() {
     void loadLocalFontFamilies(true).then((families) => {
       setLocalFamilies(families);
@@ -195,17 +198,6 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   function apply() {
     flushPreview();
     onApply(working);
-  }
-
-  function handleListKeyDown(e: React.KeyboardEvent) {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    if (options.length === 0) return;
-    const index = options.findIndex((o) => o.value === working.family);
-    const step = e.key === "ArrowDown" ? 1 : -1;
-    // With nothing highlighted yet, Down lands on the first font and Up on the last.
-    const next = index < 0 ? (step > 0 ? 0 : options.length - 1) : Math.min(options.length - 1, Math.max(0, index + step));
-    if (next !== index) selectFamily(options[next].value, true);
   }
 
   // Weights of the highlighted family. The local font query (`localFamilies`) is what reveals a browser
@@ -322,14 +314,15 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
               {localFamilies === undefined && type === "raster" ? (
                 <span style={styles.loading}>{m["font_picker.loading"]()}</span>
               ) : (
-                <FontList
+                <SelectableList
                   // Remount per type so the new list takes keyboard focus (arrow keys keep working
                   // after the toggle button was clicked).
                   key={type}
-                  options={options}
-                  selected={working.family}
-                  onSelect={selectFamily}
-                  onKeyDown={handleListKeyDown}
+                  selected={options.some((o) => o.value === working.family) ? working.family : null}
+                  values={optionValues}
+                  onSelect={(value, source) => selectFamily(value, source === "keyboard")}
+                  autoFocus
+                  style={styles.list}
                   testId={`font-picker-list-${type}`}
                   footer={showPermissionNote && (
                     // Muted caption note pinned to the bottom of the list body, in the same quiet style
@@ -347,7 +340,11 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                       )}
                     </div>
                   )}
-                />
+                >
+                  {options.map((o) => (
+                    <SelectableRow key={o.value} value={o.value} selected={o.value === working.family}>{o.label}</SelectableRow>
+                  ))}
+                </SelectableList>
               )}
             </div>
           </div>
@@ -392,67 +389,6 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     </SidePanel>
   );
 }
-
-/** Keyboard-navigable single-select list. The listbox itself holds focus, so arrow keys work as
- *  soon as it mounts and the highlighted row is scrolled into view as the selection moves. */
-function FontList({ options, selected, onSelect, onKeyDown, testId, footer }: {
-  options: { value: string; label: string }[];
-  selected: string;
-  onSelect: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-  testId: string;
-  /** Non-option content pinned to the bottom of the list body (scrolls with nothing, stays visible). */
-  footer?: React.ReactNode;
-}) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const idPrefix = useId();
-  const optionId = (index: number) => `${idPrefix}-option-${index}`;
-  const selectedIndex = options.findIndex((o) => o.value === selected);
-  useEffect(() => { listRef.current?.focus({ preventScroll: true }); }, []);
-  useEffect(() => {
-    listRef.current?.querySelector<HTMLElement>("[aria-selected='true']")?.scrollIntoView?.({ block: "nearest" });
-  }, [selected, options]);
-  return (
-    <div
-      ref={listRef}
-      role="listbox"
-      tabIndex={0}
-      // Focus stays on the listbox, so the moving highlight is announced through the active option.
-      aria-activedescendant={selectedIndex >= 0 ? optionId(selectedIndex) : undefined}
-      style={styles.list}
-      onKeyDown={onKeyDown}
-      data-testid={testId}
-    >
-      {options.map((o, index) => (
-        <FontOption key={o.value} id={optionId(index)} value={o.value} label={o.label} selected={o.value === selected} onSelect={onSelect} />
-      ))}
-      {footer && <div role="presentation" style={styles.listFooter}>{footer}</div>}
-    </div>
-  );
-}
-
-/** One list row. Memoized so moving the highlight re-renders only the two rows whose selected state
- *  changed, not every installed font. */
-const FontOption = memo(function FontOption({ id, value, label, selected, onSelect }: {
-  id: string;
-  value: string;
-  label: string;
-  selected: boolean;
-  onSelect: (value: string) => void;
-}) {
-  return (
-    <div
-      id={id}
-      role="option"
-      aria-selected={selected}
-      className="picker-list-row"
-      style={{ ...styles.option, ...(selected ? styles.optionSelected : {}) }}
-      onClick={() => onSelect(value)}
-    >
-      {label}
-    </div>
-  );
-});
 
 const styles: Record<string, React.CSSProperties> = {
   body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, outline: "none" },
@@ -499,31 +435,11 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: radius.sm,
   },
   typeSwitcher: { display: "flex", gap: spacing.itemGap, flexShrink: 0 },
-  listFooter: {
-    position: "sticky",
-    bottom: 0,
-    marginTop: "auto",
-    background: ui.bg.input,
-    borderTop: `1px solid ${ui.border.default}`,
-    padding: spacing.groupGap,
-  },
   permissionNote: { display: "flex", flexDirection: "column", alignItems: "center", gap: spacing.itemGap },
   permissionText: { ...typography.caption, textAlign: "center" },
   permissionButton: { fontSize: font.sm, padding: "2px 8px" },
   loading: { ...typography.body, color: ui.text.secondary, textAlign: "center" },
-  list: {
-    flex: 1,
-    minHeight: FAMILY_LIST_MIN_HEIGHT,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    borderRadius: radius.sm,
-    outline: "none",
-  },
-  option: { ...typography.body, padding: "3px 8px", flexShrink: 0, cursor: "default", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  optionSelected: { background: ui.state.selected, color: ui.text.primary },
+  list: { minHeight: FAMILY_LIST_MIN_HEIGHT },
   footer: {
     display: "flex",
     gap: spacing.groupGap,

@@ -168,3 +168,18 @@ describe("Modal Enter/Space confirmation shortcut", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Modal initial focus", () => {
+  it("takes focus itself so Enter/Space reach its shortcuts, not the opening trigger", () => {
+    render(<Modal title="Dialog" onClose={vi.fn()}>content</Modal>);
+
+    expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+    expect(screen.getByText("content").closest("[tabindex='-1']")).toBe(document.activeElement);
+  });
+
+  it("leaves focus on a child that already took it on mount", () => {
+    render(<Modal title="Dialog" onClose={vi.fn()}><input aria-label="first" autoFocus /></Modal>);
+
+    expect(document.activeElement).toBe(screen.getByLabelText("first"));
+  });
+});

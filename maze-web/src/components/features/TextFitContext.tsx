@@ -31,10 +31,13 @@ export function useTextFit(): TextFitContextValue | null {
 /** Borderless icon (`Maximize2`, the same glyph as the canvas "Fit to screen" button) that applies a computed font size through the field's own `onChange`, so it
  *  counts as a manual edit (the field's incoming link is detached by the store setter). Disabled
  *  with an explanatory tooltip when there is nothing to fit. */
-export function AutoFitButton({ resolve, onApply, all = false }: {
+export function AutoFitButton({ resolve, onApply, all = false, tooltipTitle, tooltipDescription }: {
   resolve: (ctx: TextFitContextValue) => number | null;
   onApply: (size: number) => void;
   all?: boolean;
+  /** Overrides the generic text-size tooltip for a control with a different fitting direction. */
+  tooltipTitle?: string;
+  tooltipDescription?: string;
 }): React.ReactElement | null {
   const ctx = useTextFit();
   if (!ctx) return null;
@@ -42,10 +45,10 @@ export function AutoFitButton({ resolve, onApply, all = false }: {
   const label = m["image_export.vector_by_walls.text_autofit_button"]();
   const description = size === null
     ? m["image_export.vector_by_walls.text_autofit_nothing"]()
-    : all ? m["image_export.vector_by_walls.text_autofit_all_tooltip"]() : m["image_export.vector_by_walls.text_autofit_tooltip"]();
+    : tooltipDescription ?? (all ? m["image_export.vector_by_walls.text_autofit_all_tooltip"]() : m["image_export.vector_by_walls.text_autofit_tooltip"]());
   const disabled = size === null;
   return (
-    <ToolTooltip title={m["image_export.vector_by_walls.text_autofit_primary"]()} description={description}><span
+    <ToolTooltip title={tooltipTitle ?? m["image_export.vector_by_walls.text_autofit_primary"]()} description={description}><span
       className={disabled ? undefined : "hoverable"}
       style={{ ...iconStyle, cursor: "default" }}
       role="button"

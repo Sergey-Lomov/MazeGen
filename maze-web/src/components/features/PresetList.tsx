@@ -13,13 +13,14 @@ import { formatTargetLabel } from "../../pixi/targetLabel";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeLockKind } from "../../wasm/types";
 import { useLocale } from "../../i18n/useLocale";
-import { indent, muted, radius, spacing, typography, ui } from "../../styles/theme";
+import { indent, muted, spacing, typography, ui } from "../../styles/theme";
 import { SidePanel } from "../SidePanel";
 import { SectionHeader } from "../SectionHeader";
 import { SelectRow } from "../SelectRow";
 import { ToolIconButton } from "../ToolIconButton";
-import { Tooltip } from "../Tooltip";
+import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
 import { Button } from "../Button";
+import { ListCell, ListCellAction } from "../ListCell";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
@@ -532,71 +533,60 @@ function PresetCell({
   type ActionKind = "direction" | "settings" | "delete";
 
   const actionButton = (kind: ActionKind, title: string, onAction: () => void, child: React.ReactNode, danger = false) => (
-    <Tooltip content={title}><button
-      type="button"
+    <ListCellAction
+      title={title}
+      danger={danger}
+      activateOnPress
       data-testid={`preset-action-${kind}`}
       data-preset-key={cell.key}
-      className="hoverable"
-      style={{ ...styles.iconButton, ...(danger ? { color: ui.text.error } : {}) }}
-      aria-label={title}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        // Mouse/touch activation happens here so it cannot depend on a later click event after a
-        // list re-render. Keyboard activation still comes through click below.
-        onAction();
-      }}
-      onClick={(event) => {
-        if (event.detail === 0) onAction();
-      }}
+      onAction={onAction}
     >
       {child}
-    </button></Tooltip>
+    </ListCellAction>
   );
 
   return (
-    <div
+    <ListCell
       data-testid="preset-cell"
       data-preset-id={cell.id}
-      style={styles.cell}
       onMouseEnter={onHoverCell}
       onMouseLeave={onLeave}
-    >
-      <div style={styles.titleRow}>
-        <span style={styles.title}>{cell.title}</span>
-        {cell.id !== undefined && <span style={styles.idBubble}>id: {cell.id}</span>}
-      </div>
-      <div style={styles.detailsRow}>
+      title={cell.title}
+      truncateTitle
+      badge={cell.id !== undefined && <IdBubble id={cell.id} />}
+      details={(
         <div style={styles.bubbles}>
           {cell.bubbles.map((item, index) => (
             <span key={`${item.text}:${index}`} style={styles.bubbleGroup}>
-              {index > 0 && cell.arrow && <span style={styles.arrow}>{cell.arrow}</span>}
-              <span
-                className="hoverable"
+              {index > 0 && cell.arrow && <BubbleArrow>{cell.arrow}</BubbleArrow>}
+              <Bubble
+                interactive
                 style={styles.bubble}
                 onMouseEnter={() => onHoverBubble(item)}
                 onMouseLeave={onHoverCell}
                 onClick={() => navigateToFloor(item.endpoint.level ?? 0)}
               >
                 {item.text}
-              </span>
+              </Bubble>
             </span>
           ))}
         </div>
-        <div style={styles.actions}>
+      )}
+      actions={(
+        <>
           {cell.control?.kind === "direction" && (
-            actionButton("direction", m["preset.list_toggle_direction"](), onCycleDirection, <ArrowLeftRight size={16} style={styles.iconGlyph} />)
+            actionButton("direction", m["preset.list_toggle_direction"](), onCycleDirection, <ArrowLeftRight size={16} />)
           )}
           {cell.control?.kind === "elevator" && (
-            actionButton("settings", m["preset.list_edit_elevator"](), onEditElevator, <Settings size={16} style={styles.iconGlyph} />)
+            actionButton("settings", m["preset.list_edit_elevator"](), onEditElevator, <Settings size={16} />)
           )}
           {cell.control?.kind === "split" && (
-            actionButton("settings", m["preset.list_edit_split"](), onEditSplit, <Settings size={16} style={styles.iconGlyph} />)
+            actionButton("settings", m["preset.list_edit_split"](), onEditSplit, <Settings size={16} />)
           )}
-          {actionButton("delete", m["preset.list_delete"](), onDelete, <Trash2 size={16} style={styles.iconGlyph} />, true)}
-        </div>
-      </div>
-    </div>
+          {actionButton("delete", m["preset.list_delete"](), onDelete, <Trash2 size={16} />, true)}
+        </>
+      )}
+    />
   );
 }
 
@@ -613,57 +603,11 @@ const styles: Record<string, React.CSSProperties> = {
   // hit-tested unreliably while rows below it worked; the inset also keeps the list's action layer
   // away from that boundary without changing the action button's own hit box.
   listSection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingTop: spacing.itemGap },
-  sectionLabel: { ...typography.body },
   list: { display: "flex", flexDirection: "column" },
-  cell: {
-    display: "flex", flexDirection: "column", gap: spacing.itemGap / 2,
-    padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
-    borderBottom: `1px solid ${ui.border.default}`,
-  },
-  titleRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
-  title: { ...typography.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  idBubble: {
-    ...typography.caption,
-    marginLeft: "auto",
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.bg.success,
-    borderColor: ui.text.success,
-    color: ui.text.success,
-    whiteSpace: "nowrap",
-  },
-  detailsRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
   bubbles: { flex: "1 1 auto", display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.itemGap / 2, minWidth: 0, pointerEvents: "none" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.itemGap / 2 },
-  bubble: {
-    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex",
-    alignItems: "center", borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`, background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text, color: ui.debug.refHighlight.text, pointerEvents: "auto",
-    whiteSpace: "nowrap", cursor: "pointer",
-  },
-  arrow: muted(typography.caption),
-  actions: { position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto", flexShrink: 0 },
-  iconButton: {
-    ...typography.icon,
-    width: 22,
-    height: 22,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    border: "none",
-    background: "none",
-    color: ui.text.tertiary,
-    lineHeight: 1,
-    cursor: "default",
-    flexShrink: 0,
-  },
-  iconGlyph: { pointerEvents: "none" },
+  // The bubbles container ignores the pointer so the action layer next to it stays reachable
+  // (GitHub issue #679); each bubble takes it back for its own hover and click.
+  bubble: { pointerEvents: "auto" },
   empty: { ...muted(typography.body), padding: `${spacing.itemGap}px ${spacing.groupGap}px` },
 };
