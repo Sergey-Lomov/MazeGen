@@ -54,7 +54,7 @@ const MARKER_FIELDS: [string, unknown][] = [
 ];
 const TEXT_FIELDS: [string, unknown][] = [
   ["textEnabled", true],
-  ["textFontWeight", "regular"],
+  ["textFont", { family: "Arial", weight: 400 }],
   ["textSize", 14],
   ["textColor", 0xabcdef],
   ["text", "S"],

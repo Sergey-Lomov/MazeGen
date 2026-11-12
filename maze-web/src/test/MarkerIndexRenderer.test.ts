@@ -85,7 +85,7 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
     borderColorFromMarker: false,
     borderWidthFromMarker: false,
     borderWidth: 2,
-    textFontWeight: "bold",
+    textFont: { family: "", weight: 700 },
     coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true },
     ...patch,
   };

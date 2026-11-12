@@ -58,6 +58,9 @@ function expectedPivotY(minTop: number, maxBottom: number, fontSize: number): nu
   return inAtlasUnits * (fontSize / FAKE_FONT.baseMeasurementFontSize);
 }
 
+const REGULAR = { family: "", weight: 400 };
+const BOLD = { family: "", weight: 700 };
+
 beforeEach(() => {
   cacheReturnsFont = true;
   assetsLoad.mockClear();
@@ -65,30 +68,35 @@ beforeEach(() => {
 
 describe("msdfFontFamily", () => {
   it("maps each weight to its baked atlas face name", () => {
-    expect(msdfFontFamily("regular")).toBe("Roboto-Regular");
-    expect(msdfFontFamily("bold")).toBe("Roboto-Bold");
+    expect(msdfFontFamily(REGULAR)).toBe("Roboto-Regular");
+    expect(msdfFontFamily(BOLD)).toBe("Roboto-Bold");
+  });
+
+  it("uses the nearest baked weight for a weight with no atlas", () => {
+    expect(msdfFontFamily({ family: "", weight: 300 })).toBe("Roboto-Regular");
+    expect(msdfFontFamily({ family: "", weight: 600 })).toBe("Roboto-Bold");
   });
 
   it("MSDF_FONT_FAMILY is the regular-weight family", () => {
-    expect(MSDF_FONT_FAMILY).toBe(msdfFontFamily("regular"));
+    expect(MSDF_FONT_FAMILY).toBe(msdfFontFamily(REGULAR));
   });
 });
 
 describe("makeCenteredLabel", () => {
   it("anchors the label at its centre", () => {
-    const label = makeCenteredLabel("3", "Roboto-Regular", 8.62, 0x000000);
+    const label = makeCenteredLabel("3", REGULAR, 8.62, 0x000000);
     expect(label.anchor.set).toHaveBeenCalledWith(0.5);
   });
 
   it("passes text/fontFamily/fontSize/fill straight through to the BitmapText style", () => {
-    const label = makeCenteredLabel("38", "Roboto-Bold", 12, 0xff0000);
+    const label = makeCenteredLabel("38", BOLD, 12, 0xff0000);
     expect(label.text).toBe("38");
     expect(label.style).toMatchObject({ fontFamily: "Roboto-Bold", fontSize: 12, fill: 0xff0000 });
   });
 
   it("folds the metric-derived ink-centre offset into pivot.y", () => {
     const fontSize = 8.62;
-    const label = makeCenteredLabel("3", "Roboto-Regular", fontSize, 0x000000);
+    const label = makeCenteredLabel("3", REGULAR, fontSize, 0x000000);
     // "3" ink spans 14 .. 61 → +9 atlas units → scaled by 8.62/54.
     expect(label.pivot.y).toBeCloseTo(expectedPivotY(14, 61, fontSize), 5);
     expect(label.pivot.y).toBeCloseTo(1.44, 2);
@@ -96,19 +104,19 @@ describe("makeCenteredLabel", () => {
 
   it("ignores glyphs with no ink (space) when finding the ink span", () => {
     const fontSize = 10;
-    const withSpace = makeCenteredLabel("3 8", "Roboto-Regular", fontSize, 0);
-    const withoutSpace = makeCenteredLabel("38", "Roboto-Regular", fontSize, 0);
+    const withSpace = makeCenteredLabel("3 8", REGULAR, fontSize, 0);
+    const withoutSpace = makeCenteredLabel("38", REGULAR, fontSize, 0);
     expect(withSpace.pivot.y).toBeCloseTo(withoutSpace.pivot.y, 5);
   });
 
   it("falls back to pivot.y 0 when the font is not installed", () => {
     cacheReturnsFont = false;
-    const label = makeCenteredLabel("3", "Roboto-Regular", 10, 0);
+    const label = makeCenteredLabel("3", REGULAR, 10, 0);
     expect(label.pivot.y).toBe(0);
   });
 
   it("falls back to pivot.y 0 when no glyph in the text carries metrics", () => {
-    const label = makeCenteredLabel("???", "Roboto-Regular", 10, 0);
+    const label = makeCenteredLabel("???", REGULAR, 10, 0);
     expect(label.pivot.y).toBe(0);
   });
 });

@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { Application } from "pixi.js";
 import { truncateToWidth } from "../pixi/ellipsisFit";
-import { loadMsdfFont, makeCenteredLabel, msdfFontFamily } from "../pixi/renderers/msdfFont";
+import { loadMsdfFont, makeCenteredLabel } from "../pixi/renderers/msdfFont";
+import type { LabelFont } from "../pixi/renderers/fontChoice";
 
 /** Gap in px between the left edge of the preview and its text. */
 const TEXT_PADDING = 8;
 
 interface Props {
   text: string;
+  /** The baked font to draw: its family and the weight whose atlas is used. */
+  font: LabelFont;
   /** Text color as a 0xRRGGBB number. */
   textColor: number;
   /** Background color as a 0xRRGGBB number. */
@@ -26,7 +29,7 @@ interface Props {
  *  faithful preview for it. The pixi application lives as long as the component and only its text and
  *  colors are rewritten. Like the other mini pixi canvases it stays off the shared ticker and renders
  *  on demand. */
-export function MsdfFontPreview({ text, textColor, background, fontSize, style, onUnavailable, testId }: Props) {
+export function MsdfFontPreview({ text, font, textColor, background, fontSize, style, onUnavailable, testId }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [app, setApp] = useState<Application | null>(null);
   const onUnavailableRef = useRef(onUnavailable);
@@ -87,22 +90,21 @@ export function MsdfFontPreview({ text, textColor, background, fontSize, style, 
     app.renderer.background.color = background;
     app.stage.removeChildren().forEach((child) => child.destroy());
     if (text) {
-      const family = msdfFontFamily("regular");
       // A phrase wider than the canvas is cut with an ellipsis, like the DOM preview, measured on the
       // real label.
       const measure = (candidate: string) => {
-        const probe = makeCenteredLabel(candidate, family, fontSize, textColor);
+        const probe = makeCenteredLabel(candidate, font, fontSize, textColor);
         const width = probe.width;
         probe.destroy();
         return width;
       };
-      const label = makeCenteredLabel(truncateToWidth(text, app.screen.width - TEXT_PADDING * 2, measure), family, fontSize, textColor);
+      const label = makeCenteredLabel(truncateToWidth(text, app.screen.width - TEXT_PADDING * 2, measure), font, fontSize, textColor);
       // `makeCenteredLabel` anchors at the centre, so offset by half its width to start at the padding.
       label.position.set(TEXT_PADDING + label.width / 2, app.screen.height / 2);
       app.stage.addChild(label);
     }
     app.render();
-  }, [app, text, textColor, background, fontSize, hostWidth]);
+  }, [app, text, font, textColor, background, fontSize, hostWidth]);
 
   return <div ref={hostRef} style={style} data-testid={testId} />;
 }

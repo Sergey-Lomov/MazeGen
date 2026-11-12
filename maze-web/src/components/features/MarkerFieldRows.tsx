@@ -5,7 +5,7 @@ import type { MarkerAppearance, SizeAdaptationField, TextStyleFields } from "../
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
-import { FontFamilyRow } from "./FontFamilyRow";
+import { LabelFontRow } from "./LabelFontRow";
 import { TILE_SIZE } from "../../pixi/constants";
 import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
@@ -113,7 +113,7 @@ export function MarkerAppearanceRows<P extends LinkPath>({ settings, onChange, l
   );
 }
 
-/** Shared text-style rows (GitHub issue #701) — font weight, absolute font size, margin and text color
+/** Shared text-style rows (GitHub issue #701) — font, absolute font size, margin and text color
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Horizontal alignment stays centered for
  *  these consumers and is exposed separately only by `FloorLabelSection`. */
@@ -129,17 +129,7 @@ export function TextStyleRows<P extends LinkPath>({ settings, onChange, linkTarg
 }): React.ReactElement {
   return (
     <>
-      <FontFamilyRow value={settings.textFontFamily} onChange={(textFontFamily) => onChange({ textFontFamily })} linkTarget={linkTargets.textFontFamily ?? null} />
-      <LinkedSelectRow
-        label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
-        value={settings.textFontWeight}
-        options={[
-          { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-          { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-        ]}
-        onChange={(textFontWeight) => onChange({ textFontWeight })}
-        linkTarget={linkTargets.textFontWeight ?? null}
-      />
+      <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={linkTargets.textFont ?? null} />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_text_size"]()}
         value={settings.textSize}

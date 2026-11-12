@@ -332,8 +332,7 @@ export function TeleportSettingsSection<P extends LinkPath>({
     floorBadgeGapWidth: P | null;
     floorBadgeTextSize: P | null;
     floorBadgeTextMargin: P | null;
-    floorBadgeTextFontFamily?: P | null;
-    floorBadgeTextFontWeight: P | null;
+    floorBadgeTextFont?: P | null;
     groupCustomization: P | null;
   };
   /** "Priority" project colors (GitHub issue #503) for the Teleports section's color rows. */
@@ -599,8 +598,7 @@ export function TeleportSettingsSection<P extends LinkPath>({
               settings={settings.teleportFloorBadge}
               onChange={(patch) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, ...patch } })}
               linkTargets={{
-                textFontFamily: linkTargets.floorBadgeTextFontFamily ?? null,
-                textFontWeight: linkTargets.floorBadgeTextFontWeight,
+                textFont: linkTargets.floorBadgeTextFont ?? null,
                 textColor: linkTargets.floorBadgeTextColor,
                 textSize: linkTargets.floorBadgeTextSize,
                 textMargin: linkTargets.floorBadgeTextMargin,

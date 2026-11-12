@@ -11,6 +11,7 @@ import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
 import { computeElevatorBadgeLayout, elevatorBadgesOverlap, formatElevatorBadgeLabel } from "../renderers/elevatorBadgeLayout";
 import { measureText } from "../textFit";
+import { plainLabelFont } from "../renderers/fontChoice";
 import { TILE_SIZE } from "../constants";
 import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
 import { oneWayStopLineShape, stopLineOverlapsRoundedRect, type RoundedRectGeometry } from "../renderers/verticalConnectionGeometry";
@@ -443,9 +444,9 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
       const merged = (s.elevatorBadges.backing ?? "individual") !== "individual";
       const overlaps = merged
         ? positions.some((position, i) => {
-          const label = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i], s.elevatorBadges.labelType), s.elevatorBadges.textFontWeight, s.elevatorBadges.textSize, s.elevatorBadges.textFontFamily);
+          const label = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i], s.elevatorBadges.labelType), plainLabelFont(s.elevatorBadges.textFont), s.elevatorBadges.textSize);
           return positions.slice(i + 1).some((other, j) => {
-            const otherLabel = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i + j + 1], s.elevatorBadges.labelType), s.elevatorBadges.textFontWeight, s.elevatorBadges.textSize, s.elevatorBadges.textFontFamily);
+            const otherLabel = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i + j + 1], s.elevatorBadges.labelType), plainLabelFont(s.elevatorBadges.textFont), s.elevatorBadges.textSize);
             return Math.abs(position.x - other.x) < (label.width + otherLabel.width) / 2 && Math.abs(position.y - other.y) < (label.height + otherLabel.height) / 2;
           });
         })

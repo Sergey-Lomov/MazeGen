@@ -1,12 +1,15 @@
 import type { ParamDescriptor, ParamType } from "./parameterLinks";
 import { colorToHex } from "./colorMath";
 import { schemaEntriesFor, type LinkFieldDef, type LinkMode, type WallsLinkPath, type CorridorsLinkPath } from "./parameterLinkSchema";
+import { labelFontEquals, type LabelFont } from "../pixi/renderers/fontChoice";
+import { formatLabelFont } from "./fontLabels";
 import * as m from "~/paraglide/messages";
 
 /** The per-mode parameter registries are derived from `LINK_SCHEMA` (`parameterLinkSchema.ts`,
  *  GitHub issue #927) — nothing is declared here besides how a raw value is displayed. Every linkable
- *  param is a plain number/boolean, a packed-RGB color, or one of a few small string enums; `equals` is
- *  `Object.is` in all cases (a color value is just a number, GitHub issue #647). `cornerStyle`/`join`
+ *  param is a plain number/boolean, a packed-RGB color, one of a few small string enums, or a `LabelFont`
+ *  object; `equals` is `Object.is` for all but the font (a color value is just a number, GitHub issue #647;
+ *  a font compares by family and weight, GitHub issue #973). `cornerStyle`/`join`
  *  values ("round"/"miter") are formatted via the same labels the settings panel's own corner-style
  *  `SelectRow` uses, not the raw enum string; `markerShape`/`verticalArrowStyle` each get their own
  *  localized format function; plain numbers fall back to `formatNumber`, colors to `#rrggbb`
@@ -75,22 +78,24 @@ function formatVerticalArrowStyle(value: unknown): string {
   }
 }
 
-/** `LabelFontWeight`/`IndexLabelStyle` are each reused by multiple fields, but the settings panel
- *  shows different label-text sets for the same underlying values depending on the field: elevator
- *  badges, teleport floor badges and marker index share one set of font-weight wording. A single generic
- *  `format` can't pick the right set, so the default (elevator-badges wording) covers the more
- *  common case and `markerIndex.*` descriptors pass their own via `descriptor()`'s `format`
- *  override. */
 function formatLineStyle(value: unknown): string {
   if (value === "dashed") return m["image_export.glue_tabs.line_style_dashed"]();
   if (value === "solid") return m["image_export.glue_tabs.line_style_solid"]();
   return String(value);
 }
 
-function formatElevatorBadgesFontWeight(value: unknown): string {
-  if (value === "regular") return m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]();
-  if (value === "bold") return m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]();
-  return String(value);
+/** A stored `LabelFont` is an object, so a link compares it by family and weight; any other value (a
+ *  corrupt entry) is never equal. */
+function labelFontEqualsUnknown(a: unknown, b: unknown): boolean {
+  return isLabelFont(a) && isLabelFont(b) && labelFontEquals(a, b);
+}
+
+function isLabelFont(value: unknown): value is LabelFont {
+  return typeof value === "object" && value !== null && typeof (value as LabelFont).family === "string" && typeof (value as LabelFont).weight === "number";
+}
+
+function formatLabelFontValue(value: unknown): string {
+  return isLabelFont(value) ? formatLabelFont(value) : String(value);
 }
 
 function formatElevatorBadgesLabelType(value: unknown): string {
@@ -113,18 +118,22 @@ function formatBoolean(value: unknown): string {
 
 
 const FORMAT_BY_TYPE: Record<ParamType, (value: unknown) => string> = {
-  labelFontFamily: (value) => (typeof value === "string" && value) || "Roboto",
+  labelFont: formatLabelFontValue,
   cornerStyle: formatCornerStyle,
   markerShape: formatMarkerShape,
   verticalArrowStyle: formatVerticalArrowStyle,
   teleportCurveDirection: formatTeleportCurveDirection,
-  labelFontWeight: formatElevatorBadgesFontWeight,
   indexLabelStyle: formatElevatorBadgesLabelType,
   elevatorBadgeBacking: (value) => value === "shared" ? m["image_export.vector_by_walls.elevator_badges_backing_shared"]() : m["image_export.vector_by_walls.elevator_badges_backing_individual"](),
   lineStyle: formatLineStyle,
   number: formatNumber,
   color: formatColor,
   boolean: formatBoolean,
+};
+
+/** Value equality per parameter type; every type absent here is a primitive and compares with `Object.is`. */
+const EQUALS_BY_TYPE: Partial<Record<ParamType, (a: unknown, b: unknown) => boolean>> = {
+  labelFont: labelFontEqualsUnknown,
 };
 
 const FORMAT_OVERRIDES = {
@@ -137,7 +146,7 @@ const FORMAT_OVERRIDES = {
 function descriptorOf(def: LinkFieldDef, mode: LinkMode): ParamDescriptor {
   return {
     type: def.type,
-    equals: Object.is,
+    equals: EQUALS_BY_TYPE[def.type] ?? Object.is,
     get label() {
       return def.label(mode);
     },

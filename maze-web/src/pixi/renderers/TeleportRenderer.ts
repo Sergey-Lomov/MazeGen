@@ -305,9 +305,8 @@ export class TeleportRenderer {
           shape: style.floorBadge.shape,
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
-          fontWeight: style.floorBadge.textFontWeight,
+          font: style.floorBadge.textFont,
           fontSize: style.floorBadge.textSize * this.selectionScaler.factorAt([px, py], style.floorBadge.sizeAdaptation),
-          fontFamily: style.floorBadge.textFontFamily,
           borderWidth: style.floorBadge.borderWidth,
           rounded: style.floorBadge.cornerStyle === "round",
         });

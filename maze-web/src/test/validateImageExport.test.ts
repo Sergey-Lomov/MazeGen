@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport, validateElevatorBadgeSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_LABEL_FONT } from "../pixi/renderers/fontChoice";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, optLabelFont, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport, validateElevatorBadgeSettings } from "../store/projectExport/validateImageExport";
 import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
@@ -34,34 +35,33 @@ describe("validateMarkerSettings", () => {
     expect(validateMarkerSettings({ markerEnabled: true }, "path", off).markerEnabled).toBe(true);
   });
 
-  it("round-trips text, textEnabled, text family/weight, integer textSize and textColor", () => {
+  it("round-trips text, textEnabled, textFont (trimmed family, weight), integer textSize and textColor", () => {
     const result = validateMarkerSettings(
-      { ...fallback, text: "x", textEnabled: false, textFontFamily: "  Arial  ", textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },
+      { ...fallback, text: "x", textEnabled: false, textFont: { family: "  Arial  ", weight: 500 }, textSize: 1.5, textColor: 0xabcdef },
       "path",
       fallback,
     );
     // sanitizeMarkerGlyph uppercases on the way through, same as the settings-panel input.
     expect(result.text).toBe("X");
     expect(result.textEnabled).toBe(false);
-    expect(result.textFontFamily).toBe("Arial");
-    expect(result.textFontWeight).toBe("regular");
+    expect(result.textFont).toEqual({ family: "Arial", weight: 500 });
     expect(result.textSize).toBe(6);
     expect(result.textColor).toBe(0xabcdef);
   });
 
   it("falls back to the given fallback's values when the fields are absent (older project file)", () => {
-    const result = validateMarkerSettings({ shape: fallback.shape }, "path", { ...fallback, textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef });
+    const result = validateMarkerSettings({ shape: fallback.shape }, "path", { ...fallback, textEnabled: false, textFont: { family: "", weight: 400 }, textSize: 1.5, textColor: 0xabcdef });
     expect(result.textEnabled).toBe(false);
-    expect(result.textFontWeight).toBe("regular");
+    expect(result.textFont).toEqual({ family: "", weight: 400 });
     expect(result.textSize).toBe(1.5);
     expect(result.textColor).toBe(0xabcdef);
   });
 
-  it("falls back to true/bold/default-px/fillColor defaults when both the input and the fallback omit the fields", () => {
-    const { textEnabled: _e, textFontWeight: _f, textSize: _s, textColor: _c, ...bareFallback } = fallback;
-    const result = validateMarkerSettings({ textEnabled: "not-a-bool", textFontWeight: "bogus", textSize: "bogus", textColor: "bogus" }, "path", bareFallback);
+  it("falls back to true/default-font/default-px/fillColor defaults when both the input and the fallback omit the fields", () => {
+    const { textEnabled: _e, textFont: _f, textSize: _s, textColor: _c, ...bareFallback } = fallback;
+    const result = validateMarkerSettings({ textEnabled: "not-a-bool", textFont: "bogus", textSize: "bogus", textColor: "bogus" }, "path", bareFallback);
     expect(result.textEnabled).toBe(true);
-    expect(result.textFontWeight).toBe("bold");
+    expect(result.textFont).toEqual(DEFAULT_LABEL_FONT);
     expect(result.textSize).toBe(DEFAULT_MARKER_TEXT_SIZE);
     expect(result.textColor).toBe(bareFallback.fillColor);
   });
@@ -113,8 +113,8 @@ describe("validateVerticalSettingsFields", () => {
   it("seeds both twoWayPassageMarker and oneWayPassageMarker from the legacy verticalPassageMarker field", () => {
     const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, sizeAdaptation: 0.2, cornerStyle: "round" };
     const result = validateVerticalSettingsFields({ verticalPassageMarker: legacyMarker }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.twoWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
-    expect(result.oneWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
+    expect(result.twoWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFont: undefined, textSize: undefined, textColor: undefined });
+    expect(result.oneWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFont: undefined, textSize: undefined, textColor: undefined });
   });
 
   it("prefers the current twoWayPassageMarker/oneWayPassageMarker fields over the legacy shared one", () => {
@@ -126,8 +126,8 @@ describe("validateVerticalSettingsFields", () => {
       "path",
       DEFAULT_VERTICAL_SETTINGS,
     );
-    expect(result.twoWayPassageMarker).toEqual({ ...twoWay, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
-    expect(result.oneWayPassageMarker).toEqual({ ...oneWay, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
+    expect(result.twoWayPassageMarker).toEqual({ ...twoWay, text: undefined, textEnabled: undefined, textFont: undefined, textSize: undefined, textColor: undefined });
+    expect(result.oneWayPassageMarker).toEqual({ ...oneWay, text: undefined, textEnabled: undefined, textFont: undefined, textSize: undefined, textColor: undefined });
   });
 
   it("falls back to the default markers when neither the current nor the legacy field is present", () => {
@@ -238,14 +238,14 @@ describe("validateTeleportFloorBadgeSettings", () => {
   const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
 
   it("reads a valid object's fields as-is", () => {
-    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 }, "path", fallback))
-      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontFamily: "", textFontWeight: "regular", textSize: 20, textMargin: 3, sizeAdaptation: 0.2 });
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFont: { family: "", weight: 400 }, textSize: 20, textMargin: 3, sizeAdaptation: 0.2 }, "path", fallback))
+      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFont: { family: "", weight: 400 }, textSize: 20, textMargin: 3, sizeAdaptation: 0.2 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontFamily: fallback.textFontFamily, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin, sizeAdaptation: fallback.sizeAdaptation });
+      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFont: fallback.textFont, textSize: fallback.textSize, textMargin: fallback.textMargin, sizeAdaptation: fallback.sizeAdaptation });
   });
 
   it("clamps the text margin into its range", () => {
@@ -451,10 +451,11 @@ describe("validateFloorLabelSettings", () => {
     expect(validateFloorLabelSettings({ textAlignment: "diagonal" }, "path", fallback).textAlignment).toBe("center");
   });
 
-  it("trims a saved local text family and keeps old files without one readable", () => {
+  it("reads a saved text font, trimming the family, and keeps old files (a plain family string) readable", () => {
     const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel;
-    expect(validateFloorLabelSettings({ textFontFamily: "  Fira Sans  " }, "path", fallback).textFontFamily).toBe("Fira Sans");
-    expect(validateFloorLabelSettings({}, "path", fallback).textFontFamily).toBe(fallback.textFontFamily);
+    expect(validateFloorLabelSettings({ textFont: { family: "  Fira Sans  ", weight: 300 } }, "path", fallback).textFont).toEqual({ family: "Fira Sans", weight: 300 });
+    expect(validateFloorLabelSettings({ textFont: "Fira Sans" }, "path", fallback).textFont).toEqual(fallback.textFont);
+    expect(validateFloorLabelSettings({}, "path", fallback).textFont).toEqual(fallback.textFont);
   });
 
   it("keeps old floor labels index-based and validates the title mode", () => {
@@ -493,5 +494,29 @@ describe("validateTeleportSettingsFields angled connector corners", () => {
     const result = validateImageExport({ vectorByWallsLinks: legacyLinks }, "imageExport");
     expect(result.vectorByWallsSettings.links.find((link) => link.target === "teleportConnectorCornerStyle"))
       .toMatchObject({ source: "cornerStyle", enabled: true });
+  });
+});
+
+describe("optLabelFont", () => {
+  const fallback = { family: "Fallback", weight: 400 };
+
+  it("clamps and rounds the weight to the CSS 100..900 scale", () => {
+    expect(optLabelFont({ f: { family: "A", weight: 50 } }, "f", fallback).weight).toBe(100);
+    expect(optLabelFont({ f: { family: "A", weight: 1000 } }, "f", fallback).weight).toBe(900);
+    expect(optLabelFont({ f: { family: "A", weight: 449.6 } }, "f", fallback).weight).toBe(450);
+  });
+
+  it("takes each field from the fallback when it is missing or malformed", () => {
+    expect(optLabelFont({ f: { family: "A" } }, "f", fallback)).toEqual({ family: "A", weight: 400 });
+    expect(optLabelFont({ f: { weight: 700 } }, "f", fallback)).toEqual({ family: "Fallback", weight: 700 });
+    expect(optLabelFont({ f: { family: 3, weight: "bold" } }, "f", fallback)).toEqual(fallback);
+    expect(optLabelFont({ f: { family: "A", weight: Number.NaN } }, "f", fallback).weight).toBe(400);
+  });
+
+  it("ignores a non-object value, such as the plain family string of an older project", () => {
+    expect(optLabelFont({ f: "Arial" }, "f", fallback)).toEqual(fallback);
+    expect(optLabelFont({ f: null }, "f", fallback)).toEqual(fallback);
+    expect(optLabelFont({ f: [1] }, "f", fallback)).toEqual(fallback);
+    expect(optLabelFont(null, "f", fallback)).toEqual(fallback);
   });
 });

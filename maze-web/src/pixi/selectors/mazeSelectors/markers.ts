@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
-import type { LabelFontWeight } from "../../renderers/indexLabel";
+import { plainLabelFont, type LabelFont } from "../../renderers/fontChoice";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
 
@@ -40,11 +40,9 @@ export interface MarkerStyle {
    *  Optional for the same reason as `text`; `undefined`/`true` draws the badge (matches
    *  pre-toggle behavior), `false` suppresses it. */
   textEnabled?: boolean;
-  /** Optional local family; absent means bundled Roboto MSDF. */
-  textFontFamily?: string;
-  /** Text badge font weight (GitHub issue #697 follow-up) — optional for the same reason as
-   *  `text`. Defaults to `"bold"` when unset. */
-  textFontWeight?: LabelFontWeight;
+  /** Text badge font — optional for the same reason as `text`. Defaults to bold bundled Roboto
+   *  when unset. */
+  textFont?: LabelFont;
   /** Text badge font size in px — optional for the same reason as `text`. Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
@@ -82,7 +80,7 @@ export function buildMarkerData(pos: [number, number], style: MarkerStyle): Mark
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
     text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,
-    textFontFamily: style.textFontFamily, textFontWeight: style.textFontWeight, textSize: style.textSize,
+    textFont: style.textFont && plainLabelFont(style.textFont), textSize: style.textSize,
   };
 }
 

@@ -3,7 +3,8 @@ import {
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
-import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
+import type { MarkerShape, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
+import { CSS_FONT_WEIGHTS, DEFAULT_LABEL_FONT, type LabelFont } from "../../pixi/renderers/fontChoice";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE, CREASE_LINE_WIDTH_RANGE, CREASE_MARK_SIZE_RANGE, CREASE_MARK_TIP_LENGTH_RANGE, GLUE_TAB_INSET_RANGE, GLUE_TAB_LINE_WIDTH_RANGE, GLUE_TAB_WIDTH_RANGE, EDGE_MARKER_SIZE_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
@@ -117,8 +118,7 @@ function readBadgeSettings(obj: Record<string, unknown> | null, fallback: BadgeS
     ...readMarkerAppearance(obj, fallback),
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textColor: optNumber(obj, "textColor", fallback.textColor),
-    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
-    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textFont: optLabelFont(obj, "textFont", fallback.textFont),
     textSize: clampTextSize(optNumber(obj, "textSize", fallback.textSize)),
     textMargin: readTextMargin(obj, fallback.textMargin),
   };
@@ -139,10 +139,7 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
     markerEnabled: obj?.markerEnabled === undefined ? undefined : optBool(obj, "markerEnabled", true),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
-    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
-    textFontWeight: obj?.textFontWeight === undefined
-      ? fallback.textFontWeight
-      : optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight ?? "bold"),
+    textFont: obj?.textFont === undefined ? fallback.textFont : optLabelFont(obj, "textFont", fallback.textFont ?? DEFAULT_LABEL_FONT),
     textSize: obj?.textSize === undefined ? fallback.textSize : clampTextSize(optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE)),
     textMargin: obj?.textMargin === undefined ? fallback.textMargin : readTextMargin(obj, fallback.textMargin ?? DEFAULT_TEXT_MARGIN),
     textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
@@ -275,9 +272,17 @@ export function optElevatorBadgeBacking(obj: Record<string, unknown> | null, key
   return v === "individual" || v === "shared" ? v : fallback;
 }
 
-export function optElevatorBadgeFontWeight(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgeFontWeight): ElevatorBadgeFontWeight {
+/** A saved `LabelFont` (GitHub issue #973): a family string and a weight on the CSS 100..900 scale. A
+ *  missing or malformed part falls back to `fallback`'s; a value that is not an object (such as the
+ *  pre-#973 family string) is ignored as a whole. */
+export function optLabelFont(obj: Record<string, unknown> | null, key: string, fallback: LabelFont): LabelFont {
   const v = obj?.[key];
-  return v === "regular" || v === "bold" ? v : fallback;
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return fallback;
+  const saved = v as Record<string, unknown>;
+  const weight = typeof saved.weight === "number" && Number.isFinite(saved.weight)
+    ? Math.min(CSS_FONT_WEIGHTS[CSS_FONT_WEIGHTS.length - 1], Math.max(CSS_FONT_WEIGHTS[0], Math.round(saved.weight)))
+    : fallback.weight;
+  return { family: typeof saved.family === "string" ? saved.family.trim() : fallback.family, weight };
 }
 
 /** `ElevatorBadgeSettings` validation (GitHub issue #430) — same lenient-recovery convention as
@@ -303,8 +308,8 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
 }
 
 /** `MarkerIndexSettings` validation (GitHub issue #471) — same lenient-recovery convention as
- * `validateElevatorBadgeSettings`. `labelStyle`/`fontWeight` reuse the elevator-badge validators
- * (their types are aliases). */
+ * `validateElevatorBadgeSettings`. `labelStyle` reuses the elevator-badge validator (its type is an
+ * alias); `textFont` goes through `optLabelFont`. */
 export function validateMarkerIndexSettings(v: unknown, path: string, fallback: MarkerIndexSettings): MarkerIndexSettings {
   if (v == null) return fallback;
   let obj: Record<string, unknown> | null;
@@ -325,12 +330,11 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
     gap: optNumber(obj, "gap", fallback.gap),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     textColor: optNumber(obj, "textColor", fallback.textColor),
-    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
+    textFont: optLabelFont(obj, "textFont", fallback.textFont),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
     borderColorFromMarker: optBool(obj, "borderColorFromMarker", fallback.borderColorFromMarker),
     borderWidthFromMarker: optBool(obj, "borderWidthFromMarker", fallback.borderWidthFromMarker),
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
-    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
     coverage: validateMarkerIndexCoverage(obj.coverage, `${path}.coverage`, fallback.coverage),
   };
 }
@@ -348,8 +352,7 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
       : optEnum(obj, "labelMode", ["index", "title"] as const, fallback.labelMode),
     prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
-    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
-    textFontFamily: typeof obj?.textFontFamily === "string" ? obj.textFontFamily.trim() : fallback.textFontFamily,
+    textFont: optLabelFont(obj, "textFont", fallback.textFont),
     textAlignment: readTextAlignment(obj, fallback.textAlignment),
     textSize: clampTextSize(optNumber(obj, "textSize", fallback.textSize), FLOOR_LABEL_TEXT_SIZE_RANGE),
     textMargin: readTextMargin(obj, fallback.textMargin),
@@ -664,7 +667,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     return { ...d, links };
   }
   return {
-    labelFontFamily: typeof obj.labelFontFamily === "string" ? obj.labelFontFamily.trim() : d.labelFontFamily,
+    labelFont: optLabelFont(obj, "labelFont", d.labelFont ?? DEFAULT_LABEL_FONT),
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -702,7 +705,6 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
-    markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
     floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
     floorLabel: validateFloorLabelSettings(obj.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
@@ -870,7 +872,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
   return {
-    labelFontFamily: typeof obj?.labelFontFamily === "string" ? obj.labelFontFamily.trim() : d.labelFontFamily,
+    labelFont: optLabelFont(obj, "labelFont", d.labelFont ?? DEFAULT_LABEL_FONT),
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -910,7 +912,6 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
-    markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
     floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
     floorLabel: validateFloorLabelSettings(obj?.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),

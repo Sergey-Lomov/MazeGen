@@ -62,9 +62,11 @@ const NOT_LINKABLE: Record<string, string> = {
   markerLayout: "marker layout mode, not a numeric/enum link parameter",
 };
 
-/** Dot-paths of every scalar leaf of `value` (arrays and `links` are state, not parameters). */
+/** Dot-paths of every scalar leaf of `value` (arrays and `links` are state, not parameters). A label
+ *  font `{ family, weight }` is one leaf: it is a single linked parameter (GitHub issue #973). */
 function scalarLeaves(value: unknown, prefix = ""): string[] {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return prefix === "" ? [] : [prefix];
+  const isLabelFont = typeof value === "object" && value !== null && Object.keys(value).sort().join() === "family,weight";
+  if (value === null || typeof value !== "object" || Array.isArray(value) || isLabelFont) return prefix === "" ? [] : [prefix];
   return Object.entries(value).flatMap(([key, child]) => (prefix === "" && key === "links" ? [] : scalarLeaves(child, prefix === "" ? key : `${prefix}.${key}`)));
 }
 

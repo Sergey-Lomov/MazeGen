@@ -8,7 +8,7 @@ happened.
 ## 1. Check for a semantic precedent before naming anything
 
 Before inventing a label or a field name, search the existing settings for a parameter that means the
-same thing (a color, a font weight, a size fraction, a toggle). Reuse its exact wording. Do not invent a
+same thing (a color, a font, a size fraction, a toggle). Reuse its exact wording. Do not invent a
 synonym for a concept that already has a name elsewhere in the panel — that is how a project ends up with
 both "Насыщенность шрифта" and "Жирность текста" for the same concept (font weight) in two different
 sections. If no precedent exists, pick the plainest term and expect it to become the precedent for the
