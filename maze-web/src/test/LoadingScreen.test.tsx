@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { LoadingScreen } from "../components/LoadingScreen";
 
-const bootScreenHtml = readFileSync(fileURLToPath(new URL("../../index.html", import.meta.url)), "utf8");
+const bootScreenHtml = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
 
 describe("LoadingScreen", () => {
   it("exposes a determinate progress bar to assistive technology", () => {

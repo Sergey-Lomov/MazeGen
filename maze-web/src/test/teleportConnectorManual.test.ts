@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TeleportConnectorRouter } from "../pixi/renderers/teleportConnectorRouter";
 import { routeTeleportConnectors } from "../pixi/renderers/teleportConnectorPlan";
-import { curveControls, editableCurvePoints, manualConnectorPoints, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
+import { curveControls, editableCurvePoints, manualConnectorPoints, parseTeleportConnectorKey, sampleCubicPath, straightCubicControls, teleportConnectorKey } from "../pixi/renderers/teleportConnectorManual";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
@@ -13,6 +13,24 @@ describe("manual teleport connector paths", () => {
     const forward = edge([0, 0], [40, 40], 7, 3);
     expect(teleportConnectorKey(forward)).toBe("3:7");
     expect(manualConnectorPoints(forward, { "3:7": { nodes: [[4, 5], [20, 0], [20, 40], [42, 43]] } })).toEqual([4, 5, 20, 0, 20, 40, 42, 43]);
+  });
+
+  it("keys each floor's piece of a cross-floor pair separately (GitHub issue #989)", () => {
+    // Floor A sees node 7 as its marker and the badge as `to`; floor B sees the badge as `from`.
+    const onA = { ...edge([0, 0], [40, 40], 7, 3), toFloor: 1 };
+    const onB = { ...edge([40, 40], [90, 90], 7, 3), fromFloor: 0 };
+    expect(teleportConnectorKey(onA)).toBe("3:7@7");
+    expect(teleportConnectorKey(onB)).toBe("3:7@3");
+    const paths = { "3:7@7": { nodes: [[0, 0], [20, 0], [40, 40]] as [number, number][] }, "3:7@3": { nodes: [[40, 40], [90, 40], [90, 90]] as [number, number][] } };
+    expect(manualConnectorPoints(onA, paths)).toEqual([0, 0, 20, 0, 40, 40]);
+    expect(manualConnectorPoints(onB, paths)).toEqual([40, 40, 90, 40, 90, 90]);
+    // The legacy single-path key no longer applies to a cross-floor edge.
+    expect(manualConnectorPoints(onA, { "3:7": paths["3:7@7"] })).toBeNull();
+  });
+
+  it("parses plain and cross-floor connector keys", () => {
+    expect(parseTeleportConnectorKey("3:7")).toEqual({ ids: [3, 7] });
+    expect(parseTeleportConnectorKey("3:7@7")).toEqual({ ids: [3, 7], ownNode: 7 });
   });
 
   it("never sends a manually edited connector through automatic routing", () => {

@@ -157,13 +157,15 @@ export class ExportWarningHighlight<TSettings> {
   }
 
   /** Highlights the cells of `nodeIds` (teleport-group list hover) in the post-edit hover color
-   *  (`canvas.fieldEditor.hover`). Ids absent from `nodes` (other floors) are skipped; `null`/empty clears. */
+   *  (`canvas.fieldEditor.hover`). Ids absent from `nodes` (other floors) are skipped; `null`/empty clears.
+   *  `cells` are extra plain cells of the drawn floor (a floor badge, GitHub issue #989). */
   renderNodes(
     nodeIds: number[] | null,
     nodes: NodeDto[],
     cfg: FieldConfig,
     settings: TSettings,
     inset = 2,
+    cells: [number, number][] = [],
   ): void {
     const wanted = new Set(nodeIds ?? []);
     const tileGroups = new Map<string, number[]>();
@@ -174,14 +176,14 @@ export class ExportWarningHighlight<TSettings> {
       group.push(node.id);
       tileGroups.set(key, group);
     }
-    if (tileGroups.size === 0) {
+    if (tileGroups.size === 0 && cells.length === 0) {
       this.highlight.clear();
       return;
     }
     this.highlight.render({
       nodes,
       regionGroups: Array.from(tileGroups.values()),
-      cells: [],
+      cells,
       color: canvas.fieldEditor.hover,
       width: 0,
       alpha: 0,
@@ -472,7 +474,7 @@ export class VectorByWallsRenderer {
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
       if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
-      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds) && state.openCard === "image_export") {
+      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds || state.hoveredTeleportCells !== prev.hoveredTeleportCells) && state.openCard === "image_export") {
         this.renderWarningHighlight(state);
       }
 
@@ -823,15 +825,17 @@ export class VectorByWallsRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the draw mechanics, shared with
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
+    const { hoveredExportWarningKey, hoveredTeleportNodeIds, hoveredTeleportCells } = state;
     if (!hoveredExportWarningKey) {
-      if (hoveredTeleportNodeIds) {
+      if (hoveredTeleportNodeIds || hoveredTeleportCells) {
+        const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
         const { nodes } = selectFloorScopedMaze(
           state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
         );
         this.warningHighlight.renderNodes(
           hoveredTeleportNodeIds, nodes, state.activeFieldConfig, state.vectorByWallsSettings,
           getCellHighlightInset(state.vectorByWallsSettings.wallThickness),
+          (hoveredTeleportCells ?? []).filter((cell) => cell.floorIndex === activeFloorIndex).map((cell): [number, number] => [cell.x, cell.y]),
         );
       } else {
         this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByWallsSettings);

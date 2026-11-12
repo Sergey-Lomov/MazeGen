@@ -262,7 +262,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
       if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
-      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds) && state.openCard === "image_export") {
+      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds || state.hoveredTeleportCells !== prev.hoveredTeleportCells) && state.openCard === "image_export") {
         this.renderWarningHighlight(state);
       }
 
@@ -1409,15 +1409,17 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the draw mechanics, shared with
    *  `VectorByWallsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
+    const { hoveredExportWarningKey, hoveredTeleportNodeIds, hoveredTeleportCells } = state;
     if (!hoveredExportWarningKey) {
-      if (hoveredTeleportNodeIds) {
+      if (hoveredTeleportNodeIds || hoveredTeleportCells) {
+        const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
         const { nodes } = selectFloorScopedMaze(
           state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
         );
         this.warningHighlight.renderNodes(
           hoveredTeleportNodeIds, nodes, state.activeFieldConfig, state.vectorByCorridorsSettings,
           2 / (this.viewport.scale || 1),
+          (hoveredTeleportCells ?? []).filter((cell) => cell.floorIndex === activeFloorIndex).map((cell): [number, number] => [cell.x, cell.y]),
         );
       } else {
         this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByCorridorsSettings);

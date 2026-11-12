@@ -2551,6 +2551,7 @@
   "image_export.teleport_connector_editor.empty": "No custom teleport connectors yet.",
   "image_export.teleport_connector_editor.missing_endpoint": "Missing endpoint",
   "image_export.teleport_connector_editor.reset_title": "Reset to automatic route",
+  "image_export.teleport_connector_editor.linked_pieces": "These two segments are parts of the connector of one cross-floor teleport",
   "image_export.teleport_connector_editor.reset_confirm": "Reset this connector to its automatic route?",
   "image_export.teleport_connector_editor.mode_polyline": "Polyline",
   "image_export.teleport_connector_editor.mode_curve": "Cubic curve",
