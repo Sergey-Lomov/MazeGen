@@ -8,8 +8,9 @@
 // `.fnt`/`.xml` by extension. A `.json` atlas loads as a plain object and `BitmapText` silently
 // falls back to a runtime canvas font (blurry, wrong weight).
 //
-// Two weights so the label `fontWeight` setting (elevator badges, marker indices) actually
-// switches — MSDF glyph shapes are baked, not synthesized, so a bold look needs its own atlas.
+// Two weights so the font picker can offer both: MSDF glyph shapes are baked, not synthesized, so a
+// bold look needs its own atlas. A baked weight is only offered once it is listed in `MSDF_FONTS`
+// (`src/pixi/renderers/fontChoice.ts`).
 //
 // Charset — only the glyphs canvas labels actually draw:
 //   digits 0-9, ':', '#', '№', '+', '-', '=', Latin and Cyrillic letters (uppercase and lowercase), '(' ')' ',' space,

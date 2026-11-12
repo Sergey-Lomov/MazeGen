@@ -82,7 +82,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+      teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -195,7 +195,7 @@ describe("VectorByWallsSettingsPanel", () => {
         teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false, teleportMergeMode: true,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
-        teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
+        teleportFloorBadge: { sizeAdaptation: 0, shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFont: { family: "", weight: 700 }, textSize: 12, textMargin: 1 },
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -989,17 +989,6 @@ describe("VectorByWallsSettingsPanel", () => {
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.labelType).toBe("roman");
       });
 
-      it("changing the font weight updates the store", () => {
-        setElevatorState({ elevatorBadgesEnabled: true });
-        render(<VectorByWallsSettingsPanel />);
-        // GitHub issue #697 follow-up added two other "bold" font-weight selects (start/finish
-        // marker text) rendered earlier in the panel — the elevator badges one is last.
-        const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
-        const select = selects[selects.length - 1];
-        fireEvent.change(select, { target: { value: "regular" } });
-        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.textFontWeight).toBe("regular");
-      });
-
       it("changing the corner style updates the store and disables its shared-style link (GitHub issue #322 follow-up)", () => {
         setElevatorState({ elevatorBadgesEnabled: true });
         render(<VectorByWallsSettingsPanel />);
@@ -1260,7 +1249,6 @@ describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", 
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text"]())).toBeNull();
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_color"]())).toBeNull();
     expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).toBeNull();
-    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_font_weight"]())).toBeNull();
   });
 
   it("shows caption text and style rows when the caption is on", () => {

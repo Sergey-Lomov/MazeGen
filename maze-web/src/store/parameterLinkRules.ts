@@ -53,6 +53,7 @@ export const R = {
   teleportGroupCustomization: (_, s) => s.teleportGroupCustomization === true,
   /** The even full-circle ring is laid out by the badge count, so its gap is not a setting. */
   elevatorBadgeGap: (_, s) => !(s.elevatorBadges?.placement === "full_circle" && s.elevatorBadges.evenDistribution),
+  elevatorBadgeCircle: (_, s) => s.elevatorBadges?.placement === "full_circle",
   markerIndexBorderWidth: (_, s) => !s.markerIndex?.borderWidthFromMarker,
   markerIndexBorderColor: (_, s) => !s.markerIndex?.borderColorFromMarker,
   /** The arrow period matters only for periodic arrows, the arrow size for any arrows. */

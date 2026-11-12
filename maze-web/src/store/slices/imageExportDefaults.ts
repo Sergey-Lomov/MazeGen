@@ -21,6 +21,7 @@ import type {
 } from "../storeTypes";
 import { DEFAULT_MARKER_LAYOUT_MODE, DEFAULT_MARKER_SCALE } from "../../pixi/selectors/mazeSelectors/markerLayout";
 import { canvas } from "../../pixi/colorTokens";
+import { DEFAULT_LABEL_FONT } from "../../pixi/renderers/fontChoice";
 import { TILE_SIZE } from "../../pixi/constants";
 import { AUTO_HUE_BASE_COLOR, DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
@@ -42,8 +43,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
           text,
           markerEnabled: true,
           textEnabled: false,
-          textFontFamily: "",
-          textFontWeight: "bold" as const,
+          textFont: DEFAULT_LABEL_FONT,
           textSize: DEFAULT_MARKER_TEXT_SIZE,
           textMargin: DEFAULT_TEXT_MARGIN,
           textColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
@@ -64,7 +64,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
  * (which only follows enabled links) leaves them alone. The user is still free to pull them onto
  * the shared value via the panel's own per-field reset button. */
 export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
-  labelFontFamily: "",
+  labelFont: DEFAULT_LABEL_FONT,
   markerShape: DEFAULT_MAZE_RENDER_STYLE.startMarker.shape,
   cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
@@ -75,7 +75,6 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
   markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
   markerTextMargin: DEFAULT_TEXT_MARGIN,
-  markerTextFontWeight: "bold",
   floorLabelType: "letters",
 };
 
@@ -85,8 +84,7 @@ export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
   prefix: "Floor ",
   labelType: "letters",
   textColor: canvas.floor.default,
-  textFontFamily: "",
-  textFontWeight: "bold",
+  textFont: DEFAULT_LABEL_FONT,
   textAlignment: "center",
   textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
   textMargin: DEFAULT_TEXT_MARGIN,
@@ -163,7 +161,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   teleportArrowPeriod: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowPeriod,
   teleportArrowSize: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowSize,
   teleportConnectorGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorGapWidth,
-  teleportFloorBadge: { ...DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge, textFontFamily: "" },
+  teleportFloorBadge: { ...DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge, textFont: DEFAULT_LABEL_FONT },
   teleportMergeMode: true,
   teleportGroupCustomization: false,
   teleportGroupOverrides: {},
@@ -221,13 +219,14 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
     gapWidth: 2,
     cornerStyle: "round",
     evenDistribution: false,
+    backing: "individual",
+    startAngle: 0,
     shape: "circle",
     fillColor: 0xf0c900,
     borderColor: 0xf0c900,
     borderWidth: 0,
     textColor: canvas.floor.default,
-    textFontFamily: "",
-    textFontWeight: "bold",
+    textFont: DEFAULT_LABEL_FONT,
     textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
     textMargin: DEFAULT_TEXT_MARGIN,
   },
@@ -254,12 +253,11 @@ export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
   gap: 3,
   fillColor: 0xf0c900,
   textColor: canvas.floor.default,
-  textFontFamily: "",
+  textFont: DEFAULT_LABEL_FONT,
   borderColor: canvas.vertical.default,
   borderColorFromMarker: true,
   borderWidthFromMarker: true,
   borderWidth: 2,
-  textFontWeight: "bold",
   coverage: {
     singleFloorTeleport: false,
     crossFloorTeleport: true,
@@ -362,7 +360,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeSizeAdaptation", "verticalDecorativeArrowSize",
@@ -406,8 +404,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     junctionRadius: 4,
     join: "round",
     renderStyle: "contour",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.startMarker.size, markerEnabled: false, text: "S", textEnabled: false, textFontFamily: "", textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.finishMarker.size, markerEnabled: false, text: "F", textEnabled: false, textFontFamily: "", textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
+    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.startMarker.size, markerEnabled: false, text: "S", textEnabled: false, textFont: DEFAULT_LABEL_FONT, textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
+    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: DEFAULT_MAZE_RENDER_STYLE.finishMarker.size, markerEnabled: false, text: "F", textEnabled: false, textFont: DEFAULT_LABEL_FONT, textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
     markerWidenPadding: 4,
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,
@@ -426,7 +424,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
+    "thickness", "markerShape", "cornerStyle", "markerSize", "markerSizeAdaptation", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalSizeAdaptation", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor", "verticalBorderColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

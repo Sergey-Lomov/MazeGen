@@ -5,7 +5,11 @@ import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { ui, radius, typography, spacing, font, indent } from "../styles/theme";
-import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
+import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
+import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type LabelFont } from "../pixi/renderers/fontChoice";
+import { fontWeightName } from "../store/fontLabels";
+import { SelectRow } from "./SelectRow";
+import { Tooltip } from "./Tooltip";
 import { MsdfFontPreview } from "./MsdfFontPreview";
 import { UnregisteredColorRow } from "./ColorRow";
 import { colorToHex, hexToColor } from "./colorFormat";
@@ -14,7 +18,7 @@ import * as m from "~/paraglide/messages";
 import type React from "react";
 
 /** The two font categories the picker switches between. The vector list holds the baked MSDF fonts
- *  (stored as the empty family, see `textFontFamily`), the raster list holds browser fonts. */
+ *  (`MSDF_FONTS`; the bundled Roboto is the empty family), the raster list holds browser fonts. */
 type FontType = "vector" | "raster";
 
 /** Keyboard moves repeat dozens of times a second while an arrow key is held, and every preview
@@ -36,11 +40,14 @@ const DEFAULT_PREVIEW_BACKGROUND = hexToColor(ui.bg.input);
 /** Fixed height of the single-line preview, so the panel layout does not move with the font size. */
 const PREVIEW_HEIGHT = 48;
 
-/** Family value that stands for the bundled MSDF Roboto in every `textFontFamily` field. */
-export const VECTOR_FONT_FAMILY = "";
+/** The vector list: every baked MSDF font. */
+const VECTOR_FONTS: { value: string; label: string }[] = Object.entries(MSDF_FONTS).map(([value, { label }]) => ({ value, label }));
 
-/** The vector list: the single currently available default font. */
-const VECTOR_FONTS: { value: string; label: string }[] = [{ value: VECTOR_FONT_FAMILY, label: "Roboto" }];
+/** The weights a font family offers: the baked weights of an MSDF font, the installed faces of a
+ *  browser font. */
+function weightsOf(family: string): number[] {
+  return isMsdfFamily(family) ? msdfFontWeights(family) : rasterFontWeights(family);
+}
 
 /** Candidate families for the raster list when the machine's own list is unavailable (permission
  *  denied, unsupported browser, or an empty answer). Common to most systems but not guaranteed, so the
@@ -52,15 +59,15 @@ export const WEB_SAFE_FONT_FAMILIES = [
 ];
 
 interface Props {
-  /** Family the field holds now, used to seed the working font on open. */
-  family: string;
-  /** Commit handler, called once with the working family on "Apply". */
-  onApply: (family: string) => void;
+  /** Font the field holds now, used to seed the working font on open. */
+  font: LabelFont;
+  /** Commit handler, called once with the working font on "Apply". */
+  onApply: (font: LabelFont) => void;
   /** Dismiss handler, called on "Cancel", the header close button, or Escape. */
   onClose: () => void;
-  /** Live-preview handler. Called with the highlighted family on every change, and once with the
-   *  open-time family on Cancel / header close / Escape, so the canvas shows the font in context. */
-  onPreview?: (family: string) => void;
+  /** Live-preview handler. Called with the highlighted font on every change, and once with the
+   *  open-time font on Cancel / header close / Escape, so the canvas shows the font in context. */
+  onPreview?: (font: LabelFont) => void;
   /** Called once on cancel, after the restoring `onPreview` call and before `onClose`. Lets a
    *  linked call site undo the link override a preview tick caused (same contract as the color
    *  picker's `onCancel`). */
@@ -70,17 +77,18 @@ interface Props {
 }
 
 /** Side panel for choosing a label font, the font counterpart of `ColorPickerPanel`. Opens as an
- *  overlay `SidePanel`, holds a working family in local state, previews each highlighted font live
- *  through `onPreview`, and commits through `onApply`. A toggle switches between the vector (MSDF)
- *  and raster lists; up / down arrows move the highlight within the active list. */
-export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel, title }: Props) {
+ *  overlay `SidePanel`, holds a working font (family and weight, GitHub issue #973) in local state,
+ *  previews each highlighted font live through `onPreview`, and commits through `onApply`. A toggle
+ *  switches between the vector (MSDF) and raster lists; up / down arrows move the highlight within
+ *  the active list. The weight section offers only the weights the highlighted family has. */
+export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, title }: Props) {
   // Set when a WebGL canvas cannot be created: the MSDF preview then falls back to DOM text in Roboto.
   const [msdfUnavailable, setMsdfUnavailable] = useState(false);
   const [phrase, setPhrase] = useState(DEFAULT_PREVIEW_PHRASE);
   const [previewTextColor, setPreviewTextColor] = useState(DEFAULT_PREVIEW_TEXT_COLOR);
   const [previewBackground, setPreviewBackground] = useState(DEFAULT_PREVIEW_BACKGROUND);
-  const [working, setWorking] = useState(family);
-  const [type, setType] = useState<FontType>(family === VECTOR_FONT_FAMILY ? "vector" : "raster");
+  const [working, setWorking] = useState(font);
+  const [type, setType] = useState<FontType>(isMsdfFamily(font.family) ? "vector" : "raster");
   const [infoOpen, setInfoOpen] = useState(false);
   // `undefined` while the local font query is pending, `null` when the browser cannot list fonts.
   // An empty answer is how some browsers report a denied permission, so it counts as unavailable.
@@ -89,13 +97,16 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
   const [accessBlocked, setAccessBlocked] = useState(false);
   const [localFamilies, setLocalFamilies] = useState<string[] | null | undefined>(undefined);
 
-  /** The family in effect when the panel opened. Captured once: with live preview the `family`
+  /** The font in effect when the panel opened. Captured once: with live preview the `font`
    *  prop tracks each previewed change, so it cannot be used to restore on Cancel. */
-  const originalFamily = useRef(family).current;
+  const originalFont = useRef(font).current;
+  const originalFamily = originalFont.family;
+  const workingRef = useRef(working);
+  workingRef.current = working;
   const onPreviewRef = useRef(onPreview);
   onPreviewRef.current = onPreview;
 
-  const pendingPreview = useRef<string | null>(null);
+  const pendingPreview = useRef<LabelFont | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -131,7 +142,7 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
     // The open-time family stays listed even when the machine does not report it, so a project
     // saved elsewhere still shows its current choice highlighted.
     const families = hasLocalFamilies ? localFamilies : installedWebSafe;
-    const extra = originalFamily !== VECTOR_FONT_FAMILY && !families.includes(originalFamily) ? [originalFamily] : [];
+    const extra = !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
     return [...extra, ...families].map((value) => ({ value, label: value }));
   }, [type, hasLocalFamilies, localFamilies, installedWebSafe, originalFamily]);
 
@@ -146,7 +157,7 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
 
   /** Highlight a font and preview it. A click previews at once; a keyboard move is coalesced so a
    *  held arrow key does not rebuild the canvas on every repeat. */
-  const select = useCallback((next: string, delayed = false) => {
+  const select = useCallback((next: LabelFont, delayed = false) => {
     setWorking(next);
     pendingPreview.current = next;
     if (!delayed) {
@@ -157,12 +168,18 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
     previewTimer.current = setTimeout(flushPreview, KEYBOARD_PREVIEW_DELAY_MS);
   }, [flushPreview]);
 
+  /** Pick a family. The weight stays when the family has it and snaps to the nearest one it has otherwise. */
+  const selectFamily = useCallback((family: string, delayed = false) => {
+    const current = workingRef.current;
+    select({ family, weight: nearestWeight(current.weight, weightsOf(family)) }, delayed);
+  }, [select]);
+
   function cancel() {
     // Drop a queued preview: the open-time font is restored below regardless.
     if (previewTimer.current !== null) clearTimeout(previewTimer.current);
     previewTimer.current = null;
     pendingPreview.current = null;
-    onPreviewRef.current?.(originalFamily);
+    onPreviewRef.current?.(originalFont);
     onCancel?.();
     onClose();
   }
@@ -171,6 +188,19 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
     flushPreview();
     onApply(working);
   }
+
+  // Weights of the highlighted family. The local font query (`localFamilies`) is what reveals a browser
+  // font's installed faces, so a result arriving later refreshes the list.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const weights = useMemo(() => weightsOf(working.family), [working.family, localFamilies]);
+
+  // The select always shows the working weight, even one the family lacks (a project saved elsewhere).
+  const weightOptions = useMemo(() => {
+    const offered = weights.includes(working.weight) ? weights : [...weights, working.weight].sort((a, b) => a - b);
+    return offered.map((weight) => ({ value: String(weight), label: fontWeightName(weight) }));
+  }, [weights, working.weight]);
+
+  const weightLocked = weightOptions.length <= 1;
 
   const showPermissionNote = type === "raster" && localFamilies !== undefined && !hasLocalFamilies;
 
@@ -193,11 +223,12 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
                 style={styles.previewInput}
                 data-testid="font-picker-preview-input"
               />
-              {working === VECTOR_FONT_FAMILY && !msdfUnavailable ? (
+              {isMsdfFamily(working.family) && !msdfUnavailable ? (
                 // The MSDF font cannot be shown by the DOM, so it is drawn on a pixi canvas the way
                 // the maze canvas draws it.
                 <MsdfFontPreview
                   text={phrase}
+                  font={working}
                   textColor={previewTextColor}
                   background={previewBackground}
                   fontSize={PREVIEW_FONT_SIZE}
@@ -219,7 +250,8 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
                   <span
                     style={{
                       ...styles.previewLine,
-                      fontFamily: working === VECTOR_FONT_FAMILY ? "Roboto, sans-serif" : labelFontCss(working),
+                      fontFamily: isMsdfFamily(working.family) ? "Roboto, sans-serif" : labelFontCss(working.family),
+                      fontWeight: working.weight,
                       fontSize: PREVIEW_FONT_SIZE,
                     }}
                     data-testid="font-picker-preview-line"
@@ -252,9 +284,9 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
                   // Remount per type so the new list takes keyboard focus (arrow keys keep working
                   // after the toggle button was clicked).
                   key={type}
-                  selected={options.some((o) => o.value === working) ? working : null}
+                  selected={options.some((o) => o.value === working.family) ? working.family : null}
                   values={optionValues}
-                  onSelect={(value, source) => select(value, source === "keyboard")}
+                  onSelect={(value, source) => selectFamily(value, source === "keyboard")}
                   autoFocus
                   testId={`font-picker-list-${type}`}
                   footer={showPermissionNote && (
@@ -275,11 +307,24 @@ export function FontPickerPanel({ family, onApply, onClose, onPreview, onCancel,
                   )}
                 >
                   {options.map((o) => (
-                    <SelectableRow key={o.value} value={o.value} selected={o.value === working}>{o.label}</SelectableRow>
+                    <SelectableRow key={o.value} value={o.value} selected={o.value === working.family}>{o.label}</SelectableRow>
                   ))}
                 </SelectableList>
               )}
             </div>
+          </div>
+          <div style={styles.section}>
+            {/* A disabled select gets no hover events, so the hint wraps the whole row. */}
+            <Tooltip content={weightLocked ? m["font_picker.weight_single_hint"]() : undefined} block>
+              <SelectRow
+                label={m["font_picker.section_weight"]()}
+                value={String(working.weight)}
+                options={weightOptions}
+                onChange={(value) => select({ family: working.family, weight: Number(value) })}
+                disabled={weightLocked}
+                testId="font-picker-weight"
+              />
+            </Tooltip>
           </div>
         </div>
         <div style={styles.footer}>

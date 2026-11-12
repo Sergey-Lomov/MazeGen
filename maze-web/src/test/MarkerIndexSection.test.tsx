@@ -7,7 +7,7 @@ import * as m from "~/paraglide/messages";
 
 const nullTargets = {
   enabled: null, coverageSingleFloorTeleport: null, coverageCrossFloorTeleport: null,
-  coverageVerticalPassage: null, coverageElevator: null, labelStyle: null, textFontWeight: null,
+  coverageVerticalPassage: null, coverageElevator: null, labelStyle: null, textFont: null,
   width: null, textSize: null, textMargin: null, height: null, offset: null, cornerRadius: null,
   gap: null, borderWidthFromMarker: null, borderWidth: null, fillColor: null, textColor: null,
   borderColorFromMarker: null, borderColor: null,

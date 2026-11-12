@@ -9,6 +9,7 @@ import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
 import { useGate } from "./LinkContext";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
+import { DEFAULT_LABEL_FONT } from "../../pixi/renderers/fontChoice";
 import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import * as m from "~/paraglide/messages";
 
@@ -23,7 +24,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  show-border/show-gap toggle for either. "Caption" (rendered only when the caller passes
  *  `showTextSection`, i.e. start/finish markers — every other `MarkerSettingsGroup` caller, the
  *  three vertical-connection markers, passes `false`) holds the "Show caption" toggle,
- *  text input, font weight, color and size — all but the toggle are hidden while it is off (GitHub
+ *  text input, font, color and size — all but the toggle are hidden while it is off (GitHub
  *  issue #723; the stored values persist, so turning the caption back on restores exactly what was
  *  there before).
  *  Shared by `VectorByWallsSettingsPanel` and `VectorByCorridorsSettingsPanel` (GitHub issue
@@ -65,7 +66,7 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
   /** Per-field link path for this group's `Linked*Row`s (GitHub issue #652 follow-up) — a concrete
    *  path for every field the caller's registry models (the seven "Marker" fields: `shape`/
    *  `cornerStyle`/`size`/`fillColor`/`borderColor`/`borderWidth`/`gapWidth`, plus the four
-   *  "Caption" fields `textEnabled`/`textFontWeight`/`textSize`/`textColor`,
+   *  "Caption" fields `textEnabled`/`textFont`/`textSize`/`textColor`,
    *  GitHub issue #697 second follow-up — `text` itself has no registry entry, free text has
    *  no `ParamType`), or `null` for one it doesn't, rendering `LinkStatusIcon`'s "unsupported" state
    *  there instead of omitting the icon — every field row gets one either way. The four Caption
@@ -74,7 +75,7 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
    *  other field its registry doesn't model. */
   /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
   textFitKind?: "start" | "finish";
-  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; markerEnabled?: P | null; textEnabled: P | null; textFontFamily?: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
+  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; sizeAdaptation: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; markerEnabled?: P | null; textEnabled: P | null; textFont?: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;
@@ -115,14 +116,13 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
                       />
                       <TextStyleRows
                         settings={{
-                          textFontFamily: settings.textFontFamily,
-                          textFontWeight: settings.textFontWeight ?? "bold",
+                          textFont: settings.textFont ?? DEFAULT_LABEL_FONT,
                           textColor: settings.textColor ?? 0x000000,
                           textSize: settings.textSize ?? DEFAULT_MARKER_TEXT_SIZE,
                           textMargin: settings.textMargin ?? DEFAULT_TEXT_MARGIN,
                         }}
                         onChange={onChange}
-                        linkTargets={{ textFontFamily: linkTargets.textFontFamily ?? null, textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin }}
+                        linkTargets={{ textFont: linkTargets.textFont ?? null, textColor: linkTargets.textColor, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin }}
                         priorityColors={priorityColors?.textColor}
                         defaultColor={defaultColors?.textColor}
                         field={fields.textColor}

@@ -1,6 +1,7 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportCurveDirection, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
 import type { MarkerLayoutMode } from "../pixi/selectors/mazeSelectors/markerLayout";
-import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
+import type { IndexLabelStyle } from "../pixi/renderers/indexLabel";
+import type { LabelFont } from "../pixi/renderers/fontChoice";
 import type { FieldConfig } from "../fieldConfig";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
@@ -222,7 +223,7 @@ export interface CutExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
  *  captions, elevator badges and teleport floor badges all configure their text the same way:
- *  color, font weight, an **absolute** font size in px, a margin (not a fraction of the badge/marker
+ *  color, font, an **absolute** font size in px, a margin (not a fraction of the badge/marker
  *  diameter), and reusable horizontal alignment. Alignment is optional while only floor labels
  *  expose it; consumers that omit it remain centered. `MarkerSettings` carries these optionally
  *  (only start/finish expose them in the UI); the badge settings require the original fields. */
@@ -230,9 +231,8 @@ export type TextHorizontalAlignment = "left" | "center" | "right";
 
 export interface TextStyleFields {
   textColor: number;
-  /** Optional for old project files; absent means the bundled Roboto MSDF family. */
-  textFontFamily?: string;
-  textFontWeight: LabelFontWeight;
+  /** Family and weight as one choice (GitHub issue #973): the weights on offer depend on the font. */
+  textFont: LabelFont;
   /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
   textAlignment?: TextHorizontalAlignment;
   /** Font size in px. */
@@ -269,6 +269,9 @@ export type ElevatorBadgeLabelType = IndexLabelStyle;
  *  gives real geometric overlap. `"full_circle"` spreads badges around the marker's own circle at
  *  radius `distance` — see `ElevatorBadgeSettings.evenDistribution` for the two ring layouts. */
 export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left" | "top_bottom" | "bottom_top";
+
+/** Whether elevator badge bodies are individual or joined into one backing per contiguous group. */
+export type ElevatorBadgeBacking = "individual" | "shared";
 
 /** "Floor-number badges" (GitHub issue #430) — an independent decorative layer drawn on top of an
  *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative): one small
@@ -313,6 +316,10 @@ export interface ElevatorBadgeSettings extends BadgeSettings {
   distance: number;
   gap: number;
   evenDistribution: boolean;
+  /** Replaces individual badge bodies with a shared backing in every placement. */
+  backing?: ElevatorBadgeBacking;
+  /** Clockwise degrees from 12 o'clock for the first circular badge. */
+  startAngle?: number;
 }
 
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
@@ -426,7 +433,7 @@ export interface VerticalDecorativeFields {
 /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
  *  a teleport endpoint that lands on another floor (`drawFloorBadge`, see `Specs/floors.md`'s
  *  "Cross-floor teleport badges"). `shape`, `labelType`, `size`, `fillColor`, `borderColor`,
- *  `textColor`, `textFontWeight` and `textSize` (px) are all configurable (GitHub issue #503
+ *  `textColor`, `textFont` and `textSize` (px) are all configurable (GitHub issue #503
  *  follow-up made the fill/border independent — they previously always followed the connector
  *  color; GitHub issue #701 unified the text style with the other badges). */
 export type TeleportFloorBadgeSettings = BadgeSettings & SizeAdaptationField;
@@ -537,9 +544,9 @@ export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, P
    *  clearing it, so re-enabling restores the same text. `undefined`/`true` draws the badge
    *  (matches pre-toggle behavior); `false` suppresses it. */
   textEnabled?: boolean;
-  // `textColor`/`textFontWeight`/`textSize` come from `TextStyleFields` (all optional here).
-  // Unset: `textColor` falls back to `gapColor`, weight to `"bold"`, size to
-  // `DEFAULT_MARKER_TEXT_SIZE`.
+  // `textColor`/`textFont`/`textSize` come from `TextStyleFields` (all optional here).
+  // Unset: `textColor` falls back to `gapColor`, `textFont` to `DEFAULT_LABEL_FONT`,
+  // size to `DEFAULT_MARKER_TEXT_SIZE`.
 }
 
 /** A marker with a computed index label instead of a free-text caption (GitHub issue #701) — the
@@ -599,8 +606,8 @@ export interface FloorLabelDragState {
  *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
  *  comment. */
 export interface SharedStyleSourceFields {
-  /** Source family for every linked canvas-label style. Empty uses bundled Roboto MSDF. */
-  labelFontFamily?: string;
+  /** Source font (family and weight) for every linked canvas-label style. */
+  labelFont?: LabelFont;
   /** GitHub issue #701: the "Markers" sub-section of "Shared style" carries every property all
    *  markers share — shape, corner style, size, fill/border color, border width, gap width. The
    *  shape and color sources only drive their (disabled-by-default) links. */
@@ -612,11 +619,10 @@ export interface SharedStyleSourceFields {
   markerBorderColor: number;
   markerBorderWidth: number;
   gapWidth: number;
-  /** Shared label font size (px) and weight (GitHub issue #707) — drive every caption/badge text
+  /** Shared label font size (px, GitHub issue #707) — drives every caption/badge text
    *  style through disabled-by-default links; the "Auto-fit" button picks the size. */
   markerTextSize: number;
   markerTextMargin: number;
-  markerTextFontWeight: LabelFontWeight;
   /** Shared floor-number format for floor, elevator and teleport labels. */
   floorLabelType: IndexLabelStyle;
 }

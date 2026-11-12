@@ -1,7 +1,7 @@
 import type React from "react";
 import type { LinkPath } from "../../store/parameterLinkSchema";
 import { useState } from "react";
-import { FontFamilyRow } from "./FontFamilyRow";
+import { LabelFontRow } from "./LabelFontRow";
 import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
@@ -183,17 +183,7 @@ export function SharedStyleSection<P extends LinkPath>({
       </div>
       <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
       <div style={styles.group}>
-        <FontFamilyRow value={settings.labelFontFamily} onChange={(labelFontFamily) => onChange({ labelFontFamily })} linkTarget={"labelFontFamily" as P} />
-        <LinkedSelectRow
-          label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
-          value={settings.markerTextFontWeight}
-          options={[
-            { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-            { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-          ]}
-          onChange={(markerTextFontWeight) => onChange({ markerTextFontWeight })}
-          linkTarget={"markerTextFontWeight" as P}
-        />
+        <LabelFontRow value={settings.labelFont} onChange={(labelFont) => onChange({ labelFont })} linkTarget={"labelFont" as P} />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_text_size"]()}
           value={settings.markerTextSize}

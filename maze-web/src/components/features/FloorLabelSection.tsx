@@ -5,7 +5,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ColorField, ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
-import { FontFamilyRow } from "./FontFamilyRow";
+import { LabelFontRow } from "./LabelFontRow";
 import { useGate } from "./LinkContext";
 import { FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import { SectionHeader } from "../SectionHeader";
@@ -114,17 +114,7 @@ export function FloorLabelSection<P extends LinkPath>({ renderMode, settings, on
                 linkTarget={"floorLabel.labelType" as P}
               />
             </>}
-            <FontFamilyRow value={settings.textFontFamily} onChange={(textFontFamily) => onChange({ textFontFamily })} linkTarget={"floorLabel.textFontFamily" as P} />
-            <LinkedSelectRow
-              label={m["image_export.floors.weight"]()}
-              value={settings.textFontWeight}
-              options={[
-                { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-                { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-              ]}
-              onChange={(textFontWeight) => onChange({ textFontWeight })}
-              linkTarget={"floorLabel.textFontWeight" as P}
-            />
+            <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={"floorLabel.textFont" as P} />
             <LinkedSelectRow
               label={m["image_export.floors.alignment"]()}
               value={settings.textAlignment}
@@ -155,8 +145,8 @@ export function FloorLabelSection<P extends LinkPath>({ renderMode, settings, on
             />
             {hasBackground && (
               <>
-                <LinkedSliderRow label={m["image_export.floors.width"]()} value={settings.width} onChange={(width) => onChange({ width: Math.round(width) })} min={FLOOR_LABEL_WIDTH_RANGE.min} max={FLOOR_LABEL_WIDTH_RANGE.max} step={FLOOR_LABEL_WIDTH_RANGE.step} format={String} linkTarget={"floorLabel.width" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelWidth(), FLOOR_LABEL_WIDTH_RANGE.min, FLOOR_LABEL_WIDTH_RANGE.max)} onApply={(width) => onChange({ width })} />} />
-                <LinkedSliderRow label={m["image_export.floors.height"]()} value={settings.height} onChange={(height) => onChange({ height: Math.round(height) })} min={16} max={100} step={1} format={String} linkTarget={"floorLabel.height" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelHeight(), 16, 100)} onApply={(height) => onChange({ height })} />} />
+                <LinkedSliderRow label={m["image_export.floors.width"]()} value={settings.width} onChange={(width) => onChange({ width: Math.round(width) })} min={FLOOR_LABEL_WIDTH_RANGE.min} max={FLOOR_LABEL_WIDTH_RANGE.max} step={FLOOR_LABEL_WIDTH_RANGE.step} format={String} linkTarget={"floorLabel.width" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelWidth(), FLOOR_LABEL_WIDTH_RANGE.min, FLOOR_LABEL_WIDTH_RANGE.max)} onApply={(width) => onChange({ width })} tooltipTitle={m["image_export.floors.autofit_width_primary"]()} tooltipDescription={m["image_export.floors.autofit_width_tooltip"]()} />} />
+                <LinkedSliderRow label={m["image_export.floors.height"]()} value={settings.height} onChange={(height) => onChange({ height: Math.round(height) })} min={16} max={100} step={1} format={String} linkTarget={"floorLabel.height" as P} trailingAction={<AutoFitButton resolve={(ctx) => clamp(ctx.fitFloorLabelHeight(), 16, 100)} onApply={(height) => onChange({ height })} tooltipTitle={m["image_export.floors.autofit_height_primary"]()} tooltipDescription={m["image_export.floors.autofit_height_tooltip"]()} />} />
                 <LinkedSliderRow label={m["image_export.floors.corner_radius"]()} value={settings.cornerRadius} onChange={(cornerRadius) => onChange({ cornerRadius })} min={0} max={20} step={1} format={String} linkTarget={"floorLabel.cornerRadius" as P} />
                 <LinkedSliderRow label={m["image_export.floors.gap"]()} value={settings.gap} onChange={(gap) => onChange({ gap })} min={0} max={30} step={1} format={String} linkTarget={"floorLabel.gap" as P} />
                 <LinkedSliderRow label={m["image_export.floors.border_width"]()} value={settings.borderWidth} onChange={(borderWidth) => onChange({ borderWidth })} min={0} max={10} step={1} format={String} linkTarget={"floorLabel.borderWidth" as P} />

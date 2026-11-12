@@ -14,6 +14,7 @@ import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../pixi/renderConstants";
 import { computeTextFitItemsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
 import { fieldOf } from "./fieldConfigFixtures";
+import { getTooltipAnchors } from "./tooltipTestUtils";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
   getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset,
@@ -172,6 +173,24 @@ describe("export floor labels", () => {
     const select = document.querySelector(`select[name="${m["image_export.floors.alignment"]()}"]`)!;
     fireEvent.change(select, { target: { value: "right" } });
     expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.textAlignment).toBe("right");
+  });
+
+  it("describes floor-label background auto-fit controls as resizing the background to the text", () => {
+    const current = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      vectorByWallsSectionsExpanded: { floors: true },
+      vectorByWallsSettings: {
+        ...current,
+        floorLabel: { ...current.floorLabel, backgroundShape: "rectangle" },
+      },
+    });
+    render(<VectorByWallsSettingsPanel />);
+
+    expect(getTooltipAnchors(m["image_export.floors.autofit_width_primary"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_width_tooltip"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_height_primary"]())).toHaveLength(1);
+    expect(getTooltipAnchors(m["image_export.floors.autofit_height_tooltip"]())).toHaveLength(1);
   });
 
   it("edits the active floor's placement without changing shared label style", () => {
@@ -367,11 +386,11 @@ describe("export floor labels", () => {
 
   it("uses the widest and tallest floor label when fitting the backplate", () => {
     const dimensions = requiredTextPlateDimensions([
-      { text: "VIII", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
-      { text: "X", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
+      { text: "VIII", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
+      { text: "X", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
     ], 24);
     const wideOnly = requiredTextPlateDimensions([
-      { text: "X", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
+      { text: "X", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
     ], 24);
     expect(dimensions).not.toBeNull();
     expect(wideOnly).not.toBeNull();
@@ -380,7 +399,7 @@ describe("export floor labels", () => {
   });
 
   it("accounts for slanted parallelogram edges when fitting floor-label text", () => {
-    const rectangle = { text: "XXXXX", fontWeight: "regular" as const, shape: "square" as const, plateSize: 0, plateWidth: 80, plateHeight: 36, plateShape: "rectangle" as const, margin: 4 };
+    const rectangle = { text: "XXXXX", font: { family: "", weight: 400 } as const, shape: "square" as const, plateSize: 0, plateWidth: 80, plateHeight: 36, plateShape: "rectangle" as const, margin: 4 };
     const parallelogram = { ...rectangle, plateShape: "parallelogram" as const };
     expect(textOverflows(rectangle, 24)).toBe(false);
     expect(textOverflows(parallelogram, 24)).toBe(true);
@@ -410,6 +429,6 @@ describe("export floor labels", () => {
   });
 
   it("keeps floor-label auto-fit within the shared font-size range", () => {
-    expect(maxFittingFontSize([{ text: "I", fontWeight: "regular", shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(40);
+    expect(maxFittingFontSize([{ text: "I", font: { family: "", weight: 400 }, shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(40);
   });
 });

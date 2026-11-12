@@ -278,15 +278,15 @@ describe("validateLinkGraph", () => {
 describe("round-trip persistence of the four shared-style source values", () => {
   it("links the shared font-family source to every label style by default", () => {
     const targets = [
-      "startMarker.textFontFamily",
-      "finishMarker.textFontFamily",
-      "teleportFloorBadge.textFontFamily",
-      "elevatorBadges.textFontFamily",
-      "markerIndex.textFontFamily",
-      "floorLabel.textFontFamily",
+      "startMarker.textFont",
+      "finishMarker.textFont",
+      "teleportFloorBadge.textFont",
+      "elevatorBadges.textFont",
+      "markerIndex.textFont",
+      "floorLabel.textFont",
     ];
-    expect(targets.every((target) => DEFAULT_VECTOR_BY_WALLS_LINKS.some((link) => link.source === "labelFontFamily" && link.target === target && link.enabled))).toBe(true);
-    expect(targets.every((target) => DEFAULT_VECTOR_BY_CORRIDORS_LINKS.some((link) => link.source === "labelFontFamily" && link.target === target && link.enabled))).toBe(true);
+    expect(targets.every((target) => DEFAULT_VECTOR_BY_WALLS_LINKS.some((link) => link.source === "labelFont" && link.target === target && link.enabled))).toBe(true);
+    expect(targets.every((target) => DEFAULT_VECTOR_BY_CORRIDORS_LINKS.some((link) => link.source === "labelFont" && link.target === target && link.enabled))).toBe(true);
   });
 
   it("VectorByWallsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
@@ -407,10 +407,26 @@ describe("registry format functions", () => {
     expect(new Set(rendered).size).toBe(styles.length);
   });
 
-  it("elevator badges and marker index share the LabelFontWeight format function", () => {
-    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.textFontWeight"].format;
-    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.textFontWeight"].format;
-    expect(indexFormat("bold")).toBe(badgeFormat("bold"));
+  it("elevator badges and marker index share the labelFont format function", () => {
+    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.textFont"].format;
+    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.textFont"].format;
+    const font = { family: "", weight: 700 };
+    expect(indexFormat(font)).toBe(badgeFormat(font));
+    expect(badgeFormat(font)).toBe("Roboto, Bold");
+  });
+
+  it("labelFont links compare fonts by value, so an equal font in another object keeps a link in sync", () => {
+    const { equals } = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.textFont"];
+    expect(equals({ family: "Fira Sans", weight: 400 }, { family: "Fira Sans", weight: 400 })).toBe(true);
+    expect(equals({ family: "Fira Sans", weight: 400 }, { family: "Fira Sans", weight: 700 })).toBe(false);
+    expect(equals({ family: "Fira Sans", weight: 400 }, { family: "Arial", weight: 400 })).toBe(false);
+  });
+
+  it("labelFont links never treat a corrupt value as equal, and format it as plain text", () => {
+    const { equals, format } = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.textFont"];
+    expect(equals("Arial", "Arial")).toBe(false);
+    expect(equals({ family: "A" }, { family: "A" })).toBe(false);
+    expect(format("Arial")).toBe("Arial");
   });
 
   it("formatBoolean renders true/false distinctly", () => {

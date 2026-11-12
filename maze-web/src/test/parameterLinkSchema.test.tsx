@@ -62,9 +62,11 @@ const NOT_LINKABLE: Record<string, string> = {
   markerLayout: "marker layout mode, not a numeric/enum link parameter",
 };
 
-/** Dot-paths of every scalar leaf of `value` (arrays and `links` are state, not parameters). */
+/** Dot-paths of every scalar leaf of `value` (arrays and `links` are state, not parameters). A label
+ *  font `{ family, weight }` is one leaf: it is a single linked parameter (GitHub issue #973). */
 function scalarLeaves(value: unknown, prefix = ""): string[] {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return prefix === "" ? [] : [prefix];
+  const isLabelFont = typeof value === "object" && value !== null && Object.keys(value).sort().join() === "family,weight";
+  if (value === null || typeof value !== "object" || Array.isArray(value) || isLabelFont) return prefix === "" ? [] : [prefix];
   return Object.entries(value).flatMap(([key, child]) => (prefix === "" && key === "links" ? [] : scalarLeaves(child, prefix === "" ? key : `${prefix}.${key}`)));
 }
 
@@ -244,7 +246,8 @@ describe("activity rules", () => {
 
   it("every field of a mode is reachable in some maze/settings combination", () => {
     const marks = { ...SETTINGS.abstract, creases: { showCreases: true, mode: "marks" } } as ParamActivitySettings;
-    const combos: [LinkMode, ParamActivitySettings][] = [["walls", SETTINGS.abstract], ["walls", marks], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }], ["corridors", { ...SETTINGS.corridors, creases: { showCreases: true, mode: "marks" } }]];
+    const circle = { elevatorBadges: { enabled: true, placement: "full_circle" } } as const;
+    const combos: [LinkMode, ParamActivitySettings][] = [["walls", SETTINGS.abstract], ["walls", { ...SETTINGS.abstract, ...circle }], ["walls", marks], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, ...circle }], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }], ["corridors", { ...SETTINGS.corridors, creases: { showCreases: true, mode: "marks" } }]];
     for (const mode of MODES) {
       const reachable = new Set<string>();
       for (const [m, settings] of combos) {

@@ -7,7 +7,7 @@ Canvas labels are drawn as MSDF `BitmapText` (crisp at any zoom), not pixi `Text
 
 - Source: `tools/msdf/Roboto-Regular.ttf` + `tools/msdf/Roboto-Bold.ttf` (Apache-2.0,
   `tools/msdf/LICENSE.txt`). Two weights — MSDF glyphs can't be synthesized bold at runtime, so
-  the `fontWeight` label setting needs a real atlas per weight.
+  a font offers only the weights it was baked with (`MSDF_FONTS`).
 - Script: `tools/msdf/generate.mjs` — run via `npm run gen:msdf` (from `maze-web/`). Bakes at
   `fontSize` 54 / `distanceRange` 8 into a 512×512 page — the wide spread is what keeps labels
   sharp at extreme viewport zoom.
@@ -15,7 +15,7 @@ Canvas labels are drawn as MSDF `BitmapText` (crisp at any zoom), not pixi `Text
   (AngelCode XML) — pixi's bitmap-font loader recognizes only `.fnt`/`.xml` by extension; a
   `.json` atlas loads as a plain object and `BitmapText` falls back to a blurry canvas font.
 - Runtime: `src/pixi/renderers/msdfFont.ts` — `loadMsdfFont()` is awaited once at startup in
-  `App.tsx` (before `setReady`); label call sites pick the font name via `msdfFontFamily(weight)`
+  `App.tsx` (before `setReady`); label call sites pick the font name via `msdfFontFamily(font)`
   (or `MSDF_FONT_FAMILY` for the fixed-regular debug labels).
 
 **When a new label needs a glyph not in the atlas**, extend `CHARSET` in `generate.mjs`, re-run

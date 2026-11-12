@@ -17,16 +17,16 @@ vi.mock("pixi.js", () => ({
 
 const { measureText, textOverflows, maxFittingFontSize, inkBoundaryPoints } = await import("../pixi/textFit");
 
-const item = (text: string, shape: "circle" | "square" | "star" | "cross", plateSize: number) => ({ text, fontWeight: "bold" as const, shape, plateSize });
+const item = (text: string, shape: "circle" | "square" | "star" | "cross", plateSize: number) => ({ text, font: { family: "", weight: 700 } as const, shape, plateSize });
 
 describe("textFit", () => {
   it("measures padding-trimmed ink extent linearly in font size", () => {
-    expect(measureText("1", "bold", 100)).toEqual({ width: 50, height: 40, left: -21, right: 29 });
-    const twoGlyphs = measureText("18", "bold", 20);
+    expect(measureText("1", { family: "", weight: 700 }, 100)).toEqual({ width: 50, height: 40, left: -21, right: 29 });
+    const twoGlyphs = measureText("18", { family: "", weight: 700 }, 20);
     expect(twoGlyphs).toMatchObject({ width: 20, height: 8 });
     expect(twoGlyphs.left).toBeCloseTo(-9.2);
     expect(twoGlyphs.right).toBeCloseTo(10.8);
-    expect(measureText("", "bold", 40)).toEqual({ width: 0, height: 0, left: 0, right: 0 });
+    expect(measureText("", { family: "", weight: 700 }, 40)).toEqual({ width: 0, height: 0, left: 0, right: 0 });
   });
 
   it("circle: fits while the ink rectangle's corners stay inside the circle", () => {
@@ -56,7 +56,7 @@ describe("textFit", () => {
 
   it("rectangular plate: the margin applies per side", () => {
     // "1" ink 0.5S x 0.4S in a 20 x 10 plate: margin 1 -> half extents 9 x 4 -> S <= 20 (height-bound).
-    const rect = { text: "1", fontWeight: "bold" as const, shape: "circle" as const, plateSize: 0, plateWidth: 20, plateHeight: 10 };
+    const rect = { text: "1", font: { family: "", weight: 700 } as const, shape: "circle" as const, plateSize: 0, plateWidth: 20, plateHeight: 10 };
     expect(textOverflows(rect, 20)).toBe(false);
     expect(textOverflows(rect, 21)).toBe(true);
     expect(textOverflows({ ...rect, margin: 0 }, 25)).toBe(false);
