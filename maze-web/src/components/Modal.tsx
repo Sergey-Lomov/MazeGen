@@ -66,9 +66,11 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
   // opened it stays focused, so Space re-activates that trigger (native button behavior) instead
   // of reaching this modal's own Enter/Space confirm shortcut, and only a mouse click inside fixes
   // it. `tabIndex={-1}` on the modal box makes it focusable programmatically without joining the
-  // Tab order.
+  // Tab order. Child effects run first, so a child that already took focus (an `autoFocus` list
+  // whose arrow keys must work at once) keeps it.
   useEffect(() => {
-    modalRef.current?.focus();
+    const modal = modalRef.current;
+    if (modal && !modal.contains(document.activeElement)) modal.focus();
   }, []);
 
   useEffect(() => {

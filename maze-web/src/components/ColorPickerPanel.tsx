@@ -15,10 +15,8 @@ import { Tooltip } from "./Tooltip";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
-import { hasAnyGlue } from "../pixi/selectors/colorFieldRegistry";
-import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
-import { ExportWarningBubble } from "./features/ExportWarningBubble";
-import { resolveExportWarningsSectionTitle } from "./features/exportWarningsI18n";
+import { computeActiveModeWarnings } from "../pixi/selectors/activeModeWarnings";
+import { PickerWarningsSection } from "./PickerWarningsSection";
 import type { MazeState } from "../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -89,7 +87,6 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
   const [showAllProjectColors, setShowAllProjectColors] = useState(false);
-  const [colorWarningsExpanded, setColorWarningsExpanded] = useState(false);
   // Canvas eyedropper (GitHub issue #507) — sampling mode is purely local UI state; the actual
   // pixel read goes through `colorSampleBridge.ts` (the panel has no scene access of its own).
   const [sampling, setSampling] = useState(false);
@@ -138,10 +135,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
     const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, floorTopology, activeFieldConfig: cfg, start, finish } as MazeState;
     const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
-    const hasGlues = hasAnyGlue(floorTopology);
-    const warnings = openMode === "vector_by_walls"
-      ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish, undefined, hasGlues)
-      : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish, undefined, hasGlues);
+    const warnings = computeActiveModeWarnings(openMode, overridden as MazeState["vectorByWallsSettings"], { nodes, edges, floors, floorTopology, cfg, start, finish });
     // The preview ran with the working color, so any warning attached to this field is about it.
     return warnings.filter((warning) => warning.fields?.includes(field.key));
   }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish, working]);
@@ -303,20 +297,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
             </>
           )}
           <div style={styles.projectColorsDivider} />
-          {showColorWarnings && <div data-testid="color-picker-export-warnings">
-            <SectionHeader
-              label={<span className={colorWarnings.length > 0 ? "problem-section-attention" : undefined}>
-                {resolveExportWarningsSectionTitle(colorWarnings.length)}
-              </span>}
-              expanded={colorWarningsExpanded}
-              onToggle={() => setColorWarningsExpanded((expanded) => !expanded)}
-            />
-            {colorWarningsExpanded && <div style={styles.colorWarningsBlock}>
-              {colorWarnings.length === 0
-                ? <span style={styles.colorWarningsEmpty}>{m["color_picker.no_export_warnings"]()}</span>
-                : colorWarnings.map((warning) => <ExportWarningBubble key={warning.key} warning={warning} interactive={false} />)}
-            </div>}
-          </div>}
+          {showColorWarnings && <PickerWarningsSection warnings={colorWarnings} testId="color-picker-export-warnings" />}
           <ToolsSection seedColor={originalColor} workingColor={working} onPick={pickProjectColor} />
           {projectColorGroups.total > 0 && (
             <div style={styles.projectColors}>
@@ -432,8 +413,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.state.selected}`,
   },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
-  colorWarningsBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, marginTop: spacing.itemGap },
-  colorWarningsEmpty: { ...typography.body, color: ui.text.secondary },
   recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   recentColorsLabel: { fontSize: font.lg, color: ui.text.primary },
   swatchRow: { display: "flex", gap: spacing.itemGap, flexWrap: "wrap" },

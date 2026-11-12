@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, fireEvent, within } from "@testing-library/react";
 import { FontPickerPanel, WEB_SAFE_FONT_FAMILIES } from "../components/FontPickerPanel";
 import { FontButton } from "../components/FontButton";
+import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 
 const localFamilies = vi.hoisted(() => ({
@@ -21,6 +22,10 @@ vi.mock("../pixi/renderers/labelFont", async (importActual) => ({
   rasterFontWeights: (family: string) => localFamilies.weights[family] ?? [400],
   loadLocalFontFamilies: (retry?: boolean) => Promise.resolve(retry ? localFamilies.retryValue : localFamilies.value),
 }));
+
+// The export warning pass is covered by its own tests; here it is a list the panel has to filter and show.
+const exportWarnings = vi.hoisted(() => ({ value: [] as { id: string; key: string; nodes: number[]; edges: never[] }[] }));
+vi.mock("../pixi/selectors/activeModeWarnings", () => ({ computeActiveModeTextOverflowWarnings: () => exportWarnings.value }));
 
 // A real pixi canvas needs WebGL, which jsdom lacks. The stand-in reports itself unavailable on demand.
 const msdfPreview = vi.hoisted(() => ({ unavailable: false }));
@@ -49,6 +54,43 @@ const weightOptions = () => [...weightSelect().options].map((o) => o.value);
 const pickWeight = (weight: number) => fireEvent.change(weightSelect(), { target: { value: String(weight) } });
 const vectorToggle = () => screen.getByRole("button", { name: m["font_picker.type_vector"]() });
 const rasterToggle = () => screen.getByRole("button", { name: m["font_picker.type_raster"]() });
+
+describe("FontPickerPanel text warnings (GitHub issue #971)", () => {
+  const overflow = (id: string) => ({ id, key: id, nodes: [], edges: [] as never[] });
+  const sectionTitle = (count: number) => m["image_export.vector_by_walls.section_warnings"]({ count: String(count) });
+
+  beforeEach(() => {
+    useMazeStore.setState({ openRenderModeSettings: "vector_by_walls", activeFieldConfig: {} as never });
+    exportWarnings.value = [overflow("marker_text_overflow"), overflow("elevator_badge_text_overflow")];
+  });
+  afterEach(() => { useMazeStore.setState({ openRenderModeSettings: null, activeFieldConfig: undefined }); exportWarnings.value = []; });
+
+  it("shows no section when the call site names no text kinds", async () => {
+    await renderPanel();
+    expect(screen.queryByTestId("font-picker-export-warnings")).toBeNull();
+  });
+
+  it("shows no section without an open export settings panel", async () => {
+    useMazeStore.setState({ openRenderModeSettings: null });
+    await renderPanel({ warningKinds: ["start"] });
+    expect(screen.queryByTestId("font-picker-export-warnings")).toBeNull();
+  });
+
+  it("lists only the overflow warnings of the kinds the font drives, collapsed until opened", async () => {
+    await renderPanel({ warningKinds: ["start", "finish"] });
+    expect(screen.queryByText(m["image_export.vector_by_walls.warning_marker_text_overflow"]())).toBeNull();
+    fireEvent.click(screen.getByText(sectionTitle(1)));
+    expect(screen.getByText(m["image_export.vector_by_walls.warning_marker_text_overflow"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.warning_elevator_badge_text_overflow"]())).toBeNull();
+  });
+
+  it("keeps the section visible with a zero count and an empty note", async () => {
+    exportWarnings.value = [];
+    await renderPanel({ warningKinds: ["markerIndex"] });
+    fireEvent.click(screen.getByText(sectionTitle(0)));
+    expect(screen.getByText(m["picker.no_export_warnings"]())).toBeInTheDocument();
+  });
+});
 
 describe("FontPickerPanel weight (GitHub issue #973)", () => {
   it("offers the baked weights for the MSDF font", async () => {

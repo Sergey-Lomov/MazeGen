@@ -404,7 +404,9 @@ bubble appearance, but omit the info button and are not clickable (there is no d
 block is separate from the export settings panel's Problems section; its visibility follows
 `showColorWarnings` and it supports both vector renderers.
 
-When enabled, the picker renders this content in its own collapsible "Warnings (N)" section. The
+When enabled, the picker renders this content in its own collapsible "Warnings (N)" section
+(`PickerWarningsSection`, shared with the font picker, `Specs/font-picker.md`; its empty note is the
+neutral `picker.no_export_warnings` message). The
 section remains visible with `N = 0`, uses the warning attention color when `N > 0`, starts collapsed,
 and indents its bubbles like other section content. When `showColorWarnings` is disabled, the whole
 section is hidden.

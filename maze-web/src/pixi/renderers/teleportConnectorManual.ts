@@ -74,13 +74,41 @@ export function sampleCubicPath(nodes: readonly [number, number][], controls = s
   return result;
 }
 
+/** Unordered pair identity of two teleport node ids. */
+export function teleportPairKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+/** Key of one floor's piece of a cross-floor pair (GitHub issue #989): the pair key plus the id of
+ *  the endpoint that lives on that floor. */
+export function crossFloorSegmentKey(a: number, b: number, ownNode: number): string {
+  return `${teleportPairKey(a, b)}@${ownNode}`;
+}
+
+/** Splits a connector key into its pair node ids and, for a cross-floor segment, the endpoint that
+ *  owns it. */
+export function parseTeleportConnectorKey(key: string): { ids: [number, number]; ownNode?: number } {
+  const [pair, own] = key.split("@");
+  const [a, b] = pair.split(":").map(Number);
+  return own === undefined ? { ids: [a, b] } : { ids: [a, b], ownNode: Number(own) };
+}
+
 /**
  * Stable identity for a rendered teleport pair. `buildTeleportEdges` canonicalizes a two-way
  * pair, so sorting also makes a saved edit survive a change in the edge's stored direction.
+ * A cross-floor edge (one end is a floor badge) is drawn on two floors with different endpoints,
+ * so each floor's piece gets its own key (`crossFloorSegmentKey`) and path.
  */
-export function teleportConnectorKey(edge: Pick<TeleportEdge, "fromNode" | "toNode">): string | null {
+export function teleportConnectorKey(edge: Pick<TeleportEdge, "fromNode" | "toNode" | "toFloor" | "fromFloor">): string | null {
   if (edge.fromNode === undefined || edge.toNode === undefined) return null;
-  return edge.fromNode < edge.toNode ? `${edge.fromNode}:${edge.toNode}` : `${edge.toNode}:${edge.fromNode}`;
+  if (edge.toFloor !== undefined) return crossFloorSegmentKey(edge.fromNode, edge.toNode, edge.fromNode);
+  if (edge.fromFloor !== undefined) return crossFloorSegmentKey(edge.fromNode, edge.toNode, edge.toNode);
+  return teleportPairKey(edge.fromNode, edge.toNode);
+}
+
+/** Every connector key a stored teleport pair can be drawn under. */
+export function teleportPairConnectorKeys(from: number, to: number, crossFloor: boolean): string[] {
+  return crossFloor ? [crossFloorSegmentKey(from, to, from), crossFloorSegmentKey(from, to, to)] : [teleportPairKey(from, to)];
 }
 
 /** Returns an authored path, or `null` for automatic routing. */

@@ -983,6 +983,9 @@ export interface ImageExportState {
    *  — drives the export canvas's cell highlight (same overlay as a hovered export warning). `null`
    *  when nothing is hovered. */
   hoveredTeleportNodeIds: number[] | null;
+  /** Cells highlighted next to `hoveredTeleportNodeIds` that are not nodes — a cross-floor floor badge
+   *  hovered in the teleport connector editor (GitHub issue #989). `floorIndex` is the floor the cell is on. */
+  hoveredTeleportCells: { floorIndex: number; x: number; y: number }[] | null;
   /** Currently hovered export-warning list entry, by `ExportWarning.key` (GitHub issue #298) — set
    *  by hovering a warning row in the settings panel, drives `VectorByWallsRenderer`'s own warning
    *  highlight overlay. `null` when nothing is hovered. Mirrors `hoveredIssueLoopEdges`'s role for
@@ -1230,6 +1233,7 @@ export interface ImageExportActions {
   /** Bulk form of `setVectorByWallsTeleportGroupOverride` — merges every group's patch in one store update (GitHub issue #728). */
   patchVectorByWallsTeleportGroupOverrides: (patches: Record<string, TeleportGroupOverride>) => void;
   setHoveredTeleportNodeIds: (ids: number[] | null) => void;
+  setHoveredTeleportCells: (cells: { floorIndex: number; x: number; y: number }[] | null) => void;
   /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with
    *  `splitSlotColor`'s own default) if `index` is past the array's current end — see GitHub issue
    *  #294. */

@@ -29,6 +29,10 @@ describe("resolveWarningFloorLevels (GitHub issue #733)", () => {
     })).toEqual([0, 1, 3]);
   });
 
+  it("includes the floors a warning names directly (floor label text overflow)", () => {
+    expect(resolveWarningFloorLevels({ floors: [2, 0], cells: [{ x: 0, y: 0, floorIndex: 1 }] })).toEqual([0, 1, 2]);
+  });
+
   it("returns an empty list when the warning carries neither source", () => {
     expect(resolveWarningFloorLevels({})).toEqual([]);
   });

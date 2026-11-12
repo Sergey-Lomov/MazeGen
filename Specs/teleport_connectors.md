@@ -74,6 +74,29 @@ deleted) is stale (GitHub issue #950). `installTeleportConnectorPathSync` drops 
 one place; it is skipped when there are no manual paths, and nothing is dropped while the maze has no
 edges at all.
 
+A cross-floor teleport (endpoints on different floors, GitHub issue #989) is drawn on each floor
+from its own marker to a floor badge, so one shared path cannot fit both floors. Each floor's piece
+is its own manual path under the key `<pair>@<node id of the endpoint on that floor>`
+(`crossFloorSegmentKey`, e.g. `3:7@7`), authored in that floor's own coordinates — floors with
+different field sizes need nothing extra. `teleportConnectorKey` picks the key from the edge's
+`toFloor`/`fromFloor`; same-floor keys are unchanged. A segment is otherwise an ordinary manual path
+(modes, editing, warnings, export, cut transfers, project save/load); its ends are stored as authored
+and are not re-anchored when the marker or badge later moves, as for a same-floor path. The editor
+list shows one row per segment, naming the connector's own two ends: for a cross-floor piece the
+teleport node on that floor and the floor badge cell on the same floor (`buildTeleportConnectorSegments`,
+built like the export renderers' per-floor teleport edges), for a same-floor connector its two nodes.
+The arrow between the bubbles is the standard `->` for a one-way teleport and `<->` for a two-way one;
+the badge side of a one-way piece is its far end on that floor (`from` on the arrival floor). The
+pieces of one cross-floor teleport are listed together (at the place of the first piece authored),
+marked by a link icon centered on the divider between them (tooltip: the two segments are parts of the
+connector of one cross-floor teleport); each row hovers and focuses on its own. Hovering
+a node bubble highlights that node's cell, a badge bubble highlights the badge cell
+(`hoveredTeleportCells`, drawn by the mode renderer next to `hoveredTeleportNodeIds`), and the arrow
+or the row highlights both. Clicking a bubble or the row switches to the segment's floor. Staleness is judged per segment:
+a pair that crosses floors keeps only its two segment keys, so a legacy plain-pair path for such a
+pair is dropped, as is any segment whose pair disappeared or no longer crosses floors
+(`retainLiveTeleportConnectorPaths` takes the nodes to read their levels).
+
 Project loading restores manual paths after the saved post-edit command log has been replayed and
 confirmed (GitHub issue #955). This ordering retains a path belonging to a teleport created by that
 log: it is not present in the regenerated baseline, but is present in the final loaded maze. Paths

@@ -1,7 +1,8 @@
 import React from "react";
 import { Modal } from "../Modal";
+import { SelectableList, SelectableRow } from "../SelectableList";
 import { WarningIcon } from "../WarningIcon";
-import { ui, dialogSpacing, typography, spacing, indent } from "../../styles/theme";
+import { ui, dialogSpacing, typography, spacing } from "../../styles/theme";
 
 interface Item {
   id: string;
@@ -30,39 +31,45 @@ interface Props {
 export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose, onConfirm }: Props) {
   const sections = groupBySection(items);
 
+  const values = items.filter((item) => !item.disabled).map((item) => item.id);
+
   const renderItem = (item: Item) => (
-    <button
+    <SelectableRow
       key={item.id}
-      className={item.disabled ? undefined : item.id === selectedId ? "hoverable-selected" : "hoverable"}
-      style={{
-        ...styles.item,
-        ...(item.section ? styles.itemIndented : {}),
-        ...(item.id === selectedId ? styles.itemSelected : {}),
-        ...(item.disabled ? styles.itemDisabled : {}),
-      }}
+      value={item.id}
+      selected={item.id === selectedId}
       disabled={item.disabled}
-      onClick={() => onSelectId(item.id)}
+      indented={item.section !== undefined}
+      trailing={item.warning && <WarningIcon />}
     >
-      <span style={styles.itemLabel}>{item.label}</span>
-      {item.warning && <WarningIcon />}
-    </button>
+      {item.label}
+    </SelectableRow>
   );
 
   const body = (
     <div style={styles.content}>
-      <div style={styles.leftCol}>
+      <SelectableList
+        appearance="dialog"
+        compact
+        autoFocus
+        selected={selectedId}
+        values={values}
+        onSelect={onSelectId}
+        ariaLabel={title}
+        style={styles.leftCol}
+      >
         {sections.map((section, i) =>
           section.name === null ? (
             section.items.map(renderItem)
           ) : (
-            <div key={section.name}>
+            <div key={section.name} role="group" aria-label={section.name}>
               {i > 0 && <div style={styles.divider} />}
               <div style={styles.sectionHeader}>{section.name}</div>
               {section.items.map(renderItem)}
             </div>
           )
         )}
-      </div>
+      </SelectableList>
       <div style={styles.rightCol}>
         <div style={styles.rightPanel}>{rightPanel}</div>
         <div style={styles.footer}>{footer}</div>
@@ -105,33 +112,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.elementsGap,
-  },
-  item: {
-    ...typography.control,
-    background: "none",
-    border: "none",
-    textAlign: "left" as const,
-    padding: `3px ${dialogSpacing.paddingX}px`,
-    color: ui.text.secondary,
-    cursor: "default",
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.groupGap,
-  },
-  itemSelected: {
-    background: ui.accent.base,
-    color: ui.text.inverse,
-  },
-  itemDisabled: {
-    opacity: 0.4,
-    cursor: "default",
-  },
-  itemLabel: {
-    flex: 1,
-  },
-  itemIndented: {
-    paddingLeft: dialogSpacing.paddingX + indent.tree,
   },
   sectionHeader: {
     ...typography.body,

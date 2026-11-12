@@ -5,12 +5,12 @@ import { shortestCorridorFaceAcrossFloors, selectNodeLevelResolver, selectFloorS
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportGroup } from "./teleportGroups";
 import type { MarkerLookKind } from "./exportMarkerLookAlike";
-export { computeTextFitItemsAcrossFloors } from "./exportTextFit";
+export { computeTextFitItemsAcrossFloors, TEXT_OVERFLOW_WARNING_ID } from "./exportTextFit";
 export type { TextFitKind } from "./exportTextFit";
 import { type ColorFieldKey } from "../colorFieldKeys";
 import { trackedMemo, inputMemo } from "./trackedMemo";
 import {
-  WarningFloorEnv, TELEPORT_CONNECTORS_GROUP, WALLS_WARNING_GROUPS, CORRIDORS_WARNING_GROUPS,
+  WarningFloorEnv, TELEPORT_CONNECTORS_GROUP, TEXT_OVERFLOW_GROUP, WALLS_WARNING_GROUPS, CORRIDORS_WARNING_GROUPS,
   type AnySettings, type WarningGroup, type WarningMode,
 } from "./exportWarningGroups";
 
@@ -214,6 +214,9 @@ export type ExportWarning = {
    *  machinery, which has no node id to resolve here. Omitted (or empty) for every other warning
    *  id — no bubbles drawn. */
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+  /** Floors the warning concerns when nothing on the canvas marks them (the floor label is a plate
+   *  with no node or cell): only the floor badges of the bubble read it, there is no hover highlight. */
+  floors?: number[];
   /** `markers_look_alike` (GitHub issue #959): the pairs of marker kinds that look the same, for the description. */
   markerPairs?: [MarkerLookKind, MarkerLookKind][];
   /** Arbitrary polygons (display space, active floor) the hover highlight fills (GitHub issue #913), e.g. the offending glue tabs. */
@@ -242,6 +245,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
           fields: warning.fields ? [...warning.fields] : undefined,
           crossFloorTargets: warning.crossFloorTargets ? [...warning.crossFloorTargets] : undefined,
           floorPolygons: warning.floorPolygons ? [...warning.floorPolygons] : undefined,
+          floors: warning.floors ? [...warning.floors] : undefined,
           markerPairs: warning.markerPairs ? [...warning.markerPairs] : undefined,
         });
         continue;
@@ -255,6 +259,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
       existing.crossFloorTargets = [...(existing.crossFloorTargets ?? []), ...(warning.crossFloorTargets ?? [])];
       existing.cells = [...(existing.cells ?? []), ...(warning.cells ?? [])];
       if (warning.floorPolygons) existing.floorPolygons = [...(existing.floorPolygons ?? []), ...warning.floorPolygons];
+      if (warning.floors) existing.floors = Array.from(new Set([...(existing.floors ?? []), ...warning.floors]));
       if (warning.markerPairs) {
         const known = new Set((existing.markerPairs ?? []).map((pair) => pair.join("|")));
         existing.markerPairs = [...(existing.markerPairs ?? []), ...warning.markerPairs.filter((pair) => !known.has(pair.join("|")))];
@@ -360,6 +365,20 @@ export function computeTeleportConnectorWarningsAcrossFloors(
 ): ExportWarning[] {
   const groups = WALLS_WARNING_GROUPS.filter((group) => group.name === TELEPORT_CONNECTORS_GROUP);
   return computeGroupsAcrossFloors("walls", groups, nodes, edges, floors, cfg, settings, start, finish, cutFloorIds, hasGlues);
+}
+
+/** Only the text overflow warnings of either vector mode (GitHub issue #971): the `textOverflow` group alone, run through the
+ *  same per-group cache as the full pass, so the font picker doesn't compute the other groups. */
+export function computeTextOverflowWarningsAcrossFloors(
+  mode: WarningMode,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
+  settings: VectorByWallsSettings | VectorByCorridorsSettings, start: number | null, finish: number | null,
+  hasGlues = true,
+): ExportWarning[] {
+  const isText = (group: { name: string }) => group.name === TEXT_OVERFLOW_GROUP;
+  return mode === "walls"
+    ? computeGroupsAcrossFloors(mode, WALLS_WARNING_GROUPS.filter(isText), nodes, edges, floors, cfg, settings as VectorByWallsSettings, start, finish, NO_CUT_FLOORS, hasGlues)
+    : computeGroupsAcrossFloors(mode, CORRIDORS_WARNING_GROUPS.filter(isText), nodes, edges, floors, cfg, settings as VectorByCorridorsSettings, start, finish, NO_CUT_FLOORS, hasGlues);
 }
 
 export function computeVectorByCorridorsWarningsAcrossFloors(

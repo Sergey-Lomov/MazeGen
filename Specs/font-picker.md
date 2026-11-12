@@ -2,8 +2,8 @@
 
 Side panel for choosing a canvas label font, the counterpart of the color picker
 (`Specs/color-picker.md`). Part of the font picker epic (GitHub issue #969); this spec covers the
-**base panel** (issue #970), the **preview** (issue #972) and the **weight selection** (issue #973).
-Layout warnings and further font sources are separate tickets of the epic.
+**base panel** (issue #970), the **preview** (issue #972), the **weight selection** (issue #973) and the
+**text warnings** (issue #971). Further font sources are separate tickets of the epic.
 
 ## Components
 
@@ -73,8 +73,11 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
       covering only one script still counts), and a hint under the list asks
       the user to grant the permission to see the full list of local fonts. The MSDF list never
       shows the hint.
-    - The list is a `listbox` that keeps focus; `aria-activedescendant` names the highlighted option.
-      Switching the type remounts the list so it takes keyboard focus again.
+    - The list is a `SelectableList` (`components/SelectableList.tsx`, see `side-panel.md`'s "Shared list
+      and bubble primitives") with `autoFocus` and the font names as its `values`: a `listbox` that keeps
+      focus, `aria-activedescendant` names the highlighted option, Up/Down walk the fonts and report a
+      `"keyboard"` selection (which the picker previews without the heavy per-key work). Switching the
+      type remounts the list (`key={type}`) so it takes keyboard focus again.
     - The hint comes with a **"Grant access"** button when the browser has the API: it calls
       `loadLocalFontFamilies(true)` (a retry from a user gesture), which re-prompts if the browser still
       allows it and replaces the list with the full local one on success. If the retry still gives no
@@ -96,6 +99,31 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
       the family has a real bold face. The list refreshes when the local font query resolves.
   Picking a family keeps the working weight when the family offers it and otherwise snaps to the
   nearest weight it offers (`nearestWeight`, the heavier on a tie).
+- **"Warnings (N)" section** (GitHub issue #971) — below the weight row, the counterpart of the color
+  picker's one (`Specs/color-picker.md`, "Export color warnings"): the shared `PickerWarningsSection`
+  (`components/PickerWarningsSection.tsx`), a collapsible section that starts collapsed, stays visible
+  with `N = 0` (with a "No warnings" note when opened), takes the warning attention color when `N > 0`,
+  and lists the export warnings as non-interactive `ExportWarningBubble`s. The warnings are the text
+  overflow ones (`TEXT_OVERFLOW_WARNING_ID`: `marker_text_overflow`, `elevator_badge_text_overflow`,
+  `teleport_badge_text_overflow`, `marker_index_text_overflow`, `floor_label_text_overflow`; a label
+  that does not fit its plate, see `Specs/export-warnings.md`) of the text kinds the edited font
+  drives. The call site names them through `warningKinds` (`TextFitKind[]`, threaded `LabelFontRow` →
+  `LinkedFontRow` → `FontRow` → `FontButton` → `FontPickerPanel`): a text style group passes its own
+  kind (`TextStyleRows` reuses its `autoFitKind`; start and finish are separate kinds, both raise
+  `marker_text_overflow`), the floor label group `floorLabel`, and the Shared style font every kind its
+  text-size Auto-fit covers (start, finish, elevator, teleport, marker index; not floor labels). No
+  `warningKinds`, or no open export settings panel (`openRenderModeSettings` null), means no section.
+  The list comes from `computeActiveModeTextOverflowWarnings` (`pixi/selectors/activeModeWarnings.ts`, next to
+  `computeActiveModeWarnings` the color picker uses) over the store settings of the open render mode. It
+  runs only the `textOverflow` warning group (`computeTextOverflowWarningsAcrossFloors`, through the same
+  per-group cache as the full pass), not every group; the picker keys its memo on the content of
+  `warningKinds`, since call sites build the array anew on each render. Unlike the color picker it needs no
+  settings override: the live preview already keeps the store on the highlighted font, links included,
+  so a Shared style font reaches exactly the texts that are linked to it. The check runs when the
+  store changes. The family list keeps a minimum height (`FAMILY_LIST_MIN_HEIGHT`, 150 px): an opened
+  warnings list or a tall preview scrolls the panel content instead of squeezing the list. A font that still has to load is judged once `LabelFontRow` applies it (until then
+  the list still describes the previous font). The section is not gated by `showColorWarnings`: that
+  switch hides only the contrast warnings.
 - **Footer** — Cancel and Apply, each half-width.
 
 Switching the type only changes which list is shown; the highlighted font is unchanged until the user
@@ -127,4 +155,4 @@ the panel. With a distinct `onPreview`, Apply is the single `onChange` commit.
 
 ## Not yet implemented (later epic tickets)
 
-Text layout and size warnings, user-uploaded fonts, MSDF atlases built from TTF/OTF fonts.
+User-uploaded fonts, MSDF atlases built from TTF/OTF fonts.

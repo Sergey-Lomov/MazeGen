@@ -171,13 +171,15 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       const toMatches = presetEndpointsEqual(entry.to, ep);
       if (!fromMatches && !toMatches) continue;
       const partner = fromMatches ? entry.to : entry.from;
+      // A wall and an optional connection are undirected edge states: they apply to both
+      // directions, so their links are always bidirectional regardless of how the entry is stored.
       if (entry.state === "wall") {
-        forbidden.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: fromMatches ? "->" : "<-", category: "forbidden" });
+        forbidden.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: "<->", category: "forbidden" });
         decidedPartners.add(presetEndpointKey(partner));
         continue;
       }
       if (entry.state === "undefined") {
-        undecided.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: fromMatches ? "->" : "<-", category: "undefined" });
+        undecided.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: "<->", category: "undefined" });
         decidedPartners.add(presetEndpointKey(partner));
         continue;
       }
@@ -198,7 +200,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       if (neighbor === null) continue;
       const neighborEndpoint = resolvePresetActiveEndpoint(neighbor, activeSplitNode, level);
       if (decidedPartners.has(presetEndpointKey(neighborEndpoint))) continue;
-      undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "->", category: "undefined" });
+      undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "<->", category: "undefined" });
     }
     return [...finalize(), ...undecided, ...forbidden];
   };
