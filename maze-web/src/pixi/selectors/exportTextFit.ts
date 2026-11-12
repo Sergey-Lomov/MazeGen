@@ -35,6 +35,8 @@ export type TextFitEntry = TextFitItem & {
   nodes: number[];
   cells?: { x: number; y: number; floorIndex: number }[];
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+  /** Floor the label is on, for a label with no node or cell to point at (the floor label). */
+  floorIndex?: number;
 };
 
 /** Every label checked on one floor, with the plate it must fit and the elements to highlight when it
@@ -125,6 +127,7 @@ export function collectTextFitEntries(
       fontSize: floorLabel.textSize,
       margin: floorLabel.textMargin,
       nodes: [],
+      floorIndex: displayFloorIndex,
     });
   }
   return entries;
@@ -133,7 +136,8 @@ export function collectTextFitEntries(
 /** Endpoint visual stand-in: the text-fit passes need the index strings and cells, not plate colors. */
 const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, fillRadius: 0, sizeAdaptation: 0, borderWidth: 0, borderMatchColor: 0 });
 
-const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
+/** The overflow warning raised for a label of each kind. */
+export const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   start: "marker_text_overflow",
   finish: "marker_text_overflow",
   elevator: "elevator_badge_text_overflow",
@@ -156,6 +160,7 @@ export function pushTextOverflowWarnings(warnings: ExportWarning[], entries: rea
     warning.nodes.push(...entry.nodes);
     if (entry.cells) warning.cells = [...(warning.cells ?? []), ...entry.cells];
     if (entry.crossFloorTargets) warning.crossFloorTargets = [...(warning.crossFloorTargets ?? []), ...entry.crossFloorTargets];
+    if (entry.floorIndex !== undefined) warning.floors = [...(warning.floors ?? []), entry.floorIndex];
   }
 }
 

@@ -4,7 +4,7 @@ import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
 import { SelectableList, SelectableRow } from "./SelectableList";
-import { ui, radius, typography, spacing, font, indent } from "../styles/theme";
+import { ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
 import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
 import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type LabelFont } from "../pixi/renderers/fontChoice";
 import { fontWeightName } from "../store/fontLabels";
@@ -13,6 +13,10 @@ import { Tooltip } from "./Tooltip";
 import { MsdfFontPreview } from "./MsdfFontPreview";
 import { UnregisteredColorRow } from "./ColorRow";
 import { colorToHex, hexToColor } from "./colorFormat";
+import { PickerWarningsSection } from "./PickerWarningsSection";
+import { useMazeStore } from "../store/mazeStore";
+import { computeActiveModeTextOverflowWarnings } from "../pixi/selectors/activeModeWarnings";
+import { TEXT_OVERFLOW_WARNING_ID, type TextFitKind } from "../pixi/selectors/exportWarnings";
 import { sharedStyles } from "../styles/shared";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -39,6 +43,10 @@ const DEFAULT_PREVIEW_BACKGROUND = hexToColor(ui.bg.input);
 
 /** Fixed height of the single-line preview, so the panel layout does not move with the font size. */
 const PREVIEW_HEIGHT = 48;
+
+/** The family list never shrinks below this height in px (about six rows), however much room the
+ *  other sections take. */
+const FAMILY_LIST_MIN_HEIGHT = 150;
 
 /** The vector list: every baked MSDF font. */
 const VECTOR_FONTS: { value: string; label: string }[] = Object.entries(MSDF_FONTS).map(([value, { label }]) => ({ value, label }));
@@ -74,6 +82,9 @@ interface Props {
   onCancel?: () => void;
   /** Header text, usually the field's row label. */
   title?: string;
+  /** The kinds of canvas text the edited font drives (GitHub issue #971). Their text overflow
+   *  warnings are shown for the highlighted font in a "Warnings" section; omit for no section. */
+  warningKinds?: TextFitKind[];
 }
 
 /** Side panel for choosing a label font, the font counterpart of `ColorPickerPanel`. Opens as an
@@ -81,7 +92,7 @@ interface Props {
  *  previews each highlighted font live through `onPreview`, and commits through `onApply`. A toggle
  *  switches between the vector (MSDF) and raster lists; up / down arrows move the highlight within
  *  the active list. The weight section offers only the weights the highlighted family has. */
-export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, title }: Props) {
+export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, title, warningKinds }: Props) {
   // Set when a WebGL canvas cannot be created: the MSDF preview then falls back to DOM text in Roboto.
   const [msdfUnavailable, setMsdfUnavailable] = useState(false);
   const [phrase, setPhrase] = useState(DEFAULT_PREVIEW_PHRASE);
@@ -204,6 +215,29 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
 
   const showPermissionNote = type === "raster" && localFamilies !== undefined && !hasLocalFamilies;
 
+  // Text overflow warnings of the texts this font drives. The live preview keeps the store on the
+  // highlighted font, links included (a Shared style font reaches every linked text), so the export
+  // warning pass over the store settings already describes the highlighted font.
+  const openMode = useMazeStore((s) => s.openRenderModeSettings);
+  const wallsSettings = useMazeStore((s) => s.vectorByWallsSettings);
+  const corridorsSettings = useMazeStore((s) => s.vectorByCorridorsSettings);
+  const nodes = useMazeStore((s) => s.nodes);
+  const edges = useMazeStore((s) => s.edges);
+  const floors = useMazeStore((s) => s.floors);
+  const floorTopology = useMazeStore((s) => s.floorTopology);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
+  const start = useMazeStore((s) => s.start);
+  const finish = useMazeStore((s) => s.finish);
+  // The call site builds `warningKinds` anew on every render, so the memo keys on its content.
+  const warningKindsKey = warningKinds?.join(",");
+  const fontWarnings = useMemo(() => {
+    if (!warningKindsKey || !openMode || !cfg) return [];
+    const ids = new Set(warningKindsKey.split(",").map((kind) => TEXT_OVERFLOW_WARNING_ID[kind as TextFitKind]));
+    const settings = openMode === "vector_by_walls" ? wallsSettings : corridorsSettings;
+    return computeActiveModeTextOverflowWarnings(openMode, settings, { nodes, edges, floors, floorTopology, cfg, start, finish })
+      .filter((warning) => ids.has(warning.id));
+  }, [warningKindsKey, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish]);
+
   return (
     <SidePanel title={title ?? m["font_picker.title"]()} onClose={cancel} overlay>
       <div
@@ -288,6 +322,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   values={optionValues}
                   onSelect={(value, source) => selectFamily(value, source === "keyboard")}
                   autoFocus
+                  style={styles.list}
                   testId={`font-picker-list-${type}`}
                   footer={showPermissionNote && (
                     // Muted caption note pinned to the bottom of the list body, in the same quiet style
@@ -326,6 +361,11 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
               />
             </Tooltip>
           </div>
+          {warningKinds && openMode && (
+            <div style={styles.section}>
+              <PickerWarningsSection warnings={fontWarnings} testId="font-picker-export-warnings" />
+            </div>
+          )}
         </div>
         <div style={styles.footer}>
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={cancel}>
@@ -359,10 +399,15 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.groupGap,
     padding: spacing.sectionGap,
     minHeight: 0,
+    // The family list keeps a minimum height (`FAMILY_LIST_MIN_HEIGHT`), so when the other sections
+    // (an opened warnings list, a tall preview) leave less room the panel scrolls instead.
+    overflowY: "auto",
   },
   section: { display: "flex", flexDirection: "column", gap: spacing.itemGap, flexShrink: 0 },
   sectionBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, minHeight: 0 },
-  familySection: { flex: 1, minHeight: 0 },
+  // The section may shrink to its minimum only: the header row, the type switcher, their gaps and the
+  // list's minimum height. `minHeight: auto` cannot express it, it would grow the section to the full list.
+  familySection: { flex: 1, minHeight: 2 * controlRowHeight + 2 * spacing.itemGap + FAMILY_LIST_MIN_HEIGHT },
   familyBody: { flex: 1 },
   familyHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
@@ -394,6 +439,7 @@ const styles: Record<string, React.CSSProperties> = {
   permissionText: { ...typography.caption, textAlign: "center" },
   permissionButton: { fontSize: font.sm, padding: "2px 8px" },
   loading: { ...typography.body, color: ui.text.secondary, textAlign: "center" },
+  list: { minHeight: FAMILY_LIST_MIN_HEIGHT },
   footer: {
     display: "flex",
     gap: spacing.groupGap,

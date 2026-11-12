@@ -3,6 +3,7 @@ import { sharedStyles } from "../styles/shared";
 import { FontPickerPanel } from "./FontPickerPanel";
 import type { LabelFont } from "../pixi/renderers/fontChoice";
 import { formatLabelFont } from "../store/fontLabels";
+import type { TextFitKind } from "../pixi/selectors/exportWarnings";
 
 interface Props {
   /** Current font; the empty family is the bundled vector (MSDF) Roboto. */
@@ -19,6 +20,8 @@ interface Props {
   onOpen?: () => void;
   /** Called once when the user cancels the open picker. */
   onCancel?: () => void;
+  /** Forwarded to `FontPickerPanel`: the canvas texts this font drives, whose overflow warnings the picker shows. */
+  warningKinds?: TextFitKind[];
 }
 
 /** Display name of a stored font: the family and the weight name ("Roboto, Bold"). */
@@ -28,7 +31,7 @@ export function fontDisplayName(font: LabelFont): string {
 
 /** Button showing the current font name; clicking opens `FontPickerPanel`. Replaces the family
  *  dropdown / text field, the font counterpart of `ColorSwatch`. */
-export function FontButton({ font, onChange, disabled, title, onPreview, onOpen, onCancel }: Props) {
+export function FontButton({ font, onChange, disabled, title, onPreview, onOpen, onCancel, warningKinds }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   function open() {
@@ -57,6 +60,7 @@ export function FontButton({ font, onChange, disabled, title, onPreview, onOpen,
           onClose={() => setPickerOpen(false)}
           onPreview={onPreview ?? onChange}
           onCancel={onCancel}
+          warningKinds={warningKinds}
         />
       )}
     </>

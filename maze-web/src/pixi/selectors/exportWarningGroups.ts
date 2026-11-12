@@ -298,8 +298,10 @@ const contrastGroups = COMMON_CONTRAST_CHECKS.map(({ name, ids, check }) => (
   group(`contrast.${name}`, ids, (env, s) => collect((out) => check(out, env.contrast, env.colors(s))))
 ));
 
+export const TEXT_OVERFLOW_GROUP = "textOverflow";
+
 const textOverflow = group(
-  "textOverflow",
+  TEXT_OVERFLOW_GROUP,
   ["marker_text_overflow", "elevator_badge_text_overflow", "marker_index_text_overflow", "teleport_badge_text_overflow", "floor_label_text_overflow"],
   (env, s) => collect((out) => pushTextOverflowWarnings(out, collectTextFitEntries(
     env.nodeById, env.edges, env.cfg, env.teleportEdges, s, env.start, env.finish, env.resolveNodeLevel,

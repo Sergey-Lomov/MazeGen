@@ -1,6 +1,6 @@
 import { DEFAULT_CREASE_STYLE, DEFAULT_GLUE_TAB_STYLE, DEFAULT_EDGE_MARKER_STYLE } from "../store/slices/imageExportDefaults";
 import { describe, it, expect, vi } from "vitest";
-import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors, computeTextOverflowWarningsAcrossFloors, TEXT_OVERFLOW_WARNING_ID } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
@@ -888,6 +888,20 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
     expect(items.start).toEqual([]);
     expect(items.finish).toEqual([]);
+  });
+
+  it("text-only pass (GitHub issue #971) reports the text overflow warnings of the full pass and nothing else, in both modes", () => {
+    const floors = [{ id: "f0" }];
+    const startMarker = marker({ textSize: 32, textMargin: 1 });
+    const textIds = new Set(Object.values(TEXT_OVERFLOW_WARNING_ID));
+    const walls = baseSettings({ startMarker });
+    const corridors = baseCorridorsSettings({ startMarker });
+    const fullWalls = computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, squareCfg, walls, 0, 1).filter((w) => textIds.has(w.id));
+    const onlyWalls = computeTextOverflowWarningsAcrossFloors("walls", nodes, edges, floors, squareCfg, walls, 0, 1);
+    expect(onlyWalls.map((w) => w.id)).toEqual(["marker_text_overflow"]);
+    expect(onlyWalls).toEqual(fullWalls);
+    const onlyCorridors = computeTextOverflowWarningsAcrossFloors("corridors", nodes, edges, floors, squareCfg, corridors, 0, 1);
+    expect(onlyCorridors.map((w) => w.id)).toEqual(["marker_text_overflow"]);
   });
 
   it("reports the same caveat in corridors mode", () => {

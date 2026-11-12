@@ -114,7 +114,7 @@ export function FloorLabelSection<P extends LinkPath>({ renderMode, settings, on
                 linkTarget={"floorLabel.labelType" as P}
               />
             </>}
-            <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={"floorLabel.textFont" as P} />
+            <LabelFontRow value={settings.textFont} onChange={(textFont) => onChange({ textFont })} linkTarget={"floorLabel.textFont" as P} warningKinds={["floorLabel"]} />
             <LinkedSelectRow
               label={m["image_export.floors.alignment"]()}
               value={settings.textAlignment}

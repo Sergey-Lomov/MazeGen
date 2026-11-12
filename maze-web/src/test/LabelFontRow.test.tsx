@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { useMazeStore } from "../store/mazeStore";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { LabelFontRow } from "../components/features/LabelFontRow";
 import { LinkContextProvider, type LinkContextValue } from "../components/features/LinkContext";
@@ -52,6 +53,32 @@ async function openPicker(value: { family: string; weight: number } | undefined,
   await act(async () => {});
   return onChange;
 }
+
+describe("LabelFontRow text warnings (GitHub issue #971)", () => {
+  const renderRow = async (warningKinds?: React.ComponentProps<typeof LabelFontRow>["warningKinds"]) => {
+    useMazeStore.setState({ openRenderModeSettings: "vector_by_walls" });
+    await act(async () => {
+      render(
+        <LinkContextProvider value={linkContext}>
+          <LabelFontRow value={undefined} onChange={vi.fn()} linkTarget={null} warningKinds={warningKinds} />
+        </LinkContextProvider>,
+      );
+    });
+    fireEvent.click(screen.getByTestId("font-button"));
+    await act(async () => {});
+  };
+  afterEach(() => { useMazeStore.setState({ openRenderModeSettings: null }); });
+
+  it("hands the text kinds on to the picker, which then shows its warnings section", async () => {
+    await renderRow(["start"]);
+    expect(screen.getByTestId("font-picker-export-warnings")).toBeInTheDocument();
+  });
+
+  it("opens a picker without the section when the call site names no kinds", async () => {
+    await renderRow();
+    expect(screen.queryByTestId("font-picker-export-warnings")).toBeNull();
+  });
+});
 
 describe("LabelFontRow", () => {
   it("shows the default font when the setting has no value", async () => {
