@@ -48,8 +48,6 @@ export type ExportWarningId =
   | "teleport_connector_covers_arrow"
   /** A connector with both ends in one point, so no line is left to read. */
   | "teleport_connector_degenerate"
-  | "waypoint_on_split"
-  | "teleport_on_special_split"
   /** Start/finish marker caption, elevator floor badge or teleport floor badge text exceeds its plate
    *  in width or height (GitHub issue #707). One id per element kind so the message can name it. */
   | "marker_text_overflow"
@@ -60,10 +58,6 @@ export type ExportWarningId =
   | "marker_index_covers_stop_line"
   | "teleport_badge_text_overflow"
   | "floor_label_text_overflow"
-  /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
-   *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
-   *  `waypoint_on_split`/`teleport_on_special_split`. */
-  | "vertical_on_special_split"
   /** "Vector by corridors" only (GitHub issue #312) — the one-way chevron row's own settings
    *  (count/length/gap/width) would overflow past a single cell's bounds along the corridor
    *  (`TILE_SIZE`) or across it (the corridor's own `thickness`). One warning total, covering every
@@ -423,9 +417,7 @@ export function computeVectorByWallsWarnings(
  *  #311, teleport checks added as a #313 follow-up bugfix — this mode reuses `TeleportRenderer`
  *  as-is, so it can hit the exact same "ambiguous group"/"invisible marker"/"waypoint overlap"
  *  caveats "Vector by walls" already flags). Its group list differs from the walls one in the
- *  one-way overflow check and the corridor-specific contrast checks; `waypoint_on_split`/
- *  `teleport_on_special_split` (GitHub issue #314) are shared — this mode draws the same bridge/diagonal
- *  special-shape geometry, gated on the same `splitSpecialShapes` setting. */
+ *  one-way overflow check and the corridor-specific contrast checks. */
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],

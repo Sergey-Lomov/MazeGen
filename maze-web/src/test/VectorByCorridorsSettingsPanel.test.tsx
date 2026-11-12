@@ -308,7 +308,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(screen.getByText(PC.bgFill.name())).toBeInTheDocument();
   });
 
-  it("shows a warning bubble when a waypoint sits on a specially-rendered (bridge) split point", () => {
+  it("does not show a warning bubble solely because a waypoint uses a special split anchor", () => {
     // Point (0,0) split into node 0 (east+west) and node 4 (north+south) — a recognized "bridge"
     // topology, same fixture shape as `exportWarnings.test.ts`'s own `bridgeSplitNodes`.
     useMazeStore.setState({
@@ -328,7 +328,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, warnings: true },
     });
     render(<VectorByCorridorsSettingsPanel />);
-    expect(screen.getByText(m["image_export.vector_by_walls.warning_waypoint_on_split"]())).toBeInTheDocument();
+    expect(screen.queryByText(/split point/i)).not.toBeInTheDocument();
   });
 
   describe("Teleports section (GitHub issue #313)", () => {

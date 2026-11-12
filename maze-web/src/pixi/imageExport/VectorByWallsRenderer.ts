@@ -115,7 +115,7 @@ export class ExportWarningHighlight<TSettings> {
       return;
     }
 
-    const isSplitWarning = warning.id.includes("split") || warning.id === "waypoint_on_split" || warning.id === "teleport_on_special_split" || warning.id === "vertical_on_special_split";
+    const isSplitWarning = warning.id.includes("split");
 
     // Several split nodes can occupy one tile. Split warnings use one region group for all their
     // affected tiles, so adjacent tiles can merge into one contour just like ordinary regions.
