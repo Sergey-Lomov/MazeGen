@@ -75,6 +75,64 @@ describe("LinkEditor grouped picker layout", () => {
     expect(screen.getByText("Alpha").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
     expect(screen.getByText("Beta").closest('[data-testid="tooltip-anchor"]')?.tagName).toBe("DIV");
   });
+
+  it("removes an inactive selection and its picker section when inactive paths are hidden", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Active target"] },
+      b: { ...registry.b, group: ["Inactive section"] },
+      c: { ...registry.c, group: ["Active source"] },
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Inactive section"));
+    fireEvent.click(screen.getByText("Beta"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show inactive" }));
+
+    expect(screen.queryByText("Inactive section")).toBeNull();
+    fireEvent.click(screen.getByText("Active target"));
+    fireEvent.click(screen.getByText("Alpha"));
+    expect(screen.queryByText("Inactive section")).toBeNull();
+  });
+
+  it("clears an inactive source when inactive paths are hidden", () => {
+    const groupedRegistry: Record<P, ParamDescriptor> = {
+      a: { ...registry.a, group: ["Active target"] },
+      b: { ...registry.b, group: ["Inactive section"] },
+      c: { ...registry.c, group: ["Active source"] },
+    };
+    render(
+      <LinkEditor<P>
+        registry={groupedRegistry}
+        activePaths={new Set<P>(["a", "c"])}
+        existingLinks={[]}
+        initialSource={null}
+        initialTarget={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Active target"));
+    fireEvent.click(screen.getByText("Alpha"));
+    fireEvent.click(screen.getAllByText("Inactive section")[1]);
+    fireEvent.click(screen.getByText("Beta"));
+    expect(screen.getByRole("button", { name: "Save" })).not.toHaveAttribute("disabled");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show inactive" }));
+
+    expect(screen.queryByText("Inactive section")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("disabled");
+  });
 });
 
 // GitHub issue #720 — saving onto a target that already has a control link asks for confirmation

@@ -879,9 +879,9 @@ showing inactive paths at the time.
 
 In `LinkEditor`'s Target/Source pickers, a "Show inactive" toggle (`ToggleRow`, label left switch
 right — same convention as every other labeled toggle in the app) sits at the bottom of the dialog,
-to the left of Cancel/Save, default on. Off: both pickers list only active paths, plus whichever
-path is already selected as that picker's current Target/Source even if it's since gone inactive
-(so editing an existing link never looks like its own endpoint vanished). On (default): every
+to the left of Cancel/Save, default on. Turning it off clears any inactive target or source and
+both pickers then list only active paths, so no hidden parameter's section remains visible or can
+be saved accidentally. On (default): every
 registry path is listed, with the same `EyeOff` badge marking the inactive ones inline after each
 leaf's label, and the row itself dimmed (`muted(typography.body)`) for extra visual distinction —
 letting a link be deliberately set up on a parameter that's hidden right now but might become
