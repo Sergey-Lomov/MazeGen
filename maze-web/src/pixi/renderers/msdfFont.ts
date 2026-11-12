@@ -1,7 +1,7 @@
 import { Assets, Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
-import type { LabelFontWeight } from "./indexLabel";
-import { isLabelFontFamilyLoaded, makeLabelText } from "./labelFont";
+import { MSDF_FONTS, msdfFace, type LabelFont } from "./fontChoice";
+import { isLabelFontLoaded, makeLabelText } from "./labelFont";
 
 /** MSDF (multi-channel signed distance field) bitmap fonts for canvas labels (GitHub issue #352).
  *
@@ -15,37 +15,27 @@ import { isLabelFontFamilyLoaded, makeLabelText } from "./labelFont";
  *  recognizes `.fnt`/`.xml` by extension; a `.json` atlas loads as a plain object and `BitmapText`
  *  silently falls back to a blurry runtime canvas font). This module only loads them.
  *
- *  Two weights are baked (MSDF glyph shapes can't be synthesized bold at runtime), so the label
- *  `fontWeight` setting actually switches. Every canvas-label call site (`floorBadge`,
+ *  Each font bakes its own set of weights (MSDF glyph shapes can't be synthesized bold at runtime;
+ *  `fontChoice.ts`'s `MSDF_FONTS` lists them), so the chosen weight actually switches. Every canvas-label call site (`floorBadge`,
  *  `MarkerIndexRenderer`, `VerticalConnectionRenderer`, `MazeGraphRenderer`) picks its font name
  *  via {@link msdfFontFamily}. A new label that needs a glyph outside the baked charset must
  *  extend `tools/msdf/generate.mjs`'s `CHARSET` and re-run `npm run gen:msdf` (see
  *  `maze-web/CLAUDE.md`). */
 
-/** Paths (relative to the served root) of the baked atlas descriptors. `Assets.load` picks up each
- *  sibling `.png` via the `pages` field inside it. */
-const MSDF_FONT_URLS = [
-  "/fonts/roboto-regular-msdf.fnt",
-  "/fonts/roboto-bold-msdf.fnt",
-] as const;
+/** Every baked atlas descriptor (relative to the served root), from the `MSDF_FONTS` registry. `Assets.load`
+ *  picks up each sibling `.png` via the `pages` field inside it. */
+const MSDF_FONT_URLS = Object.values(MSDF_FONTS).flatMap((font) => font.faces.map((face) => face.url));
 
-/** `BitmapText`'s `style.fontFamily` value per weight — the `face` recorded in each baked atlas
- *  (its source `.ttf`'s font-face name). Use {@link msdfFontFamily} rather than indexing this
- *  directly at call sites. */
-const MSDF_FONT_FAMILY_BY_WEIGHT: Record<LabelFontWeight, string> = {
-  regular: "Roboto-Regular",
-  bold: "Roboto-Bold",
-};
-
-/** The installed MSDF font-family name for a label weight — pass as `BitmapText`'s
- *  `style.fontFamily`. */
-export function msdfFontFamily(weight: LabelFontWeight): string {
-  return MSDF_FONT_FAMILY_BY_WEIGHT[weight];
+/** `BitmapText`'s `style.fontFamily` value for `font` — the `face` recorded in the baked atlas of its
+ *  nearest baked weight (its source `.ttf`'s font-face name). Use this rather than literal names at
+ *  call sites. */
+export function msdfFontFamily(font: LabelFont): string {
+  return msdfFace(font).atlasName;
 }
 
-/** The regular-weight family name — for call sites that draw a single fixed weight (debug node
+/** The regular-weight Roboto atlas name — for call sites that draw a single fixed weight (debug node
  *  labels). */
-export const MSDF_FONT_FAMILY = MSDF_FONT_FAMILY_BY_WEIGHT.regular;
+export const MSDF_FONT_FAMILY = msdfFontFamily({ family: "", weight: 400 });
 
 /** How far `text`'s glyph-ink centre sits *below* a `BitmapText`'s transform origin when it's
  *  drawn with `anchor.set(0.5)` — scaled to `fontSize`, in local pixels. Feed straight into
@@ -90,10 +80,10 @@ function inkCentreOffset(text: string, fontFamily: string, fontSize: number): nu
 /** Creates a label `BitmapText` centred on its glyph ink (not the font line box) under
  *  `anchor.set(0.5)` — the vertical correction ({@link inkCentreOffset}) is folded into `.pivot.y`
  *  so it survives later `.x`/`.y` writes by the caller. */
-export function makeCenteredLabel(text: string, fontFamily: string, fontSize: number, fill: number, requestedFamily?: string) {
-  const label = makeLabelText(text, fontFamily, fontSize, fill, fontFamily === msdfFontFamily("bold") ? "bold" : "normal", requestedFamily);
+export function makeCenteredLabel(text: string, font: LabelFont, fontSize: number, fill: number) {
+  const label = makeLabelText(text, font, fontSize, fill);
   // Browser text uses its own line metrics; the MSDF-only correction must not be applied to it.
-  if (!isLabelFontFamilyLoaded(requestedFamily)) label.pivot.y = inkCentreOffset(text, fontFamily, fontSize);
+  if (!isLabelFontLoaded(font)) label.pivot.y = inkCentreOffset(text, msdfFontFamily(font), fontSize);
   return label;
 }
 

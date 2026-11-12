@@ -1,5 +1,5 @@
 import type { PathCommand } from "../../wasm/mazeService";
-import type { LabelFontWeight } from "./indexLabel";
+import type { LabelFont } from "./fontChoice";
 import type { TeleportFloorBadgeSettings, ElevatorBadgeSettings } from "../../store/imageExportTypes";
 
 export type Viewport = {
@@ -273,11 +273,10 @@ export type MarkerData = {
    *  existed. `textColor` defaults to `color` (the marker's own fill) when unset. */
   text?: string;
   textColor?: number;
-  textFontFamily?: string;
-  /** Label font weight — resolved to a baked MSDF atlas family by `msdfFontFamily`, same convention
-   *  as every other label in this codebase (floor badges, elevator badges, marker index). Defaults
-   *  to `"bold"` when unset. */
-  textFontWeight?: LabelFontWeight;
+  /** Label font (family and weight) — a baked MSDF atlas by `msdfFontFamily` while a browser font is
+   *  not loaded, same convention as every other label in this codebase. Defaults to bold Roboto
+   *  when unset. */
+  textFont?: LabelFont;
   /** Label font size in px (unified with elevator/teleport floor badges). Defaults to
    *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
@@ -347,11 +346,6 @@ export type VerticalConnectionMarker = {
   /** Marker-layout shrink factor (GitHub issue #735) applied to every component — `undefined` = 1. */
   scale?: number;
 };
-
-/** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) —
- *  resolved to a baked MSDF atlas family by `msdfFontFamily` (GitHub issue #352). Alias of the
- *  neutral `LabelFontWeight` (shared with GitHub issue #471's marker index labels). */
-export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
 
 /** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"
  *  enabled (see `TeleportGroupOverride`) this reproduces the old, now-removed `"grouped"` pattern's
@@ -439,7 +433,7 @@ export type TeleportLineStyle = {
    *  (`TeleportEdge.toFloor`/`fromFloor`) draws with this `shape`/`labelType`/`size` instead of the
    *  hardcoded circle + Arabic digit it used before. `fillColor`/`borderColor` are the badge body's
    *  own colours (GitHub issue #503 follow-up — previously locked to the connector colour); a group
-   *  override does not affect them. `textColor`/`textFontWeight`/`textSize` (px) style the label
+   *  override does not affect them. `textColor`/`textFont`/`textSize` (px) style the label
    *  independently of `floorColor` — see `TeleportFloorBadgeSettings`.
    *  The badge is a `BadgeSettings` (GitHub issue #701): it carries its own `cornerStyle`, `borderWidth`
    *  and `gapWidth` like any other marker, independent of the edge marker's. */

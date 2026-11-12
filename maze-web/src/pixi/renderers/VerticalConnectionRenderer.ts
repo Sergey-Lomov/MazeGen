@@ -1,5 +1,6 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern, ElevatorBadgeFontWeight } from "./types";
+import type { VerticalConnectionMarker, VerticalConnectionStyle, MarkerShape, CornerStyle, OneWayPattern } from "./types";
+import { DEFAULT_LABEL_FONT, type LabelFont } from "./fontChoice";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
@@ -240,13 +241,13 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  the marker's own `interactive` flag is.
  *
  *  The label is an MSDF `BitmapText` (GitHub issue #352) — stays crisp at any viewport zoom, unlike
- *  the plain `Text` this used to draw. `fontWeight` picks the regular vs. bold baked atlas
- *  (`msdfFontFamily`). */
-function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight, fontFamily?: string): void {
+ *  the plain `Text` this used to draw. `font` picks the baked atlas of its weight
+ *  (`msdfFontFamily`) while a browser font is not loaded. */
+function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, font: LabelFont): void {
   const g = new Graphics();
   drawMarkerWithBorder(g, shape, pos.x, pos.y, radius, rounded, fillColor, borderColor, borderWidth);
   container.addChild(g);
-  const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor, fontFamily);
+  const text = makeCenteredLabel(label, font, fontSize, textColor);
   text.x = pos.x;
   text.y = pos.y;
   container.addChild(text);
@@ -259,12 +260,12 @@ function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number
  *  reaching floor 8, e.g. `labelType: "roman"`'s `"VIII"`, since a shared badge size that changed
  *  per-elevator would look inconsistent across the maze). Starts at the baseline `radius * 1.4` and
  *  only ever scales *down* — every badge shares whatever the single worst-case label needs. */
-export function fitElevatorBadgeFontSize(labels: string[], radius: number, fontWeight: ElevatorBadgeFontWeight): number {
+export function fitElevatorBadgeFontSize(labels: string[], radius: number, font: LabelFont = DEFAULT_LABEL_FONT): number {
   const baseline = radius * 1.4;
   const targetWidth = radius * 1.6;
   let widest = 0;
   for (const label of labels) {
-    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(fontWeight), fontSize: baseline } });
+    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(font), fontSize: baseline } });
     widest = Math.max(widest, probe.width);
     probe.destroy();
   }
@@ -318,7 +319,7 @@ function drawElevatorBadges(
     drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
   }
   for (const [i, label] of labels.entries()) {
-    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFontWeight, settings.textFontFamily);
+    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFont);
   }
   // Click-to-switch-floor hit area per badge (GitHub issue #478 follow-up) — `computeElevatorBadgePositions`
   // returns positions in the same ascending order as `targetFloorIndices`, so `positions[i]` is the

@@ -1,7 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerData } from "./types";
 import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
-import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
+import { makeCenteredLabel } from "./msdfFont";
+import { DEFAULT_LABEL_FONT } from "./fontChoice";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../renderConstants";
 import { NO_MARKER_SCALING, type MarkerScaler } from "../markerScale";
 
@@ -36,7 +37,7 @@ export class WaypointsRenderer {
       }
       drawMarkerWithBorder(this.g, shape, m.pos[0], m.pos[1], radius, rounded, m.color, m.borderColor ?? m.color, borderWidth);
       if (m.text) {
-        const label = makeCenteredLabel(m.text, msdfFontFamily(m.textFontWeight ?? "bold"), (m.textSize ?? DEFAULT_MARKER_TEXT_SIZE) * factor, m.textColor ?? m.color, m.textFontFamily);
+        const label = makeCenteredLabel(m.text, m.textFont ?? DEFAULT_LABEL_FONT, (m.textSize ?? DEFAULT_MARKER_TEXT_SIZE) * factor, m.textColor ?? m.color);
         label.x = m.pos[0];
         label.y = m.pos[1];
         this.labels.addChild(label);

@@ -288,7 +288,7 @@ describe("isPathActive: start/finish caption", () => {
     for (const kind of ["startMarker", "finishMarker"]) {
       expect(check(`${kind}.textColor`, off)).toBe(false);
       expect(check(`${kind}.textSize`, off)).toBe(false);
-      expect(check(`${kind}.textFontWeight`, off)).toBe(false);
+      expect(check(`${kind}.textFont`, off)).toBe(false);
       expect(check(`${kind}.textEnabled`, off)).toBe(true);
       expect(check(`${kind}.fillColor`, off)).toBe(true);
     }

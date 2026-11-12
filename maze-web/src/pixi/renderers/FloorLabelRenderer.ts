@@ -3,7 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { FLOOR_LABEL_ANCHORS, type FloorLabelAnchor, type FloorLabelPosition, type FloorLabelSettings } from "../../store/imageExportTypes";
 import { getCellCenter, nearestCellCoord } from "../tessellationGeometry";
 import { formatIndexLabel } from "./indexLabel";
-import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
+import { makeCenteredLabel } from "./msdfFont";
 import { drawRoundedPolygon, drawRoundedRect, offsetPolygonPath } from "./markerShapes";
 import { measureText, rectangularTextFrameHalfExtents, type TextExtent } from "../textFit";
 
@@ -123,12 +123,11 @@ export class FloorLabelRenderer {
     const text = floorLabelText(settings, floorIndex, floorTitle);
     const label = makeCenteredLabel(
       text,
-      msdfFontFamily(settings.textFontWeight),
+      settings.textFont,
       settings.textSize,
       settings.textColor,
-      settings.textFontFamily,
     );
-    label.x = floorLabelTextX(settings, center.x, measureText(text, settings.textFontWeight, settings.textSize, settings.textFontFamily));
+    label.x = floorLabelTextX(settings, center.x, measureText(text, settings.textFont, settings.textSize));
     label.y = center.y;
 
     if (settings.backgroundShape === "none") {

@@ -30,8 +30,7 @@ export function ElevatorBadgesSubsection<P extends LinkPath>({ settings, onChang
   linkTargets: {
     enabled: P | null;
     labelType: P | null;
-    textFontFamily?: P | null;
-    textFontWeight: P | null;
+    textFont?: P | null;
     placement: P | null;
     shape: P | null;
     cornerStyle: P | null;

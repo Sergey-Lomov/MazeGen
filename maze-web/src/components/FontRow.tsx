@@ -2,18 +2,19 @@ import React from "react";
 import { typography } from "../styles/theme";
 import { Inline } from "./Layout";
 import { FontButton } from "./FontButton";
+import type { LabelFont } from "../pixi/renderers/fontChoice";
 
 /** Shared labeled font-picker row: label + `FontButton`, mirrors `ColorRow` / `SelectRow` so a font
  *  param lines up with the other params in a settings list. */
-export function FontRow({ label, family, onChange, disabled, resetButton, onPreview, onOpen, onCancel }: {
+export function FontRow({ label, font, onChange, disabled, resetButton, onPreview, onOpen, onCancel }: {
   label: string;
-  family: string;
-  onChange: (family: string) => void;
+  font: LabelFont;
+  onChange: (font: LabelFont) => void;
   disabled?: boolean;
   /** Trailing control (the per-field link-status icon); the label stays `flex: 1`. */
   resetButton?: React.ReactNode;
   /** Forwarded to `FontButton`. */
-  onPreview?: (family: string) => void;
+  onPreview?: (font: LabelFont) => void;
   /** Forwarded to `FontButton`. */
   onOpen?: () => void;
   /** Forwarded to `FontButton`. */
@@ -22,7 +23,7 @@ export function FontRow({ label, family, onChange, disabled, resetButton, onPrev
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      <FontButton family={family} title={label} onChange={onChange} disabled={disabled} onPreview={onPreview} onOpen={onOpen} onCancel={onCancel} />
+      <FontButton font={font} title={label} onChange={onChange} disabled={disabled} onPreview={onPreview} onOpen={onOpen} onCancel={onCancel} />
       {resetButton}
     </Inline>
   );

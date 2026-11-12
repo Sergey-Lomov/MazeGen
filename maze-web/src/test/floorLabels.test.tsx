@@ -367,11 +367,11 @@ describe("export floor labels", () => {
 
   it("uses the widest and tallest floor label when fitting the backplate", () => {
     const dimensions = requiredTextPlateDimensions([
-      { text: "VIII", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
-      { text: "X", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
+      { text: "VIII", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
+      { text: "X", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
     ], 24);
     const wideOnly = requiredTextPlateDimensions([
-      { text: "X", fontWeight: "regular", shape: "square", plateSize: 0, margin: 4 },
+      { text: "X", font: { family: "", weight: 400 }, shape: "square", plateSize: 0, margin: 4 },
     ], 24);
     expect(dimensions).not.toBeNull();
     expect(wideOnly).not.toBeNull();
@@ -380,7 +380,7 @@ describe("export floor labels", () => {
   });
 
   it("accounts for slanted parallelogram edges when fitting floor-label text", () => {
-    const rectangle = { text: "XXXXX", fontWeight: "regular" as const, shape: "square" as const, plateSize: 0, plateWidth: 80, plateHeight: 36, plateShape: "rectangle" as const, margin: 4 };
+    const rectangle = { text: "XXXXX", font: { family: "", weight: 400 } as const, shape: "square" as const, plateSize: 0, plateWidth: 80, plateHeight: 36, plateShape: "rectangle" as const, margin: 4 };
     const parallelogram = { ...rectangle, plateShape: "parallelogram" as const };
     expect(textOverflows(rectangle, 24)).toBe(false);
     expect(textOverflows(parallelogram, 24)).toBe(true);
@@ -410,6 +410,6 @@ describe("export floor labels", () => {
   });
 
   it("keeps floor-label auto-fit within the shared font-size range", () => {
-    expect(maxFittingFontSize([{ text: "I", fontWeight: "regular", shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(40);
+    expect(maxFittingFontSize([{ text: "I", font: { family: "", weight: 400 }, shape: "square", plateSize: 5000 }], FLOOR_LABEL_TEXT_SIZE_RANGE)).toBe(40);
   });
 });

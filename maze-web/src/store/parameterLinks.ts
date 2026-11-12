@@ -3,18 +3,19 @@ import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToCo
 /** Family of a linkable parameter — constrains which parameters can be linked to one another (only
  *  same-type pairs) and which link a `"number"` pair may carry a `ParamModifier` chain on (#645), or
  *  a `"color"` pair a `ColorModifier` chain on (#647) — every other type stays pure equality. Extend
- *  as new parameter shapes appear. `markerShape`/`verticalArrowStyle`/`indexLabelStyle`/
- *  `labelFontWeight` are each a small string enum reused by multiple settings fields across both
+ *  as new parameter shapes appear. `markerShape`/`verticalArrowStyle`/`indexLabelStyle` are each a small string enum reused by multiple settings fields across both
  *  render modes (same underlying TS type and value set) — split out from a generic catch-all so each
  *  gets its own localized `format` instead of showing a raw enum string. `boolean` covers plain
  *  on/off toggles. A `"color"` value is a packed 24-bit RGB number, same as every other color field
- *  in the app (`store/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. */
-export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "teleportCurveDirection" | "indexLabelStyle" | "labelFontFamily" | "labelFontWeight" | "lineStyle" | "boolean";
+ *  in the app (`store/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. A
+ *  `"labelFont"` value is a `{ family, weight }` object, so its descriptor overrides `equals` (GitHub
+ *  issue #973). */
+export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "teleportCurveDirection" | "indexLabelStyle" | "labelFont" | "lineStyle" | "boolean";
 
 /** Registry entry for one linkable parameter — the single source of truth for its type, value
  *  equality, display label, and settings-panel location, instead of scattered `!==` comparisons /
- *  hardcoded strings across the engine and UI. `equals` defaults to `Object.is`; a parameter with an
- *  object value (a future #647 color-as-object) overrides it here, not in the engine. `label` is a
+ *  hardcoded strings across the engine and UI. `equals` is `Object.is` for primitives; a parameter with an
+ *  object value (`labelFont`) overrides it here, not in the engine. `label` is a
  *  resolved display string (the caller passes an already-translated message), used by the
  *  parameter-links management dialog (GitHub issue #644) to list a path in human-readable form.
  *  `group` mirrors that same path's location in the settings panel itself (e.g. `["Markers",

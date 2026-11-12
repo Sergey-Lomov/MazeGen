@@ -7,7 +7,7 @@ import { drawMarkerWithBorder } from "./markerShapes";
 import type { MarkerShape } from "./types";
 import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
-import type { LabelFontWeight } from "./indexLabel";
+import { DEFAULT_LABEL_FONT, type LabelFont } from "./fontChoice";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
 export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
@@ -27,13 +27,13 @@ export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
  *  at one size. No lower bound; at `textPadding: 0` the widest label spans the whole badge, border
  *  included. Mirrors `fitElevatorBadgeFontSize`'s own probe-the-widest approach. `0` when there are
  *  no labels. */
-export function fitTeleportBadgeFontSize(labels: string[], r: number, textPadding: number, borderWidth = 0): number {
+export function fitTeleportBadgeFontSize(labels: string[], r: number, textPadding: number, borderWidth = 0, font: LabelFont = DEFAULT_LABEL_FONT): number {
   const side = Math.max(2 * (r + borderWidth) - 2 * textPadding, 0);
   if (side === 0) return 0;
   const probeSize = (r + borderWidth) * 2;
   let widest = 0;
   for (const label of labels) {
-    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily("bold"), fontSize: probeSize } });
+    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(font), fontSize: probeSize } });
     widest = Math.max(widest, probe.width);
     probe.destroy();
   }
@@ -84,7 +84,7 @@ export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: FieldConfi
  *  `g` in z-order (a sibling layer, or the same container `g` was itself added to).
  *
  *  `opts` (GitHub issue #485) lets the cross-floor teleport badge draw a configured marker shape,
- *  a Roman/letter label, an independent `textColor`, an explicit `fontWeight`/`fontSize` (px, the
+ *  a Roman/letter label, an independent `textColor`, an explicit `font`/`fontSize` (px, the
  *  badge's own `textSize` setting), and a
  *  `borderWidth` taken from the teleport edge marker's own border rather than the fixed
  *  `FLOOR_BADGE_STROKE_WIDTH`. The teleport call site also passes the badge's own `color`/
@@ -102,16 +102,15 @@ export function drawFloorBadge(
   borderColor: number,
   floorColor: number,
   floorNumber: number,
-  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontWeight?: LabelFontWeight; fontSize?: number; fontFamily?: string; borderWidth?: number; rounded?: boolean },
+  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; font?: LabelFont; fontSize?: number; borderWidth?: number; rounded?: boolean },
 ): void {
   const borderWidth = opts?.borderWidth ?? FLOOR_BADGE_STROKE_WIDTH;
   drawMarkerWithBorder(g, opts?.shape ?? "circle", cx, cy, r, opts?.rounded ?? true, color, borderColor, borderWidth);
   const label = makeCenteredLabel(
     opts?.labelText ?? `${floorNumber}`,
-    msdfFontFamily(opts?.fontWeight ?? "bold"),
+    opts?.font ?? DEFAULT_LABEL_FONT,
     opts?.fontSize ?? r * 1.6,
     opts?.textColor ?? floorColor,
-    opts?.fontFamily,
   );
   label.x = cx;
   label.y = cy;
