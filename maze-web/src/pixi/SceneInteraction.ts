@@ -22,6 +22,9 @@ interface SceneInteractionDeps {
   onResetZoom: () => void;
 }
 
+/** Hold-to-preview key of the teleport connector editor. */
+const CONNECTOR_PREVIEW_CODE = "KeyP";
+
 function setCanvasCursor(canvas: HTMLCanvasElement, cursor: string): void {
   if (canvas.style) canvas.style.cursor = cursor;
 }
@@ -35,6 +38,11 @@ export class SceneInteraction {
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
+    if (isTeleportConnectorEditActive(state) && e.code === CONNECTOR_PREVIEW_CODE && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      this.setConnectorPreview(true);
+      return;
+    }
     if (isTeleportConnectorEditActive(state) && (e.code === "Escape" || e.code === "Delete")) {
       e.preventDefault();
       const controller = this.deps.getController(state) as { escape?: () => void; deleteSelected?: () => void } | null;
@@ -62,7 +70,18 @@ export class SceneInteraction {
     }
   };
 
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (e.code === CONNECTOR_PREVIEW_CODE) this.setConnectorPreview(false);
+  };
+
+  private setConnectorPreview(on: boolean): void {
+    const state = useMazeStore.getState();
+    const controller = this.deps.getController(state) as { setPreview?: (on: boolean) => void } | null;
+    controller?.setPreview?.(on);
+  }
+
   private onBlur = () => {
+    this.setConnectorPreview(false);
     const st = useMazeStore.getState();
     const controller = this.deps.getController(st);
     this.defaultPan.end();
@@ -261,6 +280,7 @@ export class SceneInteraction {
 
     window.addEventListener("blur", this.onBlur);
     window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("pointerdown", this.onWindowPointerDown, true);
     app.canvas.addEventListener("pointerleave", this.onPointerLeave);
 
@@ -283,6 +303,7 @@ export class SceneInteraction {
   destroy(): void {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("pointerdown", this.onWindowPointerDown, true);
     this.deps.app.canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.deps.app.canvas.removeEventListener("wheel", this.onWheel);

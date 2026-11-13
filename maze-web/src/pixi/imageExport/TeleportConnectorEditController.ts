@@ -19,6 +19,7 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
   private dragging: { key: string; index: number; original: [number, number]; originalPath: number[]; alignmentLocked: boolean } | null = null;
   private pendingPan: { x: number; y: number } | null = null;
   private panning = false;
+  private previewing = false;
 
   constructor(
     private readonly getViewport: () => Container,
@@ -42,7 +43,10 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     const edit = st.teleportConnectorEdit;
     const active = isTeleportConnectorEditActive(st);
     this.view.eventMode = active ? "static" : "none";
-    if (!active || !edit) return;
+    // The release of the preview key is routed to the active controller only, so it can be missed
+    // when editing ends mid-hold; do not carry the preview into the next session.
+    if (!active) this.previewing = false;
+    if (!active || !edit || this.previewing) return;
     const paths = this.paths();
     const selected = edit.selected;
     const r = 5 / Math.max(this.getViewport().scale.x, 1e-9);
@@ -73,9 +77,16 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     }
   }
 
+  /** While previewing, the control points are hidden and so are not editable. */
+  setPreview(on: boolean): void {
+    if (this.previewing === on) return;
+    this.previewing = on;
+    this.render();
+  }
+
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const st = useMazeStore.getState();
-    if (!isTeleportConnectorEditActive(st)) return;
+    if (!isTeleportConnectorEditActive(st) || this.previewing) return;
     const p = toViewportCoordinates(canvasX, canvasY, this.getViewport());
     const hit = this.pointHit(p.x, p.y);
     if (button === 2) {

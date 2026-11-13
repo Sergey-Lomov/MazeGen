@@ -2556,6 +2556,7 @@
   "image_export.teleport_connector_editor.hint_snap": "Удерживайте при перемещении точки для привязки.",
   "image_export.teleport_connector_editor.hint_independent_handles": "Удерживайте для независимой настройки управляющих точек.",
   "image_export.teleport_connector_editor.hint_symmetric_handles": "Удерживайте для симметричной настройки управляющих точек.",
+  "image_export.teleport_connector_editor.hint_preview": "Удерживайте, чтобы скрыть точки и посмотреть коннекторы.",
   "image_export.teleport_connector_editor.shortcut_escape": "Отменить перетаскивание, снять выделение или завершить редактирование",
   "image_export.teleport_connector_editor.shortcut_snap": "Удерживать при перетаскивании для привязки к полю",
   "image_export.vector_by_walls.teleport_curve_direction": "Направление изгиба",

@@ -2564,6 +2564,7 @@
   "image_export.teleport_connector_editor.hint_snap": "Hold while moving a point to snap it.",
   "image_export.teleport_connector_editor.hint_independent_handles": "Hold to adjust curve handles independently.",
   "image_export.teleport_connector_editor.hint_symmetric_handles": "Hold to adjust curve handles symmetrically.",
+  "image_export.teleport_connector_editor.hint_preview": "Hold to hide the points and preview the connectors.",
   "image_export.teleport_connector_editor.shortcut_escape": "Cancel drag, clear selection, or finish editing",
   "image_export.teleport_connector_editor.shortcut_snap": "Hold while dragging to snap to a field anchor",
   "image_export.vector_by_walls.teleport_curve_direction": "Curve direction",

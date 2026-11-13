@@ -81,6 +81,42 @@ describe("TeleportConnectorEditController input guard", () => {
     useMazeStore.getState().setManualTeleportConnectorPaths({});
     expect(await press("post_edit")).toEqual({});
   });
+
+  it("ignores a click while previewing and accepts it again after release (GitHub issue #998)", async () => {
+    const { Container } = await import("pixi.js");
+    const { TeleportConnectorEditController } = await import("../pixi/imageExport/TeleportConnectorEditController");
+    useMazeStore.setState({ openCard: "image_export", teleportConnectorEdit: null });
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", teleportConnectorEdit: edit });
+    useMazeStore.getState().setManualTeleportConnectorPaths({});
+    const controller = new TeleportConnectorEditController(() => new Container(), () => drawn, pan, new Container());
+    controller.setPreview(true);
+    controller.onPointerDown(50, 0, 0);
+    controller.onPointerUp();
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths ?? {}).toEqual({});
+    controller.setPreview(false);
+    controller.onPointerDown(50, 0, 0);
+    controller.onPointerUp();
+    controller.destroy();
+    expect(Object.keys(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths ?? {})).toContain("1:2");
+  });
+
+  it("drops a preview left held when editing ends, so the next session starts with points shown", async () => {
+    const { Container } = await import("pixi.js");
+    const { TeleportConnectorEditController } = await import("../pixi/imageExport/TeleportConnectorEditController");
+    useMazeStore.setState({ openCard: "image_export", teleportConnectorEdit: null });
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", teleportConnectorEdit: edit });
+    useMazeStore.getState().setManualTeleportConnectorPaths({});
+    const controller = new TeleportConnectorEditController(() => new Container(), () => drawn, pan, new Container());
+    controller.setPreview(true);
+    useMazeStore.setState({ openCard: "post_edit" });
+    controller.render();
+    useMazeStore.setState({ openCard: "image_export" });
+    useMazeStore.setState({ teleportConnectorEdit: edit });
+    controller.onPointerDown(50, 0, 0);
+    controller.onPointerUp();
+    controller.destroy();
+    expect(Object.keys(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths ?? {})).toContain("1:2");
+  });
 });
 
 describe("isTeleportConnectorEditActive", () => {

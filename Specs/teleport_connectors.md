@@ -115,8 +115,11 @@ mode and floor; its state is dropped by the same sync).
 The connector editor explains these interactions in place: left-click a point to select it or a path
 to insert a point; right-click a point to delete it; and hold the platform modifier while moving a
 point to snap it to a field anchor. In Cubic curve mode, holding Alt while moving a handle adjusts
-it independently, while holding Shift adjusts its paired handles symmetrically. The left- and
-right-button hints use LMB/RMB keycaps.
+it independently, while holding Shift adjusts its paired handles symmetrically. Holding P
+hides every point marker and guide so the connectors render as they will in the maze (GitHub issue #998);
+the editor ignores pointer presses meanwhile, and releasing P (or losing window focus) restores the
+markers. A preview still held when editing ends is dropped, so the next session starts with the
+markers shown. The left- and right-button hints use LMB/RMB keycaps.
 
 The editor panel also shows the connector geometry warnings (GitHub issue #952) as a collapsible "Warnings (N)"
 section above the connector list, always visible even at N = 0 and expanded by default; its expanded state is persisted in
