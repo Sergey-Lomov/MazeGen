@@ -3,6 +3,8 @@ import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
+import { Copyright } from "lucide-react";
+import { FontLicensesModal } from "./FontLicensesModal";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
 import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
@@ -101,6 +103,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const [working, setWorking] = useState(font);
   const [type, setType] = useState<FontType>(isMsdfFamily(font.family) ? "vector" : "raster");
   const [infoOpen, setInfoOpen] = useState(false);
+  const [licensesOpen, setLicensesOpen] = useState(false);
   // `undefined` while the local font query is pending, `null` when the browser cannot list fonts.
   // An empty answer is how some browsers report a denied permission, so it counts as unavailable.
   // Set once a "Grant access" attempt still produced no list: the browser has blocked the site, so
@@ -243,7 +246,12 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
       <div
         style={styles.body}
         tabIndex={-1}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } }}
+        onKeyDown={(e) => {
+          // A dialog opened from here is portaled out of this subtree, but React still bubbles its key
+          // events through the component tree: its Escape closes only the dialog, not the panel.
+          if (!e.currentTarget.contains(e.target as Node)) return;
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
+        }}
       >
         <div style={styles.content}>
           <div style={styles.section}>
@@ -302,6 +310,10 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             <div style={styles.familyHeader}>
               <div style={typography.body}>{m["font_picker.section_family"]()}</div>
               <InfoIconButton onClick={() => setInfoOpen(true)} />
+              {type === "vector" && (
+                // The baked fonts ship under their own licenses (GitHub issue #982); browser fonts are not ours to credit.
+                <InfoIconButton onClick={() => setLicensesOpen(true)} symbol={<Copyright size={14} />} label={m["font_licenses.button"]()} />
+              )}
             </div>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
               <div style={styles.typeSwitcher}>
@@ -386,6 +398,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
           onClose={() => setInfoOpen(false)}
         />
       )}
+      {licensesOpen && <FontLicensesModal onClose={() => setLicensesOpen(false)} />}
     </SidePanel>
   );
 }

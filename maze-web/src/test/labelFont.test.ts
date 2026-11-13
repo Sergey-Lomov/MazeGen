@@ -57,6 +57,29 @@ describe("loadLabelFont", () => {
     }
   });
 
+  it("hands a baked MSDF family to the atlas loader and never asks the browser for it (GitHub issue #982)", async () => {
+    const browserLoad = mockFontEnvironment(() => 80);
+    const loadMsdfFamily = vi.fn().mockResolvedValue(true);
+    vi.doMock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily }));
+    const { loadLabelFont, isLabelFontLoaded } = await import("../pixi/renderers/labelFont");
+
+    await expect(loadLabelFont(font("msdf:fira-sans", 700))).resolves.toBe(true);
+    expect(loadMsdfFamily).toHaveBeenCalledWith("msdf:fira-sans");
+    expect(browserLoad).not.toHaveBeenCalled();
+    // A baked font is drawn by the atlas path, never as browser text.
+    expect(isLabelFontLoaded(font("msdf:fira-sans", 700))).toBe(false);
+    vi.doUnmock("../pixi/renderers/msdfLoader");
+  });
+
+  it("reports a failed atlas download as not loaded", async () => {
+    mockFontEnvironment(() => 80);
+    vi.doMock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily: vi.fn().mockResolvedValue(false) }));
+    const { loadLabelFont } = await import("../pixi/renderers/labelFont");
+
+    await expect(loadLabelFont(font("msdf:fira-sans"))).resolves.toBe(false);
+    vi.doUnmock("../pixi/renderers/msdfLoader");
+  });
+
   it("shares concurrent loading of the same real family", async () => {
     const load = mockFontEnvironment((font) => font.includes("Fira Sans") ? 110 : font.includes("monospace") ? 100 : 80);
     const { loadLabelFont, isLabelFontLoaded } = await import("../pixi/renderers/labelFont");

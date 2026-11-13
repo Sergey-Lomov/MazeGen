@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   MSDF_FONTS,
   isMsdfFamily,
@@ -78,5 +80,30 @@ describe("plainLabelFont", () => {
     const copy = plainLabelFont(source);
     expect(copy).toEqual({ family: "Arial", weight: 500 });
     expect(copy).not.toBe(source);
+  });
+});
+
+describe("bundled MSDF catalog", () => {
+  const entries = Object.entries(MSDF_FONTS);
+
+  it("keeps every family key but the default Roboto out of the browser font namespace", () => {
+    for (const [key] of entries) expect(key === "" || key.startsWith("msdf:")).toBe(true);
+  });
+
+  it("offers Regular and Bold for every font, with unique atlas names and urls", () => {
+    for (const [, font] of entries) expect(font.faces.map((face) => face.weight)).toEqual([400, 700]);
+    const faces = entries.flatMap(([, font]) => font.faces);
+    expect(new Set(faces.map((face) => face.atlasName)).size).toBe(faces.length);
+    expect(new Set(faces.map((face) => face.url)).size).toBe(faces.length);
+  });
+
+  it("has a baked atlas on disk whose face matches the catalog", () => {
+    for (const [, font] of entries) {
+      for (const face of font.faces) {
+        const descriptor = readFileSync(resolve(process.cwd(), `public${face.url}`), "utf8");
+        expect(descriptor).toContain(`face="${face.atlasName}"`);
+        expect(existsSync(resolve(process.cwd(), `public${face.url.replace(/\.fnt$/, ".png")}`))).toBe(true);
+      }
+    }
   });
 });

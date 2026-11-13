@@ -5,21 +5,24 @@
 Canvas labels are drawn as MSDF `BitmapText` (crisp at any zoom), not pixi `Text` (blurs on zoom)
 — GitHub issue #352. pixi.js v8 has no runtime MSDF generator, so the atlases are baked offline:
 
-- Source: `tools/msdf/Roboto-Regular.ttf` + `tools/msdf/Roboto-Bold.ttf` (Apache-2.0,
-  `tools/msdf/LICENSE.txt`). Two weights — MSDF glyphs can't be synthesized bold at runtime, so
+- Source: `tools/msdf/<Font>-{Regular,Bold}.ttf` for every entry of `FONTS` in `generate.mjs`: Roboto
+  (Apache-2.0, `public/licenses/Apache-2.0.txt`), Noto Sans, Noto Sans Condensed, Noto Serif, Fira Sans, Fira Mono, Arimo, Tinos, Cousine and Open Sans (SIL OFL 1.1,
+  `tools/msdf/OFL-<Font>.txt`). Two weights per font — MSDF glyphs can't be synthesized bold at runtime, so
   a font offers only the weights it was baked with (`MSDF_FONTS`).
 - Script: `tools/msdf/generate.mjs` — run via `npm run gen:msdf` (from `maze-web/`). Bakes at
-  `fontSize` 54 / `distanceRange` 8 into a 512×512 page — the wide spread is what keeps labels
+  `fontSize` 54 / `distanceRange` 8 into a 1024×1024 page — the wide spread is what keeps labels
   sharp at extreme viewport zoom.
-- Output (committed): `public/fonts/roboto-{regular,bold}-msdf.fnt` + `.png`. Must be `.fnt`
+- Output (committed): `public/fonts/<id>-{regular,bold}-msdf.fnt` + `.png`. `npm run gen:msdf -- <id>...` bakes only
+  the named fonts. A new font also needs a `msdfFont(...)` entry in `MSDF_FONTS` (`fontChoice.ts`), its license file next to the sources, and a `FONT_NOTICES` entry (`components/fontLicenses.ts`, copyright line from that license file; shown in the font licenses dialog, a test enforces it). Pick fonts that declare no Reserved Font Name and cover Latin and Cyrillic (a font without Cyrillic bakes empty glyphs and only warns). Must be `.fnt`
   (AngelCode XML) — pixi's bitmap-font loader recognizes only `.fnt`/`.xml` by extension; a
   `.json` atlas loads as a plain object and `BitmapText` falls back to a blurry canvas font.
-- Runtime: `src/pixi/renderers/msdfFont.ts` — `loadMsdfFont()` is awaited once at startup in
-  `App.tsx` (before `setReady`); label call sites pick the font name via `msdfFontFamily(font)`
+- Runtime: `src/pixi/renderers/msdfFont.ts` — `loadMsdfFont()` loads only the default Roboto and is
+  awaited once at startup in `App.tsx` (before `setReady`); every other `MSDF_FONTS` entry is fetched on
+  demand by `loadMsdfFamily` (`msdfLoader.ts`, issue #982; see `Specs/font-picker.md`); label call sites pick the font name via `msdfFontFamily(font)`
   (or `MSDF_FONT_FAMILY` for the fixed-regular debug labels).
 
 **When a new label needs a glyph not in the atlas**, extend `CHARSET` in `generate.mjs`, re-run
-`npm run gen:msdf`, and commit the regenerated `.fnt` + `.png` (both weights). Current charset:
+`npm run gen:msdf`, and commit the regenerated `.fnt` + `.png` (every font, both weights). Current charset:
 uppercase/lowercase Latin and Cyrillic, `0-9`, `: ( ) , # № + - =`, space, and text punctuation
 `. ; ! ? ' " / & _ * % @ [ ] « » – — …` (floor titles, GitHub issue #747).
 

@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
+import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -399,7 +400,7 @@ export class VectorByWallsRenderer {
   } | null = null;
 
   constructor(root: Container) {
-    window.addEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.addEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.backgroundGrid = new BackgroundGridLayer(root);
     const container = this.backgroundGrid.content;
     this.mazeContent = new Container();
@@ -857,7 +858,7 @@ export class VectorByWallsRenderer {
   }
 
   destroy(): void {
-    window.removeEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.removeEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.unsubscribe?.();
     this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();
