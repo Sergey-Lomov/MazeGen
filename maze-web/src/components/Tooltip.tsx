@@ -34,7 +34,7 @@ const getSuppressed = () => tooltipsSuppressed;
  *  Meant for disabled controls and other non-focusable content (epic #766 rule 3). With empty
  *  `content` the wrapper stays in place (so toggling a control's `disabled` never remounts it) but is
  *  inert: no tab stop, no description, no bubble. */
-export function Tooltip({ content, children, placement = "bottom", block = false, stretch = false, bubbleStyle }: {
+export function Tooltip({ content, children, placement = "bottom", block = false, stretch = false, focusable = true, bubbleStyle }: {
   content: React.ReactNode;
   children: React.ReactNode;
   placement?: Placement;
@@ -43,6 +43,10 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   block?: boolean;
   /** Make the wrapper fill its parent flex row's cross axis. */
   stretch?: boolean;
+  /** Make the wrapper a tab stop (the default, for content that is not focusable itself). Off for content that
+   *  is focusable already (focus still shows the bubble, it bubbles up from the child) or that sits in a list
+   *  which must keep keyboard focus. */
+  focusable?: boolean;
   /** Optional presentation override for one tooltip bubble. Most callers use the shared style. */
   bubbleStyle?: React.CSSProperties;
 }) {
@@ -104,7 +108,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
     <Wrapper
       ref={refs.setReference}
       data-testid="tooltip-anchor"
-      tabIndex={active ? 0 : undefined}
+      tabIndex={active && focusable ? 0 : undefined}
       aria-describedby={active ? descriptionId : undefined}
       style={{ ...(block ? styles.block : styles.inline), ...(stretch ? { alignSelf: "stretch" } : {}) }}
       onPointerEnter={(e) => {

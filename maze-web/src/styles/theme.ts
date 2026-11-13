@@ -75,6 +75,11 @@ export const ui = {
   },
   // Run A / run B of a glue in the topology editor: bubbles in the panel and the canvas highlight
   // (`canvas.topology`) share these hues.
+  // Font format badges in the font picker: `Bubble` colors, one hue per format.
+  fontFormat: {
+    msdf: { bg: base.fontMsdfBg, text: base.fontMsdf },
+    vec: { bg: base.fontVecBg, text: base.fontVec },
+  },
   topology: {
     runA: { bg: base.topologyRunABg, text: base.topologyRunA },
     runB: { bg: base.topologyRunBBg, text: base.topologyRunB },

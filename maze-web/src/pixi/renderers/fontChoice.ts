@@ -46,16 +46,31 @@ export interface MsdfFace {
   url: string;
 }
 
+/** One catalog font: its display name, the atlases of its weights and the scripts besides Latin it covers. */
+export interface MsdfFontEntry {
+  label: string;
+  faces: MsdfFace[];
+  scripts: readonly FontScript[];
+}
+
 /** Prefix of every stored family key of a bundled font except Roboto. A browser font name never starts
  *  with it, so a locally installed "Noto Sans" cannot be mistaken for the bundled one. */
 const MSDF_FAMILY_PREFIX = "msdf:";
 
+/** A writing system a font may cover beyond Latin. A locale declares which one it needs
+ *  (`LOCALE_FONT_SCRIPT`, GitHub issue #984), so the picker can tell whether a font draws its text. */
+export type FontScript = "cyrillic";
+
+/** Scripts every baked MSDF font covers besides Latin (each atlas is baked with Latin and Cyrillic glyphs). */
+const MSDF_SCRIPTS: readonly FontScript[] = ["cyrillic"];
+
 /** Catalog entry of a bundled Regular + Bold font baked by `tools/msdf/generate.mjs` under `id` (output
  *  `public/fonts/<id>-{regular,bold}-msdf.fnt`); `face` is the font-face name recorded in the atlas. */
-function msdfFont(id: string, label: string, face: string): Record<string, { label: string; faces: MsdfFace[] }> {
+function msdfFont(id: string, label: string, face: string): Record<string, MsdfFontEntry> {
   return {
     [MSDF_FAMILY_PREFIX + id]: {
       label,
+      scripts: MSDF_SCRIPTS,
       faces: [
         { weight: 400, atlasName: `${face}-Regular`, url: `/fonts/${id}-regular-msdf.fnt` },
         { weight: 700, atlasName: `${face}-Bold`, url: `/fonts/${id}-bold-msdf.fnt` },
@@ -69,9 +84,10 @@ function msdfFont(id: string, label: string, face: string): Record<string, { lab
  *  the default Roboto, which is loaded at startup because every other font falls back to it. Each font
  *  lists the weights it was baked with, so a font baked with other weights only needs another entry
  *  here (and its atlases from `tools/msdf/generate.mjs`); the picker offers exactly these weights. */
-export const MSDF_FONTS: Record<string, { label: string; faces: MsdfFace[] }> = {
+export const MSDF_FONTS: Record<string, MsdfFontEntry> = {
   [VECTOR_FONT_FAMILY]: {
     label: "Roboto",
+    scripts: MSDF_SCRIPTS,
     faces: [
       { weight: 400, atlasName: "Roboto-Regular", url: "/fonts/roboto-regular-msdf.fnt" },
       { weight: 700, atlasName: "Roboto-Bold", url: "/fonts/roboto-bold-msdf.fnt" },

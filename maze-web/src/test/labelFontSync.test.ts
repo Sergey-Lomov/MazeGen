@@ -7,15 +7,22 @@ const loadMsdfFamily = vi.fn().mockResolvedValue(true);
 vi.mock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily: (family: string) => loadMsdfFamily(family) }));
 
 const { MSDF_FONTS } = await import("../pixi/renderers/fontChoice");
-const { collectLazyMsdfFamilies, installLabelFontSync } = await import("../store/labelFontSync");
+const { collectLabelFontFamilies, collectLazyMsdfFamilies, installLabelFontSync } = await import("../store/labelFontSync");
 
 const face = (family: string, weight: number) => ({ weight, atlasName: `${family}-${weight}`, url: `/fonts/${family}-${weight}.fnt` });
-MSDF_FONTS.Mono = { label: "Mono", faces: [face("Mono", 400)] };
-MSDF_FONTS.Serif = { label: "Serif", faces: [face("Serif", 400)] };
+MSDF_FONTS.Mono = { label: "Mono", scripts: [], faces: [face("Mono", 400)] };
+MSDF_FONTS.Serif = { label: "Serif", scripts: [], faces: [face("Serif", 400)] };
 
 const font = (family: string) => ({ family, weight: 400 });
 
 beforeEach(() => loadMsdfFamily.mockClear());
+
+describe("collectLabelFontFamilies", () => {
+  it("finds every family at any depth, the default and browser fonts included", () => {
+    const settings = { a: { textFont: font("Mono") }, groups: [{ labelFont: font("") }, { labelFont: font("Arial") }], textSize: 12 };
+    expect([...collectLabelFontFamilies(settings)].sort()).toEqual(["", "Arial", "Mono"]);
+  });
+});
 
 describe("collectLazyMsdfFamilies", () => {
   it("finds fonts at any depth, in arrays too, and skips Roboto and browser fonts", () => {

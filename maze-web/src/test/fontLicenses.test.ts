@@ -2,17 +2,20 @@ import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { MSDF_FONTS, VECTOR_FONT_FAMILY } from "../pixi/renderers/fontChoice";
-import { FONT_NOTICES, LICENSE_TEXT_URLS } from "../components/fontLicenses";
+import { FONT_NOTICES, LICENSE_TEXT_URLS, findFontNotice, fontNoticeId } from "../components/fontLicenses";
 
 // Every baked font must be credited (GitHub issue #982): a font added to the catalog without a notice
 // would ship under its license without its copyright line.
 
-const noticeId = (key: string) => (key === VECTOR_FONT_FAMILY ? "roboto" : key.replace(/^msdf:/, ""));
-
 describe("bundled font notices", () => {
   it("credit exactly the fonts of the MSDF catalog, under the catalog's names", () => {
-    const catalog = Object.entries(MSDF_FONTS).map(([key, font]) => [noticeId(key), font.label]).sort();
+    const catalog = Object.entries(MSDF_FONTS).map(([key, font]) => [fontNoticeId(key), font.label]).sort();
     expect(FONT_NOTICES.map((notice) => [notice.id, notice.name]).sort()).toEqual(catalog);
+  });
+
+  it("are reachable for every catalog font, the one a font row's copyright icon opens", () => {
+    for (const key of Object.keys(MSDF_FONTS)) expect(findFontNotice(key)?.name, key).toBe(MSDF_FONTS[key].label);
+    expect(findFontNotice(VECTOR_FONT_FAMILY)?.id).toBe("roboto");
   });
 
   it("serve a full text for every license in use", () => {

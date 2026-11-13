@@ -130,3 +130,19 @@ describe("rasterFontWeights", () => {
     expect(rasterFontWeights("Flat")).toEqual([400]);
   });
 });
+
+describe("fontCoversSample", () => {
+  const cyrillic = /[А-Яа-я]/;
+
+  it("tells a face that draws the sample from one that falls back, probing each family once", async () => {
+    mockFontEnvironment((font, text) => font.includes("Covers") && cyrillic.test(text) ? 150 : font.includes("monospace") ? 100 : 80);
+    const { fontCoversSample } = await import("../pixi/renderers/labelFont");
+
+    expect(fontCoversSample("Covers", "ЖЩ")).toBe(true);
+    expect(fontCoversSample("Latin only", "ЖЩ")).toBe(false);
+    fontCoversSample("Covers", "ЖЩ");
+    fontCoversSample("Latin only", "ЖЩ");
+    // One scratch canvas serves every probe, however many families are asked about.
+    expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledTimes(1);
+  });
+});

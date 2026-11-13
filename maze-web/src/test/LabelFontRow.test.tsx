@@ -6,6 +6,9 @@ import { LinkContextProvider, type LinkContextValue } from "../components/featur
 import { markMsdfFamilyLoaded } from "../pixi/renderers/fontChoice";
 import * as m from "~/paraglide/messages";
 
+// A row's accessible name also holds its badges, so rows are found by their label (the first child).
+const optionByLabel = (label: string) => screen.getAllByRole("option").find((o) => o.firstElementChild?.textContent === label)!;
+
 // A browser font loads only when the test resolves its request, so the order of loads is under control.
 // By default no family finishes loading: the machine lacks them all.
 const fonts = vi.hoisted(() => ({
@@ -96,14 +99,14 @@ describe("LabelFontRow", () => {
   it("applies an already loaded font at once", async () => {
     fonts.loaded.add("Arial");
     const onChange = await openPicker({ family: "Fira Sans", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
+    fireEvent.click(optionByLabel("Arial"));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ family: "Arial" }));
   });
 
   it("applies a font that still has to load once it has loaded", async () => {
     const onChange = await openPicker({ family: "Fira Sans", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
+    fireEvent.click(optionByLabel("Arial"));
     expect(onChange).not.toHaveBeenCalled();
     await finishLoading("Arial");
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -112,8 +115,8 @@ describe("LabelFontRow", () => {
 
   it("drops a slow load that finishes after a newer pick, whichever order they finish in", async () => {
     const onChange = await openPicker({ family: "Fira Sans", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
-    fireEvent.click(screen.getByRole("option", { name: "Consolas" }));
+    fireEvent.click(optionByLabel("Arial"));
+    fireEvent.click(optionByLabel("Consolas"));
     // The newer pick finishes first, the older one afterwards: the older one must not overwrite it.
     await finishLoading("Consolas");
     await finishLoading("Arial");
@@ -123,8 +126,8 @@ describe("LabelFontRow", () => {
 
   it("drops an older load that finishes before the newer one", async () => {
     const onChange = await openPicker({ family: "Fira Sans", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
-    fireEvent.click(screen.getByRole("option", { name: "Consolas" }));
+    fireEvent.click(optionByLabel("Arial"));
+    fireEvent.click(optionByLabel("Consolas"));
     await finishLoading("Arial");
     expect(onChange).not.toHaveBeenCalled();
     await finishLoading("Consolas");
@@ -134,7 +137,7 @@ describe("LabelFontRow", () => {
 
   it("drops a pending load once Cancel has restored the open-time font", async () => {
     const onChange = await openPicker({ family: "Fira Sans", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
+    fireEvent.click(optionByLabel("Arial"));
     fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
     expect(onChange).toHaveBeenCalledTimes(1);
     await finishLoading("Arial");
@@ -153,7 +156,7 @@ describe("LabelFontRow", () => {
     });
     fireEvent.click(screen.getByTestId("font-button"));
     await act(async () => {});
-    fireEvent.click(screen.getByRole("option", { name: "Arial" }));
+    fireEvent.click(optionByLabel("Arial"));
     // Arial never loads, so the preview itself is not applied.
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
@@ -169,14 +172,14 @@ describe("LabelFontRow with baked MSDF fonts (GitHub issue #982)", () => {
 
   it("applies a pick of a baked font that is already loaded at once", async () => {
     const onChange = await openPicker({ family: "", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Noto Serif" }));
+    fireEvent.click(optionByLabel("Noto Serif"));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith({ family: "msdf:noto-serif", weight: 400 });
   });
 
   it("applies a pick of a baked font that still has to download once it has loaded", async () => {
     const onChange = await openPicker({ family: "", weight: 400 });
-    fireEvent.click(screen.getByRole("option", { name: "Fira Sans" }));
+    fireEvent.click(optionByLabel("Fira Sans"));
     expect(onChange).not.toHaveBeenCalled();
     await finishLoading("msdf:fira-sans");
     expect(onChange).toHaveBeenCalledTimes(1);
