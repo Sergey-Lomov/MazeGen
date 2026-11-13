@@ -224,6 +224,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       _postEditRequestId: 0,
       showMaze: true,
       // analytics overlays
+      showGridOverlay: file.analytics.showGridOverlay,
       showMazeOverlay: file.analytics.showMazeOverlay,
       showComponentsOverlay: file.analytics.showComponentsOverlay,
       showGraphOverlay: file.analytics.showGraphOverlay,

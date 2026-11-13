@@ -47,6 +47,7 @@ export interface ProjectFilePostEdit {
 }
 
 export interface ProjectFileAnalytics {
+  showGridOverlay: boolean;
   showMazeOverlay: boolean;
   showComponentsOverlay: boolean;
   showGraphOverlay: boolean;

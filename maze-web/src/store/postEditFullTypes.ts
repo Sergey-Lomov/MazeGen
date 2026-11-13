@@ -33,6 +33,7 @@ export interface IssueHighlightEdge {
 }
 
 export interface AnalyticsOverlayState {
+  showGridOverlay: boolean;
   showMazeOverlay: boolean;
   showComponentsOverlay: boolean;
   showGraphOverlay: boolean;
@@ -64,6 +65,7 @@ export interface AnalyticsOverlayState {
 }
 
 export interface AnalyticsOverlayActions {
+  setShowGridOverlay: (v: boolean) => void;
   setShowMazeOverlay: (v: boolean) => void;
   setShowComponentsOverlay: (v: boolean) => void;
   setShowGraphOverlay: (v: boolean) => void;
