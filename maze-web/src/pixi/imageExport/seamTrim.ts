@@ -3,6 +3,25 @@ import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter, getCellVertices, getFaceEdgeSegment, getCellNeighborOffsets } from "../tessellationGeometry";
 import { getSeamModel } from "../selectors/seams";
 
+/** Smallest `1 - dot` of two outward normals at a shared vertex that still needs a wedge. A strip reaches
+ *  `margin` beyond the wall, so even a tiny angle between neighbors opens a visible sliver there. */
+const WEDGE_MIN_ANGLE_DEFICIT = 1e-9;
+
+/** Unit normal of the chord `(x0, y0)-(x1, y1)` pointing away from `center`, or `[0, 0]` for a point. The
+ *  normal is the chord's own, not the direction from the center: on a curved side the two differ, and
+ *  strips of consecutive chords along one arc would not line up. */
+function outwardChordNormal(x0: number, y0: number, x1: number, y1: number, center: { x: number; y: number }): [number, number] {
+  const length = Math.hypot(x1 - x0, y1 - y0);
+  if (length === 0) return [0, 0];
+  let nx = (y1 - y0) / length;
+  let ny = -(x1 - x0) / length;
+  if (nx * ((x0 + x1) / 2 - center.x) + ny * ((y0 + y1) / 2 - center.y) < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  return [nx, ny];
+}
+
 /** Polygons of the trim mask: every cell, plus an outward strip along each ordinary field edge. A glued
  *  face gets no strip, so artwork under the mask is cut at that exact boundary (`Specs/image-export.md`,
  *  "Topology section"). Display space. */
@@ -24,12 +43,8 @@ export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldC
       for (let index = 1; index < edge.polyline.length; index++) {
         const [x0, y0] = edge.polyline[index - 1];
         const [x1, y1] = edge.polyline[index];
-        const mx = (x0 + x1) / 2;
-        const my = (y0 + y1) / 2;
-        const length = Math.hypot(mx - center.x, my - center.y);
-        if (length === 0) continue;
-        const nx = (mx - center.x) / length;
-        const ny = (my - center.y) / length;
+        const [nx, ny] = outwardChordNormal(x0, y0, x1, y1, center);
+        if (nx === 0 && ny === 0) continue;
         polygons.push([x0, y0, x1, y1, x1 + nx * margin, y1 + ny * margin, x0 + nx * margin, y0 + ny * margin]);
         for (const [px, py] of [[x0, y0], [x1, y1]]) {
           const key = `${Math.round(px * 100)},${Math.round(py * 100)}`;
@@ -49,7 +64,8 @@ export function trimMaskPolygons(cells: readonly [number, number][], cfg: FieldC
       for (let j = i + 1; j < entries.length; j++) {
         const a = entries[i];
         const b = entries[j];
-        if (a.cell !== b.cell || a.nx * b.nx + a.ny * b.ny > 0.999) continue;
+        const dot = a.nx * b.nx + a.ny * b.ny;
+        if (dot > 1 - WEDGE_MIN_ANGLE_DEFICIT) continue;
         polygons.push([a.x, a.y, a.x + a.nx * margin, a.y + a.ny * margin, b.x + b.nx * margin, b.y + b.ny * margin]);
       }
     }
