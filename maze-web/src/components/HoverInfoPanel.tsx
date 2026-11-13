@@ -18,7 +18,13 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [scale, setScale] = useState<number>(1);
   const [sizes, setSizes] = useState<FieldSizeReadout>(EMPTY_FIELD_SIZE_READOUT);
-  const isExportMode = useMazeStore((s) => s.openCard === "image_export");
+  // Same condition as the print sheet frame (`ExportFrameOverlay`): the zoom is meaningless only
+  // while the sheet layout is on screen.
+  const isPrintSheetShown = useMazeStore((s) =>
+    s.openCard === "image_export"
+    && s.openExportFormatSettings === "png"
+    && !s.exportFormatSettingsCovered
+    && s.pngExportSettings.outputMode === "print");
 
   useEffect(() => {
     if (!scene) { setHover(null); return; }
@@ -88,7 +94,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
 
   return (
     <div style={styles.bar}>
-      {scene && !isExportMode && (
+      {scene && !isPrintSheetShown && (
         <Tooltip content="Reset zoom to 100% (Shift+1)"><span
           role="button"
           tabIndex={0}
