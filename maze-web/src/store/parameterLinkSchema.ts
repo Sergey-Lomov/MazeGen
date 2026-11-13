@@ -200,8 +200,12 @@ function endpointOpening(kind: "startOpening" | "finishOpening", group: Thunk<st
     mode: f("openingMode", `${VW}.opening_mode`),
     pattern: f("oneWayPattern", `${VW}.one_way_pattern`, { active: on }),
     color: f("color", `${VW}.one_way_color`, { active: on }),
-    size: f("number", `${VW}.one_way_size`, { active: on }),
-    thickness: f("number", `${VW}.one_way_thickness`, { active: on }),
+    "geometry.triangle.size": f("number", `${VW}.one_way_triangle_size`, { active: R[`${kind}Triangle`] }),
+    "geometry.chevron.size": f("number", `${VW}.one_way_chevron_size`, { active: R[`${kind}Chevron`] }),
+    "geometry.chevron.thickness": f("number", `${VW}.one_way_chevron_thickness`, { active: R[`${kind}Chevron`] }),
+    "geometry.arrow.length": f("number", `${VW}.one_way_arrow_length`, { active: R[`${kind}Arrow`] }),
+    "geometry.arrow.headWidth": f("number", `${VW}.one_way_arrow_head_width`, { active: R[`${kind}Arrow`] }),
+    "geometry.arrow.thickness": f("number", `${VW}.one_way_arrow_thickness`, { active: R[`${kind}Arrow`] }),
     gapWidth: f("number", `${VW}.one_way_gap_width`, { active: on }),
     join: f("cornerStyle", `${VW}.one_way_join`, { active: on }),
   }));
@@ -294,14 +298,20 @@ export const LINK_SCHEMA = {
   ...section(BOTH, { group: G.oneWays, active: R.oneWays }, {
     oneWayJoin: f("cornerStyle", `${VW}.one_way_join`, { update: "oneWay" }),
     oneWayColor: f("color", `${VW}.one_way_color`, { labelBy: { corridors: "image_export.vector_by_corridors.one_way_color" } }),
-    oneWayThickness: f("number", `${VW}.one_way_thickness`, { labelBy: { corridors: "image_export.vector_by_corridors.one_way_thickness" } }),
   }),
   ...section(WALLS, { group: G.oneWays, active: R.oneWays }, {
     oneWayPattern: f("oneWayPattern", `${VW}.one_way_pattern`),
     oneWayGapWidth: f("number", `${VW}.one_way_gap_width`),
-    oneWaySize: f("number", `${VW}.one_way_size`),
+    // Each pattern has its own size parameters, shown only while it is the selected pattern (GitHub issue #993).
+    "oneWayGeometry.triangle.size": f("number", `${VW}.one_way_triangle_size`, { active: R.oneWayTriangle }),
+    "oneWayGeometry.chevron.size": f("number", `${VW}.one_way_chevron_size`, { active: R.oneWayChevron }),
+    "oneWayGeometry.chevron.thickness": f("number", `${VW}.one_way_chevron_thickness`, { active: R.oneWayChevron }),
+    "oneWayGeometry.arrow.length": f("number", `${VW}.one_way_arrow_length`, { active: R.oneWayArrow }),
+    "oneWayGeometry.arrow.headWidth": f("number", `${VW}.one_way_arrow_head_width`, { active: R.oneWayArrow }),
+    "oneWayGeometry.arrow.thickness": f("number", `${VW}.one_way_arrow_thickness`, { active: R.oneWayArrow }),
   }),
   ...section(CORRIDORS, { group: G.oneWays, active: R.oneWays }, {
+    oneWayThickness: f("number", "image_export.vector_by_corridors.one_way_thickness"),
     oneWayCount: f("number", "image_export.vector_by_corridors.one_way_count"),
     oneWayGap: f("number", "image_export.vector_by_corridors.one_way_gap"),
     oneWayWidth: f("number", "image_export.vector_by_corridors.one_way_width"),

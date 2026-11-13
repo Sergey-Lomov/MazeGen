@@ -10,6 +10,7 @@ import type {
   PngExportSettings,
   MarkerSettings,
   WaypointOpeningSettings,
+  DirectionIndicatorGeometry,
   MarkerIndexSettings,
   MarkerLayoutSettingsFields,
   FloorLabelSettings,
@@ -55,8 +56,19 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
 
 /** A start/finish external passage (GitHub issue #330): off, drawn with the default one-way indicator look. */
 function openingSettings(): WaypointOpeningSettings {
-  const { pattern, color, size, thickness, gapWidth, join } = DEFAULT_MAZE_RENDER_STYLE.oneWay;
-  return { mode: "none", pattern, color, size, thickness, gapWidth, join };
+  const { pattern, color, gapWidth, join } = DEFAULT_MAZE_RENDER_STYLE.oneWay;
+  return { mode: "none", pattern, color, geometry: defaultIndicatorGeometry(), gapWidth, join };
+}
+
+/** Every pattern starts from the map's own one-way indicator (GitHub issue #993): the same size and
+ *  line thickness for all three, the arrow with the head it always had. */
+export function defaultIndicatorGeometry(): DirectionIndicatorGeometry {
+  const { size, thickness, headWidth } = DEFAULT_MAZE_RENDER_STYLE.oneWay;
+  return {
+    triangle: { size },
+    chevron: { size, thickness },
+    arrow: { length: size, headWidth, thickness },
+  };
 }
 
 /** Shared defaults for the four "Shared style" source values (GitHub issue #322, generalized by
@@ -343,8 +355,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     oneWayPattern: DEFAULT_MAZE_RENDER_STYLE.oneWay.pattern,
     oneWayColor: DEFAULT_MAZE_RENDER_STYLE.oneWay.color,
     oneWayGapWidth: DEFAULT_MAZE_RENDER_STYLE.oneWay.gapWidth,
-    oneWaySize: DEFAULT_MAZE_RENDER_STYLE.oneWay.size,
-    oneWayThickness: DEFAULT_MAZE_RENDER_STYLE.oneWay.thickness,
+    oneWayGeometry: defaultIndicatorGeometry(),
     oneWayJoin: DEFAULT_MAZE_RENDER_STYLE.oneWay.join,
     startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker, "S"),
     finishMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.finishMarker, "F"),

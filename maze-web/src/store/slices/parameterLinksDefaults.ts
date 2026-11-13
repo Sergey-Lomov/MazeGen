@@ -100,8 +100,12 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("startOpening.gapWidth", "finishOpening.gapWidth"),
   link("startOpening.pattern", "finishOpening.pattern"),
   link("startOpening.color", "finishOpening.color"),
-  link("startOpening.size", "finishOpening.size"),
-  link("startOpening.thickness", "finishOpening.thickness"),
+  link("startOpening.geometry.triangle.size", "finishOpening.geometry.triangle.size"),
+  link("startOpening.geometry.chevron.size", "finishOpening.geometry.chevron.size"),
+  link("startOpening.geometry.chevron.thickness", "finishOpening.geometry.chevron.thickness"),
+  link("startOpening.geometry.arrow.length", "finishOpening.geometry.arrow.length"),
+  link("startOpening.geometry.arrow.headWidth", "finishOpening.geometry.arrow.headWidth"),
+  link("startOpening.geometry.arrow.thickness", "finishOpening.geometry.arrow.thickness"),
   link("startOpening.join", "finishOpening.join"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — the panel-level group

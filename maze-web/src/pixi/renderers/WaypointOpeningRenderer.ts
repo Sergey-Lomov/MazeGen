@@ -82,7 +82,7 @@ export class WaypointOpeningRenderer {
     this.main.clear();
     for (const arrow of arrows) {
       const { x, y, dx, dy, style } = arrow;
-      const look: OneWayDrawStyle = { color: style.color, gapColor: style.gapColor, gapWidth: style.gapWidth, size: style.size, thickness: style.thickness, join: style.join, cap: style.cap };
+      const look: OneWayDrawStyle = { color: style.color, gapColor: style.gapColor, gapWidth: style.gapWidth, size: style.size, thickness: style.thickness, headWidth: style.headWidth, join: style.join, cap: style.cap };
       if (style.gapWidth) {
         const gap = new Graphics();
         const mask = new Graphics();

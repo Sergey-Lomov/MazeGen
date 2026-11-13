@@ -246,7 +246,8 @@ describe("activity rules", () => {
   it("every field of a mode is reachable in some maze/settings combination", () => {
     const marks = { ...SETTINGS.abstract, creases: { showCreases: true, mode: "marks" } } as ParamActivitySettings;
     const circle = { elevatorBadges: { enabled: true, placement: "full_circle" } } as const;
-    const combos: [LinkMode, ParamActivitySettings][] = [["walls", SETTINGS.abstract], ["walls", { ...SETTINGS.abstract, ...circle }], ["walls", marks], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, ...circle }], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }], ["corridors", { ...SETTINGS.corridors, creases: { showCreases: true, mode: "marks" } }]];
+    const patternOf = (pattern: string): ParamActivitySettings => ({ ...SETTINGS.abstract, oneWayPattern: pattern, startOpening: { mode: "both", pattern }, finishOpening: { mode: "both", pattern } });
+    const combos: [LinkMode, ParamActivitySettings][] = [["walls", patternOf("chevron")], ["walls", patternOf("arrow")], ["walls", SETTINGS.abstract], ["walls", { ...SETTINGS.abstract, ...circle }], ["walls", marks], ["walls", SETTINGS.decorative], ["corridors", SETTINGS.corridors], ["corridors", { ...SETTINGS.corridors, ...circle }], ["corridors", { ...SETTINGS.corridors, teleportConnectorStyle: "curved" }], ["corridors", { ...SETTINGS.corridors, creases: { showCreases: true, mode: "marks" } }]];
     for (const mode of MODES) {
       const reachable = new Set<string>();
       for (const [m, settings] of combos) {

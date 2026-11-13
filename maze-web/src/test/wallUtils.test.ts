@@ -17,7 +17,7 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, drawCellBoundaryHighlight, clampBoundaryInset, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, oneWayIndicatorSpan, drawOneWayWallHighlight, drawCellBoundaryHighlight, clampBoundaryInset, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -202,6 +202,26 @@ describe("drawOneWayArrow", () => {
     // 7.5 - 3.75 = 3.75).
     expect(x).toBeCloseTo(3.75, 5);
     expect(x).toBeLessThan(7.5);
+  });
+
+  it("takes the arrowhead's width from headWidth, independent of the arrow's length (GitHub issue #993)", () => {
+    const wingOffset = (style: { size: number; headWidth?: number }) => {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { thickness: 4, ...style });
+      const moves = g.calls.filter((c) => c.fn === "moveTo");
+      // The second moveTo starts the head's first wing, off-axis by half the head width.
+      return Math.abs((moves[1].args as [number, number])[1]);
+    };
+    expect(wingOffset({ size: 20, headWidth: 10 })).toBeCloseTo(5, 5);
+    expect(wingOffset({ size: 40, headWidth: 10 })).toBeCloseTo(5, 5);
+  });
+
+  it("keeps the previous head proportions when headWidth is not given", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
+    const moves = g.calls.filter((c) => c.fn === "moveTo");
+    // headSize = 3.75, wing base offset = 0.6 * headSize.
+    expect(Math.abs((moves[1].args as [number, number])[1])).toBeCloseTo(0.6 * 3.75, 5);
   });
 
   it("uses the thickness style knob for its stroke width, independent of size", () => {
@@ -473,6 +493,50 @@ describe("sharp tip of chevron/arrow at a miter join", () => {
     expect(Math.abs(mainPts[2].y)).toBeGreaterThan(Math.abs(mainPts[1].y));
     expect(mainPts[3].y).toBeCloseTo(0);
     expect(Math.max(...pts(gap).map((p) => p.x))).toBeGreaterThan(mainPts[3].x);
+  });
+
+  it("arrow head keeps its shape when only the length changes", () => {
+    const headBack = (size: number) => {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { size, thickness: 4, headWidth: 8, join: "miter" });
+      const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+      // Tip x minus back-edge x: the head's own length.
+      return poly[6] - poly[4];
+    };
+    expect(headBack(60)).toBeCloseTo(headBack(40));
+  });
+
+  it("a degenerate miter arrow (zero size / zero head) emits only finite coordinates", () => {
+    for (const style of [{ size: 0, thickness: 4, gapWidth: 2 }, { size: 30, thickness: 4, headWidth: 0, gapWidth: 2 }]) {
+      const g = newG();
+      drawOneWayArrow(g, 0, 0, 1, 0, { ...style, join: "miter" });
+      for (const c of g.calls.filter((call) => call.fn === "poly")) {
+        expect((c.args[0] as number[]).every(Number.isFinite)).toBe(true);
+      }
+    }
+  });
+
+  it("the arrow's indicator span follows its head width, defaulting to the head proportion", () => {
+    const span = (headWidth?: number) => oneWayIndicatorSpan({ pattern: "arrow", size: 40, thickness: 4, headWidth });
+    expect(span(10) - span(6)).toBeCloseTo(4);
+    expect(span(undefined)).toBeCloseTo(span(40 * 0.225));
+  });
+
+  it("a narrow arrow head's gap tip stays within the reach limit", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 40, thickness: 4, headWidth: 2, join: "miter", gapWidth: 4 });
+    const [gap] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    const tipX = 40 * 0.5 * 0.75;
+    const maxX = Math.max(...gap.filter((_, i) => i % 2 === 0));
+    expect(maxX - tipX).toBeLessThanOrEqual(2 * (2 + 4) + 1e-6);
+  });
+
+  it("a narrow chevron's miter tip stays within the reach limit", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, width: 2, thickness: 6, join: "miter" });
+    const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    // With `width` set, `size` is the tip's distance from the center.
+    expect(Math.max(...poly.filter((_, i) => i % 2 === 0)) - 20).toBeLessThanOrEqual(2 * 3 + 1e-6);
   });
 
   it("a round join draws no spike", () => {

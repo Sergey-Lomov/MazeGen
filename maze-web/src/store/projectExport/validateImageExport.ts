@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type WaypointOpeningSettings, type WaypointOpeningMode, WAYPOINT_OPENING_MODES, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
+  type MarkerSettings, type WaypointOpeningSettings, DirectionIndicatorGeometry, type WaypointOpeningMode, WAYPOINT_OPENING_MODES, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
@@ -165,10 +165,30 @@ export function validateWaypointOpening(v: unknown, path: string, fallback: Wayp
     ...(typeof face === "number" && Number.isInteger(face) && face >= 0 ? { face } : {}),
     pattern: optOneWayPattern(obj, "pattern", fallback.pattern),
     color: optNumber(obj, "color", fallback.color),
-    size: optNumber(obj, "size", fallback.size),
-    thickness: optNumber(obj, "thickness", fallback.thickness),
+    geometry: validateIndicatorGeometry(obj?.geometry, fallback.geometry),
     gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
     join: optCornerStyle(obj, "join", fallback.join),
+  };
+}
+
+/** The per-pattern indicator parameters (GitHub issue #993), read leniently: a missing record or a
+ *  non-numeric parameter keeps its default, so no pattern's set can be lost to another's. */
+export function validateIndicatorGeometry(v: unknown, fallback: DirectionIndicatorGeometry): DirectionIndicatorGeometry {
+  const read = (key: keyof DirectionIndicatorGeometry): Record<string, unknown> | null =>
+    typeof v === "object" && v !== null && typeof (v as Record<string, unknown>)[key] === "object"
+      ? ((v as Record<string, unknown>)[key] as Record<string, unknown> | null)
+      : null;
+  const triangle = read("triangle");
+  const chevron = read("chevron");
+  const arrow = read("arrow");
+  return {
+    triangle: { size: optNumber(triangle, "size", fallback.triangle.size) },
+    chevron: { size: optNumber(chevron, "size", fallback.chevron.size), thickness: optNumber(chevron, "thickness", fallback.chevron.thickness) },
+    arrow: {
+      length: optNumber(arrow, "length", fallback.arrow.length),
+      headWidth: optNumber(arrow, "headWidth", fallback.arrow.headWidth),
+      thickness: optNumber(arrow, "thickness", fallback.arrow.thickness),
+    },
   };
 }
 
@@ -711,8 +731,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     oneWayPattern: optOneWayPattern(obj, "oneWayPattern", d.oneWayPattern),
     oneWayColor: optNumber(obj, "oneWayColor", d.oneWayColor),
     oneWayGapWidth: optNumber(obj, "oneWayGapWidth", d.oneWayGapWidth),
-    oneWaySize: optNumber(obj, "oneWaySize", d.oneWaySize),
-    oneWayThickness: optNumber(obj, "oneWayThickness", d.oneWayThickness),
+    oneWayGeometry: validateIndicatorGeometry(obj.oneWayGeometry, d.oneWayGeometry),
     oneWayJoin: optCornerStyle(obj, "oneWayJoin", d.oneWayJoin),
     startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),

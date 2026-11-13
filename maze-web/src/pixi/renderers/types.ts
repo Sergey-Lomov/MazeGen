@@ -58,6 +58,8 @@ export type OneWayStyleOverride = {
   /** Chevron/arrow's own line thickness — independent of `size` (geometric scale). Has no effect
    *  on the `triangle` pattern (a filled shape, no line stroke of its own). */
   thickness: number;
+  /** Arrowhead's full width — read by the `arrow` pattern only (GitHub issue #993). */
+  headWidth: number;
   join: CornerStyle;
   cap: "round" | "square";
 };

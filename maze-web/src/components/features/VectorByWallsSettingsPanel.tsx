@@ -13,6 +13,7 @@ import { ExportWarningsSection } from "./ExportWarningsSection";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { WaypointOpeningSubsection } from "./WaypointOpeningSubsection";
+import { IndicatorGeometryRows } from "./IndicatorGeometryRows";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
@@ -81,8 +82,7 @@ export function VectorByWallsSettingsPanel() {
   const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
   const setOneWayColor = useMazeStore((s) => s.setVectorByWallsOneWayColor);
   const setOneWayGapWidth = useMazeStore((s) => s.setVectorByWallsOneWayGapWidth);
-  const setOneWaySize = useMazeStore((s) => s.setVectorByWallsOneWaySize);
-  const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
+  const setOneWayGeometry = useMazeStore((s) => s.setVectorByWallsOneWayGeometry);
   const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const patchMarker = useMazeStore((s) => s.patchVectorByWallsMarker);
   const patchOpening = useMazeStore((s) => s.patchVectorByWallsOpening);
@@ -406,7 +406,7 @@ export function VectorByWallsSettingsPanel() {
               onChange={(patch) => patchOpening("startOpening", patch)}
               isExpanded={isExpanded}
               onToggle={toggleSection}
-              linkTargets={{ mode: "startOpening.mode", pattern: "startOpening.pattern", color: "startOpening.color", size: "startOpening.size", thickness: "startOpening.thickness", gapWidth: "startOpening.gapWidth", join: "startOpening.join" }}
+              linkTargets={{ mode: "startOpening.mode", pattern: "startOpening.pattern", color: "startOpening.color", gapWidth: "startOpening.gapWidth", join: "startOpening.join" }}
               field={PC.startOpeningArrow}
               defaultColor={D.startOpening.color}
               priorityColors={[startFill, startBorder, floor, wall]}
@@ -451,7 +451,7 @@ export function VectorByWallsSettingsPanel() {
               onChange={(patch) => patchOpening("finishOpening", patch)}
               isExpanded={isExpanded}
               onToggle={toggleSection}
-              linkTargets={{ mode: "finishOpening.mode", pattern: "finishOpening.pattern", color: "finishOpening.color", size: "finishOpening.size", thickness: "finishOpening.thickness", gapWidth: "finishOpening.gapWidth", join: "finishOpening.join" }}
+              linkTargets={{ mode: "finishOpening.mode", pattern: "finishOpening.pattern", color: "finishOpening.color", gapWidth: "finishOpening.gapWidth", join: "finishOpening.join" }}
               field={PC.finishOpeningArrow}
               defaultColor={D.finishOpening.color}
               priorityColors={[finishFill, finishBorder, floor, wall]}
@@ -512,26 +512,7 @@ export function VectorByWallsSettingsPanel() {
                 onChange={setOneWayJoin}
                 linkTarget="oneWayJoin"
               />
-              <LinkedSliderRow
-                label={m["image_export.vector_by_walls.one_way_size"]()}
-                value={settings.oneWaySize}
-                onChange={setOneWaySize}
-                min={0.05 * TILE_SIZE}
-                max={TILE_SIZE}
-                step={1}
-                format={(v) => String(Math.round(v))}
-                linkTarget="oneWaySize"
-              />
-              <LinkedSliderRow
-                label={m["image_export.vector_by_walls.one_way_thickness"]()}
-                value={settings.oneWayThickness}
-                onChange={setOneWayThickness}
-                min={1}
-                max={10}
-                step={1}
-                format={(v) => String(v)}
-                linkTarget="oneWayThickness"
-              />
+              <IndicatorGeometryRows geometry={settings.oneWayGeometry} onChange={setOneWayGeometry} prefix="oneWayGeometry" />
             </div>
           )}
         </>

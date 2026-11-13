@@ -1,18 +1,18 @@
 import type * as React from "react";
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { WaypointOpeningMode, WaypointOpeningSettings } from "../../store/imageExportTypes";
+import type { DirectionIndicatorGeometry, WaypointOpeningMode, WaypointOpeningPatch, WaypointOpeningSettings } from "../../store/imageExportTypes";
 import type { OneWayPattern } from "../../pixi/renderers/types";
 import type { ColorField, ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { endpointOuterFaces, floorCellSet, resolveOpeningFace, type OuterFace } from "../../pixi/selectors/mazeSelectors/waypointOpening";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/exportStyleBuilders";
-import { TILE_SIZE } from "../../pixi/constants";
 import { indent, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { SectionHeader } from "../SectionHeader";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useGate } from "./LinkContext";
+import { IndicatorGeometryRows } from "./IndicatorGeometryRows";
 import * as m from "~/paraglide/messages";
 
 type Kind = "start" | "finish";
@@ -66,10 +66,10 @@ export function WaypointOpeningSubsection({ kind, sectionId, settings, onChange,
   /** The owning group's id (e.g. `"markers_start"`); the subsection's own expand id is `${sectionId}_opening`. */
   sectionId: string;
   settings: WaypointOpeningSettings;
-  onChange: (patch: Partial<WaypointOpeningSettings>) => void;
+  onChange: (patch: WaypointOpeningPatch) => void;
   isExpanded: (id: string) => boolean;
   onToggle: (id: string) => void;
-  linkTargets: { mode: "startOpening.mode" | "finishOpening.mode"; pattern: "startOpening.pattern" | "finishOpening.pattern"; color: "startOpening.color" | "finishOpening.color"; size: "startOpening.size" | "finishOpening.size"; thickness: "startOpening.thickness" | "finishOpening.thickness"; gapWidth: "startOpening.gapWidth" | "finishOpening.gapWidth"; join: "startOpening.join" | "finishOpening.join" };
+  linkTargets: { mode: "startOpening.mode" | "finishOpening.mode"; pattern: "startOpening.pattern" | "finishOpening.pattern"; color: "startOpening.color" | "finishOpening.color"; gapWidth: "startOpening.gapWidth" | "finishOpening.gapWidth"; join: "startOpening.join" | "finishOpening.join" };
   field: ColorField;
   defaultColor: number;
   priorityColors: ProjectColorEntry[];
@@ -131,25 +131,13 @@ export function WaypointOpeningSubsection({ kind, sectionId, settings, onChange,
                   priorityColors={priorityColors}
                   linkTarget={linkTargets.color}
                 />
-                <LinkedSliderRow
-                  label={m["image_export.vector_by_walls.one_way_size"]()}
-                  value={settings.size}
-                  onChange={(size) => onChange({ size })}
-                  min={0.05 * TILE_SIZE}
-                  max={TILE_SIZE}
-                  step={1}
-                  format={(v) => String(Math.round(v))}
-                  linkTarget={linkTargets.size}
-                />
-                <LinkedSliderRow
-                  label={m["image_export.vector_by_walls.one_way_thickness"]()}
-                  value={settings.thickness}
-                  onChange={(thickness) => onChange({ thickness })}
-                  min={1}
-                  max={10}
-                  step={1}
-                  format={(v) => String(v)}
-                  linkTarget={linkTargets.thickness}
+                <IndicatorGeometryRows
+                  geometry={settings.geometry}
+                  onChange={(leaf, value) => {
+                    const [pattern, param] = leaf.split(".") as [keyof DirectionIndicatorGeometry, string];
+                    onChange({ geometry: { [pattern]: { [param]: value } } });
+                  }}
+                  prefix={`${kind}Opening.geometry`}
                 />
                 <LinkedSliderRow
                   label={m["image_export.vector_by_walls.one_way_gap_width"]()}

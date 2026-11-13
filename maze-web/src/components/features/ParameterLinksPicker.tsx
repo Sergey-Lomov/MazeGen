@@ -369,9 +369,9 @@ export function ParamPicker<P extends string>({
             {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
             {node.label}
             {groupDisabled && (
-              <span style={styles.inactiveBadge}>
+              <Tooltip content={m["image_export.param_links.cycle_hint"]()}><span style={styles.inactiveBadge}>
                 <Repeat size={13} strokeWidth={2.5} />
-              </span>
+              </span></Tooltip>
             )}
             {groupInactive && (
               <Tooltip content={m["image_export.param_links.inactive_hint"]()}><span style={styles.inactiveBadge}>

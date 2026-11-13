@@ -103,8 +103,6 @@ describe("flat vector setters write their settings path", () => {
     ["OneWayPattern", "oneWayPattern", "chevron"],
     ["OneWayColor", "oneWayColor", 0x666666],
     ["OneWayGapWidth", "oneWayGapWidth", 4],
-    ["OneWaySize", "oneWaySize", 0.4],
-    ["OneWayThickness", "oneWayThickness", 6],
     ["OneWayJoin", "oneWayJoin", "miter"],
     ["MarkerLayout", "markerLayout", "grid"],
     ["SplitSpecialShapes", "splitSpecialShapes", false],

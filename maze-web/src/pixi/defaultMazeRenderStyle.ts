@@ -4,7 +4,7 @@ import type { MarkerStyle } from "./selectors/mazeSelectors";
 import { canvas } from "./colorTokens";
 import { DEFAULT_LABEL_FONT } from "./renderers/fontChoice";
 import { TILE_SIZE } from "./constants";
-import { WALL_THICKNESS, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TELEPORT_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
+import { WALL_THICKNESS, HEAD_WIDTH_RATIO, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TELEPORT_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 
 export interface MazeRenderStyle {
   backgroundColor: number;
@@ -37,7 +37,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
   wall: { color: canvas.wall.default, width: WALL_THICKNESS, join: "round", cap: "round" },
   oneWay: {
     pattern: "triangle", color: 0xffaa00, gapColor: canvas.floor.default, gapWidth: 3,
-    size: TILE_SIZE * 0.3, thickness: 4, join: "round", cap: "round",
+    size: TILE_SIZE * 0.3, thickness: 4, headWidth: TILE_SIZE * 0.3 * HEAD_WIDTH_RATIO, join: "round", cap: "round",
   },
   startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, sizeAdaptation: 0, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default, text: "" },
   finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, sizeAdaptation: 0, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default, text: "" },

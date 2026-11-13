@@ -23,4 +23,13 @@ describe("external passage default links, end to end (GitHub issue #330)", () =>
     expect(linkOf("finishOpening.mode")?.enabled).toBe(false);
     expect(linkOf("finishOpening.gapWidth")?.enabled).toBe(false);
   });
+
+  it("a geometry parameter edit goes through the links per leaf: the finish follows it and keeps its links to the start", () => {
+    useMazeStore.getState().patchVectorByWallsOpening("startOpening", { geometry: { arrow: { headWidth: 9 } } });
+    expect(settings().startOpening.geometry.arrow.headWidth).toBe(9);
+    expect(settings().finishOpening.geometry.arrow.headWidth).toBe(9);
+    expect(settings().finishOpening.geometry.arrow.length).toBe(settings().startOpening.geometry.arrow.length);
+    expect(linkOf("finishOpening.geometry.arrow.headWidth")?.enabled).toBe(true);
+    expect(linkOf("finishOpening.geometry.arrow.length")?.enabled).toBe(true);
+  });
 });

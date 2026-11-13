@@ -54,8 +54,9 @@ export interface ParamActivitySettings {
   splitSpecialShapes?: boolean;
   startMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
   finishMarker?: { markerEnabled?: boolean; textEnabled?: boolean };
-  startOpening?: { mode?: string };
-  finishOpening?: { mode?: string };
+  oneWayPattern?: string;
+  startOpening?: { mode?: string; pattern?: string };
+  finishOpening?: { mode?: string; pattern?: string };
   floorLabel?: { enabled: boolean; labelMode: "index" | "title"; backgroundShape: "none" | "rectangle" | "parallelogram"; borderWidth?: number };
   randomWallColorMode?: "off" | "per_pass" | "per_segment";
 }

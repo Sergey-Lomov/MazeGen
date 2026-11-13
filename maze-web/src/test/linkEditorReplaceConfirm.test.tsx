@@ -45,6 +45,24 @@ describe("LinkEditor cycle filtering", () => {
     expect(document.querySelectorAll('[aria-disabled="true"]')).toHaveLength(1);
   });
 
+  it("explains a group whose every leaf is cyclic with the same tooltip", () => {
+    const grouped: Record<P, ParamDescriptor> = { a: registry.a, b: { ...registry.b, group: ["Group"] }, c: registry.c };
+    render(
+      <LinkEditor<P>
+        registry={grouped}
+        activePaths={new Set<P>(["a", "b", "c"])}
+        existingLinks={existing}
+        initialSource={null}
+        initialTarget="a"
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // Target column lists the group too (no badge there); the source column's copy is the last one.
+    const anchor = screen.getAllByText("Group").at(-1)?.querySelector<HTMLElement>('[data-testid="tooltip-anchor"]');
+    expect(document.getElementById(anchor?.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/cyclic/i);
+  });
+
   it("drops an already-picked source when a new target makes it cyclic", () => {
     const onSave = renderEditor("b", null, existing);
     fireEvent.click(screen.getAllByText("Alpha")[0]);

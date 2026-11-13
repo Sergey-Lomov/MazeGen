@@ -6,7 +6,7 @@ import { getSeamModel } from "../selectors/seams";
 import type { FieldConfig } from "../../fieldConfig";
 import type { WorldPoint } from "../../wasm/mazeService";
 import { drawRoundedPolygon } from "./markerShapes";
-import { WALL_THICKNESS } from "../renderConstants";
+import { WALL_THICKNESS, HEAD_WIDTH_RATIO } from "../renderConstants";
 import { tracePath } from "../geometry/pathRenderer";
 import { offsetPolyline, polylineLength, trimPolyline } from "../geometry/polylineOps";
 
@@ -37,6 +37,10 @@ export type OneWayDrawStyle = {
    *  opening), so every existing caller (`VectorByWallsRenderer`'s plain single chevron) is
    *  unaffected. Only read by `drawOneWayChevron`. */
   width?: number;
+  /** Arrowhead's full width across the direction, world units — independent of `size` (the arrow's
+   *  tail-to-tip length), GitHub issue #993. Defaults to `HEAD_WIDTH_RATIO * size` (the head every
+   *  caller drew before the knob existed). Only read by `drawOneWayArrow`. */
+  headWidth?: number;
   /** Draws only one of the two passes — `"gap"` the gap ring, `"main"` the indicator itself — so a caller can
    *  clip the gap alone (the waypoint pointer's gap must not spill past the maze floor). Both when unset. */
   layer?: "gap" | "main";
@@ -89,7 +93,7 @@ export function oneWayIndicatorSpan(style?: OneWayDrawStyle): number {
     case "chevron":
       return 2 * (style?.width ?? size * 1.4) + resolvedThickness(style) + gap * 2 + BOUNDARY_HIGHLIGHT_PADDING * 2;
     case "arrow":
-      return size + resolvedThickness(style) + gap * 2 + BOUNDARY_HIGHLIGHT_PADDING * 2;
+      return (style?.headWidth ?? size * HEAD_WIDTH_RATIO) + resolvedThickness(style) + gap * 2 + BOUNDARY_HIGHLIGHT_PADDING * 2;
     default:
       return 0;
   }
@@ -333,6 +337,14 @@ export function splitWallAndLineEdges<TId>(
   return lineEdges;
 }
 
+/** How far, in multiples of the outline's half-width, a sharp (miter) arrowhead tip may reach past the
+ *  tip point — keeps the gap ring of a narrow head from spiking far beyond the head. */
+const MITER_REACH_LIMIT = 2;
+
+/** Arrowhead length as a fraction of its full width — the head's own shape, independent of the arrow's
+ *  length (0.1875 / 0.225 of the pre-#993 default head). */
+const HEAD_LENGTH_TO_WIDTH = 5 / 6;
+
 /** Fills the miter spike of a two-wing arrowhead's tip with a solid triangle. Pixi's stroke falls back to a
  *  bevel at a miter join whenever the stroke is thick relative to the wing length, which turns a pointed tip
  *  into a blunt one; the spike is the wedge between the two wings' outer offset lines, so filling it keeps a
@@ -350,9 +362,12 @@ function fillMiterTip(g: Graphics, tipX: number, tipY: number, wingA: { x: numbe
   const b = outerNormal(wingB);
   if (!a || !b) return;
   const k = halfWidth / (1 + a.x * b.x + a.y * b.y);
+  const reach = Math.hypot(a.x + b.x, a.y + b.y) * k;
+  // A narrow tip's miter reach grows without bound — cap it, blunting the tip instead of spiking.
+  const kc = reach > MITER_REACH_LIMIT * halfWidth ? (k * MITER_REACH_LIMIT * halfWidth) / reach : k;
   g.poly([
     tipX + a.x * halfWidth, tipY + a.y * halfWidth,
-    tipX + (a.x + b.x) * k, tipY + (a.y + b.y) * k,
+    tipX + (a.x + b.x) * kc, tipY + (a.y + b.y) * kc,
     tipX + b.x * halfWidth, tipY + b.y * halfWidth,
   ]);
   g.fill({ color });
@@ -503,18 +518,18 @@ export function drawOneWayArrow(
   const tipY = cy + dy * half;
   const px = -dy;
   const py = dx;
-  const headSize = half * 0.5;
+  // Each wing's own base sits this far off-axis — shared between the path below and
+  // `fillJointPatch`'s own wing-line math so the two can never drift apart.
+  const wingBaseOffset = (style?.headWidth ?? resolvedSize(style) * HEAD_WIDTH_RATIO) * 0.5;
+  // The head's length follows its width only, so changing the arrow's length moves just the tail
+  // (never shorter than the arrow itself).
+  const headSize = Math.min(wingBaseOffset * 2 * HEAD_LENGTH_TO_WIDTH, half * 2);
   const headBackX = tipX - dx * headSize;
   const headBackY = tipY - dy * headSize;
   const color = style?.color ?? canvas.edge.oneWay;
   const strokeWidth = resolvedThickness(style);
   const join = style?.join ?? "round";
   const cap = style?.cap ?? "round";
-
-  // Each wing's own base sits this fraction of `headSize` off-axis — shared between the path
-  // below and `fillJointPatch`'s own wing-line math so the two can never drift apart.
-  const WING_OFFSET_RATIO = 0.6;
-  const wingBaseOffset = headSize * WING_OFFSET_RATIO;
 
   const path = (g: Graphics) =>
     // Shaft ends at the arrowhead's own base (not the tip) — otherwise a square cap makes the
@@ -571,12 +586,22 @@ export function drawOneWayArrow(
       const grow = halfWidth - strokeWidth * 0.5;
       const backT = headBackT - grow;
       const tailT = -half - halfWidth;
-      const tipT = half + (halfWidth * wingLen) / wingBaseOffset;
+      // The outline's miter tip reaches `fullReach` past the tip point — unbounded for a narrow head, so capped
+      // (blunting the tip) where the offset wing lines are cut at the capped reach.
+      const fullReach = wingBaseOffset > 0 ? (halfWidth * wingLen) / wingBaseOffset : Infinity;
+      const reach = Math.min(fullReach, MITER_REACH_LIMIT * halfWidth);
+      const tipT = half + reach;
+      // Zero when the tip is not cut, or for a degenerate (zero-length) head.
+      const tipS = headSize > 0 && fullReach < Infinity ? ((fullReach - reach) * wingBaseOffset) / headSize : 0;
       // Lateral reach of the head's outer edge at the flat back, never narrower than the shaft.
-      const backS = Math.max(halfWidth, wingBaseOffset + (halfWidth * headSize) / wingLen + (wingBaseOffset / headSize) * (headBackT + (halfWidth * wingBaseOffset) / wingLen - backT));
+      // A degenerate head (no length or no width) has no wing line to follow: its back is just the shaft's width.
+      const wingSin = wingLen > 0 ? headSize / wingLen : 0;
+      const wingCos = wingLen > 0 ? wingBaseOffset / wingLen : 0;
+      const wingSlope = headSize > 0 ? wingBaseOffset / headSize : 0;
+      const backS = Math.max(halfWidth, wingBaseOffset + halfWidth * wingSin + wingSlope * (headBackT + halfWidth * wingCos - backT));
       const at = (t: number, s: number): [number, number] => [cx + dx * t + px * s, cy + dy * t + py * s];
       g.poly([
-        ...at(tailT, halfWidth), ...at(backT, halfWidth), ...at(backT, backS), ...at(tipT, 0),
+        ...at(tailT, halfWidth), ...at(backT, halfWidth), ...at(backT, backS), ...(tipS > 1e-9 ? [...at(tipT, tipS), ...at(tipT, -tipS)] : at(tipT, 0)),
         ...at(backT, -backS), ...at(backT, -halfWidth), ...at(tailT, -halfWidth),
       ]);
       g.fill({ color: fillColor });

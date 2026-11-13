@@ -6,7 +6,8 @@ import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { WaypointOpeningRenderer } from "../renderers/WaypointOpeningRenderer";
-import { openingCutsWall, openingShowsPointer } from "../../store/imageExportTypes";
+import { openingCutsWall, openingShowsPointer, resolveIndicatorMetrics } from "../../store/imageExportTypes";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { buildMarkerScaler } from "../markerScale";
 import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
@@ -714,10 +715,10 @@ export class VectorByWallsRenderer {
       { floorColor: state.vectorByWallsSettings.floorColor, backgroundColor: state.vectorByWallsSettings.background },
     );
     this.openings.render(openings.filter((o) => openingShowsPointer(o.mode)).map(({ kind, mode, outer, x, y, dx, dy }) => {
-      const { pattern, color, size, thickness, gapWidth, join } = kind === "start" ? state.vectorByWallsSettings.startOpening : state.vectorByWallsSettings.finishOpening;
+      const { pattern, color, geometry, gapWidth, join } = kind === "start" ? state.vectorByWallsSettings.startOpening : state.vectorByWallsSettings.finishOpening;
       return {
         x, y, dx, dy,
-        style: { ...oneWayStyle, pattern, color, size, thickness, gapWidth, join, cap: join === "miter" ? "square" : "round" },
+        style: { ...oneWayStyle, pattern, color, ...resolveIndicatorMetrics(pattern, geometry, DEFAULT_MAZE_RENDER_STYLE.oneWay), gapWidth, join, cap: join === "miter" ? "square" : "round" },
         // The gap stops at the floor's edge (the wall's centre line); under a wall that stays it goes on to the wall's outer edge.
         clip: { nx: outer.outward.x, ny: outer.outward.y, side: outer.polyline, reach: openingGapReach(mode, wallStyle.width ?? WALL_THICKNESS) },
       };

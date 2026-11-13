@@ -143,14 +143,25 @@ describe("validateWaypointOpening", () => {
   const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.startOpening;
 
   it("round-trips a full value", () => {
-    const value = { mode: "pointer", face: 2, pattern: "arrow", color: 0xabcdef, size: 9, thickness: 6, gapWidth: 5, join: "miter" };
+    const value = {
+      mode: "pointer", face: 2, pattern: "arrow", color: 0xabcdef,
+      geometry: { triangle: { size: 9 }, chevron: { size: 8, thickness: 2 }, arrow: { length: 31, headWidth: 7, thickness: 6 } },
+      gapWidth: 5, join: "miter",
+    };
     expect(validateWaypointOpening(value, "p", fallback)).toEqual(value);
   });
 
   it("falls back on junk and drops an invalid face", () => {
-    const result = validateWaypointOpening({ mode: "x", enabled: "x", face: -1, pattern: "nope", color: "red", size: null, thickness: "x", gapWidth: "x", join: "bevel" }, "p", fallback);
+    const result = validateWaypointOpening({ mode: "x", enabled: "x", face: -1, pattern: "nope", color: "red", geometry: { triangle: { size: null }, chevron: "x", arrow: { length: "x" } }, gapWidth: "x", join: "bevel" }, "p", fallback);
     expect(result).toEqual(fallback);
     expect(validateWaypointOpening({ face: 1.5 }, "p", fallback).face).toBeUndefined();
+  });
+
+  it("keeps a pattern's default parameters when only another pattern's are saved (GitHub issue #993)", () => {
+    const result = validateWaypointOpening({ geometry: { arrow: { headWidth: 11 } } }, "p", fallback);
+    expect(result.geometry.arrow).toEqual({ ...fallback.geometry.arrow, headWidth: 11 });
+    expect(result.geometry.triangle).toEqual(fallback.geometry.triangle);
+    expect(result.geometry.chevron).toEqual(fallback.geometry.chevron);
   });
 
   it("reads a file saved while the passage was a plain toggle: on is both, off is none", () => {
@@ -165,7 +176,7 @@ describe("validateWaypointOpening", () => {
 });
 
 describe("defaults", () => {
-  it("link the finish external passage's mode, pattern, color, size, thickness, gap width and corner style to the start's", () => {
+  it("link the finish external passage's mode, pattern, color, every pattern's size parameters, gap width and corner style to the start's", () => {
     const links = DEFAULT_VECTOR_BY_WALLS_LINKS.filter((l) => l.target.startsWith("finishOpening."));
     expect(links.map((l) => [l.source, l.target, l.enabled]).sort()).toEqual([
       ["startOpening.color", "finishOpening.color", true],
@@ -173,9 +184,13 @@ describe("defaults", () => {
       ["startOpening.join", "finishOpening.join", true],
       ["startOpening.mode", "finishOpening.mode", true],
       ["startOpening.pattern", "finishOpening.pattern", true],
-      ["startOpening.size", "finishOpening.size", true],
-      ["startOpening.thickness", "finishOpening.thickness", true],
-    ]);
+      ["startOpening.geometry.arrow.headWidth", "finishOpening.geometry.arrow.headWidth", true],
+      ["startOpening.geometry.arrow.length", "finishOpening.geometry.arrow.length", true],
+      ["startOpening.geometry.arrow.thickness", "finishOpening.geometry.arrow.thickness", true],
+      ["startOpening.geometry.chevron.size", "finishOpening.geometry.chevron.size", true],
+      ["startOpening.geometry.chevron.thickness", "finishOpening.geometry.chevron.thickness", true],
+      ["startOpening.geometry.triangle.size", "finishOpening.geometry.triangle.size", true],
+    ].sort());
   });
 
   it("ship both external passages off", () => {

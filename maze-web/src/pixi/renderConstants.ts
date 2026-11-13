@@ -1,5 +1,9 @@
 export const NODE_RADIUS = 6;
 export const WALL_THICKNESS = 3;
+/** `drawOneWayArrow`'s default arrowhead width as a fraction of the arrow's `size` (its tail-to-tip
+ *  length input) — the head proportions the arrow had before `headWidth` became its own knob
+ *  (GitHub issue #993): `2 * 0.6 * (0.5 * 0.5 * WINGSPAN_FRACTION)`. */
+export const HEAD_WIDTH_RATIO = 0.225;
 export const GRID_LINE_ALPHA = 1.0;
 export const ACTIVE_CELL_ALPHA = 0.7;
 export const COMPONENT_MASK_ALPHA = 0.45;
