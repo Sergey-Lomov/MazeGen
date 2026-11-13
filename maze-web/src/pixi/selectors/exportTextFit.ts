@@ -60,7 +60,7 @@ export function collectTextFitEntries(
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
     if (id === null || marker.markerEnabled === false || !marker.text || marker.textEnabled === false) return;
     entries.push({
-      kind, text: marker.text, font: marker.textFont ?? DEFAULT_LABEL_FONT, shape: marker.shape, plateSize: marker.size,
+      kind, text: marker.text, font: plainLabelFont(marker.textFont ?? DEFAULT_LABEL_FONT), shape: marker.shape, plateSize: marker.size,
       fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, margin: marker.textMargin ?? DEFAULT_TEXT_MARGIN, nodes: [id],
     });
   };

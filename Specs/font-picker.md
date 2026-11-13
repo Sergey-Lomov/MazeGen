@@ -3,7 +3,7 @@
 Side panel for choosing a canvas label font, the counterpart of the color picker
 (`Specs/color-picker.md`). Part of the font picker epic (GitHub issue #969); this spec covers the
 **base panel** (issue #970), the **preview** (issue #972), the **weight selection** (issue #973) and the
-**text warnings** (issue #971). Further font sources are separate tickets of the epic.
+**text warnings** (issue #971) and the **single font list with badges, search, filters and per-font license icons** (issue #984). Further font sources are separate tickets of the epic.
 
 ## Components
 
@@ -78,43 +78,64 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   variants (CSS `text-overflow` for DOM text, the longest prefix that fits with "…", found by binary
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,
   colors or size change, not on a later panel resize).
-- **"Family" section** — second. Its header carries the info button (`InfoIconButton`) opening a
-  `CategoryInfoModal` that explains the practical difference between the two categories. While the MSDF
-  list is shown it also carries a copyright button (`InfoIconButton` with a lucide `Copyright` icon as `symbol`, GitHub issue #982)
-  opening `FontLicensesModal`: for every bundled MSDF font its name, copyright line, license name and
-  source link (`FONT_NOTICES`, `components/fontLicenses.ts`), then the full texts of the licenses in use
-  (SIL OFL 1.1, Apache 2.0) in collapsed sections. The texts are static assets
-  (`public/licenses/*.txt`, `LICENSE_TEXT_URLS`) fetched when the dialog opens; a failed fetch shows a
-  note in that section only. The copyright lines are English in every UI language. Browser fonts have no
-  entry (they are not bundled), and licenses of other dependencies are not listed here (GitHub issue
-  #990). Every font added to `MSDF_FONTS` needs a `FONT_NOTICES` entry (a test enforces it). The body holds
-  the "MSDF" / "TTF/OTF" toggle buttons (`toggle` / `toggle-selected`) and the font list below. The
-  panel opens on the list that holds the current family.
-  A single-select listbox of the active category:
-    - MSDF: every baked font of `MSDF_FONTS`: Roboto (value `""`), Noto Sans, Noto Sans Condensed, Noto Serif, Fira Sans, Fira Mono, Arimo, Tinos, Cousine and Open Sans (keys `msdf:<id>`, the prefix keeps them apart from browser font names). Each offers Regular and Bold and covers Latin and Cyrillic.
-    - TTF/OTF: every family installed on this machine (`loadLocalFontFamilies`). The open-time family is
-      kept at the top of the list when the machine does not report it, so a project saved elsewhere
-      still shows its current choice highlighted.
-    - While the local query is pending the TTF/OTF list shows a loading hint.
-    - When the machine's list is unavailable (no API, permission denied, or an empty answer, which is
-      how some browsers report a denial) the TTF/OTF list holds the members of `WEB_SAFE_FONT_FAMILIES`
-      (Arial, Verdana, Georgia, Times New Roman, Courier New and similar) that this machine actually
-      has (`isFontFamilyInstalled`: a name the machine already reported through the Local Font Access API,
-      or a synchronous glyph-metrics check that probes a Latin and a Cyrillic string separately, so a face
-      covering only one script still counts), and a hint under the list asks
-      the user to grant the permission to see the full list of local fonts. The MSDF list never
-      shows the hint.
-    - The list is a `SelectableList` (`components/SelectableList.tsx`, see `side-panel.md`'s "Shared list
-      and bubble primitives") with `autoFocus` and the font names as its `values`: a `listbox` that keeps
-      focus, `aria-activedescendant` names the highlighted option, Up/Down walk the fonts and report a
-      `"keyboard"` selection (which the picker previews without the heavy per-key work). Switching the
-      type remounts the list (`key={type}`) so it takes keyboard focus again.
+- **"Family" section** (GitHub issue #984) — second. Its header carries the info button (`InfoIconButton`) opening a
+  `CategoryInfoModal` that explains the practical difference between the two formats (MSDF, TTF/OTF). The body holds, top to
+  bottom, a search field, a filter row and one list of every font. There is no format switch and no
+  global license button.
+  - **List.** A single-select `SelectableList` (`components/SelectableList.tsx`, see `side-panel.md`'s "Shared list
+    and bubble primitives") with `autoFocus` and the visible fonts' names as its `values`: a `listbox` that keeps
+    focus, `aria-activedescendant` names the highlighted option, Up/Down walk the visible fonts and report a
+    `"keyboard"` selection (which the picker previews without the heavy per-key work). Order: the baked MSDF fonts
+    (`MSDF_FONTS`: Roboto with value `""`, Noto Sans, Noto Sans Condensed, Noto Serif, Fira Sans, Fira Mono, Arimo, Tinos,
+    Cousine, Open Sans, keys `msdf:<id>`; each offers Regular and Bold and covers Latin and Cyrillic), then the browser
+    fonts:
+    - every family installed on this machine (`loadLocalFontFamilies`). The open-time family is kept in the browser
+      part when the machine does not report it, so a project saved elsewhere still shows its current choice highlighted;
+    - while the local query is pending the MSDF fonts are listed and a loading hint sits in the list footer;
+    - when the machine's list is unavailable (no API, permission denied, or an empty answer, which is how some browsers
+      report a denial) the browser part holds the members of `WEB_SAFE_FONT_FAMILIES` (Arial, Verdana, Georgia, Times New
+      Roman, Courier New and similar) that this machine actually has (`isFontFamilyInstalled`: a name the machine already
+      reported through the Local Font Access API, or a synchronous glyph-metrics check that probes a Latin and a Cyrillic
+      string separately, so a face covering only one script still counts), and a hint in the list footer asks the user to
+      grant the permission to see the full list of local fonts. The bundled fonts stay listed above it.
     - The hint comes with a **"Grant access"** button when the browser has the API: it calls
       `loadLocalFontFamilies(true)` (a retry from a user gesture), which re-prompts if the browser still
       allows it and replaces the list with the full local one on success. If the retry still gives no
       list the browser has blocked the site, no second prompt can appear, and the hint changes to ask the
       user to allow local fonts in the site settings and reload (a page cannot open browser settings).
       A browser without the API shows a plain "cannot list local fonts" note and no button.
+    - When the search and filters leave no font, the note says so, centered in the list body (`SelectableList`'s `centerFooter`). All notes of the list (empty, loading, permission) are muted disabled-colored captions like the embedded hotkey hints. The permission note is not shown while the format filter is MSDF, since the bundled fonts need no permission.
+  - **Row.** The font name (cut with an ellipsis), then the indicators, then the format bubble last (`FontOption`, memoized, so a move re-renders
+    only the two rows whose selection changed). Indicators, in order: **in project** (lucide `CircleCheck`; the family is
+    named by a `LabelFont` of `vectorByWallsSettings`, `vectorByCorridorsSettings` or `pngExportSettings`, found by
+    `collectLabelFontFamilies`, `store/labelFontSync.ts`; read once when the panel opens, because the live preview keeps the
+    store on the highlighted font and would mark every browsed font; the default Roboto counts while any text still uses it),
+    **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. The two status icons are muted
+    with a `Tooltip` hint and an `aria-label` (not tab stops: the tooltip is `focusable={false}` so the list keeps keyboard focus). Every hint of the panel (indicators, format bubbles, filter chips, copyright icon) goes through the shared `Tooltip`, never a native `title`. The **format** is a `Bubble` (the shared chip) in one of two neutral hues
+    that carry no status meaning (`ui.fontFormat`): violet `MSDF` for a baked font, teal `Vec` for a browser TTF/OTF font, each with a
+    tooltip hint, both of one fixed width so they line up.
+  - **Locale support check** (`components/fontLocaleSupport.ts`). `LOCALE_FONT_SCRIPT` is a `Record<Locale, FontScript | null>`:
+    every locale must declare the script besides Latin its text needs, or `null` when Latin suffices. A locale added to the
+    inlang project without an entry does not compile, and `fontLocaleSupport.test.ts` guards the declaration at test time.
+    `FontScript` (`fontChoice.ts`) is `"cyrillic"` today; adding a script needs its probe sample (`SCRIPT_SAMPLES`, a `Record<FontScript, ...>`). A baked font declares the scripts it covers in its `MSDF_FONTS` entry
+    (`scripts`); a browser font is probed by `fontCoversSample` (`labelFont.ts`): it covers a sample when the browser's glyph metrics
+    for it differ from every generic fallback, since a missing script falls back to one of them. Results are cached per family.
+  - **Search and filters.** The search field filters by name, case-insensitive substring. Down in the field moves keyboard focus to the
+    list. Under it a single row of toggle chips (`FilterChip`, a `Bubble` of the look of the row's indicators, the chips of equal width sharing the row evenly so together they are as wide as the list; an off chip is
+    dimmed, an on chip is full, `aria-pressed`, the hint as a `Tooltip` and `aria-label`): the **MSDF** and **Vec** format chips, **in project**
+    (`CircleCheck`) and **supports the locale's script** (`Languages`, not shown for English). The two format chips exclude each other:
+    picking one drops the other, and picking the active one again clears the format filter (both formats shown). The other two combine with
+    each other and with the format by AND. The highlighted font stays highlighted when a filter hides it, and the arrow keys walk the visible
+    fonts only.
+  - **Copyright icon.** Every bundled MSDF font's row carries a lucide `Copyright` `InfoIconButton` (`inList`, no hover highlight, with the tooltip "View copyright"), always visible,
+    next to the badges; browser fonts have none (they are not bundled). A click opens `FontLicensesModal` scoped to that font
+    (`findFontNotice`, `components/fontLicenses.ts`): the font name as title, its copyright line, license name, source link,
+    and the full text of its license (fetched when the dialog opens from `public/licenses/*.txt`, `LICENSE_TEXT_URLS`; a failed fetch
+    shows a note). The click does not select the row and does not take focus off the list. Keyboard: focus stays on the listbox, so
+    the icon is not a tab stop (`tabIndex -1`); pressing **I** on the list opens the notice of the highlighted font (nothing for a
+    browser font). The copyright lines are English in every UI language. Licenses of other dependencies are not listed here
+    (GitHub issue #990). `FONT_NOTICES` and the static license texts stay the data source, and every font added to `MSDF_FONTS`
+    needs a `FONT_NOTICES` entry (a test enforces it, and that `findFontNotice` reaches every catalog font).
 - **Weight row** (GitHub issue #973) — below the family list, outside the list's own scroll area: a
   "Weight" label and a native select (`SelectRow`, `font-picker-weight`) of the weights the highlighted
   family offers, named by `fontWeightName` ("Regular", "Bold", ...). It takes a fixed height, so the
@@ -157,14 +178,14 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   switch hides only the contrast warnings.
 - **Footer** — Cancel and Apply, each half-width.
 
-Switching the type only changes which list is shown; the highlighted font is unchanged until the user
+Searching and filtering only change which fonts are shown; the highlighted font is unchanged until the user
 picks one.
 
 ### Keyboard
 
-The listbox takes focus on mount. Up / Down arrows move the highlight to the previous / next font,
+The listbox takes focus on mount. Up / Down arrows move the highlight to the previous / next visible font,
 clamped at both ends (with nothing highlighted, Down selects the first and Up the last font). Every
-move previews the font like a click, except that the canvas preview is coalesced: the highlight follows every key press (including auto-repeat), but `onPreview` fires once after the moves pause for `KEYBOARD_PREVIEW_DELAY_MS` (100 ms), and Apply flushes a still queued one first, so holding an arrow key does not rebuild the canvas per repeat. List rows are memoized, so a move re-renders only the two rows whose selection changed. Escape cancels, same as the Cancel button; Escape pressed inside a dialog opened from the panel (the font types info, the font licenses) closes only that dialog, because the panel ignores key events that come from outside its own DOM subtree.
+move previews the font like a click, except that the canvas preview is coalesced: the highlight follows every key press (including auto-repeat), but `onPreview` fires once after the moves pause for `KEYBOARD_PREVIEW_DELAY_MS` (100 ms), and Apply flushes a still queued one first, so holding an arrow key does not rebuild the canvas per repeat. List rows are memoized, so a move re-renders only the two rows whose selection changed. Escape cancels, same as the Cancel button; "I" opens the license dialog of the highlighted bundled font. Escape pressed inside a dialog opened from the panel (the font types info, the font license) closes only that dialog, because the panel ignores key events that come from outside its own DOM subtree.
 
 ## Preview and commit
 

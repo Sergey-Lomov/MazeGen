@@ -9,7 +9,7 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { ParamLink } from "../parameterLinks";
-import type { CreaseExportStyle, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind } from "../imageExportTypes";
+import type { CreaseExportStyle, DirectionIndicatorGeometryPatch, EdgeMarkerOverride, EdgeMarkerStyle, MarkerSettings, VectorMarkerKind, WaypointOpeningPatch } from "../imageExportTypes";
 import { mergeEdgeMarkerOverridePatch } from "../edgeMarkerLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { patchPaths, type PatchGroup } from "../parameterLinkSchema";
@@ -49,6 +49,30 @@ function writeMarkerPatch<S extends object>(settings: S, kind: VectorMarkerKind,
     if (value === undefined) continue;
     const path = `${kind}.${field}`;
     next = (field === "text" ? setParamValue(next, path, value) : writeLinkedParam(next, path, value)) as Writable;
+  }
+  return markLinked(next);
+}
+
+/** Writes each defined field of `patch` into the start/finish external passage `kind` (GitHub issue #330):
+ *  `mode`/`pattern`/`color`/`gapWidth`/`join` and every `geometry` parameter (one write per leaf, so each
+ *  is linkable on its own, GitHub issue #993) through the link engine, `face` as a plain, unlinked write. */
+function writeOpeningPatch<S extends object>(settings: S, kind: "startOpening" | "finishOpening", patch: WaypointOpeningPatch): Linked<S> {
+  type Writable = S & { links: ParamLink<string>[] };
+  let next = settings as Writable;
+  const write = (path: string, value: unknown, plain: boolean) => {
+    next = (plain ? setParamValue(next, path, value) : writeLinkedParam(next, path, value)) as Writable;
+  };
+  for (const [field, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (field === "geometry") {
+      for (const [pattern, params] of Object.entries(value as DirectionIndicatorGeometryPatch)) {
+        for (const [param, leaf] of Object.entries(params ?? {})) {
+          if (leaf !== undefined) write(`${kind}.geometry.${pattern}.${param}`, leaf, false);
+        }
+      }
+      continue;
+    }
+    write(`${kind}.${field}`, value, field === "face");
   }
   return markLinked(next);
 }
@@ -99,7 +123,7 @@ type GuardedSet = (partial: GuardedUpdate | ((s: MazeStore) => GuardedUpdate)) =
 /** Settings paths that are deliberately NOT linkable (not in the param registry) and so need no
  *  detach/propagate on write. Listing a registry path here is a compile error (`wallsPlain`/
  *  `corridorsPlain` constrain `path` to these) and a test failure (`imageExportLinkedSetters`). */
-export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "oneWayPattern", "markerLayout", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "markerLayout", "startMarker.text", "finishMarker.text", "startOpening.face", "finishOpening.face", "teleportGroupOverrides", "splitNodeColors"] as const;
 export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "markerLayout", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
 
 const wallsPlain = (path: (typeof WALLS_PLAIN_PATHS)[number], value: unknown) => (s: MazeStore) => ({
@@ -470,14 +494,15 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsWallJoin: (join) => set(wallsParam("wallJoin", join)),
   setVectorByWallsWallThickness: (v) => set(wallsParam("wallThickness", v)),
   setVectorByWallsOneWayPattern: (pattern) =>
-    set(wallsPlain("oneWayPattern", pattern)),
+    set(wallsParam("oneWayPattern", pattern)),
   setVectorByWallsOneWayColor: (color) => set(wallsParam("oneWayColor", color)),
   setVectorByWallsOneWayGapWidth: (v) => set(wallsParam("oneWayGapWidth", v)),
-  setVectorByWallsOneWaySize: (v) => set(wallsParam("oneWaySize", v)),
-  setVectorByWallsOneWayThickness: (v) => set(wallsParam("oneWayThickness", v)),
+  setVectorByWallsOneWayGeometry: (leaf, v) => set(wallsParam(`oneWayGeometry.${leaf}`, v)),
   setVectorByWallsOneWayJoin: (join) => set(wallsParam("oneWayJoin", join)),
   patchVectorByWallsMarker: (kind, patch) =>
     set((s) => ({ vectorByWallsSettings: writeMarkerPatch(s.vectorByWallsSettings, kind, patch) })),
+  patchVectorByWallsOpening: (kind, patch) =>
+    set((s) => ({ vectorByWallsSettings: writeOpeningPatch(s.vectorByWallsSettings, kind, patch) })),
   patchVectorByWallsVerticalSettings: (patch) =>
     set(wallsPatch(patch, wallsPatchPaths("verticalSettings"), (c) => ({ ...c, ...patch }))),
   patchVectorByWallsDecorativeLineStyle: (section, patch) =>

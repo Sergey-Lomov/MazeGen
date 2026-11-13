@@ -11,17 +11,25 @@ const fontKey = (family: string, weight: number) => `${weight}|${family}`;
  * text and may soften when enlarged; this avoids zoom-driven texture allocation and GPU churn. */
 const MAX_RUNTIME_TEXT_RESOLUTION = 2;
 
+let sharedMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+/** One scratch 2D context for every glyph probe: the picker probes each installed family, and a canvas
+ *  per probe would be created hundreds of times when it opens. */
+function measureContext(): CanvasRenderingContext2D | null {
+  if (sharedMeasureContext === undefined) sharedMeasureContext = document.createElement("canvas").getContext("2d");
+  return sharedMeasureContext;
+}
+
 /** CSS Font Loading reports the fallback face as usable for an unknown family. Comparing a long
  * probe string against generic fallback faces prevents that false positive, so a saved typo still
  * resolves to the bundled MSDF Roboto rather than the browser's arbitrary sans-serif fallback. */
-function hasDistinctGlyphMetrics(family: string): boolean {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
+function hasDistinctGlyphMetrics(family: string, probes: readonly string[] = PROBES): boolean {
+  const context = measureContext();
   if (!context) return false;
   const width = (font: string, probe: string) => { context.font = font; return context.measureText(probe).width; };
   // A font may cover only one script (a Cyrillic-only or runic face renders Latin through the
   // fallback), so each script is probed on its own and one distinct probe is enough.
-  return PROBES.some((probe) => {
+  return probes.some((probe) => {
     const candidate = width(`16px ${JSON.stringify(family)}, monospace`, probe);
     // A missing family resolves to one of the generic fallbacks. It is genuine only when its
     // metrics differ from every one of them; `some` would accept a missing family that fell back
@@ -31,6 +39,22 @@ function hasDistinctGlyphMetrics(family: string): boolean {
 }
 
 const PROBES = ["Wm@#0123456789", "ЖЩшюЯ"];
+
+const coverageCache = new Map<string, boolean>();
+
+/** Whether the browser font `family` draws every glyph of `sample` itself (GitHub issue #984): a script
+ *  the face lacks falls back to a generic font, so its metrics match one of them. Cached, since the
+ *  picker asks it for every installed family. */
+export function fontCoversSample(family: string, sample: string): boolean {
+  if (typeof document === "undefined") return false;
+  const key = `${sample}|${family}`;
+  let covers = coverageCache.get(key);
+  if (covers === undefined) {
+    covers = hasDistinctGlyphMetrics(family, [sample]);
+    coverageCache.set(key, covers);
+  }
+  return covers;
+}
 
 /** Font families, in order, for a browser font: the font itself, then the generic sans-serif. The one
  *  stack behind the canvas labels, their measuring and the font picker preview, so a glyph the chosen

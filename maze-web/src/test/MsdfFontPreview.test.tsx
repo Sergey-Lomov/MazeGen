@@ -30,7 +30,7 @@ const { MSDF_FONTS, markMsdfFamilyLoaded } = await import("../pixi/renderers/fon
 const { MsdfFontPreview } = await import("../components/MsdfFontPreview");
 
 const face = (id: string, weight: number) => ({ weight, atlasName: `${id}-${weight}`, url: `/fonts/${id}-${weight}.fnt` });
-for (const id of ["late", "later", "ready"]) MSDF_FONTS[`msdf:${id}`] = { label: id, faces: [face(id, 400), face(id, 700)] };
+for (const id of ["late", "later", "ready"]) MSDF_FONTS[`msdf:${id}`] = { label: id, scripts: [], faces: [face(id, 400), face(id, 700)] };
 markMsdfFamilyLoaded("msdf:ready");
 
 beforeEach(() => {

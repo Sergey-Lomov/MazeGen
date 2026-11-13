@@ -5,6 +5,9 @@ import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { WaypointOpeningRenderer } from "../renderers/WaypointOpeningRenderer";
+import { openingCutsWall, openingShowsPointer, resolveIndicatorMetrics } from "../../store/imageExportTypes";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { buildMarkerScaler } from "../markerScale";
 import { footprintsOfMarkers, footprintsOfTeleports, footprintsOfVertical } from "../markerFootprints";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
@@ -13,7 +16,7 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/Split
 import { oneWayIndicatorSpan } from "../renderers/wallUtils";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, buildWaypointOpenings, isOpeningWall, openingGapReach } from "../selectors/mazeSelectors";
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
@@ -38,7 +41,7 @@ import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { selectExportGlueTabs } from "./glueTabExport";
 import { GlueTabRenderer } from "../renderers/GlueTabRenderer";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
-import { POLYGON_HIGHLIGHT_RADIUS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
+import { POLYGON_HIGHLIGHT_RADIUS, WALL_THICKNESS, WARNING_HIGHLIGHT_COLOR } from "../renderConstants";
 import { roundedContourCorners } from "./roundedContour";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
@@ -352,6 +355,8 @@ export class VectorByWallsRenderer {
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
+  /** Arrows of the start/finish openings (GitHub issue #330), drawn over the walls in the walls container. */
+  private readonly openings: WaypointOpeningRenderer;
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #347)
@@ -441,6 +446,7 @@ export class VectorByWallsRenderer {
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.innerGrid = new GridRenderer(this.innerGridContainer, "vector export inner grid");
     this.walls = new WallRenderer(this.wallsContainer);
+    this.openings = new WaypointOpeningRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
@@ -699,11 +705,24 @@ export class VectorByWallsRenderer {
       this.geometryCache.splitSpecialShapes,
       state.vectorByWallsSettings.splitSpecialShapes,
     );
+    // Start/finish external passages (GitHub issue #330): per mode, the chosen outer wall segment is left out and/or a pointer is drawn on it.
+    const openings = buildWaypointOpenings(state.vectorByWallsSettings, nodeById, start, finish, cells, cfg);
+    const cutOpenings = openings.filter((o) => openingCutsWall(o.mode));
     this.walls.render(
-      { edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints,
+      { edges: cutOpenings.length === 0 ? this.geometryCache.wallEdges : this.geometryCache.wallEdges.filter((e) => !cutOpenings.some((o) => isOpeningWall(e, o.cell, o.outer))) },
+      cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints,
       state.vectorByWallsSettings.randomWallColorMode,
       { floorColor: state.vectorByWallsSettings.floorColor, backgroundColor: state.vectorByWallsSettings.background },
     );
+    this.openings.render(openings.filter((o) => openingShowsPointer(o.mode)).map(({ kind, mode, outer, x, y, dx, dy }) => {
+      const { pattern, color, geometry, gapWidth, join } = kind === "start" ? state.vectorByWallsSettings.startOpening : state.vectorByWallsSettings.finishOpening;
+      return {
+        x, y, dx, dy,
+        style: { ...oneWayStyle, pattern, color, ...resolveIndicatorMetrics(pattern, geometry, DEFAULT_MAZE_RENDER_STYLE.oneWay), gapWidth, join, cap: join === "miter" ? "square" : "round" },
+        // The gap stops at the floor's edge (the wall's centre line); under a wall that stays it goes on to the wall's outer edge.
+        clip: { nx: outer.outward.x, ny: outer.outward.y, side: outer.polyline, reach: openingGapReach(mode, wallStyle.width ?? WALL_THICKNESS) },
+      };
+    }));
     this.splitJunctions.render(
       { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
       wallStyle,
@@ -870,6 +889,7 @@ export class VectorByWallsRenderer {
     this.closedCells.destroy();
     this.innerGrid.destroy();
     this.walls.destroy();
+    this.openings.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
     this.verticalConnections.destroy();

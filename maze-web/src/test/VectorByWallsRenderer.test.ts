@@ -33,6 +33,8 @@ function makeEmptyBounds(): FakeBounds {
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildMazeWalls: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
+  buildWaypointOpenings: vi.fn(() => []),
+  isOpeningWall: vi.fn(() => false),
   buildTeleportEdges: vi.fn(() => []),
   buildTeleportFloorInputs: vi.fn((opts: { unscopedEdges: unknown; allowOutOfField: boolean; fieldCells?: unknown }) => ({
     floorContext: { resolveNodeLevel: () => undefined, unscopedNodeById: new Map(), unscopedEdges: opts.unscopedEdges, activeFloorIndex: 0 },
@@ -173,12 +175,12 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWayPattern: "triangle",
     oneWayColor: 0x555555,
     oneWayGapWidth: 3,
-    oneWaySize: 0.3,
-    oneWayThickness: 4,
+    oneWayGeometry: { triangle: { size: 0.3 }, chevron: { size: 0.3, thickness: 4 }, arrow: { length: 0.3, headWidth: 3, thickness: 4 } },
     oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
     startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
     finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
@@ -288,12 +290,22 @@ describe("buildWallStyle", () => {
 });
 
 describe("buildOneWayStyle", () => {
-  it("maps pattern/color/gapWidth/thickness straight through", () => {
-    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "chevron", oneWayColor: 0xaaa, oneWayGapWidth: 5, oneWayThickness: 8 }));
+  const geometry = { triangle: { size: 20 }, chevron: { size: 30, thickness: 8 }, arrow: { length: 40, headWidth: 9, thickness: 6 } };
+
+  it("maps pattern/color/gapWidth straight through, and size/thickness from the selected pattern's own set", () => {
+    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "chevron", oneWayColor: 0xaaa, oneWayGapWidth: 5, oneWayGeometry: geometry }));
     expect(style.pattern).toBe("chevron");
     expect(style.color).toBe(0xaaa);
     expect(style.gapWidth).toBe(5);
+    expect(style.size).toBe(30);
     expect(style.thickness).toBe(8);
+  });
+
+  it("reads the arrow's length as size, plus its own head width and thickness (GitHub issue #993)", () => {
+    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "arrow", oneWayGeometry: geometry }));
+    expect(style.size).toBe(40);
+    expect(style.headWidth).toBe(9);
+    expect(style.thickness).toBe(6);
   });
 
   it("mirrors floorColor as the gap color, independent of oneWayColor", () => {
@@ -301,8 +313,8 @@ describe("buildOneWayStyle", () => {
     expect(style.gapColor).toBe(0xdead00);
   });
 
-  it("passes oneWaySize through unchanged — already in world-space px (GitHub issue #681)", () => {
-    const style = buildOneWayStyle(baseSettings({ oneWaySize: 20 }));
+  it("passes the triangle's size through unchanged — already in world-space px (GitHub issue #681)", () => {
+    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "triangle", oneWayGeometry: geometry }));
     expect(style.size).toBe(20);
   });
 
@@ -315,6 +327,7 @@ describe("buildOneWayStyle", () => {
 describe("buildTeleportLineStyle", () => {
   it("maps line-pattern settings straight through", () => {
     const style = buildTeleportLineStyle(baseSettings({
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
       teleportConnectorColor: 0x222,
       teleportConnectorWidth: 7,

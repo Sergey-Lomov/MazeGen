@@ -1,3 +1,5 @@
+import { VECTOR_FONT_FAMILY } from "../pixi/renderers/fontChoice";
+
 /** License of a bundled font; keys the full text served from `public/licenses/`. */
 export type FontLicense = "apache-2.0" | "ofl-1.1";
 
@@ -92,3 +94,14 @@ export const FONT_NOTICES: FontNotice[] = [
     source: "https://github.com/googlefonts/opensans",
   },
 ];
+
+/** Catalog id a stored MSDF family key stands for: `msdf:<id>`, or `roboto` for the default font. */
+export function fontNoticeId(family: string): string {
+  return family === VECTOR_FONT_FAMILY ? "roboto" : family.replace(/^msdf:/, "");
+}
+
+/** The notice of a stored family, or `undefined` for a font that is not bundled (a browser font). */
+export function findFontNotice(family: string): FontNotice | undefined {
+  const id = fontNoticeId(family);
+  return FONT_NOTICES.find((notice) => notice.id === id && (family === VECTOR_FONT_FAMILY || family.startsWith("msdf:")));
+}

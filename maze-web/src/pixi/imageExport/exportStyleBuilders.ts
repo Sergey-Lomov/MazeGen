@@ -9,6 +9,8 @@ import { applyMarkerLayout, MARKER_LAYOUT_SPACING, type MarkerLayoutResult } fro
 import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
 import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
+import { resolveIndicatorMetrics } from "../../store/imageExportTypes";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
@@ -53,8 +55,7 @@ export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getSta
     color: settings.oneWayColor,
     gapColor: settings.floorColor,
     gapWidth: settings.oneWayGapWidth,
-    size: settings.oneWaySize,
-    thickness: settings.oneWayThickness,
+    ...resolveIndicatorMetrics(settings.oneWayPattern, settings.oneWayGeometry, DEFAULT_MAZE_RENDER_STYLE.oneWay),
     join: settings.oneWayJoin,
     cap: settings.oneWayJoin === "miter" ? "square" : "round",
   };

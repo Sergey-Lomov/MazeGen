@@ -549,6 +549,80 @@ export interface MarkerSettings extends MarkerAppearance, SizeAdaptationField, P
   // size to `DEFAULT_MARKER_TEXT_SIZE`.
 }
 
+/** What a start/finish "External passage" (GitHub issue #330) does to the field's outer wall:
+ *  `"none"` leaves the wall alone, `"opening"` leaves the chosen wall segment out, `"pointer"` keeps
+ *  the wall and draws a pointer over it, `"both"` does both. */
+export type WaypointOpeningMode = "none" | "opening" | "pointer" | "both";
+export const WAYPOINT_OPENING_MODES: readonly WaypointOpeningMode[] = ["none", "opening", "pointer", "both"];
+/** Whether the chosen outer wall segment is left out in `mode`. */
+export function openingCutsWall(mode: WaypointOpeningMode): boolean {
+  return mode === "opening" || mode === "both";
+}
+/** Whether the direction pointer is drawn in `mode`. */
+export function openingShowsPointer(mode: WaypointOpeningMode): boolean {
+  return mode === "pointer" || mode === "both";
+}
+
+/** Own size parameters of each direction indicator pattern (GitHub issue #993), in px — shared by the
+ *  one-ways section and the waypoint openings' pointer. Every pattern keeps its own set, so switching
+ *  the pattern never reinterprets another pattern's value: the triangle needs one `size`; the chevron a
+ *  `size` (wingspan scale) and line `thickness`; the arrow its tail-to-tip `length`, `headWidth` across
+ *  the direction and line `thickness`. */
+export interface DirectionIndicatorGeometry {
+  triangle: { size: number };
+  chevron: { size: number; thickness: number };
+  arrow: { length: number; headWidth: number; thickness: number };
+}
+
+/** Dotted path of one `DirectionIndicatorGeometry` parameter inside it (`"arrow.headWidth"`). */
+export type DirectionIndicatorLeaf = { [P in keyof DirectionIndicatorGeometry]: `${P}.${keyof DirectionIndicatorGeometry[P] & string}` }[keyof DirectionIndicatorGeometry];
+
+/** A partial update of `DirectionIndicatorGeometry`: any subset of any pattern's parameters. */
+export type DirectionIndicatorGeometryPatch = { [P in keyof DirectionIndicatorGeometry]?: Partial<DirectionIndicatorGeometry[P]> };
+
+/** A partial update of `WaypointOpeningSettings` whose `geometry` is itself partial per parameter. */
+export type WaypointOpeningPatch = Omit<Partial<WaypointOpeningSettings>, "geometry"> & { geometry?: DirectionIndicatorGeometryPatch };
+
+/** The indicator drawing metrics of `pattern`, as the draw style reads them. Parameters the pattern
+ *  has no use for take the fallback of the given `unused` set, which the draw function ignores. */
+export function resolveIndicatorMetrics(
+  pattern: OneWayPattern,
+  geometry: DirectionIndicatorGeometry,
+  unused: { thickness: number; headWidth: number },
+): { size: number; thickness: number; headWidth: number } {
+  switch (pattern) {
+    case "triangle":
+      return { size: geometry.triangle.size, thickness: unused.thickness, headWidth: unused.headWidth };
+    case "chevron":
+      return { size: geometry.chevron.size, thickness: geometry.chevron.thickness, headWidth: unused.headWidth };
+    case "arrow":
+      return { size: geometry.arrow.length, thickness: geometry.arrow.thickness, headWidth: geometry.arrow.headWidth };
+  }
+}
+
+/** One start/finish "External passage" (GitHub issue #330): the endpoint's cell is shown as an entrance/exit
+ *  through the field's outer wall — the chosen outer wall segment may be left out, and a pointer marks
+ *  the way in (start: pointing into the cell) or out (finish: pointing out of it), per `mode`. "Vector by walls"
+ *  only (corridor mode has no outer walls). The pointer has its own pattern, color, size, line thickness
+ *  corner style and gap width (same types as the One-ways section's, so they can be linked); the gap color and
+ *  cap still come from the One-ways section. */
+export interface WaypointOpeningSettings {
+  /** `"none"` by default; `"none"` keeps the endpoint drawn exactly as before. */
+  mode: WaypointOpeningMode;
+  /** Face (side) of the endpoint's cell the passage is made in — a key of the cell's neighbour
+   *  offsets (`getCellNeighborOffsets`). Meaningful only while that face is an outer wall of the
+   *  current floor; `undefined` and a face that is not outer both use the cell's first outer face. */
+  face?: number;
+  pattern: OneWayPattern;
+  color: number;
+  /** Own parameters of every pattern, same shape and units as `VectorByWallsSettings.oneWayGeometry`. */
+  geometry: DirectionIndicatorGeometry;
+  /** Width of the floor-colored gap ring around the pointer, same unit as `oneWayGapWidth`. */
+  gapWidth: number;
+  /** Corner style of the arrow's tip (and the triangle's corners), same as `oneWayJoin`. */
+  join: CornerStyle;
+}
+
 /** A marker with a computed index label instead of a free-text caption (GitHub issue #701) — the
  *  shared base of the elevator floor-number badges and the cross-floor teleport floor badges: the
  *  `MarkerAppearance` look plus the required `TextStyleFields` and a `labelType` numbering style
@@ -779,17 +853,18 @@ export interface VectorByWallsSettings extends CutLineStyleFields, CreaseStyleFi
    *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
    *  color always mirrors `floorColor`, not independently settable. */
   oneWayGapWidth: number;
-  /** Indicator size, in px (GitHub issue #681 — previously a fraction of the tile size). */
-  oneWaySize: number;
-  /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
-   *  effect on the `triangle` pattern. */
-  oneWayThickness: number;
+  /** Size parameters of every pattern, in px (GitHub issues #681, #993) — only the selected
+   *  `oneWayPattern`'s set is shown and drawn. */
+  oneWayGeometry: DirectionIndicatorGeometry;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
    *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
   oneWayJoin: CornerStyle;
   startMarker: MarkerSettings;
   finishMarker: MarkerSettings;
+  /** Start/finish "Opening" (GitHub issue #330) — see `WaypointOpeningSettings`. */
+  startOpening: WaypointOpeningSettings;
+  finishOpening: WaypointOpeningSettings;
   /** Splits section (GitHub issue #294) — per-split-node-slot identity colors, indexed by slot
    *  (0 = original node, 1 = first extra node, ...), overriding `splitSlotColor`'s default palette
    *  one-to-one; a point with more nodes than this array's length falls back to the default
@@ -1180,11 +1255,12 @@ export interface ImageExportActions {
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
   setVectorByWallsOneWayColor: (color: number) => void;
   setVectorByWallsOneWayGapWidth: (v: number) => void;
-  setVectorByWallsOneWaySize: (v: number) => void;
-  setVectorByWallsOneWayThickness: (v: number) => void;
+  setVectorByWallsOneWayGeometry: (leaf: DirectionIndicatorLeaf, v: number) => void;
   setVectorByWallsOneWayJoin: (join: CornerStyle) => void;
   /** Writes marker fields through the parameter-links engine (detaching each written field's incoming link); `text` is a plain, unlinked write. */
   patchVectorByWallsMarker: (kind: VectorMarkerKind, patch: Partial<MarkerSettings>) => void;
+  /** Writes a start/finish opening's fields (GitHub issue #330): `enabled`/`color`/`size` through the parameter-links engine, `pattern`/`face` as plain writes. */
+  patchVectorByWallsOpening: (kind: "startOpening" | "finishOpening", patch: WaypointOpeningPatch) => void;
   /** `verticalStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc comment (GitHub
    *  issue #347). */
   patchVectorByWallsVerticalSettings: (

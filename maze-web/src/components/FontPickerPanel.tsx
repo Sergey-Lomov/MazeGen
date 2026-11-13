@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
-import { Copyright } from "lucide-react";
+import { CircleCheck, Copyright, Languages } from "lucide-react";
+import { Bubble, type BubbleColors } from "./Bubble";
 import { FontLicensesModal } from "./FontLicensesModal";
+import { findFontNotice, type FontNotice } from "./fontLicenses";
+import { LOCALE_FONT_SCRIPT, fontSupportsScript } from "./fontLocaleSupport";
+import { useLocale } from "../i18n/useLocale";
+import { collectLabelFontFamilies, projectFontSettings } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
-import { ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
+import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
 import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
-import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type LabelFont } from "../pixi/renderers/fontChoice";
+import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
 import { fontWeightName } from "../store/fontLabels";
 import { SelectRow } from "./SelectRow";
 import { Tooltip } from "./Tooltip";
@@ -23,9 +28,20 @@ import { sharedStyles } from "../styles/shared";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
-/** The two font categories the picker switches between. The vector list holds the baked MSDF fonts
- *  (`MSDF_FONTS`; the bundled Roboto is the empty family), the raster list holds browser fonts. */
-type FontType = "vector" | "raster";
+/** How a font is drawn: a baked MSDF font (`MSDF_FONTS`; the bundled Roboto is the empty family) or an
+ *  installed TTF/OTF font drawn by the browser. */
+type FontFormat = "msdf" | "browser";
+
+/** One row of the font list (GitHub issue #984). */
+interface FontEntry {
+  value: string;
+  label: string;
+  format: FontFormat;
+  /** Named by a font of the project's export settings when the panel opened. */
+  used: boolean;
+  /** Draws the script of the current locale; always `true` when the locale needs only Latin. */
+  supportsLocale: boolean;
+}
 
 /** Keyboard moves repeat dozens of times a second while an arrow key is held, and every preview
  *  rewrites a store value and rebuilds the canvas labels. The highlight follows each key press at
@@ -50,8 +66,18 @@ const PREVIEW_HEIGHT = 48;
  *  other sections take. */
 const FAMILY_LIST_MIN_HEIGHT = 150;
 
-/** The vector list: every baked MSDF font. */
-const VECTOR_FONTS: { value: string; label: string }[] = Object.entries(MSDF_FONTS).map(([value, { label }]) => ({ value, label }));
+/** Opacity of a filter chip that is off. */
+const INACTIVE_CHIP_OPACITY = 0.45;
+
+/** The format bubble of a row and of its filter chip: the same label, hue and hint in both places. */
+const FORMAT_BUBBLE: Record<FontFormat, { colors: BubbleColors; label: () => string; hint: () => string }> = {
+  msdf: { colors: ui.fontFormat.msdf, label: () => m["font_picker.badge_msdf"](), hint: () => m["font_picker.badge_msdf_hint"]() },
+  browser: { colors: ui.fontFormat.vec, label: () => m["font_picker.badge_vec"](), hint: () => m["font_picker.badge_vec_hint"]() },
+};
+
+/** Colors of an icon chip, on and off; the format chips dim their own hue instead. */
+const ICON_CHIP_ON: BubbleColors = { bg: ui.bg.hover, text: ui.text.primary };
+const ICON_CHIP_OFF: BubbleColors = { bg: "transparent", text: ui.text.secondary };
 
 /** The weights a font family offers: the baked weights of an MSDF font, the installed faces of a
  *  browser font. */
@@ -91,9 +117,9 @@ interface Props {
 
 /** Side panel for choosing a label font, the font counterpart of `ColorPickerPanel`. Opens as an
  *  overlay `SidePanel`, holds a working font (family and weight, GitHub issue #973) in local state,
- *  previews each highlighted font live through `onPreview`, and commits through `onApply`. A toggle
- *  switches between the vector (MSDF) and raster lists; up / down arrows move the highlight within
- *  the active list. The weight section offers only the weights the highlighted family has. */
+ *  previews each highlighted font live through `onPreview`, and commits through `onApply`. One list
+ *  holds every font, narrowed by a search field and filters; up / down arrows move the highlight within
+ *  the visible fonts. The weight section offers only the weights the highlighted family has. */
 export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, title, warningKinds }: Props) {
   // Set when a WebGL canvas cannot be created: the MSDF preview then falls back to DOM text in Roboto.
   const [msdfUnavailable, setMsdfUnavailable] = useState(false);
@@ -101,9 +127,19 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const [previewTextColor, setPreviewTextColor] = useState(DEFAULT_PREVIEW_TEXT_COLOR);
   const [previewBackground, setPreviewBackground] = useState(DEFAULT_PREVIEW_BACKGROUND);
   const [working, setWorking] = useState(font);
-  const [type, setType] = useState<FontType>(isMsdfFamily(font.family) ? "vector" : "raster");
   const [infoOpen, setInfoOpen] = useState(false);
-  const [licensesOpen, setLicensesOpen] = useState(false);
+  const [licenseNotice, setLicenseNotice] = useState<FontNotice | null>(null);
+  const [query, setQuery] = useState("");
+  // At most one format is filtered: picking one drops the other, and picking it again shows both.
+  const [formatFilter, setFormatFilter] = useState<FontFormat | null>(null);
+  const [onlyUsed, setOnlyUsed] = useState(false);
+  const [onlySupported, setOnlySupported] = useState(false);
+  const { locale } = useLocale();
+  const localeScript = LOCALE_FONT_SCRIPT[locale];
+  // Fonts of the project as the panel opened: the live preview keeps the store on the highlighted
+  // font, so reading it later would mark every font that was merely browsed as used.
+  const usedFamilies = useRef(collectLabelFontFamilies(projectFontSettings(useMazeStore.getState()))).current;
+  const listWrapRef = useRef<HTMLDivElement>(null);
   // `undefined` while the local font query is pending, `null` when the browser cannot list fonts.
   // An empty answer is how some browsers report a denied permission, so it counts as unavailable.
   // Set once a "Grant access" attempt still produced no list: the browser has blocked the site, so
@@ -151,14 +187,31 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
 
   const installedWebSafe = useMemo(() => WEB_SAFE_FONT_FAMILIES.filter(isFontFamilyInstalled), []);
 
-  const options = useMemo(() => {
-    if (type === "vector") return VECTOR_FONTS;
+  const entries = useMemo<FontEntry[]>(() => {
     // The open-time family stays listed even when the machine does not report it, so a project
     // saved elsewhere still shows its current choice highlighted.
     const families = hasLocalFamilies ? localFamilies : installedWebSafe;
     const extra = !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
-    return [...extra, ...families].map((value) => ({ value, label: value }));
-  }, [type, hasLocalFamilies, localFamilies, installedWebSafe, originalFamily]);
+    const entry = (value: string, label: string, format: FontFormat): FontEntry => ({
+      value,
+      label,
+      format,
+      used: usedFamilies.has(value),
+      supportsLocale: localeScript === null || fontSupportsScript(value, localeScript),
+    });
+    return [
+      ...Object.entries(MSDF_FONTS).map(([value, { label }]) => entry(value, label, "msdf")),
+      ...[...extra, ...families].map((value) => entry(value, value, "browser")),
+    ];
+  }, [hasLocalFamilies, localFamilies, installedWebSafe, originalFamily, usedFamilies, localeScript]);
+
+  const options = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return entries.filter((e) => (formatFilter === null || e.format === formatFilter)
+      && (!onlyUsed || e.used)
+      && (!onlySupported || e.supportsLocale)
+      && (needle === "" || e.label.toLowerCase().includes(needle)));
+  }, [entries, query, formatFilter, onlyUsed, onlySupported]);
 
   const optionValues = useMemo(() => options.map((o) => o.value), [options]);
 
@@ -216,7 +269,8 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
 
   const weightLocked = weightOptions.length <= 1;
 
-  const showPermissionNote = type === "raster" && localFamilies !== undefined && !hasLocalFamilies;
+  // The bundled fonts need no permission, so the note is only about the part of the list it affects.
+  const showPermissionNote = localFamilies !== undefined && !hasLocalFamilies && formatFilter !== "msdf";
 
   // Text overflow warnings of the texts this font drives. The live preview keeps the store on the
   // highlighted font, links included (a Shared style font reaches every linked text), so the export
@@ -250,7 +304,13 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
           // A dialog opened from here is portaled out of this subtree, but React still bubbles its key
           // events through the component tree: its Escape closes only the dialog, not the panel.
           if (!e.currentTarget.contains(e.target as Node)) return;
-          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); }
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+          // "I" on the list opens the notice of the highlighted font: the row's icon is not a tab stop,
+          // since focus stays on the list.
+          if (e.key.toLowerCase() === "i" && !e.ctrlKey && !e.metaKey && !e.altKey && (e.target as HTMLElement).getAttribute("role") === "listbox") {
+            const notice = findFontNotice(workingRef.current.family);
+            if (notice) { e.preventDefault(); setLicenseNotice(notice); }
+          }
         }}
       >
         <div style={styles.content}>
@@ -310,54 +370,101 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             <div style={styles.familyHeader}>
               <div style={typography.body}>{m["font_picker.section_family"]()}</div>
               <InfoIconButton onClick={() => setInfoOpen(true)} />
-              {type === "vector" && (
-                // The baked fonts ship under their own licenses (GitHub issue #982); browser fonts are not ours to credit.
-                <InfoIconButton onClick={() => setLicensesOpen(true)} symbol={<Copyright size={14} />} label={m["font_licenses.button"]()} />
-              )}
             </div>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
-              <div style={styles.typeSwitcher}>
-                {(["vector", "raster"] as const).map((key) => (
-                  <Button key={key} variant={type === key ? "toggle-selected" : "toggle"} onClick={() => setType(key)}>
-                    {key === "vector" ? m["font_picker.type_vector"]() : m["font_picker.type_raster"]()}
-                  </Button>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  // Down hands the keyboard to the list, which then walks the fonts the search left.
+                  if (e.key !== "ArrowDown") return;
+                  e.preventDefault();
+                  listWrapRef.current?.querySelector<HTMLElement>('[role="listbox"]')?.focus();
+                }}
+                placeholder={m["font_picker.search_placeholder"]()}
+                aria-label={m["font_picker.search_placeholder"]()}
+                style={styles.searchInput}
+                data-testid="font-picker-search"
+              />
+              <div style={styles.filters} data-testid="font-picker-filters">
+                {(["msdf", "browser"] as const).map((format) => (
+                  <FilterChip
+                    key={format}
+                    active={formatFilter === format}
+                    colors={FORMAT_BUBBLE[format].colors}
+                    label={FORMAT_BUBBLE[format].hint()}
+                    onClick={() => setFormatFilter(formatFilter === format ? null : format)}
+                    testId={`font-picker-filter-${format === "msdf" ? "msdf" : "vec"}`}
+                  >
+                    {FORMAT_BUBBLE[format].label()}
+                  </FilterChip>
                 ))}
+                <FilterChip
+                  active={onlyUsed}
+                  colors={onlyUsed ? ICON_CHIP_ON : ICON_CHIP_OFF}
+                  label={m["font_picker.badge_used"]()}
+                  onClick={() => setOnlyUsed(!onlyUsed)}
+                  testId="font-picker-filter-used"
+                >
+                  <CircleCheck size={14} />
+                </FilterChip>
+                {localeScript !== null && (
+                  <FilterChip
+                    active={onlySupported}
+                    colors={onlySupported ? ICON_CHIP_ON : ICON_CHIP_OFF}
+                    label={m["font_picker.filter_locale"]()}
+                    onClick={() => setOnlySupported(!onlySupported)}
+                    testId="font-picker-filter-locale"
+                  >
+                    <Languages size={14} />
+                  </FilterChip>
+                )}
               </div>
-              {localFamilies === undefined && type === "raster" ? (
-                <span style={styles.loading}>{m["font_picker.loading"]()}</span>
-              ) : (
+              <div ref={listWrapRef} style={styles.listWrap}>
                 <SelectableList
-                  // Remount per type so the new list takes keyboard focus (arrow keys keep working
-                  // after the toggle button was clicked).
-                  key={type}
                   selected={options.some((o) => o.value === working.family) ? working.family : null}
                   values={optionValues}
                   onSelect={(value, source) => selectFamily(value, source === "keyboard")}
                   autoFocus
                   style={styles.list}
-                  testId={`font-picker-list-${type}`}
-                  footer={showPermissionNote && (
-                    // Muted caption note pinned to the bottom of the list body, in the same quiet style
-                    // as the embedded hotkey hints (`EmbeddedHotkeyHint`).
-                    <div style={styles.permissionNote} data-testid="font-picker-permission-note">
-                      <span style={styles.permissionText}>
-                        {!isLocalFontAccessSupported()
-                          ? m["font_picker.local_fonts_unsupported"]()
-                          : accessBlocked ? m["font_picker.local_fonts_blocked"]() : m["font_picker.local_fonts_permission"]()}
-                      </span>
-                      {isLocalFontAccessSupported() && !accessBlocked && (
-                        <Button variant="secondary" layoutStyle={styles.permissionButton} onClick={requestAccess} data-testid="font-picker-grant-access">
-                          {m["font_picker.grant_access"]()}
-                        </Button>
+                  testId="font-picker-list"
+                  ariaLabel={m["font_picker.section_family"]()}
+                  centerFooter={options.length === 0}
+                  footer={(localFamilies === undefined || showPermissionNote || options.length === 0) && (
+                    // Muted notes in the quiet style of the embedded hotkey hints (`EmbeddedHotkeyHint`): pinned to
+                    // the bottom of the list body, or centered in it when no font is left to list.
+                    <div style={styles.permissionNote}>
+                      {localFamilies === undefined && <span style={styles.permissionText} data-testid="font-picker-loading">{m["font_picker.loading"]()}</span>}
+                      {options.length === 0 && <span style={styles.permissionText} data-testid="font-picker-empty">{m["font_picker.no_matches"]()}</span>}
+                      {showPermissionNote && (
+                        <div style={styles.permissionNote} data-testid="font-picker-permission-note">
+                          <span style={styles.permissionText}>
+                            {!isLocalFontAccessSupported()
+                              ? m["font_picker.local_fonts_unsupported"]()
+                              : accessBlocked ? m["font_picker.local_fonts_blocked"]() : m["font_picker.local_fonts_permission"]()}
+                          </span>
+                          {isLocalFontAccessSupported() && !accessBlocked && (
+                            <Button variant="secondary" layoutStyle={styles.permissionButton} onClick={requestAccess} data-testid="font-picker-grant-access">
+                              {m["font_picker.grant_access"]()}
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
                 >
                   {options.map((o) => (
-                    <SelectableRow key={o.value} value={o.value} selected={o.value === working.family}>{o.label}</SelectableRow>
+                    <FontOption
+                      key={o.value}
+                      entry={o}
+                      selected={o.value === working.family}
+                      localeScript={localeScript}
+                      onShowLicense={setLicenseNotice}
+                    />
                   ))}
                 </SelectableList>
-              )}
+              </div>
             </div>
           </div>
           <div style={styles.section}>
@@ -398,10 +505,82 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
           onClose={() => setInfoOpen(false)}
         />
       )}
-      {licensesOpen && <FontLicensesModal onClose={() => setLicensesOpen(false)} />}
+      {licenseNotice && <FontLicensesModal notice={licenseNotice} onClose={() => setLicenseNotice(null)} />}
     </SidePanel>
   );
 }
+
+/** A compact toggle of the filter row: a `Bubble`, so it matches the indicators of the rows it filters by. An
+ *  inactive chip is dimmed. */
+function FilterChip({ active, colors, label, onClick, testId, children }: {
+  active: boolean;
+  colors: BubbleColors;
+  label: string;
+  onClick: () => void;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip content={label} focusable={false}>
+      <button type="button" aria-pressed={active} aria-label={label} onClick={onClick} style={styles.chipButton} data-testid={testId}>
+        <Bubble interactive colors={colors} style={{ ...styles.chip, ...styles.filterChip, opacity: active ? 1 : INACTIVE_CHIP_OPACITY }}>{children}</Bubble>
+      </button>
+    </Tooltip>
+  );
+}
+
+/** One font row: the name, then the indicators (in project, locale support, the copyright icon of a bundled
+ *  font) and the format bubble last. Memoized (the row inside is too), so moving the highlight re-renders only
+ *  the two rows whose selection changed. */
+const FontOption = memo(function FontOption({ entry, selected, localeScript, onShowLicense }: {
+  entry: FontEntry;
+  selected: boolean;
+  localeScript: FontScript | null;
+  onShowLicense: (notice: FontNotice) => void;
+}) {
+  const notice = entry.format === "msdf" ? findFontNotice(entry.value) : undefined;
+  const format = FORMAT_BUBBLE[entry.format];
+  return (
+    <SelectableRow
+      value={entry.value}
+      selected={selected}
+      trailing={(
+        <span style={styles.badges}>
+          {entry.used && (
+            <Tooltip content={m["font_picker.badge_used"]()} focusable={false}>
+              <span style={styles.statusIcon} role="img" aria-label={m["font_picker.badge_used"]()} data-testid="font-badge-used">
+                <CircleCheck size={14} />
+              </span>
+            </Tooltip>
+          )}
+          {localeScript !== null && entry.supportsLocale && (
+            <Tooltip content={m["font_picker.filter_locale"]()} focusable={false}>
+              <span style={styles.statusIcon} role="img" aria-label={m["font_picker.filter_locale"]()} data-testid="font-badge-locale">
+                <Languages size={14} />
+              </span>
+            </Tooltip>
+          )}
+          {notice && (
+            <Tooltip content={m["font_licenses.tooltip"]()} focusable={false}>
+              <InfoIconButton
+                inList
+                hoverable={false}
+                symbol={<Copyright size={14} />}
+                label={m["font_licenses.button"]({ font: entry.label })}
+                onClick={() => onShowLicense(notice)}
+              />
+            </Tooltip>
+          )}
+          <Tooltip content={format.hint()} focusable={false}>
+            <Bubble colors={format.colors} style={styles.chip} data-testid="font-badge-format">{format.label()}</Bubble>
+          </Tooltip>
+        </span>
+      )}
+    >
+      {entry.label}
+    </SelectableRow>
+  );
+});
 
 const styles: Record<string, React.CSSProperties> = {
   body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, outline: "none" },
@@ -418,9 +597,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   section: { display: "flex", flexDirection: "column", gap: spacing.itemGap, flexShrink: 0 },
   sectionBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, minHeight: 0 },
-  // The section may shrink to its minimum only: the header row, the type switcher, their gaps and the
+  // The section may shrink to its minimum only: the header row, the search field, the filters (about two rows), their gaps and the
   // list's minimum height. `minHeight: auto` cannot express it, it would grow the section to the full list.
-  familySection: { flex: 1, minHeight: 2 * controlRowHeight + 2 * spacing.itemGap + FAMILY_LIST_MIN_HEIGHT },
+  familySection: { flex: 1, minHeight: 4 * controlRowHeight + 4 * spacing.itemGap + FAMILY_LIST_MIN_HEIGHT },
   familyBody: { flex: 1 },
   familyHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
@@ -447,11 +626,19 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
   },
-  typeSwitcher: { display: "flex", gap: spacing.itemGap, flexShrink: 0 },
+  searchInput: { ...sharedStyles.input, width: "100%", boxSizing: "border-box", flexShrink: 0 },
+  // The chips share the row evenly, whatever their number: one column each, as wide as the list below.
+  filters: { display: "grid", gridAutoFlow: "column", gridAutoColumns: "1fr", gap: spacing.itemGap, flexShrink: 0 },
+  chipButton: { background: "none", border: "none", padding: 0, margin: 0, font: "inherit", cursor: "pointer", display: "inline-flex", flex: 1, minWidth: 0 },
+  filterChip: { flex: 1 },
+  // One size for every chip and row bubble, so the format bubbles line up and the icon chips match them.
+  chip: { minWidth: 40, height: 20, boxSizing: "border-box", justifyContent: "center" },
+  listWrap: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
+  badges: { display: "flex", alignItems: "center", gap: spacing.itemGap, flexShrink: 0, marginLeft: spacing.itemGap },
+  statusIcon: { ...muted(typography.icon), display: "inline-flex", alignItems: "center", flexShrink: 0, lineHeight: 1 },
   permissionNote: { display: "flex", flexDirection: "column", alignItems: "center", gap: spacing.itemGap },
-  permissionText: { ...typography.caption, textAlign: "center" },
+  permissionText: { ...typography.caption, color: ui.text.disabled, textAlign: "center" },
   permissionButton: { fontSize: font.sm, padding: "2px 8px" },
-  loading: { ...typography.body, color: ui.text.secondary, textAlign: "center" },
   list: { minHeight: FAMILY_LIST_MIN_HEIGHT },
   footer: {
     display: "flex",

@@ -35,9 +35,10 @@ const defaultMarker: MarkerSettings = {
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
     background: 0, showGrid: true, gridColor: 0x808080, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
-    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
+    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWayGeometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
+    startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
@@ -773,6 +774,14 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(items.finish).toEqual([]);
   });
 
+  it("auto-fit items of a caption with its own font hold a plain copy, not a tracked settings view", () => {
+    const textFont = { family: "Georgia", weight: 700 };
+    const settings = baseSettings({ startMarker: marker({ textFont, textSize: 20 }) });
+    const [item] = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1).start;
+    expect(item.font).toEqual(textFont);
+    expect(item.font).not.toBe(textFont);
+  });
+
   it("text-only pass (GitHub issue #971) reports the text overflow warnings of the full pass and nothing else, in both modes", () => {
     const floors = [{ id: "f0" }];
     const startMarker = marker({ textSize: 32, textMargin: 1 });
@@ -1063,5 +1072,45 @@ describe("start marker of size 0 (saved before the toggle, GitHub issue #963)", 
       background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff, markerLayout: "auto", markerScale: 1, startMarker: marker,
     }), 0, null);
     expect(warnings.some((w) => w.id === "label_low_contrast")).toBe(false);
+  });
+});
+
+describe("start_opening_no_outer_wall / finish_opening_no_outer_wall (GitHub issue #330)", () => {
+  // The full 6x6 grid, id = y * 6 + x: cell 0 = (0,0) touches the outer border, cell 21 = (3,3) is interior.
+  const nodes = Array.from({ length: 36 }, (_, i) => n(i, i % 6, Math.floor(i / 6)));
+  const run = (settings: VectorByWallsSettings, start: number | null, finish: number | null) =>
+    computeVectorByWallsWarnings(nodes, [], squareCfg, settings, start, finish)
+      .filter((w) => w.id === "start_opening_no_outer_wall" || w.id === "finish_opening_no_outer_wall");
+  const on = { mode: "both" as const, pattern: "triangle" as const, color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" as const };
+
+  it("flags an enabled opening whose cell has no outer wall, and only that endpoint", () => {
+    const warnings = run(baseSettings({ startOpening: on, finishOpening: on }), 21, 0);
+    expect(warnings.map((w) => w.id)).toEqual(["start_opening_no_outer_wall"]);
+    expect(warnings[0].nodes).toEqual([21]);
+  });
+
+  it("does not flag a border cell or a disabled opening", () => {
+    expect(run(baseSettings({ startOpening: on }), 0, null)).toHaveLength(0);
+    expect(run(baseSettings({ startOpening: { ...on, mode: "none" as const } }), 21, null)).toHaveLength(0);
+  });
+
+  it("flags every mode that works on the outer wall, whatever it does", () => {
+    for (const mode of ["opening", "pointer", "both"] as const) {
+      expect(run(baseSettings({ startOpening: { ...on, mode } }), 21, null).map((w) => w.id)).toEqual(["start_opening_no_outer_wall"]);
+    }
+  });
+
+  it("flags the finish independently", () => {
+    expect(run(baseSettings({ finishOpening: on }), null, 21).map((w) => w.id)).toEqual(["finish_opening_no_outer_wall"]);
+  });
+
+  it("a drawn opening keeps a marker-less endpoint visible; one that cannot be drawn does not", () => {
+    const hidden = { ...baseSettings().startMarker, markerEnabled: false, textEnabled: false };
+    const ids = (start: number) => computeVectorByWallsWarnings(nodes, [], squareCfg, baseSettings({ startMarker: hidden, startOpening: on }), start, null)
+      .filter((w) => w.id === "start_invisible" || w.id === "start_opening_no_outer_wall").map((w) => w.id);
+    expect(ids(0)).toEqual([]);
+    expect(ids(21)).toEqual(["start_invisible", "start_opening_no_outer_wall"]);
+    const off = computeVectorByWallsWarnings(nodes, [], squareCfg, baseSettings({ startMarker: hidden }), 0, null);
+    expect(off.map((w) => w.id)).toContain("start_invisible");
   });
 });

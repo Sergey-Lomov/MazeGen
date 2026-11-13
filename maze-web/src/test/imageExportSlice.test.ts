@@ -49,12 +49,12 @@ beforeEach(() => {
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
       oneWayGapWidth: 3,
-      oneWaySize: 0.3,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.3 }, chevron: { size: 0.3, thickness: 4 }, arrow: { length: 0.3, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
@@ -185,12 +185,12 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
       oneWayGapWidth: 3,
-      oneWaySize: 0.3,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.3 }, chevron: { size: 0.3, thickness: 4 }, arrow: { length: 0.3, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
@@ -323,17 +323,17 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.background).toBe(canvas.stage.background);
   });
 
-  it("setVectorByWallsOneWayColor/BorderWidth/Size/Thickness/Join update only the one-way fields", () => {
+  it("setVectorByWallsOneWayColor/GapWidth/Geometry/Join update only the one-way fields", () => {
     useMazeStore.getState().setVectorByWallsOneWayColor(0x555555);
     useMazeStore.getState().setVectorByWallsOneWayGapWidth(3);
-    useMazeStore.getState().setVectorByWallsOneWaySize(0.3);
-    useMazeStore.getState().setVectorByWallsOneWayThickness(6);
+    useMazeStore.getState().setVectorByWallsOneWayGeometry("triangle.size", 0.3);
+    useMazeStore.getState().setVectorByWallsOneWayGeometry("chevron.thickness", 6);
     useMazeStore.getState().setVectorByWallsOneWayJoin("miter");
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.oneWayColor).toBe(0x555555);
     expect(settings.oneWayGapWidth).toBe(3);
-    expect(settings.oneWaySize).toBe(0.3);
-    expect(settings.oneWayThickness).toBe(6);
+    expect(settings.oneWayGeometry.triangle.size).toBe(0.3);
+    expect(settings.oneWayGeometry.chevron.thickness).toBe(6);
     expect(settings.oneWayJoin).toBe("miter");
     expect(settings.background).toBe(canvas.stage.background);
   });

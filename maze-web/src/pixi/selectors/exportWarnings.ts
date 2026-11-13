@@ -115,6 +115,10 @@ export type ExportWarningId =
    *  drawn on the exported image at all. */
   | "start_invisible"
   | "finish_invisible"
+  /** "Vector by walls" only (GitHub issue #330) — the start (finish) has its opening switched on but its cell touches no outer
+   *  wall, so there is no wall to open and the opening is not drawn. Highlights the endpoint's node. */
+  | "start_opening_no_outer_wall"
+  | "finish_opening_no_outer_wall"
   | "one_way_low_contrast_corridor"
   | "corridor_low_contrast_background"
   | "teleport_connector_low_contrast_corridor"

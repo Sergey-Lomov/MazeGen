@@ -78,6 +78,21 @@ function formatVerticalArrowStyle(value: unknown): string {
   }
 }
 
+function formatOneWayPattern(value: unknown): string {
+  if (value === "triangle") return m["image_export.vector_by_walls.one_way_pattern_triangle"]();
+  if (value === "chevron") return m["image_export.vector_by_walls.one_way_pattern_chevron"]();
+  if (value === "arrow") return m["image_export.vector_by_walls.one_way_pattern_arrow"]();
+  return String(value);
+}
+
+function formatOpeningMode(value: unknown): string {
+  if (value === "none") return m["image_export.vector_by_walls.opening_mode_none"]();
+  if (value === "opening") return m["image_export.vector_by_walls.opening_mode_opening"]();
+  if (value === "pointer") return m["image_export.vector_by_walls.opening_mode_pointer"]();
+  if (value === "both") return m["image_export.vector_by_walls.opening_mode_both"]();
+  return String(value);
+}
+
 function formatLineStyle(value: unknown): string {
   if (value === "dashed") return m["image_export.glue_tabs.line_style_dashed"]();
   if (value === "solid") return m["image_export.glue_tabs.line_style_solid"]();
@@ -126,6 +141,8 @@ const FORMAT_BY_TYPE: Record<ParamType, (value: unknown) => string> = {
   indexLabelStyle: formatElevatorBadgesLabelType,
   elevatorBadgeBacking: (value) => value === "shared" ? m["image_export.vector_by_walls.elevator_badges_backing_shared"]() : m["image_export.vector_by_walls.elevator_badges_backing_individual"](),
   lineStyle: formatLineStyle,
+  oneWayPattern: formatOneWayPattern,
+  openingMode: formatOpeningMode,
   number: formatNumber,
   color: formatColor,
   boolean: formatBoolean,

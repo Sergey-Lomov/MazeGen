@@ -17,6 +17,7 @@ function link<P extends string>(source: P, target: P, enabled = true, modifiers?
 export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] = [
   link("cornerStyle", "wallJoin"),
   link("cornerStyle", "oneWayJoin"),
+  link("cornerStyle", "startOpening.join"),
   link("cornerStyle", "startMarker.cornerStyle"),
   link("cornerStyle", "finishMarker.cornerStyle"),
   link("cornerStyle", "teleportMarker.cornerStyle"),
@@ -39,6 +40,7 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("markerBorderWidth", "verticalBorderWidth", false),
 
   link("gapWidth", "startMarker.gapWidth"),
+  link("gapWidth", "startOpening.gapWidth"),
   link("gapWidth", "finishMarker.gapWidth"),
   link("gapWidth", "teleportMarker.gapWidth"),
   link("gapWidth", "teleportConnectorGapWidth"),
@@ -92,6 +94,19 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("floorLabelType", "teleportFloorBadge.labelType"),
   link("floorLabelType", "elevatorBadges.labelType"),
   link("floorLabelType", "floorLabel.labelType"),
+
+  // GitHub issue #330 — the finish external passage follows the start one.
+  link("startOpening.mode", "finishOpening.mode"),
+  link("startOpening.gapWidth", "finishOpening.gapWidth"),
+  link("startOpening.pattern", "finishOpening.pattern"),
+  link("startOpening.color", "finishOpening.color"),
+  link("startOpening.geometry.triangle.size", "finishOpening.geometry.triangle.size"),
+  link("startOpening.geometry.chevron.size", "finishOpening.geometry.chevron.size"),
+  link("startOpening.geometry.chevron.thickness", "finishOpening.geometry.chevron.thickness"),
+  link("startOpening.geometry.arrow.length", "finishOpening.geometry.arrow.length"),
+  link("startOpening.geometry.arrow.headWidth", "finishOpening.geometry.arrow.headWidth"),
+  link("startOpening.geometry.arrow.thickness", "finishOpening.geometry.arrow.thickness"),
+  link("startOpening.join", "finishOpening.join"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — the panel-level group
   // above chains into this one (cornerStyle -> verticalCornerStyle, etc.), which in turn drives the

@@ -248,6 +248,15 @@ export const STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef> = {
     get: (s) => s.finishMarker.textColor,
     set: (s, v) => { s.finishMarker.textColor = v; },
   }),
+  // Start/finish opening arrows (GitHub issue #330, "Vector by walls" only).
+  startOpeningArrow: schemaField("startOpening.color", {
+    get: (s) => ("startOpening" in s ? s.startOpening.color : undefined),
+    set: (s, v) => { if ("startOpening" in s) s.startOpening.color = v; },
+  }),
+  finishOpeningArrow: schemaField("finishOpening.color", {
+    get: (s) => ("finishOpening" in s ? s.finishOpening.color : undefined),
+    set: (s, v) => { if ("finishOpening" in s) s.finishOpening.color = v; },
+  }),
 
   teleportEdge: schemaField("teleportMarker.fillColor", { get: (s) => s.teleportMarker.fillColor, set: (s, v) => { s.teleportMarker.fillColor = v; } }),
   teleportEdgeBorder: schemaField("teleportMarker.borderColor", { get: (s) => s.teleportMarker.borderColor, set: (s, v) => { s.teleportMarker.borderColor = v; } }),
@@ -334,7 +343,7 @@ export const STATIC_FIELD_ORDER: readonly (readonly StaticColorFieldKey[])[] = [
   [
     "bgFill", "bgGrid", "innerGrid", "cutLines", "glueTabFill", "glueTabLine", "edgeMarker", "corridorFill", "tilesFloor", "tilesWall", "oneWaysMarker",
     "sharedMarkerFill", "sharedMarkerBorder",
-    "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText",
+    "startFill", "startBorder", "startText", "finishFill", "finishBorder", "finishText", "startOpeningArrow", "finishOpeningArrow",
     "teleportEdge", "teleportEdgeBorder", "teleportConnector",
     "teleportBadgeFill", "teleportBadgeBorder", "teleportBadgeText",
   ],

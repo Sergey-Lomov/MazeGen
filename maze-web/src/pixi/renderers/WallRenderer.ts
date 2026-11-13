@@ -309,6 +309,7 @@ export class WallRenderer {
       gapWidth: effective.gapWidth,
       size: effective.size,
       thickness: effective.thickness,
+      headWidth: effective.headWidth,
       join: effective.join,
       cap: effective.cap,
     };

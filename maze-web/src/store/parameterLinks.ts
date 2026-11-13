@@ -10,7 +10,7 @@ import { colorToRgb, rgbToColor, colorToHsl, hslToColor, colorToOklch, oklchToCo
  *  in the app (`store/colorMath.ts`) — `Object.is` equality is exact, no separate `equals` needed. A
  *  `"labelFont"` value is a `{ family, weight }` object, so its descriptor overrides `equals` (GitHub
  *  issue #973). */
-export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "teleportCurveDirection" | "indexLabelStyle" | "elevatorBadgeBacking" | "labelFont" | "lineStyle" | "boolean";
+export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "oneWayPattern" | "openingMode" | "teleportCurveDirection" | "indexLabelStyle" | "elevatorBadgeBacking" | "labelFont" | "lineStyle" | "boolean";
 
 /** Registry entry for one linkable parameter — the single source of truth for its type, value
  *  equality, display label, and settings-panel location, instead of scattered `!==` comparisons /

@@ -34,7 +34,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, showMarkerToggle, textFitKind }: {
+export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, showMarkerToggle, textFitKind, children }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -80,6 +80,8 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;
   onToggle?: (id: string) => void;
+  /** Extra subsections rendered after "Marker" inside the group (GitHub issue #330's "Opening"); only the callers that have one pass it. */
+  children?: React.ReactNode;
 }) {
   const textOn = useGate(textFitKind === "finish" ? "finishTextOn" : "startTextOn");
   const markerId = sectionId ? `${sectionId}_marker` : "";
@@ -155,6 +157,7 @@ export function MarkerSettingsGroup<P extends LinkPath>({ title, sectionId, sett
               />
             </div>
           )}
+          {children}
         </div>
       )}
     </div>

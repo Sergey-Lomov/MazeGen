@@ -67,12 +67,12 @@ beforeEach(() => {
       oneWayPattern: "triangle",
       oneWayColor: 0xff0000,
       oneWayGapWidth: 0,
-      oneWaySize: 0.18,
-      oneWayThickness: 4,
+      oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } },
       oneWayJoin: "round",
       markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
@@ -188,10 +188,11 @@ describe("VectorByWallsSettingsPanel", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, showCutLines: true, cutLinesGlueColor: true, cutLinesColor: 0x808080, creases: DEFAULT_CREASE_STYLE, glueTabs: DEFAULT_GLUE_TAB_STYLE, edgeMarkers: DEFAULT_EDGE_MARKER_STYLE, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
-        oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+        oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWayGeometry: { triangle: { size: 0.18 }, chevron: { size: 0.18, thickness: 4 }, arrow: { length: 0.18, headWidth: 3, thickness: 4 } }, oneWayJoin: "round",
         markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
         finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+        startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
         teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false, teleportMergeMode: true,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
@@ -377,14 +378,72 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.gapWidth).toBe(0);
   });
 
-  it("renders the one-ways section's pattern, color, gap width, join, size and thickness fields when expanded", () => {
+  it("External passage subsection (GitHub issue #330): the mode reveals the pointer group and writes only its own endpoint", () => {
+    useMazeStore.setState({ vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, markers_start_opening: true, markers_finish_opening: true } });
+    render(<VectorByWallsSettingsPanel />);
+    const modeLabel = m["image_export.vector_by_walls.opening_mode"]();
+    expect(screen.getAllByText(modeLabel)).toHaveLength(2);
+    // The pointer group's pattern row shares its label with the One-ways section's, so count the rows.
+    const patternCount = () => screen.queryAllByText(m["image_export.vector_by_walls.one_way_pattern"]()).length;
+    const before = patternCount();
+    const finishMode = () => screen.getAllByText(modeLabel)[1].parentElement!.querySelector("select")!;
+    fireEvent.change(finishMode(), { target: { value: "opening" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishOpening.mode).toBe("opening");
+    expect(patternCount()).toBe(before);
+    fireEvent.change(finishMode(), { target: { value: "both" } });
+    const { startOpening, finishOpening } = useMazeStore.getState().vectorByWallsSettings;
+    expect(finishOpening.mode).toBe("both");
+    expect(startOpening.mode).toBe("none");
+    expect(patternCount()).toBe(before + 1);
+    fireEvent.change(finishMode(), { target: { value: "pointer" } });
+    expect(patternCount()).toBe(before + 1);
+  });
+
+  it("renders the one-ways section's pattern, color, gap width, join and the triangle's size only when expanded (GitHub issue #993)", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_pattern"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_color"]())).toBeInTheDocument();
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_gap_width"]()).length).toBeGreaterThan(0);
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_join"]()).length).toBeGreaterThan(0);
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]()).length).toBeGreaterThan(0);
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_thickness"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_length"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_head_width"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the chevron's size and thickness for the chevron pattern", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]()).length).toBeGreaterThan(0);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_length"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_head_width"]())).not.toBeInTheDocument();
+  });
+
+  it("shows the arrow's length, head width and thickness, but no size, for the arrow pattern", () => {
+    const sizeLabels = () => screen.queryAllByText(m["image_export.vector_by_walls.one_way_size"]()).length;
+    const { unmount } = render(<VectorByWallsSettingsPanel />);
+    const withTriangle = sizeLabels();
+    unmount();
+    useMazeStore.getState().setVectorByWallsOneWayPattern("arrow");
+    render(<VectorByWallsSettingsPanel />);
+    expect(sizeLabels()).toBe(withTriangle - 1);
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_length"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_head_width"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
+  });
+
+  it("changing the arrow's head width updates only that pattern's own parameter", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("arrow");
+    render(<VectorByWallsSettingsPanel />);
+    const before = useMazeStore.getState().vectorByWallsSettings.oneWayGeometry;
+    const slider = screen.getByText(m["image_export.vector_by_walls.one_way_head_width"]())
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "7" } });
+    const after = useMazeStore.getState().vectorByWallsSettings.oneWayGeometry;
+    expect(after.arrow.headWidth).toBe(7);
+    expect(after.triangle).toEqual(before.triangle);
+    expect(after.chevron).toEqual(before.chevron);
   });
 
   it("collapsing the one-ways section hides its fields", () => {
@@ -439,15 +498,16 @@ describe("VectorByWallsSettingsPanel", () => {
     const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]());
     const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "12" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(12);
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayGeometry.triangle.size).toBe(12);
   });
 
-  it("changing the one-way thickness updates the store", () => {
+  it("changing the chevron thickness updates the store", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
     render(<VectorByWallsSettingsPanel />);
     const slider = screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())
       .parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "6" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWayThickness).toBe(6);
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayGeometry.chevron.thickness).toBe(6);
   });
 
   describe("Teleports section", () => {
@@ -1151,6 +1211,7 @@ describe("VectorByWallsSettingsPanel", () => {
         edges: [{ from: 0, to: 1, kind: "teleport" as const }],
         vectorByWallsSettings: {
           ...useMazeStore.getState().vectorByWallsSettings,
+          startOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, geometry: { triangle: { size: 12 }, chevron: { size: 12, thickness: 4 }, arrow: { length: 12, headWidth: 3, thickness: 4 } }, gapWidth: 3, join: "round" },
           teleportMarker: { ...useMazeStore.getState().vectorByWallsSettings.teleportMarker, borderWidth: 0, fillColor: 0xffffff },
           teleportConnectorColor: 0xffffff,
         },

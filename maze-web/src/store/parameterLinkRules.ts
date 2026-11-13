@@ -14,6 +14,12 @@ export const and = (...rules: (ActivityRule | undefined)[]): ActivityRule => {
 /** A rule that differs per render mode; a mode without an entry is not restricted. */
 export const byMode = (rules: Partial<Record<LinkMode, ActivityRule>>): ActivityRule => (ctx, s, mode) => (rules[mode] ?? always)(ctx, s, mode);
 
+/** The one-ways section's selected indicator pattern is `pattern` (GitHub issue #993) — each pattern shows only its own size parameters. */
+const oneWayPatternIs = (pattern: string): ActivityRule => (_, s) => (s.oneWayPattern ?? "triangle") === pattern;
+/** The start/finish external passage draws a pointer of `pattern`. */
+const openingPatternIs = (kind: "startOpening" | "finishOpening", pattern: string): ActivityRule => (_, s) =>
+  (s[kind]?.mode === "pointer" || s[kind]?.mode === "both") && (s[kind]?.pattern ?? "triangle") === pattern;
+
 export const R = {
   /** Size adaptation is offered only on fields whose cells differ in area (GitHub issue #819). */
   areaSpread: (c) => c.hasAreaSpread,
@@ -77,6 +83,22 @@ export const R = {
   finishMarkerOn: (_, s) => s.finishMarker?.markerEnabled !== false,
   startTextOn: (_, s) => s.startMarker?.textEnabled !== false,
   finishTextOn: (_, s) => s.finishMarker?.textEnabled !== false,
+  /** A start/finish external passage is on, in any mode (GitHub issue #330) — the side choice matters only then. */
+  startOpeningOn: (_, s) => (s.startOpening?.mode ?? "none") !== "none",
+  finishOpeningOn: (_, s) => (s.finishOpening?.mode ?? "none") !== "none",
+  /** A start/finish external passage draws a pointer (GitHub issue #330) — the pointer's look fields matter only then. */
+  startOpeningPointerOn: (_, s) => s.startOpening?.mode === "pointer" || s.startOpening?.mode === "both",
+  finishOpeningPointerOn: (_, s) => s.finishOpening?.mode === "pointer" || s.finishOpening?.mode === "both",
+  /** Per-pattern size parameters of the one-way indicator and of each opening's pointer (GitHub issue #993). */
+  oneWayTriangle: oneWayPatternIs("triangle"),
+  oneWayChevron: oneWayPatternIs("chevron"),
+  oneWayArrow: oneWayPatternIs("arrow"),
+  startOpeningTriangle: openingPatternIs("startOpening", "triangle"),
+  startOpeningChevron: openingPatternIs("startOpening", "chevron"),
+  startOpeningArrow: openingPatternIs("startOpening", "arrow"),
+  finishOpeningTriangle: openingPatternIs("finishOpening", "triangle"),
+  finishOpeningChevron: openingPatternIs("finishOpening", "chevron"),
+  finishOpeningArrow: openingPatternIs("finishOpening", "arrow"),
 } satisfies Record<string, ActivityRule>;
 
 /** The named conditions of `R`, also asked by the settings panels for everything that is not a linked row

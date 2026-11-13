@@ -15,6 +15,7 @@ const { loadMsdfFamily } = await import("../pixi/renderers/msdfLoader");
 function registerFont(family: string) {
   MSDF_FONTS[family] = {
     label: family,
+    scripts: [],
     faces: [
       { weight: 400, atlasName: `${family}-Regular`, url: `/fonts/${family}-regular-msdf.fnt` },
       { weight: 700, atlasName: `${family}-Bold`, url: `/fonts/${family}-bold-msdf.fnt` },
