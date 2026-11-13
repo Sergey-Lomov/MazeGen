@@ -670,11 +670,24 @@ function pathsCross(a: Point[], b: Point[]): boolean {
 function blocked(from: Point, to: Point, polygons: Point[][]): boolean {
   const middle: Point = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
   return polygons.some((polygon) => {
+    // A line that merely passes through a cell corner has no open edge crossing, but its stroke
+    // overlaps the cell boundary. It is still an obstacle to the seam router.
+    if (polygon.some((vertex) => pointOnSegment(vertex, from, to))) return true;
     for (let i = 0; i < polygon.length; i++) {
       if (segmentsCross(from, to, polygon[i], polygon[(i + 1) % polygon.length])) return true;
     }
     return insidePolygon(middle, polygon);
   });
+}
+
+function pointOnSegment(point: Point, from: Point, to: Point): boolean {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const px = point[0] - from[0];
+  const py = point[1] - from[1];
+  const length = Math.hypot(dx, dy);
+  if (length === 0 || Math.abs(dx * py - dy * px) > 1e-6 * length) return false;
+  return px * dx + py * dy >= -1e-6 && px * dx + py * dy <= dx * dx + dy * dy + 1e-6;
 }
 
 /// Whether `point` lies in `polygon` or on its border.

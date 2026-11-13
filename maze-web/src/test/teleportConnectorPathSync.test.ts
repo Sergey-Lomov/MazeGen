@@ -46,6 +46,34 @@ describe("installTeleportConnectorPathSync", () => {
     expect(useMazeStore.getState().vectorByWallsSettings).toBe(empty);
   });
 
+  it("keeps both floor segments of a live cross-floor pair and drops its legacy plain-key path (GitHub issue #989)", () => {
+    const set = (paths: Record<string, typeof path>, edges: unknown[]) => {
+      const { vectorByWallsSettings, vectorByCorridorsSettings } = useMazeStore.getState();
+      useMazeStore.setState({
+        ...baseStoreState(),
+        nodes: [{ id: 1, x: 0, y: 0, level: 0 }, { id: 2, x: 0, y: 0, level: 1 }, { id: 3, x: 1, y: 1, level: 0 }, { id: 4, x: 1, y: 1, level: 0 }] as never,
+        edges: edges as never,
+        vectorByWallsSettings: { ...vectorByWallsSettings, manualTeleportConnectorPaths: paths },
+        vectorByCorridorsSettings: { ...vectorByCorridorsSettings, manualTeleportConnectorPaths: paths },
+      } as never);
+    };
+    set({ "1:2": path, "1:2@1": path, "1:2@2": path, "3:4": path }, [tp(1, 2), tp(3, 4)]);
+    useMazeStore.setState({ edges: [tp(2, 1), tp(3, 4)] as never });
+    expect(Object.keys(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths!)).toEqual(["1:2@1", "1:2@2", "3:4"]);
+  });
+
+  it("drops cross-floor segments when the pair is removed or no longer crosses floors", () => {
+    const { vectorByWallsSettings } = useMazeStore.getState();
+    useMazeStore.setState({
+      ...baseStoreState(),
+      nodes: [{ id: 1, x: 0, y: 0, level: 0 }, { id: 2, x: 0, y: 0, level: 0 }] as never,
+      edges: [tp(5, 6)] as never,
+      vectorByWallsSettings: { ...vectorByWallsSettings, manualTeleportConnectorPaths: { "1:2@1": path, "1:2@2": path } },
+    } as never);
+    useMazeStore.setState({ edges: [tp(1, 2)] as never });
+    expect(useMazeStore.getState().vectorByWallsSettings.manualTeleportConnectorPaths).toEqual({});
+  });
+
   it("keeps everything while edges are empty", () => {
     setup([tp(1, 2), tp(3, 4)]);
     useMazeStore.setState({ edges: [] });

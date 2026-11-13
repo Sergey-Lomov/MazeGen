@@ -163,6 +163,7 @@ export const imageExportTransientUi = {
   floorLabelDrag: null,
   teleportConnectorEdit: null,
   hoveredTeleportNodeIds: null,
+  hoveredTeleportCells: null,
   hoveredExportWarningKey: null,
   openExportFormatSettings: null,
   exportFormatSettingsCovered: false,
@@ -509,6 +510,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
   setHoveredTeleportNodeIds: (ids) => set({ hoveredTeleportNodeIds: ids }),
+  setHoveredTeleportCells: (cells) => set({ hoveredTeleportCells: cells }),
   setVectorByWallsSplitNodeColor: (index, color) =>
     set((s) => {
       const colors = [...s.vectorByWallsSettings.splitNodeColors];

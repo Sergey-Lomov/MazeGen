@@ -124,8 +124,6 @@ network.
 - `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled, so the groups cannot be told apart.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
-- `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
-- `teleport_on_special_split` — a teleport endpoint lands on a specially rendered split shape.
 - `teleport_connector_covers_one_way` — see **Both renderers**.
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
@@ -174,10 +172,6 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `teleport_merged_without_connectors` — `teleportMergeMode` is on, teleports really share a cell, and `teleportConnectorStyle` is `none`; the merged marker shows no real links
   while connectors are disabled.
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
-- `waypoint_on_split` — a start or finish marker lands on a specially rendered split shape.
-- `teleport_on_special_split` — a teleport endpoint lands on a specially rendered split shape.
-- `vertical_on_special_split` — a vertical connection marker lands on a specially rendered split
-  shape.
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
 - `elevator_badges_too_many` — a badge row exceeds its available per-side capacity. Slots under a marker-index

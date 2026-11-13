@@ -382,6 +382,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
     const paths = retainLiveTeleportConnectorPaths(
       file.imageExport.vectorByWallsSettings.manualTeleportConnectorPaths ?? {},
       get().edges,
+      get().nodes,
     );
     get().setManualTeleportConnectorPaths(paths);
     set({ openCard: targetOpenCard });

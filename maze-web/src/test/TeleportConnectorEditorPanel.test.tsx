@@ -53,6 +53,85 @@ describe("TeleportConnectorEditorPanel", () => {
     expect(screen.queryByText(/Ground|Attic/)).toBeNull();
   });
 
+  it("lists a one-way cross-floor piece as its teleport end -> its floor badge, one row per floor (GitHub issue #989)", () => {
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Ground" }, { id: "f2", title: "Attic" }],
+      nodes: [{ id: 1, x: 3, y: 4, level: 0 }, { id: 2, x: 5, y: 6, level: 1 }] as unknown as typeof state.nodes,
+      edges: [{ from: 1, to: 2, kind: "teleport" }] as unknown as typeof state.edges,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2@1": { mode: "polyline", nodes: [[0, 0], [1, 1]] }, "1:2@2": { mode: "polyline", nodes: [[0, 0], [1, 1]] } },
+      } as typeof state.vectorByWallsSettings,
+    });
+    render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);
+
+    // The far teleport node is not named; each row shows the node on its own floor and the badge.
+    expect(screen.getAllByText("->")).toHaveLength(2);
+    expect(screen.queryByText("<->")).toBeNull();
+    expect(screen.getAllByText("L1 3:4")).toHaveLength(1);
+    expect(screen.getAllByText("L2 5:6")).toHaveLength(1);
+  });
+
+  it("lists the pieces of one cross-floor connector together, wherever the second one was authored", () => {
+    const state = useMazeStore.getState();
+    const path = { mode: "polyline" as const, nodes: [[0, 0], [1, 1]] as [number, number][] };
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Ground" }, { id: "f2", title: "Attic" }],
+      nodes: [{ id: 1, x: 3, y: 4, level: 0 }, { id: 2, x: 5, y: 6, level: 1 }, { id: 3, x: 0, y: 0, level: 0 }, { id: 4, x: 1, y: 1, level: 0 }] as unknown as typeof state.nodes,
+      edges: [{ from: 1, to: 2, kind: "teleport" }, { from: 3, to: 4, kind: "teleport" }] as unknown as typeof state.edges,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2@1": path, "3:4": path, "1:2@2": path },
+      } as typeof state.vectorByWallsSettings,
+    });
+    const onFocusPath = vi.fn();
+    render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={onFocusPath} />);
+
+    const labels = screen.getAllByText(/^L\d \d+:\d+$/).map((element) => element.textContent);
+    expect(labels.indexOf("L2 5:6")).toBeLessThan(labels.indexOf("L1 0:0"));
+    // One mark on the divider between the two pieces, none for the unrelated same-floor row.
+    const marks = screen.queryAllByTestId("teleport-connector-link-mark");
+    expect(marks).toHaveLength(1);
+    // The mark is not part of the row: it has the default cursor and a click on it does not focus the path.
+    expect(marks[0].style.cursor).toBe("default");
+    fireEvent.click(marks[0]);
+    expect(onFocusPath).not.toHaveBeenCalled();
+  });
+
+  it("hovering a node bubble highlights that node, a badge bubble the badge cell, the row both, and unmount clears them", () => {
+    const state = useMazeStore.getState();
+    const path = { mode: "polyline" as const, nodes: [[0, 0], [1, 1]] as [number, number][] };
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Ground" }, { id: "f2", title: "Attic" }],
+      nodes: [{ id: 1, x: 3, y: 4, level: 0 }, { id: 2, x: 5, y: 6, level: 1 }] as unknown as typeof state.nodes,
+      edges: [{ from: 1, to: 2, kind: "teleport" }] as unknown as typeof state.edges,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2@1": path },
+      } as typeof state.vectorByWallsSettings,
+    });
+    const { unmount } = render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);
+    const [nodeBubble, badgeBubble] = screen.getAllByText(/^L\d \d+:\d+$/);
+    expect(nodeBubble.textContent).toBe("L1 3:4");
+
+    fireEvent.mouseEnter(nodeBubble);
+    expect(useMazeStore.getState().hoveredTeleportNodeIds).toEqual([1]);
+    expect(useMazeStore.getState().hoveredTeleportCells).toBeNull();
+
+    fireEvent.mouseEnter(badgeBubble);
+    expect(useMazeStore.getState().hoveredTeleportNodeIds).toBeNull();
+    expect(useMazeStore.getState().hoveredTeleportCells).toEqual([expect.objectContaining({ floorIndex: 0 })]);
+
+    fireEvent.mouseEnter(screen.getByText("->"));
+    expect(useMazeStore.getState().hoveredTeleportNodeIds).toEqual([1]);
+    expect(useMazeStore.getState().hoveredTeleportCells).toHaveLength(1);
+
+    unmount();
+    expect(useMazeStore.getState().hoveredTeleportNodeIds).toBeNull();
+    expect(useMazeStore.getState().hoveredTeleportCells).toBeNull();
+  });
+
   it("lists the connector warnings, counted in the header, open by default", () => {
     warningsMock.list = [{ id: "teleport_connector_degenerate", key: "teleport_connector_degenerate", nodes: [], edges: [] }];
     render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);

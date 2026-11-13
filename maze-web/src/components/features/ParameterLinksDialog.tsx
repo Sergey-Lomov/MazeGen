@@ -169,6 +169,15 @@ export function LinkEditor<P extends string>({
     if (source !== null && (registry[source].type !== registry[p].type || wouldCreateCycle(existingLinks, source, p))) setSource(null);
   }
 
+  function handleShowInactiveChange(next: boolean) {
+    setShowInactive(next);
+    if (next) return;
+    // A hidden endpoint must not keep its otherwise-hidden picker branch alive. Requiring an
+    // explicit new selection also prevents saving a link to a parameter the user can no longer see.
+    if (target !== null && !activePaths.has(target)) setTarget(null);
+    if (source !== null && !activePaths.has(source)) setSource(null);
+  }
+
   function save() {
     if (!canSave || target === null || source === null) return;
     if (replacesDifferentLink && !confirmingReplace) {
@@ -256,7 +265,7 @@ export function LinkEditor<P extends string>({
               <ToggleRow
                 label={m["image_export.param_links.show_inactive_toggle"]()}
                 checked={showInactive}
-                onChange={setShowInactive}
+                onChange={handleShowInactiveChange}
                 layoutStyle={styles.showInactiveToggle}
               />
               <div style={styles.editorFooter}>

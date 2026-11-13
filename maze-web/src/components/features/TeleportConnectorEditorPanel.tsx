@@ -1,11 +1,16 @@
-import { useState } from "react";
-import { Spline, Trash2, Waypoints } from "lucide-react";
-import { manualPathMode, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
-import { formatTargetLabel } from "../../pixi/targetLabel";
+import { useEffect, useMemo, useState } from "react";
+import { Link2, Spline, Trash2, Waypoints } from "lucide-react";
+import { manualPathMode, parseTeleportConnectorKey, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
-import { Bubble, BubbleArrow } from "../Bubble";
+import { Tooltip } from "../Tooltip";
+import { EntityBubbleRow } from "./EntityBubbleRow";
+import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
+import { endpointBubble, splitPointBubble, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import { nodeEndpoint } from "../../pixi/postEditEndpoint";
+import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
+import { buildTeleportConnectorSegments, type TeleportConnectorSegment } from "../../pixi/selectors/teleportConnectorSegments";
 import { ListCell, ListCellAction } from "../ListCell";
 import { EmbeddedHotkeyHint } from "../EmbeddedHotkeyHint";
 import type { ShortcutKey } from "../ToolIconButton";
@@ -29,21 +34,47 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   const setPaths = useMazeStore((s) => s.setManualTeleportConnectorPaths);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const edges = useMazeStore((s) => s.edges);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const setHovered = useMazeStore((s) => s.setHoveredTeleportNodeIds);
-  const { modeWarnings: warnings } = useModeWarnings(settings, computeTeleportConnectorWarningsAcrossFloors);
+  const setHoveredCells = useMazeStore((s) => s.setHoveredTeleportCells);
+  const { nodeById, multiFloor, splitCtx } = usePostEditSplitLabelContext();
+  const { modeWarnings: warnings, rawEffectiveEndpoints } = useModeWarnings(settings, computeTeleportConnectorWarningsAcrossFloors);
+  const segments = useMemo(() => buildTeleportConnectorSegments({
+    nodes, edges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEffectiveEndpoints.start, finish: rawEffectiveEndpoints.finish,
+  }), [nodes, edges, cfg, floors, settings.teleportAvoidFieldExit, rawEffectiveEndpoints]);
+  // A cell that unmounts while hovered must not leave its canvas highlight on.
+  useEffect(() => () => { setHovered(null); setHoveredCells(null); }, [setHovered, setHoveredCells]);
+  const hover = (ids: number[], cells: { floorIndex: number; x: number; y: number }[] = []) => { setHovered(ids.length > 0 ? ids : null); setHoveredCells(cells.length > 0 ? cells : null); };
   const warningsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded[WARNINGS_SECTION_ID] ?? true);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
   // Object insertion order is the authored order: overwriting an existing path keeps its place,
   // while materialising a newly manual connector appends it. Do not sort by pair key.
-  const rows = Object.keys(paths).map((key) => {
-    const [a, b] = key.split(":").map(Number);
-    return { key, ids: [a, b], path: paths[key], points: paths[key].nodes, a: nodeById.get(a), b: nodeById.get(b) };
-  });
-  const label = (node: typeof nodes[number] | undefined) => {
-    if (!node) return m["image_export.teleport_connector_editor.missing_endpoint"]();
-    return formatTargetLabel([node.x, node.y], node.level ?? 0, floors.length > 1, undefined);
+  // A cross-floor pair has one row per floor (GitHub issue #989): a piece joins the teleport on that
+  // floor and the floor badge, so its bubbles name the connector's own two ends, not the teleport pair.
+  const ends = (segment: TeleportConnectorSegment | undefined, fallback: [number, number]): TeleportConnectorSegment["from"][] =>
+    (segment ? [segment.from, segment.to] : fallback.map((node) => ({ node })));
+  const rowOf = (key: string) => {
+    const segment = segments.get(key);
+    const pair = ends(segment, parseTeleportConnectorKey(key).ids);
+    const bubbles: PostEditEntityBubble[] = pair.map((end) => "node" in end
+      ? endpointBubble(nodeEndpoint(end.node), nodeById, multiFloor, splitCtx)
+      : splitPointBubble(end.badge, segment!.floorIndex, multiFloor));
+    const ids = pair.flatMap((end) => ("node" in end ? [end.node] : []));
+    const cells = pair.flatMap((end) => ("badge" in end ? [{ floorIndex: segment!.floorIndex, x: end.badge[0], y: end.badge[1] }] : []));
+    const { ids: pairIds, ownNode } = parseTeleportConnectorKey(key);
+    return { key, pairKey: `${pairIds[0]}:${pairIds[1]}`, crossFloor: ownNode !== undefined, pair, bubbles, ids, cells, floorIndex: segment?.floorIndex, arrow: segment?.oneWay ? "->" as const : "<->" as const, path: paths[key], points: paths[key].nodes };
   };
+  // The pieces of one cross-floor teleport are separate paths, but one connector to the reader: they
+  // are listed together, at the place of the first piece authored.
+  const ordered: ReturnType<typeof rowOf>[] = [];
+  for (const row of Object.keys(paths).map(rowOf)) {
+    let lastSibling = -1;
+    if (row.crossFloor) ordered.forEach((other, i) => { if (other.crossFloor && other.pairKey === row.pairKey) lastSibling = i; });
+    ordered.splice(lastSibling >= 0 ? lastSibling + 1 : ordered.length, 0, row);
+  }
+  // The row whose bottom divider carries the "same connector" mark: a piece followed by its sibling.
+  const rows = ordered.map((row, i) => ({ ...row, linkedBelow: row.crossFloor && ordered[i + 1]?.crossFloor === true && ordered[i + 1].pairKey === row.pairKey }));
   const remove = () => {
     if (pendingKey === null) return;
     const { [pendingKey]: _removed, ...rest } = paths;
@@ -63,7 +94,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
     });
   };
   return (
-    <SidePanel title={m["image_export.teleport_connector_editor.title"]()} stackKey="image-export-teleport-connectors" onClose={() => { setHovered(null); onClose(); }}>
+    <SidePanel title={m["image_export.teleport_connector_editor.title"]()} stackKey="image-export-teleport-connectors" onClose={() => { hover([]); onClose(); }}>
       <SectionHeader
         label={<span className={warnings.length > 0 ? "problem-section-attention" : undefined}>{resolveExportWarningsSectionTitle(warnings.length)}</span>}
         expanded={warningsExpanded}
@@ -74,19 +105,32 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
       )}
       <div style={styles.divider} />
       {rows.length === 0 ? <div style={styles.empty}>{m["image_export.teleport_connector_editor.empty"]()}</div> : (
-        <div style={styles.list}>{rows.map((row) => (
+        <div style={styles.list}>{rows.map((row) => {
+          const hoverRow = () => hover(row.ids, row.cells);
+          return (
           <ListCell
             key={row.key}
-            style={hoveredKey === row.key ? { ...styles.row, background: ui.bg.hover } : styles.row}
-            onMouseEnter={() => { setHoveredKey(row.key); setHovered(row.ids); }}
-            onMouseLeave={() => { setHoveredKey(null); setHovered(null); }}
-            onClick={() => onFocusPath(row.points)}
+            style={{
+              ...styles.row,
+              ...(row.linkedBelow ? { position: "relative" } : null),
+              ...(hoveredKey === row.key ? { background: ui.bg.hover } : null),
+            }}
+            onMouseEnter={() => { setHoveredKey(row.key); hoverRow(); }}
+            onMouseLeave={() => { setHoveredKey(null); hover([]); }}
+            onClick={() => { if (row.floorIndex !== undefined) navigateToFloor(row.floorIndex); onFocusPath(row.points); }}
             details={(
-              <div style={styles.bubbles}>
-                <Bubble onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[0]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.a)}</Bubble>
-                <BubbleArrow onMouseEnter={(e) => { e.stopPropagation(); setHovered(row.ids); }}>↔</BubbleArrow>
-                <Bubble onMouseEnter={(e) => { e.stopPropagation(); setHovered([row.ids[1]]); }} onMouseLeave={() => setHovered(row.ids)}>{label(row.b)}</Bubble>
-              </div>
+              <EntityBubbleRow
+                bubbles={row.bubbles}
+                arrow={row.arrow}
+                onBubbleEnter={(_, j) => {
+                  const end = row.pair[j];
+                  if ("node" in end) hover([end.node]); else hover([], row.cells);
+                }}
+                onBubbleLeave={hoverRow}
+                onArrowEnter={hoverRow}
+                onArrowLeave={hoverRow}
+                onBubbleClick={(bubble) => { if (bubble.highlight?.kind === "point") navigateToFloor(bubble.highlight.level ?? 0); }}
+              />
             )}
             actions={(
               <>
@@ -107,8 +151,15 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
                 ><Trash2 size={16} /></ListCellAction>
               </>
             )}
-          />
-        ))}</div>
+          >
+            {row.linkedBelow && (
+              <Tooltip placement="top" content={m["image_export.teleport_connector_editor.linked_pieces"]()}>
+                <span style={styles.linkMark} data-testid="teleport-connector-link-mark" onClick={(e) => e.stopPropagation()}><Link2 size={11} /></span>
+              </Tooltip>
+            )}
+          </ListCell>
+          );
+        })}</div>
       )}
       <div style={styles.instructions}>
         <Instruction keys={["LMB"]} text={m["image_export.teleport_connector_editor.hint_left_click"]()} />
@@ -133,7 +184,12 @@ function Instruction({ keys, text }: { keys: readonly ShortcutKey[]; text: strin
 const styles: Record<string, React.CSSProperties> = {
   list: { display: "flex", flexDirection: "column" },
   row: { cursor: "pointer" },
-  bubbles: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0, flex: 1 },
+  // Sits on the divider under a piece, marking it and the next row as the two halves of one connector.
+  linkMark: {
+    position: "absolute", left: "50%", bottom: 0, transform: "translate(-50%, 50%)", zIndex: 2,
+    width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+    background: ui.bg.panel, border: `1px solid ${ui.border.default}`, color: ui.text.tertiary, cursor: "default",
+  },
   empty: { ...typography.body, color: ui.text.tertiary, padding: spacing.groupGap },
   warnings: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
