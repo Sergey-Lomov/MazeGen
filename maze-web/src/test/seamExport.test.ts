@@ -10,6 +10,8 @@ import { trimMaskPolygons } from "../pixi/imageExport/VectorByWallsRenderer";
 import type { EdgeDto, NodeDto, WireFold, WireTopology } from "../wasm/types";
 import { range } from "./seamFixtures";
 import { fieldOf } from "./fieldConfigFixtures";
+import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
+import type { TessellationKind } from "../fieldConfig";
 
 // Seam export (GitHub issue #842, `Specs/image-export.md`, "Seams in export"): both vector export
 // modes draw a passage toward a seam as one half per side, from the cell to its own glued face. They
@@ -82,10 +84,29 @@ const cases: SeamCase[] = [
 ];
 
 const near = (p: { x: number; y: number }, q: { x: number; y: number }, tolerance = 1e-6): boolean => Math.hypot(p.x - q.x, p.y - q.y) <= tolerance;
+
+/// Whether a point lies inside any of the flat `[x0, y0, x1, y1, …]` polygons (even-odd ray casting).
+const boundsOf = new WeakMap<number[], [number, number, number, number]>();
+const insideAny = (polygons: number[][], px: number, py: number): boolean => polygons.some((polygon) => {
+  let bounds = boundsOf.get(polygon);
+  if (!bounds) {
+    const xs = polygon.filter((_, i) => i % 2 === 0);
+    const ys = polygon.filter((_, i) => i % 2 === 1);
+    bounds = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    boundsOf.set(polygon, bounds);
+  }
+  if (px < bounds[0] || px > bounds[2] || py < bounds[1] || py > bounds[3]) return false;
+  let hit = false;
+  for (let i = 0, j = polygon.length - 2; i < polygon.length; j = i, i += 2) {
+    if ((polygon[i + 1] > py) !== (polygon[j + 1] > py) && px < ((polygon[j] - polygon[i]) * (py - polygon[i + 1])) / (polygon[j + 1] - polygon[i + 1]) + polygon[i]) hit = !hit;
+  }
+  return hit;
+});
 const faceOf = (cell: Cell, face: number) => getFaceEdgeSegment(cell, face, field)!;
 const centerOf = (cell: Cell) => getCellCenter(cell[0], cell[1], field);
 
-describe.each(cases)("seam export: $name", ({ topology, sides }) => {
+describe.each(cases)("seam export: $name", ({ name, topology, sides }) => {
+  const isTorus = name.startsWith("torus");
   const [first, second] = sides;
   const open = passage(first.cell, second.cell);
   const prepare = () => warmCartesianCache(field, topology);
@@ -100,6 +121,35 @@ describe.each(cases)("seam export: $name", ({ topology, sides }) => {
     // One cell polygon per cell, plus one straight outward strip per ordinary square-field face
     // and convex corner wedges. No strip is produced for either side of an active seam.
     expect(trimMaskPolygons(cells, field, 100).length).toBeGreaterThanOrEqual(cells.length + ordinaryBoundaryFaces.length);
+  });
+
+  it("keeps the mask over every ordinary edge and cuts it exactly at each glued face", () => {
+    prepare();
+    const model = getSeamModel(field);
+    const polygons = trimMaskPolygons(cells, field, 100);
+    let ordinary = 0, glued = 0;
+    for (const cell of cells) {
+      const center = centerOf(cell);
+      for (const [face, [dx, dy]] of getNeighborData(field, ...cell).offsets.entries()) {
+        const isGlued = Boolean(model.halfEdgeAt(cell, face));
+        if (!isGlued && !((dx === 0 && dy === 0) || !cells.some(([x, y]) => x === cell[0] + dx && y === cell[1] + dy))) continue;
+        const { v0, v1 } = faceOf(cell, face);
+        const length = Math.hypot(v1.x - v0.x, v1.y - v0.y);
+        const sign = (v1.y - v0.y) * ((v0.x + v1.x) / 2 - center.x) - (v1.x - v0.x) * ((v0.y + v1.y) / 2 - center.y) < 0 ? -1 : 1;
+        const [nx, ny] = [(sign * (v1.y - v0.y)) / length, (-sign * (v1.x - v0.x)) / length];
+        // Over the middle of the face, from the wall outward.
+        for (const along of [0.25, 0.5, 0.75]) {
+          for (const away of [3, 25]) {
+            const covered = insideAny(polygons, v0.x + (v1.x - v0.x) * along + nx * away, v0.y + (v1.y - v0.y) * along + ny * away);
+            expect(covered, `${cell} face ${face} ${isGlued ? "glued" : "ordinary"} along ${along} away ${away}`).toBe(!isGlued);
+          }
+        }
+        if (isGlued) glued++; else ordinary++;
+      }
+    }
+    // A torus has no ordinary edge at all.
+    expect(glued).toBeGreaterThan(0);
+    expect(ordinary > 0).toBe(!isTorus);
   });
 
   describe("vector by corridors", () => {
@@ -183,5 +233,51 @@ describe("Vector-by-walls trim mask", () => {
   it("fills every convex outer corner beyond its two face strips", () => {
     // Its three ordinary face strips meet in two convex corners, each requiring one extra wedge.
     expect(trimMaskPolygons([[0, 0]], singleCellField, 100)).toHaveLength(6);
+  });
+
+  // Every point within a few wall widths of an ordinary field edge must stay under the mask: the walls
+  // are drawn across the edge, so a sliver in the mask cuts them (GitHub issue #999). Corners between
+  // faces of different cells (3.3.4.3.4, hexagons) and curved edges are the cases that opened one.
+  // `radial` and `voronoi` have cells only inside a generated field instance, so a blob grown from the
+  // origin cell is not available for them.
+  const BLOB_KINDS = (Object.keys(TESSELLATION_UI) as TessellationKind[]).filter((kind) => kind !== "radial" && kind !== "voronoi");
+  it.each(BLOB_KINDS)("covers the outer edge of a %s blob with the trim mask", (kind) => {
+    const cfg = fieldOf(kind, { shape: "rect", cols: 4, rows: 4 });
+    // The geometry cache is shared by the whole file: rewarm it for this field, not an earlier test's.
+    warmCartesianCache(cfg);
+    // A connected blob of cells from the tessellation's origin cell, walked over real neighbors.
+    const [ox, oy] = TESSELLATION_UI[kind].originCell;
+    const blob = new Map<string, Cell>([[`${ox},${oy}`, [ox, oy]]]);
+    const queue: Cell[] = [[ox, oy]];
+    for (let cell = queue.shift(); cell && blob.size < 60; cell = queue.shift()) {
+      for (const [dx, dy] of getNeighborData(cfg, ...cell).offsets) {
+        const next: Cell = [cell[0] + dx, cell[1] + dy];
+        if (blob.has(`${next}`) || (dx === 0 && dy === 0) || blob.size >= 60) continue;
+        blob.set(`${next}`, next);
+        queue.push(next);
+      }
+    }
+    const cells = [...blob.values()];
+    const polygons = trimMaskPolygons(cells, cfg, 100);
+    const cellPolygons = cells.map((cell) => getCellVertices(...cell, cfg).flatMap(({ x, y }) => [x, y]));
+    let checked = 0;
+    for (const cell of cells) {
+      for (const [face, [dx, dy]] of getNeighborData(cfg, ...cell).offsets.entries()) {
+        if ((dx !== 0 || dy !== 0) && blob.has(`${cell[0] + dx},${cell[1] + dy}`)) continue;
+        for (const [vx, vy] of getFaceEdgeSegment(cell, face, cfg)!.polyline) {
+          // Off-axis angles keep the samples off the cells' own straight edges.
+          for (let angle = 1.7; angle < 360; angle += 11) {
+            for (const distance of [3, 25]) {
+              const px = vx + Math.cos((angle * Math.PI) / 180) * distance;
+              const py = vy + Math.sin((angle * Math.PI) / 180) * distance;
+              if (insideAny(cellPolygons, px, py)) continue;
+              checked++;
+              expect(insideAny(polygons, px, py), `${cell} face ${face} at ${vx.toFixed(1)},${vy.toFixed(1)} angle ${angle} distance ${distance}`).toBe(true);
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
