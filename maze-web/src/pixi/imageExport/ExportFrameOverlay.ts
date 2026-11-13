@@ -265,7 +265,8 @@ export class ExportFrameOverlay implements ViewportListener {
     this.syncingDepth++;
     try {
       if (state.pngExportSettings.print.scaleAutoFit) state.setPrintScaleAutoFit(false);
-      state.setPrintCustomPlacement(scale, offsetXMm, offsetYMm);
+      // Two decimals, like the panel's scale editor, so switching to manual input shows no float noise (e.g. 1.6200000001).
+      state.setPrintCustomPlacement(Math.round(scale * 100) / 100, offsetXMm, offsetYMm);
       const print = useMazeStore.getState().pngExportSettings.print;
       // The surrounding onViewportChanged() redraw runs after this guarded store write. Mark this
       // placement as observed now, otherwise that redraw treats the Ctrl-only move as a panel edit

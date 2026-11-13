@@ -60,6 +60,12 @@ export function printCellMeasureMm(config: Pick<FieldConfig, "tessellation">, sc
   return pxToMm(cellMeasureWorldUnits(config) * scale, dpi);
 }
 
+/** Physical length of the shortest geometric cell side represented by a print scale (GitHub issue #1000). Judged against
+ * `MIN_COMFORTABLE_CELL_SIDE_MM`, the same limit the print-sizing dialog warns about. */
+export function printMinSideMm(config: Pick<FieldConfig, "tessellation">, scale: number, dpi: number): number {
+  return pxToMm(cellSideWorldUnits(config) * scale, dpi);
+}
+
 /** Resolves the sheet's physical size in millimeters (portrait-normalized, then swapped for
  * landscape) — standard sizes from `PAPER_SIZES_MM`, or the user's own `customWidthMm`/
  * `customHeightMm` when `paperSize === "custom"`. */
