@@ -147,3 +147,12 @@ describe("baked MSDF atlases", () => {
     }
   });
 });
+
+describe("loadMsdfFont failure", () => {
+  it("rejects when the default font cannot be downloaded, so startup surfaces it instead of drawing no labels", async () => {
+    vi.resetModules();
+    assetsLoad.mockRejectedValueOnce(new Error("network"));
+    const fresh = await import("../pixi/renderers/msdfFont");
+    await expect(fresh.loadMsdfFont()).rejects.toThrow();
+  });
+});

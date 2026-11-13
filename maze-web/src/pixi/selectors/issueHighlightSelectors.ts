@@ -11,6 +11,11 @@ export interface RegionGeometry {
    *  the edge-connected component (GitHub issue #618) so contour tracing never crosses between
    *  cells that only touch at a corner point, not a shared edge. */
   perimeterSegments: PerimeterSegment[];
+  /** Spatial component per cell coordinate. Lets renderers isolate graph-connected regions whose
+   *  cells are separated in the field by a teleport or cross-floor link. */
+  componentByCell: Map<string, number>;
+  /** Number of edge-adjacent spatial components in `cells`. */
+  componentCount: number;
 }
 
 /** One exposed side of a region, oriented with the region on its left. `polyline` is the side's
@@ -48,7 +53,7 @@ export function buildRegionGeometry(
     seenCells.add(key);
     cells.push([node.x, node.y]);
   }
-  if (cells.length === 0) return { cells, perimeterSegments: [] };
+  if (cells.length === 0) return { cells, perimeterSegments: [], componentByCell: new Map(), componentCount: 0 };
 
   const cellSet = buildCellSet(cells);
 
@@ -110,5 +115,5 @@ export function buildRegionGeometry(
     }
   }
 
-  return { cells, perimeterSegments };
+  return { cells, perimeterSegments, componentByCell, componentCount: nextComponent };
 }

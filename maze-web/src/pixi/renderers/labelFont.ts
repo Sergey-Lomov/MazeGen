@@ -1,5 +1,6 @@
 import { BitmapText, Text } from "pixi.js";
-import { CSS_FONT_WEIGHTS, msdfFace, weightFromStyleName, type LabelFont } from "./fontChoice";
+import { CSS_FONT_WEIGHTS, LABEL_FONT_LOADED_EVENT, isMsdfFamily, msdfFace, weightFromStyleName, type LabelFont } from "./fontChoice";
+import { loadMsdfFamily } from "./msdfLoader";
 
 /** Runtime local-font support for issue #740. An empty or unavailable family deliberately uses
  * the bundled MSDF Roboto, which remains the portable project-file fallback. */
@@ -10,17 +11,25 @@ const fontKey = (family: string, weight: number) => `${weight}|${family}`;
  * text and may soften when enlarged; this avoids zoom-driven texture allocation and GPU churn. */
 const MAX_RUNTIME_TEXT_RESOLUTION = 2;
 
+let sharedMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+/** One scratch 2D context for every glyph probe: the picker probes each installed family, and a canvas
+ *  per probe would be created hundreds of times when it opens. */
+function measureContext(): CanvasRenderingContext2D | null {
+  if (sharedMeasureContext === undefined) sharedMeasureContext = document.createElement("canvas").getContext("2d");
+  return sharedMeasureContext;
+}
+
 /** CSS Font Loading reports the fallback face as usable for an unknown family. Comparing a long
  * probe string against generic fallback faces prevents that false positive, so a saved typo still
  * resolves to the bundled MSDF Roboto rather than the browser's arbitrary sans-serif fallback. */
-function hasDistinctGlyphMetrics(family: string): boolean {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
+function hasDistinctGlyphMetrics(family: string, probes: readonly string[] = PROBES): boolean {
+  const context = measureContext();
   if (!context) return false;
   const width = (font: string, probe: string) => { context.font = font; return context.measureText(probe).width; };
   // A font may cover only one script (a Cyrillic-only or runic face renders Latin through the
   // fallback), so each script is probed on its own and one distinct probe is enough.
-  return PROBES.some((probe) => {
+  return probes.some((probe) => {
     const candidate = width(`16px ${JSON.stringify(family)}, monospace`, probe);
     // A missing family resolves to one of the generic fallbacks. It is genuine only when its
     // metrics differ from every one of them; `some` would accept a missing family that fell back
@@ -30,6 +39,22 @@ function hasDistinctGlyphMetrics(family: string): boolean {
 }
 
 const PROBES = ["Wm@#0123456789", "ЖЩшюЯ"];
+
+const coverageCache = new Map<string, boolean>();
+
+/** Whether the browser font `family` draws every glyph of `sample` itself (GitHub issue #984): a script
+ *  the face lacks falls back to a generic font, so its metrics match one of them. Cached, since the
+ *  picker asks it for every installed family. */
+export function fontCoversSample(family: string, sample: string): boolean {
+  if (typeof document === "undefined") return false;
+  const key = `${sample}|${family}`;
+  let covers = coverageCache.get(key);
+  if (covers === undefined) {
+    covers = hasDistinctGlyphMetrics(family, [sample]);
+    coverageCache.set(key, covers);
+  }
+  return covers;
+}
 
 /** Font families, in order, for a browser font: the font itself, then the generic sans-serif. The one
  *  stack behind the canvas labels, their measuring and the font picker preview, so a glyph the chosen
@@ -121,10 +146,13 @@ function hasDistinctBoldFace(family: string): boolean {
   return PROBES.some((probe) => Math.abs(width(700, probe) - width(400, probe)) > 0.01);
 }
 
-/** Wait until a browser font can be measured before allowing it onto the canvas. */
+/** Wait until a font can be drawn before allowing it onto the canvas: a browser font is measurable, a
+ *  baked MSDF font has its atlases downloaded (GitHub issue #982). Resolves to `false` when it cannot be
+ *  loaded; the label then keeps the default font. */
 export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   const family = font.family.trim();
   if (!family) return true;
+  if (isMsdfFamily(family)) return loadMsdfFamily(family);
   const key = fontKey(family, font.weight);
   if (loadedFonts.has(key)) return true;
   if (typeof document === "undefined" || !document.fonts) return false;
@@ -139,7 +167,7 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
       if (!document.fonts.check(face)) return false;
       if (!isFontFamilyInstalled(family)) return false;
       loadedFonts.add(key);
-      if (typeof window !== "undefined") window.dispatchEvent(new Event("mazegen:label-font-loaded"));
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(LABEL_FONT_LOADED_EVENT));
       return true;
     } catch {
       return false;

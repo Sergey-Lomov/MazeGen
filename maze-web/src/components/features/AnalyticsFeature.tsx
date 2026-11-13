@@ -154,6 +154,7 @@ export function AnalyticsFeature() {
   const [detailedReportOpen, setDetailedReportOpen] = React.useState(false);
   const [scoreInfoOpen, setScoreInfoOpen] = React.useState(false);
 
+  const showGridOverlay = useMazeStore((s) => s.showGridOverlay);
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
@@ -163,6 +164,7 @@ export function AnalyticsFeature() {
   const showRegionClassesOverlay = useMazeStore((s) => s.showRegionClassesOverlay);
   const regionClassLegendOpen = useMazeStore((s) => s.regionClassLegendOpen);
 
+  const setShowGridOverlay = useMazeStore((s) => s.setShowGridOverlay);
   const setShowMazeOverlay = useMazeStore((s) => s.setShowMazeOverlay);
   const setShowComponentsOverlay = useMazeStore((s) => s.setShowComponentsOverlay);
   const setShowGraphOverlay = useMazeStore((s) => s.setShowGraphOverlay);
@@ -186,6 +188,7 @@ export function AnalyticsFeature() {
       <SectionHeader label={m["analytics.layers"]()} expanded={isExpanded("layers")} onToggle={() => toggleSection("layers")} />
       {isExpanded("layers") && (
         <div style={styles.toggleBlock}>
+          <ToggleRow label={m["analytics.layer_grid"]()} checked={showGridOverlay} onChange={setShowGridOverlay} />
           <ToggleRow label={m["analytics.layer_maze"]()} checked={showMazeOverlay} onChange={setShowMazeOverlay} />
           <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
           <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />

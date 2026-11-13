@@ -277,6 +277,34 @@ describe("seam hit-testing and edge highlight", () => {
 });
 
 describe("seam arrows", () => {
+  it("routes the octahedron seam clear of the corner of cell -20,3", () => {
+    const octahedron = fieldOf("tri", { shape: "octahedron", side: 6, net: 0, mode: 0, aspect: 100 });
+    const topology = presetTopologyOf(octahedron)!;
+    warmCartesianCache(octahedron, topology);
+    const arrow = buildSeamArrows(octahedron, topology)[1];
+    const corner = getCellVertices(-20, 3, octahedron)[0];
+    const onSegment = (from: Point, to: Point): boolean => {
+      const dx = to[0] - from[0];
+      const dy = to[1] - from[1];
+      const px = corner.x - from[0];
+      const py = corner.y - from[1];
+      return Math.abs(dx * py - dy * px) < 1e-6 && px * dx + py * dy >= -1e-6 && px * dx + py * dy <= dx * dx + dy * dy + 1e-6;
+    };
+    expect(arrow.path.slice(1).some((to, i) => onSegment(arrow.path[i], to))).toBe(false);
+  });
+
+  it("centres a direct 135-degree octahedron seam on its contour face", () => {
+    const octahedron = fieldOf("tri", { shape: "octahedron", side: 6, net: 0, mode: 0, aspect: 100 });
+    const topology = presetTopologyOf(octahedron)!;
+    warmCartesianCache(octahedron, topology);
+    const arrow = buildSeamArrows(octahedron, topology)[4];
+    const contour = arrow.braces[0];
+    const centre: Point = [(contour[3][0] + contour[4][0]) / 2, (contour[3][1] + contour[4][1]) / 2];
+    const headBase: Point = [(arrow.headA[1][0] + arrow.headA[2][0]) / 2, (arrow.headA[1][1] + arrow.headA[2][1]) / 2];
+    close(arrow.path[0], centre);
+    close(headBase, centre);
+  });
+
   it("keeps brick-torus seam arrows orthogonal, uniform, and outlined at corners", () => {
     const topology = presetTopologyOf(brickTorus)!;
     warmCartesianCache(brickTorus, topology);

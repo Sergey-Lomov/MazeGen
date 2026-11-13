@@ -7,7 +7,7 @@ export interface LabelFont {
 }
 
 /** Family value that stands for the bundled MSDF Roboto in every font field. */
-const VECTOR_FONT_FAMILY = "";
+export const VECTOR_FONT_FAMILY = "";
 
 const DEFAULT_LABEL_WEIGHT = 700;
 
@@ -46,17 +46,62 @@ export interface MsdfFace {
   url: string;
 }
 
-/** The baked MSDF fonts, keyed by stored family. Each font lists the weights it was baked with, so a
- *  font baked with other weights only needs another entry here (and its atlases from
- *  `tools/msdf/generate.mjs`); the picker offers exactly these weights. */
-export const MSDF_FONTS: Record<string, { label: string; faces: MsdfFace[] }> = {
+/** One catalog font: its display name, the atlases of its weights and the scripts besides Latin it covers. */
+export interface MsdfFontEntry {
+  label: string;
+  faces: MsdfFace[];
+  scripts: readonly FontScript[];
+}
+
+/** Prefix of every stored family key of a bundled font except Roboto. A browser font name never starts
+ *  with it, so a locally installed "Noto Sans" cannot be mistaken for the bundled one. */
+const MSDF_FAMILY_PREFIX = "msdf:";
+
+/** A writing system a font may cover beyond Latin. A locale declares which one it needs
+ *  (`LOCALE_FONT_SCRIPT`, GitHub issue #984), so the picker can tell whether a font draws its text. */
+export type FontScript = "cyrillic";
+
+/** Scripts every baked MSDF font covers besides Latin (each atlas is baked with Latin and Cyrillic glyphs). */
+const MSDF_SCRIPTS: readonly FontScript[] = ["cyrillic"];
+
+/** Catalog entry of a bundled Regular + Bold font baked by `tools/msdf/generate.mjs` under `id` (output
+ *  `public/fonts/<id>-{regular,bold}-msdf.fnt`); `face` is the font-face name recorded in the atlas. */
+function msdfFont(id: string, label: string, face: string): Record<string, MsdfFontEntry> {
+  return {
+    [MSDF_FAMILY_PREFIX + id]: {
+      label,
+      scripts: MSDF_SCRIPTS,
+      faces: [
+        { weight: 400, atlasName: `${face}-Regular`, url: `/fonts/${id}-regular-msdf.fnt` },
+        { weight: 700, atlasName: `${face}-Bold`, url: `/fonts/${id}-bold-msdf.fnt` },
+      ],
+    },
+  };
+}
+
+/** The catalog of baked MSDF fonts, keyed by stored family (GitHub issue #982). Listing a font here
+ *  costs nothing: its atlases are fetched only when the font is first needed (`msdfLoader.ts`), except
+ *  the default Roboto, which is loaded at startup because every other font falls back to it. Each font
+ *  lists the weights it was baked with, so a font baked with other weights only needs another entry
+ *  here (and its atlases from `tools/msdf/generate.mjs`); the picker offers exactly these weights. */
+export const MSDF_FONTS: Record<string, MsdfFontEntry> = {
   [VECTOR_FONT_FAMILY]: {
     label: "Roboto",
+    scripts: MSDF_SCRIPTS,
     faces: [
       { weight: 400, atlasName: "Roboto-Regular", url: "/fonts/roboto-regular-msdf.fnt" },
       { weight: 700, atlasName: "Roboto-Bold", url: "/fonts/roboto-bold-msdf.fnt" },
     ],
   },
+  ...msdfFont("noto-sans", "Noto Sans", "NotoSans"),
+  ...msdfFont("noto-sans-condensed", "Noto Sans Condensed", "NotoSansCondensed"),
+  ...msdfFont("noto-serif", "Noto Serif", "NotoSerif"),
+  ...msdfFont("fira-sans", "Fira Sans", "FiraSans"),
+  ...msdfFont("fira-mono", "Fira Mono", "FiraMono"),
+  ...msdfFont("arimo", "Arimo", "Arimo"),
+  ...msdfFont("tinos", "Tinos", "Tinos"),
+  ...msdfFont("cousine", "Cousine", "Cousine"),
+  ...msdfFont("open-sans", "Open Sans", "OpenSans"),
 };
 
 /** Whether a stored family is a baked MSDF font (as opposed to a browser font). */
@@ -69,10 +114,34 @@ export function msdfFontWeights(family: string): number[] {
   return (MSDF_FONTS[family] ?? MSDF_FONTS[VECTOR_FONT_FAMILY]).faces.map((face) => face.weight).sort((a, b) => a - b);
 }
 
+const loadedMsdfFamilies = new Set<string>();
+
+/** Records that every atlas of the baked font `family` is installed, so `msdfFace` may pick its faces. */
+export function markMsdfFamilyLoaded(family: string): void {
+  loadedMsdfFamilies.add(family);
+}
+
+/** Whether every atlas of the baked font `family` has really been installed (`markMsdfFamilyLoaded`). */
+export function hasMsdfFamilyAtlases(family: string): boolean {
+  return loadedMsdfFamilies.has(family);
+}
+
+/** Whether the baked font `family` can be drawn now. The default Roboto always counts: it is the
+ *  fallback and is awaited at startup. */
+export function isMsdfFamilyLoaded(family: string): boolean {
+  return family === VECTOR_FONT_FAMILY || hasMsdfFamilyAtlases(family);
+}
+
+/** Window event fired when a font finishes loading (a browser face or a baked MSDF font), so the canvas
+ *  renderers redraw labels that were drawn in the fallback font meanwhile. */
+export const LABEL_FONT_LOADED_EVENT = "mazegen:label-font-loaded";
+
 /** The atlas that draws `font` in MSDF: the font's face with the nearest baked weight. An unknown
- *  family (a browser font that did not load) renders as the default MSDF font. */
+ *  family (a browser font that did not load), a baked font that is still loading and one whose download
+ *  failed all render as the default MSDF font. */
 export function msdfFace(font: LabelFont): MsdfFace {
-  const faces = (MSDF_FONTS[font.family] ?? MSDF_FONTS[VECTOR_FONT_FAMILY]).faces;
+  const entry = isMsdfFamily(font.family) && isMsdfFamilyLoaded(font.family) ? MSDF_FONTS[font.family] : MSDF_FONTS[VECTOR_FONT_FAMILY];
+  const faces = entry.faces;
   const weight = nearestWeight(font.weight, faces.map((face) => face.weight));
   return faces.find((face) => face.weight === weight)!;
 }

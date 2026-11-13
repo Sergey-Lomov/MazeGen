@@ -1,8 +1,8 @@
 // Bakes the MSDF atlases used by canvas `BitmapText` labels (GitHub issue #352).
 //
-// Input:  tools/msdf/Roboto-Regular.ttf  +  tools/msdf/Roboto-Bold.ttf  (Apache-2.0, committed)
-// Output: public/fonts/roboto-regular-msdf.{fnt,png}
-//         public/fonts/roboto-bold-msdf.{fnt,png}
+// Input:  tools/msdf/<Font>-Regular.ttf  +  tools/msdf/<Font>-Bold.ttf, committed (see `FONTS` below)
+// Output: public/fonts/<id>-regular-msdf.{fnt,png}
+//         public/fonts/<id>-bold-msdf.{fnt,png}
 //
 // Output is `.fnt` (AngelCode XML), NOT `.json` — pixi.js v8's bitmap-font loader only recognizes
 // `.fnt`/`.xml` by extension. A `.json` atlas loads as a plain object and `BitmapText` silently
@@ -29,10 +29,36 @@ const OUT_DIR = resolve(here, "../../public/fonts");
 
 const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:(),#+-=№ .;!?'\"/&_*%@[]«»–—…АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя";
 
-const WEIGHTS = [
-  { src: "Roboto-Regular.ttf", out: "roboto-regular-msdf" },
-  { src: "Roboto-Bold.ttf", out: "roboto-bold-msdf" },
+// One entry per bundled font, Regular and Bold each. Fonts other than Roboto (Apache-2.0, `public/licenses/Apache-2.0.txt`)
+// are SIL OFL 1.1 (`OFL-<Font>.txt` next to the sources; Noto Sans Condensed shares `OFL-NotoSans.txt`). Usage: `npm run gen:msdf` bakes every font,
+// `npm run gen:msdf -- fira-sans noto-serif` only the named ones (output is otherwise byte-identical, so
+// rebaking an unchanged font only adds diff noise).
+const FONTS = [
+  { id: "roboto", src: "Roboto" },
+  { id: "noto-sans", src: "NotoSans" },
+  { id: "noto-sans-condensed", src: "NotoSansCondensed" },
+  { id: "noto-serif", src: "NotoSerif" },
+  { id: "fira-sans", src: "FiraSans" },
+  { id: "fira-mono", src: "FiraMono" },
+  { id: "arimo", src: "Arimo" },
+  { id: "tinos", src: "Tinos" },
+  { id: "cousine", src: "Cousine" },
+  { id: "open-sans", src: "OpenSans" },
 ];
+
+const requested = process.argv.slice(2);
+const unknown = requested.filter((id) => !FONTS.some((font) => font.id === id));
+if (unknown.length > 0) {
+  console.error(`unknown font id(s): ${unknown.join(", ")}; known: ${FONTS.map((font) => font.id).join(", ")}`);
+  process.exit(1);
+}
+
+const WEIGHTS = FONTS
+  .filter((font) => requested.length === 0 || requested.includes(font.id))
+  .flatMap((font) => ["Regular", "Bold"].map((weight) => ({
+    src: `${font.src}-${weight}.ttf`,
+    out: `${font.id}-${weight.toLowerCase()}-msdf`,
+  })));
 
 function bake(fontSrc, outName) {
   return new Promise((res, rej) => {

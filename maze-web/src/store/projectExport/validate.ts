@@ -191,6 +191,8 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // analytics
   const analyticsObj = assertObject(migrated.analytics, "analytics");
   const analytics: ProjectFileAnalytics = {
+    // Optional — grid visibility was added after existing project files.
+    showGridOverlay: optBool(analyticsObj, "showGridOverlay", true),
     showMazeOverlay: assertBoolean(analyticsObj.showMazeOverlay, "analytics.showMazeOverlay"),
     showComponentsOverlay: assertBoolean(analyticsObj.showComponentsOverlay, "analytics.showComponentsOverlay"),
     showGraphOverlay: assertBoolean(analyticsObj.showGraphOverlay, "analytics.showGraphOverlay"),

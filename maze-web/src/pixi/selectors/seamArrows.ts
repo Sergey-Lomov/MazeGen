@@ -606,13 +606,10 @@ function standOff(path: Point[], gapStart: number, gapEnd: number, outs: [Point,
   const pull = (end: number, next: number, gap: number, face: Point): void => {
     const length = Math.hypot(out[next][0] - out[end][0], out[next][1] - out[end][1]);
     if (length === 0) return;
-    // A route that leaves its face inward (across the field) starts on the contour, outside the face, and runs in through it.
-    if (((out[next][0] - out[end][0]) * face[0] + (out[next][1] - out[end][1]) * face[1]) < 0) {
-      out[end] = [out[end][0] + face[0] * gap, out[end][1] + face[1] * gap];
-      return;
-    }
+    // The contour sits along the face normal. Moving an oblique route along its own direction
+    // shifts its head sideways off the middle of the face; move it out through the face instead.
     const by = Math.min(gap, length * 0.6);
-    out[end] = [out[end][0] + ((out[next][0] - out[end][0]) / length) * by, out[end][1] + ((out[next][1] - out[end][1]) / length) * by];
+    out[end] = [out[end][0] + face[0] * by, out[end][1] + face[1] * by];
   };
   pull(0, 1, gapStart, outs[0]);
   pull(out.length - 1, out.length - 2, gapEnd, outs[1]);

@@ -60,6 +60,8 @@ impl MazeAnalysis {
 
 In the web client, components are rendered as a semi-transparent color mask over maze tiles. Each component gets a distinct pastel color (HSL with hue spread across components, high lightness, moderate saturation). The layer sits above maze tiles but below all graph overlays. Toggle: **Components** in LayersPanel.
 
+One SCC may be spatially disconnected when a teleport or cross-floor connection joins its islands. The renderer preserves the SCC's shared color and draws its on-floor spatial islands in descending contour complexity (holes/multiple contours first). Pixi's hole cutting is order-sensitive when an independent fill precedes a complex island; this stable ordering avoids that interaction while retaining one shared `Graphics` and its normal batching cost.
+
 ## WASM Export
 
 `MazeSnapshot` includes:

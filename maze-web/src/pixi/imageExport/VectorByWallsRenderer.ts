@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
+import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -117,7 +118,7 @@ export class ExportWarningHighlight<TSettings> {
       return;
     }
 
-    const isSplitWarning = warning.id.includes("split") || warning.id === "waypoint_on_split" || warning.id === "teleport_on_special_split" || warning.id === "vertical_on_special_split";
+    const isSplitWarning = warning.id.includes("split");
 
     // Several split nodes can occupy one tile. Split warnings use one region group for all their
     // affected tiles, so adjacent tiles can merge into one contour just like ordinary regions.
@@ -405,7 +406,7 @@ export class VectorByWallsRenderer {
   } | null = null;
 
   constructor(root: Container) {
-    window.addEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.addEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.backgroundGrid = new BackgroundGridLayer(root);
     const container = this.backgroundGrid.content;
     this.mazeContent = new Container();
@@ -879,7 +880,7 @@ export class VectorByWallsRenderer {
   }
 
   destroy(): void {
-    window.removeEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.removeEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.unsubscribe?.();
     this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();

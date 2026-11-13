@@ -20,6 +20,7 @@ import { installFieldClipboardSync } from "./fieldClipboardSync";
 import { installEdgeMarkerSync } from "./edgeMarkerSync";
 import { installTeleportConnectorPathSync, retainLiveTeleportConnectorPaths } from "./teleportConnectorPathSync";
 import { installExportEditStateSync } from "./exportEditStateSync";
+import { installLabelFontSync } from "./labelFontSync";
 import { rulesFromFile } from "./slices/generationSliceHelpers";
 import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, selectedShapeFor, recomputeAutoLock, hasGeneration } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
@@ -223,6 +224,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       _postEditRequestId: 0,
       showMaze: true,
       // analytics overlays
+      showGridOverlay: file.analytics.showGridOverlay,
       showMazeOverlay: file.analytics.showMazeOverlay,
       showComponentsOverlay: file.analytics.showComponentsOverlay,
       showGraphOverlay: file.analytics.showGraphOverlay,
@@ -393,3 +395,4 @@ installFieldClipboardSync(useMazeStore);
 installExportEditStateSync(useMazeStore);
 installEdgeMarkerSync(useMazeStore);
 installTeleportConnectorPathSync(useMazeStore);
+installLabelFontSync(useMazeStore);

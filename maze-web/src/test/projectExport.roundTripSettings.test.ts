@@ -133,6 +133,16 @@ describe("serializeProject / parseAndValidate round-trip: underlay and settings"
     expect(reparsed.analytics.showRegionClassesOverlay).toBe(false);
   });
 
+  it("round-trips the grid toggle and defaults it to true for older project files", () => {
+    const serialized = serializeProject(makeState({ showGridOverlay: false }));
+    const raw = JSON.parse(JSON.stringify(serialized));
+    expect(parseAndValidate(raw).analytics.showGridOverlay).toBe(false);
+
+    delete raw.analytics.showGridOverlay;
+
+    expect(parseAndValidate(raw).analytics.showGridOverlay).toBe(true);
+  });
+
   it("defaults generation.qcExperiment to false for a project file saved before this toggle existed", () => {
     const state = makeState({ qcExperiment: true });
     const serialized = serializeProject(state);

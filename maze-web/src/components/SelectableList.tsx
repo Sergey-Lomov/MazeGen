@@ -38,6 +38,8 @@ export interface SelectableListProps<V extends string = string> {
   hoverSelected?: boolean;
   /** Not an option: content pinned to the bottom of the list body (it never scrolls away). */
   footer?: React.ReactNode;
+  /** The footer fills the whole list body and centers its content, for a list with no rows to show. */
+  centerFooter?: boolean;
   testId?: string;
   ariaLabel?: string;
   /** Merged over the list's own style (e.g. a dialog column's width, scroll and border). */
@@ -51,7 +53,7 @@ export interface SelectableListProps<V extends string = string> {
  *  the first value and Up on the last) and is announced through `aria-activedescendant`. The
  *  selected row is scrolled into view as the selection moves. */
 export function SelectableList<V extends string = string>({
-  selected, onSelect, values, appearance = "panel", compact = false, autoFocus = false, hoverSelected = false, footer, testId, ariaLabel, style, children,
+  selected, onSelect, values, appearance = "panel", compact = false, autoFocus = false, hoverSelected = false, footer, centerFooter = false, testId, ariaLabel, style, children,
 }: SelectableListProps<V>) {
   const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
@@ -99,7 +101,7 @@ export function SelectableList<V extends string = string>({
         data-testid={testId}
       >
         {children}
-        {footer && <div role="presentation" style={styles.footer}>{footer}</div>}
+        {footer && <div role="presentation" style={centerFooter ? styles.footerCentered : styles.footer}>{footer}</div>}
       </div>
     </ListContext.Provider>
   );
@@ -166,6 +168,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid ${ui.border.default}`,
     padding: spacing.groupGap,
   },
+  footerCentered: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: spacing.groupGap, textAlign: "center" },
   rowPanel: { ...typography.body, display: "flex", alignItems: "center", padding: "3px 8px", flexShrink: 0, cursor: "default" },
   rowPanelSelected: { background: ui.state.selected, color: ui.text.primary },
   rowDialog: {

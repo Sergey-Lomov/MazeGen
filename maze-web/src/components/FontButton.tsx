@@ -69,7 +69,11 @@ export function FontButton({ font, onChange, disabled, title, onPreview, onOpen,
 
 const styles: Record<string, React.CSSProperties> = {
   button: {
-    width: 140,
+    // Fits its text, grows toward the label up to `maxWidth` (the label keeps the rest of the row),
+    // and only then cuts the name with an ellipsis. 140 px is the floor so short names line up.
+    minWidth: 140,
+    maxWidth: "65%",
+    flex: "0 1 auto",
     padding: "2px 6px",
     textAlign: "left",
     overflow: "hidden",

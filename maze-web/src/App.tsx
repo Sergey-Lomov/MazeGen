@@ -88,9 +88,10 @@ export function App() {
         autoDensity: true,
         autoStart: false,
       })
-      // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
+      // The default MSDF label font (GitHub issue #352, ~150 KB for both weights) is a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
-      // later page load free. Blocking `setReady` on it avoids a flash of missing labels.
+      // later page load free. Blocking `setReady` on it avoids a flash of missing labels. Other MSDF
+      // fonts load on demand (issue #982).
       .then(() => {
         setLoadingStage("fonts");
         return loadMsdfFont();

@@ -160,6 +160,13 @@ export const base = {
   topologyRunABg: "#a78bfa26",
   topologyRunB: "#46c9b6",
   topologyRunBBg: "#46c9b626",
+  // The font format badges of the font picker (GitHub issue #984): two equal categories, so two hues that carry no
+  // meaning of their own (violet for the baked MSDF fonts, teal for the browser vector fonts), clear of info, success,
+  // warning and error. Same soft hues as the glue runs above, kept as their own entries so neither can drift the other.
+  fontMsdf: "#a78bfa",
+  fontMsdfBg: "#a78bfa26",
+  fontVec: "#46c9b6",
+  fontVecBg: "#46c9b626",
   // The twist icon on the disc in the middle of a twisted glue.
   topologySeamTwistIcon: "#ffffff",
   // Crease lines (topology editor): a dashed line clear of the glue hues; the hover colour is lighter.

@@ -3,7 +3,8 @@ import type React from "react";
 import { Application } from "pixi.js";
 import { truncateToWidth } from "../pixi/ellipsisFit";
 import { loadMsdfFont, makeCenteredLabel } from "../pixi/renderers/msdfFont";
-import type { LabelFont } from "../pixi/renderers/fontChoice";
+import { isMsdfFamilyLoaded, type LabelFont } from "../pixi/renderers/fontChoice";
+import { loadMsdfFamily } from "../pixi/renderers/msdfLoader";
 
 /** Gap in px between the left edge of the preview and its text. */
 const TEXT_PADDING = 8;
@@ -85,6 +86,15 @@ export function MsdfFontPreview({ text, font, textColor, background, fontSize, s
     return () => observer.disconnect();
   }, [app]);
 
+  // A font that is not loaded yet draws as the default one; once its atlases arrive the draw below reruns.
+  const [loadedFamily, setLoadedFamily] = useState<string | null>(null);
+  useEffect(() => {
+    if (!app || isMsdfFamilyLoaded(font.family)) return;
+    let cancelled = false;
+    void loadMsdfFamily(font.family).then((loaded) => { if (loaded && !cancelled) setLoadedFamily(font.family); });
+    return () => { cancelled = true; };
+  }, [app, font.family]);
+
   useEffect(() => {
     if (!app) return;
     app.renderer.background.color = background;
@@ -104,7 +114,7 @@ export function MsdfFontPreview({ text, font, textColor, background, fontSize, s
       app.stage.addChild(label);
     }
     app.render();
-  }, [app, text, font, textColor, background, fontSize, hostWidth]);
+  }, [app, text, font, textColor, background, fontSize, hostWidth, loadedFamily]);
 
   return <div ref={hostRef} style={style} data-testid={testId} />;
 }

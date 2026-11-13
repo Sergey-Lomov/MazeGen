@@ -167,6 +167,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
         <Instruction keys={["mod"]} text={m["image_export.teleport_connector_editor.hint_snap"]()} />
         <Instruction keys={["Alt"]} text={m["image_export.teleport_connector_editor.hint_independent_handles"]()} />
         <Instruction keys={["shift"]} text={m["image_export.teleport_connector_editor.hint_symmetric_handles"]()} />
+        <Instruction keys={["P"]} text={m["image_export.teleport_connector_editor.hint_preview"]()} />
       </div>
       {pendingKey !== null && <ConfirmModal
         message={m["image_export.teleport_connector_editor.reset_confirm"]()}

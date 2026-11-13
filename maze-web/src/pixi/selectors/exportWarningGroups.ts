@@ -3,7 +3,7 @@ import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { WaypointOpeningMode } from "../../store/imageExportTypes";
 import {
-  buildTeleportEdges, buildSplitPassages, buildCorridorSegments, shortestCorridorFace, maxSplitNodeCount, selectNodeLevelResolver,
+  buildTeleportEdges, buildCorridorSegments, shortestCorridorFace, selectNodeLevelResolver,
   selectVerticalPassagePairSet, buildVerticalConnectionMarkers,
 } from "./mazeSelectors";
 import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers";
@@ -144,16 +144,6 @@ export class WarningFloorEnv {
     }));
   }
   /** Keys (`"x,y"`) of the split points drawn as a special shape; the groups apply `splitSpecialShapes` themselves. */
-  get specialSplitPointKeys(): ReadonlySet<string> {
-    return this.once("specialSplitPointKeys", () => {
-      const keys = new Set<string>();
-      if (maxSplitNodeCount(this.nodes) > 0) {
-        for (const shape of buildSplitPassages(this.nodes, this.edges, this.cfg).specialShapes) keys.add(shape.pointKey);
-      }
-      return keys;
-    });
-  }
-
   /** The visibility context the color checks read through. A minimal floor array keeps project-wide
    *  visibility for the floor-label colors; the maze is the *unscoped* graph (a floor-scoped edge list
    *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor). */
@@ -184,22 +174,6 @@ function group<S extends AnySettings = AnySettings>(
   name: string, ids: readonly ExportWarningId[], run: WarningGroup<S>["run"], hiddenInputs?: WarningGroup<S>["hiddenInputs"],
 ): WarningGroup<S> {
   return { name, ids, run, hiddenInputs };
-}
-
-/** Filters `nodeIds` down to those sitting on one of `specialSplitPointKeys` — shared by
- *  `waypoint_on_split` (checked against `start`/`finish`) and `teleport_on_special_split` (checked
- *  against every teleport endpoint), which otherwise differ only in which node ids they check. */
-function filterNodesOnSpecialSplit(
-  nodeIds: Iterable<number>,
-  nodeById: Map<number, NodeDto>,
-  specialSplitPointKeys: ReadonlySet<string>,
-): number[] {
-  const result: number[] = [];
-  for (const id of nodeIds) {
-    const node = nodeById.get(id);
-    if (node && specialSplitPointKeys.has(`${node.x},${node.y}`)) result.push(id);
-  }
-  return result;
 }
 
 /** Footprints of every marker-index plate on the displayed floor (body plus border), as the mode
@@ -337,23 +311,6 @@ const elevatorIndistinguishable = group("elevatorIndistinguishable", ["elevator_
   maybe(computeElevatorIndistinguishableWarning(env.nodes, env.edges, s.markerIndex.enabled && s.markerIndex.coverage.elevator, s.elevatorBadges.enabled))
 ));
 
-/** `waypoint_on_split` and `teleport_on_special_split`, checked against the special-shape split points of the floor. */
-function pushSplitMarkerWarnings(out: ExportWarning[], env: WarningFloorEnv, s: AnySettings): ReadonlySet<string> {
-  const keys = s.splitSpecialShapes ? env.specialSplitPointKeys : NO_KEYS;
-  if (keys.size === 0) return keys;
-  const flaggedWaypoints = filterNodesOnSpecialSplit([env.start, env.finish].filter((id): id is number => id !== null), env.nodeById, keys);
-  if (flaggedWaypoints.length > 0) out.push({ id: "waypoint_on_split", key: "waypoint_on_split", nodes: flaggedWaypoints, edges: [] });
-  const teleportNodeIds = new Set<number>();
-  for (const e of env.teleportEdges) {
-    if (e.fromNode !== undefined) teleportNodeIds.add(e.fromNode);
-    if (e.toNode !== undefined) teleportNodeIds.add(e.toNode);
-  }
-  const flaggedTeleports = filterNodesOnSpecialSplit(teleportNodeIds, env.nodeById, keys);
-  if (flaggedTeleports.length > 0) out.push({ id: "teleport_on_special_split", key: "teleport_on_special_split", nodes: flaggedTeleports, edges: [] });
-  return keys;
-}
-const NO_KEYS: ReadonlySet<string> = new Set();
-
 // --- "Vector by walls" ---
 
 /** Name of the group of the connector geometry warnings in both modes (`computeTeleportConnectorWarningsAcrossFloors` picks it). */
@@ -404,20 +361,6 @@ const wallsSplitContrast = group<VectorByWallsSettings>(
  *  `splitSpecialShapes` is actually on (off, every split point draws the plain per-node reading,
  *  which a waypoint/teleport endpoint handles fine — see GitHub issue #298 follow-up). A start/finish,
  *  teleport endpoint or vertical marker landing there can visually collide with that geometry. */
-const wallsSpecialSplit = group<VectorByWallsSettings>(
-  "specialSplit", ["waypoint_on_split", "teleport_on_special_split", "vertical_on_special_split"],
-  (env, s) => collect((out) => {
-    const keys = pushSplitMarkerWarnings(out, env, s);
-    if (keys.size === 0) return;
-    const verticalNodeIds = new Set<number>();
-    for (const e of env.edges) {
-      if (e.kind === "vertical_passage" || e.kind === "elevator") verticalNodeIds.add(e.from);
-    }
-    const flagged = filterNodesOnSpecialSplit(verticalNodeIds, env.nodeById, keys);
-    if (flagged.length > 0) out.push({ id: "vertical_on_special_split", key: "vertical_on_special_split", nodes: flagged, edges: [] });
-  }),
-);
-
 /** `true` when the unjoined ends of a circular run are closer than its ordinary neighbours. Center
  * distance is sufficient because all elevator badges in a run have the same radius. */
 function elevatorBadgeEndGapTooSmall(positions: readonly { x: number; y: number }[]): boolean {
@@ -521,7 +464,7 @@ const wallsMarkerIndexStopLine = group<VectorByWallsSettings>("markerIndexStopLi
 export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[] = [
   teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, wallsWaypointOpening, wallsTeleportConnectors,
   ...contrastGroups,
-  wallsTeleportConnectorContrast, wallsSplitContrast, wallsSpecialSplit, wallsElevatorBadges,
+  wallsTeleportConnectorContrast, wallsSplitContrast, wallsElevatorBadges,
   textOverflow, wallsMarkerIndexStopLine, elevatorIndistinguishable,
 ];
 
@@ -588,11 +531,6 @@ const corridorsSplitGapMayShrink = group<VectorByCorridorsSettings>("splitGapMay
   s.thickness + 2 * s.splitGapWidth > 40 ? [{ id: "split_gap_may_shrink", key: "split_gap_may_shrink", nodes: [], edges: [] }] : []
 ));
 
-const corridorsSpecialSplit = group<VectorByCorridorsSettings>(
-  "specialSplit", ["waypoint_on_split", "teleport_on_special_split"],
-  (env, s) => collect((out) => { pushSplitMarkerWarnings(out, env, s); }),
-);
-
 /** `one_way_arrows_overflow_corridor`: the chevron row's own full visible extent exceeds a
  *  cell's own size along the corridor, or its width (oneWayWidth * thickness) exceeds the
  *  corridor's own thickness — GitHub issue #312, gap-accounts-for-thickness follow-up. Mirrors
@@ -631,6 +569,6 @@ export const CORRIDORS_WARNING_GROUPS: readonly WarningGroup<VectorByCorridorsSe
   teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, corridorsTeleportConnectors,
   ...contrastGroups,
   corridorsMarkerExtension, corridorsCorridorColors, corridorsTeleportConnectorContrast, corridorsSplitContrast, corridorsSplitGapMayShrink,
-  corridorsSpecialSplit, corridorsOneWayOverflow,
+  corridorsOneWayOverflow,
   textOverflow, corridorsMarkerIndexStopLine, elevatorIndistinguishable,
 ];

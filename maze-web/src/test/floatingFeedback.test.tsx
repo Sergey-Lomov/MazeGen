@@ -55,6 +55,14 @@ describe("Tooltip", () => {
     expect(description?.textContent).toBe("Locked by group colors");
   });
 
+  it("is not a tab stop when told so, yet still shows on a focus coming from its child", () => {
+    render(<Tooltip content="Why" focusable={false}><button>X</button></Tooltip>);
+    const anchor = screen.getByTestId("tooltip-anchor");
+    expect(anchor.hasAttribute("tabindex")).toBe(false);
+    fireEvent.focus(screen.getByRole("button", { name: "X" }));
+    expect(screen.getByTestId("tooltip").textContent).toBe("Why");
+  });
+
   it("is inert without content", () => {
     render(<Tooltip content={undefined}><button>X</button></Tooltip>);
     const anchor = screen.getByTestId("tooltip-anchor");

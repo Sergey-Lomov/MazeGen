@@ -57,6 +57,29 @@ describe("loadLabelFont", () => {
     }
   });
 
+  it("hands a baked MSDF family to the atlas loader and never asks the browser for it (GitHub issue #982)", async () => {
+    const browserLoad = mockFontEnvironment(() => 80);
+    const loadMsdfFamily = vi.fn().mockResolvedValue(true);
+    vi.doMock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily }));
+    const { loadLabelFont, isLabelFontLoaded } = await import("../pixi/renderers/labelFont");
+
+    await expect(loadLabelFont(font("msdf:fira-sans", 700))).resolves.toBe(true);
+    expect(loadMsdfFamily).toHaveBeenCalledWith("msdf:fira-sans");
+    expect(browserLoad).not.toHaveBeenCalled();
+    // A baked font is drawn by the atlas path, never as browser text.
+    expect(isLabelFontLoaded(font("msdf:fira-sans", 700))).toBe(false);
+    vi.doUnmock("../pixi/renderers/msdfLoader");
+  });
+
+  it("reports a failed atlas download as not loaded", async () => {
+    mockFontEnvironment(() => 80);
+    vi.doMock("../pixi/renderers/msdfLoader", () => ({ loadMsdfFamily: vi.fn().mockResolvedValue(false) }));
+    const { loadLabelFont } = await import("../pixi/renderers/labelFont");
+
+    await expect(loadLabelFont(font("msdf:fira-sans"))).resolves.toBe(false);
+    vi.doUnmock("../pixi/renderers/msdfLoader");
+  });
+
   it("shares concurrent loading of the same real family", async () => {
     const load = mockFontEnvironment((font) => font.includes("Fira Sans") ? 110 : font.includes("monospace") ? 100 : 80);
     const { loadLabelFont, isLabelFontLoaded } = await import("../pixi/renderers/labelFont");
@@ -105,5 +128,21 @@ describe("rasterFontWeights", () => {
     const { rasterFontWeights } = await import("../pixi/renderers/labelFont");
     expect(rasterFontWeights("Heavy")).toEqual([400, 700]);
     expect(rasterFontWeights("Flat")).toEqual([400]);
+  });
+});
+
+describe("fontCoversSample", () => {
+  const cyrillic = /[А-Яа-я]/;
+
+  it("tells a face that draws the sample from one that falls back, probing each family once", async () => {
+    mockFontEnvironment((font, text) => font.includes("Covers") && cyrillic.test(text) ? 150 : font.includes("monospace") ? 100 : 80);
+    const { fontCoversSample } = await import("../pixi/renderers/labelFont");
+
+    expect(fontCoversSample("Covers", "ЖЩ")).toBe(true);
+    expect(fontCoversSample("Latin only", "ЖЩ")).toBe(false);
+    fontCoversSample("Covers", "ЖЩ");
+    fontCoversSample("Latin only", "ЖЩ");
+    // One scratch canvas serves every probe, however many families are asked about.
+    expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledTimes(1);
   });
 });
