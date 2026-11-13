@@ -18,6 +18,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [scale, setScale] = useState<number>(1);
   const [sizes, setSizes] = useState<FieldSizeReadout>(EMPTY_FIELD_SIZE_READOUT);
+  const isExportMode = useMazeStore((s) => s.openCard === "image_export");
 
   useEffect(() => {
     if (!scene) { setHover(null); return; }
@@ -87,7 +88,7 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
 
   return (
     <div style={styles.bar}>
-      {scene && (
+      {scene && !isExportMode && (
         <Tooltip content="Reset zoom to 100% (Shift+1)"><span
           role="button"
           tabIndex={0}
