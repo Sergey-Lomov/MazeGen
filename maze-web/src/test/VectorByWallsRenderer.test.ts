@@ -33,6 +33,8 @@ function makeEmptyBounds(): FakeBounds {
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildMazeWalls: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
+  buildWaypointOpenings: vi.fn(() => []),
+  isOpeningWall: vi.fn(() => false),
   buildTeleportEdges: vi.fn(() => []),
   buildTeleportFloorInputs: vi.fn((opts: { unscopedEdges: unknown; allowOutOfField: boolean; fieldCells?: unknown }) => ({
     floorContext: { resolveNodeLevel: () => undefined, unscopedNodeById: new Map(), unscopedEdges: opts.unscopedEdges, activeFloorIndex: 0 },
@@ -179,6 +181,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     markerLayout: "auto", markerScale: 1,
     startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
     finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
@@ -315,6 +318,7 @@ describe("buildOneWayStyle", () => {
 describe("buildTeleportLineStyle", () => {
   it("maps line-pattern settings straight through", () => {
     const style = buildTeleportLineStyle(baseSettings({
+      startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "round", shape: "star", size: 0.4, fillColor: 0x111, borderColor: 0x112, borderWidth: 5, gapWidth: 6 },
       teleportConnectorColor: 0x222,
       teleportConnectorWidth: 7,

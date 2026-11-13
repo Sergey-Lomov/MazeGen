@@ -73,6 +73,7 @@ beforeEach(() => {
       markerLayout: "auto", markerScale: 1,
       startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+      startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
       teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
@@ -192,6 +193,7 @@ describe("VectorByWallsSettingsPanel", () => {
         markerLayout: "auto", markerScale: 1,
         startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
         finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+        startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
         teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false, teleportMergeMode: true,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
@@ -375,6 +377,27 @@ describe("VectorByWallsSettingsPanel", () => {
     fireEvent.change(slider, { target: { value: "4" } });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.gapWidth).toBe(4);
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.gapWidth).toBe(0);
+  });
+
+  it("External passage subsection (GitHub issue #330): the mode reveals the pointer group and writes only its own endpoint", () => {
+    useMazeStore.setState({ vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, markers_start_opening: true, markers_finish_opening: true } });
+    render(<VectorByWallsSettingsPanel />);
+    const modeLabel = m["image_export.vector_by_walls.opening_mode"]();
+    expect(screen.getAllByText(modeLabel)).toHaveLength(2);
+    // The pointer group's pattern row shares its label with the One-ways section's, so count the rows.
+    const patternCount = () => screen.queryAllByText(m["image_export.vector_by_walls.one_way_pattern"]()).length;
+    const before = patternCount();
+    const finishMode = () => screen.getAllByText(modeLabel)[1].parentElement!.querySelector("select")!;
+    fireEvent.change(finishMode(), { target: { value: "opening" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishOpening.mode).toBe("opening");
+    expect(patternCount()).toBe(before);
+    fireEvent.change(finishMode(), { target: { value: "both" } });
+    const { startOpening, finishOpening } = useMazeStore.getState().vectorByWallsSettings;
+    expect(finishOpening.mode).toBe("both");
+    expect(startOpening.mode).toBe("none");
+    expect(patternCount()).toBe(before + 1);
+    fireEvent.change(finishMode(), { target: { value: "pointer" } });
+    expect(patternCount()).toBe(before + 1);
   });
 
   it("renders the one-ways section's pattern, color, gap width, join, size and thickness fields when expanded", () => {
@@ -1151,6 +1174,7 @@ describe("VectorByWallsSettingsPanel", () => {
         edges: [{ from: 0, to: 1, kind: "teleport" as const }],
         vectorByWallsSettings: {
           ...useMazeStore.getState().vectorByWallsSettings,
+          startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
           teleportMarker: { ...useMazeStore.getState().vectorByWallsSettings.teleportMarker, borderWidth: 0, fillColor: 0xffffff },
           teleportConnectorColor: 0xffffff,
         },

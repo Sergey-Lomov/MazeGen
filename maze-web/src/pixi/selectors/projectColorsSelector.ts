@@ -64,6 +64,7 @@ type RoleKey =
   | "badges_text"
   | "badges_border"
   | "arrow"
+  | "external_pointer"
   | "accent"
   | "line"
   | "text"
@@ -110,6 +111,7 @@ const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   badges_text: m["color_picker.entry.role.badges_text"],
   badges_border: m["color_picker.entry.role.badges_border"],
   arrow: m["color_picker.entry.role.arrow"],
+  external_pointer: m["color_picker.entry.role.external_pointer"],
   accent: m["color_picker.entry.role.accent"],
   line: m["color_picker.entry.role.line"],
   text: m["color_picker.entry.role.text"],
@@ -176,6 +178,8 @@ const STATIC_FIELDS = defineFields({
   finishFill: [["finish"], "fill"],
   finishBorder: [["finish"], "border"],
   finishText: [["finish"], "text"],
+  startOpeningArrow: [["start"], "external_pointer"],
+  finishOpeningArrow: [["finish"], "external_pointer"],
 
   teleportEdge: [["teleports"], "edge"],
   teleportEdgeBorder: [["teleports"], "edge_border"],

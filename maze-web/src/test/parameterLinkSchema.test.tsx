@@ -42,7 +42,6 @@ const NOT_LINKABLE: Record<string, string> = {
   "edgeMarkers.mode": "edge-marker coverage mode: it gates the other edge-marker fields",
   trimWallsAtFaceBoundaries: "linkable in 'Vector by walls' only: the corridors settings carry the leaf but nothing reads it",
   randomWallColorMode: "enum without a `ParamType`; the panel row passes `linkTarget={null}`",
-  oneWayPattern: "enum without a `ParamType`; the panel row passes `linkTarget={null}`",
   renderStyle: "enum without a `ParamType`; selects the corridors rendering style",
   "startMarker.text": "free text, not a numeric/enum parameter",
   "finishMarker.text": "free text, not a numeric/enum parameter",
@@ -225,7 +224,7 @@ describe("activity rules", () => {
     hasSplits: false, hasGlues: false, hasCreases: false,
   };
   const floorLabel = { enabled: true, labelMode: "index", backgroundShape: "rectangle" } as const;
-  const toggles = { teleportArrowMode: "periodic", splitSpecialShapes: true, join: "round", renderStyle: "contour", teleportGroupCustomization: true, showCutLines: true, cutLinesGlueColor: false, edgeMarkers: { mode: "all" }, glueTabs: { showTabs: true, lineWidth: 1 }, creases: { showCreases: true, mode: "lines" } } as const;
+  const toggles = { startOpening: { mode: "both" }, finishOpening: { mode: "both" }, teleportArrowMode: "periodic", splitSpecialShapes: true, join: "round", renderStyle: "contour", teleportGroupCustomization: true, showCutLines: true, cutLinesGlueColor: false, edgeMarkers: { mode: "all" }, glueTabs: { showTabs: true, lineWidth: 1 }, creases: { showCreases: true, mode: "lines" } } as const;
   const SETTINGS: Record<string, ParamActivitySettings> = {
     abstract: { ...toggles, verticalStyle: "abstract", teleportConnectorStyle: "orthogonal", floorLabel },
     decorative: { ...toggles, verticalStyle: "decorative", teleportConnectorStyle: "curved", floorLabel },

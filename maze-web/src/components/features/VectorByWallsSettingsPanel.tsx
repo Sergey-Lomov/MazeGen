@@ -12,6 +12,7 @@ import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/e
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { SizeAdaptationRow } from "./SizeAdaptationRow";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
+import { WaypointOpeningSubsection } from "./WaypointOpeningSubsection";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { CollapsibleSubGroup } from "./CollapsibleSubGroup";
@@ -84,6 +85,7 @@ export function VectorByWallsSettingsPanel() {
   const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
   const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const patchMarker = useMazeStore((s) => s.patchVectorByWallsMarker);
+  const patchOpening = useMazeStore((s) => s.patchVectorByWallsOpening);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
   const patchVerticalSharedStyle = useMazeStore((s) => s.patchVectorByWallsVerticalSharedStyle);
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
@@ -361,6 +363,8 @@ export function VectorByWallsSettingsPanel() {
         const finishBorder = PC.finishBorder.at(settings.finishMarker.borderColor);
         const startText = PC.startText.at(settings.startMarker.textColor ?? D.startMarker.textColor ?? floor.color);
         const finishText = PC.finishText.at(settings.finishMarker.textColor ?? D.finishMarker.textColor ?? floor.color);
+        const startArrow = PC.startOpeningArrow.at(settings.startOpening.color);
+        const finishArrow = PC.finishOpeningArrow.at(settings.finishOpening.color);
         return (
         <div style={styles.block}>
           <MarkerSettingsGroup
@@ -372,7 +376,7 @@ export function VectorByWallsSettingsPanel() {
             showTextSection
             showMarkerToggle
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, floor], borderColor: [startFill, startText, finishBorder, finishFill, floor], textColor: [startFill, startBorder, finishText, floor] }}
+            priorityColors={{ fillColor: [startBorder, startText, startArrow, finishFill, finishBorder, finishArrow, floor], borderColor: [startFill, startText, startArrow, finishBorder, finishFill, finishArrow, floor], textColor: [startFill, startBorder, startArrow, finishText, finishArrow, floor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fields={{ fillColor: PC.startFill, borderColor: PC.startBorder, textColor: PC.startText }}
             onChange={(patch) => {
@@ -394,7 +398,20 @@ export function VectorByWallsSettingsPanel() {
               textMargin: "startMarker.textMargin",
               textColor: "startMarker.textColor",
             }}
-          />
+          >
+            <WaypointOpeningSubsection
+              kind="start"
+              sectionId="markers_start"
+              settings={settings.startOpening}
+              onChange={(patch) => patchOpening("startOpening", patch)}
+              isExpanded={isExpanded}
+              onToggle={toggleSection}
+              linkTargets={{ mode: "startOpening.mode", pattern: "startOpening.pattern", color: "startOpening.color", size: "startOpening.size", thickness: "startOpening.thickness", gapWidth: "startOpening.gapWidth", join: "startOpening.join" }}
+              field={PC.startOpeningArrow}
+              defaultColor={D.startOpening.color}
+              priorityColors={[startFill, startBorder, floor, wall]}
+            />
+          </MarkerSettingsGroup>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
             sectionId="markers_finish"
@@ -404,7 +421,7 @@ export function VectorByWallsSettingsPanel() {
             showTextSection
             showMarkerToggle
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, floor], borderColor: [finishFill, finishText, startBorder, startFill, floor], textColor: [finishFill, finishBorder, startText, floor] }}
+            priorityColors={{ fillColor: [finishBorder, finishText, finishArrow, startFill, startBorder, startArrow, floor], borderColor: [finishFill, finishText, finishArrow, startBorder, startFill, startArrow, floor], textColor: [finishFill, finishBorder, finishArrow, startText, startArrow, floor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fields={{ fillColor: PC.finishFill, borderColor: PC.finishBorder, textColor: PC.finishText }}
             onChange={(patch) => {
@@ -426,7 +443,20 @@ export function VectorByWallsSettingsPanel() {
               textMargin: "finishMarker.textMargin",
               textColor: "finishMarker.textColor",
             }}
-          />
+          >
+            <WaypointOpeningSubsection
+              kind="finish"
+              sectionId="markers_finish"
+              settings={settings.finishOpening}
+              onChange={(patch) => patchOpening("finishOpening", patch)}
+              isExpanded={isExpanded}
+              onToggle={toggleSection}
+              linkTargets={{ mode: "finishOpening.mode", pattern: "finishOpening.pattern", color: "finishOpening.color", size: "finishOpening.size", thickness: "finishOpening.thickness", gapWidth: "finishOpening.gapWidth", join: "finishOpening.join" }}
+              field={PC.finishOpeningArrow}
+              defaultColor={D.finishOpening.color}
+              priorityColors={[finishFill, finishBorder, floor, wall]}
+            />
+          </MarkerSettingsGroup>
         </div>
         );
       })()}
@@ -451,7 +481,7 @@ export function VectorByWallsSettingsPanel() {
                   { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
                 ]}
                 onChange={setOneWayPattern}
-                linkTarget={null}
+                linkTarget="oneWayPattern"
               />
               <LinkedColorRow
                 label={m["image_export.vector_by_walls.one_way_color"]()}

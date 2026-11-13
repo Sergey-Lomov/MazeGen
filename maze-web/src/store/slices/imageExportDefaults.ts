@@ -9,6 +9,7 @@ import type {
   VerticalDecorativeFields,
   PngExportSettings,
   MarkerSettings,
+  WaypointOpeningSettings,
   MarkerIndexSettings,
   MarkerLayoutSettingsFields,
   FloorLabelSettings,
@@ -50,6 +51,12 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
         }
       : {}),
   };
+}
+
+/** A start/finish external passage (GitHub issue #330): off, drawn with the default one-way indicator look. */
+function openingSettings(): WaypointOpeningSettings {
+  const { pattern, color, size, thickness, gapWidth, join } = DEFAULT_MAZE_RENDER_STYLE.oneWay;
+  return { mode: "none", pattern, color, size, thickness, gapWidth, join };
 }
 
 /** Shared defaults for the four "Shared style" source values (GitHub issue #322, generalized by
@@ -341,6 +348,8 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     oneWayJoin: DEFAULT_MAZE_RENDER_STYLE.oneWay.join,
     startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker, "S"),
     finishMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.finishMarker, "F"),
+    startOpening: openingSettings(),
+    finishOpening: openingSettings(),
     ...DEFAULT_TELEPORT_SETTINGS,
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,

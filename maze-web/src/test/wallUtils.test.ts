@@ -435,3 +435,81 @@ describe("clampBoundaryInset", () => {
     expect(clampBoundaryInset(1000, 40)).toBe(19);
   });
 });
+
+describe("sharp tip of chevron/arrow at a miter join", () => {
+  // Heading +x: the spike of the tip is a triangle whose apex lies ahead of the geometric tip by half the stroke over sin(half apex angle).
+  const spikeApex = (g: FakeG) => {
+    const polys = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    return polys.map((p) => ({ x: Math.max(p[0], p[2], p[4]), count: p.length }));
+  };
+
+  it("chevron fills a pointed spike past its tip, wider for a thicker stroke", () => {
+    const thin = newG();
+    drawOneWayChevron(thin, 0, 0, 1, 0, { size: 20, thickness: 2, join: "miter" });
+    const thick = newG();
+    drawOneWayChevron(thick, 0, 0, 1, 0, { size: 20, thickness: 10, join: "miter" });
+    const [thinSpike] = spikeApex(thin);
+    const [thickSpike] = spikeApex(thick);
+    expect(thinSpike.count).toBe(6);
+    expect(thickSpike.x).toBeGreaterThan(thinSpike.x);
+    const tipX = 20 * 0.5 * 0.75 / 1.4;
+    expect(thinSpike.x).toBeGreaterThan(tipX);
+  });
+
+  it("arrow is one solid sharp polygon (flat-backed head), and a gap pass adds a wider one first", () => {
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 30, thickness: 4, join: "miter", gapWidth: 2 });
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
+    const polys = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    expect(polys).toHaveLength(2);
+    const [gap, main] = polys;
+    const pts = (p: number[]) => Array.from({ length: p.length / 2 }, (_, i) => ({ x: p[2 * i], y: p[2 * i + 1] }));
+    const mainPts = pts(main);
+    expect(mainPts).toHaveLength(7);
+    // The head's back edge is perpendicular to the heading: both back corners share one x, beyond the shaft's width.
+    expect(mainPts[1].x).toBeCloseTo(mainPts[2].x);
+    expect(mainPts[2].x).toBeCloseTo(mainPts[4].x);
+    expect(mainPts[5].x).toBeCloseTo(mainPts[4].x);
+    expect(Math.abs(mainPts[2].y)).toBeGreaterThan(Math.abs(mainPts[1].y));
+    expect(mainPts[3].y).toBeCloseTo(0);
+    expect(Math.max(...pts(gap).map((p) => p.x))).toBeGreaterThan(mainPts[3].x);
+  });
+
+  it("a round join draws no spike", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 6, join: "round" });
+    expect(g.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
+  });
+
+  it("the spike follows the heading", () => {
+    const g = newG();
+    drawOneWayChevron(g, 0, 0, 0, 1, { size: 20, thickness: 6, join: "miter" });
+    const [poly] = g.calls.filter((c) => c.fn === "poly").map((c) => c.args[0] as number[]);
+    const ys = [poly[1], poly[3], poly[5]];
+    expect(Math.max(...ys)).toBeGreaterThan(20 * 0.5 * 0.75 / 1.4);
+  });
+});
+
+describe("one-way indicator layers", () => {
+  const style = { size: 30, thickness: 4, gapWidth: 3, gapColor: 1, color: 2 };
+  const colorsOf = (g: FakeG) => g.calls.filter((c) => c.fn === "fill" || c.fn === "stroke").map((c) => (c.args[0] as { color: number } | number));
+
+  it.each([
+    ["triangle", drawOneWayTriangle, "round"],
+    ["chevron", drawOneWayChevron, "round"],
+    ["chevron", drawOneWayChevron, "miter"],
+    ["arrow", drawOneWayArrow, "round"],
+    ["arrow", drawOneWayArrow, "miter"],
+  ] as const)("%s (%s join): the gap layer draws only the gap color, the main layer only the indicator color", (_name, draw, join) => {
+    const both = newG();
+    draw(both, 0, 0, 1, 0, { ...style, join });
+    const gap = newG();
+    draw(gap, 0, 0, 1, 0, { ...style, join, layer: "gap" });
+    const main = newG();
+    draw(main, 0, 0, 1, 0, { ...style, join, layer: "main" });
+    const colors = (g: FakeG) => new Set(colorsOf(g).map((c) => (typeof c === "number" ? c : c.color)));
+    expect(colors(both)).toEqual(new Set([1, 2]));
+    expect(colors(gap)).toEqual(new Set([1]));
+    expect(colors(main)).toEqual(new Set([2]));
+  });
+});

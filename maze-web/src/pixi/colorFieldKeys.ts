@@ -8,6 +8,7 @@ export const STATIC_COLOR_FIELD_KEYS = [
   "oneWaysMarker",
   "startFill", "startBorder", "startText",
   "finishFill", "finishBorder", "finishText",
+  "startOpeningArrow", "finishOpeningArrow",
   "teleportEdge", "teleportEdgeBorder", "teleportConnector",
   "teleportBadgeFill", "teleportBadgeBorder", "teleportBadgeText",
   "decorLineTwoWay", "decorLineOneWay", "decorLineElevator",

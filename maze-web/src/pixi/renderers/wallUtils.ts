@@ -37,7 +37,13 @@ export type OneWayDrawStyle = {
    *  opening), so every existing caller (`VectorByWallsRenderer`'s plain single chevron) is
    *  unaffected. Only read by `drawOneWayChevron`. */
   width?: number;
+  /** Draws only one of the two passes — `"gap"` the gap ring, `"main"` the indicator itself — so a caller can
+   *  clip the gap alone (the waypoint pointer's gap must not spill past the maze floor). Both when unset. */
+  layer?: "gap" | "main";
 };
+
+const wantsGap = (style?: OneWayDrawStyle) => style?.layer !== "main";
+const wantsMain = (style?: OneWayDrawStyle) => style?.layer !== "gap";
 
 // The normal map's own one-way indicator size (`WallRenderer`'s default, no override) — shared
 // so any caller wanting to visually match the map's marker (e.g. the wall-highlight overlays)
@@ -146,8 +152,8 @@ export function drawOneWayTriangle(
   const corner = (style?.join ?? "round") === "round" ? size * 0.3 : 0;
 
   const outline = () => g.roundPoly(centroidX, centroidY, radius, 3, corner, rotation);
-  outline().fill(style?.color ?? canvas.edge.oneWay);
-  if (style?.gapWidth) {
+  if (wantsMain(style)) outline().fill(style?.color ?? canvas.edge.oneWay);
+  if (style?.gapWidth && wantsGap(style)) {
     // `alignment: 0` (outside) so the gap grows outward only — the triangle's own size never
     // shrinks as gapWidth increases (GitHub issue #292 follow-up).
     outline().stroke({
@@ -327,6 +333,31 @@ export function splitWallAndLineEdges<TId>(
   return lineEdges;
 }
 
+/** Fills the miter spike of a two-wing arrowhead's tip with a solid triangle. Pixi's stroke falls back to a
+ *  bevel at a miter join whenever the stroke is thick relative to the wing length, which turns a pointed tip
+ *  into a blunt one; the spike is the wedge between the two wings' outer offset lines, so filling it keeps a
+ *  sharp triangular tip for any thickness. `wingA`/`wingB` are the far ends of the wings, `(dx, dy)` the unit
+ *  direction the tip points in. Only for `join: "miter"` — a round join keeps its own rounded tip. */
+function fillMiterTip(g: Graphics, tipX: number, tipY: number, wingA: { x: number; y: number }, wingB: { x: number; y: number }, dx: number, dy: number, halfWidth: number, color: number): void {
+  const outerNormal = (w: { x: number; y: number }) => {
+    const len = Math.hypot(w.x - tipX, w.y - tipY);
+    if (len === 0) return null;
+    const nx = -(w.y - tipY) / len;
+    const ny = (w.x - tipX) / len;
+    return nx * dx + ny * dy >= 0 ? { x: nx, y: ny } : { x: -nx, y: -ny };
+  };
+  const a = outerNormal(wingA);
+  const b = outerNormal(wingB);
+  if (!a || !b) return;
+  const k = halfWidth / (1 + a.x * b.x + a.y * b.y);
+  g.poly([
+    tipX + a.x * halfWidth, tipY + a.y * halfWidth,
+    tipX + (a.x + b.x) * k, tipY + (a.y + b.y) * k,
+    tipX + b.x * halfWidth, tipY + b.y * halfWidth,
+  ]);
+  g.fill({ color });
+}
+
 // Draws a "chevron" one-way indicator (two open strokes forming a shallow `>` shape) centered at
 // (cx, cy), pointing in (dx, dy) direction — an outline alternative to the filled
 // `drawOneWayTriangle`. A wider gap pass is drawn first (when gapWidth is set), the main
@@ -368,11 +399,18 @@ export function drawOneWayChevron(
     g.moveTo(backX + px * width, backY + py * width)
       .lineTo(tipX, tipY)
       .lineTo(backX - px * width, backY - py * width);
+  const wingA = { x: backX + px * width, y: backY + py * width };
+  const wingB = { x: backX - px * width, y: backY - py * width };
 
-  if (style?.gapWidth) {
-    path(g).stroke({ width: strokeWidth + style.gapWidth * 2, color: style.gapColor ?? canvas.floor.default, cap, join });
+  if (style?.gapWidth && wantsGap(style)) {
+    const gapStrokeWidth = strokeWidth + style.gapWidth * 2;
+    const gapColor = style.gapColor ?? canvas.floor.default;
+    path(g).stroke({ width: gapStrokeWidth, color: gapColor, cap, join });
+    if (join === "miter") fillMiterTip(g, tipX, tipY, wingA, wingB, dx, dy, gapStrokeWidth * 0.5, gapColor);
   }
+  if (!wantsMain(style)) return;
   path(g).stroke({ width: strokeWidth, color, cap, join });
+  if (join === "miter") fillMiterTip(g, tipX, tipY, wingA, wingB, dx, dy, strokeWidth * 0.5, color);
 }
 
 /** Center-to-center distance between two adjacent chevrons in a row — `length + gap + strokeWidth`,
@@ -522,12 +560,39 @@ export function drawOneWayArrow(
   const JOINT_PATCH_MIN_SIZE = 20;
   const drawJointPatch = resolvedSize(style) >= JOINT_PATCH_MIN_SIZE;
 
-  if (style?.gapWidth) {
+  // Sharp style: the classic solid arrow — a rectangular shaft and a triangular head with a flat back
+  // edge, every corner sharp. Stroked wings would end slanted (square caps are perpendicular to the wing)
+  // and the tip would bevel under a thick stroke, so the outline is built as one polygon instead.
+  if (join === "miter") {
+    const headBackT = half - headSize;
+    const wingLen = Math.hypot(headSize, wingBaseOffset);
+    // The solid shape whose outline is the arrow's stroked geometry grown by `halfWidth - strokeWidth / 2`.
+    const fillSharpArrow = (halfWidth: number, fillColor: number) => {
+      const grow = halfWidth - strokeWidth * 0.5;
+      const backT = headBackT - grow;
+      const tailT = -half - halfWidth;
+      const tipT = half + (halfWidth * wingLen) / wingBaseOffset;
+      // Lateral reach of the head's outer edge at the flat back, never narrower than the shaft.
+      const backS = Math.max(halfWidth, wingBaseOffset + (halfWidth * headSize) / wingLen + (wingBaseOffset / headSize) * (headBackT + (halfWidth * wingBaseOffset) / wingLen - backT));
+      const at = (t: number, s: number): [number, number] => [cx + dx * t + px * s, cy + dy * t + py * s];
+      g.poly([
+        ...at(tailT, halfWidth), ...at(backT, halfWidth), ...at(backT, backS), ...at(tipT, 0),
+        ...at(backT, -backS), ...at(backT, -halfWidth), ...at(tailT, -halfWidth),
+      ]);
+      g.fill({ color: fillColor });
+    };
+    if (style?.gapWidth && wantsGap(style)) fillSharpArrow(strokeWidth * 0.5 + style.gapWidth, style.gapColor ?? canvas.floor.default);
+    if (wantsMain(style)) fillSharpArrow(strokeWidth * 0.5, color);
+    return;
+  }
+
+  if (style?.gapWidth && wantsGap(style)) {
     const gapColor = style.gapColor ?? canvas.floor.default;
     const gapStrokeWidth = strokeWidth + style.gapWidth * 2;
     path(g).stroke({ width: gapStrokeWidth, color: gapColor, cap, join });
     if (drawJointPatch) fillJointPatch(gapStrokeWidth * 0.5, gapColor);
   }
+  if (!wantsMain(style)) return;
   path(g).stroke({ width: strokeWidth, color, cap, join });
   if (drawJointPatch) fillJointPatch(strokeWidth * 0.5, color);
 }

@@ -92,6 +92,7 @@ const ALLOWED_CONDITIONS: Record<string, string> = {
   "TeleportSettingsSection.tsx: teleportGroups.length > 0": "the group list is shown only when there are groups",
   "TopologySettingsSection.tsx: onTrimWallsAtFaceBoundaries": "the caller opts into the row (only 'Vector by walls' trims walls)",
   "VectorByWallsSettingsPanel.tsx: PC.tilesWall.isVisible(colorVisibility)": "the colour-visibility registry decides whether the tile wall colour is drawn",
+  "WaypointOpeningSubsection.tsx: faces.length > 1": "the side select is offered only when the cell touches several outer sides",
 };
 
 describe("settings panel conditional renders", () => {

@@ -6,6 +6,7 @@ export * from "./corridors";
 export * from "./split";
 export * from "./postEdit";
 export * from "./markers";
+export * from "./waypointOpening";
 export * from "./markerIndex";
 export * from "./cellInspection";
 export * from "./markerLayout";

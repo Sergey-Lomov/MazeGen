@@ -64,6 +64,15 @@ const ALLOWED_STATE_READS: Record<string, string> = {
   "VectorByWallsSettingsPanel.tsx: s.showColorWarnings": "toggle of the warnings block, not a settings field",
   "VectorByWallsSettingsPanel.tsx: s.vectorByWallsSectionsExpanded": "collapse state of the sections",
   "VectorByWallsSettingsPanel.tsx: s.vectorByWallsSettings": "the panel's own settings",
+  "WaypointOpeningSubsection.tsx: s.activeFieldConfig": "geometry of the outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.activeFloorId": "geometry of the outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.edges": "geometry of the outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.finish": "the endpoint cell whose outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.floors": "geometry of the outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.nodes": "geometry of the outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.postEditDraftSplitPoints": "the endpoint cell whose outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.postEditMeta": "the endpoint cell whose outer sides the side select lists",
+  "WaypointOpeningSubsection.tsx: s.start": "the endpoint cell whose outer sides the side select lists",
 };
 
 describe("settings panel store reads", () => {

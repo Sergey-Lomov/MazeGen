@@ -77,6 +77,12 @@ export const R = {
   finishMarkerOn: (_, s) => s.finishMarker?.markerEnabled !== false,
   startTextOn: (_, s) => s.startMarker?.textEnabled !== false,
   finishTextOn: (_, s) => s.finishMarker?.textEnabled !== false,
+  /** A start/finish external passage is on, in any mode (GitHub issue #330) — the side choice matters only then. */
+  startOpeningOn: (_, s) => (s.startOpening?.mode ?? "none") !== "none",
+  finishOpeningOn: (_, s) => (s.finishOpening?.mode ?? "none") !== "none",
+  /** A start/finish external passage draws a pointer (GitHub issue #330) — the pointer's look fields matter only then. */
+  startOpeningPointerOn: (_, s) => s.startOpening?.mode === "pointer" || s.startOpening?.mode === "both",
+  finishOpeningPointerOn: (_, s) => s.finishOpening?.mode === "pointer" || s.finishOpening?.mode === "both",
 } satisfies Record<string, ActivityRule>;
 
 /** The named conditions of `R`, also asked by the settings panels for everything that is not a linked row

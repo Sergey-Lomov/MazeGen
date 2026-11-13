@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
+  type MarkerSettings, type WaypointOpeningSettings, type WaypointOpeningMode, WAYPOINT_OPENING_MODES, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type ElevatorBadgeBacking, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings, type CutExportSettings, type CutLineSetting, type CutLineStyleFields, type CreaseExportStyle, type GlueTabStyle, type EdgeMarkerStyle, type EdgeMarkerOverride,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
@@ -143,6 +143,32 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
     textSize: obj?.textSize === undefined ? fallback.textSize : clampTextSize(optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE)),
     textMargin: obj?.textMargin === undefined ? fallback.textMargin : readTextMargin(obj, fallback.textMargin ?? DEFAULT_TEXT_MARGIN),
     textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
+  };
+}
+
+/** A start/finish external passage (GitHub issue #330), read leniently: absent fields keep the default, an
+ *  unusable `face` (not a non-negative integer) is dropped so the cell's first outer face is used. */
+export function validateWaypointOpening(v: unknown, path: string, fallback: WaypointOpeningSettings): WaypointOpeningSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  const face = obj?.face;
+  const mode = obj?.mode;
+  return {
+    // A file saved while the passage was a plain on/off toggle: on meant the wall cut plus the pointer.
+    mode: WAYPOINT_OPENING_MODES.includes(mode as WaypointOpeningMode) ? (mode as WaypointOpeningMode)
+      : typeof obj?.enabled === "boolean" ? (obj.enabled ? "both" : "none") : fallback.mode,
+    ...(typeof face === "number" && Number.isInteger(face) && face >= 0 ? { face } : {}),
+    pattern: optOneWayPattern(obj, "pattern", fallback.pattern),
+    color: optNumber(obj, "color", fallback.color),
+    size: optNumber(obj, "size", fallback.size),
+    thickness: optNumber(obj, "thickness", fallback.thickness),
+    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
+    join: optCornerStyle(obj, "join", fallback.join),
   };
 }
 
@@ -690,6 +716,8 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     oneWayJoin: optCornerStyle(obj, "oneWayJoin", d.oneWayJoin),
     startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
+    startOpening: validateWaypointOpening(obj.startOpening, `${path}.startOpening`, d.startOpening),
+    finishOpening: validateWaypointOpening(obj.finishOpening, `${path}.finishOpening`, d.finishOpening),
     ...validateTeleportSettingsFields(obj, path, d),
     ...validateVerticalSettingsFields(obj, path, d),
     ...validateVerticalDecorativeFields(obj, path, d),

@@ -26,6 +26,7 @@ export function wallsSettings(overrides: Partial<VectorByWallsSettings> = {}): V
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
     markerLayout: "auto", markerScale: 1,
     startMarker: defaultMarker, finishMarker: defaultMarker,
+    startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
     teleportMarker: { ...teleportMarker },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,

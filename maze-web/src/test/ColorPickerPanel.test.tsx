@@ -40,6 +40,7 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     markerLayout: "auto", markerScale: 1,
     startMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
     finishMarker: { sizeAdaptation: 0, shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
+    startOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" }, finishOpening: { mode: "none", pattern: "triangle", color: 0, size: 12, thickness: 4, gapWidth: 3, join: "round" },
     teleportMarker: { sizeAdaptation: 0, cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
     teleportAvoidFieldExit: false, teleportMergeMode: true, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,

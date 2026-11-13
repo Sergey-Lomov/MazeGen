@@ -1,11 +1,13 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/storeTypes";
+import type { WaypointOpeningMode } from "../../store/imageExportTypes";
 import {
   buildTeleportEdges, buildSplitPassages, buildCorridorSegments, shortestCorridorFace, maxSplitNodeCount, selectNodeLevelResolver,
   selectVerticalPassagePairSet, buildVerticalConnectionMarkers,
 } from "./mazeSelectors";
 import { withMarkerVisibility, isWaypointVisible } from "./mazeSelectors/markers";
+import { endpointOuterFaces, floorCellSet } from "./mazeSelectors/waypointOpening";
 import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
@@ -274,15 +276,35 @@ const teleportWaypointOverlap = group("teleportWaypointOverlap", ["teleport_wayp
   ))
 ));
 
-/** `start_invisible` / `finish_invisible` (GitHub issue #963): a start/finish with neither a visible marker nor a caption. */
+/** Whether `node`'s external passage (GitHub issue #330) is switched on and has an outer wall to work on, i.e. it is drawn. */
+function openingDrawn(env: { nodes: readonly { x: number; y: number }[]; nodeById: ReadonlyMap<number, { x: number; y: number }>; cfg: FieldConfig }, node: number | null, opening: { mode: WaypointOpeningMode } | undefined): boolean {
+  const cell = node === null ? undefined : env.nodeById.get(node);
+  if (!opening || opening.mode === "none" || !cell) return false;
+  return endpointOuterFaces(cell, floorCellSet(env.nodes), env.cfg).length > 0;
+}
+
+/** `start_invisible` / `finish_invisible` (GitHub issue #963): a start/finish with neither a visible marker nor a caption.
+ *  A drawn external passage (GitHub issue #330, "Vector by walls" only) makes the endpoint visible. */
 const waypointInvisible = group("waypointInvisible", ["start_invisible", "finish_invisible"], (env, s) => {
   const out: ExportWarning[] = [];
-  const check = (id: "start_invisible" | "finish_invisible", node: number | null, marker: AnySettings["startMarker"]) => {
-    if (node === null || !env.nodeById.has(node) || isWaypointVisible(marker)) return;
+  const check = (id: "start_invisible" | "finish_invisible", node: number | null, marker: AnySettings["startMarker"], opening: { mode: WaypointOpeningMode } | undefined) => {
+    if (node === null || !env.nodeById.has(node) || isWaypointVisible(marker) || openingDrawn(env, node, opening)) return;
     out.push({ id, key: id, nodes: [node], edges: [] });
   };
-  check("start_invisible", env.start, s.startMarker);
-  check("finish_invisible", env.finish, s.finishMarker);
+  check("start_invisible", env.start, s.startMarker, "startOpening" in s ? s.startOpening : undefined);
+  check("finish_invisible", env.finish, s.finishMarker, "finishOpening" in s ? s.finishOpening : undefined);
+  return out;
+});
+
+/** `start_opening_no_outer_wall` / `finish_opening_no_outer_wall` (GitHub issue #330): an external passage is on but the endpoint's cell has no outer wall. */
+const wallsWaypointOpening = group<VectorByWallsSettings>("waypointOpeningNoOuterWall", ["start_opening_no_outer_wall", "finish_opening_no_outer_wall"], (env, s) => {
+  const out: ExportWarning[] = [];
+  const check = (id: "start_opening_no_outer_wall" | "finish_opening_no_outer_wall", node: number | null, opening: { mode: WaypointOpeningMode }) => {
+    if (node === null || !env.nodeById.has(node) || opening.mode === "none" || openingDrawn(env, node, opening)) return;
+    out.push({ id, key: id, nodes: [node], edges: [] });
+  };
+  check("start_opening_no_outer_wall", env.start, s.startOpening);
+  check("finish_opening_no_outer_wall", env.finish, s.finishOpening);
   return out;
 });
 
@@ -497,7 +519,7 @@ const wallsMarkerIndexStopLine = group<VectorByWallsSettings>("markerIndexStopLi
 
 /** Every warning group of "Vector by walls", in the order their warnings are listed. */
 export const WALLS_WARNING_GROUPS: readonly WarningGroup<VectorByWallsSettings>[] = [
-  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, wallsTeleportConnectors,
+  teleportMarkerInvisible, teleportMergedWithoutConnectors, teleportGroupAmbiguous, teleportWaypointOverlap, markersLookAlike, waypointInvisible, wallsWaypointOpening, wallsTeleportConnectors,
   ...contrastGroups,
   wallsTeleportConnectorContrast, wallsSplitContrast, wallsSpecialSplit, wallsElevatorBadges,
   textOverflow, wallsMarkerIndexStopLine, elevatorIndistinguishable,

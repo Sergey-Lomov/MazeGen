@@ -164,6 +164,8 @@ const SETTING_VALUES: { [K in keyof ParamActivitySettings]-?: NonNullable<ParamA
   join: ["round", "miter"],
   renderStyle: ["contour", "legacy_line"],
   teleportGroupCustomization: [true, false],
+  startOpening: [{ mode: "none" }, { mode: "opening" }, { mode: "pointer" }, { mode: "both" }],
+  finishOpening: [{ mode: "none" }, { mode: "opening" }, { mode: "pointer" }, { mode: "both" }],
   showGrid: [true, false],
   showInnerGrid: [true, false],
   showCutLines: [true, false],

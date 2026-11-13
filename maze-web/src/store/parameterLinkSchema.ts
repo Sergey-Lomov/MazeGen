@@ -116,6 +116,8 @@ const G = {
   markersFinish: g("image_export.vector_by_walls.section_markers", "image_export.vector_by_walls.markers_finish", "image_export.vector_by_walls.markers_marker_subsection"),
   markersStartSymbol: g("image_export.vector_by_walls.section_markers", "image_export.vector_by_walls.markers_start", "image_export.vector_by_walls.markers_text_subsection"),
   markersFinishSymbol: g("image_export.vector_by_walls.section_markers", "image_export.vector_by_walls.markers_finish", "image_export.vector_by_walls.markers_text_subsection"),
+  markersStartOpening: g("image_export.vector_by_walls.section_markers", "image_export.vector_by_walls.markers_start", "image_export.vector_by_walls.markers_opening_subsection"),
+  markersFinishOpening: g("image_export.vector_by_walls.section_markers", "image_export.vector_by_walls.markers_finish", "image_export.vector_by_walls.markers_opening_subsection"),
   teleportMarkers: g("image_export.vector_by_walls.section_teleports", "image_export.vector_by_walls.teleport_subsection_edges"),
   teleportConnector: g("image_export.vector_by_walls.section_teleports", "image_export.vector_by_walls.teleport_subsection_connector"),
   teleportRoot: g("image_export.vector_by_walls.section_teleports"),
@@ -189,6 +191,20 @@ function endpointMarker(kind: "startMarker" | "finishMarker", markerGroup: Thunk
       textColor: f("color", `${VW}.marker_text_color`, { active: textOn }),
     })),
   };
+}
+
+/** Start/finish external passage (GitHub issue #330, "Vector by walls" only): the mode, and the pointer's pattern,
+ *  color, size, thickness, gap width and corner style. The side is not linkable (no link-capable type models it). */
+function endpointOpening(kind: "startOpening" | "finishOpening", group: Thunk<string[]>, on: ActivityRule) {
+  return prefixed(kind, section(WALLS, { group }, {
+    mode: f("openingMode", `${VW}.opening_mode`),
+    pattern: f("oneWayPattern", `${VW}.one_way_pattern`, { active: on }),
+    color: f("color", `${VW}.one_way_color`, { active: on }),
+    size: f("number", `${VW}.one_way_size`, { active: on }),
+    thickness: f("number", `${VW}.one_way_thickness`, { active: on }),
+    gapWidth: f("number", `${VW}.one_way_gap_width`, { active: on }),
+    join: f("cornerStyle", `${VW}.one_way_join`, { active: on }),
+  }));
 }
 
 /** A vertical-passage marker record (two-way / one-way / elevator): shown only when the maze has
@@ -281,6 +297,7 @@ export const LINK_SCHEMA = {
     oneWayThickness: f("number", `${VW}.one_way_thickness`, { labelBy: { corridors: "image_export.vector_by_corridors.one_way_thickness" } }),
   }),
   ...section(WALLS, { group: G.oneWays, active: R.oneWays }, {
+    oneWayPattern: f("oneWayPattern", `${VW}.one_way_pattern`),
     oneWayGapWidth: f("number", `${VW}.one_way_gap_width`),
     oneWaySize: f("number", `${VW}.one_way_size`),
   }),
@@ -297,6 +314,8 @@ export const LINK_SCHEMA = {
   // ---- start / finish markers
   ...endpointMarker("startMarker", G.markersStart, G.markersStartSymbol),
   ...endpointMarker("finishMarker", G.markersFinish, G.markersFinishSymbol),
+  ...endpointOpening("startOpening", G.markersStartOpening, R.startOpeningPointerOn),
+  ...endpointOpening("finishOpening", G.markersFinishOpening, R.finishOpeningPointerOn),
 
   // ---- teleports
   ...prefixed("teleportMarker", section(BOTH, { group: G.teleportMarkers, active: teleportOn, update: "teleport" }, markerAppearance({
