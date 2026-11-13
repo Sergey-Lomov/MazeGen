@@ -1910,6 +1910,7 @@
   "analytics.score_info_visibility": "Отображается только когда в контроле качества для исправления конечных точек выбрана стратегия «Оценка конечных точек», так как оценка рассчитывается непосредственно на основе весовых параметров этой стратегии.",
   "analytics.score_info_current_weights": "Текущие настройки",
   "analytics.no_route": "Путь от старта до финиша отсутствует",
+  "analytics.layer_grid": "Сетка",
   "analytics.layer_maze": "Лабиринт",
   "analytics.layer_components": "Области связности",
   "analytics.layer_graph": "Граф",

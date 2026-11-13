@@ -86,6 +86,7 @@ export function makeState(overrides: Partial<MazeState> = {}): MazeState {
     fieldDirty: false,
     presetsDirty: false,
     mazeDirty: false,
+    showGridOverlay: true,
     showMazeOverlay: true,
     showComponentsOverlay: false,
     showGraphOverlay: false,

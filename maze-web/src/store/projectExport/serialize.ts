@@ -96,6 +96,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       maze: state.mazeDirty,
     },
     analytics: {
+      showGridOverlay: state.showGridOverlay,
       showMazeOverlay: state.showMazeOverlay,
       showComponentsOverlay: state.showComponentsOverlay,
       showGraphOverlay: state.showGraphOverlay,

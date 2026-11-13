@@ -9,6 +9,7 @@ export const analyticsTransientUi = {
 } satisfies Partial<AnalyticsOverlayState>;
 
 export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], AnalyticsOverlayState & AnalyticsOverlayActions> = (set) => ({
+  showGridOverlay: true,
   showMazeOverlay: true,
   showComponentsOverlay: false,
   showGraphOverlay: false,
@@ -20,6 +21,7 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   analyticsSectionsExpanded: { layers: true, issues: false },
   showFullyPresetLockedIssues: true,
 
+  setShowGridOverlay: (v) => set({ showGridOverlay: v }),
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
   setShowGraphOverlay: (v) => set({ showGraphOverlay: v }),

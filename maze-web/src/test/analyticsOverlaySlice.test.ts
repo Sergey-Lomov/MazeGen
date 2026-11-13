@@ -27,6 +27,7 @@ beforeEach(() => {
 describe("mazeStore analytics overlays", () => {
   it("each overlay setter toggles its own flag independently", () => {
     const s0 = useMazeStore.getState();
+    s0.setShowGridOverlay(false);
     s0.setShowMazeOverlay(false);
     s0.setShowComponentsOverlay(true);
     s0.setShowGraphOverlay(true);
@@ -35,6 +36,7 @@ describe("mazeStore analytics overlays", () => {
     s0.setShowRouteOverlay(true);
     s0.setShowRegionClassesOverlay(true);
     const s = useMazeStore.getState();
+    expect(s.showGridOverlay).toBe(false);
     expect(s.showMazeOverlay).toBe(false);
     expect(s.showComponentsOverlay).toBe(true);
     expect(s.showGraphOverlay).toBe(true);

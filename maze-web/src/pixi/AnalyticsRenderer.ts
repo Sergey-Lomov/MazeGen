@@ -138,6 +138,7 @@ export class AnalyticsRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
         state.openCard !== prev.openCard ||
+        state.showGridOverlay !== prev.showGridOverlay ||
         state.showMazeOverlay !== prev.showMazeOverlay ||
         state.showComponentsOverlay !== prev.showComponentsOverlay ||
         state.showGraphOverlay !== prev.showGraphOverlay ||
@@ -177,7 +178,7 @@ export class AnalyticsRenderer {
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const analyticsOpen = state.openCard === "analytics";
     const { activeFieldConfig: cfg,
-      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
+      showGridOverlay, showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
       showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
 
     // Floor-scoped (GitHub issue #358) — `state.nodes` can span every floor (post-edit's confirm
@@ -240,10 +241,9 @@ export class AnalyticsRenderer {
     // Where a graph edge crosses a glue it ends at the contour; one context serves every graph overlay.
     const seam = selectSeamHopContext(state, nodes);
 
-    // Grid — background context, independent of showMazeOverlay
-    const showGrid = analyticsOpen && nodes.length > 0;
+    // Grid — independent of the maze overlay, so analytical views can hide visual noise.
+    const showGrid = analyticsOpen && showGridOverlay && nodes.length > 0;
     this.gridContainer.visible = showGrid;
-    this.seamArrowContainer.visible = showGrid;
     if (showGrid) {
       this.grid.render({ viewport: this.viewport }, cfg);
     }
@@ -268,6 +268,7 @@ export class AnalyticsRenderer {
 
     // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
+    this.seamArrowContainer.visible = showMaze;
     this.floorContainer.visible       = showMaze;
     this.closedCellsContainer.visible = showMaze;
     this.wallsContainer.visible       = showMaze;

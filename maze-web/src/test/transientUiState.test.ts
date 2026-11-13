@@ -19,7 +19,7 @@ const NOT_TRANSIENT: Record<string, readonly string[]> = {
     "randomSeed", "lastUsedSeed", "seedHistory", "seedHistoryIndex", "seedAttachedToHistory", "qcExperiment",
     "lastUsedQcExperiment", "vertexSettingsPanelOpen", "openCard", "debugMode", "debugAutoPlayDelay",
     "debugStep", "mazeDirty", "repairMaxIterations", "repairTimeBudgetSecs", "splitPatternMode",
-    "splitMaxNodes", "splitPatterns", "showMazeOverlay", "showComponentsOverlay", "showGraphOverlay",
+    "splitMaxNodes", "splitPatterns", "showGridOverlay", "showMazeOverlay", "showComponentsOverlay", "showGraphOverlay",
     "showNavGraphOverlay", "showPureCyclesOverlay", "showRouteOverlay", "showRegionClassesOverlay",
     "analyticsSectionsExpanded", "postEditAutoConfirm", "postEditCommands", "postEditDirty",
     "_nextPostEditTeleportId", "_nextSplitSlotId", "_nextPostEditSplitPointId",
