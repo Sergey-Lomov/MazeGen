@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { LabelFontRow } from "../components/features/LabelFontRow";
 import { LinkContextProvider, type LinkContextValue } from "../components/features/LinkContext";
+import { markMsdfFamilyLoaded } from "../pixi/renderers/fontChoice";
 import * as m from "~/paraglide/messages";
 
 // A browser font loads only when the test resolves its request, so the order of loads is under control.
@@ -160,3 +161,37 @@ describe("LabelFontRow", () => {
     expect(onChange).toHaveBeenLastCalledWith({ family: "Fira Sans", weight: 400 });
   });
 });
+
+describe("LabelFontRow with baked MSDF fonts (GitHub issue #982)", () => {
+  // The picker's vector list is built from the bundled catalog when the panel module loads, so these
+  // use real entries: Noto Serif counts as already downloaded, Fira Sans as still to download.
+  markMsdfFamilyLoaded("msdf:noto-serif");
+
+  it("applies a pick of a baked font that is already loaded at once", async () => {
+    const onChange = await openPicker({ family: "", weight: 400 });
+    fireEvent.click(screen.getByRole("option", { name: "Noto Serif" }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ family: "msdf:noto-serif", weight: 400 });
+  });
+
+  it("applies a pick of a baked font that still has to download once it has loaded", async () => {
+    const onChange = await openPicker({ family: "", weight: 400 });
+    fireEvent.click(screen.getByRole("option", { name: "Fira Sans" }));
+    expect(onChange).not.toHaveBeenCalled();
+    await finishLoading("msdf:fira-sans");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ family: "msdf:fira-sans", weight: 400 });
+  });
+
+  it("starts downloading the baked font a value already names, without any pick", async () => {
+    await act(async () => {
+      render(
+        <LinkContextProvider value={linkContext}>
+          <LabelFontRow value={{ family: "msdf:fira-sans", weight: 700 }} onChange={vi.fn()} linkTarget={null} />
+        </LinkContextProvider>,
+      );
+    });
+    expect(fonts.pending.map((request) => request.family)).toContain("msdf:fira-sans");
+  });
+});
+

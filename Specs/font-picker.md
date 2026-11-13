@@ -10,7 +10,7 @@ Side panel for choosing a canvas label font, the counterpart of the color picker
 | Component | Role |
 |---|---|
 | `FontPickerPanel` (`components/FontPickerPanel.tsx`) | The panel. An overlay `SidePanel` (same overlay mode as `ColorPickerPanel`). Holds the working font (family and weight) in local state. Props: `font`, `onApply`, `onClose`, `onPreview?`, `onCancel?`, `title?`. |
-| `FontButton` (`components/FontButton.tsx`) | The visible control: a button showing the current font name and weight (`Roboto, Bold` for the default font; `formatLabelFont`). Opens the panel. Same `onChange` / `onPreview` / `onOpen` / `onCancel` contract as `ColorSwatch`. |
+| `FontButton` (`components/FontButton.tsx`) | The visible control: a button showing the current font name and weight (`Roboto, Bold` for the default font; `formatLabelFont`). Opens the panel. Same `onChange` / `onPreview` / `onOpen` / `onCancel` contract as `ColorSwatch`. The button is at least 140 px wide, grows with its text toward the row label up to 65% of the row, and cuts a longer name with an ellipsis. |
 | `FontRow` (`components/FontRow.tsx`) | Label + `FontButton` + optional trailing `resetButton`, mirrors `ColorRow`. |
 | `LinkedFontRow` (`components/features/LinkedRows.tsx`) | `FontRow` with the link-status icon. Like `LinkedColorRow`, it snapshots whether the incoming link was enabled on open and re-enables it on Cancel. |
 | `LabelFontRow` (`components/features/LabelFontRow.tsx`) | The one font control every text settings group renders (markers, badges, marker index, floor labels, Shared style). Call sites pass only `value` (a `LabelFont`), `onChange`, `linkTarget`; loading, stale-request guarding and cancel ordering live here, so no call site duplicates them. |
@@ -25,6 +25,29 @@ string is the bundled Roboto) or the name of an installed TTF/OTF font drawn by 
 is a CSS weight, 100..900. The panel derives the font type from the family, so no extra field exists.
 Old projects stored the family and the weight separately; they are not migrated and read as the
 default font.
+
+## MSDF font loading (GitHub issue #982)
+
+`MSDF_FONTS` is a catalog (font name plus the atlas files of its weights) and costs nothing by itself.
+An atlas is downloaded and decoded only when its font is first needed (`loadMsdfFamily`,
+`pixi/renderers/msdfLoader.ts`): picked in a font picker, highlighted in the picker preview, or referenced
+by the export settings. The last case is `installLabelFontSync` (`store/labelFontSync.ts`): it watches
+`vectorByWallsSettings`, `vectorByCorridorsSettings` and `pngExportSettings`, and any `LabelFont` in them
+(found at any depth) that names a non-default catalog font starts its download once. It covers every way
+settings arrive (project load, visual preset, shared-style link, picker) without needing a font row on
+screen. A font referenced by a project therefore loads on open, and the labels switch from Roboto when
+it lands. Only the
+default Roboto is loaded at startup (`loadMsdfFont`, awaited in `App.tsx`), because every other font falls
+back to it. Loaded fonts are cached and a request for the same font shares one download.
+
+- While a font is loading, or after its download failed, `msdfFace` returns the default font's face, so
+  labels keep the default font and nothing blocks the UI. `LabelFontRow` applies a picked font once
+  `loadLabelFont` settles (a failed load applies the pick and it renders as the default font; a later
+  request retries the download).
+- A loaded font fires `LABEL_FONT_LOADED_EVENT` (`mazegen:label-font-loaded`, `fontChoice.ts`), like a browser font, so the vector exporters re-render.
+- Stored value: `family` is the catalog key, the empty string for Roboto and `msdf:<id>` for every other
+  bundled MSDF font (`MSDF_FAMILY_PREFIX` in `fontChoice.ts`), so a locally installed font with the same
+  display name is never taken for the bundled one.
 
 ## Panel
 
@@ -56,11 +79,19 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,
   colors or size change, not on a later panel resize).
 - **"Family" section** — second. Its header carries the info button (`InfoIconButton`) opening a
-  `CategoryInfoModal` that explains the practical difference between the two categories. The body holds
+  `CategoryInfoModal` that explains the practical difference between the two categories. While the MSDF
+  list is shown it also carries a copyright button (`InfoIconButton` with a lucide `Copyright` icon as `symbol`, GitHub issue #982)
+  opening `FontLicensesModal`: for every bundled MSDF font its name, copyright line, license name and
+  source link (`FONT_NOTICES`, `components/fontLicenses.ts`), then the full texts of the licenses in use
+  (SIL OFL 1.1, Apache 2.0) in collapsed sections. The texts are static assets
+  (`public/licenses/*.txt`, `LICENSE_TEXT_URLS`) fetched when the dialog opens; a failed fetch shows a
+  note in that section only. The copyright lines are English in every UI language. Browser fonts have no
+  entry (they are not bundled), and licenses of other dependencies are not listed here (GitHub issue
+  #990). Every font added to `MSDF_FONTS` needs a `FONT_NOTICES` entry (a test enforces it). The body holds
   the "MSDF" / "TTF/OTF" toggle buttons (`toggle` / `toggle-selected`) and the font list below. The
   panel opens on the list that holds the current family.
   A single-select listbox of the active category:
-    - MSDF: every baked font of `MSDF_FONTS`, currently only Roboto (value `""`).
+    - MSDF: every baked font of `MSDF_FONTS`: Roboto (value `""`), Noto Sans, Noto Sans Condensed, Noto Serif, Fira Sans, Fira Mono, Arimo, Tinos, Cousine and Open Sans (keys `msdf:<id>`, the prefix keeps them apart from browser font names). Each offers Regular and Bold and covers Latin and Cyrillic.
     - TTF/OTF: every family installed on this machine (`loadLocalFontFamilies`). The open-time family is
       kept at the top of the list when the machine does not report it, so a project saved elsewhere
       still shows its current choice highlighted.
@@ -133,7 +164,7 @@ picks one.
 
 The listbox takes focus on mount. Up / Down arrows move the highlight to the previous / next font,
 clamped at both ends (with nothing highlighted, Down selects the first and Up the last font). Every
-move previews the font like a click, except that the canvas preview is coalesced: the highlight follows every key press (including auto-repeat), but `onPreview` fires once after the moves pause for `KEYBOARD_PREVIEW_DELAY_MS` (100 ms), and Apply flushes a still queued one first, so holding an arrow key does not rebuild the canvas per repeat. List rows are memoized, so a move re-renders only the two rows whose selection changed. Escape cancels, same as the Cancel button.
+move previews the font like a click, except that the canvas preview is coalesced: the highlight follows every key press (including auto-repeat), but `onPreview` fires once after the moves pause for `KEYBOARD_PREVIEW_DELAY_MS` (100 ms), and Apply flushes a still queued one first, so holding an arrow key does not rebuild the canvas per repeat. List rows are memoized, so a move re-renders only the two rows whose selection changed. Escape cancels, same as the Cancel button; Escape pressed inside a dialog opened from the panel (the font types info, the font licenses) closes only that dialog, because the panel ignores key events that come from outside its own DOM subtree.
 
 ## Preview and commit
 

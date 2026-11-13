@@ -3009,5 +3009,13 @@
   "font_picker.weight_600": "Semibold",
   "font_picker.weight_700": "Bold",
   "font_picker.weight_800": "Extra bold",
-  "font_picker.weight_900": "Black"
+  "font_picker.weight_900": "Black",
+  "font_licenses.button": "Font licenses",
+  "font_licenses.title": "Font licenses",
+  "font_licenses.intro": "The MSDF fonts are bundled with the app and converted into texture atlases. Each font is used under its own license, listed below.",
+  "font_licenses.license_ofl": "SIL Open Font License 1.1",
+  "font_licenses.license_apache": "Apache License 2.0",
+  "font_licenses.full_text": "Full text: {license}",
+  "font_licenses.loading": "Loading the license text",
+  "font_licenses.load_failed": "The license text could not be loaded."
 }

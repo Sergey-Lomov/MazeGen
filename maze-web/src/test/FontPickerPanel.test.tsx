@@ -3,6 +3,7 @@ import { act, render, screen, fireEvent, within } from "@testing-library/react";
 import { FontPickerPanel, WEB_SAFE_FONT_FAMILIES } from "../components/FontPickerPanel";
 import { FontButton } from "../components/FontButton";
 import { useMazeStore } from "../store/mazeStore";
+import { MSDF_FONTS } from "../pixi/renderers/fontChoice";
 import * as m from "~/paraglide/messages";
 
 const localFamilies = vi.hoisted(() => ({
@@ -54,6 +55,8 @@ const weightOptions = () => [...weightSelect().options].map((o) => o.value);
 const pickWeight = (weight: number) => fireEvent.change(weightSelect(), { target: { value: String(weight) } });
 const vectorToggle = () => screen.getByRole("button", { name: m["font_picker.type_vector"]() });
 const rasterToggle = () => screen.getByRole("button", { name: m["font_picker.type_raster"]() });
+
+const MSDF_LABELS = Object.values(MSDF_FONTS).map((font) => font.label);
 
 describe("FontPickerPanel text warnings (GitHub issue #971)", () => {
   const overflow = (id: string) => ({ id, key: id, nodes: [], edges: [] as never[] });
@@ -199,9 +202,9 @@ describe("FontPickerPanel", () => {
     expect(screen.getByText(m["font_picker.preview_background_color"]())).toBeTruthy();
   });
 
-  it("opens on the vector list holding only Roboto for the default family", async () => {
+  it("opens on the vector list holding every bundled font, Roboto highlighted, for the default family", async () => {
     await renderPanel({ font: { family: "", weight: 400 } });
-    expect(optionNames()).toEqual(["Roboto"]);
+    expect(optionNames()).toEqual(MSDF_LABELS);
     expect(selectedName()).toBe("Roboto");
   });
 
@@ -222,7 +225,7 @@ describe("FontPickerPanel", () => {
     fireEvent.click(rasterToggle());
     expect(optionNames()).toEqual(["Arial", "Consolas", "Georgia"]);
     fireEvent.click(vectorToggle());
-    expect(optionNames()).toEqual(["Roboto"]);
+    expect(optionNames()).toEqual(MSDF_LABELS);
   });
 
   it("previews a font on click without committing", async () => {
@@ -383,7 +386,7 @@ describe("FontPickerPanel", () => {
   it("shows no permission note on the vector list", async () => {
     localFamilies.value = null;
     await renderPanel({ font: { family: "", weight: 400 } });
-    expect(optionNames()).toEqual(["Roboto"]);
+    expect(optionNames()).toEqual(MSDF_LABELS);
     expect(screen.queryByTestId("font-picker-permission-note")).toBeNull();
   });
 
@@ -392,6 +395,36 @@ describe("FontPickerPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     expect(screen.getByText(m["font_picker.info_vector"]())).toBeTruthy();
     expect(screen.getByText(m["font_picker.info_raster"]())).toBeTruthy();
+  });
+
+  it("offers the font licenses dialog on the vector list only (GitHub issue #982)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("license") }));
+    try {
+      await renderPanel({ font: { family: "", weight: 400 } });
+      const button = () => screen.queryByRole("button", { name: m["font_licenses.button"]() });
+      expect(button()).not.toBeNull();
+      fireEvent.click(rasterToggle());
+      expect(button()).toBeNull();
+      fireEvent.click(vectorToggle());
+      await act(async () => { fireEvent.click(button()!); });
+      expect(screen.getByTestId("font-licenses-list")).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("Escape in a dialog opened from the panel closes only that dialog, not the panel", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("license") }));
+    try {
+      const handlers = await renderPanel({ font: { family: "", weight: 400 } });
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: m["font_licenses.button"]() })); });
+      await act(async () => { fireEvent.keyDown(screen.getByTestId("font-licenses-list"), { key: "Escape" }); });
+      expect(screen.queryByTestId("font-licenses-list")).toBeNull();
+      expect(handlers.onClose).not.toHaveBeenCalled();
+      expect(handlers.onCancel).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

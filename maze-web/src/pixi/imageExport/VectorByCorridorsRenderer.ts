@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { floorIdsWithCut } from "./exportContent";
 import { useMazeStore } from "../../store/mazeStore";
 import { buildCorridorSegments, shortestCorridorFaceAcrossFloors, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, markerIndexPlateFootprint, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
+import { LABEL_FONT_LOADED_EVENT } from "../renderers/fontChoice";
 import type { ElevatorBadgeObstacle } from "../renderers/elevatorBadgeLayout";
 import { hasAnyGlue } from "../selectors/colorFieldRegistry";
 import { buildSplitHostKeys, buildGroupBridgeMarkers, shiftMarkerIndexLabels } from "../selectors/mazeSelectors/markerLayout";
@@ -180,7 +181,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly contourShapeCache: CorridorShapeCache = new Map();
 
   constructor(root: Container) {
-    window.addEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.addEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.backgroundGrid = new BackgroundGridLayer(root);
     this.glueTabRenderer = new GlueTabRenderer(this.backgroundGrid.glueTabs);
     // Only the corridors are content; everything else sits in the overlay, above the corridors of every cut copy (GitHub issue #888).
@@ -1443,7 +1444,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   destroy(): void {
-    window.removeEventListener("mazegen:label-font-loaded", this.rerenderLoadedFont);
+    window.removeEventListener(LABEL_FONT_LOADED_EVENT, this.rerenderLoadedFont);
     this.unsubscribe?.();
     this.glueTabRenderer.destroy();
     this.backgroundGrid.destroy();

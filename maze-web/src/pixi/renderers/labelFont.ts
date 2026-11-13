@@ -1,5 +1,6 @@
 import { BitmapText, Text } from "pixi.js";
-import { CSS_FONT_WEIGHTS, msdfFace, weightFromStyleName, type LabelFont } from "./fontChoice";
+import { CSS_FONT_WEIGHTS, LABEL_FONT_LOADED_EVENT, isMsdfFamily, msdfFace, weightFromStyleName, type LabelFont } from "./fontChoice";
+import { loadMsdfFamily } from "./msdfLoader";
 
 /** Runtime local-font support for issue #740. An empty or unavailable family deliberately uses
  * the bundled MSDF Roboto, which remains the portable project-file fallback. */
@@ -121,10 +122,13 @@ function hasDistinctBoldFace(family: string): boolean {
   return PROBES.some((probe) => Math.abs(width(700, probe) - width(400, probe)) > 0.01);
 }
 
-/** Wait until a browser font can be measured before allowing it onto the canvas. */
+/** Wait until a font can be drawn before allowing it onto the canvas: a browser font is measurable, a
+ *  baked MSDF font has its atlases downloaded (GitHub issue #982). Resolves to `false` when it cannot be
+ *  loaded; the label then keeps the default font. */
 export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   const family = font.family.trim();
   if (!family) return true;
+  if (isMsdfFamily(family)) return loadMsdfFamily(family);
   const key = fontKey(family, font.weight);
   if (loadedFonts.has(key)) return true;
   if (typeof document === "undefined" || !document.fonts) return false;
@@ -139,7 +143,7 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
       if (!document.fonts.check(face)) return false;
       if (!isFontFamilyInstalled(family)) return false;
       loadedFonts.add(key);
-      if (typeof window !== "undefined") window.dispatchEvent(new Event("mazegen:label-font-loaded"));
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(LABEL_FONT_LOADED_EVENT));
       return true;
     } catch {
       return false;

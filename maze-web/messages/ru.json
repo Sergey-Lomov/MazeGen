@@ -3021,5 +3021,13 @@
   "font_picker.weight_600": "Полужирный",
   "font_picker.weight_700": "Жирный",
   "font_picker.weight_800": "Сверхжирный",
-  "font_picker.weight_900": "Чёрный"
+  "font_picker.weight_900": "Чёрный",
+  "font_licenses.button": "Лицензии шрифтов",
+  "font_licenses.title": "Лицензии шрифтов",
+  "font_licenses.intro": "MSDF шрифты входят в состав приложения и преобразованы в текстурные атласы. Каждый шрифт используется по своей лицензии, они перечислены ниже.",
+  "font_licenses.license_ofl": "SIL Open Font License 1.1",
+  "font_licenses.license_apache": "Apache License 2.0",
+  "font_licenses.full_text": "Полный текст: {license}",
+  "font_licenses.loading": "Загрузка текста лицензии",
+  "font_licenses.load_failed": "Не удалось загрузить текст лицензии."
 }

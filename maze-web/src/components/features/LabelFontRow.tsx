@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { LinkPath } from "../../store/parameterLinkSchema";
-import { DEFAULT_LABEL_FONT, labelFontEquals, type LabelFont } from "../../pixi/renderers/fontChoice";
+import { DEFAULT_LABEL_FONT, isMsdfFamilyLoaded, labelFontEquals, type LabelFont } from "../../pixi/renderers/fontChoice";
 import { isLabelFontLoaded, loadLabelFont } from "../../pixi/renderers/labelFont";
 import { LinkedFontRow } from "./LinkedRows";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
@@ -33,7 +33,7 @@ export function LabelFontRow<P extends LinkPath>({ value, onChange, linkTarget, 
     // The default, already-loaded and open-time fonts apply synchronously: the picker's Cancel
     // restores the open-time font and then re-enables the link, and that order must not be inverted
     // by a promise. An unloaded font renders as the bundled Roboto until it loads.
-    if (!next.family.trim() || isLabelFontLoaded(next) || (openFont.current !== null && labelFontEquals(next, openFont.current))) {
+    if (!next.family.trim() || isLabelFontLoaded(next) || isMsdfFamilyLoaded(next.family) || (openFont.current !== null && labelFontEquals(next, openFont.current))) {
       onChange(next);
       return;
     }
