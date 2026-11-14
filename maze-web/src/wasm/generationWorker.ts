@@ -7,8 +7,8 @@ export interface GenerationRequest {
   config: GenerateConfig;
 }
 
-serveWorker(({ seed, config }: GenerationRequest) => {
-  const result = generateMaze(seed, config);
+serveWorker(({ seed, config }: GenerationRequest, reportProgress) => {
+  const result = generateMaze(seed, config, reportProgress);
   const transfer: ArrayBuffer[] = [];
   if (result.debugTape) {
     transfer.push(result.debugTape.nodeTable.buffer, result.debugTape.payload.buffer);

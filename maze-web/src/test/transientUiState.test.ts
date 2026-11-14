@@ -30,7 +30,7 @@ const NOT_TRANSIENT: Record<string, readonly string[]> = {
   ],
   "rebuilt by the regeneration and post-edit replay that loadProject runs": [
     "nodes", "edges", "start", "finish", "navNodes", "navEdges", "statistics", "issues", "error", "routeInfo",
-    "timing", "generationStatus", "debugArena", "debugStale", "debugValueToggles", "postEditBaseline",
+    "timing", "generationStatus", "generationProgress", "debugArena", "debugStale", "debugValueToggles", "postEditBaseline",
     "postEditDerived", "postEditDraftEdges", "postEditDraftTeleports", "postEditDraftMeta",
     "postEditDraftSplitPoints", "postEditDraftSplitPointIds", "postEditEdges", "postEditTeleportEdges",
     "postEditMeta", "postEditAnalytics", "postEditRefreshError", "_postEditRequestId", "_generatedStart",

@@ -13,6 +13,7 @@ import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { NotificationHost } from "./components/notifications/NotificationHost";
 import { Announcer } from "./components/Announcer";
 import { LoadingScreen } from "./components/LoadingScreen";
+import { GenerationProgressOverlay } from "./components/GenerationProgressOverlay";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
 import { ui } from "./styles/theme";
@@ -156,6 +157,7 @@ export function App() {
        * features panel. */}
       <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
       {(!ready || loadingLeaving) && <LoadingScreen status={m[loadingStage === "graphics" ? "loading.graphics" : "loading.fonts"]()} leaving={loadingLeaving} />}
+      <GenerationProgressOverlay />
       {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
        * anchored to the canvas column's top-left corner. */}
       <NotificationHost canvasLeft={PANEL_WIDTH} />

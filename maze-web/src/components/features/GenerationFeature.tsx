@@ -16,7 +16,6 @@ import { ToolTooltip } from "../ToolIconButton";
 import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
-import { useDelayedIndicator } from "../useDelayedIndicator";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -53,7 +52,6 @@ export function GenerationFeature({ canGenerate }: Props) {
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
   const [generationInProgress, setGenerationInProgress] = useState(false);
-  const spinnerVisible = useDelayedIndicator(generationInProgress);
   const generationToken = useRef(0);
   const generationInProgressRef = useRef(false);
 
@@ -241,19 +239,16 @@ export function GenerationFeature({ canGenerate }: Props) {
         </div>
       </div></Tooltip>
 
-      {/* Action buttons */}
       <div style={styles.btnRow}>
-          <Button
-            variant="primary"
-            layoutStyle={{ ...styles.btnGenerate, ...(generateBlocked ? styles.btnDisabled : {}) }}
-            disabled={generateBlocked || generationInProgress}
-            aria-busy={generationInProgress}
-            onClick={handleGenerate}
-          >
-            {spinnerVisible
-              ? <span className="generation-spinner" aria-hidden="true" />
-              : m["generation.generate"]()}
-          </Button>
+        <Button
+          variant="primary"
+          layoutStyle={{ ...styles.btnGenerate, ...(generateBlocked ? styles.btnDisabled : {}) }}
+          disabled={generateBlocked || generationInProgress}
+          aria-busy={generationInProgress}
+          onClick={handleGenerate}
+        >
+          {m["generation.generate"]()}
+        </Button>
       </div>
 
       {algorithmDialogOpen && (
