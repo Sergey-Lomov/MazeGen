@@ -168,6 +168,20 @@ describe("ExportFrameOverlay — print anchor guard", () => {
     expect(useMazeStore.getState().pngExportSettings.print.anchor).toBe("custom");
   });
 
+  it("writes the zoom-derived print scale rounded to two decimals (GitHub issue #1000 follow-up)", () => {
+    setBaseState({
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center" } },
+    });
+    const { overlay, setViewportTransform } = makeOverlay();
+    const [x, y, scale] = setViewportTransform.mock.calls.at(-1)!;
+
+    overlay.onViewportChanged(x, y, SCREEN.width, SCREEN.height, scale * 1.2345678);
+
+    const printScale = useMazeStore.getState().pngExportSettings.print.scale;
+    expect(printScale).toBe(Math.round(printScale * 100) / 100);
+    overlay.destroy();
+  });
+
   it("notifyExternalResize re-fits the viewport under the current anchor without changing the anchor itself", () => {
     setBaseState({
       pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "top_left" } },

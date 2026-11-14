@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
+import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../pixi/printCellSizes";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "../components/features/PngOverflowWarningBubble";
 
 describe("PngOverflowWarningBubble", () => {
@@ -35,5 +36,13 @@ describe("PngFitWarningBubble", () => {
     render(<PngFitWarningBubble id="png_content_in_margin_zone" />);
     const message = m["image_export.format.png.warning_in_margin_zone"]();
     expect(screen.getByText(message)).toBeInTheDocument();
+  });
+
+  it("renders the minimum-side variant's message and description (GitHub issue #1000)", () => {
+    render(<PngFitWarningBubble id="png_min_side_too_short" />);
+    const min = String(MIN_COMFORTABLE_CELL_SIDE_MM);
+    const message = m["image_export.format.png.warning_min_side_too_short"]({ min });
+    fireEvent.click(screen.getByText(message));
+    expect(screen.getByText(m["image_export.format.png.warning_min_side_too_short_description"]({ min }))).toBeInTheDocument();
   });
 });

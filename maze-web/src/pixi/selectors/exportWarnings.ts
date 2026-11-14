@@ -81,6 +81,8 @@ export type ExportWarningId =
    *  sheet, so nothing is lost) — informational, the user asked for a margin and part of the
    *  content sits inside it. */
   | "png_content_in_margin_zone"
+  /** Print mode (GitHub issue #1000): the shortest cell side prints below `MIN_COMFORTABLE_CELL_SIDE_MM`. */
+  | "png_min_side_too_short"
   /** "Vector by walls" only (GitHub issue #430) — an `Elevator` marker's own floor-number badge
    *  ring visually overlaps itself: two or more badges sit closer than `2 * badgeRadius` apart
    *  given the current size/distance/placement settings and the number of floors that elevator

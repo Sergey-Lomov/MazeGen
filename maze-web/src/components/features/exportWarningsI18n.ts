@@ -3,6 +3,7 @@ import type { ExportWarningId } from "../../pixi/selectors/exportWarnings";
 import type { ColorFieldKey } from "../../pixi/colorFieldKeys";
 import type { MarkerLookKind } from "../../pixi/selectors/exportMarkerLookAlike";
 import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
+import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../../pixi/printCellSizes";
 
 /** Localized message/description per `ExportWarningId` (GitHub issue #298) — kept separate from
  *  `exportWarnings.ts` since that selector must stay renderer/i18n-agnostic (a future feature-card
@@ -227,7 +228,7 @@ export function resolveExportWarningDescription(
  *  mode ids (`png_content_clips_sheet`/`png_content_in_margin_zone`) are plain yes/no facts about
  *  the current placement and carry no parameter. */
 export type PngOverflowWarningId = "png_content_overflows_canvas";
-export type PngFitWarningId = "png_content_clips_sheet" | "png_content_in_margin_zone";
+export type PngFitWarningId = "png_content_clips_sheet" | "png_content_in_margin_zone" | "png_min_side_too_short";
 
 export function resolvePngExportWarningMessage(id: PngOverflowWarningId, percent: number): string {
   const p = { percent: String(Math.round(percent)) };
@@ -247,6 +248,7 @@ export function resolvePngFitWarningMessage(id: PngFitWarningId): string {
   switch (id) {
     case "png_content_clips_sheet": return m["image_export.format.png.warning_clips_sheet"]();
     case "png_content_in_margin_zone": return m["image_export.format.png.warning_in_margin_zone"]();
+    case "png_min_side_too_short": return m["image_export.format.png.warning_min_side_too_short"]({ min: String(MIN_COMFORTABLE_CELL_SIDE_MM) });
   }
 }
 
@@ -254,6 +256,7 @@ export function resolvePngFitWarningDescription(id: PngFitWarningId): string {
   switch (id) {
     case "png_content_clips_sheet": return m["image_export.format.png.warning_clips_sheet_description"]();
     case "png_content_in_margin_zone": return m["image_export.format.png.warning_in_margin_zone_description"]();
+    case "png_min_side_too_short": return m["image_export.format.png.warning_min_side_too_short_description"]({ min: String(MIN_COMFORTABLE_CELL_SIDE_MM) });
   }
 }
 

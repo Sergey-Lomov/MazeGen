@@ -3,8 +3,9 @@ import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { PrintExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
+import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../pixi/printCellSizes";
 
-const { cellMeasureWorldUnits, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
+const { cellMeasureWorldUnits, cellSideWorldUnits, printMinSideMm, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -28,6 +29,20 @@ describe("mmToPx", () => {
   it("converts millimeters to pixels at the given DPI", () => {
     expect(mmToPx(25.4, 96)).toBeCloseTo(96);
     expect(mmToPx(25.4, 300)).toBeCloseTo(300);
+  });
+});
+
+describe("printMinSideMm", () => {
+  it("equals the cell side in millimeters at the given scale and DPI", () => {
+    const side = cellSideWorldUnits(cfg);
+    expect(printMinSideMm(cfg, 2, 300)).toBeCloseTo(pxToMm(side * 2, 300));
+  });
+
+  it("crosses MIN_COMFORTABLE_CELL_SIDE_MM as the scale shrinks", () => {
+    const dpi = DPI_BY_DENSITY.print_300;
+    const threshold = mmToPx(MIN_COMFORTABLE_CELL_SIDE_MM, dpi) / cellSideWorldUnits(cfg);
+    expect(printMinSideMm(cfg, threshold * 1.01, dpi)).toBeGreaterThan(MIN_COMFORTABLE_CELL_SIDE_MM);
+    expect(printMinSideMm(cfg, threshold * 0.99, dpi)).toBeLessThan(MIN_COMFORTABLE_CELL_SIDE_MM);
   });
 });
 
