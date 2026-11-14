@@ -132,7 +132,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "default",
     flexShrink: 0,
   },
-  actionSelected: { background: ui.bg.hover, color: ui.text.primary, borderRadius: radius.sm },
+  actionSelected: { background: ui.state.selected, color: ui.text.primary, borderRadius: radius.sm },
   // Lets the pointer reach the button itself, not the svg inside it.
   glyph: { display: "flex", pointerEvents: "none" },
 };

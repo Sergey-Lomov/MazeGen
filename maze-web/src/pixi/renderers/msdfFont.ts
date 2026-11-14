@@ -1,7 +1,7 @@
 import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import { VECTOR_FONT_FAMILY, msdfFace, type LabelFont } from "./fontChoice";
-import { isLabelFontLoaded, makeLabelText } from "./labelFont";
+import { canvasInkCentreOffset, makeLabelText, usesCanvasText } from "./labelFont";
 import { loadMsdfFamily } from "./msdfLoader";
 
 /** MSDF (multi-channel signed distance field) bitmap fonts for canvas labels (GitHub issue #352).
@@ -10,7 +10,7 @@ import { loadMsdfFamily } from "./msdfLoader";
  *  zooms past it. An MSDF `BitmapText` stays crisp at any zoom because the GPU reconstructs the
  *  glyph edges from the distance field.
  *
- *  pixi.js v8 has no runtime MSDF generator — the atlases are baked offline
+ *  pixi.js v8 has no runtime MSDF generator — the bundled atlases are baked offline
  *  (`tools/msdf/generate.mjs`, `npm run gen:msdf`) from `tools/msdf/Roboto-{Regular,Bold}.ttf` and
  *  committed under `public/fonts/` as `.fnt` (AngelCode XML — pixi's bitmap-font loader only
  *  recognizes `.fnt`/`.xml` by extension; a `.json` atlas loads as a plain object and `BitmapText`
@@ -79,9 +79,10 @@ function inkCentreOffset(text: string, fontFamily: string, fontSize: number): nu
  *  `anchor.set(0.5)` — the vertical correction ({@link inkCentreOffset}) is folded into `.pivot.y`
  *  so it survives later `.x`/`.y` writes by the caller. */
 export function makeCenteredLabel(text: string, font: LabelFont, fontSize: number, fill: number) {
+  const canvas = usesCanvasText(font, text);
   const label = makeLabelText(text, font, fontSize, fill);
-  // Browser text uses its own line metrics; the MSDF-only correction must not be applied to it.
-  if (!isLabelFontLoaded(font)) label.pivot.y = inkCentreOffset(text, msdfFontFamily(font), fontSize);
+  // Canvas text and MSDF text both end up ink-centred, so the label does not move when the atlas replaces the canvas text.
+  label.pivot.y = canvas ? canvasInkCentreOffset(text, font, fontSize) : inkCentreOffset(text, msdfFontFamily(font), fontSize);
   return label;
 }
 

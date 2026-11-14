@@ -127,16 +127,21 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
   }
 
   onPointerMove(canvasX: number, canvasY: number, _buttons?: number, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean): void {
-    if (this.panning) { this.pan.move(canvasX, canvasY); return; }
+    if (this.panning) { this.clearHover(); this.pan.move(canvasX, canvasY); return; }
     if (this.pendingPan) {
+      this.clearHover();
       this.panning = true;
       this.pan.start(this.pendingPan.x, this.pendingPan.y);
       this.pendingPan = null;
       this.pan.move(canvasX, canvasY);
       return;
     }
-    if (!this.dragging) return;
     const p = toViewportCoordinates(canvasX, canvasY, this.getViewport());
+    if (!this.dragging) {
+      this.updateHoveredConnector(p.x, p.y);
+      return;
+    }
+    this.clearHover();
     const point = ctrlKey || metaKey ? this.snap(p.x, p.y) : [p.x, p.y] as [number, number];
     const current = this.path(this.dragging.key);
     if (!current) return;
@@ -176,11 +181,40 @@ export class TeleportConnectorEditController implements PointerHandler, Viewport
     if (authored && manualPathMode(authored) === "curve") { this.remove(selected.key, selected.index); return; }
     points.splice(selected.index * 2, 2); this.write(selected.key, points); st.setTeleportConnectorEditSelection(null);
   }
+  clearHover(): void { useMazeStore.getState().setTeleportConnectorEditHoveredKey(null); }
   destroy(): void { this.view.destroy(); }
   get isViewportPanning(): boolean { return this.panning; }
   onViewportChanged(): void { this.render(); }
 
   private tolerance(): number { return HIT_PX / Math.max(this.getViewport().scale.x, 1e-9); }
+  /** Mirrors a manually authored canvas connector into its list row without materialising a path
+   * just because the pointer passed over an automatic connector. */
+  private updateHoveredConnector(x: number, y: number): void {
+    const st = useMazeStore.getState();
+    if (!isTeleportConnectorEditActive(st) || this.previewing) return;
+    const key = this.pointHit(x, y)?.key ?? this.segmentHit(x, y)?.key ?? this.endpointHit(x, y);
+    const paths = st.vectorByWallsSettings.manualTeleportConnectorPaths ?? {};
+    st.setTeleportConnectorEditHoveredKey(key !== null && paths[key] !== undefined ? key : null);
+  }
+  /** The path itself ends at a marker centre, but its visible endpoint is the full marker. Keep
+   * this wider hit zone hover-only: dragging still requires an actual editable point. */
+  private endpointHit(x: number, y: number): string | null {
+    const st = useMazeStore.getState();
+    const settings = st.activeRenderMode === "vector_by_corridors" ? st.vectorByCorridorsSettings : st.vectorByWallsSettings;
+    const radius = (floorBadge: boolean, scale: number) => {
+      const marker = floorBadge ? settings.teleportFloorBadge : settings.teleportMarker;
+      return marker.size / 2 * scale + marker.borderWidth + marker.gapWidth + this.tolerance();
+    };
+    for (const drawn of this.paths()) {
+      const key = teleportConnectorKey(drawn.edge);
+      if (!key) continue;
+      const { from, to } = drawn.edge;
+      if (!from || !to) continue;
+      if (Math.hypot(x - from[0], y - from[1]) <= radius(drawn.edge.fromFloor !== undefined, drawn.edge.fromScale ?? 1)) return key;
+      if (Math.hypot(x - to[0], y - to[1]) <= radius(drawn.edge.toFloor !== undefined, drawn.edge.toScale ?? 1)) return key;
+    }
+    return null;
+  }
   private pointHit(x: number, y: number): { key: string; index: number; points: number[] } | null {
     const t = this.tolerance();
     for (const d of this.paths()) { const key = teleportConnectorKey(d.edge); if (!key) continue; const points = this.path(key) ?? this.materialize(d);

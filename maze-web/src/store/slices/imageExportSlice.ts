@@ -282,9 +282,13 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       }),
     };
   }),
-  startTeleportConnectorEdit: (renderMode) => set({ teleportConnectorEdit: { renderMode, selected: null }, floorLabelDrag: null }),
+  startTeleportConnectorEdit: (renderMode) => set({ teleportConnectorEdit: { renderMode, selected: null, hoveredKey: null }, floorLabelDrag: null }),
   finishTeleportConnectorEdit: () => set({ teleportConnectorEdit: null }),
   setTeleportConnectorEditSelection: (selected) => set((s) => s.teleportConnectorEdit ? { teleportConnectorEdit: { ...s.teleportConnectorEdit, selected } } : {}),
+  setTeleportConnectorEditHoveredKey: (hoveredKey) => set((s) => {
+    if (!s.teleportConnectorEdit || s.teleportConnectorEdit.hoveredKey === hoveredKey) return {};
+    return { teleportConnectorEdit: { ...s.teleportConnectorEdit, hoveredKey } };
+  }),
   setManualTeleportConnectorPaths: (paths) => set((s) => ({
     vectorByWallsSettings: markLinked({ ...s.vectorByWallsSettings, manualTeleportConnectorPaths: paths }),
     vectorByCorridorsSettings: markLinked({ ...s.vectorByCorridorsSettings, manualTeleportConnectorPaths: paths }),

@@ -3,7 +3,9 @@
 ## MSDF label font (`npm run gen:msdf`)
 
 Canvas labels are drawn as MSDF `BitmapText` (crisp at any zoom), not pixi `Text` (blurs on zoom)
-— GitHub issue #352. pixi.js v8 has no runtime MSDF generator, so the atlases are baked offline:
+— GitHub issue #352. pixi.js v8 has no runtime MSDF generator, so the bundled atlases are baked offline
+(installed and uploaded fonts get dynamic atlases from `@playcanvas/msdfgen-wasm` in a worker,
+`src/pixi/renderers/rasterFont/`, GitHub issue #966):
 
 - Source: `tools/msdf/<Font>-{Regular,Bold}.ttf` for every entry of `FONTS` in `generate.mjs`: Roboto
   (Apache-2.0, `public/licenses/Apache-2.0.txt`), Noto Sans, Noto Sans Condensed, Noto Serif, Fira Sans, Fira Mono, Arimo, Tinos, Cousine and Open Sans (SIL OFL 1.1,

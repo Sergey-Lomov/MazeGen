@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, fireEvent, within } from "@testing-library/react";
-import { FontPickerPanel, WEB_SAFE_FONT_FAMILIES } from "../components/FontPickerPanel";
+import { act, cleanup, render, screen, fireEvent, within } from "@testing-library/react";
+import { FontPickerPanel } from "../components/FontPickerPanel";
 import { FontButton } from "../components/FontButton";
 import { useMazeStore } from "../store/mazeStore";
 import { MSDF_FONTS } from "../pixi/renderers/fontChoice";
@@ -10,15 +10,12 @@ const localFamilies = vi.hoisted(() => ({
   value: ["Arial", "Consolas", "Georgia"] as string[] | null,
   supported: true,
   retryValue: null as string[] | null,
-  // Web-safe candidates this fake machine lacks; jsdom has no canvas to measure glyphs with.
-  missing: new Set<string>(),
   // Weights per browser family; a family not listed offers only regular.
   weights: {} as Record<string, number[]>,
 }));
 
 vi.mock("../pixi/renderers/labelFont", async (importActual) => ({
   ...(await importActual<typeof import("../pixi/renderers/labelFont")>()),
-  isFontFamilyInstalled: (family: string) => !localFamilies.missing.has(family),
   isLocalFontAccessSupported: () => localFamilies.supported,
   rasterFontWeights: (family: string) => localFamilies.weights[family] ?? [400],
   loadLocalFontFamilies: (retry?: boolean) => Promise.resolve(retry ? localFamilies.retryValue : localFamilies.value),
@@ -39,7 +36,7 @@ vi.mock("../components/MsdfFontPreview", () => ({
 
 afterEach(() => { vi.useRealTimers(); msdfPreview.unavailable = false; });
 
-beforeEach(() => { localFamilies.value = ["Arial", "Consolas", "Georgia"]; localFamilies.supported = true; localFamilies.retryValue = null; localFamilies.missing = new Set(); localFamilies.weights = {}; });
+beforeEach(() => { localFamilies.value = ["Arial", "Consolas", "Georgia"]; localFamilies.supported = true; localFamilies.retryValue = null; localFamilies.weights = {}; });
 
 async function renderPanel(props: Partial<React.ComponentProps<typeof FontPickerPanel>> = {}) {
   const handlers = { onApply: vi.fn(), onClose: vi.fn(), onPreview: vi.fn(), onCancel: vi.fn() };
@@ -309,26 +306,13 @@ describe("FontPickerPanel", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it.each([["denied or unsupported", null], ["an empty answer", []]])("lists the web-safe fonts with a permission note on %s", async (_name, answer) => {
+  it.each([["denied or unsupported", null], ["an empty answer", []]])("lists no installed fonts, only a permission note and the saved family, on %s", async (_name, answer) => {
     localFamilies.value = answer as string[] | null;
     await renderPanel({ font: { family: "Arial", weight: 400 } });
-    expect(browserNames()).toEqual(WEB_SAFE_FONT_FAMILIES);
+    // Without the machine's list no installed font has a readable file; the saved choice stays listed.
+    expect(browserNames()).toEqual(["Arial"]);
     expect(selectedName()).toBe("Arial");
     expect(screen.getByTestId("font-picker-permission-note").textContent).toContain(m["font_picker.local_fonts_permission"]());
-  });
-
-  it("keeps a saved family outside the web-safe list when local fonts are unavailable", async () => {
-    localFamilies.value = null;
-    await renderPanel({ font: { family: "Fira Sans", weight: 400 } });
-    expect(browserNames()).toEqual(["Fira Sans", ...WEB_SAFE_FONT_FAMILIES]);
-    expect(selectedName()).toBe("Fira Sans");
-  });
-
-  it("hides web-safe fonts the machine does not have", async () => {
-    localFamilies.value = null;
-    localFamilies.missing = new Set(["Impact", "Segoe UI"]);
-    await renderPanel({ font: { family: "Arial", weight: 400 } });
-    expect(browserNames()).toEqual(WEB_SAFE_FONT_FAMILIES.filter((f) => f !== "Impact" && f !== "Segoe UI"));
   });
 
   it("points aria-activedescendant at the highlighted option", async () => {
@@ -338,13 +322,6 @@ describe("FontPickerPanel", () => {
     expect(labelOf(document.getElementById(active!)!)).toBe("Consolas");
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
     expect(labelOf(document.getElementById(screen.getByRole("listbox").getAttribute("aria-activedescendant")!)!)).toBe("Georgia");
-  });
-
-  it("previews a web-safe font picked while local fonts are unavailable", async () => {
-    localFamilies.value = null;
-    const { onPreview } = await renderPanel({ font: { family: "Arial", weight: 400 } });
-    fireEvent.click(option("Verdana"));
-    expect(onPreview).toHaveBeenLastCalledWith({ family: "Verdana", weight: 400 });
   });
 
   it("offers a grant button that loads the full list once access is given", async () => {
@@ -361,7 +338,7 @@ describe("FontPickerPanel", () => {
     localFamilies.value = null;
     await renderPanel({ font: { family: "Arial", weight: 400 } });
     await act(async () => { fireEvent.click(screen.getByTestId("font-picker-grant-access")); });
-    expect(browserNames()).toEqual(WEB_SAFE_FONT_FAMILIES);
+    expect(browserNames()).toEqual(["Arial"]);
     expect(screen.getByText(m["font_picker.local_fonts_blocked"]())).toBeTruthy();
     expect(screen.queryByTestId("font-picker-grant-access")).toBeNull();
   });
@@ -384,6 +361,39 @@ describe("FontPickerPanel", () => {
     await renderPanel({ font: { family: "", weight: 400 } });
     expect(optionNames().slice(0, MSDF_LABELS.length)).toEqual(MSDF_LABELS);
     expect(screen.getByTestId("font-picker-permission-note")).toBeTruthy();
+  });
+
+  it("offers the MSDF conversion switch for a browser font, on by default, and none for a bundled one", async () => {
+    await renderPanel({ font: { family: "Arial", weight: 400 } });
+    const toggle = within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("checkbox");
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    cleanup();
+    await renderPanel({ font: { family: "", weight: 400 } });
+    expect(screen.queryByTestId("font-picker-msdf-toggle")).toBeNull();
+  });
+
+  it("turning the switch off previews and applies the font with conversion disabled, and keeps it across a weight change", async () => {
+    localFamilies.weights = { Arial: [400, 700] };
+    const handlers = await renderPanel({ font: { family: "Arial", weight: 400 } });
+    fireEvent.click(within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("checkbox"));
+    expect(handlers.onPreview).toHaveBeenLastCalledWith({ family: "Arial", weight: 400, msdf: false });
+    pickWeight(700);
+    expect(handlers.onPreview).toHaveBeenLastCalledWith({ family: "Arial", weight: 700, msdf: false });
+    fireEvent.click(screen.getByRole("button", { name: m["common.apply"]() }));
+    expect(handlers.onApply).toHaveBeenCalledWith({ family: "Arial", weight: 700, msdf: false });
+  });
+
+  it("drops a switched-off conversion when a bundled font is chosen, so no hidden flag lingers", async () => {
+    const handlers = await renderPanel({ font: { family: "Arial", weight: 400, msdf: false } });
+    fireEvent.click(option(MSDF_LABELS[0]));
+    const last = handlers.onPreview.mock.calls.at(-1)![0];
+    expect(last.msdf).toBeUndefined();
+  });
+
+  it("the switch's info explains the conversion and its artifacts", async () => {
+    await renderPanel({ font: { family: "Arial", weight: 400 } });
+    fireEvent.click(within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("button", { name: "Info" }));
+    expect(screen.getByText(m["font_picker.convert_to_msdf_info"]())).toBeTruthy();
   });
 
   it("the info button explains both font types", async () => {
@@ -602,5 +612,21 @@ describe("FontButton", () => {
     await renderButton({ disabled: true });
     fireEvent.click(screen.getByTestId("font-button"));
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+});
+
+describe("FontPickerPanel preview session (GitHub issue #966)", () => {
+  it("marks a picker open while it is mounted, so highlighted fonts are never converted", async () => {
+    const { isFontPickerOpen } = await import("../pixi/renderers/rasterFont/pickerSession");
+    expect(isFontPickerOpen()).toBe(false);
+    const { unmount } = render(<FontPickerPanel font={{ family: "", weight: 400 }} onApply={vi.fn()} onClose={vi.fn()} onPreview={vi.fn()} />);
+    expect(isFontPickerOpen()).toBe(true);
+    unmount();
+    expect(isFontPickerOpen()).toBe(false);
+  });
+
+  it("shows no conversion status for a highlighted raster font", async () => {
+    await renderPanel({ font: { family: "Arial", weight: 400 } });
+    expect(screen.queryByTestId("font-picker-font-note")).toBeNull();
   });
 });

@@ -4,6 +4,19 @@
 export interface LabelFont {
   family: string;
   weight: number;
+  /** `false` keeps a raster (installed or uploaded) font as canvas text instead of converting it to an
+   *  MSDF atlas once applied (GitHub issue #966). Absent means converted; never stored as `true`. */
+  msdf?: boolean;
+}
+
+/** Whether a raster `font` is converted to an MSDF atlas once applied (the default). */
+export function convertsToMsdf(font: LabelFont): boolean {
+  return font.msdf !== false;
+}
+
+/** `font` with its MSDF conversion switched `on` or off; the default (on) leaves no key behind. */
+export function withMsdfConversion(font: LabelFont, on: boolean): LabelFont {
+  return on ? { family: font.family, weight: font.weight } : { family: font.family, weight: font.weight, msdf: false };
 }
 
 /** Family value that stands for the bundled MSDF Roboto in every font field. */
@@ -18,13 +31,13 @@ export const DEFAULT_LABEL_FONT: LabelFont = { family: VECTOR_FONT_FAMILY, weigh
 export const CSS_FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 export function labelFontEquals(a: LabelFont, b: LabelFont): boolean {
-  return a.family === b.family && a.weight === b.weight;
+  return a.family === b.family && a.weight === b.weight && convertsToMsdf(a) === convertsToMsdf(b);
 }
 
 /** A detached copy of `font`. A selector that computes under `trackedMemo` reads settings through a
  *  tracking view and must not put a view into its result, so it copies the font object with this. */
 export function plainLabelFont(font: LabelFont): LabelFont {
-  return { family: font.family, weight: font.weight };
+  return withMsdfConversion(font, convertsToMsdf(font));
 }
 
 /** The offered weight closest to `weight`; the heavier one wins a tie. Falls back to `weight`
@@ -136,10 +149,31 @@ export function isMsdfFamilyLoaded(family: string): boolean {
  *  renderers redraw labels that were drawn in the fallback font meanwhile. */
 export const LABEL_FONT_LOADED_EVENT = "mazegen:label-font-loaded";
 
-/** The atlas that draws `font` in MSDF: the font's face with the nearest baked weight. An unknown
- *  family (a browser font that did not load), a baked font that is still loading and one whose download
- *  failed all render as the default MSDF font. */
+const rasterFaces = new Map<string, MsdfFace>();
+const rasterFaceKey = (family: string, weight: number) => `${weight}|${family}`;
+
+/** Makes the dynamic atlas `face` (built from a raster font file, GitHub issue #966) the one that draws
+ *  `family` at `weight`. A requested weight a font does not offer maps to its nearest face, so one atlas
+ *  may be registered under several weights. */
+export function registerRasterFace(family: string, weight: number, face: MsdfFace): void {
+  rasterFaces.set(rasterFaceKey(family, weight), face);
+}
+
+export function unregisterRasterFace(family: string, weight: number): void {
+  rasterFaces.delete(rasterFaceKey(family, weight));
+}
+
+/** Whether a dynamic atlas draws `font` (an installed or uploaded font whose conversion has finished). */
+export function hasRasterFace(font: LabelFont): boolean {
+  return rasterFaces.has(rasterFaceKey(font.family.trim(), font.weight));
+}
+
+/** The atlas that draws `font` in MSDF: a ready dynamic atlas of a raster font, else the font's face with
+ *  the nearest baked weight. An unknown family (a raster font that is still converting or failed), a baked
+ *  font that is still loading and one whose download failed all render as the default MSDF font. */
 export function msdfFace(font: LabelFont): MsdfFace {
+  const dynamic = rasterFaces.get(rasterFaceKey(font.family.trim(), font.weight));
+  if (dynamic) return dynamic;
   const entry = isMsdfFamily(font.family) && isMsdfFamilyLoaded(font.family) ? MSDF_FONTS[font.family] : MSDF_FONTS[VECTOR_FONT_FAMILY];
   const faces = entry.faces;
   const weight = nearestWeight(font.weight, faces.map((face) => face.weight));

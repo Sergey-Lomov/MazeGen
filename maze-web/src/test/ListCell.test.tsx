@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ListCell, ListCellAction } from "../components/ListCell";
 import { IdBubble } from "../components/Bubble";
+import { ui } from "../styles/theme";
 
 describe("ListCell", () => {
   it("renders the title row, details and actions", () => {
@@ -98,6 +99,7 @@ describe("ListCellAction", () => {
     expect(screen.getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: "Plain" }).hasAttribute("aria-pressed")).toBe(false);
+    expect(screen.getByRole("button", { name: "On" })).toHaveStyle({ background: ui.state.selected, color: ui.text.primary });
   });
 
   it("ignores a click while disabled", () => {

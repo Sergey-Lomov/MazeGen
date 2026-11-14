@@ -4,7 +4,9 @@ import { resolve } from "node:path";
 import {
   MSDF_FONTS,
   isMsdfFamily,
+  convertsToMsdf,
   labelFontEquals,
+  withMsdfConversion,
   msdfFace,
   msdfFontWeights,
   nearestWeight,
@@ -72,6 +74,23 @@ describe("label font values", () => {
     expect(labelFontEquals({ family: "A", weight: 400 }, { family: "B", weight: 400 })).toBe(false);
   });
 
+});
+
+describe("MSDF conversion flag", () => {
+  it("is on unless a font says msdf: false, and leaves no key behind when on", () => {
+    expect(convertsToMsdf({ family: "A", weight: 400 })).toBe(true);
+    expect(convertsToMsdf({ family: "A", weight: 400, msdf: false })).toBe(false);
+    expect(withMsdfConversion({ family: "A", weight: 400, msdf: false }, true)).toEqual({ family: "A", weight: 400 });
+    expect(Object.keys(withMsdfConversion({ family: "A", weight: 400 }, true))).toEqual(["family", "weight"]);
+    expect(withMsdfConversion({ family: "A", weight: 400 }, false)).toEqual({ family: "A", weight: 400, msdf: false });
+  });
+
+  it("makes two fonts differ, and survives a plain copy", () => {
+    const off = { family: "A", weight: 400, msdf: false };
+    expect(labelFontEquals(off, { family: "A", weight: 400 })).toBe(false);
+    expect(labelFontEquals(off, { ...off })).toBe(true);
+    expect(plainLabelFont(off)).toEqual(off);
+  });
 });
 
 describe("plainLabelFont", () => {

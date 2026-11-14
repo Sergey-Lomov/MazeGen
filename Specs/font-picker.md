@@ -71,9 +71,7 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   while it is highlighted the preview is a small pixi canvas (`MsdfFontPreview`) drawing the phrase as a
   `BitmapText` over the baked atlas, exactly like the maze canvas. It owns one pixi application for the
   lifetime of the panel and only rewrites text and colors. When a WebGL canvas cannot be created it
-  falls back to DOM text in Roboto. Still different by nature: the canvas rasterizes TTF/OTF text at
-  `min(devicePixelRatio, 2)` and the preview is crisp DOM text; the preview ignores any label
-  text transform (uppercasing).
+  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing).
   The preview text is not selectable. A phrase wider than the preview is cut with an ellipsis in both
   variants (CSS `text-overflow` for DOM text, the longest prefix that fits with "…", found by binary
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,
@@ -92,11 +90,9 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
     - every family installed on this machine (`loadLocalFontFamilies`). The open-time family is kept in the browser
       part when the machine does not report it, so a project saved elsewhere still shows its current choice highlighted;
     - while the local query is pending the MSDF fonts are listed and a loading hint sits in the list footer;
+    - uploaded families (see "Raster fonts as dynamic MSDF atlases");
     - when the machine's list is unavailable (no API, permission denied, or an empty answer, which is how some browsers
-      report a denial) the browser part holds the members of `WEB_SAFE_FONT_FAMILIES` (Arial, Verdana, Georgia, Times New
-      Roman, Courier New and similar) that this machine actually has (`isFontFamilyInstalled`: a name the machine already
-      reported through the Local Font Access API, or a synchronous glyph-metrics check that probes a Latin and a Cyrillic
-      string separately, so a face covering only one script still counts), and a hint in the list footer asks the user to
+      report a denial) only uploaded families and the saved one are listed, and a hint in the list footer asks the user to
       grant the permission to see the full list of local fonts. The bundled fonts stay listed above it.
     - The hint comes with a **"Grant access"** button when the browser has the API: it calls
       `loadLocalFontFamilies(true)` (a retry from a user gesture), which re-prompts if the browser still
@@ -144,11 +140,10 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   one weight, and it also shows the open-time weight when the family lacks it. The offered weights come from the family:
     - MSDF: the weights the font was baked with (`msdfFontWeights`, from the `MSDF_FONTS` entry;
       Roboto offers 400 and 700). A font baked with other weights only needs another registry entry.
-    - TTF/OTF: `rasterFontWeights`. With the Local Font Access API these are exactly the weights of
-      the family's installed normal-style faces (`weightFromStyleName` maps the `style` names;
-      italic, oblique and non-regular-width styles are skipped). Without the API, or for a family the
-      machine did not report, only regular is offered, plus bold when a canvas metrics probe shows
-      the family has a real bold face. The list refreshes when the local font query resolves.
+    - TTF/OTF: `rasterFontWeights` (`knownRasterWeights`): the weights of the family's uploaded faces,
+      else of its installed normal-style faces (`weightFromStyleName` maps the `style` names;
+      italic, oblique and non-regular-width styles are skipped). A family with no readable source
+      offers regular only. The list refreshes when the local font query resolves.
   Picking a family keeps the working weight when the family offers it and otherwise snaps to the
   nearest weight it offers (`nearestWeight`, the heavier on a tie).
 - **"Warnings (N)" section** (GitHub issue #971) — below the weight row, the counterpart of the color
@@ -205,6 +200,72 @@ the panel. With a distinct `onPreview`, Apply is the single `onChange` commit.
 - a font that still has to load applies once `loadLabelFont` settles (it loads the chosen face, family and weight), and only the latest
   request is applied, so a fast arrow-key sequence cannot leave an older font on the canvas.
 
-## Not yet implemented (later epic tickets)
+## Raster fonts: canvas preview, MSDF after Apply (GitHub issue #966)
 
-User-uploaded fonts, MSDF atlases built from TTF/OTF fonts.
+A raster font (an installed TTF/OTF face from the Local Font Access API, or a file the user uploads) goes
+through two renderings. Browsing never converts anything; the MSDF atlas is built after the font is applied.
+
+- **Source.** `rasterFontStore.ts`: installed faces (`registerLocalFaces`, normal-style faces by weight)
+  and uploaded files (`addUploadedFont`: TTF, OTF or WOFF 1.0, parsed by `sfnt.ts`; italic faces, WOFF2
+  and font collections are refused with a message in the picker). Uploads live for the session and in
+  IndexedDB (`mazegen-fonts`), never in the project file. A project that names a font this machine
+  lacks reads Roboto.
+- **Preview (canvas text).** While a picker is open (`pickerSession.ts`, set by `FontPickerPanel`) every
+  highlighted font reaches the settings as a preview and its labels are pixi `Text` objects over a canvas
+  texture (`makeLabelText` in `labelFont.ts`, once the browser face has loaded, `loadLabelFont`). The texture
+  density is `canvasLabelResolution.ts`: zoom times device pixel ratio, snapped up to the levels `1, 1.5, 2,
+  3, 4` (then geometrically), plus the exact zoom at the moment the font was selected as one more level (a
+  344% zoom is rasterized at 3.44, not 4). A texture is bounded by `MAX_TEXTURE_SIDE` and
+  `MAX_TEXTURE_PIXELS`, so an extreme zoom softens the label instead of allocating a huge texture. A
+  selection is rebuilt at full quality `SETTLE_MS` (150 ms) after the last change; meanwhile labels use the
+  base level. A zoom change rebuilds canvas labels only when their level changed, after the same delay.
+  Canvas text is ink-centred like an MSDF label (`canvasInkCentreOffset`), so a label does not move when
+  the atlas replaces it. Stale results are dropped: only the latest font request is applied
+  (`LabelFontRow`).
+- **Conversion (after Apply).** When the picker closes (applied, or the open-time font restored) or a
+  project loads, `labelFontSync` calls `loadRasterFont` for each project font (never while a picker is
+  open). `rasterMsdf.ts` builds one atlas per family and weight: a dedicated worker (`msdfWorker.ts`,
+  `@playcanvas/msdfgen-wasm`, msdfgen + FreeType) generates glyphs at the baked Roboto scale (54 px/em,
+  range 8 px). Other weights of the family are built when first used. The atlas replaces the canvas text
+  when it is ready (`LABEL_FONT_LOADED_EVENT` redraw); on failure the canvas text stays.
+- **Character set** (`glyphCharset.ts`): the union of base Latin `A-Z a-z`, common symbols (digits,
+  punctuation, signs) and the sets the locales declare in `i18n/localeCharsets.ts`
+  (`LOCALE_MSDF_CHARSETS`, typed over `Locale`: a new locale does not compile until it declares its
+  set). Every locale counts, so switching the interface language never rebuilds an atlas. The generator
+  knows no alphabet of its own. Code points, not UTF-16 units; no whole Unicode, no characters of the
+  current text. The set has a content version (`charsetVersion`); an atlas built with an older set is
+  completed with the missing characters.
+- **Rare characters.** A character outside the set is generated on demand (`rasterCoversText`). Until it
+  lands the label stays canvas text, so no character vanishes. A character the font lacks is drawn in
+  Roboto and counts as covered.
+- **Atlas.** `DynamicMsdfFont`: a pixi `BitmapFont` in pixi's cache, glyphs shelf-packed into RGBA 1024 px
+  pages (max 4 pages; beyond that Roboto glyphs stand in). One atlas serves every label of the family and
+  weight; zoom never rebuilds it. Layout and measuring refresh when glyphs are added
+  (`rasterAtlasSignature` is part of `textMetricsKey`).
+- **Cache.** Atlases are identified by family, weight, the file's identity (`rasterFaceSource`: the
+  fingerprint of an upload, `local` for an installed font), the generation parameters and the charset
+  version. A replaced upload frees its atlas; concurrent requests share one build. Atlases of fonts the
+  project uses are kept; idle ones are evicted least-recently-used beyond `MAX_IDLE_RASTER_FONTS` (4),
+  freeing pages and the worker's font. Canvas textures are freed with their labels.
+- **Export.** `PngExporter` awaits `whenRasterFontsSettled` first, and renders canvas text of a font still
+  without an atlas at the export scale (`beginCanvasLabelScale`).
+- **UX.** No conversion button, no per-weight or per-atlas status. After Apply a small "Preparing fonts"
+  note (`FontPreparingIndicator`) appears top-right of the canvas only when conversion takes longer
+  than `INDICATOR_DELAY_MS`.
+- **Picker.** The browser list is installed + uploaded families (+ the saved one); the web-safe list is
+  gone. An upload button adds a font and selects it. The format info says vector fonts can be built from
+  raster fonts.
+- **Not supported.** WOFF2, TTC, italic faces, variable-font axes. Layout features other than pair kerning
+  (ligatures, contextual forms) are not applied to MSDF text.
+- **Convert to MSDF switch.** Under the weight select, for a raster font, a switch (on by default) with an
+  info button. `LabelFont.msdf === false` (stored only when off, `withMsdfConversion`; kept by the project
+  validator) means the font is never converted: `labelFontSync` skips `loadRasterFont` and treats its
+  atlas as idle (kept only among the `MAX_IDLE_RASTER_FONTS` most recent, so switching back is cheap), and `usesCanvasText` keeps its labels canvas text (zoom-aware, export-scale). The info says the
+  automatic conversion can give artifacts on some fonts with thin lines, which is the reason to turn it off.
+  Two texts naming one font, one with and one without conversion, keep the atlas. Choosing a bundled font drops
+  the flag, so it never lingers hidden.
+- **Kerning.** `kerning.ts` reads the pair kerning of the font file (OpenType `GPOS` `kern` pair lookups,
+  else the legacy `kern` table; `cmap` formats 4 and 12) and `DynamicMsdfFont` stores it per atlas
+  character (`chars[second].kerning[first]`, atlas pixels), so MSDF text keeps the width canvas text had.
+  Pairs form as glyphs arrive (charset completion, on-demand); a character drawn from the Roboto fallback
+  is not kerned.

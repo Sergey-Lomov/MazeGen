@@ -328,7 +328,8 @@ export function optLabelFont(obj: Record<string, unknown> | null, key: string, f
   const weight = typeof saved.weight === "number" && Number.isFinite(saved.weight)
     ? Math.min(CSS_FONT_WEIGHTS[CSS_FONT_WEIGHTS.length - 1], Math.max(CSS_FONT_WEIGHTS[0], Math.round(saved.weight)))
     : fallback.weight;
-  return { family: typeof saved.family === "string" ? saved.family.trim() : fallback.family, weight };
+  const family = typeof saved.family === "string" ? saved.family.trim() : fallback.family;
+  return saved.msdf === false ? { family, weight, msdf: false } : { family, weight };
 }
 
 /** `ElevatorBadgeSettings` validation (GitHub issue #430) — same lenient-recovery convention as
