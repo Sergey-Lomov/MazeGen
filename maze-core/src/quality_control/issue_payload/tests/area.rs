@@ -1,8 +1,8 @@
 use super::*;
 
 // --- AreaDeficit resolver (hover-highlight follow-up to GitHub issue #408) — covers
-// missing_vertical_passages/missing_teleports/missing_elevators/area_missing_elevator_stops, the
-// four sibling RepairArea-shaped deficit issues that previously all fell through to
+// missing_vertical_passages/missing_loops/missing_one_ways/missing_split_tiles/missing_teleports/
+// missing_elevators/area_missing_elevator_stops, the RepairArea-shaped deficit issues that previously all fell through to
 // IssuePayload::None. ---
 
 /// A two-floor field with no nodes wired into any graph — these tests only need `field.levels_ordered()`
@@ -57,6 +57,47 @@ fn missing_teleports_issue_resolves_level_entry_to_its_levels_ordered_index() {
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
     let_payload!(AreaDeficit { areas } = payload);
     assert_eq!(areas["min_teleport_count"], vec![Some(0)]);
+}
+
+#[test]
+fn missing_loops_issue_resolves_every_short_floor_to_its_levels_ordered_index() {
+    let (field, bottom, top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = MissingLoopsIssue::new_from_check(
+        "min_loops_count",
+        vec![(RepairArea::Level(bottom), 2), (RepairArea::Level(top), 1)],
+    );
+
+    let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
+    let_payload!(AreaDeficit { areas } = payload);
+    assert_eq!(areas["min_loops_count"], vec![Some(0), Some(1)]);
+}
+
+#[test]
+fn missing_one_ways_and_split_tiles_resolve_every_short_floor_to_its_levels_ordered_index() {
+    let (field, bottom, top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    for (issue, source_check) in [
+        (
+            Box::new(MissingOneWaysIssue::new_from_check(
+                "min_one_way_count",
+                vec![(RepairArea::Level(top), 1)],
+            )) as Box<dyn crate::quality_control::Issue>,
+            "min_one_way_count",
+        ),
+        (
+            Box::new(MissingSplitTilesIssue::new_from_check(
+                "split_count",
+                vec![(RepairArea::Level(bottom), 2), (RepairArea::Level(top), 1)],
+            )) as Box<dyn crate::quality_control::Issue>,
+            "split_count",
+        ),
+    ] {
+        let payload = resolve_issue_payload(issue.as_ref(), &graph, &field, &scc, &PresetState::empty(), None);
+        let_payload!(AreaDeficit { areas } = payload);
+        let expected = if source_check == "min_one_way_count" { vec![Some(1)] } else { vec![Some(0), Some(1)] };
+        assert_eq!(areas[source_check], expected);
+    }
 }
 
 #[test]
