@@ -22,13 +22,13 @@ describe("paperLayoutWorldGeometry", () => {
   it("uses the shared paper dimensions and margins", () => {
     const geometry = paperLayoutWorldGeometry(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), settings);
     expect(geometry).not.toBeNull();
-    expect(geometry?.cellSizeMm).toBeCloseTo(40 * 25.4 / 300);
-    expect(geometry?.marginHorizontal).toBeCloseTo(10 * 40 / geometry!.cellSizeMm);
-    expect(geometry?.marginVertical).toBeCloseTo(12 * 40 / geometry!.cellSizeMm);
+    expect(geometry?.cellSizeMm).toBeCloseTo(40 * Math.SQRT2 * 25.4 / 300);
+    expect(geometry?.marginHorizontal).toBeCloseTo(10 * 40 * Math.SQRT2 / geometry!.cellSizeMm);
+    expect(geometry?.marginVertical).toBeCloseTo(12 * 40 * Math.SQRT2 / geometry!.cellSizeMm);
   });
 
   it("ignores the legacy auto-fit flag", () => {
-    expect(paperLayoutWorldGeometry(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), { ...settings, scaleAutoFit: true })?.cellSizeMm).toBeCloseTo(40 * 25.4 / 300);
+    expect(paperLayoutWorldGeometry(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), { ...settings, scaleAutoFit: true })?.cellSizeMm).toBeCloseTo(40 * Math.SQRT2 * 25.4 / 300);
   });
 
   it("rejects invalid margins", () => {

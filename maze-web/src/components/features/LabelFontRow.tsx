@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { LinkPath } from "../../store/parameterLinkSchema";
 import { DEFAULT_LABEL_FONT, isMsdfFamilyLoaded, labelFontEquals, type LabelFont } from "../../pixi/renderers/fontChoice";
+import { noteFontSelected } from "../../pixi/renderers/canvasLabelResolution";
 import { isLabelFontLoaded, loadLabelFont } from "../../pixi/renderers/labelFont";
 import { LinkedFontRow } from "./LinkedRows";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
@@ -30,6 +31,8 @@ export function LabelFontRow<P extends LinkPath>({ value, onChange, linkTarget, 
   const openFont = useRef<LabelFont | null>(null);
   const commit = (next: LabelFont) => {
     const request = ++latestRequest.current;
+    // Canvas text of the new font is built at the zoom in effect right now, quickly while the user keeps browsing.
+    noteFontSelected();
     // The default, already-loaded and open-time fonts apply synchronously: the picker's Cancel
     // restores the open-time font and then re-enables the link, and that order must not be inverted
     // by a promise. An unloaded font renders as the bundled Roboto until it loads.

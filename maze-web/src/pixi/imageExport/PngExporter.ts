@@ -12,6 +12,8 @@ import type { CutPlan } from "./cutLines";
 import { creaseStyleOf, drawExportCreases, selectExportCreases } from "./creaseExport";
 import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers } from "./edgeMarkerExport";
 import type { PngExportSettings } from "../../store/storeTypes";
+import { beginCanvasLabelScale, endCanvasLabelScale } from "../renderers/canvasLabelResolution";
+import { whenRasterFontsSettled } from "../renderers/rasterFont/rasterMsdf";
 
 /** On-screen length of one dash of a drawn cut line, and of its gap, in export pixels. */
 const GUIDE_DASH_PX = 8;
@@ -43,6 +45,8 @@ export class PngExporter {
   }
 
   private async doExport(settings: PngExportSettings): Promise<Blob | null> {
+    // Labels are drawn from their final MSDF atlas, not from canvas text, once a conversion in progress ends.
+    await whenRasterFontsSettled();
     const state = useMazeStore.getState();
     const mode = state.activeRenderMode;
     if (mode === null || state.nodes.length === 0) return null;
@@ -78,6 +82,8 @@ export class PngExporter {
       sceneRoot.position.set(fit.x, fit.y);
       sceneRoot.scale.set(fit.scale);
       sceneRoot.addChild(exportContainer);
+      // Canvas-text labels (a font without an atlas) are rasterized at the export scale, not the on-screen zoom.
+      beginCanvasLabelScale(fit.scale);
       modeRenderer.onViewportChanged(fit.x, fit.y, fit.width, fit.height, fit.scale);
 
       renderTexture = RenderTexture.create({ width: fit.width, height: fit.height });
@@ -100,6 +106,7 @@ export class PngExporter {
       const canvas = this.app.renderer.extract.canvas(renderTexture);
       return await canvasToBlob(canvas);
     } finally {
+      endCanvasLabelScale();
       renderTexture?.destroy(true);
       modeRenderer.destroy();
       guides.destroy();

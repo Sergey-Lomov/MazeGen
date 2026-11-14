@@ -37,6 +37,7 @@ import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
 import type { FieldPrimitive } from "../store/tessellationTypes";
 import type { FieldConfig } from "../fieldConfig";
+import { setCanvasLabelZoom } from "./renderers/canvasLabelResolution";
 
 type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldConfig;
 
@@ -549,6 +550,7 @@ export class MazeScene {
       if (navigation === undefined) listener.onViewportChanged(...args);
       else listener.onViewportChanged(...args, navigation);
     }
+    setCanvasLabelZoom(this.viewport.scale.x);
     this.viewportScaleCallback?.(this.viewport.scale.x);
     this.renderScheduler.requestRender();
   }

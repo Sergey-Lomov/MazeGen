@@ -24,7 +24,7 @@ describe("computePrintSizing", () => {
     expect(answer.result).not.toBeNull();
     const [standard, custom] = answer.floors;
     expect(standard.standard).toBe(true);
-    expect(standard.cellCount).toBe(20 * 28);
+    expect(standard.cellCount).toBe(28 * 40);
     expect(custom).toMatchObject({ id: "b", standard: false, result: null, cellCount: 2 });
   });
 

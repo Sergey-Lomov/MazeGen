@@ -6,6 +6,7 @@ const { PngExportSettingsPanel } = await import("../components/features/PngExpor
 const { useMazeStore } = await import("../store/mazeStore");
 const { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } = await import("../store/slices/imageExportSlice");
 const { baseStoreState } = await import("./storeTestHelpers");
+const { fieldOf } = await import("./fieldConfigFixtures");
 
 function setBaseState(overrides: Record<string, unknown> = {}) {
   useMazeStore.setState({
@@ -264,5 +265,28 @@ describe("PngExportSettingsPanel", () => {
     render(<PngExportSettingsPanel />);
     const cellSizeMatch = screen.getAllByText((_, el) => !!el?.textContent?.includes("mm"));
     expect(cellSizeMatch.length).toBeGreaterThan(0);
+  });
+
+  it("reports the ring thickness instead of the cell size and minimum side for a radial field (GitHub issue #1002)", () => {
+    setBaseState({
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 0.1 } },
+      activeFieldConfig: fieldOf("radial", { shape: "circle", radius: 4 }),
+    });
+    render(<PngExportSettingsPanel />);
+    expect(screen.getByText(/Ring thickness: /)).toBeInTheDocument();
+    expect(screen.queryByText(/Cell size \(diameter\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Minimum side length/)).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.format.png.warning_min_side_too_short"]({ min: "5" }))).not.toBeInTheDocument();
+  });
+
+  it("reports the average cell size instead of the cell size and minimum side for a Voronoi field (GitHub issue #1002)", () => {
+    setBaseState({
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print", print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 0.1 } },
+      activeFieldConfig: fieldOf("voronoi", { shape: "circle", radius: 4 }),
+    });
+    render(<PngExportSettingsPanel />);
+    expect(screen.getByText(/Average cell size: /)).toBeInTheDocument();
+    expect(screen.queryByText(/Cell size \(diameter\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Minimum side length/)).not.toBeInTheDocument();
   });
 });

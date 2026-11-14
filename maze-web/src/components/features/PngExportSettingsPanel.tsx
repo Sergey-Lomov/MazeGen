@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
@@ -12,7 +11,7 @@ import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/t
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, printMinSideMm as computePrintMinSideMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, printEnteredFromMeasure, printMinSideMm as computePrintMinSideMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
 import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../../pixi/printCellSizes";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
@@ -22,6 +21,7 @@ import { resolveCutPlan, resolveExportContent } from "../../pixi/imageExport/exp
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
 import { Container } from "pixi.js";
+import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import { getCurrentViewportScale } from "../../pixi/viewportScaleBridge";
 import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/storeTypes";
@@ -187,6 +187,9 @@ export function PngExportSettingsPanel() {
   const printDpi = DPI_BY_DENSITY[print.density];
   const printCellSizeMm = printCellMeasureMm(cfg, print.scale, printDpi);
   const printMinSideMm = computePrintMinSideMm(cfg, print.scale, printDpi);
+  // The sizes the print result reports are the ones the print-sizing dialog takes for the kind.
+  const sizeModes = TESSELLATION_UI[cfg.tessellation.kind].editor.sizeModes;
+  const printRingThicknessMm = printEnteredFromMeasure(cfg, "ring_thickness", printCellSizeMm);
   const scaleRow = (
     <SliderRow
       label={m["image_export.format.png.digital.scale"]()}
@@ -352,20 +355,31 @@ export function PngExportSettingsPanel() {
                       height: String(Math.round(printFit.sheetHeightPx)),
                     })}
                   </span>
-                  <span style={typography.caption}>
-                    {(TESSELLATION_UI[cfg.tessellation.kind].editor.pngCellSize === "diameter"
-                      ? m["image_export.format.png.result.cell_size_mm_diameter"]
-                      : m["image_export.format.png.result.cell_size_mm_side"]
-                    )({ size: printCellSizeMm.toFixed(2) })}
-                  </span>
-                  <span style={typography.caption}>
-                    {m["image_export.format.png.result.min_side_mm"]({ size: printMinSideMm.toFixed(2) })}
-                  </span>
+                  {sizeModes.includes("cell_size") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.cell_size_mm_diameter"]({ size: printCellSizeMm.toFixed(2) })}
+                    </span>
+                  )}
+                  {sizeModes.includes("min_side") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.min_side_mm"]({ size: printMinSideMm.toFixed(2) })}
+                    </span>
+                  )}
+                  {sizeModes.includes("average_size") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.average_size_mm"]({ size: printCellSizeMm.toFixed(2) })}
+                    </span>
+                  )}
+                  {sizeModes.includes("ring_thickness") && (
+                    <span style={typography.caption}>
+                      {m["image_export.format.png.result.ring_thickness_mm"]({ size: printRingThicknessMm.toFixed(2) })}
+                    </span>
+                  )}
                 </Stack>
               </>
             )}
 
-            {printMinSideMm < MIN_COMFORTABLE_CELL_SIDE_MM && <PngFitWarningBubble id="png_min_side_too_short" />}
+            {sizeModes.includes("min_side") && printMinSideMm < MIN_COMFORTABLE_CELL_SIDE_MM && <PngFitWarningBubble id="png_min_side_too_short" />}
             {printFit?.clipsSheetBounds && <PngFitWarningBubble id="png_content_clips_sheet" />}
             {printFit?.entersMarginZone && <PngFitWarningBubble id="png_content_in_margin_zone" />}
 

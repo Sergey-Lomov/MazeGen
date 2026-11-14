@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { printMeasureFromEntered } from "../pixi/imageExport/printFit";
 import { cellSourceOf, hasTooSmallSide, measurePrintCells, type CellSource } from "../pixi/printCellSizes";
 import { configAllCells } from "../pixi/tessellationCells";
 import * as mazeService from "../wasm/mazeService";
@@ -9,14 +10,20 @@ function typesOf(config: Parameters<typeof measurePrintCells>[0], sources: CellS
 }
 
 describe("measurePrintCells", () => {
-  it("reports a square's side as the entered size", () => {
+  it("reports a square's diameter as the entered size", () => {
     const config = fieldOf("square", { shape: "rect", cols: 3, rows: 2 });
-    const [square, ...rest] = typesOf(config, [cellSourceOf(config)], 10);
+    const [square, ...rest] = typesOf(config, [cellSourceOf(config)], 10 * Math.SQRT2);
     expect(rest).toEqual([]);
     expect(square.count).toBe(6);
     expect(square.sidesMm).toHaveLength(1);
     expect(square.sidesMm[0]).toBeCloseTo(10);
     expect(square.diameterMm).toBeCloseTo(10 * Math.SQRT2);
+  });
+
+  it("gives a Cairo cell the entered minimum side as its short side (GitHub issue #1002)", () => {
+    const config = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
+    const [cairo] = typesOf(config, [cellSourceOf(config)], printMeasureFromEntered(config, "min_side", 5));
+    expect(Math.min(...cairo.sidesMm)).toBeCloseTo(5);
   });
 
   it("reports a hexagon's diameter as the entered size", () => {
@@ -36,7 +43,7 @@ describe("measurePrintCells", () => {
 
   it("measures the cells of a custom field as given", () => {
     const config = fieldOf("square", { shape: "rect", cols: 3, rows: 2 });
-    const [square] = typesOf(config, [{ cells: configAllCells(config) }], 10);
+    const [square] = typesOf(config, [{ cells: configAllCells(config) }], 10 * Math.SQRT2);
     expect(square.count).toBe(6);
     expect(square.sidesMm[0]).toBeCloseTo(10);
   });
@@ -79,9 +86,9 @@ describe("measurePrintCells", () => {
     const config = fieldOf("square", { shape: "rect", cols: 7, rows: 5 });
     const spy = vi.spyOn(mazeService, "getFieldCellSizes");
     const sources = [cellSourceOf(config)];
-    const at10 = typesOf(config, sources, 10);
-    const at20 = typesOf(config, sources, 20);
-    typesOf(config, sources, 10);
+    const at10 = typesOf(config, sources, 10 * Math.SQRT2);
+    const at20 = typesOf(config, sources, 20 * Math.SQRT2);
+    typesOf(config, sources, 10 * Math.SQRT2);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(at10[0].sidesMm[0]).toBeCloseTo(10);
     expect(at20[0].sidesMm[0]).toBeCloseTo(20);

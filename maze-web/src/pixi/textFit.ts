@@ -2,7 +2,8 @@ import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import { MSDF_FONTS, type LabelFont } from "./renderers/fontChoice";
 import { msdfFontFamily } from "./renderers/msdfFont";
-import { isLabelFontLoaded, labelFontCss, labelFontMetricsKey } from "./renderers/labelFont";
+import { isLabelFontLoaded, labelFontCss, labelFontMetricsKey, usesCanvasText } from "./renderers/labelFont";
+import { rasterAtlasSignature } from "./renderers/rasterFont/rasterMsdf";
 import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 import type { MarkerShape } from "./renderers/types";
 import { markerPolygonPoints } from "./renderers/markerShapes";
@@ -38,7 +39,7 @@ export interface TextExtent {
 /** A label with the plate it must fit into — the unit the warnings and auto-fit operate on. */
 export interface TextFitItem {
   text: string;
-  /** A loaded browser font is measured with browser text metrics; otherwise the baked MSDF atlas. */
+  /** Measured on the font's MSDF atlas (baked, or built from a raster font); Roboto while that is not ready. */
   font: LabelFont;
   /** Plate shape (`MarkerAppearance.shape`). */
   shape: MarkerShape;
@@ -59,12 +60,11 @@ export interface TextFitItem {
 /** Ink extent of `text` at `fontSize` px. Falls back to a rough per-glyph estimate when the font
  *  isn't installed (e.g. before `loadMsdfFont` resolves). */
 export function measureText(text: string, font: LabelFont, fontSize: number): TextExtent {
-  const runtimeFamily = isLabelFontLoaded(font) ? font.family.trim() : null;
-  if (runtimeFamily && typeof document !== "undefined") {
+  if (usesCanvasText(font, text) && typeof document !== "undefined") {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (context) {
-      context.font = `${font.weight} ${fontSize}px ${labelFontCss(runtimeFamily)}`;
+      context.font = `${font.weight} ${fontSize}px ${labelFontCss(font.family.trim())}`;
       const metrics = context.measureText(text);
       const width = metrics.width;
       const height = (metrics.actualBoundingBoxAscent || fontSize * 0.7) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);
@@ -268,8 +268,13 @@ function readAtlasPage(texture: AtlasTexture): AtlasPage | null {
   if (atlasPages.has(source)) return atlasPages.get(source) ?? null;
   let page: AtlasPage | null = null;
   try {
-    const resource = source.resource as CanvasImageSource | undefined;
-    if (resource) {
+    const resource = source.resource as CanvasImageSource | ArrayBufferView | undefined;
+    if (resource && ArrayBuffer.isView(resource)) {
+      // A dynamic atlas page (GitHub issue #966) is a live RGBA buffer: read it in place, so glyphs
+      // added later are visible without a second read.
+      const width = (source as unknown as { width: number }).width;
+      page = { data: new Uint8ClampedArray(resource.buffer, resource.byteOffset, resource.byteLength), width };
+    } else if (resource) {
       const w = (resource as { width: number }).width;
       const h = (resource as { height: number }).height;
       const canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : document.createElement("canvas");
@@ -305,7 +310,7 @@ function glyphInk(family: string, ch: string, texture: AtlasTexture): number[] |
  *  centres vertically on the quads' extent), plus the atlas base font size they are measured at.
  *  `null` when any glyph's ink is unavailable — callers fall back to the bounding rectangle. */
 function textInk(text: string, labelFont: LabelFont): { points: number[]; base: number } | null {
-  if (isLabelFontLoaded(labelFont)) return null;
+  if (usesCanvasText(labelFont, text)) return null;
   const family = msdfFontFamily(labelFont);
   const cacheKey = `${family}-bitmap`;
   const font = typeof Cache.has !== "function" || Cache.has(cacheKey)
@@ -528,5 +533,5 @@ export function textMetricsKey(): string {
   return `${labelFontMetricsKey()}|${Object.values(MSDF_FONTS)
     .flatMap((font) => font.faces)
     .map((face) => (typeof Cache.has !== "function" || Cache.has(`${face.atlasName}-bitmap`) ? "1" : "0"))
-    .join("")}`;
+    .join("")}${rasterAtlasSignature()}`;
 }
