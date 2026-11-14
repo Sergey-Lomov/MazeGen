@@ -88,6 +88,8 @@ export type ExportWarningId =
    *  given the current size/distance/placement settings and the number of floors that elevator
    *  reaches. One warning total, covering every affected elevator marker. */
   | "elevator_badges_overlap"
+  /** "Vector by walls" only — floor-index glyph ink overlaps on a shared elevator-badge backing. */
+  | "elevator_badges_merged_labels_overlap"
   /** "Vector by walls" only — an uneven circular layout with merged elevator badges leaves a
    * smaller gap between its last and first slots than between ordinary neighbouring slots. */
   | "elevator_badges_merged_end_gap_too_small"

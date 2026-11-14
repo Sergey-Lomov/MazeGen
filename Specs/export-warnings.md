@@ -62,7 +62,7 @@ that and that every emitted id is declared.
   group must keep no settings sub-object in its result (the tracker throws) and must not call `trackedMemo` itself (`inputMemo` is allowed).
 - **Other inputs.** The cache key of every group is the maze (`nodes`, `edges`, `cfg`, effective `start`/`finish`), the floor ids in order
   (titles excluded), `hasGlues` and the group's own `hiddenInputs`: the text-overflow group adds the floor title and the loaded
-  bitmap-font state (`textMetricsKey()`), the split color groups add whether a cut line separates seam mirrors on the floor. A group that
+  label-font state (`textMetricsKey()`, MSDF atlases and browser TTF/OTF fonts), the split color groups add whether a cut line separates seam mirrors on the floor. A group that
   reads any other state outside the settings must list it in `hiddenInputs`. Color checks read through `buildColorVisibility`, which is
   lazy (a reader of one color field subscribes to that field and the flags gating it, not to the whole settings).
 - **Order.** The merged list is ordered group by group (the group list order), floors in order within a group; a group's own order is the
@@ -174,6 +174,9 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `teleport_waypoint_overlap` — a teleport endpoint marker overlaps a start or finish marker.
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
+- `elevator_badges_merged_labels_overlap` — floor-number glyph ink overlaps on a merged elevator
+  badge backing. Loaded TTF/OTF labels use a bounded 4x alpha-mask intersection; MSDF and unavailable
+  runtime masks use the established metric fallback.
 - `elevator_badges_too_many` — a badge row exceeds its available per-side capacity. Slots under a marker-index
   plate are unavailable (GitHub issue #964), so a plate lowers the capacity of the side it sits on.
 - `marker_text_overflow` / `elevator_badge_text_overflow` / `teleport_badge_text_overflow` (GitHub

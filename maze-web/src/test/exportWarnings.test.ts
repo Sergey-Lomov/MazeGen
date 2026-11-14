@@ -382,6 +382,15 @@ describe("computeVectorByWallsWarnings", () => {
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
     });
 
+    it("reports merged floor-label collisions separately from badge-body collisions", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, backing: "shared", placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 400, textMargin: 1 },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+      expect(warnings.filter((w) => w.id === "elevator_badges_merged_labels_overlap")).toHaveLength(1);
+    });
+
     it("does not flag when badges have enough room (large distance, small size)", () => {
       const settings = baseSettings({
         elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFont: { family: "", weight: 700 }, textSize: 16.66, textMargin: 1 },

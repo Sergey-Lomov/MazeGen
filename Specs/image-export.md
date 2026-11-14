@@ -195,7 +195,10 @@ Sections:
 
   **`elevator_badges_overlap` export warning** — folded into `computeVectorByWallsWarnings`, checked only when `elevatorBadges.enabled`: for every `elevator` marker with 2+ `targetFloorIndices`, lays out its badge ring via `computeElevatorBadgePositions` and flags it when `elevatorBadgesOverlap` finds any two badge centers closer than `2 * badgeRadius` apart — real geometric overlap, not a fixed floor-count threshold. Its description is deliberately terse (no restated size/distance/placement fix suggestions — the settings panel is right there). Populates `crossFloorTargets` (see "Hover highlight" below).
 
-  When **Merge badges** is on, `elevator_badges_overlap` checks only the floor-label ink bounds; the individual badge bodies no longer exist and therefore cannot trigger the warning.
+  When **Merge badges** is on, `elevator_badges_overlap` does not apply because the individual badge
+  bodies no longer exist. `elevator_badges_merged_labels_overlap` instead checks floor-label glyph ink.
+  Loaded TTF/OTF labels are rasterized into bounded 4x alpha masks and compared directly, avoiding
+  bounding-box false positives; MSDF retains its established metric fallback.
 
   **Circular merged-badge warnings** — `elevator_badges_merged_end_gap_too_small` flags an uneven circular merged run whose first/last gap is tighter than its regular neighbour gaps, recommending even distribution or a smaller Spacing value. `elevator_badges_gap_falls_back_to_even_distribution` reports when an uneven circular run cannot fit on the available ring and is therefore rendered with even distribution; a marker-index plate reduces that available ring.
 

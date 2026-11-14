@@ -88,6 +88,14 @@ describe("loadLabelFont", () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(isLabelFontLoaded(font("Fira Sans"))).toBe(true);
   });
+
+  it("changes the metrics cache key when a browser font finishes loading", async () => {
+    mockFontEnvironment((name) => name.includes("Metric") ? 110 : name.includes("monospace") ? 100 : 80);
+    const { loadLabelFont, labelFontMetricsKey } = await import("../pixi/renderers/labelFont");
+    const before = labelFontMetricsKey();
+    await expect(loadLabelFont(font("Metric"))).resolves.toBe(true);
+    expect(labelFontMetricsKey()).toBe(before + 1);
+  });
 });
 
 describe("labelFontCss", () => {
