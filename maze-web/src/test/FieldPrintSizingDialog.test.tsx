@@ -115,6 +115,25 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     expect(screen.queryByText(m["field.print_sizing.cell_sizes_title"]())).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["radial", "ring_thickness"],
+    ["voronoi", "average_size"],
+  ] as const)("takes only one size for a %s field, with no mode select (GitHub issue #1002)", (kind, mode) => {
+    const field = fieldOf(kind, { shape: "circle", radius: 4 }) as PredefinedFieldConfig;
+    render(<FieldPrintSizingDialog config={field} hasMultipleFloors={false} onApply={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.queryByText(m["field.print_sizing.input_mode"]())).not.toBeInTheDocument();
+    expect(screen.getByText(m[`field.print_sizing.${mode}`]())).toBeInTheDocument();
+    expect(cellSizeInput().value).toBe("8");
+    // The measure of both is the entered value itself: a ring is one world unit thick, a Voronoi cell is nominal.
+    expect(started[0].request.input.cellSizeMm).toBeCloseTo(8);
+  });
+
+  it("offers the mode select for a tessellation with several size modes", () => {
+    renderDialog();
+    expect(screen.getByText(m["field.print_sizing.input_mode"]())).toBeInTheDocument();
+  });
+
   it("replaces the numbers with indicators once the progress shows", async () => {
     renderDialog();
     await act(async () => started[0].resolve());
@@ -137,7 +156,37 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     await waitFor(() => expect(started).toHaveLength(2));
     expect(started[0].cancel).toHaveBeenCalledTimes(1);
     expect(started[1].cancel).not.toHaveBeenCalled();
-    expect(started[1].request.input.cellSizeMm).toBe(12);
+    expect(started[1].request.input.cellSizeMm).toBeCloseTo(12 * Math.SQRT2);
+  });
+
+  it("opens in the minimum side mode with 8 mm (GitHub issue #1002)", () => {
+    renderDialog();
+    expect(screen.getByDisplayValue(m["field.print_sizing.input_mode_min_side"]())).toBeInTheDocument();
+    expect(cellSizeInput().value).toBe("8");
+    expect(started[0].request.input.cellSizeMm).toBeCloseTo(8 * Math.SQRT2);
+  });
+
+  it("takes a typed minimum side length as the cell size of the same cells (GitHub issue #1002)", async () => {
+    renderDialog();
+    expect(screen.getAllByText(m["field.print_sizing.min_side"]())).toHaveLength(2);
+
+    fireEvent.change(cellSizeInput(), { target: { value: "10" } });
+    fireEvent.blur(cellSizeInput());
+
+    // A square's circumscribed circle diameter is its side times the square root of two.
+    await waitFor(() => expect(started[started.length - 1].request.input.cellSizeMm).toBeCloseTo(10 * Math.SQRT2));
+  });
+
+  it("keeps the physical size when the input mode is switched", async () => {
+    renderDialog();
+    fireEvent.change(cellSizeInput(), { target: { value: "10" } });
+    fireEvent.blur(cellSizeInput());
+    await waitFor(() => expect(started).toHaveLength(2));
+
+    fireEvent.change(screen.getByDisplayValue(m["field.print_sizing.input_mode_min_side"]()), { target: { value: "cell_size" } });
+
+    expect(cellSizeInput().value).toBe("14.14");
+    await waitFor(() => expect(started[started.length - 1].request.input.cellSizeMm).toBeCloseTo(10 * Math.SQRT2, 1));
   });
 
   it("calculates the typed cell size once typing pauses for a second, without leaving the field", async () => {
@@ -152,7 +201,7 @@ describe("FieldPrintSizingDialog worker calculation", () => {
 
       act(() => { vi.advanceTimersByTime(100); });
       expect(started).toHaveLength(2);
-      expect(started[1].request.input.cellSizeMm).toBe(12);
+      expect(started[1].request.input.cellSizeMm).toBeCloseTo(12 * Math.SQRT2);
     } finally {
       vi.useRealTimers();
     }
@@ -260,11 +309,11 @@ describe("FieldPrintSizingDialog worker calculation", () => {
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     await waitFor(() => expect(started.length).toBeGreaterThanOrEqual(2));
-    const applyJobs = started.filter((job) => job.request.input.cellSizeMm === 12 && !job.cancel.mock.calls.length);
+    const applyJobs = started.filter((job) => Math.abs(job.request.input.cellSizeMm - 12 * Math.SQRT2) < 1e-9 && !job.cancel.mock.calls.length);
     await act(async () => applyJobs.forEach((job) => job.resolve()));
 
     await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
-    expect(onApply.mock.calls[0][1].cellSizeMm).toBe(12);
+    expect(onApply.mock.calls[0][1].cellSizeMm).toBeCloseTo(12 * Math.SQRT2);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

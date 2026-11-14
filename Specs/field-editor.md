@@ -86,8 +86,22 @@ does not overwrite another shape's saved dimensions.
 
 Default mode's **Calculate for print** button opens a one-shot dialog. It accepts a paper format
 (A0-A5, Letter, Legal, Tabloid, or custom dimensions), portrait/landscape orientation, desired
-cell measure in millimeters, and horizontal/vertical print margins. For squares the measure is the
-side length; for regular hexagons and triangles it is the diameter of the circumscribed circle.
+cell measure in millimeters, and horizontal/vertical print margins. The cell size is always the
+diameter of the cell's circumscribed circle (GitHub issue #1002), never a side length: for a square
+(also a brick, the curved quadrilateral) it is the diagonal, `cellMeasurePx` in `TESSELLATION_UI`.
+A cell with no single circumcircle (Cairo, radial, Voronoi) keeps a nominal measure. A mode select
+above the size field (labelled "Mode") switches the input between **Cell size** (diameter) and **Minimum side**; the dialog opens in the minimum side mode with 8 mm (`DEFAULT_MIN_SIDE_MM`), whatever the print settings hold (paper and margins are still read from them). Minimum side is the shortest geometric side (`cellSidePx`; for Cairo the short side of the pentagon, the long one is longer);
+the minimum side length is converted to the cell size with `printMeasureFromEntered` (`printFit.ts`)
+before every calculation, so the calculation, the cell sizes section and the applied `print.scale`
+always work with the diameter. Switching the mode keeps the physical size: the field is refilled with
+the same cells' value in the other measure. The mode and the value are local to the dialog and not stored.
+The modes a tessellation offers are `TESSELLATION_UI[kind].editor.sizeModes` (`PrintSizeMode`: `cell_size`,
+`min_side`, `ring_thickness`, `average_size`; the first is the default). The "Mode" select is shown only when there are several;
+with one, that mode's name is the label of the size field. A radial field has the single mode `ring_thickness`
+("Ring thickness"; a ring is `ringThicknessPx` thick and that is the measure of a radial cell), every other
+kind but Voronoi offers `min_side` and `cell_size`. A Voronoi field has the single mode `average_size` ("Average cell size": the cells differ, so no side or diameter exists; the value is the circumscribed circle diameter of the regular hexagon the cells are displaced from, `cellMeasurePx`, and the cell sizes section says so). `printMeasureFromEntered` / `printEnteredFromMeasure` (`printFit.ts`)
+convert between the value of a mode and the measure. The PNG print result lists the same sizes: a mode's size
+line and the small-side warning appear only for a kind that offers that mode (a radial field shows "Ring thickness" and a Voronoi field "Average cell size", neither a minimum side).
 The cell-measure input is a compact control sized for approximately four digits, including its
 native number-input affordances, rather than expanding to the dialog's full row width.
 Standard paper sizes reuse
@@ -189,13 +203,13 @@ the web side does not repeat the constants that the sheet may hold a larger fiel
 
 The cell size input commits on blur, on Enter, or once typing has paused for a second (`CELL_SIZE_IDLE_MS`;
 only a value that already reads as a size of at least the minimum, so a half-typed `1` is left to the blur),
-not on every keystroke, and has a minimum of 3 mm. Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
+not on every keystroke, and has a minimum of 3 mm (in minimum side mode, the side that matches that cell size). Enter in a `NumberInput` inside a dialog ends the edit (blur commits the value) and
 does not confirm the dialog.
 
 The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
-its paper format, custom dimensions, orientation, margins, and cell measure are initialized from
-the current print settings; the cell measure is derived from `print.scale` and the selected print
-DPI. On confirmation, those values are written back to the print settings, with the requested cell
+its paper format, custom dimensions, orientation, and margins are initialized from the current
+print settings; the size field always starts at a minimum side of 8 mm instead of the size of
+`print.scale`. On confirmation, those values are written back to the print settings, with the requested cell
 measure converted back to `print.scale` using the selected tessellation's geometry. The print
 panel's reported physical cell size uses the same geometry-aware conversion.
 
@@ -215,7 +229,7 @@ cell's center (its centroid) through its farthest vertex, which for a cyclic pol
 polygon, whatever the entered measure (a side or a diameter) means for the tessellation. With several
 types the sizes form a headerless table (type, side, diameter) whose cells carry their own prefix
 (`Side 5.0 mm`, `Diameter 7.1 mm`); a single type is a table of one row, named by its polygon (`Square`,
-`Hexagon`, `Triangle` for the uniform tilings; `Cell` for the rest). The
+`Hexagon`, `Triangle`, `Pentagon` (Cairo) for the uniform tilings; `Cell` for the rest). The
 cell counts are not in this section: the total of the result (a single floor's cell count or the
 multi-floor total) is followed by the count of each type in parentheses when the field has several
 types, e.g. `Total: 1000 cells (Triangle 600, Square 300, Dodecagon 100)`; counts are summed over all
@@ -231,8 +245,8 @@ editing the size back and forth does not measure the cells again. Core classifie
 `Tessellation::cell_type_of` and returns lengths in world units, which `printCellSizes.ts` scales by the
 millimeters per world unit (`cellSizeMm / cellMeasurePx * pixelsPerUnit`). A type whose cells differ in
 size or shape (Voronoi, the rings of a radial field) is irregular. When any type is, the section has no title, table or type rows: below the divider
-it is one explanation in the regular body font, saying that the entered size is nominal, the side of a
-square with the area of an average cell. A radial field has its own explanation: its cells are ring sectors and the entered size is the
+it is one explanation in the regular body font, saying that the entered size is the average cell size, the
+circumscribed circle diameter of the regular hexagon the cells are displaced from. A radial field has its own explanation: its cells are ring sectors and the entered size is the
 thickness of a ring. A failing core call leaves the section out (the error is logged and not cached)
 and the per-floor counts of preset floors at 0.
 

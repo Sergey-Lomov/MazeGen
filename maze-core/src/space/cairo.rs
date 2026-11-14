@@ -53,6 +53,8 @@ pub enum CairoTileKind {
 static CAIRO_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
     LazyLock::new(|| [ShapeDescriptor::cairo_pentagon()]);
 
+const CELL_TYPES: [super::CellType; 1] = [super::CellType::new("pentagon")];
+
 // `faces_of` per orientation: the canonical counter-clockwise order starting at `Twin` (the long
 // side) — the face slots are not in the same circular order on every orientation.
 const R_FACES: [CairoFace; 5] = [
@@ -217,6 +219,11 @@ impl CairoTessellation {
 impl Tessellation for CairoTessellation {
     type CellId = CairoPoint;
     type Face = CairoFace;
+
+    /// The one type is named by the cell's polygon, like the types of the mixed tilings.
+    fn cell_types(&self) -> &[super::CellType] {
+        &CELL_TYPES
+    }
 
     fn is_valid_cell(&self, cell: CairoPoint) -> bool {
         CairoTessellation::is_valid_cell(cell)

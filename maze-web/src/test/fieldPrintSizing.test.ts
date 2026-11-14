@@ -51,9 +51,9 @@ describe("field print sizing", () => {
   it("calculates a square field from printable A4 area", () => {
     const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), printInput);
 
-    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
-    expect(result?.fieldWidthMm).toBe(200);
-    expect(result?.fieldHeightMm).toBe(280);
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 28, rows: 40 }));
+    expect(result?.fieldWidthMm).toBeCloseTo(28 * 10 / Math.SQRT2);
+    expect(result?.fieldHeightMm).toBeCloseTo(40 * 10 / Math.SQRT2);
     expect(result?.usableWidthMm).toBe(200);
     expect(result?.usableHeightMm).toBe(287);
   });
@@ -85,7 +85,7 @@ describe("field print sizing", () => {
       orientation: "landscape",
     });
 
-    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 28, rows: 20 }));
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 40, rows: 28 }));
   });
 
   it("calculates a radial field that fits both printable axes", () => {
@@ -271,7 +271,7 @@ describe("print sizing of a box", () => {
 
   it("keeps the proportions of the sides and fits the paper", () => {
     const input = fieldOf("square", { shape: "box", width: 4, height: 2, depth: 2, net: 0, mode: 0, aspect: 100 }) as PredefinedFieldConfig;
-    const result = calculatePrintFieldConfig(input, printInput)!;
+    const result = calculatePrintFieldConfig(input, { ...printInput, cellSizeMm: 14.2 })!;
     const shape = result.config.shape as { width: number; height: number; depth: number };
     expect(shape.width).toBe(2 * shape.height);
     expect(shape.height).toBe(shape.depth);

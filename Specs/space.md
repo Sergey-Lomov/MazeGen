@@ -295,7 +295,8 @@ or generator consumes them yet.
 - **Default.** A tessellation that does not override the methods has the single type `cell`, so
   consumers need no special case for uniform tilings. The uniform tilings of one regular polygon
   name their single type by it: `square`, `hexagon`, `triangle` (the same keys the mixed tilings use
-  for that polygon); `radial`, `voronoi`, brick, Cairo and curved-quadrilateral keep `cell`.
+  for that polygon); Cairo names its type `pentagon` (GitHub issue #1002); `radial`, `voronoi`, brick
+  and curved-quadrilateral keep `cell`.
   Built-in tessellations that mix polygons
   (4.8.8, 3.6.3.6, 3.12.12, 3.4.6.4, 3.3.4.3.4, 3.3.3.3.6, 4.6.12, 3.3.3.4.4) type cells by
   polygon: keys `triangle`, `square`, `hexagon`, `octagon`, `dodecagon`.

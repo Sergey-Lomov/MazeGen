@@ -50,7 +50,7 @@ describe("CellSizesSection", () => {
 
   it("shows the explanation at once for an irregular tessellation", () => {
     render(<CellSizesSection sizes={[]} tessellationKind="voronoi" placeholderTypes={["cell"]} cellsVary />);
-    expect(screen.getByText(/nominal|условный/)).toBeInTheDocument();
+    expect(screen.getByText(/average cell size|средний размер ячейки/i)).toBeInTheDocument();
   });
 
   it("lists a single type as a table row with its name and one decimal", () => {
@@ -75,14 +75,14 @@ describe("CellSizesSection", () => {
 
   it("shows only the explanation when a type is irregular", () => {
     render(<CellSizesSection sizes={[type("cell", { regular: false, sidesMm: [], diameterMm: 0 })]} tessellationKind="square" />);
-    expect(screen.getByText(/nominal|условный/)).toBeInTheDocument();
+    expect(screen.getByText(/average cell size|средний размер ячейки/i)).toBeInTheDocument();
     expect(screen.queryByText(/Diameter|Диаметр/)).toBeNull();
   });
 
   it("explains a radial field's size as the ring thickness", () => {
     render(<CellSizesSection sizes={[type("cell", { regular: false, sidesMm: [], diameterMm: 0 })]} tessellationKind="radial" />);
     expect(screen.getByText(/thickness of a ring|толщина кольца/)).toBeInTheDocument();
-    expect(screen.queryByText(/nominal|условный/)).toBeNull();
+    expect(screen.queryByText(/average cell size|средний размер ячейки/i)).toBeNull();
   });
 });
 

@@ -3,9 +3,10 @@ import type { FieldConfig } from "../fieldConfig";
 import type { ExportMargin } from "../pixi/imageExport/exportMargins";
 import type { PrintExportSettings } from "../store/storeTypes";
 import { fieldOf } from "./fieldConfigFixtures";
+import { TILE_SIZE } from "../pixi/constants";
 import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../pixi/printCellSizes";
 
-const { cellMeasureWorldUnits, cellSideWorldUnits, printMinSideMm, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
+const { cellMeasureWorldUnits, cellSideWorldUnits, printMinSideMm, printMeasureFromEntered, printEnteredFromMeasure, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 
 const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -57,10 +58,36 @@ describe("pxToMm", () => {
 });
 
 describe("print cell measure", () => {
-  it("uses circumcircle diameter for hexagons and triangles", () => {
+  it("uses the circumscribed circle diameter for every cell", () => {
     expect(printMeasureToCellSideMm(fieldOf("hex", { shape: "hexagon", radius: 1 }), 10)).toBeCloseTo(5);
     expect(printMeasureToCellSideMm(fieldOf("tri", { shape: "triangle", side: 1 }), 10)).toBeCloseTo(10 * Math.sqrt(3) / 2);
-    expect(cellMeasureWorldUnits(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }))).toBe(40);
+    expect(cellMeasureWorldUnits(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }))).toBeCloseTo(40 * Math.SQRT2);
+  });
+
+  it("measures a Voronoi cell by the regular hexagon of area 1 it is displaced from (GitHub issue #1002)", () => {
+    const voronoi = fieldOf("voronoi", { shape: "circle", radius: 4 });
+    const hexagonSide = Math.sqrt(2 / (3 * Math.sqrt(3)));
+    expect(cellMeasureWorldUnits(voronoi) / TILE_SIZE).toBeCloseTo(2 * hexagonSide);
+  });
+
+  it("converts the value of every size mode to the measure and back (GitHub issue #1002)", () => {
+    const radial = fieldOf("radial", { shape: "circle", radius: 4 });
+    expect(printMeasureFromEntered(radial, "ring_thickness", 8)).toBeCloseTo(8);
+    expect(printMeasureFromEntered(fieldOf("voronoi", { shape: "circle", radius: 4 }), "average_size", 8)).toBeCloseTo(8);
+    const cairo = fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 });
+    for (const [config, mode] of [[radial, "ring_thickness"], [cairo, "min_side"], [cairo, "cell_size"]] as const) {
+      expect(printEnteredFromMeasure(config, mode, printMeasureFromEntered(config, mode, 6))).toBeCloseTo(6);
+    }
+  });
+
+  it("converts a minimum side length to the measure and back", () => {
+    const square = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+    const hex = fieldOf("hex", { shape: "hexagon", radius: 1 });
+    expect(printMeasureFromEntered(square, "min_side", 5)).toBeCloseTo(5 * Math.SQRT2);
+    expect(printMeasureFromEntered(hex, "min_side", 5)).toBeCloseTo(10);
+    for (const config of [square, hex]) {
+      expect(printMeasureToCellSideMm(config, printMeasureFromEntered(config, "min_side", 7))).toBeCloseTo(7);
+    }
   });
 });
 

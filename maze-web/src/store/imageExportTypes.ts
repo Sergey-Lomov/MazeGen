@@ -65,7 +65,7 @@ export interface PrintExportSettings {
 }
 
 /** Physical field-sizing inputs shared by Field Setup's print calculator and the PNG Print
- * settings. `cellSizeMm` is the square side or regular-polygon circumcircle diameter, and is
+ * settings. `cellSizeMm` is the cell's circumscribed circle diameter, and is
  * converted to `PrintExportSettings.scale` using the current print DPI. */
 export interface PrintFieldSizingInput {
   paperSize: PaperSize;

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { TESSELLATION_UI } from "../../pixi/geometry/tessellationUi";
 import type { FieldConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
 import type { FloorFieldConfig } from "../../store/storeTypes";
@@ -9,6 +8,8 @@ import { WarningBubble } from "../WarningBubble";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
+import { SelectRow } from "../SelectRow";
+import { TESSELLATION_UI, type PrintSizeMode } from "../../pixi/geometry/tessellationUi";
 import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
 import { isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
@@ -16,7 +17,7 @@ import { printSizingFailure, type PrintSizingAnswer, type PrintSizingFloor, type
 import { startPrintSizing } from "../../wasm/workerClients";
 import { getTessellationCellTypes } from "../../wasm/mazeService";
 import type { WorkerJob } from "../../wasm/workerPool";
-import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
+import { printEnteredFromMeasure, printMeasureFromEntered } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
 import { cellTypeLabel } from "../../i18n/cellTypeLabel";
@@ -40,8 +41,19 @@ interface Props {
   onClose: () => void;
 }
 
+/** What the size field takes in each mode: the label of the field, and the name in the mode select. */
+const SIZE_MODE_LABELS: Record<PrintSizeMode, { field: () => string; option: () => string }> = {
+  cell_size: { field: () => m["field.print_sizing.cell_size_diameter"](), option: () => m["field.print_sizing.input_mode_cell_size"]() },
+  min_side: { field: () => m["field.print_sizing.min_side"](), option: () => m["field.print_sizing.input_mode_min_side"]() },
+  average_size: { field: () => m["field.print_sizing.average_size"](), option: () => m["field.print_sizing.average_size"]() },
+  ring_thickness: { field: () => m["field.print_sizing.ring_thickness"](), option: () => m["field.print_sizing.ring_thickness"]() },
+};
+
 /** Pause in typing the cell size after which it is committed and calculated. */
 const CELL_SIZE_IDLE_MS = 1000;
+
+/** The minimum side length the dialog opens with (GitHub issue #1002). */
+const DEFAULT_MIN_SIDE_MM = 8;
 
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
@@ -49,12 +61,13 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const floorFields = useMazeStore((s) => s.floorFields);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const smooth = useMazeStore((s) => s.smoothPrimitives);
-  const initialCellSizeMm = printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(() => print.paperSize);
   const [customWidthText, setCustomWidthText] = useState(() => String(print.customWidthMm));
   const [customHeightText, setCustomHeightText] = useState(() => String(print.customHeightMm));
   const [orientation, setOrientation] = useState<PaperOrientation>(() => print.orientation);
-  const [cellSizeText, setCellSizeText] = useState(() => String(round2(Math.max(MIN_PRINT_CELL_SIZE_MM, initialCellSizeMm))));
+  const sizeModes = TESSELLATION_UI[config.tessellation.kind].editor.sizeModes;
+  const [inputMode, setInputMode] = useState<PrintSizeMode>(() => sizeModes[0]);
+  const [cellSizeText, setCellSizeText] = useState(() => String(DEFAULT_MIN_SIDE_MM));
   const [marginHText, setMarginHText] = useState(() => String(print.marginHMm));
   const [marginVText, setMarginVText] = useState(() => String(print.marginVMm));
   const [applyToAllStandardFloors, setApplyToAllStandardFloors] = useState(() => hasMultipleFloors);
@@ -64,7 +77,10 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const cellSizeDraft = useRef<string | null>(null);
   const cellSizeIdleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(cellSizeIdleTimer.current), []);
-  const cellSizeMm = parseNumber(cellSizeText);
+  // The calculation always works with the cell size (diameter); a minimum side length is converted.
+  const toCellSizeMm = (value: number) => printMeasureFromEntered(config, inputMode, value);
+  const minEnteredMm = printEnteredFromMeasure(config, inputMode, MIN_PRINT_CELL_SIZE_MM);
+  const cellSizeMm = toCellSizeMm(parseNumber(cellSizeText));
   const marginHMm = parseNumber(marginHText);
   const marginVMm = parseNumber(marginVText);
 
@@ -141,9 +157,21 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   function commitCellSize(text: string): string {
     cellSizeDraft.current = null;
     clearTimeout(cellSizeIdleTimer.current);
-    const committed = normalizeNumberCommit(text, cellSizeText, { min: MIN_PRINT_CELL_SIZE_MM }).value;
+    const committed = normalizeNumberCommit(text, cellSizeText, { min: minEnteredMm }).value;
     setCellSizeText(committed);
     return committed;
+  }
+
+  /** Switching the mode keeps the physical size: the field shows the same cells in the other measure. */
+  function handleInputModeChange(mode: PrintSizeMode) {
+    if (mode === inputMode) return;
+    cellSizeDraft.current = null;
+    clearTimeout(cellSizeIdleTimer.current);
+    const measure = cellSizeMm;
+    setInputMode(mode);
+    if (Number.isFinite(measure) && measure > 0) {
+      setCellSizeText(String(round2(printEnteredFromMeasure(config, mode, measure))));
+    }
   }
 
   async function handleApply() {
@@ -152,7 +180,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     // Confirming (Enter included) takes a value still being typed as if the field was left.
     const latestCellSizeMm = cellSizeDraft.current === null
       ? cellSizeMm
-      : parseNumber(commitCellSize(cellSizeDraft.current));
+      : toCellSizeMm(parseNumber(commitCellSize(cellSizeDraft.current)));
     const latestInput: PrintFieldSizingInput = { ...input, cellSizeMm: latestCellSizeMm };
     let latest = answer;
     if (!latest || !Object.is(latestCellSizeMm, cellSizeMm)) {
@@ -201,23 +229,31 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           inputNamePrefix="field-print"
         />
 
+        {sizeModes.length > 1 && (
+          <SelectRow<PrintSizeMode>
+            label={m["field.print_sizing.input_mode"]()}
+            value={inputMode}
+            options={sizeModes.map((mode) => ({ value: mode, label: SIZE_MODE_LABELS[mode].option() }))}
+            onChange={handleInputModeChange}
+          />
+        )}
         <Inline gap="itemGap" justify="space-between">
           <span style={styles.label}>
-            {TESSELLATION_UI[config.tessellation.kind].editor.printCellSize === "side" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
+            {SIZE_MODE_LABELS[inputMode].field()}
           </span>
           <Inline gap="elementsGap">
             {/* Typing buffers the value; the preview follows when the field is left or typing pauses. */}
             <NumberInput
               name="cell-size"
               value={cellSizeText}
-              min={MIN_PRINT_CELL_SIZE_MM}
+              min={minEnteredMm}
               style={styles.input}
               onChange={(text) => {
                 cellSizeDraft.current = text;
                 clearTimeout(cellSizeIdleTimer.current);
                 // A value that is still being typed (unreadable, under the minimum) waits for the field to be left.
                 const typed = parseNumber(text);
-                if (!(typed >= MIN_PRINT_CELL_SIZE_MM)) return;
+                if (!(typed >= minEnteredMm)) return;
                 cellSizeIdleTimer.current = setTimeout(() => commitCellSize(text), CELL_SIZE_IDLE_MS);
               }}
               onBlurCommit={commitCellSize}

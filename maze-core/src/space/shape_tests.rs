@@ -697,6 +697,7 @@ fn uniform_polygon_tessellations_name_their_only_type_by_the_polygon() {
     assert_eq!(keys(SquareTessellation.cell_types()), ["square"]);
     assert_eq!(keys(HexTessellation.cell_types()), ["hexagon"]);
     assert_eq!(keys(TriTessellation.cell_types()), ["triangle"]);
+    assert_eq!(keys(CairoTessellation.cell_types()), ["pentagon"]);
 }
 
 #[test]
