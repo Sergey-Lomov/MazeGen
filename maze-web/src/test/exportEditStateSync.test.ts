@@ -5,7 +5,7 @@ const { isTeleportConnectorEditActive, isFloorLabelDragActive } = await import("
 
 // Connector editing and floor-label drag are owned by the export feature (GitHub issue #947).
 
-const edit = { renderMode: "vector_by_walls" as const, selected: null };
+const edit = { renderMode: "vector_by_walls" as const, selected: null, hoveredKey: null };
 
 describe("installExportEditStateSync", () => {
   it("drops the edit state when another card opens, so returning to export starts with editing off", () => {
@@ -47,6 +47,51 @@ describe("installExportEditStateSync — unrelated changes", () => {
     useMazeStore.setState({ openCard: "image_export", activeRenderMode: "vector_by_walls", teleportConnectorEdit: edit });
     useMazeStore.getState().setTeleportConnectorEditSelection({ key: "1:2", index: 0 });
     expect(useMazeStore.getState().teleportConnectorEdit?.selected).toEqual({ key: "1:2", index: 0 });
+  });
+
+  it("tracks the manually authored connector under the canvas pointer", async () => {
+    const { Container } = await import("pixi.js");
+    const { TeleportConnectorEditController } = await import("../pixi/imageExport/TeleportConnectorEditController");
+    const drawn = [{ edge: { from: [0, 0], to: [100, 0], fromNode: 1, toNode: 2 } as never, points: [0, 0, 100, 0] }];
+    const pan = { start() {}, move() {}, end() {} };
+    useMazeStore.setState({ openCard: "image_export", activeRenderMode: "vector_by_walls", teleportConnectorEdit: edit });
+    useMazeStore.getState().setManualTeleportConnectorPaths({ "1:2": { mode: "polyline", nodes: [[0, 0], [100, 0]] } });
+    const controller = new TeleportConnectorEditController(() => new Container(), () => drawn, pan, new Container());
+
+    controller.onPointerMove(50, 0);
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBe("1:2");
+    controller.onPointerMove(50, 50);
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBeNull();
+
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({ vectorByWallsSettings: { ...settings, teleportMarker: { ...settings.teleportMarker, size: 40 } } });
+    // Outside the editable-point tolerance, but inside the visual teleport endpoint.
+    controller.onPointerMove(0, 15);
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBe("1:2");
+    controller.clearHover();
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBeNull();
+    controller.destroy();
+
+    const badgeDrawn = [{ edge: { from: [0, 0], to: [100, 0], fromNode: 1, toNode: 2, toFloor: 1 } as never, points: [0, 0, 100, 0] }];
+    const badgeSettings = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      vectorByWallsSettings: {
+        ...badgeSettings,
+        teleportFloorBadge: { ...badgeSettings.teleportFloorBadge, size: 40 },
+      },
+    });
+    useMazeStore.getState().setManualTeleportConnectorPaths({ "1:2@1": { mode: "polyline", nodes: [[0, 0], [100, 0]] } });
+    const badgeController = new TeleportConnectorEditController(() => new Container(), () => badgeDrawn, pan, new Container());
+    // A cross-floor badge uses its own marker size for the endpoint hover zone.
+    badgeController.onPointerMove(100, 15);
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBe("1:2@1");
+    badgeController.destroy();
+
+    useMazeStore.getState().setManualTeleportConnectorPaths({});
+    const automaticController = new TeleportConnectorEditController(() => new Container(), () => drawn, pan, new Container());
+    automaticController.onPointerMove(50, 0);
+    expect(useMazeStore.getState().teleportConnectorEdit?.hoveredKey).toBeNull();
+    automaticController.destroy();
   });
 
   it("is a no-op when another card opens while no edit is active", () => {

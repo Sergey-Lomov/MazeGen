@@ -121,6 +121,12 @@ the editor ignores pointer presses meanwhile, and releasing P (or losing window 
 markers. A preview still held when editing ends is dropped, so the next session starts with the
 markers shown. The left- and right-button hints use LMB/RMB keycaps.
 
+When a manually authored connector path is hovered on the canvas, its corresponding editor row is
+highlighted and scrolled into view as needed (GitHub issue #1005). Selecting a connector point is
+canvas-only and does not affect the list. Hovering an automatic connector does not materialize a path
+or affect the list. The hover zone includes each teleport endpoint's visible marker, not only the
+connector line.
+
 The editor panel also shows the connector geometry warnings (GitHub issue #952) as a collapsible "Warnings (N)"
 section above the connector list, always visible even at N = 0 and expanded by default; its expanded state is persisted in
 `vectorByWallsSectionsExpanded` under `teleportConnectorEditorWarnings`. The entries are the same `ExportWarningBubble`s

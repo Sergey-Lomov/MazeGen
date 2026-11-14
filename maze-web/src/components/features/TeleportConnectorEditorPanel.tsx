@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link2, Spline, Trash2, Waypoints } from "lucide-react";
 import { manualPathMode, parseTeleportConnectorKey, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
 import { useMazeStore } from "../../store/mazeStore";
@@ -32,8 +32,10 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
   const setPaths = useMazeStore((s) => s.setManualTeleportConnectorPaths);
+  const edit = useMazeStore((s) => s.teleportConnectorEdit);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const rowElements = useRef(new Map<string, HTMLDivElement>());
   const edges = useMazeStore((s) => s.edges);
   const cfg = useMazeStore((s) => s.activeFieldConfig);
   const setHovered = useMazeStore((s) => s.setHoveredTeleportNodeIds);
@@ -75,6 +77,10 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
   }
   // The row whose bottom divider carries the "same connector" mark: a piece followed by its sibling.
   const rows = ordered.map((row, i) => ({ ...row, linkedBelow: row.crossFloor && ordered[i + 1]?.crossFloor === true && ordered[i + 1].pairKey === row.pairKey }));
+  const hoveredCanvasKey = edit?.hoveredKey ?? null;
+  useEffect(() => {
+    if (hoveredCanvasKey !== null) rowElements.current.get(hoveredCanvasKey)?.scrollIntoView({ block: "nearest" });
+  }, [hoveredCanvasKey]);
   const remove = () => {
     if (pendingKey === null) return;
     const { [pendingKey]: _removed, ...rest } = paths;
@@ -108,12 +114,19 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
         <div style={styles.list}>{rows.map((row) => {
           const hoverRow = () => hover(row.ids, row.cells);
           return (
-          <ListCell
+          <div
             key={row.key}
+            ref={(element) => {
+              if (element) rowElements.current.set(row.key, element);
+              else rowElements.current.delete(row.key);
+            }}
+          >
+          <ListCell
+            data-testid={`teleport-connector-row-${row.key}`}
             style={{
               ...styles.row,
               ...(row.linkedBelow ? { position: "relative" } : null),
-              ...(hoveredKey === row.key ? { background: ui.bg.hover } : null),
+              ...(hoveredKey === row.key || hoveredCanvasKey === row.key ? { background: ui.bg.hover } : null),
             }}
             onMouseEnter={() => { setHoveredKey(row.key); hoverRow(); }}
             onMouseLeave={() => { setHoveredKey(null); hover([]); }}
@@ -158,6 +171,7 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
               </Tooltip>
             )}
           </ListCell>
+          </div>
           );
         })}</div>
       )}

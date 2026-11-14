@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
+import { ui } from "../styles/theme";
 
 const warningsMock = vi.hoisted(() => ({ list: [] as { id: string; key: string; nodes: number[]; edges: never[] }[] }));
 vi.mock("../components/features/useExportPanelModel", () => ({
@@ -130,6 +131,44 @@ describe("TeleportConnectorEditorPanel", () => {
     unmount();
     expect(useMazeStore.getState().hoveredTeleportNodeIds).toBeNull();
     expect(useMazeStore.getState().hoveredTeleportCells).toBeNull();
+  });
+
+  it("highlights and scrolls to the row of the connector hovered on the canvas (GitHub issue #1005)", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      nodes: [{ id: 1, x: 3, y: 4 }, { id: 2, x: 5, y: 6 }] as unknown as typeof state.nodes,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2": { mode: "polyline", nodes: [[0, 0], [1, 1]] } },
+      } as typeof state.vectorByWallsSettings,
+      teleportConnectorEdit: { renderMode: "vector_by_walls", selected: null, hoveredKey: "1:2" },
+    });
+
+    render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);
+
+    expect(screen.getByTestId("teleport-connector-row-1:2")).toHaveStyle({ background: ui.bg.hover });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  it("does not mirror a canvas point selection into the connector list", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      nodes: [{ id: 1, x: 3, y: 4 }, { id: 2, x: 5, y: 6 }] as unknown as typeof state.nodes,
+      vectorByWallsSettings: {
+        ...state.vectorByWallsSettings,
+        manualTeleportConnectorPaths: { "1:2": { mode: "polyline", nodes: [[0, 0], [1, 1]] } },
+      } as typeof state.vectorByWallsSettings,
+      teleportConnectorEdit: { renderMode: "vector_by_walls", selected: { key: "1:2", index: 0 }, hoveredKey: null },
+    });
+
+    render(<TeleportConnectorEditorPanel onClose={() => {}} onFocusPath={() => {}} />);
+
+    expect(screen.getByTestId("teleport-connector-row-1:2")).not.toHaveStyle({ background: ui.bg.hover });
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("lists the connector warnings, counted in the header, open by default", () => {

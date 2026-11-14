@@ -1026,7 +1026,12 @@ export interface ImageExportState {
   activeRenderMode: RenderModeId | null;
   floorLabelDrag: FloorLabelDragState | null;
   /** Transient state for the on-canvas teleport connector editor. */
-  teleportConnectorEdit: { renderMode: RenderModeId; selected: { key: string; index: number } | null } | null;
+  teleportConnectorEdit: {
+    renderMode: RenderModeId;
+    selected: { key: string; index: number } | null;
+    /** Manual connector currently under the canvas pointer, if any (GitHub issue #1005). */
+    hoveredKey: string | null;
+  } | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -1102,6 +1107,7 @@ export interface ImageExportActions {
   startTeleportConnectorEdit: (renderMode: RenderModeId) => void;
   finishTeleportConnectorEdit: () => void;
   setTeleportConnectorEditSelection: (selected: { key: string; index: number } | null) => void;
+  setTeleportConnectorEditHoveredKey: (key: string | null) => void;
   /** Writes the renderer-independent paths to both display modes in one transaction. */
   setManualTeleportConnectorPaths: (paths: Record<string, import("../pixi/renderers/teleportConnectorManual").ManualTeleportConnectorPath>) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
