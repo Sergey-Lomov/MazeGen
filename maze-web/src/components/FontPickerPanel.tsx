@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
@@ -12,8 +12,11 @@ import { useLocale } from "../i18n/useLocale";
 import { collectLabelFontFamilies, projectFontSettings } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
-import { isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
-import { MSDF_FONTS, isMsdfFamily, msdfFontWeights, nearestWeight, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
+import { isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
+import { setFontPickerOpen } from "../pixi/renderers/rasterFont/pickerSession";
+import { addUploadedFont, rasterFontsVersion, restoreUploadedFonts, subscribeRasterFonts, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
+import { MSDF_FONTS, convertsToMsdf, isMsdfFamily, msdfFontWeights, nearestWeight, withMsdfConversion, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
+import { ToggleRow } from "./ToggleRow";
 import { fontWeightName } from "../store/fontLabels";
 import { SelectRow } from "./SelectRow";
 import { Tooltip } from "./Tooltip";
@@ -85,15 +88,6 @@ function weightsOf(family: string): number[] {
   return isMsdfFamily(family) ? msdfFontWeights(family) : rasterFontWeights(family);
 }
 
-/** Candidate families for the raster list when the machine's own list is unavailable (permission
- *  denied, unsupported browser, or an empty answer). Common to most systems but not guaranteed, so the
- *  list only shows the ones this machine actually has (`isFontFamilyInstalled`): a family it lacks
- *  would be stored as the font yet render as the bundled Roboto. */
-export const WEB_SAFE_FONT_FAMILIES = [
-  "Arial", "Arial Black", "Comic Sans MS", "Consolas", "Courier New", "Georgia", "Impact", "Lucida Console",
-  "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana",
-];
-
 interface Props {
   /** Font the field holds now, used to seed the working font on open. */
   font: LabelFont;
@@ -128,6 +122,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const [previewBackground, setPreviewBackground] = useState(DEFAULT_PREVIEW_BACKGROUND);
   const [working, setWorking] = useState(font);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [convertInfoOpen, setConvertInfoOpen] = useState(false);
   const [licenseNotice, setLicenseNotice] = useState<FontNotice | null>(null);
   const [query, setQuery] = useState("");
   // At most one format is filtered: picking one drops the other, and picking it again shows both.
@@ -146,6 +141,10 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   // a second prompt will not appear and the user has to allow it in the site settings.
   const [accessBlocked, setAccessBlocked] = useState(false);
   const [localFamilies, setLocalFamilies] = useState<string[] | null | undefined>(undefined);
+  // Uploaded fonts and their weights change outside React state.
+  const fontsVersion = useSyncExternalStore(subscribeRasterFonts, rasterFontsVersion);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** The font in effect when the panel opened. Captured once: with live preview the `font`
    *  prop tracks each previewed change, so it cannot be used to restore on Cancel. */
@@ -161,6 +160,13 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
 
   useEffect(() => () => {
     if (previewTimer.current !== null) clearTimeout(previewTimer.current);
+  }, []);
+
+  // While the picker is open the highlighted fonts are previews drawn by canvas text; the MSDF atlas of
+  // the font that stays is built once the picker closes (GitHub issue #966).
+  useEffect(() => {
+    setFontPickerOpen(true);
+    return () => setFontPickerOpen(false);
   }, []);
 
   /** Deliver a queued keyboard preview right away. Apply needs it, since the last previewed font is
@@ -180,17 +186,18 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   useEffect(() => {
     let alive = true;
     void loadLocalFontFamilies().then((families) => { if (alive) setLocalFamilies(families); });
+    void restoreUploadedFonts();
     return () => { alive = false; };
   }, []);
 
   const hasLocalFamilies = !!localFamilies && localFamilies.length > 0;
 
-  const installedWebSafe = useMemo(() => WEB_SAFE_FONT_FAMILIES.filter(isFontFamilyInstalled), []);
-
   const entries = useMemo<FontEntry[]>(() => {
     // The open-time family stays listed even when the machine does not report it, so a project
     // saved elsewhere still shows its current choice highlighted.
-    const families = hasLocalFamilies ? localFamilies : installedWebSafe;
+    // Installed fonts the machine reports, plus the files the user uploaded (the only raster source
+    // in a browser without the Local Font Access API).
+    const families = [...new Set([...(hasLocalFamilies ? localFamilies : []), ...uploadedFamilies()])].sort();
     const extra = !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
     const entry = (value: string, label: string, format: FontFormat): FontEntry => ({
       value,
@@ -203,7 +210,8 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
       ...Object.entries(MSDF_FONTS).map(([value, { label }]) => entry(value, label, "msdf")),
       ...[...extra, ...families].map((value) => entry(value, value, "browser")),
     ];
-  }, [hasLocalFamilies, localFamilies, installedWebSafe, originalFamily, usedFamilies, localeScript]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLocalFamilies, localFamilies, fontsVersion, originalFamily, usedFamilies, localeScript]);
 
   const options = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -238,7 +246,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   /** Pick a family. The weight stays when the family has it and snaps to the nearest one it has otherwise. */
   const selectFamily = useCallback((family: string, delayed = false) => {
     const current = workingRef.current;
-    select({ family, weight: nearestWeight(current.weight, weightsOf(family)) }, delayed);
+    select(withMsdfConversion({ family, weight: nearestWeight(current.weight, weightsOf(family)) }, convertsToMsdf(current) || isMsdfFamily(family)), delayed);
   }, [select]);
 
   function cancel() {
@@ -259,7 +267,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   // Weights of the highlighted family. The local font query (`localFamilies`) is what reveals a browser
   // font's installed faces, so a result arriving later refreshes the list.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const weights = useMemo(() => weightsOf(working.family), [working.family, localFamilies]);
+  const weights = useMemo(() => weightsOf(working.family), [working.family, localFamilies, fontsVersion]);
 
   // The select always shows the working weight, even one the family lacks (a project saved elsewhere).
   const weightOptions = useMemo(() => {
@@ -268,6 +276,19 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   }, [weights, working.weight]);
 
   const weightLocked = weightOptions.length <= 1;
+
+  /** Adds an uploaded font file and highlights it. */
+  async function upload(file: File) {
+    setUploadError(null);
+    const result = await addUploadedFont(file);
+    if (!result.ok) {
+      setUploadError(result.reason === "unsupported-format" ? m["font_picker.upload_failed_unsupported_format"]() : m["font_picker.upload_failed_corrupt"]());
+      return;
+    }
+    setQuery("");
+    setFormatFilter(null);
+    select(withMsdfConversion({ family: result.family, weight: result.weight }, convertsToMsdf(workingRef.current)));
+  }
 
   // The bundled fonts need no permission, so the note is only about the part of the list it affects.
   const showPermissionNote = localFamilies !== undefined && !hasLocalFamilies && formatFilter !== "msdf";
@@ -465,6 +486,24 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   ))}
                 </SelectableList>
               </div>
+              <Tooltip content={m["font_picker.upload_hint"]()}>
+                <Button variant="secondary" onClick={() => fileInputRef.current?.click()} data-testid="font-picker-upload">
+                  {m["font_picker.upload"]()}
+                </Button>
+              </Tooltip>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".ttf,.otf,.woff,font/ttf,font/otf,font/woff"
+                hidden
+                data-testid="font-picker-upload-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void upload(file);
+                }}
+              />
+              {uploadError && <span style={styles.permissionText} role="alert" data-testid="font-picker-upload-error">{uploadError}</span>}
             </div>
           </div>
           <div style={styles.section}>
@@ -474,11 +513,21 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                 label={m["font_picker.section_weight"]()}
                 value={String(working.weight)}
                 options={weightOptions}
-                onChange={(value) => select({ family: working.family, weight: Number(value) })}
+                onChange={(value) => select(withMsdfConversion({ family: working.family, weight: Number(value) }, convertsToMsdf(working)))}
                 disabled={weightLocked}
                 testId="font-picker-weight"
               />
             </Tooltip>
+            {!isMsdfFamily(working.family) && (
+              <div data-testid="font-picker-msdf-toggle">
+                <ToggleRow
+                  label={m["font_picker.convert_to_msdf"]()}
+                  checked={convertsToMsdf(working)}
+                  onChange={(on) => select(withMsdfConversion(working, on))}
+                  info={() => setConvertInfoOpen(true)}
+                />
+              </div>
+            )}
           </div>
           {warningKinds && openMode && (
             <div style={styles.section}>
@@ -503,6 +552,13 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             { label: m["font_picker.type_raster"](), description: m["font_picker.info_raster"]() },
           ]}
           onClose={() => setInfoOpen(false)}
+        />
+      )}
+      {convertInfoOpen && (
+        <CategoryInfoModal
+          title={m["font_picker.convert_to_msdf"]()}
+          params={[{ label: m["font_picker.convert_to_msdf"](), description: m["font_picker.convert_to_msdf_info"]() }]}
+          onClose={() => setConvertInfoOpen(false)}
         />
       )}
       {licenseNotice && <FontLicensesModal notice={licenseNotice} onClose={() => setLicenseNotice(null)} />}

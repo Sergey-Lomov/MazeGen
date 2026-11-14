@@ -506,6 +506,12 @@ describe("optLabelFont", () => {
     expect(optLabelFont({ f: { family: "A", weight: 449.6 } }, "f", fallback).weight).toBe(450);
   });
 
+  it("keeps a switched-off MSDF conversion and drops any other value of the flag", () => {
+    expect(optLabelFont({ f: { family: "A", weight: 400, msdf: false } }, "f", fallback)).toEqual({ family: "A", weight: 400, msdf: false });
+    expect(optLabelFont({ f: { family: "A", weight: 400, msdf: true } }, "f", fallback)).toEqual({ family: "A", weight: 400 });
+    expect(optLabelFont({ f: { family: "A", weight: 400, msdf: "no" } }, "f", fallback)).toEqual({ family: "A", weight: 400 });
+  });
+
   it("takes each field from the fallback when it is missing or malformed", () => {
     expect(optLabelFont({ f: { family: "A" } }, "f", fallback)).toEqual({ family: "A", weight: 400 });
     expect(optLabelFont({ f: { weight: 700 } }, "f", fallback)).toEqual({ family: "Fallback", weight: 700 });

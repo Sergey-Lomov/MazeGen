@@ -1,15 +1,18 @@
-import { BitmapText, Text } from "pixi.js";
-import { CSS_FONT_WEIGHTS, LABEL_FONT_LOADED_EVENT, isMsdfFamily, msdfFace, weightFromStyleName, type LabelFont } from "./fontChoice";
+import { BitmapText, CanvasTextMetrics, Text } from "pixi.js";
+import { LABEL_FONT_LOADED_EVENT, convertsToMsdf, isMsdfFamily, msdfFace, type LabelFont } from "./fontChoice";
 import { loadMsdfFamily } from "./msdfLoader";
+import { canvasLabelResolution } from "./canvasLabelResolution";
+import { isRasterFontReady, rasterCoversText } from "./rasterFont/rasterMsdf";
+import { knownRasterWeights, registerLocalFaces, type LocalFontFace } from "./rasterFont/rasterFontStore";
 
-/** Runtime local-font support for issue #740. An empty or unavailable family deliberately uses
- * the bundled MSDF Roboto, which remains the portable project-file fallback. */
+/** Runtime support for installed and uploaded fonts (issues #740, #966). A raster font is drawn by canvas
+ * text (a `Text` whose texture density follows the zoom, `canvasLabelResolution.ts`) from the moment its
+ * browser face has loaded, and by its own dynamic MSDF atlas (`rasterFont/rasterMsdf.ts`) once that has been
+ * built after the font was applied. An empty, unavailable or unloadable family deliberately uses the bundled
+ * MSDF Roboto, which remains the portable project-file fallback. */
 const loadedFonts = new Set<string>();
 const loadingFonts = new Map<string, Promise<boolean>>();
 const fontKey = (family: string, weight: number) => `${weight}|${family}`;
-/** Canvas-backed labels use a fixed, bounded density. They intentionally rasterize like ordinary
- * text and may soften when enlarged; this avoids zoom-driven texture allocation and GPU churn. */
-const MAX_RUNTIME_TEXT_RESOLUTION = 2;
 
 let sharedMeasureContext: CanvasRenderingContext2D | null | undefined;
 
@@ -74,10 +77,8 @@ let localFamiliesPromise: Promise<string[] | null> | null = null;
  *  exact name here proves the font is installed even when its glyph metrics cannot be told apart
  *  from a generic fallback (a face that covers neither probe script). */
 let reportedLocalFamilies: Set<string> | null = null;
-/** Weights of each reported family's normal-style faces (`weightFromStyleName`), once the query has resolved. */
-let reportedLocalWeights: Map<string, Set<number>> | null = null;
 
-type LocalFontQuery = () => Promise<Array<{ family: string; style?: string }>>;
+type LocalFontQuery = () => Promise<LocalFontFace[]>;
 const localFontQuery = (): LocalFontQuery | undefined => (typeof window === "undefined" ? undefined : (window as Window & { queryLocalFonts?: LocalFontQuery }).queryLocalFonts);
 
 /** Whether the browser has the Local Font Access API at all (Chromium only). */
@@ -97,15 +98,8 @@ export function loadLocalFontFamilies(retry = false): Promise<string[] | null> {
       ? query.call(window).then((fonts) => {
           const families = [...new Set(fonts.map((font) => font.family.trim()).filter(Boolean))].sort();
           reportedLocalFamilies = new Set(families);
-          const weights = new Map<string, Set<number>>();
-          for (const font of fonts) {
-            const family = font.family.trim();
-            const weight = weightFromStyleName(font.style ?? "");
-            if (!family || weight === null) continue;
-            if (!weights.has(family)) weights.set(family, new Set());
-            weights.get(family)!.add(weight);
-          }
-          reportedLocalWeights = weights;
+          // Keeps each face so its file can be read and converted when the family is picked.
+          registerLocalFaces(fonts);
           return families;
         }).catch(() => null)
       : Promise.resolve(null);
@@ -119,20 +113,30 @@ export function isFontFamilyInstalled(family: string): boolean {
   return typeof document !== "undefined" && (reportedLocalFamilies?.has(family) === true || hasDistinctGlyphMetrics(family));
 }
 
-/** Whether `font`'s browser face is loaded and may be drawn. The default MSDF font is never "loaded" in
- *  this sense: it is baked, so it needs no browser face. */
+/** Whether `font` can be drawn from its own glyphs: its browser face has loaded or its MSDF atlas is built.
+ *  The default and the bundled fonts are never "loaded" in this sense: they are baked. */
 export function isLabelFontLoaded(font: LabelFont | undefined): boolean {
-  return !!font?.family.trim() && loadedFonts.has(fontKey(font.family.trim(), font.weight));
+  return !!font?.family.trim() && (loadedFonts.has(fontKey(font.family.trim(), font.weight)) || isRasterFontReady(font));
 }
 
-/** Weights a browser font family offers, ascending (GitHub issue #973). With the Local Font Access
- *  API these are exactly the weights of the family's installed normal-style faces. Without it (or for
- *  a family the machine did not report) a face is offered only when the browser draws it visibly
- *  differently from regular, so the list is never larger than what the font provides: a regular face,
- *  plus bold when it has glyph metrics of its own. */
+/** Whether a label showing `text` in `font` is drawn by canvas text: the font is a raster one with a loaded
+ *  browser face whose MSDF atlas is not built yet or does not hold every character of the text. */
+export function usesCanvasText(font: LabelFont | undefined, text: string): boolean {
+  const family = font?.family.trim();
+  if (!font || !family || isMsdfFamily(family)) return false;
+  if (!loadedFonts.has(fontKey(family, font.weight))) return false;
+  if (!convertsToMsdf(font)) return true;
+  return !(isRasterFontReady(font) && rasterCoversText(font, text));
+}
+
+/** Weights a raster font family offers, ascending (GitHub issue #973). They are exactly the weights of the
+ *  family's font files: its uploaded faces, else the installed normal-style faces the Local Font Access API
+ *  reported. For a family with no readable file (a project saved elsewhere) a face is offered only when the
+ *  browser draws it visibly differently from regular, so the list is never larger than what the font
+ *  provides: a regular face, plus bold when it has glyph metrics of its own. */
 export function rasterFontWeights(family: string): number[] {
-  const reported = reportedLocalWeights?.get(family.trim());
-  if (reported && reported.size > 0) return CSS_FONT_WEIGHTS.filter((weight) => reported.has(weight));
+  const known = knownRasterWeights(family);
+  if (known.length > 0) return known;
   return typeof document !== "undefined" && hasDistinctBoldFace(family.trim()) ? [400, 700] : [400];
 }
 
@@ -146,9 +150,10 @@ function hasDistinctBoldFace(family: string): boolean {
   return PROBES.some((probe) => Math.abs(width(700, probe) - width(400, probe)) > 0.01);
 }
 
-/** Wait until a font can be drawn before allowing it onto the canvas: a browser font is measurable, a
- *  baked MSDF font has its atlases downloaded (GitHub issue #982). Resolves to `false` when it cannot be
- *  loaded; the label then keeps the default font. */
+/** Wait until a font can be drawn before allowing it onto the canvas: a baked MSDF font has its atlases
+ *  downloaded (GitHub issue #982), a raster font has its browser face loaded and measurable. Resolves to `false`
+ *  when it cannot be loaded; the label then keeps the default font. The font's MSDF atlas is not built here:
+ *  that waits until the font is applied (`labelFontSync`, GitHub issue #966). */
 export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   const family = font.family.trim();
   if (!family) return true;
@@ -180,15 +185,46 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   return loading;
 }
 
-/** A label drawn in `font`: browser text when its face is loaded, else the baked MSDF atlas nearest to
- *  its weight. */
+/** How far the canvas-text ink centre of `text` sits below the centre of its line box, in logical pixels:
+ *  `pivot.y` for a `Text` anchored at its centre, so the ink lands on the origin exactly like an MSDF label
+ *  does (`inkCentreOffset`) and the label does not jump when the atlas replaces the canvas text. */
+export function canvasInkCentreOffset(text: string, font: LabelFont, fontSize: number): number {
+  const context = typeof document === "undefined" ? null : measureContext();
+  if (!context) return 0;
+  try {
+    const css = `${font.weight} ${fontSize}px ${labelFontCss(font.family.trim())}`;
+    context.font = css;
+    const metrics = context.measureText(text);
+    const box = CanvasTextMetrics.measureFont(css);
+    const inkAscent = metrics.actualBoundingBoxAscent || 0;
+    const inkDescent = metrics.actualBoundingBoxDescent || 0;
+    if (!inkAscent && !inkDescent) return 0;
+    return (box.ascent - box.descent) / 2 + (inkDescent - inkAscent) / 2;
+  } catch {
+    return 0;
+  }
+}
+
+function makeCanvasText(text: string, font: LabelFont, fontSize: number, fill: number): Text {
+  const family = font.family.trim();
+  const context = measureContext();
+  let width = text.length * fontSize * 0.6;
+  if (context) {
+    context.font = `${font.weight} ${fontSize}px ${labelFontCss(family)}`;
+    width = context.measureText(text).width;
+  }
+  return new Text({
+    text,
+    style: { fontFamily: labelFontFamilies(family), fontSize, fontWeight: String(font.weight) as "400", fontStyle: "normal", fill },
+    resolution: canvasLabelResolution(width, fontSize * 1.5),
+  });
+}
+
+/** A label drawn in `font`: canvas text while the font has no MSDF atlas that covers `text`, else the font's
+ *  own atlas, else the baked MSDF atlas nearest to its weight. */
 export function makeLabelText(text: string, font: LabelFont, fontSize: number, fill: number) {
-  const family = isLabelFontLoaded(font) ? font.family.trim() : null;
-  const resolution = Math.min(MAX_RUNTIME_TEXT_RESOLUTION, Math.max(1, window.devicePixelRatio || 1));
-  const label = family
-    // `Text` otherwise defaults to a 1x canvas texture. The application canvas uses the device
-    // pixel ratio, so matching it prevents a 1x label from being stretched and blurred at 100%.
-    ? new Text({ text, style: { fontFamily: labelFontFamilies(family), fontSize, fontWeight: String(font.weight) as "400", fontStyle: "normal", fill }, resolution })
+  const label = usesCanvasText(font, text)
+    ? makeCanvasText(text, font, fontSize, fill)
     : new BitmapText({ text, style: { fontFamily: msdfFace(font).atlasName, fontSize, fill } });
   label.anchor.set(0.5);
   label.roundPixels = true;
