@@ -645,6 +645,7 @@ export function buildResetDownstreamState() {
     ...buildResetMazeState(),
     error: null,
     generationStatus: "idle" as const,
+    generationProgress: null,
     fieldEditConfirmation: null,
     debugArena: null, debugStep: 0, debugStale: false,
     postEditCommands: [], postEditBaseline: null, postEditDerived: null,

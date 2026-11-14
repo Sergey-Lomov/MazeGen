@@ -86,6 +86,8 @@ export interface GenerationState {
    *  `ProjectFile`) so loading a project restores the panel to the state it was saved in. */
   vertexSettingsPanelOpen: boolean;
   generationStatus: "idle" | "done" | "error";
+  /** Current worker-reported completion percentage, or `null` when no generation is active. */
+  generationProgress: number | null;
   // Active feature card
   openCard: FeatureId;
   // Debug state — read-only projection, does not mutate production graph
@@ -167,6 +169,8 @@ export interface GenerationActions {
   generate: () => void;
   /** Async counterpart used by the UI so WASM generation does not block delayed feedback. */
   generateAsync: () => Promise<void>;
+  /** Stops the active generation worker. Its partial result is discarded. */
+  cancelGeneration: () => void;
   /** Moves `seedHistoryIndex` one step back and copies that seed into `seed` — does not trigger
    *  generation. No-op at the start of history. Also turns `randomSeed` off (a navigated-to seed
    *  would otherwise be discarded by the next `generate()`). */

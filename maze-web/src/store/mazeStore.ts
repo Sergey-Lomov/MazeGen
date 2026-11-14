@@ -205,6 +205,7 @@ export const useMazeStore = create<MazeStore>()((...a) => guardPresetEdits({
       // reset maze state — will be populated by generate below
       ...buildResetMazeState(),
       generationStatus: "idle" as const,
+      generationProgress: null,
       postEditAutoConfirm: file.ui.postEditAutoConfirm,
       postEditDraftEdges: null,
       postEditDraftTeleports: [],

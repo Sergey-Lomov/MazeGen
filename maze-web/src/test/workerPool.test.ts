@@ -120,6 +120,19 @@ describe("WorkerPool", () => {
     await expect(job).resolves.toBe("ok");
   });
 
+  it("forwards progress without settling the job", async () => {
+    const { pool, workers } = makePool();
+    const onProgress = vi.fn();
+    const job = pool.run(1, [], onProgress);
+
+    workers[0].answer(0, { progress: 70 });
+    expect(onProgress).toHaveBeenCalledWith(70);
+    expect(pool.size).toBe(1);
+
+    workers[0].answer(0, { result: "done" });
+    await expect(job.promise).resolves.toBe("done");
+  });
+
   it("cancel rejects the job and terminates its worker", async () => {
     const { pool, workers } = makePool();
     const job = pool.run(1);

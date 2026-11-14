@@ -8,7 +8,8 @@ export interface WorkerRequestMessage<Req> {
 
 export type WorkerResponseMessage<Res> =
   | { id: number; result: Res }
-  | { id: number; error: string };
+  | { id: number; error: string }
+  | { id: number; progress: number };
 
 export interface WorkerPoolOptions {
   /** Creates one module worker. Called only when no idle worker is available. */
@@ -53,7 +54,7 @@ export class WorkerPool<Req, Res> {
     return this.idle.length + this.busy.size;
   }
 
-  run(payload: Req, transfer: Transferable[] = []): WorkerJob<Res> {
+  run(payload: Req, transfer: Transferable[] = [], onProgress?: (progress: number) => void): WorkerJob<Res> {
     let cancel: (reason: Error) => void = () => {};
     const promise = new Promise<Res>((resolve, reject) => {
       const reused = this.idle.pop();
@@ -82,6 +83,10 @@ export class WorkerPool<Req, Res> {
       entry.worker.onmessage = (event: MessageEvent<WorkerResponseMessage<Res>>) => {
         const message = event.data;
         if (message.id !== id) return;
+        if ("progress" in message) {
+          onProgress?.(message.progress);
+          return;
+        }
         if ("error" in message) finish("retire", () => reject(new Error(message.error)));
         else finish("reuse", () => resolve(message.result));
       };

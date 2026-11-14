@@ -35,11 +35,24 @@ pub use topology::{topology_edit, topology_info};
 
 #[wasm_bindgen]
 pub fn generate(seed: u64, config: JsValue) -> Result<GenerateResult, JsValue> {
+    generate_inner(seed, config, |_| {})
+}
+
+/// Runs generation while reporting completed pipeline stages. The callback is deliberately
+/// synchronous: a worker can forward these messages even while the WASM call is still running.
+#[wasm_bindgen]
+pub fn generate_with_progress(seed: u64, config: JsValue, progress: js_sys::Function) -> Result<GenerateResult, JsValue> {
+    generate_inner(seed, config, |value| {
+        let _ = progress.call1(&JsValue::NULL, &JsValue::from_f64(value.into()));
+    })
+}
+
+fn generate_inner(seed: u64, config: JsValue, progress: impl Fn(u8)) -> Result<GenerateResult, JsValue> {
     let config: GenerateConfig = if config.is_null() || config.is_undefined() {
         GenerateConfig::default()
     } else {
         serde_wasm_bindgen::from_value(config)
             .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
     };
-    dispatch_generate(seed, &config)
+    dispatch_generate(seed, &config, &progress)
 }

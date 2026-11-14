@@ -6,6 +6,7 @@ import { loadMsdfFamily } from "./msdfLoader";
  * the bundled MSDF Roboto, which remains the portable project-file fallback. */
 const loadedFonts = new Set<string>();
 const loadingFonts = new Map<string, Promise<boolean>>();
+let loadedFontGeneration = 0;
 const fontKey = (family: string, weight: number) => `${weight}|${family}`;
 /** Canvas-backed labels use a fixed, bounded density. They intentionally rasterize like ordinary
  * text and may soften when enlarged; this avoids zoom-driven texture allocation and GPU churn. */
@@ -125,6 +126,12 @@ export function isLabelFontLoaded(font: LabelFont | undefined): boolean {
   return !!font?.family.trim() && loadedFonts.has(fontKey(font.family.trim(), font.weight));
 }
 
+/** Changes whenever a browser font becomes available, so selector caches can discard fallback
+ * text metrics and re-evaluate against the font that the renderer now draws. */
+export function labelFontMetricsKey(): number {
+  return loadedFontGeneration;
+}
+
 /** Weights a browser font family offers, ascending (GitHub issue #973). With the Local Font Access
  *  API these are exactly the weights of the family's installed normal-style faces. Without it (or for
  *  a family the machine did not report) a face is offered only when the browser draws it visibly
@@ -167,6 +174,7 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
       if (!document.fonts.check(face)) return false;
       if (!isFontFamilyInstalled(family)) return false;
       loadedFonts.add(key);
+      loadedFontGeneration++;
       if (typeof window !== "undefined") window.dispatchEvent(new Event(LABEL_FONT_LOADED_EVENT));
       return true;
     } catch {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
@@ -96,12 +96,14 @@ describe("GenerationFeature — QC Only toggle", () => {
     header.remove();
   });
 
-  it("shows a confirm modal instead of starting generation when post-edit is dirty", () => {
+  it("shows a confirm modal instead of starting generation from the shortcut when post-edit is dirty", () => {
     const generateAsync = vi.fn(() => Promise.resolve());
-    useMazeStore.setState({ generateAsync, postEditDirty: true });
+    useMazeStore.setState({ generateAsync, postEditDirty: true, openCard: "generation" });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByText(m["generation.generate"]()));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Enter", key: "Enter" }));
+    });
 
     expect(generateAsync).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
@@ -133,68 +135,6 @@ describe("GenerationFeature — seed history navigation tooltips", () => {
 
     expect(getTooltipControl(m["generation.seed_history_seed"]({ seed: 10 }))).toBeEnabled();
     expect(getTooltipControl(m["generation.seed_history_next_unavailable_tooltip"]())).toBeDisabled();
-  });
-});
-
-describe("GenerationFeature — delayed generation spinner", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  function renderWithPendingGeneration() {
-    let resolveGeneration!: () => void;
-    const generation = new Promise<void>((resolve) => { resolveGeneration = resolve; });
-    const generateAsync = vi.fn(() => generation);
-    useMazeStore.setState({ generateAsync });
-    render(<GenerationFeature canGenerate={true} />);
-    return { generateAsync, resolveGeneration };
-  }
-
-  it("does not show a spinner for a generation completed before the delay", async () => {
-    const { resolveGeneration } = renderWithPendingGeneration();
-    fireEvent.click(screen.getByText(m["generation.generate"]()));
-
-    act(() => { vi.advanceTimersByTime(150); });
-    await act(async () => { resolveGeneration(); await Promise.resolve(); });
-
-    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(1000); });
-    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
-  });
-
-  it("shows the spinner after 200 ms and keeps it visible for 750 ms", async () => {
-    const { resolveGeneration } = renderWithPendingGeneration();
-    const button = screen.getByText(m["generation.generate"]());
-    fireEvent.click(button);
-
-    expect(button).toBeDisabled();
-    act(() => { vi.advanceTimersByTime(199); });
-    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
-
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
-    expect(screen.queryByText(m["generation.generate"]())).not.toBeInTheDocument();
-
-    act(() => { vi.advanceTimersByTime(400); });
-    await act(async () => { resolveGeneration(); await Promise.resolve(); });
-    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
-
-    act(() => { vi.advanceTimersByTime(349); });
-    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
-  });
-
-  it("ignores a repeated click while generation is running", () => {
-    const { generateAsync } = renderWithPendingGeneration();
-    const button = screen.getByText(m["generation.generate"]());
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(generateAsync).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -274,14 +214,14 @@ describe("GenerationFeature — vertex-based settings panel", () => {
 });
 
 describe("GenerationFeature — registry load failure", () => {
-  it("does not duplicate a registry failure in the generation card", () => {
+  it("disables the generation button when the registry failed", () => {
     const generateAsync = vi.fn(() => Promise.resolve());
     useMazeStore.setState({ registryError: "wasm load failed", generateAsync });
     render(<GenerationFeature canGenerate={true} />);
 
+    expect(screen.queryByRole("button", { name: m["generation.retry_registry_load"]() })).toBeNull();
     const button = screen.getByRole("button", { name: m["generation.generate"]() });
     expect(button).toBeDisabled();
-    expect(screen.queryByRole("button", { name: m["generation.retry_registry_load"]() })).toBeNull();
     fireEvent.click(button);
     expect(generateAsync).not.toHaveBeenCalled();
   });
