@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import * as m from "~/paraglide/messages";
 
 const { PngExportSettingsPanel } = await import("../components/features/PngExportSettingsPanel");
@@ -260,11 +260,25 @@ describe("PngExportSettingsPanel", () => {
     expect(cellSizeMatch.length).toBeGreaterThan(0);
   });
 
-  it("shows a result-info section (image size + cell size in mm) in print mode", () => {
-    setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" } });
+  it("lists the cell sizes of the tessellation as a per-type table in print mode, rescaled with the print scale (GitHub issue #1006)", () => {
+    const withScale = (scale: number) => ({
+      pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" as const, print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale } },
+    });
+    setBaseState(withScale(1));
     render(<PngExportSettingsPanel />);
-    const cellSizeMatch = screen.getAllByText((_, el) => !!el?.textContent?.includes("mm"));
-    expect(cellSizeMatch.length).toBeGreaterThan(0);
+    expect(screen.getByText(m["field.print_sizing.cell_sizes_title"]())).toBeInTheDocument();
+    const diameterOf = () => Number(/(\d+(?:\.\d+)?) /.exec(screen.getByTitle(/^(Diameter|Диаметр) /).getAttribute("title")!.replace(/^\S+ /, ""))![1]);
+    expect(screen.getByTitle(/^(Side|Сторона) /)).toBeInTheDocument();
+    const before = diameterOf();
+    expect(before).toBeGreaterThan(0);
+    act(() => useMazeStore.setState(withScale(2)));
+    expect(diameterOf()).toBeCloseTo(before * 2, 0);
+  });
+
+  it("warns about a too small side with the print-sizing dialog's warning (GitHub issue #1006)", () => {
+    setBaseState({ pngExportSettings: { ...DEFAULT_PNG_EXPORT_SETTINGS, outputMode: "print" as const, print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scale: 0.2 } } });
+    render(<PngExportSettingsPanel />);
+    expect(screen.getByText(/hard to print and to solve|трудно печатать/)).toBeInTheDocument();
   });
 
   it("reports the ring thickness instead of the cell size and minimum side for a radial field (GitHub issue #1002)", () => {
@@ -274,9 +288,7 @@ describe("PngExportSettingsPanel", () => {
     });
     render(<PngExportSettingsPanel />);
     expect(screen.getByText(/Ring thickness: /)).toBeInTheDocument();
-    expect(screen.queryByText(/Cell size \(diameter\)/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Minimum side length/)).not.toBeInTheDocument();
-    expect(screen.queryByText(m["image_export.format.png.warning_min_side_too_short"]({ min: "5" }))).not.toBeInTheDocument();
+    expect(screen.getByText(/thickness of a ring|толщина кольца/)).toBeInTheDocument();
   });
 
   it("reports the average cell size instead of the cell size and minimum side for a Voronoi field (GitHub issue #1002)", () => {
@@ -286,7 +298,6 @@ describe("PngExportSettingsPanel", () => {
     });
     render(<PngExportSettingsPanel />);
     expect(screen.getByText(/Average cell size: /)).toBeInTheDocument();
-    expect(screen.queryByText(/Cell size \(diameter\)/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Minimum side length/)).not.toBeInTheDocument();
+    expect(screen.getByText(/differ in size and shape/)).toBeInTheDocument();
   });
 });

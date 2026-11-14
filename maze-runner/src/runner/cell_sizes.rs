@@ -75,6 +75,77 @@ pub fn cell_sizes(request: &CellSizesRequest) -> Result<CellSizesReport, FieldOp
         .map_err(|message| FieldOpWireError::InvalidRequest { message })?
 }
 
+/// The sizes of every cell type of the tessellation, from sample cells around its origin, so the
+/// answer does not depend on any field. Types are in the order of the tessellation's cell types and
+/// carry `count` 0; a tessellation whose cells vary in size reports every type `regular` false with
+/// no size, and a type no sample cell showed is left out.
+pub fn cell_type_sizes(
+    tessellation: &TessellationConfig,
+) -> Result<Vec<CellTypeSizes>, FieldOpWireError> {
+    build_tessellation(tessellation, TypeSizes)
+        .map_err(|message| FieldOpWireError::InvalidRequest { message })
+}
+
+/// Half-extent (world units) of the first sample box around the origin, doubled until every cell type
+/// is seen or `SAMPLE_MAX_HALF_EXTENT` is reached.
+const SAMPLE_START_HALF_EXTENT: f64 = 2.0;
+const SAMPLE_MAX_HALF_EXTENT: f64 = 64.0;
+/// Most candidate cells one sample box may hold.
+const SAMPLE_CANDIDATE_LIMIT: usize = 4096;
+
+struct TypeSizes;
+
+impl TessellationVisitor for TypeSizes {
+    type Output = Vec<CellTypeSizes>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, _codec: CellCodec<T>) -> Self::Output {
+        let varies = tessellation.cells_vary_in_size();
+        let types = tessellation.cell_types();
+        let mut sizes: Vec<Option<Size>> = vec![None; types.len()];
+        let mut missing = if varies { 0 } else { types.len() };
+        let mut half = SAMPLE_START_HALF_EXTENT;
+        while missing > 0 && half <= SAMPLE_MAX_HALF_EXTENT {
+            let Some(candidates) = tessellation.candidate_cells(
+                Point::new(-half, -half),
+                Point::new(half, half),
+                SAMPLE_CANDIDATE_LIMIT,
+            ) else {
+                break;
+            };
+            for cell in candidates {
+                if !tessellation.is_valid_cell(cell) {
+                    continue;
+                }
+                let index = tessellation.cell_type_of(cell).index();
+                if sizes[index].is_none() {
+                    sizes[index] = Some(measure(&*tessellation, cell));
+                    missing -= 1;
+                }
+            }
+            half *= 2.0;
+        }
+        types
+            .iter()
+            .zip(sizes)
+            // A type no sample cell showed has no size to report, and is not irregular either.
+            .filter(|(_, size)| varies || size.is_some())
+            .map(|(cell_type, size)| {
+                let size = size.unwrap_or(Size {
+                    sides: Vec::new(),
+                    diameter: 0.0,
+                });
+                CellTypeSizes {
+                    key: cell_type.key().to_string(),
+                    count: 0,
+                    sides: size.sides,
+                    diameter: size.diameter,
+                    regular: !varies,
+                }
+            })
+            .collect()
+    }
+}
+
 struct CellSizes<'a> {
     request: &'a CellSizesRequest,
 }

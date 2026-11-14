@@ -2278,9 +2278,6 @@
   "image_export.format.png.warning_in_margin_zone_description": "При текущих масштабе и положении часть лабиринта попадает в заданные отступы листа.",
   "image_export.format.png.result.ring_thickness_mm": "Толщина кольца: {size} мм",
   "image_export.format.png.result.average_size_mm": "Средний размер ячейки: {size} мм",
-  "image_export.format.png.result.min_side_mm": "Минимальная сторона: {size} мм",
-  "image_export.format.png.warning_min_side_too_short": "Минимальная сторона меньше {min} мм",
-  "image_export.format.png.warning_min_side_too_short_description": "При текущем масштабе самая короткая сторона ячейки печатается короче {min} мм, поэтому ячейки трудно печатать и проходить. Увеличьте масштаб или размер листа.",
   "image_export.vector_by_walls.section_shared_style": "Общий стиль",
   "image_export.vector_by_walls.section_settings": "Настройки",
   "image_export.vector_by_walls.random_wall_colors": "Случайный цвет стен",
@@ -2880,7 +2877,6 @@
   "field.print_sizing.cell_sizes_title": "Размеры ячеек",
   "field.print_sizing.cell_sizes_irregular": "Ячейки этой тесселяции различаются по размеру и форме, поэтому у них нет единой стороны или диаметра. Введённый размер это средний размер ячейки: диаметр описанной окружности правильного шестиугольника, из которого получены ячейки. Напечатанные ячейки получатся больше или меньше него.",
   "field.print_sizing.cell_sizes_irregular_radial": "Ячейки радиальной тесселяции это секторы колец, поэтому они различаются по размеру и форме, и у них нет единой стороны или диаметра. Введённый размер это толщина кольца, от внутреннего края до внешнего.",
-  "image_export.format.png.result.cell_size_mm_diameter": "Размер ячейки (диаметр): {size} мм",
 
   "notifications.close": "Закрыть",
   "notifications.close_all": "Закрыть все",
