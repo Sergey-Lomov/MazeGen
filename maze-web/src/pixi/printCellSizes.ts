@@ -1,5 +1,5 @@
 import type { FieldConfig } from "../fieldConfig";
-import { getFieldCellSizes, type CellSizesReport } from "../wasm/mazeService";
+import { getFieldCellSizes, getTessellationCellTypeSizes, type CellSizesReport, type CellTypeSizes } from "../wasm/mazeService";
 import { TESSELLATION_UI } from "./geometry/tessellationUi";
 
 /** A cell with a side under this (millimeters) is hard to print and to solve on paper. */
@@ -71,15 +71,38 @@ export function measurePrintCells(
   const sourceCounts = sources.map((source) =>
     "cells" in source ? source.cells.length : report.presetCounts[keys.indexOf(JSON.stringify(source))]);
   if (!Number.isFinite(cellSizeMm) || cellSizeMm <= 0) return { types: [], sourceCounts };
+  return { types: printSizesOf(config, report.types, cellSizeMm), sourceCounts };
+}
+
+function printSizesOf(
+  config: Pick<FieldConfig, "tessellation">,
+  types: CellTypeSizes[],
+  cellSizeMm: number,
+): PrintCellTypeSize[] {
   const mm = mmPerWorldUnit(config, cellSizeMm);
-  const types = report.types.map((type) => ({
+  return types.map((type) => ({
     key: type.key,
     count: type.count,
     sidesMm: type.sides.map((side) => side * mm),
     diameterMm: type.diameter * mm,
     regular: type.regular,
   }));
-  return { types, sourceCounts };
+}
+
+/** The printed size of every cell type of the tessellation for the print measure `cellSizeMm`
+ * (counts are 0), without any field: core measures sample cells, so this is cheap. Empty for an
+ * unusable size or when core fails. */
+export function measureTessellationCellTypes(
+  config: Pick<FieldConfig, "tessellation">,
+  cellSizeMm: number,
+): PrintCellTypeSize[] {
+  if (!Number.isFinite(cellSizeMm) || cellSizeMm <= 0) return [];
+  try {
+    return printSizesOf(config, getTessellationCellTypeSizes(config.tessellation), cellSizeMm);
+  } catch (error) {
+    console.error("Cell sizes unavailable", error);
+    return [];
+  }
 }
 
 /** Core's answer is in world units and does not depend on the entered size, so editing the size back

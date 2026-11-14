@@ -24,7 +24,7 @@ pub use check_descriptor::available_rule_params;
 pub use checks_catalog::available_checks;
 pub use field_ops::{
     field_capabilities, field_cell_sizes, field_preset, field_print_sizing, field_preset_creases, field_preset_extents,
-    field_preset_topology, field_reflect_cells, field_translate_cells,
+    field_preset_topology, field_reflect_cells, field_translate_cells, tessellation_cell_type_sizes,
 };
 pub use geometry::{
     geometry_cell_at, geometry_cells_in_region, geometry_region_edges, geometry_snapshot,

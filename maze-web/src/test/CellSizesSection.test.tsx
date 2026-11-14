@@ -17,16 +17,16 @@ describe("CellSizesSection", () => {
     render(<CellSizesSection sizes={[]} tessellationKind="square" placeholderTypes={["triangle", "hexagon"]} />);
     expect(screen.getByText("Triangle")).toBeInTheDocument();
     expect(screen.getByText("Hexagon")).toBeInTheDocument();
-    expect(screen.getAllByText(/Side — mm|Сторона — мм/)).toHaveLength(2);
-    expect(screen.getAllByText(/Diameter — mm|Диаметр — мм/)).toHaveLength(2);
+    expect(screen.getAllByTitle(/Side — mm|Сторона — мм/)).toHaveLength(2);
+    expect(screen.getAllByTitle(/Diameter — mm|Диаметр — мм/)).toHaveLength(2);
   });
 
   it("replaces the numbers with indicators while loading, keeping the type names", () => {
     render(<CellSizesSection sizes={[type("triangle"), type("hexagon")]} tessellationKind="square" placeholderTypes={["triangle", "hexagon"]} loading />);
     expect(screen.getByText("Triangle")).toBeInTheDocument();
     expect(screen.getAllByTestId("value-skeleton")).toHaveLength(4);
-    expect(screen.getAllByText(/Side|Сторона/)).toHaveLength(2);
-    expect(screen.getAllByText(/Diameter|Диаметр/)).toHaveLength(2);
+    expect(screen.getAllByTitle(/Side|Сторона/)).toHaveLength(2);
+    expect(screen.getAllByTitle(/Diameter|Диаметр/)).toHaveLength(2);
     expect(screen.queryByText(/8\.0/)).toBeNull();
   });
 
@@ -43,8 +43,8 @@ describe("CellSizesSection", () => {
 
   it("shows a row of — for one known type", () => {
     render(<CellSizesSection sizes={[]} tessellationKind="square" placeholderTypes={["cell"]} />);
-    expect(screen.getByText(/Side — mm|Сторона — мм/)).toBeInTheDocument();
-    expect(screen.getByText(/Diameter — mm|Диаметр — мм/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Side — mm|Сторона — мм/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Diameter — mm|Диаметр — мм/)).toBeInTheDocument();
     expect(screen.getByText(/^(Cell|Ячейка)$/)).toBeInTheDocument();
   });
 
@@ -76,7 +76,7 @@ describe("CellSizesSection", () => {
   it("shows only the explanation when a type is irregular", () => {
     render(<CellSizesSection sizes={[type("cell", { regular: false, sidesMm: [], diameterMm: 0 })]} tessellationKind="square" />);
     expect(screen.getByText(/average cell size|средний размер ячейки/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Diameter|Диаметр/)).toBeNull();
+    expect(screen.queryByTitle(/Diameter|Диаметр/)).toBeNull();
   });
 
   it("explains a radial field's size as the ring thickness", () => {

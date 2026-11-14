@@ -15,13 +15,12 @@ import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from ".
 import { isPredefinedFieldConfig, MIN_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { printSizingFailure, type PrintSizingAnswer, type PrintSizingFloor, type PrintSizingFloorAnswer, type PrintSizingRequest } from "../../pixi/printSizingJob";
 import { startPrintSizing } from "../../wasm/workerClients";
-import { getTessellationCellTypes } from "../../wasm/mazeService";
 import type { WorkerJob } from "../../wasm/workerPool";
 import { printEnteredFromMeasure, printMeasureFromEntered } from "../../pixi/imageExport/printFit";
 import { decodePoint } from "../../pixi/tessellationProjection";
-import { hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
-import { cellTypeLabel } from "../../i18n/cellTypeLabel";
-import { CellSizesSection, typeBreakdown } from "./CellSizesSection";
+import { hasTooSmallSide, type PrintCellTypeSize } from "../../pixi/printCellSizes";
+import { CellSizesSection, SmallSideWarning, typeBreakdown } from "./CellSizesSection";
+import { useTessellationCellTypes } from "./useTessellationCellTypes";
 import { PLACEHOLDER, ValueSkeleton, VALUE_SLOT, withValueNode } from "./valueSlot";
 import * as m from "~/paraglide/messages";
 import { PaperLayoutFields } from "../features/PaperLayoutFields";
@@ -118,16 +117,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const lastAnswer = useRef<PrintSizingAnswer | null>(null);
   if (answer) lastAnswer.current = answer;
   const shownAnswer = calculation.status === "failed" ? null : answer ?? lastAnswer.current;
-  // Every cell type of the tessellation, known before any calculation: the rows the cell sizes
-  // will have, and whether core says the cells of a type vary in size. Cheap: no cells are sent.
-  const cellTypes = useMemo(() => {
-    try {
-      const { keys, cells_vary_in_size } = getTessellationCellTypes({ tessellation: config.tessellation, points: [] });
-      return { keys, cellsVary: cells_vary_in_size };
-    } catch {
-      return { keys: [], cellsVary: false };
-    }
-  }, [config.tessellation]);
+  const cellTypes = useTessellationCellTypes(config.tessellation);
   const result = answer?.result ?? null;
   const shownResult = shownAnswer?.result ?? null;
   const floorSummaries = useMemo(
@@ -142,7 +132,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   // them, and only numbers come back.
   const cellTypeSizes = useMemo(() => shownAnswer?.measure.types ?? [], [shownAnswer]);
   const floorCellCounts = useMemo(() => new Map((shownAnswer?.floors ?? []).map((entry) => [entry.id, entry.cellCount])), [shownAnswer]);
-  const smallSideTypes = useMemo(() => cellTypeSizes.filter(hasTooSmallSide), [cellTypeSizes]);
+  const hasSmallSide = useMemo(() => cellTypeSizes.some(hasTooSmallSide), [cellTypeSizes]);
   const hasInvalidTargetFloor = hasMultipleFloors
     && applyToAllStandardFloors
     && floorSummaries.some(({ info }) => !info.isValid);
@@ -209,7 +199,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   }
 
   return (
-    <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose} onConfirm={canConfirm ? () => void handleApply() : undefined}>
+    <Modal title={m["field.print_sizing.title"]()} size="printSizing" onClose={onClose} onConfirm={canConfirm ? () => void handleApply() : undefined}>
+      <div style={styles.body}>
       <Stack gap="itemGap">
         <PaperLayoutFields
           paperSize={paperSize}
@@ -297,7 +288,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
                 "field.print_sizing.floor_total", "field.print_sizing.floor_total_types", formatCellCount(sumOf(floorCellCounts)), cellTypeSizes,
               )}</div>
               {answer && (!shownResult || hasInvalidTargetFloor) && (
-                <WarningBubble severity="critical" message={failureText(input)} />
+                <div style={styles.wrapText}><WarningBubble severity="critical" message={failureText(input)} /></div>
               )}
             </Stack>
           ) : showProgress ? (
@@ -313,7 +304,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
               )}</span>
             </Stack>
           ) : answer ? (
-            <WarningBubble severity="critical" message={failureText(input)} />
+            <div style={styles.wrapText}><WarningBubble severity="critical" message={failureText(input)} /></div>
           ) : (
             <Stack gap="elementsGap">
               <span style={typography.body}>{resultPlaceholder(config, PLACEHOLDER)}</span>
@@ -322,29 +313,23 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           )}
         </div>
         {calculation.status === "failed" && (
-          <div style={styles.warnings}>
+          <div style={{ ...styles.warnings, ...styles.wrapText }}>
             <WarningBubble severity="critical" message={m["field.print_sizing.failed"]({ reason: calculation.message })} />
           </div>
         )}
         {/* Warnings belong to the answer on screen, so they wait for the one being calculated. */}
         {!showProgress && searchLimit !== null && (
-          <div style={styles.warnings}>
+          <div style={{ ...styles.warnings, ...styles.wrapText }}>
             <WarningBubble message={m["field.print_sizing.limit_reached"]({ limit: String(searchLimit) })} />
           </div>
         )}
-        {!showProgress && smallSideTypes.length > 0 && (
-          <div style={styles.warnings}>
-            <WarningBubble
-              message={m["field.print_sizing.warning_small_side"]({
-                types: smallSideTypes
-                  .map((type) => `${cellTypeLabel(type.key)} ${m["field.print_sizing.length_mm"]({ value: Math.min(...type.sidesMm).toFixed(1) })}`)
-                  .join(", "),
-                min: String(MIN_COMFORTABLE_CELL_SIDE_MM),
-              })}
-            />
+        {!showProgress && hasSmallSide && (
+          <div style={{ ...styles.warnings, ...styles.wrapText }}>
+            <SmallSideWarning sizes={cellTypeSizes} />
           </div>
         )}
       </Stack>
+      </div>
 
       <div style={styles.footer}>
         <Button variant="secondary" dialogAction layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
@@ -498,6 +483,10 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  // 15px each side: the dialog is the width of its data plus 30px.
+  body: { padding: "0 15px" },
+  // Running text does not set the dialog's width, it wraps to it.
+  wrapText: { contain: "inline-size" },
   label: { flex: 1, ...typography.body },
   input: { ...sharedStyles.input, width: 56, boxSizing: "border-box" },
   result: { padding: 0 },

@@ -11,8 +11,10 @@ import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/t
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, printEnteredFromMeasure, printMinSideMm as computePrintMinSideMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
-import { MIN_COMFORTABLE_CELL_SIDE_MM } from "../../pixi/printCellSizes";
+import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, printEnteredFromMeasure, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { CellSizesSection, SmallSideWarning } from "../dialogs/CellSizesSection";
+import { useTessellationCellTypes } from "../dialogs/useTessellationCellTypes";
+import { hasTooSmallSide, measureTessellationCellTypes } from "../../pixi/printCellSizes";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
 import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
@@ -186,9 +188,28 @@ export function PngExportSettingsPanel() {
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];
   const printCellSizeMm = printCellMeasureMm(cfg, print.scale, printDpi);
-  const printMinSideMm = computePrintMinSideMm(cfg, print.scale, printDpi);
   // The sizes the print result reports are the ones the print-sizing dialog takes for the kind.
   const sizeModes = TESSELLATION_UI[cfg.tessellation.kind].editor.sizeModes;
+  // Core measures sample cells of every type (no field cells), so the call is cheap and runs here;
+  // it is made at a measure of 1 mm because every printed length is linear in the measure.
+  // Cells that vary in size have no sizes to measure (their own line above states the entered
+  // size), so core is not asked, which would build their costly tessellation again.
+  const cellTypes = useTessellationCellTypes(cfg.tessellation);
+  const unitCellTypeSizes = useMemo(
+    () => (cellTypes.cellsVary ? [] : measureTessellationCellTypes({ tessellation: cfg.tessellation }, 1)),
+    [cfg.tessellation, cellTypes.cellsVary],
+  );
+  const cellTypeSizes = useMemo(
+    () => (Number.isFinite(printCellSizeMm) && printCellSizeMm > 0
+      ? unitCellTypeSizes.map((type) => ({
+        ...type,
+        sidesMm: type.sidesMm.map((side) => side * printCellSizeMm),
+        diameterMm: type.diameterMm * printCellSizeMm,
+      }))
+      : []),
+    [unitCellTypeSizes, printCellSizeMm],
+  );
+  const hasSmallSide = useMemo(() => cellTypeSizes.some(hasTooSmallSide), [cellTypeSizes]);
   const printRingThicknessMm = printEnteredFromMeasure(cfg, "ring_thickness", printCellSizeMm);
   const scaleRow = (
     <SliderRow
@@ -355,16 +376,6 @@ export function PngExportSettingsPanel() {
                       height: String(Math.round(printFit.sheetHeightPx)),
                     })}
                   </span>
-                  {sizeModes.includes("cell_size") && (
-                    <span style={typography.caption}>
-                      {m["image_export.format.png.result.cell_size_mm_diameter"]({ size: printCellSizeMm.toFixed(2) })}
-                    </span>
-                  )}
-                  {sizeModes.includes("min_side") && (
-                    <span style={typography.caption}>
-                      {m["image_export.format.png.result.min_side_mm"]({ size: printMinSideMm.toFixed(2) })}
-                    </span>
-                  )}
                   {sizeModes.includes("average_size") && (
                     <span style={typography.caption}>
                       {m["image_export.format.png.result.average_size_mm"]({ size: printCellSizeMm.toFixed(2) })}
@@ -376,10 +387,17 @@ export function PngExportSettingsPanel() {
                     </span>
                   )}
                 </Stack>
+                {/* The same per-type table as the print-sizing dialog (GitHub issue #1006). */}
+                <CellSizesSection
+                  sizes={cellTypeSizes}
+                  tessellationKind={cfg.tessellation.kind}
+                  placeholderTypes={cellTypes.keys}
+                  cellsVary={cellTypes.cellsVary}
+                />
               </>
             )}
 
-            {sizeModes.includes("min_side") && printMinSideMm < MIN_COMFORTABLE_CELL_SIDE_MM && <PngFitWarningBubble id="png_min_side_too_short" />}
+            {hasSmallSide && <SmallSideWarning sizes={cellTypeSizes} />}
             {printFit?.clipsSheetBounds && <PngFitWarningBubble id="png_content_clips_sheet" />}
             {printFit?.entersMarginZone && <PngFitWarningBubble id="png_content_in_margin_zone" />}
 

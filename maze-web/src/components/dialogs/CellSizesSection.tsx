@@ -1,6 +1,8 @@
 import React from "react";
+import { Circle, MoveHorizontal, type LucideIcon } from "lucide-react";
 import { Stack } from "../Layout";
 import { WarningIcon } from "../WarningIcon";
+import { WarningBubble } from "../WarningBubble";
 import { indent, spacing, typography, ui } from "../../styles/theme";
 import { hasIrregularType, hasTooSmallSide, MIN_COMFORTABLE_CELL_SIDE_MM, type PrintCellTypeSize } from "../../pixi/printCellSizes";
 import { cellTypeLabel } from "../../i18n/cellTypeLabel";
@@ -23,8 +25,16 @@ export function CellSizesSection({ sizes, tessellationKind, placeholderTypes, ce
 }) {
   if (sizes.length === 0 && !placeholderTypes) return null;
   const mark = loading ? <ValueSkeleton width="3em" /> : PLACEHOLDER;
-  const markedSide = withValueNode(m["field.print_sizing.cell_sizes_side_value"]({ value: VALUE_SLOT }), mark);
-  const markedDiameter = withValueNode(m["field.print_sizing.cell_sizes_diameter_value"]({ value: VALUE_SLOT }), mark);
+  const markedSide = (
+    <IconValue icon={MoveHorizontal} label={m["field.print_sizing.cell_sizes_side_value"]({ value: PLACEHOLDER })}>
+      {withValueNode(m["field.print_sizing.length_mm"]({ value: VALUE_SLOT }), mark)}
+    </IconValue>
+  );
+  const markedDiameter = (
+    <IconValue icon={Circle} label={m["field.print_sizing.cell_sizes_diameter_value"]({ value: PLACEHOLDER })}>
+      {withValueNode(m["field.print_sizing.length_mm"]({ value: VALUE_SLOT }), mark)}
+    </IconValue>
+  );
   // While recalculating, the rows of the answer on screen stay; the types of the tessellation stand in before any answer.
   const markedTypes = sizes.length > 0 ? sizes.map((type) => type.key) : placeholderTypes ?? [];
   // Cells that differ in size have no sides or diameter to list: only the explanation is shown.
@@ -32,7 +42,7 @@ export function CellSizesSection({ sizes, tessellationKind, placeholderTypes, ce
     return (
       <>
         <div style={styles.divider} />
-        <span style={typography.body}>
+        <span style={styles.explanation}>
           {/* A radial field's entered size is the thickness of a ring, not an average cell. */}
           {(tessellationKind === "radial" ? m["field.print_sizing.cell_sizes_irregular_radial"] : m["field.print_sizing.cell_sizes_irregular"])()}
         </span>
@@ -60,7 +70,7 @@ export function CellSizesSection({ sizes, tessellationKind, placeholderTypes, ce
               <div key={type.key} style={styles.floorRow}>
                 <span>{cellTypeLabel(type.key)}</span>
                 <span>{type.regular ? <SideValue type={type} /> : "-"}</span>
-                <span>{type.regular ? diameterText(type) : "-"}</span>
+                <span>{type.regular ? <DiameterValue type={type} /> : "-"}</span>
               </div>
             ))
           )}
@@ -76,21 +86,56 @@ export function typeBreakdown(sizes: PrintCellTypeSize[]): string {
   return sizes.map((type) => `${cellTypeLabel(type.key)} ${type.count}`).join(", ");
 }
 
-/** The prefixed side text of a type; orange with a warning icon beside it when the side is too small. */
-function SideValue({ type }: { type: PrintCellTypeSize }) {
-  const text = (type.sidesMm.length === 1 ? m["field.print_sizing.cell_sizes_side_value"] : m["field.print_sizing.cell_sizes_sides_value"])({
-    value: formatLengths(type.sidesMm),
-  });
-  if (!hasTooSmallSide(type)) return <>{text}</>;
+/** The warning for the types whose smallest side prints under `MIN_COMFORTABLE_CELL_SIDE_MM`; nothing
+ * when no side is too small. Shared by the print-sizing dialog and the PNG print settings. */
+export function SmallSideWarning({ sizes }: { sizes: PrintCellTypeSize[] }) {
+  const small = sizes.filter(hasTooSmallSide);
+  if (small.length === 0) return null;
   return (
-    <span style={styles.smallSide}>
-      {text} <WarningIcon title={m["field.print_sizing.warning_small_side_hint"]({ min: String(MIN_COMFORTABLE_CELL_SIDE_MM) })} />
+    <WarningBubble
+      message={m["field.print_sizing.warning_small_side"]({
+        types: small
+          .map((type) => `${cellTypeLabel(type.key)} ${m["field.print_sizing.length_mm"]({ value: Math.min(...type.sidesMm).toFixed(1) })}`)
+          .join(", "),
+        min: String(MIN_COMFORTABLE_CELL_SIDE_MM),
+      })}
+    />
+  );
+}
+
+/** A value led by an icon instead of a word, so the table fits the narrow settings panel; the full
+ * wording (`label`) is the tooltip and the accessible name. */
+function IconValue({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: React.ReactNode }) {
+  return (
+    <span style={styles.iconValue} role="group" title={label} aria-label={label}>
+      <Icon size={14} aria-hidden="true" style={styles.icon} />
+      <span>{children}</span>
     </span>
   );
 }
 
-function diameterText(type: PrintCellTypeSize): string {
-  return m["field.print_sizing.cell_sizes_diameter_value"]({ value: formatLengths([type.diameterMm]) });
+/** The side lengths of a type; orange with a warning icon beside it when the side is too small. */
+function SideValue({ type }: { type: PrintCellTypeSize }) {
+  const value = formatLengths(type.sidesMm);
+  const label = (type.sidesMm.length === 1 ? m["field.print_sizing.cell_sizes_side_value"] : m["field.print_sizing.cell_sizes_sides_value"])({ value });
+  const content = (
+    <IconValue icon={MoveHorizontal} label={label}>{m["field.print_sizing.length_mm"]({ value })}</IconValue>
+  );
+  if (!hasTooSmallSide(type)) return content;
+  return (
+    <span style={styles.smallSide}>
+      {content}<WarningIcon title={m["field.print_sizing.warning_small_side_hint"]({ min: String(MIN_COMFORTABLE_CELL_SIDE_MM) })} />
+    </span>
+  );
+}
+
+function DiameterValue({ type }: { type: PrintCellTypeSize }) {
+  const value = formatLengths([type.diameterMm]);
+  return (
+    <IconValue icon={Circle} label={m["field.print_sizing.cell_sizes_diameter_value"]({ value })}>
+      {m["field.print_sizing.length_mm"]({ value })}
+    </IconValue>
+  );
 }
 
 function formatLengths(lengthsMm: number[]): string {
@@ -99,6 +144,8 @@ function formatLengths(lengthsMm: number[]): string {
 
 const styles: Record<string, React.CSSProperties> = {
   sectionLabel: typography.body,
+  // Running text must not set the width of the dialog around it: it wraps to it.
+  explanation: { ...typography.body, display: "block", contain: "inline-size" },
   divider: { borderTop: `1px solid ${ui.border.default}` },
   floorRow: { display: "contents" },
   cellSizeTable: {
@@ -110,5 +157,8 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
     ...typography.body,
   },
-  smallSide: { color: ui.text.warning },
+  // The warning glyph sits on the text baseline otherwise, which reads as shifted down next to the icon and value.
+  smallSide: { color: ui.text.warning, display: "inline-flex", alignItems: "center", gap: spacing.itemGap },
+  iconValue: { display: "inline-flex", alignItems: "center", gap: spacing.itemGap },
+  icon: { flexShrink: 0 },
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { printMeasureFromEntered } from "../pixi/imageExport/printFit";
-import { cellSourceOf, hasTooSmallSide, measurePrintCells, type CellSource } from "../pixi/printCellSizes";
+import { cellSourceOf, hasTooSmallSide, measurePrintCells, measureTessellationCellTypes, type CellSource } from "../pixi/printCellSizes";
 import { configAllCells } from "../pixi/tessellationCells";
 import * as mazeService from "../wasm/mazeService";
 import { fieldOf } from "./fieldConfigFixtures";
@@ -130,5 +130,26 @@ describe("measurePrintCells", () => {
     expect(() => measurePrintCells(config, [{ cells }], 10)).not.toThrow();
     expect(spy.mock.calls[0][1].cells).toHaveLength(200_000);
     spy.mockRestore();
+  });
+});
+
+describe("measureTessellationCellTypes", () => {
+  it("sizes every cell type without any field, linearly in the measure", () => {
+    const { tessellation } = fieldOf("trihexagonal", { shape: "rect", cols: 2, rows: 2 });
+    const unit = measureTessellationCellTypes({ tessellation }, 1);
+    const scaled = measureTessellationCellTypes({ tessellation }, 6);
+    expect(unit).toHaveLength(2);
+    expect(unit.every((type) => type.regular && type.count === 0 && type.diameterMm > 0)).toBe(true);
+    expect(scaled[1].diameterMm).toBeCloseTo(unit[1].diameterMm * 6);
+  });
+
+  it("is empty for an unusable measure and survives core failing", () => {
+    const { tessellation } = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
+    expect(measureTessellationCellTypes({ tessellation }, 0)).toEqual([]);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(mazeService, "getTessellationCellTypeSizes").mockImplementationOnce(() => { throw new Error("boom"); });
+    expect(measureTessellationCellTypes({ tessellation }, 5)).toEqual([]);
+    spy.mockRestore();
+    error.mockRestore();
   });
 });

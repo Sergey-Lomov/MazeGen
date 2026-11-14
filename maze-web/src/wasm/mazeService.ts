@@ -501,6 +501,12 @@ export function getFieldCellSizes(
   return { types: report.types, presetCounts: report.preset_counts };
 }
 
+/// The sides and diameter of every cell type of the tessellation (`count` 0), from sample cells core
+/// picks itself: independent of any field and cheap, unlike `getFieldCellSizes`.
+export function getTessellationCellTypeSizes(tessellation: WasmTessellationConfig): CellTypeSizes[] {
+  return getWasm().tessellation_cell_type_sizes(tessellation) as CellTypeSizes[];
+}
+
 /// Cells moved by a world-unit vector that must be a translation symmetry of the tessellation.
 export function translateFieldCells(
   tessellation: WasmTessellationConfig,

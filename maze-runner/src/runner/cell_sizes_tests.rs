@@ -182,3 +182,40 @@ fn refused_preset_is_an_empty_field() {
     assert!(result.types.is_empty());
     assert_eq!(result.preset_counts, vec![0]);
 }
+
+#[test]
+fn type_sizes_match_the_sizes_measured_from_a_field() {
+    for kind in [
+        TessellationKind::Square,
+        TessellationKind::Brick,
+        TessellationKind::Trihexagonal,
+        TessellationKind::SquareOctagon,
+        TessellationKind::SnubSquare,
+        TessellationKind::Cairo,
+    ] {
+        let by_field = sizes(kind, rect_cells(kind, 6, 6));
+        let by_type = cell_type_sizes(&config(kind)).unwrap();
+        assert_eq!(by_type.len(), by_field.len(), "{kind:?}");
+        for (sample, measured) in by_type.iter().zip(&by_field) {
+            assert_eq!(sample.key, measured.key, "{kind:?}");
+            assert_eq!(sample.count, 0, "{kind:?}");
+            assert_eq!(sample.regular, measured.regular, "{kind:?}");
+            assert!((sample.diameter - measured.diameter).abs() < 1e-9, "{kind:?}");
+            assert_eq!(sample.sides.len(), measured.sides.len(), "{kind:?}");
+        }
+    }
+}
+
+#[test]
+fn type_sizes_of_a_varying_tessellation_have_no_size() {
+    let tessellation = TessellationConfig {
+        kind: TessellationKind::Radial,
+        params: serde_json::json!({ "first_ring_cells": 9, "ring_layout": "classic", "max_cells": 3000 })
+            .as_object()
+            .unwrap()
+            .clone(),
+    };
+    let result = cell_type_sizes(&tessellation).unwrap();
+    assert!(!result.is_empty());
+    assert!(result.iter().all(|t| !t.regular && t.sides.is_empty() && t.diameter == 0.0));
+}

@@ -87,6 +87,17 @@ pub fn field_cell_sizes(request: JsValue) -> Result<JsValue, JsValue> {
     }
 }
 
+/// Sides and diameter of every cell type of a tessellation, in world units, from sample cells around
+/// its origin: independent of any field and cheap. The error is `{ kind, message? }`.
+#[wasm_bindgen]
+pub fn tessellation_cell_type_sizes(tessellation: JsValue) -> Result<JsValue, JsValue> {
+    let tessellation: maze_runner::config::TessellationConfig = decode(tessellation)?;
+    match cell_sizes::cell_type_sizes(&tessellation) {
+        Ok(types) => Ok(serde_wasm_bindgen::to_value(&types).unwrap()),
+        Err(error) => Err(serde_wasm_bindgen::to_value(&error).unwrap()),
+    }
+}
+
 /// Cells moved by a world vector that must be a translation symmetry of the tessellation.
 #[wasm_bindgen]
 pub fn field_translate_cells(request: JsValue) -> Result<JsValue, JsValue> {
