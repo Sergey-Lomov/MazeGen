@@ -12,7 +12,7 @@ import type { TeleportFloorContext } from "./mazeSelectors";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
 import { computeElevatorBadgeLayout, elevatorBadgesOverlap, formatElevatorBadgeLabel } from "../renderers/elevatorBadgeLayout";
-import { measureText } from "../textFit";
+import { labelInkOverlaps } from "../textFit";
 import { plainLabelFont } from "../renderers/fontChoice";
 import { TILE_SIZE } from "../constants";
 import { buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle } from "../imageExport/exportStyleBuilders";
@@ -381,7 +381,7 @@ function elevatorBadgeEndGapTooSmall(positions: readonly { x: number; y: number 
  *  floor the elevator reaches. Mirrors `VerticalConnectionRenderer.drawElevatorBadges`'s own
  *  `markerRadius`/`badgeRadius` computation. */
 const wallsElevatorBadges = group<VectorByWallsSettings>(
-  "elevatorBadges", ["elevator_badges_overlap", "elevator_badges_merged_end_gap_too_small", "elevator_badges_gap_falls_back_to_even_distribution", "elevator_badges_too_many"],
+  "elevatorBadges", ["elevator_badges_overlap", "elevator_badges_merged_labels_overlap", "elevator_badges_merged_end_gap_too_small", "elevator_badges_gap_falls_back_to_even_distribution", "elevator_badges_too_many"],
   (env, s) => collect((out) => {
     if (!s.elevatorBadges.enabled) return;
     const verticalPairs = selectVerticalPassagePairSet(env.edges);
@@ -392,6 +392,8 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
     const badgeRadius = s.elevatorBadges.size / 2 + s.elevatorBadges.borderWidth;
     const overlappingNodeIds: number[] = [];
     const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];
+    const mergedLabelNodeIds: number[] = [];
+    const mergedLabelTargets: { nodeId: number; targetFloorIndex: number }[] = [];
     const tightEndGapNodeIds: number[] = [];
     const tightEndGapTargets: { nodeId: number; targetFloorIndex: number }[] = [];
     const fallbackNodeIds: number[] = [];
@@ -407,20 +409,23 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
         evenDistribution: s.elevatorBadges.evenDistribution, obstacles, startAngle: s.elevatorBadges.startAngle,
       });
       // Merged bands replace the individual bodies. Their only independently colliding content is
-      // the floor label, so retain this warning only for overlapping label ink bounds.
+      // the floor label, so report its glyph ink under a distinct warning.
       const merged = (s.elevatorBadges.backing ?? "individual") !== "individual";
       const overlaps = merged
         ? positions.some((position, i) => {
-          const label = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i], s.elevatorBadges.labelType), plainLabelFont(s.elevatorBadges.textFont), s.elevatorBadges.textSize);
           return positions.slice(i + 1).some((other, j) => {
-            const otherLabel = measureText(formatElevatorBadgeLabel(marker.targetFloorIndices![i + j + 1], s.elevatorBadges.labelType), plainLabelFont(s.elevatorBadges.textFont), s.elevatorBadges.textSize);
-            return Math.abs(position.x - other.x) < (label.width + otherLabel.width) / 2 && Math.abs(position.y - other.y) < (label.height + otherLabel.height) / 2;
+            return labelInkOverlaps(
+              { text: formatElevatorBadgeLabel(marker.targetFloorIndices![i], s.elevatorBadges.labelType), font: plainLabelFont(s.elevatorBadges.textFont), fontSize: s.elevatorBadges.textSize, x: position.x, y: position.y },
+              { text: formatElevatorBadgeLabel(marker.targetFloorIndices![i + j + 1], s.elevatorBadges.labelType), font: plainLabelFont(s.elevatorBadges.textFont), fontSize: s.elevatorBadges.textSize, x: other.x, y: other.y },
+            );
           });
         })
         : elevatorBadgesOverlap(positions, badgeRadius);
       if (overlaps) {
-        overlappingNodeIds.push(marker.fromNode);
-        overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
+        const nodes = merged ? mergedLabelNodeIds : overlappingNodeIds;
+        const targets = merged ? mergedLabelTargets : overlappingTargets;
+        nodes.push(marker.fromNode);
+        targets.push({ nodeId: marker.fromNode, targetFloorIndex: env.resolveNodeLevel(marker.fromNode) ?? 0 });
       }
       if (
         (s.elevatorBadges.backing ?? "individual") !== "individual"
@@ -442,6 +447,9 @@ const wallsElevatorBadges = group<VectorByWallsSettings>(
     }
     if (overlappingNodeIds.length > 0) {
       out.push({ id: "elevator_badges_overlap", key: "elevator_badges_overlap", nodes: overlappingNodeIds, edges: [], crossFloorTargets: overlappingTargets });
+    }
+    if (mergedLabelNodeIds.length > 0) {
+      out.push({ id: "elevator_badges_merged_labels_overlap", key: "elevator_badges_merged_labels_overlap", nodes: mergedLabelNodeIds, edges: [], crossFloorTargets: mergedLabelTargets });
     }
     if (tightEndGapNodeIds.length > 0) {
       out.push({ id: "elevator_badges_merged_end_gap_too_small", key: "elevator_badges_merged_end_gap_too_small", nodes: tightEndGapNodeIds, edges: [], crossFloorTargets: tightEndGapTargets });

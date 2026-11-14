@@ -5,7 +5,7 @@ import type { PrintExportSettings } from "../../store/storeTypes";
 import { PAPER_SIZES_MM } from "./paperSizes";
 import { placeInBox } from "./exportFit";
 import { VIEWPORT_FIT_PADDING } from "../constants";
-import { TESSELLATION_UI } from "../geometry/tessellationUi";
+import { TESSELLATION_UI, type PrintSizeMode } from "../geometry/tessellationUi";
 
 const MM_PER_INCH = 25.4;
 
@@ -38,8 +38,8 @@ export function pxToMm(px: number, dpi: number): number {
   return (px / dpi) * MM_PER_INCH;
 }
 
-/** World-space length of the print-sizing measure at scale 1: square side, or circumcircle
- * diameter for regular hexagons and triangles. */
+/** World-space length of the print-sizing measure at scale 1: the cell's circumscribed circle
+ * diameter (GitHub issue #1002). */
 export function cellMeasureWorldUnits(config: Pick<FieldConfig, "tessellation">): number {
   return TESSELLATION_UI[config.tessellation.kind].cellMeasurePx;
 }
@@ -49,10 +49,31 @@ export function cellSideWorldUnits(config: Pick<FieldConfig, "tessellation">): n
   return TESSELLATION_UI[config.tessellation.kind].cellSidePx;
 }
 
-/** Converts the print-sizing measure (square side or polygon circumcircle diameter) to a
- * geometric cell side in millimeters. */
+/** Converts the print-sizing measure (circumscribed circle diameter) to the geometric cell side,
+ * the minimum side length, in millimeters. */
 export function printMeasureToCellSideMm(config: Pick<FieldConfig, "tessellation">, measureMm: number): number {
   return measureMm * cellSideWorldUnits(config) / cellMeasureWorldUnits(config);
+}
+
+/** World-space length of the thing a size mode enters, at scale 1. */
+function sizeModeWorldUnits(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode): number {
+  const ui = TESSELLATION_UI[config.tessellation.kind];
+  switch (mode) {
+    case "cell_size": return ui.cellMeasurePx;
+    case "min_side": return ui.cellSidePx;
+    case "ring_thickness": return ui.ringThicknessPx ?? ui.cellMeasurePx;
+    case "average_size": return ui.cellMeasurePx;
+  }
+}
+
+/** The print-sizing measure (cell size) of a value entered in `mode` (GitHub issue #1002). */
+export function printMeasureFromEntered(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode, value: number): number {
+  return value * cellMeasureWorldUnits(config) / sizeModeWorldUnits(config, mode);
+}
+
+/** The value of `mode` that stands for the print-sizing measure `measureMm`; inverse of `printMeasureFromEntered`. */
+export function printEnteredFromMeasure(config: Pick<FieldConfig, "tessellation">, mode: PrintSizeMode, measureMm: number): number {
+  return measureMm * sizeModeWorldUnits(config, mode) / cellMeasureWorldUnits(config);
 }
 
 /** Physical print-sizing measure represented by a print scale. */

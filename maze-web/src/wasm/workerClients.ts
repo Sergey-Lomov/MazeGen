@@ -34,8 +34,12 @@ export function startPrintSizing(request: PrintSizingRequest): WorkerJob<PrintSi
 
 /** Runs generation off the main thread so long WASM calls can provide responsive UI feedback. The
  *  worker stays alive afterwards, so WASM is initialized once per worker rather than per run. */
+export function startGenerateMaze(seed: number, config: GenerateConfig, onProgress: (progress: number) => void): WorkerJob<GenerateMazeResult> {
+  return generationPool.run({ seed, config }, [], onProgress);
+}
+
 export function generateMazeAsync(seed: number, config: GenerateConfig): Promise<GenerateMazeResult> {
-  return generationPool.run({ seed, config }).promise;
+  return startGenerateMaze(seed, config, () => {}).promise;
 }
 
 /** Runs the expensive analytics-only WASM call off the UI thread. A newer request supersedes the

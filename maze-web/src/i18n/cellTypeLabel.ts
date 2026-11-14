@@ -7,6 +7,7 @@ export function cellTypeLabel(key: string): string {
     case "triangle": return m["generation.cell_type.triangle"]();
     case "square": return m["generation.cell_type.square"]();
     case "hexagon": return m["generation.cell_type.hexagon"]();
+    case "pentagon": return m["generation.cell_type.pentagon"]();
     case "octagon": return m["generation.cell_type.octagon"]();
     case "dodecagon": return m["generation.cell_type.dodecagon"]();
     default: return key;

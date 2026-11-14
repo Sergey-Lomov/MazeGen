@@ -12,6 +12,7 @@ import { knownRasterWeights, registerLocalFaces, type LocalFontFace } from "./ra
  * MSDF Roboto, which remains the portable project-file fallback. */
 const loadedFonts = new Set<string>();
 const loadingFonts = new Map<string, Promise<boolean>>();
+let loadedFontGeneration = 0;
 const fontKey = (family: string, weight: number) => `${weight}|${family}`;
 
 let sharedMeasureContext: CanvasRenderingContext2D | null | undefined;
@@ -129,6 +130,12 @@ export function usesCanvasText(font: LabelFont | undefined, text: string): boole
   return !(isRasterFontReady(font) && rasterCoversText(font, text));
 }
 
+/** Changes whenever a browser font becomes available, so selector caches can discard fallback
+ * text metrics and re-evaluate against the font that the renderer now draws. */
+export function labelFontMetricsKey(): number {
+  return loadedFontGeneration;
+}
+
 /** Weights a raster font family offers, ascending (GitHub issue #973). They are exactly the weights of the
  *  family's font files: its uploaded faces, else the installed normal-style faces the Local Font Access API
  *  reported. For a family with no readable file (a project saved elsewhere) a face is offered only when the
@@ -172,6 +179,7 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
       if (!document.fonts.check(face)) return false;
       if (!isFontFamilyInstalled(family)) return false;
       loadedFonts.add(key);
+      loadedFontGeneration++;
       if (typeof window !== "undefined") window.dispatchEvent(new Event(LABEL_FONT_LOADED_EVENT));
       return true;
     } catch {

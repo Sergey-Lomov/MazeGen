@@ -183,7 +183,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(dialog).toBeTruthy();
     const dialogQueries = within(dialog!);
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
-    fireEvent.change(inputs[4], { target: { value: "10" } });
+    fireEvent.change(inputs[4], { target: { value: "9.99" } });
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     // The typed size is still a draft: confirming takes it and calculates it before applying.
     await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
@@ -198,7 +198,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
       marginVMm: 5,
       scaleAutoFit: false,
     });
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / 40);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(9.99, 300) / 40);
   });
 
   it("keeps the print cell-size input compact", () => {
@@ -217,7 +217,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(await screen.findByText("Field size: 20 × 28 cells")).toBeInTheDocument();
+    expect(await screen.findByText("Field size: 25 × 35 cells")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
@@ -226,8 +226,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(await screen.findByText("Field size: 20 × 28 cells")).toBeInTheDocument();
-    expect(screen.getByText("Cell count: 560")).toBeInTheDocument();
+    expect(await screen.findByText("Field size: 25 × 35 cells")).toBeInTheDocument();
+    expect(screen.getByText("Cell count: 875")).toBeInTheDocument();
     expect(screen.queryByText(/Field footprint:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Usable area:/)).not.toBeInTheDocument();
   });
@@ -243,7 +243,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
           orientation: "landscape",
           marginHMm: 7,
           marginVMm: 9,
-          scale: mmToPx(12, 150) / 40,
+          scale: mmToPx(12, 150) / (40 * Math.SQRT2),
           scaleAutoFit: false,
         },
       },
@@ -259,10 +259,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(inputs[1].value).toBe("297");
     expect(inputs[2].value).toBe("7");
     expect(inputs[3].value).toBe("9");
-    expect(inputs[4].value).toBe("12");
+    expect(inputs[4].value).toBe("8");
   });
 
-  it("opens with a cell size derived from the print scale even when auto-fit is on", () => {
+  it("opens with the default minimum side even when auto-fit is on", () => {
     useMazeStore.setState({
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
@@ -273,7 +273,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("8.47");
+    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("8");
   });
 
   it("allows the last numeric character to be cleared", () => {
@@ -521,8 +521,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const dialogQueries = within(dialog!);
     const cellInput = dialogQueries.getAllByRole("spinbutton")[4] as HTMLInputElement;
-    fireEvent.change(cellInput, { target: { value: "10" } });
-    expect(cellInput.value).toBe("10");
+    fireEvent.change(cellInput, { target: { value: "9.99" } });
+    expect(cellInput.value).toBe("9.99");
     fireEvent.click(getTooltipControlWithin(dialog!, "Portrait"));
     expect(dialogQueries.getByRole("checkbox")).toBeChecked();
     await waitFor(() => expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
@@ -564,8 +564,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     const customRow = screen.getByText("3: Custom floor").parentElement!;
     expect(upperRow.compareDocumentPosition(groundRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(groundRow).getByText("Rectangle")).toBeInTheDocument();
-    expect(within(groundRow).getByText("20 × 28")).toBeInTheDocument();
-    expect(within(groundRow).getByText("560 cells")).toBeInTheDocument();
+    expect(within(groundRow).getByText("25 × 35")).toBeInTheDocument();
+    expect(within(groundRow).getByText("875 cells")).toBeInTheDocument();
     expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
     expect(within(customRow).getByText("Non-standard shape")).toBeInTheDocument();
     expect(within(customRow).getByText("—")).toBeInTheDocument();
@@ -575,7 +575,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
-    fireEvent.change(cellInput, { target: { value: "5" } });
+    fireEvent.change(cellInput, { target: { value: "4.99" } });
     // The preview follows the committed value, not every keystroke.
     fireEvent.blur(cellInput);
 
@@ -618,7 +618,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
       marginHMm: 5,
       marginVMm: 5,
     });
-    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / 40);
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / (40 * Math.SQRT2));
   });
 
   it("opens the paper layout dialog with a cell size derived from the print scale even when legacy auto-fit is on", () => {
@@ -642,7 +642,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
     const dialog = screen.getAllByText("Paper layout")[1].parentElement?.parentElement;
     const inputs = within(dialog!).getAllByRole("spinbutton") as HTMLInputElement[];
-    expect(inputs[4].value).toBe("8.47");
+    expect(inputs[4].value).toBe("11.97");
   });
 });
 

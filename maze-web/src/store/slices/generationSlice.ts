@@ -12,6 +12,7 @@ import { createGenerationStagesSlice } from "./generationSliceStages";
 import { createGenerationDebugSlice } from "./generationSliceDebug";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
+import { cancelActiveGeneration } from "./generateConfigBuilder";
 import * as m from "~/paraglide/messages";
 
 const REGISTRY_LOAD_FAILED = "generation.registry_load_failed";
@@ -89,6 +90,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   lastUsedQcExperiment: false,
   vertexSettingsPanelOpen: false,
   generationStatus: "idle" as const,
+  generationProgress: null,
   openCard: "basic_config" as const,
   debugMode: false,
   debugAutoPlayDelay: 200,
@@ -174,6 +176,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     }
     const { usedSeed, qcExperiment } = prepareGenerate();
     await generateWithSeedAsync(usedSeed, get, set, qcExperiment);
+  },
+
+  cancelGeneration: () => {
+    cancelActiveGeneration();
   },
 
   seedHistoryBack: () => set((state) => {

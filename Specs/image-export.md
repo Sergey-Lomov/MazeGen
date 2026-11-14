@@ -195,7 +195,10 @@ Sections:
 
   **`elevator_badges_overlap` export warning** — folded into `computeVectorByWallsWarnings`, checked only when `elevatorBadges.enabled`: for every `elevator` marker with 2+ `targetFloorIndices`, lays out its badge ring via `computeElevatorBadgePositions` and flags it when `elevatorBadgesOverlap` finds any two badge centers closer than `2 * badgeRadius` apart — real geometric overlap, not a fixed floor-count threshold. Its description is deliberately terse (no restated size/distance/placement fix suggestions — the settings panel is right there). Populates `crossFloorTargets` (see "Hover highlight" below).
 
-  When **Merge badges** is on, `elevator_badges_overlap` checks only the floor-label ink bounds; the individual badge bodies no longer exist and therefore cannot trigger the warning.
+  When **Merge badges** is on, `elevator_badges_overlap` does not apply because the individual badge
+  bodies no longer exist. `elevator_badges_merged_labels_overlap` instead checks floor-label glyph ink.
+  Loaded TTF/OTF labels are rasterized into bounded 4x alpha masks and compared directly, avoiding
+  bounding-box false positives; MSDF retains its established metric fallback.
 
   **Circular merged-badge warnings** — `elevator_badges_merged_end_gap_too_small` flags an uneven circular merged run whose first/last gap is tighter than its regular neighbour gaps, recommending even distribution or a smaller Spacing value. `elevator_badges_gap_falls_back_to_even_distribution` reports when an uneven circular run cannot fit on the available ring and is therefore rendered with even distribution; a marker-index plate reduces that available ring.
 
@@ -1178,7 +1181,9 @@ Unlike digital mode, the canvas is **always** the full sheet size — content is
 
 Both comparisons use a `0.01px` epsilon tolerance — floating-point placement math (`placeInBox`'s division, the auto-fit scale's own division) can land content a fraction of a pixel past an edge it's meant to touch exactly, which without the tolerance reads as a false-positive warning the instant a fit is exact rather than only once content actually overflows.
 
-**Minimum side length** (GitHub issue #1000) — the PNG print settings show "Minimum side length" under the cell size: the physical length of the shortest geometric cell side at the current scale and density, `printMinSideMm(config, scale, dpi)` (`printFit.ts`). When it is below `MIN_COMFORTABLE_CELL_SIDE_MM` (`printCellSizes.ts`, 5 mm — the same limit and wording as the print-sizing dialog's small-side warning) a `png_min_side_too_short` warning bubble is shown; it is informational and does not block export.
+**Cell size is a diameter** (GitHub issue #1002) — the print result "Cell size (diameter)" is always the diameter of the cell's circumscribed circle (`cellMeasureWorldUnits`, `TESSELLATION_UI[kind].cellMeasurePx`), also for squares (the diagonal); there is no side-length variant. A side length is entered through the print-sizing dialog's "Minimum side" input mode (`Specs/field-editor.md`).
+
+**Minimum side length** (GitHub issue #1000) — the PNG print settings of a kind that offers the `min_side` size mode (every kind but radial and Voronoi, see `TESSELLATION_UI[kind].editor.sizeModes`) show "Minimum side length" under the cell size: the physical length of the shortest geometric cell side at the current scale and density, `printMinSideMm(config, scale, dpi)` (`printFit.ts`). When it is below `MIN_COMFORTABLE_CELL_SIDE_MM` (`printCellSizes.ts`, 5 mm — the same limit and wording as the print-sizing dialog's small-side warning) a `png_min_side_too_short` warning bubble is shown; it is informational and does not block export.
 
 **Canvas zoom to scale** — while the print frame is active, panning/zooming the canvas writes the zoom-derived scale into `print.scale` rounded to two decimals (`ExportFrameOverlay.syncPlacementToViewport`), so the numeric editor never shows float noise such as `1.6200000001`; offsets stay unrounded.
 

@@ -17,6 +17,11 @@ export interface Linear {
   d: number;
 }
 
+/// What the size field of the print-sizing dialog takes (GitHub issue #1002): the diameter of a
+/// cell's circumscribed circle, the length of its shortest side, the thickness of a radial ring, or the
+/// average size of the cells of an irregular tessellation (Voronoi).
+export type PrintSizeMode = "cell_size" | "min_side" | "ring_thickness" | "average_size";
+
 /// Lattice-dependent editor behavior of one tessellation kind.
 export interface EditorUi {
   /// Axis-aligned grid: rect is `cols x rows` squares (width/height labels, exact print sizing).
@@ -30,9 +35,9 @@ export interface EditorUi {
   triangleCellCount: ((side: number) => number) | null;
   /// Which cells a circle primitive takes: by center, or only those fully inside.
   circleInclusion: "center" | "contained";
-  /// Cell-size label of the print dialogs and of the PNG result: edge length or diameter.
-  printCellSize: "side" | "diameter";
-  pngCellSize: "side" | "diameter";
+  /// The size modes the print-sizing dialog offers, the first is the default. The mode select is
+  /// shown only for several; a kind with one has that mode's name as the label of the size field.
+  sizeModes: readonly PrintSizeMode[];
 }
 
 const AXIS_ALIGNED: EditorUi = {
@@ -42,8 +47,7 @@ const AXIS_ALIGNED: EditorUi = {
   hexagonCellCount: null,
   triangleCellCount: null,
   circleInclusion: "center",
-  printCellSize: "side",
-  pngCellSize: "side",
+  sizeModes: ["min_side", "cell_size"],
 };
 
 /// UI registry entry of one tessellation kind: metadata only -- no geometry lives here. Cell
@@ -76,8 +80,11 @@ export interface TessellationUi {
   equilateralSnap: { step: number; offset: number } | null;
   /// Length of one geometric cell side, in pixels.
   cellSidePx: number;
-  /// The print-sizing measure of a cell, in pixels: the square's side, or a regular polygon's
-  /// circumcircle diameter.
+  /// Thickness of a radial ring, in pixels; only for a kind with the `ring_thickness` size mode.
+  ringThicknessPx?: number;
+  /// The print-sizing measure of a cell, in pixels: the diameter of its circumscribed circle (the
+  /// entered "cell size", GitHub issue #1002). A cell with no single circumcircle (Cairo, radial,
+  /// Voronoi) keeps a nominal measure.
   cellMeasurePx: number;
   /// A valid cell near the lattice origin (not every coordinate is a cell): where the origin marker
   /// sits, and the tile the face-only pattern editors draw (`originCellOf`).
@@ -120,7 +127,7 @@ const SNUB_SQUARE_SIDE_PX = 60;
 /** Shared by the tessellations built around hexagons (trihexagonal family). */
 const HEXAGON_FACED_UI: TessellationUi = {
   orientationSlot: null,
-  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
   orientations: [],
   defaultParams: {},
   paramSpecs: [],
@@ -141,7 +148,7 @@ const HEXAGON_FACED_UI: TessellationUi = {
 /** Shared by the tessellations built around dodecagons (truncated family). */
 const DODECAGON_FACED_UI: TessellationUi = {
   orientationSlot: null,
-  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+  editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
   orientations: [],
   defaultParams: {},
   paramSpecs: [],
@@ -172,7 +179,8 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     splitCircleRotationDeg: 45,
     equilateralSnap: { step: Math.PI / 2, offset: -Math.PI / 2 },
     cellSidePx: TILE_SIZE,
-    cellMeasurePx: TILE_SIZE,
+    // The square's circumcircle diameter, its diagonal.
+    cellMeasurePx: TILE_SIZE * Math.SQRT2,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
@@ -185,8 +193,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       hexagonCellCount: (r) => 3 * r * r + 3 * r + 1,
       triangleCellCount: null,
       circleInclusion: "center",
-      printCellSize: "diameter",
-      pngCellSize: "diameter",
+      sizeModes: ["min_side", "cell_size"],
     },
     orientations: ["flat_top", "pointy_top"],
     defaultParams: {},
@@ -211,8 +218,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       hexagonCellCount: null,
       triangleCellCount: (n) => n * n,
       circleInclusion: "contained",
-      printCellSize: "diameter",
-      pngCellSize: "diameter",
+      sizeModes: ["min_side", "cell_size"],
     },
     orientations: ["r0", "r90", "r180", "r270"],
     defaultParams: {},
@@ -230,7 +236,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   },
   cairo: {
     orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
     orientations: [],
     defaultParams: {},
     paramSpecs: [],
@@ -239,7 +245,9 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     orientation: () => IDENTITY,
     splitCircleRotationDeg: 36,
     equilateralSnap: null,
-    cellSidePx: TILE_SIZE,
+    // The short side of the pentagon (`sqrt(40)` lattice units of `sqrt(2) / 12` world units; the
+    // long side is `8`), the minimum side length. The measure stays nominal.
+    cellSidePx: TILE_SIZE * Math.sqrt(80) / 12,
     cellMeasurePx: TILE_SIZE,
     originCell: [2, 1],
     edgeHitThreshold: TILE_SIZE * 0.08,
@@ -279,7 +287,8 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     splitCircleRotationDeg: 30,
     equilateralSnap: null,
     cellSidePx: TILE_SIZE,
-    cellMeasurePx: TILE_SIZE,
+    // A brick is a unit square: its circumcircle diameter is the diagonal.
+    cellMeasurePx: TILE_SIZE * Math.SQRT2,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
@@ -290,7 +299,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   truncated_trihexagonal: DODECAGON_FACED_UI,
   elongated_triangular: {
     orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
     orientations: [],
     defaultParams: {},
     paramSpecs: [],
@@ -309,7 +318,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   },
   snub_square: {
     orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null },
     orientations: [],
     defaultParams: {},
     paramSpecs: [],
@@ -340,13 +349,14 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     splitCircleRotationDeg: 45,
     equilateralSnap: { step: Math.PI / 2, offset: -Math.PI / 2 },
     cellSidePx: TILE_SIZE * 1.5,
-    cellMeasurePx: TILE_SIZE * 1.5,
+    // The underlying unit square's circumcircle diameter, its diagonal.
+    cellMeasurePx: TILE_SIZE * 1.5 * Math.SQRT2,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 1.5 * 0.08,
   },
   radial: {
     orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, circleInclusion: "contained", printCellSize: "diameter" },
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, circleInclusion: "contained", sizeModes: ["ring_thickness"] },
     orientations: [],
     // Nine first-ring cells; classic rings keep or double their count (see Specs/space.md).
     defaultParams: { first_ring_cells: 9, ring_layout: "classic", max_cells: 3000 },
@@ -362,13 +372,14 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
     splitCircleRotationDeg: 45,
     equilateralSnap: null,
     cellSidePx: TILE_SIZE,
+    ringThicknessPx: TILE_SIZE,
     cellMeasurePx: TILE_SIZE,
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },
   voronoi: {
     orientationSlot: null,
-    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, printCellSize: "diameter" },
+    editor: { ...AXIS_ALIGNED, axisAlignedGrid: false, rectCellsPerUnit: null, sizeModes: ["average_size"] },
     orientations: [],
     // Slightly irregular cells: a displacement of 0.15 of the lattice distance (see Specs/space.md).
     defaultParams: { jitter: 0.15, seed: 1, max_cells: 3000 },
@@ -377,14 +388,15 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       { name: "seed", type: "integer", min: 0, max: 4294967295 },
       { name: "max_cells", type: "integer", min: 100, max: 10000 },
     ],
-    // A regular cell has area 1, drawn about `TILE_SIZE` wide.
+    // A regular hexagonal cell has area 1 (circumscribed circle diameter 2·√(2/(3√3)) ≈ 1.24), drawn about `TILE_SIZE` wide.
     pixelsPerUnit: TILE_SIZE,
     base: FLIP_Y,
     orientation: () => IDENTITY,
     splitCircleRotationDeg: 45,
     equilateralSnap: null,
     cellSidePx: TILE_SIZE,
-    cellMeasurePx: TILE_SIZE,
+    // Nominal: the diameter of the circumscribed circle of the regular hexagon the cells are displaced from.
+    cellMeasurePx: TILE_SIZE * 2 * Math.sqrt(2 / (3 * Math.sqrt(3))),
     originCell: [0, 0],
     edgeHitThreshold: TILE_SIZE * 0.08,
   },

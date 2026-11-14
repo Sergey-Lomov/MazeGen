@@ -32,11 +32,11 @@ fn build_multi_level_field<T: Tessellation>(
     Ok(mf)
 }
 
-pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateResult, JsValue> {
+pub fn dispatch_generate(seed: u64, config: &GenerateConfig, progress: &dyn Fn(u8)) -> Result<GenerateResult, JsValue> {
     if config.level_fields.is_empty() {
         return Err(JsValue::from_str("level_fields must not be empty"));
     }
-    build_tessellation(&config.tessellation, GenerateVisitor { seed, config })
+    build_tessellation(&config.tessellation, GenerateVisitor { seed, config, progress })
         .map_err(|e| JsValue::from_str(&e))?
 }
 
@@ -44,13 +44,14 @@ pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateR
 struct GenerateVisitor<'a> {
     seed: u64,
     config: &'a GenerateConfig,
+    progress: &'a dyn Fn(u8),
 }
 
 impl TessellationVisitor for GenerateVisitor<'_> {
     type Output = Result<GenerateResult, JsValue>;
 
     fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
-        let GenerateVisitor { seed, config } = self;
+        let GenerateVisitor { seed, config, progress } = self;
         let level_points: Vec<Vec<T::CellId>> = config
             .level_fields
             .iter()
@@ -79,6 +80,6 @@ impl TessellationVisitor for GenerateVisitor<'_> {
             &config.tessellation,
         )
         .map_err(|e| JsValue::from_str(&e))?;
-        run_generate(seed, field, ids, start, config, codec.to_xy, codec.from_xy)
+        run_generate(seed, field, ids, start, config, codec.to_xy, codec.from_xy, progress)
     }
 }

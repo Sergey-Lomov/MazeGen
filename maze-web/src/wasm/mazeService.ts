@@ -2,7 +2,7 @@ import { getWasm } from "./wasmLoader";
 import type { CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, WasmTessellationConfig, WireTopology, WireFoldEnd } from "./types";
 
 export * from "./mazeGeneration";
-export { generateMazeAsync, computeAnalyticsAsync, disposeWorkers } from "./workerClients";
+export { generateMazeAsync, startGenerateMaze, computeAnalyticsAsync, disposeWorkers } from "./workerClients";
 
 export function getAvailableChecks(): CheckDescriptor[] {
   return getWasm().available_checks() as CheckDescriptor[];

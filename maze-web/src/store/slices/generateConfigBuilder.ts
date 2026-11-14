@@ -1,4 +1,4 @@
-import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
+import { generateMaze, startGenerateMaze } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig } from "../../fieldConfig";
@@ -19,6 +19,14 @@ import { notify } from "../../notifications/notificationStore";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import * as m from "~/paraglide/messages";
 import { MAX_SIZE_PARAM_ID } from "../sizeThresholdIntervals";
+
+let activeGeneration: import("../../wasm/workerPool").WorkerJob<GenerateMazeResult> | null = null;
+
+/** Cancelling terminates the worker, so no partial WASM state can leak into the next run. */
+export function cancelActiveGeneration(): void {
+  activeGeneration?.cancel(new Error("Generation cancelled"));
+  activeGeneration = null;
+}
 
 const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
 const GENERATION_RUN_FAILED = "generation.run_failed";
@@ -439,13 +447,28 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
 export async function generateWithSeedAsync(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): Promise<void> {
   const prepared = prepareGeneration(get, set, qcExperiment);
   if (!prepared) return;
+  set({ generationProgress: 0 });
+  const job = startGenerateMaze(seed, prepared.config, (progress) => {
+    if (activeGeneration === job) set({ generationProgress: Math.max(0, Math.min(100, progress)) });
+  });
+  activeGeneration = job;
   try {
-    const result = await generateMazeAsync(seed, prepared.config);
+    const result = await job.promise;
+    if (activeGeneration !== job) return;
     applyGenerationResult(result, get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "Generation cancelled") {
+      // A replacement run may have started after the cancellation retired this worker. Do not
+      // let the old promise erase that run's overlay or status.
+      if (activeGeneration === null) set({ generationProgress: null, generationStatus: "idle" });
+      return;
+    }
     set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
     notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
+  } finally {
+    if (activeGeneration === job) activeGeneration = null;
+    if (activeGeneration === null) set({ generationProgress: null });
   }
 }
 

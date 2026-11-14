@@ -135,8 +135,11 @@ export function validateSnapshot(raw: unknown): MazeSnapshot {
   return s as unknown as MazeSnapshot;
 }
 
-export function generateMaze(seed: number, config: GenerateConfig): GenerateMazeResult {
-  const result = getWasm().generate(BigInt(seed), config);
+export function generateMaze(seed: number, config: GenerateConfig, onProgress?: (progress: number) => void): GenerateMazeResult {
+  const wasm = getWasm();
+  const result = onProgress
+    ? wasm.generate_with_progress(BigInt(seed), config, onProgress)
+    : wasm.generate(BigInt(seed), config);
   try {
     const snapshot = validateSnapshot(result.snapshot());
 

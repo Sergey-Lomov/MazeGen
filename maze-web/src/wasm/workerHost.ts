@@ -14,14 +14,16 @@ export interface WorkerHandlerResult<Res> {
 
 /** Worker-side half of `WorkerPool`: initializes WASM once (`initWasm` is memoized per worker),
  *  then answers each request through `handler`. A thrown error becomes an error response. */
-export function serveWorker<Req, Res>(handler: (payload: Req) => WorkerHandlerResult<Res>): void {
+export function serveWorker<Req, Res>(handler: (payload: Req, reportProgress: (progress: number) => void) => WorkerHandlerResult<Res>): void {
   const scope = self as unknown as WorkerScope;
   scope.onmessage = async (event) => {
     const { id, payload, wasmModule } = event.data;
     try {
       // Only the first request of a worker carries the module; later calls hit the memoized init.
       await initWasm(wasmModule);
-      const { result, transfer = [] } = handler(payload as Req);
+      const { result, transfer = [] } = handler(payload as Req, (progress) => {
+        scope.postMessage({ id, progress } satisfies WorkerResponseMessage<Res>);
+      });
       scope.postMessage({ id, result } satisfies WorkerResponseMessage<Res>, transfer);
     } catch (error) {
       scope.postMessage({ id, error: error instanceof Error ? error.message : String(error) } satisfies WorkerResponseMessage<Res>);

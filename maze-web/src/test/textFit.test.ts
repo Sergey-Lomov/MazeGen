@@ -13,9 +13,11 @@ const FAKE_FONT = { baseMeasurementFontSize: 100, chars: { "1": glyph, "8": glyp
 
 vi.mock("pixi.js", () => ({
   Cache: { get: (key: string) => (key.endsWith("-bitmap") ? FAKE_FONT : undefined) },
+  BitmapText: class {},
+  Text: class {},
 }));
 
-const { measureText, textOverflows, maxFittingFontSize, inkBoundaryPoints } = await import("../pixi/textFit");
+const { measureText, textOverflows, maxFittingFontSize, inkBoundaryPoints, labelInkOverlaps } = await import("../pixi/textFit");
 
 const item = (text: string, shape: "circle" | "square" | "star" | "cross", plateSize: number) => ({ text, font: { family: "", weight: 700 } as const, shape, plateSize });
 
@@ -117,6 +119,37 @@ describe("textFit", () => {
       expect(textOverflows(item("I", "circle", 1), 32)).toBe(true);
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it("uses runtime TTF/OTF ink masks instead of overlapping text boxes", async () => {
+    const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+    const originalQuery = (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
+    Object.defineProperty(document, "fonts", { configurable: true, value: { load: vi.fn().mockResolvedValue([]), check: vi.fn().mockReturnValue(true) } });
+    (window as Window & { queryLocalFonts?: () => Promise<Array<{ family: string; style: string }>> }).queryLocalFonts = () => Promise.resolve([{ family: "Ink Test", style: "Regular" }]);
+    const context = {
+      font: "", fillStyle: "", textBaseline: "alphabetic", fillText: vi.fn(),
+      measureText: () => ({ width: 10, actualBoundingBoxLeft: 5, actualBoundingBoxRight: 5, actualBoundingBoxAscent: 5, actualBoundingBoxDescent: 5 }),
+      getImageData: (_x: number, _y: number, width: number, height: number) => {
+        const data = new Uint8ClampedArray(width * height * 4);
+        data[(Math.floor(height / 2) * width + Math.floor(width / 2)) * 4 + 3] = 255;
+        return { data };
+      },
+    };
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as never);
+    try {
+      const { loadLocalFontFamilies, loadLabelFont } = await import("../pixi/renderers/labelFont");
+      await loadLocalFontFamilies();
+      await loadLabelFont({ family: "Ink Test", weight: 400 });
+      const font = { family: "Ink Test", weight: 400 };
+      // The 10px metric boxes overlap at x=0 and x=1, while their one-pixel ink dots do not.
+      expect(labelInkOverlaps({ text: "1", font, fontSize: 10, x: 0, y: 0 }, { text: "2", font, fontSize: 10, x: 1, y: 0 })).toBe(false);
+    } finally {
+      spy.mockRestore();
+      if (originalFonts) Object.defineProperty(document, "fonts", originalFonts);
+      else Reflect.deleteProperty(document, "fonts");
+      if (originalQuery) (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = originalQuery;
+      else delete (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
     }
   });
 });
