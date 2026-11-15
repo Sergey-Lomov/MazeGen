@@ -9,6 +9,9 @@ import { FontFileFailure, readBlobBytes, readFontInfo, toSfnt, type FontFileErro
 export interface LocalFontFace {
   family: string;
   style?: string;
+  /** Tell the faces of a font collection apart (an installed font may live in a TTC). */
+  postscriptName?: string;
+  fullName?: string;
   blob(): Promise<Blob>;
 }
 
@@ -37,17 +40,29 @@ export function rasterFontsVersion(): number {
 // --- Background work -------------------------------------------------------------------------
 
 let busy = 0;
+/** Running conversions by font name, so the indicator can name them (two weights of one font count twice). */
+const busyLabels = new Map<string, number>();
 const busyListeners = new Set<() => void>();
 
-/** Marks the start of an atlas conversion; pair with `endRasterWork`. Feeds the "preparing fonts" indicator. */
-export function beginRasterWork(): void {
+/** Marks the start of an atlas conversion of the font `label`; pair with `endRasterWork(label)`. Feeds the "preparing fonts" indicator. */
+export function beginRasterWork(label = ""): void {
   busy++;
+  if (label) busyLabels.set(label, (busyLabels.get(label) ?? 0) + 1);
   for (const listener of [...busyListeners]) listener();
 }
 
-export function endRasterWork(): void {
+export function endRasterWork(label = ""): void {
   busy = Math.max(0, busy - 1);
+  const left = (busyLabels.get(label) ?? 0) - 1;
+  if (left > 0) busyLabels.set(label, left);
+  else busyLabels.delete(label);
   for (const listener of [...busyListeners]) listener();
+}
+
+/** Names of the fonts being converted now, sorted, joined by a comma; empty while none is named. A string, so
+ *  it can serve as a `useSyncExternalStore` snapshot. */
+export function rasterWorkLabels(): string {
+  return [...busyLabels.keys()].sort().join(", ");
 }
 
 export function subscribeRasterWork(listener: () => void): () => void {
@@ -69,8 +84,10 @@ let localFaces = new Map<string, Map<number, LocalFontFace>>();
  *  oblique and non-regular-width faces are skipped: a font value addresses a normal-style face. */
 export function registerLocalFaces(faces: readonly LocalFontFace[]): void {
   const next = new Map<string, Map<number, LocalFontFace>>();
+  const styles = new Map<string, string[]>();
   for (const face of faces) {
     const family = face.family.trim();
+    if (family) styles.set(family, [...(styles.get(family) ?? []), face.style ?? ""]);
     const weight = weightFromStyleName(face.style ?? "");
     if (!family || weight === null) continue;
     let byWeight = next.get(family);
@@ -78,7 +95,21 @@ export function registerLocalFaces(faces: readonly LocalFontFace[]): void {
     if (!byWeight.has(weight)) byWeight.set(weight, face);
   }
   localFaces = next;
+  reportedLocalStyles = styles;
   notifyRasterFontsChanged();
+}
+
+/** Every style the machine reported per family, usable or not (italic and non-regular widths are not). */
+let reportedLocalStyles = new Map<string, string[]>();
+
+/** What the machine reports for `family`, as text for an error's details: the styles of its faces, or that it
+ *  reports none (the font is not installed, or the installed fonts were not read). */
+export function describeLocalFaces(family: string): string {
+  const name = family.trim();
+  const styles = reportedLocalStyles.get(name);
+  const usable = [...(localFaces.get(name)?.keys() ?? [])];
+  if (!styles) return `${name}: no installed face reported (${reportedLocalStyles.size} families known)`;
+  return `${name}: reported styles [${styles.map((style) => style || "(none)").join(", ")}], usable weights [${usable.join(", ") || "none"}]`;
 }
 
 // --- Uploaded fonts --------------------------------------------------------------------------
@@ -244,7 +275,8 @@ export async function rasterFaceBytes(family: string, weight: number): Promise<U
   const local = localFaces.get(name)?.get(weight);
   if (!local) return null;
   try {
-    return await toSfnt(await readBlobBytes(await local.blob()));
+    const raw = await readBlobBytes(await local.blob());
+    return await toSfnt(raw, { postscriptName: local.postscriptName, fullName: local.fullName });
   } catch (error) {
     if (error instanceof FontFileFailure) throw error;
     return null;

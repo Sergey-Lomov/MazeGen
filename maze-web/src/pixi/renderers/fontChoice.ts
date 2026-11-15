@@ -180,12 +180,17 @@ export function msdfFace(font: LabelFont): MsdfFace {
   return faces.find((face) => face.weight === weight)!;
 }
 
+/** Style words that name an optical size (the size a face is drawn for), not a weight. */
+const OPTICAL_SIZE_WORDS = new Set(["small", "text", "subheading", "heading", "display", "banner", "caption"]);
+
 /** Parse the weight a Local Font Access `style` name stands for ("Bold", "Semibold", "Light Italic").
  *  `null` for an italic or oblique face and for any other style (Condensed, Narrow, ...): a font
  *  value can only address a normal-style, normal-width face. */
 export function weightFromStyleName(style: string): number | null {
   const words = style.toLowerCase().replace(/[-_]/g, " ").split(/\s+/).filter(Boolean);
   if (words.some((word) => word === "italic" || word === "oblique" || word === "slanted")) return null;
+  // Optical size names say nothing about weight: Sitka Small reports "Small" and "Small Bold" (GitHub issue #974).
+  for (let i = words.length - 1; i >= 0; i--) if (OPTICAL_SIZE_WORDS.has(words[i])) words.splice(i, 1);
   const name = words.join("");
   if (name === "") return 400;
   const byName: Record<string, number> = {

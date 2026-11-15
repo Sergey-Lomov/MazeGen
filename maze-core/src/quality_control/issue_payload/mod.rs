@@ -21,7 +21,8 @@ use super::issue_kinds::{
     InvalidSplitRouteIssue, InvalidSplitTileGroupIssue, InvalidSplitTileIssue,
     InvalidTeleportGroupIssue, InvalidTeleportIssue, InvalidVerticalPassageGroupIssue,
     InvalidVerticalPassageIssue, MissingElevatorHeightIssue, MissingElevatorStopCountIssue,
-    MissingElevatorsIssue, MissingTeleportsIssue, MissingVerticalPassagesIssue,
+    MissingElevatorsIssue, MissingLoopsIssue, MissingOneWaysIssue, MissingSplitTilesIssue,
+    MissingTeleportsIssue, MissingVerticalPassagesIssue,
     RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
 };
 use crate::generation::PresetState;
@@ -335,6 +336,30 @@ pub fn resolve_issue_payload<T: Tessellation>(
         .as_any()
         .downcast_ref::<MissingVerticalPassagesIssue>()
     {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingLoopsIssue>() {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingOneWaysIssue>() {
+        let areas =
+            resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingSplitTilesIssue>() {
         let areas =
             resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
         if !areas.is_empty() {

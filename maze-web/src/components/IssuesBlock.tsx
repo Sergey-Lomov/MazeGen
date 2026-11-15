@@ -8,7 +8,7 @@ import { resolveIssueHighlight, type NormalizedIssuePayload, type NormalizedEdge
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
-import { selectNodeLevelResolver, selectNodeIdsForLevel } from "../pixi/selectors/mazeSelectors";
+import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
 import { FloorBadgeRow } from "./FloorBadgeRow";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -65,7 +65,6 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
   const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
-  const mazeNodes = useMazeStore((s) => s.nodes);
   const { severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
   // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
@@ -81,19 +80,11 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // Per-check description override (GitHub issue #257's teleport_split_intersection, whose
   // behavior diverges from invalid_teleport's generic wording) — same rationale as `label` above.
   const description = resolveIssueSourceDescription(issue.kind, typeId, details);
-  // `area_deficit` (hover-highlight follow-up to GitHub issue #408) — a floor-level deficit, not a
-  // specific node/edge set, resolved from `mazeNodes` rather than `resolveIssueHighlight` (that
-  // helper has no maze-node lookup of its own). `Some(levelIndex)` entries resolve to "every cell
-  // on that floor"; `null` (`RepairArea::WholeMaze`, e.g. `missing_elevators`'s only scope) has no
-  // specific floor to highlight and contributes nothing here, same "no per-element highlight"
-  // precedent as `excessive_scc_count`.
+  // `area_deficit` names floor-level deficits without identifying a concrete element. Its indices
+  // are used exclusively for floor badges: hovering a whole-floor warning must not blanket the
+  // canvas with every cell of that floor.
   const areaDeficitEntries = sourceCheck != null && issue.payload.kind === "area_deficit"
     ? issue.payload.areas[sourceCheck] ?? null
-    : null;
-  const areaDeficitCellNodes = areaDeficitEntries != null
-    ? areaDeficitEntries
-        .filter((level): level is number => level !== null)
-        .map((level) => selectNodeIdsForLevel(mazeNodes, level))
     : null;
   const palette = notificationPalette(severity);
 
@@ -221,14 +212,9 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const highlightEdges: IssueHighlightEdge[] | null = resolved?.cycle != null
     ? resolved.cycle.edges.map(([from, to]) => ({ from, to, asWall: resolved.cycle!.asWall }))
     : null;
-  // `areaDeficitCellNodes` has no `resolveIssueHighlight` counterpart (resolved from `mazeNodes`,
-  // see that variable's own doc comment above) -- folded in here as a fallback, same priority
-  // position the old bespoke code gave it.
   const highlightRegionGroups: { nodes: number[]; isSplit: boolean }[] | null = resolved?.region != null
     ? resolved.region.groups
-    : (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0)
-      ? areaDeficitCellNodes.map((nodes) => ({ nodes, isSplit: false }))
-      : null;
+    : null;
   const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
     ? () => {
         if (highlightEdges != null) setHoveredIssueLoopEdges(highlightEdges);
@@ -296,6 +282,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           * exactly as dark/light regardless of the parent bubble's hover state. */}
         <IssueFloorBadges
           nodeIds={touchedNodeIds}
+          areaLevels={areaDeficitEntries?.filter((level): level is number => level !== null) ?? []}
           bg={darken(palette.text, 0.2)}
           text={palette.bg}
           className={description ? "hoverable-tint-counter" : undefined}
@@ -327,16 +314,20 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
 /// the same convention `selectNodeLevelResolver`/`navigateToFloor` already use), not floor ids --
 /// sorted ascending so the row always reads bottom-to-top regardless of `nodeIds`' own order.
 /// Renders nothing on a single-floor maze, same as every other cross-floor indicator in the app.
-/// Also renders nothing when `nodeIds` resolves to zero floors (e.g. a whole-maze issue with no
-/// per-element highlight data) -- there is nothing to badge in that case.
-function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[]; bg: string; text: string; className?: string }) {
+/// `areaLevels` supplies the directly named floors of an `area_deficit` payload. This is required
+/// for per-floor minimum checks: their deficit has no individual node or edge, but its badges must
+/// still identify every floor that failed. A whole-maze entry remains unbadged.
+function IssueFloorBadges({ nodeIds, areaLevels, bg, text, className }: { nodeIds: number[]; areaLevels: number[]; bg: string; text: string; className?: string }) {
   const nodes = useMazeStore((s) => s.nodes);
   // Memoized on `nodes` identity, not rebuilt per render -- `nodes` only changes on
   // generate/reset/load, while this component can re-render far more often (any store update
   // touching the Analytics panel), and rebuilding the full node->level Map per bubble per render
   // would be wasted work at scale (many issue bubbles x many nodes).
   const resolveNodeLevel = useMemo(() => selectNodeLevelResolver(nodes), [nodes]);
-  const levels = Array.from(new Set(nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined))).sort((a, b) => a - b);
+  const levels = Array.from(new Set([
+    ...nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined),
+    ...areaLevels,
+  ])).sort((a, b) => a - b);
   return <FloorBadgeRow levels={levels} bg={bg} text={text} className={className} />;
 }
 

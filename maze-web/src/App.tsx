@@ -14,6 +14,7 @@ import { NotificationHost } from "./components/notifications/NotificationHost";
 import { Announcer } from "./components/Announcer";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { FontPreparingIndicator } from "./components/FontPreparingIndicator";
+import { LocalFontPermissionDialog } from "./components/dialogs/LocalFontPermissionDialog";
 import { GenerationProgressOverlay } from "./components/GenerationProgressOverlay";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
@@ -162,6 +163,7 @@ export function App() {
       <GenerationProgressOverlay />
       {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
        * anchored to the canvas column's top-left corner. */}
+      <LocalFontPermissionDialog />
       <NotificationHost canvasLeft={PANEL_WIDTH} />
       <Announcer />
     </div>

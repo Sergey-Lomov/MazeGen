@@ -39,6 +39,17 @@ describe("weightFromStyleName", () => {
     expect(weightFromStyleName(style)).toBe(weight);
   });
 
+  it.each([
+    ["Small", 400], ["Small Bold", 700], ["Text", 400], ["Subheading Bold", 700], ["Display", 400], ["Banner Bold", 700],
+  ])("ignores an optical size name: %j is %i (Sitka, GitHub issue #974)", (style, weight) => {
+    expect(weightFromStyleName(style)).toBe(weight);
+  });
+
+  it("still rejects an italic face that carries an optical size name", () => {
+    expect(weightFromStyleName("Small Italic")).toBeNull();
+    expect(weightFromStyleName("Small Bold Italic")).toBeNull();
+  });
+
   it("rejects italic, oblique and other non-normal styles", () => {
     expect(weightFromStyleName("Bold Italic")).toBeNull();
     expect(weightFromStyleName("Oblique")).toBeNull();

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { createStore } from "zustand/vanilla";
 
 // Export settings that name an on-demand MSDF font start its download (GitHub issue #982).
@@ -11,11 +11,16 @@ const pruneRasterFonts = vi.fn();
 vi.mock("../pixi/renderers/rasterFont/rasterMsdf", () => ({
   loadRasterFont: (font: unknown) => loadRasterFont(font),
   pruneRasterFonts: (keys: unknown) => pruneRasterFonts(keys),
+  isRasterFontReady: () => false,
 }));
 
 const { MSDF_FONTS } = await import("../pixi/renderers/fontChoice");
 const { setFontPickerOpen } = await import("../pixi/renderers/rasterFont/pickerSession");
-const { collectLabelFontFamilies, collectLazyMsdfFamilies, installLabelFontSync } = await import("../store/labelFontSync");
+const { collectLabelFontFamilies, collectLazyMsdfFamilies, installLabelFontSync, reportProjectFontProblems } = await import("../store/labelFontSync");
+const { useNotificationStore, resetNotifications } = await import("../notifications/notificationStore");
+const { resetFontProblems } = await import("../notifications/fontNotifications");
+const { registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");
+const { closeFontPermissionRequest, getFontPermissionRequest, resetFontPermissionAnswer } = await import("../pixi/renderers/rasterFont/fontPermissionRequest");
 
 const face = (family: string, weight: number) => ({ weight, atlasName: `${family}-${weight}`, url: `/fonts/${family}-${weight}.fnt` });
 MSDF_FONTS.Mono = { label: "Mono", scripts: [], faces: [face("Mono", 400)] };
@@ -68,9 +73,11 @@ describe("installLabelFontSync", () => {
   type Settings = { vectorByWallsSettings: unknown; vectorByCorridorsSettings: unknown; pngExportSettings: unknown };
   const makeStore = (initial: Partial<Settings> = {}) => {
     const store = createStore<Settings>()(() => ({ vectorByWallsSettings: {}, vectorByCorridorsSettings: {}, pngExportSettings: {}, ...initial }));
-    installLabelFontSync(store as never);
+    disposers.push(installLabelFontSync(store as never));
     return store;
   };
+  const disposers: Array<() => void> = [];
+  afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 
   it("loads a font already referenced by the settings at install time", () => {
     makeStore({ vectorByWallsSettings: { textFont: font("Mono") } });
@@ -143,6 +150,111 @@ describe("installLabelFontSync", () => {
       setFontPickerOpen(true);
       store.setState({ vectorByWallsSettings: { textFont: font("Mono") } });
       expect(loadMsdfFamily).toHaveBeenCalledWith("Mono");
+    });
+  });
+
+  describe("unavailable raster fonts (GitHub issue #974)", () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+    const setPermission = (state: PermissionState | null) => {
+      const win = window as Window & { queryLocalFonts?: unknown };
+      if (state === null) {
+        delete win.queryLocalFonts;
+        return;
+      }
+      win.queryLocalFonts = vi.fn().mockResolvedValue([]);
+      Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: () => Promise.resolve({ state }) } });
+    };
+
+    beforeEach(() => {
+      resetNotifications();
+      resetFontProblems();
+      closeFontPermissionRequest(false);
+      resetFontPermissionAnswer();
+    });
+
+    it("raises one error naming every font that has no source when the browser cannot read installed fonts", async () => {
+      setPermission(null);
+      makeStore({ vectorByWallsSettings: { a: { textFont: font("Ghost") }, b: { textFont: font("Phantom") } } });
+      await settle();
+      const { errors } = useNotificationStore.getState();
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe("fonts.unavailable");
+      expect(errors[0].occurrences[0].params.fonts).toBe("Ghost, Phantom");
+      expect(getFontPermissionRequest().open).toBe(false);
+    });
+
+    it("withdraws the error once the font becomes available", async () => {
+      setPermission(null);
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(useNotificationStore.getState().errors).toHaveLength(1);
+      registerLocalFaces([{ family: "Ghost", style: "Regular", blob: () => Promise.resolve(new Blob()) }]);
+      await settle();
+      expect(useNotificationStore.getState().errors).toHaveLength(0);
+      registerLocalFaces([]);
+    });
+
+    it("asks again through the dialog when a granted permission's query is refused without a gesture", async () => {
+      setPermission("granted");
+      (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn().mockRejectedValue(new Error("needs a user gesture"));
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost"] });
+      expect(useNotificationStore.getState().errors).toHaveLength(0);
+    });
+
+    it("asks for the permission first when the browser can still prompt, and reports nothing yet", async () => {
+      setPermission("prompt");
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost"] });
+      expect(useNotificationStore.getState().errors).toHaveLength(0);
+    });
+
+    it("turns a cancelled request into an error, once", async () => {
+      setPermission("prompt");
+      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      closeFontPermissionRequest(true);
+      await settle();
+      store.setState({ pngExportSettings: { other: 1 } });
+      expect(getFontPermissionRequest().open).toBe(false);
+      const { errors } = useNotificationStore.getState();
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe("fonts.permission_denied");
+      expect(errors[0].occurrences).toHaveLength(1);
+    });
+
+    it("asks again when another font goes missing after the dialog was cancelled", async () => {
+      setPermission("prompt");
+      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      closeFontPermissionRequest(true);
+      await settle();
+      expect(getFontPermissionRequest().open).toBe(false);
+      store.setState({ vectorByCorridorsSettings: { textFont: font("Phantom") } });
+      expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost", "Phantom"] });
+    });
+
+    it("says the access is blocked when the permission was denied", async () => {
+      setPermission("denied");
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(useNotificationStore.getState().errors[0].code).toBe("fonts.permission_denied");
+    });
+
+    it("reports again for an export without opening the dialog", async () => {
+      setPermission("prompt");
+      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      closeFontPermissionRequest(true);
+      await settle();
+      const firstId = useNotificationStore.getState().errors[0].occurrences[0].id;
+      reportProjectFontProblems(store.getState() as never);
+      const { errors } = useNotificationStore.getState();
+      expect(errors).toHaveLength(1);
+      expect(errors[0].occurrences).toHaveLength(1);
+      expect(errors[0].occurrences[0].id).not.toBe(firstId);
     });
   });
 });

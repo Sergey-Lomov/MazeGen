@@ -14,6 +14,7 @@ import { drawExportEdgeMarkers, edgeMarkerStyleOf, selectExportEdgeMarkers } fro
 import type { PngExportSettings } from "../../store/storeTypes";
 import { beginCanvasLabelScale, endCanvasLabelScale } from "../renderers/canvasLabelResolution";
 import { whenRasterFontsSettled } from "../renderers/rasterFont/rasterMsdf";
+import { reportProjectFontProblems } from "../../store/labelFontSync";
 
 /** On-screen length of one dash of a drawn cut line, and of its gap, in export pixels. */
 const GUIDE_DASH_PX = 8;
@@ -48,6 +49,8 @@ export class PngExporter {
     // Labels are drawn from their final MSDF atlas, not from canvas text, once a conversion in progress ends.
     await whenRasterFontsSettled();
     const state = useMazeStore.getState();
+    // A project font still unavailable is exported in Roboto: say so (GitHub issue #974).
+    reportProjectFontProblems(state);
     const mode = state.activeRenderMode;
     if (mode === null || state.nodes.length === 0) return null;
     if (state.openCard !== "image_export") return null;

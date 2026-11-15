@@ -26,4 +26,18 @@ describe("FontPreparingIndicator (GitHub issue #966)", () => {
     act(() => { vi.advanceTimersByTime(INDICATOR_DELAY_MS * 2); });
     expect(screen.queryByTestId("font-preparing-indicator")).toBeNull();
   });
+
+  it("names the fonts being converted (GitHub issue #974)", () => {
+    vi.useFakeTimers();
+    render(<FontPreparingIndicator />);
+    act(() => { beginRasterWork("Comic Sans MS"); beginRasterWork("Arial"); beginRasterWork("Arial"); });
+    act(() => { vi.advanceTimersByTime(INDICATOR_DELAY_MS + 50); });
+    expect(screen.getByTestId("font-preparing-indicator").textContent).toContain("Arial, Comic Sans MS");
+    act(() => { endRasterWork("Arial"); });
+    expect(screen.getByTestId("font-preparing-indicator").textContent).toContain("Arial, Comic Sans MS");
+    act(() => { endRasterWork("Arial"); });
+    expect(screen.getByTestId("font-preparing-indicator").textContent).not.toContain("Arial");
+    act(() => { endRasterWork("Comic Sans MS"); });
+    expect(screen.queryByTestId("font-preparing-indicator")).toBeNull();
+  });
 });
