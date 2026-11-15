@@ -13,6 +13,10 @@ import {
 import {
   FONT_CODES, clearFontProblemsWithPrefix, reportFontProblemOnce,
 } from "../notifications/fontNotifications";
+import { buildProjectActivity } from "../pixi/selectors/projectActivity";
+import type { ExportSettings } from "../pixi/selectors/colorFieldRegistry";
+import { isSchemaPathActive, schemaEntriesFor, type LinkMode } from "./parameterLinkSchema";
+import { getParamValue } from "./slices/parameterLinksEngine";
 
 /** Fonts found under each settings node. Settings are updated immutably, so a subtree that did
  *  not change keeps its identity and is answered from here: a settings change that touches one slider
@@ -35,33 +39,50 @@ export function collectLabelFonts(value: unknown, into: Map<string, LabelFont> =
     }
     fontsUnder.set(value, found);
   }
-  for (const font of found) {
-    const key = `${font.weight}|${font.family}`;
-    // Two texts may name one font with and without conversion: the converting one wins, since its atlas is needed.
-    const known = into.get(key);
-    if (!known || !convertsToMsdf(known)) into.set(key, font);
+  for (const font of found) addFont(into, font);
+  return into;
+}
+
+function addFont(into: Map<string, LabelFont>, font: LabelFont): void {
+  const key = `${font.weight}|${font.family}`;
+  // Two texts may name one font with and without conversion: the converting one wins, since its atlas is needed.
+  const known = into.get(key);
+  if (!known || !convertsToMsdf(known)) into.set(key, font);
+}
+
+/** The label font fields a project can draw: every `labelFont` path of the parameter link schema except the
+ *  "Shared style" source, which is only copied into the text styles linked to it and draws nothing itself. */
+const DRAWN_FONT_PATHS: Record<LinkMode, string[]> = {
+  walls: drawnFontPaths("walls"),
+  corridors: drawnFontPaths("corridors"),
+};
+
+function drawnFontPaths(mode: LinkMode): string[] {
+  return schemaEntriesFor(mode).filter(([path, def]) => def.type === "labelFont" && path !== "labelFont").map(([path]) => path);
+}
+
+/** Fonts of the texts the project actually draws (GitHub issue #1012): a font field counts only while its
+ *  settings row is active, that is while the maze has the element and the settings keep its text on (waypoint
+ *  captions off, no teleports, floor labels hidden, ...). A font that a hidden text still names is not used, so it
+ *  is neither marked in the font picker nor loaded, converted or reported as unavailable. */
+export function collectDrawnLabelFonts(state: MazeStore): Map<string, LabelFont> {
+  const fonts = new Map<string, LabelFont>();
+  const maze = { nodes: state.nodes ?? [], edges: state.edges ?? [], floors: state.floors ?? [] };
+  const modes: [LinkMode, ExportSettings | undefined][] = [["walls", state.vectorByWallsSettings], ["corridors", state.vectorByCorridorsSettings]];
+  for (const [mode, settings] of modes) {
+    if (!settings) continue;
+    const activity = buildProjectActivity(maze, settings.replaceTwoFloorElevatorsWithStairs === true);
+    for (const path of DRAWN_FONT_PATHS[mode]) {
+      if (!isSchemaPathActive(path, mode, activity, settings)) continue;
+      for (const font of collectLabelFonts(getParamValue(settings, path)).values()) addFont(fonts, font);
+    }
   }
-  return into;
+  return fonts;
 }
 
-/** Families of every `LabelFont` inside `value`. The default font is the empty family. */
-export function collectLabelFontFamilies(value: unknown, into: Set<string> = new Set()): Set<string> {
-  for (const font of collectLabelFonts(value).values()) into.add(font.family);
-  return into;
-}
-
-/** Families of the on-demand MSDF fonts (everything but the default Roboto, which is always loaded)
- *  named by any `LabelFont` inside `value`. */
-export function collectLazyMsdfFamilies(value: unknown, into: Set<string> = new Set()): Set<string> {
-  for (const family of collectLabelFontFamilies(value)) {
-    if (family !== VECTOR_FONT_FAMILY && isMsdfFamily(family)) into.add(family);
-  }
-  return into;
-}
-
-/** The export settings that hold label fonts: what a font counts as "used in the project" by. */
-export function projectFontSettings(state: MazeStore): unknown[] {
-  return [state.vectorByWallsSettings, state.vectorByCorridorsSettings, state.pngExportSettings];
+/** Families of `collectDrawnLabelFonts`. The default font is the empty family. */
+export function collectDrawnLabelFontFamilies(state: MazeStore): Set<string> {
+  return new Set([...collectDrawnLabelFonts(state).values()].map((font) => font.family));
 }
 
 /** Starts the work for the fonts the export settings reference and frees the ones they no longer do. Settings arrive from a
@@ -116,7 +137,7 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
   };
   const request = (state: MazeStore, forExport = false) => {
     const previewing = isFontPickerOpen();
-    const fonts = collectLabelFonts(projectFontSettings(state));
+    const fonts = collectDrawnLabelFonts(state);
     for (const font of fonts.values()) {
       if (font.family === VECTOR_FONT_FAMILY) continue;
       if (isMsdfFamily(font.family)) {
@@ -132,10 +153,13 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
   };
   recheckProjectFonts = (state) => request(state, true);
   const unsubscribeStore = store.subscribe((state, prev) => {
+    // Whether a text is drawn depends on the maze too (teleports, elevators, floors), not only on the settings.
     if (
       state.vectorByWallsSettings === prev.vectorByWallsSettings
       && state.vectorByCorridorsSettings === prev.vectorByCorridorsSettings
-      && state.pngExportSettings === prev.pngExportSettings
+      && state.nodes === prev.nodes
+      && state.edges === prev.edges
+      && state.floors === prev.floors
     ) return;
     request(state);
   });

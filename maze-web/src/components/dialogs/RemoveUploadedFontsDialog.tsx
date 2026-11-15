@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CircleCheck } from "lucide-react";
+import { FontUsedIcon } from "../FontStatusIcons";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { ConfirmModal } from "../ConfirmModal";
@@ -48,7 +48,7 @@ export function RemoveUploadedFontsDialog({ families, usedFamilies, onDelete, on
               action={usedFamilies.has(family) ? (
                 <Tooltip content={m["font_picker.badge_used"]()} focusable={false}>
                   <span style={styles.usedIcon} role="img" aria-label={m["font_picker.badge_used"]()} data-testid="font-remove-used">
-                    <CircleCheck size={14} />
+                    <FontUsedIcon />
                   </span>
                 </Tooltip>
               ) : undefined}
