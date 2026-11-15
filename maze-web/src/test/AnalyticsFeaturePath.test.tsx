@@ -197,7 +197,7 @@ describe("AnalyticsFeature Path section score row", () => {
     expect(rows[0]).toHaveTextContent("Score");
 
     expect(screen.queryByText("Path step weight")).not.toBeInTheDocument();
-    fireEvent.click(scoreLabel.parentElement!.querySelector('[role="button"]')!);
+    fireEvent.click(scoreLabel.parentElement!.querySelector("button")!);
     const weightLabel = screen.getByText("Path step weight");
     expect(weightLabel).toBeInTheDocument();
     expect(weightLabel.closest("div")!.parentElement).toHaveTextContent("2");

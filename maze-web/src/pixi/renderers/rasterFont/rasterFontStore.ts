@@ -1,3 +1,4 @@
+import { beginActivity, endActivity, isActivityRunning, subscribeActivity } from "../../../activity/backgroundActivity";
 import { CSS_FONT_WEIGHTS, weightFromStyleName } from "../fontChoice";
 import { FontFileFailure, readBlobBytes, readFontInfo, toSfnt, type FontFileError } from "./sfnt";
 
@@ -39,40 +40,23 @@ export function rasterFontsVersion(): number {
 
 // --- Background work -------------------------------------------------------------------------
 
-let busy = 0;
-/** Running conversions by font name, so the indicator can name them (two weights of one font count twice). */
-const busyLabels = new Map<string, number>();
-const busyListeners = new Set<() => void>();
-
-/** Marks the start of an atlas conversion of the font `label`; pair with `endRasterWork(label)`. Feeds the "preparing fonts" indicator. */
+/** Marks the start of an atlas conversion of the font `label`; pair with `endRasterWork(label)`. Feeds the
+ *  "Preparing fonts" background indicator (two weights of one font count twice). */
 export function beginRasterWork(label = ""): void {
-  busy++;
-  if (label) busyLabels.set(label, (busyLabels.get(label) ?? 0) + 1);
-  for (const listener of [...busyListeners]) listener();
+  beginActivity("fonts", label);
 }
 
 export function endRasterWork(label = ""): void {
-  busy = Math.max(0, busy - 1);
-  const left = (busyLabels.get(label) ?? 0) - 1;
-  if (left > 0) busyLabels.set(label, left);
-  else busyLabels.delete(label);
-  for (const listener of [...busyListeners]) listener();
-}
-
-/** Names of the fonts being converted now, sorted, joined by a comma; empty while none is named. A string, so
- *  it can serve as a `useSyncExternalStore` snapshot. */
-export function rasterWorkLabels(): string {
-  return [...busyLabels.keys()].sort().join(", ");
+  endActivity("fonts", label);
 }
 
 export function subscribeRasterWork(listener: () => void): () => void {
-  busyListeners.add(listener);
-  return () => { busyListeners.delete(listener); };
+  return subscribeActivity(listener);
 }
 
 /** Whether any atlas is being converted right now. */
 export function isRasterWorkBusy(): boolean {
-  return busy > 0;
+  return isActivityRunning("fonts");
 }
 
 // --- Installed fonts (Local Font Access API) -------------------------------------------------

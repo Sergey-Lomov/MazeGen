@@ -1,5 +1,6 @@
 /** Main-thread clients of the WASM workers: one `WorkerPool` per worker entry point. */
 import { WorkerPool, type WorkerJob } from "./workerPool";
+import { trackActivity } from "../activity/backgroundActivity";
 import { compileWasmModule } from "./wasmLoader";
 import type { PrintSizingAnswer, PrintSizingRequest } from "../pixi/printSizingJob";
 import { validateSnapshot, type GenerateMazeResult } from "./mazeGeneration";
@@ -48,7 +49,7 @@ export function generateMazeAsync(seed: number, config: GenerateConfig): Promise
  * with another state change after the worker completed. */
 export function computeAnalyticsAsync(config: ComputeAnalyticsConfig): Promise<MazeSnapshot> {
   analyticsPool.cancelAll(new Error("Analytics request superseded"));
-  return analyticsPool.run({ config }).promise.then(validateSnapshot);
+  return trackActivity("analytics", analyticsPool.run({ config }).promise.then(validateSnapshot));
 }
 
 /** Terminates every worker. Called on page shutdown and on hot module replacement. */

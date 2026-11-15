@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import type { FloorState } from "../store/mazeStore";
 import { ui, radius, typography, spacing, inset, shadow, font } from "../styles/theme";

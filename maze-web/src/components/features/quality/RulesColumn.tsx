@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { GripVertical, ChevronUp, ChevronDown } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { CollapseButton } from "../../CollapseButton";
 import { CheckSelectDialog } from "../CheckSelectDialog";

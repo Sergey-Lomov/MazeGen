@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
