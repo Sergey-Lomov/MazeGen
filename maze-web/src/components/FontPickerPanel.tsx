@@ -3,18 +3,21 @@ import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { InfoIconButton } from "./InfoIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
-import { CircleCheck, Copyright, Languages } from "lucide-react";
+import { Modal } from "./Modal";
+import { reportManualFontNotFound, reportUploadRefused } from "../notifications/fontNotifications";
+import { RemoveUploadedFontsDialog } from "./dialogs/RemoveUploadedFontsDialog";
+import { CircleCheck, Copyright, Languages, Trash2, Upload } from "lucide-react";
 import { Bubble, type BubbleColors } from "./Bubble";
 import { FontLicensesModal } from "./FontLicensesModal";
 import { findFontNotice, type FontNotice } from "./fontLicenses";
-import { LOCALE_FONT_SCRIPT, fontSupportsScript } from "./fontLocaleSupport";
+import { LOCALE_FONT_SCRIPT, fontSupportsScript, loadUnmeasuredUploadedFonts } from "./fontLocaleSupport";
 import { useLocale } from "../i18n/useLocale";
 import { collectLabelFontFamilies, projectFontSettings } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
-import { isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
+import { canvasInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
 import { setFontPickerOpen } from "../pixi/renderers/rasterFont/pickerSession";
-import { addUploadedFont, rasterFontsVersion, restoreUploadedFonts, subscribeRasterFonts, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
+import { addManualFontName, addUploadedFont, ensureUploadedFace, isUploadedFamily, uploadCapacityExhausted, knownRasterWeights, manualFontNames, rasterFontsVersion, removeUploadedFont, restoreUploadedFonts, subscribeRasterFonts, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { MSDF_FONTS, convertsToMsdf, isMsdfFamily, msdfFontWeights, nearestWeight, withMsdfConversion, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
 import { ToggleRow } from "./ToggleRow";
 import { fontWeightName } from "../store/fontLabels";
@@ -45,6 +48,13 @@ interface FontEntry {
   used: boolean;
   /** Draws the script of the current locale; always `true` when the locale needs only Latin. */
   supportsLocale: boolean;
+  /** An uploaded font file (GitHub issue #985). */
+  uploaded: boolean;
+}
+
+/** Whether a raster family can be converted to an MSDF atlas: a font typed in by name has no file to read. */
+function hasFontFile(family: string): boolean {
+  return knownRasterWeights(family).length > 0;
 }
 
 /** Keyboard moves repeat dozens of times a second while an arrow key is held, and every preview
@@ -62,6 +72,9 @@ const DEFAULT_PREVIEW_PHRASE = "Lorem ipsum";
  *  preview matches the panel style. Local to the panel, never stored. */
 const DEFAULT_PREVIEW_TEXT_COLOR = hexToColor(ui.text.primary);
 const DEFAULT_PREVIEW_BACKGROUND = hexToColor(ui.bg.input);
+
+/** Text whose ink is centred in the preview, so the line does not move with the phrase or the font. */
+const PREVIEW_CENTRE_SAMPLE = "Hx";
 
 /** Fixed height of the single-line preview, so the panel layout does not move with the font size. */
 const PREVIEW_HEIGHT = 48;
@@ -130,6 +143,9 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const [formatFilter, setFormatFilter] = useState<FontFormat | null>(null);
   const [onlyUsed, setOnlyUsed] = useState(false);
   const [onlySupported, setOnlySupported] = useState(false);
+  const [onlyUploaded, setOnlyUploaded] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [removeOpen, setRemoveOpen] = useState(false);
   const { locale } = useLocale();
   const localeScript = LOCALE_FONT_SCRIPT[locale];
   // Fonts of the project as the panel opened: the live preview keeps the store on the highlighted
@@ -188,17 +204,28 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     let alive = true;
     void loadLocalFontFamilies().then((families) => { if (alive) setLocalFamilies(families); });
     void restoreUploadedFonts();
+    // A permission the browser already denies cannot be prompted for again: say so at once instead of
+    // offering a "Grant access" that does nothing.
+    void navigator.permissions?.query({ name: "local-fonts" as PermissionName }).then(
+      (status) => { if (alive && status.state === "denied") setAccessBlocked(true); },
+      () => {},
+    );
     return () => { alive = false; };
   }, []);
 
   const hasLocalFamilies = !!localFamilies && localFamilies.length > 0;
+
+  // An uploaded file is read only when needed: for the highlighted font's preview, and for the locale support
+  // badge of an uploaded font that was never measured (the answer is remembered, so each file is read once).
+  useEffect(() => { void ensureUploadedFace(working.family, working.weight); }, [working.family, working.weight, fontsVersion]);
+  useEffect(() => { if (localeScript !== null) void loadUnmeasuredUploadedFonts(localeScript); }, [localeScript, fontsVersion]);
 
   const entries = useMemo<FontEntry[]>(() => {
     // The open-time family stays listed even when the machine does not report it, so a project
     // saved elsewhere still shows its current choice highlighted.
     // Installed fonts the machine reports, plus the files the user uploaded (the only raster source
     // in a browser without the Local Font Access API).
-    const families = [...new Set([...(hasLocalFamilies ? localFamilies : []), ...uploadedFamilies()])].sort();
+    const families = [...new Set([...(hasLocalFamilies ? localFamilies : []), ...uploadedFamilies(), ...manualFontNames()])].sort();
     const extra = !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
     const entry = (value: string, label: string, format: FontFormat): FontEntry => ({
       value,
@@ -206,6 +233,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
       format,
       used: usedFamilies.has(value),
       supportsLocale: localeScript === null || fontSupportsScript(value, localeScript),
+      uploaded: format === "browser" && isUploadedFamily(value),
     });
     return [
       ...Object.entries(MSDF_FONTS).map(([value, { label }]) => entry(value, label, "msdf")),
@@ -219,8 +247,9 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     return entries.filter((e) => (formatFilter === null || e.format === formatFilter)
       && (!onlyUsed || e.used)
       && (!onlySupported || e.supportsLocale)
+      && (!onlyUploaded || e.uploaded)
       && (needle === "" || e.label.toLowerCase().includes(needle)));
-  }, [entries, query, formatFilter, onlyUsed, onlySupported]);
+  }, [entries, query, formatFilter, onlyUsed, onlySupported, onlyUploaded]);
 
   const optionValues = useMemo(() => options.map((o) => o.value), [options]);
 
@@ -247,7 +276,8 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   /** Pick a family. The weight stays when the family has it and snaps to the nearest one it has otherwise. */
   const selectFamily = useCallback((family: string, delayed = false) => {
     const current = workingRef.current;
-    select(withMsdfConversion({ family, weight: nearestWeight(current.weight, weightsOf(family)) }, convertsToMsdf(current) || isMsdfFamily(family)), delayed);
+    const convert = isMsdfFamily(family) || (convertsToMsdf(current) && hasFontFile(family));
+    select(withMsdfConversion({ family, weight: nearestWeight(current.weight, weightsOf(family)) }, convert), delayed);
   }, [select]);
 
   function cancel() {
@@ -278,17 +308,68 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
 
   const weightLocked = weightOptions.length <= 1;
 
+  // Browser text sits in its line box by the font's own ascent and descent, which differ from font to font and
+  // moved the phrase up and down. The line is shifted so the ink of a fixed sample is centred, the way the
+  // canvas labels are, whatever the phrase says. A face that loads late changes the metrics, so it re-measures.
+  const [faceTick, setFaceTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setFaceTick((tick) => tick + 1);
+    document.fonts?.addEventListener("loadingdone", bump);
+    return () => document.fonts?.removeEventListener("loadingdone", bump);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const previewShift = useMemo(() => -canvasInkCentreOffset(PREVIEW_CENTRE_SAMPLE, isMsdfFamily(working.family) ? { ...working, family: "Roboto" } : working, PREVIEW_FONT_SIZE), [working.family, working.weight, fontsVersion, faceTick]);
+
+  // Why the MSDF conversion switch is off for good: a bundled font is MSDF already, a font without a readable
+  // file (a typed name) cannot be converted.
+  const convertLockedHint = isMsdfFamily(working.family)
+    ? m["font_picker.convert_already_msdf_hint"]()
+    : hasFontFile(working.family) ? undefined : m["font_picker.convert_no_permission_hint"]();
+
   /** Adds an uploaded font file and highlights it. */
   async function upload(file: File) {
     setUploadError(null);
     const result = await addUploadedFont(file);
     if (!result.ok) {
+      if (result.reason === "file-too-large" || result.reason === "too-many-fonts" || result.reason === "storage-full") {
+        reportUploadRefused(result.reason);
+        return;
+      }
       setUploadError(result.reason === "unsupported-format" ? m["font_picker.upload_failed_unsupported_format"]() : m["font_picker.upload_failed_corrupt"]());
       return;
     }
     setQuery("");
     setFormatFilter(null);
     select(withMsdfConversion({ family: result.family, weight: result.weight }, convertsToMsdf(workingRef.current)));
+  }
+
+  /** Opens the file picker, unless a limit is already used up: then there is no point in choosing a file. */
+  function openFilePicker() {
+    const exhausted = uploadCapacityExhausted();
+    if (exhausted) { reportUploadRefused(exhausted); return; }
+    fileInputRef.current?.click();
+  }
+
+  /** Deletes the uploaded fonts the dialog chose. A highlighted one that goes falls back to the default font. */
+  async function removeFonts(families: string[]) {
+    await Promise.all(families.map((family) => removeUploadedFont(family)));
+    if (families.includes(workingRef.current.family)) selectFamily("");
+  }
+
+  /** Adds an installed font typed in by name and highlights it. Only offered while the machine's font list is
+   *  unavailable; the name must be a font the browser actually has. */
+  function addManual() {
+    const name = manualName.trim();
+    if (!name) return;
+    if (!isFontFamilyInstalled(name)) {
+      reportManualFontNotFound(name);
+      return;
+    }
+    setManualName("");
+    addManualFontName(name);
+    setQuery("");
+    setFormatFilter(null);
+    selectFamily(name);
   }
 
   // The bundled fonts need no permission, so the note is only about the part of the list it affects.
@@ -379,6 +460,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                       fontFamily: isMsdfFamily(working.family) ? "Roboto, sans-serif" : labelFontCss(working.family),
                       fontWeight: working.weight,
                       fontSize: PREVIEW_FONT_SIZE,
+                      transform: `translateY(${previewShift}px)`,
                     }}
                     data-testid="font-picker-preview-line"
                   >
@@ -394,6 +476,14 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             <div style={styles.familyHeader}>
               <div style={typography.body}>{m["font_picker.section_family"]()}</div>
               <InfoIconButton onClick={() => setInfoOpen(true)} />
+              <span style={styles.familyActions}>
+                <Tooltip content={m["font_picker.upload_hint"]()}>
+                  <InfoIconButton symbol={<Upload size={16} />} label={m["font_picker.upload"]()} onClick={openFilePicker} testId="font-picker-upload" />
+                </Tooltip>
+                <Tooltip content={m["font_picker.remove_hint"]()}>
+                  <InfoIconButton symbol={<Trash2 size={16} />} label={m["font_picker.remove_hint"]()} onClick={() => setRemoveOpen(true)} disabled={uploadedFamilies().length === 0} testId="font-picker-remove" />
+                </Tooltip>
+              </span>
             </div>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
               <input
@@ -432,6 +522,15 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   testId="font-picker-filter-used"
                 >
                   <CircleCheck size={14} />
+                </FilterChip>
+                <FilterChip
+                  active={onlyUploaded}
+                  colors={onlyUploaded ? ICON_CHIP_ON : ICON_CHIP_OFF}
+                  label={m["font_picker.badge_uploaded"]()}
+                  onClick={() => setOnlyUploaded(!onlyUploaded)}
+                  testId="font-picker-filter-uploaded"
+                >
+                  <Upload size={14} />
                 </FilterChip>
                 {localeScript !== null && (
                   <FilterChip
@@ -489,11 +588,25 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   ))}
                 </SelectableList>
               </div>
-              <Tooltip content={m["font_picker.upload_hint"]()}>
-                <Button variant="secondary" onClick={() => fileInputRef.current?.click()} data-testid="font-picker-upload">
-                  {m["font_picker.upload"]()}
-                </Button>
-              </Tooltip>
+              {localFamilies !== undefined && !hasLocalFamilies ? (
+                <div style={styles.manualRow}>
+                  <input
+                    type="text"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addManual(); } }}
+                    placeholder={m["font_picker.manual_placeholder"]()}
+                    aria-label={m["font_picker.manual_placeholder"]()}
+                    style={{ ...sharedStyles.input, flex: 1, minWidth: 0, boxSizing: "border-box" }}
+                    data-testid="font-picker-manual-input"
+                  />
+                  <Tooltip content={m["font_picker.manual_hint"]()}>
+                    <Button variant="secondary" onClick={addManual} disabled={manualName.trim() === ""} data-testid="font-picker-manual-add">
+                      {m["font_picker.manual_add"]()}
+                    </Button>
+                  </Tooltip>
+                </div>
+              ) : null}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -521,16 +634,18 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                 testId="font-picker-weight"
               />
             </Tooltip>
-            {!isMsdfFamily(working.family) && (
-              <div data-testid="font-picker-msdf-toggle">
+            <div data-testid="font-picker-msdf-toggle">
+              {/* A disabled switch gets no hover events, so the hint wraps the whole row. */}
+              <Tooltip content={convertLockedHint} block>
                 <ToggleRow
                   label={m["font_picker.convert_to_msdf"]()}
                   checked={convertsToMsdf(working)}
+                  disabled={convertLockedHint !== undefined}
                   onChange={(on) => select(withMsdfConversion(working, on))}
                   info={() => setConvertInfoOpen(true)}
                 />
-              </div>
-            )}
+              </Tooltip>
+            </div>
           </div>
           {warningKinds && openMode && (
             <div style={styles.section}>
@@ -553,16 +668,18 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
           params={[
             { label: m["font_picker.type_vector"](), description: m["font_picker.info_vector"]() },
             { label: m["font_picker.type_raster"](), description: m["font_picker.info_raster"]() },
+            { label: m["font_picker.badge_uploaded"](), description: m["font_picker.info_uploaded"]() },
           ]}
           onClose={() => setInfoOpen(false)}
         />
       )}
       {convertInfoOpen && (
-        <CategoryInfoModal
-          title={m["font_picker.convert_to_msdf"]()}
-          params={[{ label: m["font_picker.convert_to_msdf"](), description: m["font_picker.convert_to_msdf_info"]() }]}
-          onClose={() => setConvertInfoOpen(false)}
-        />
+        <Modal title={m["font_picker.convert_to_msdf"]()} onClose={() => setConvertInfoOpen(false)}>
+          <div style={styles.convertInfo}>{m["font_picker.convert_to_msdf_info"]()}</div>
+        </Modal>
+      )}
+      {removeOpen && (
+        <RemoveUploadedFontsDialog families={uploadedFamilies()} usedFamilies={usedFamilies} onDelete={(families) => void removeFonts(families)} onClose={() => setRemoveOpen(false)} />
       )}
       {licenseNotice && <FontLicensesModal notice={licenseNotice} onClose={() => setLicenseNotice(null)} />}
     </SidePanel>
@@ -609,6 +726,13 @@ const FontOption = memo(function FontOption({ entry, selected, localeScript, onS
             <Tooltip content={m["font_picker.badge_used"]()} focusable={false}>
               <span style={styles.statusIcon} role="img" aria-label={m["font_picker.badge_used"]()} data-testid="font-badge-used">
                 <CircleCheck size={14} />
+              </span>
+            </Tooltip>
+          )}
+          {entry.uploaded && (
+            <Tooltip content={m["font_picker.badge_uploaded"]()} focusable={false}>
+              <span style={styles.statusIcon} role="img" aria-label={m["font_picker.badge_uploaded"]()} data-testid="font-badge-uploaded">
+                <Upload size={14} />
               </span>
             </Tooltip>
           )}
@@ -661,6 +785,7 @@ const styles: Record<string, React.CSSProperties> = {
   familySection: { flex: 1, minHeight: 4 * controlRowHeight + 4 * spacing.itemGap + FAMILY_LIST_MIN_HEIGHT },
   familyBody: { flex: 1 },
   familyHeader: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  familyActions: { display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto" },
   // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
   // not selectable, it is only a sample.
   previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.2, userSelect: "none", WebkitUserSelect: "none" },
@@ -695,6 +820,8 @@ const styles: Record<string, React.CSSProperties> = {
   listWrap: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
   badges: { display: "flex", alignItems: "center", gap: spacing.itemGap, flexShrink: 0, marginLeft: spacing.itemGap },
   statusIcon: { ...muted(typography.icon), display: "inline-flex", alignItems: "center", flexShrink: 0, lineHeight: 1 },
+  convertInfo: { ...typography.body, lineHeight: 1.4 },
+  manualRow: { display: "flex", gap: spacing.itemGap, alignItems: "center", flexShrink: 0 },
   permissionNote: { display: "flex", flexDirection: "column", alignItems: "center", gap: spacing.itemGap },
   permissionText: { ...typography.caption, color: ui.text.disabled, textAlign: "center" },
   permissionButton: { fontSize: font.sm, padding: "2px 8px" },

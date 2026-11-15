@@ -20,6 +20,7 @@ const { collectLabelFontFamilies, collectLazyMsdfFamilies, installLabelFontSync,
 const { useNotificationStore, resetNotifications } = await import("../notifications/notificationStore");
 const { resetFontProblems } = await import("../notifications/fontNotifications");
 const { registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");
+const { loadLocalFontFamilies } = await import("../pixi/renderers/labelFont");
 const { closeFontPermissionRequest, getFontPermissionRequest, resetFontPermissionAnswer } = await import("../pixi/renderers/rasterFont/fontPermissionRequest");
 
 const face = (family: string, weight: number) => ({ weight, atlasName: `${family}-${weight}`, url: `/fonts/${family}-${weight}.fnt` });
@@ -161,11 +162,15 @@ describe("installLabelFontSync", () => {
         delete win.queryLocalFonts;
         return;
       }
-      win.queryLocalFonts = vi.fn().mockResolvedValue([]);
+      // Before the permission is decided the browser refuses the query that is not made from a click.
+      win.queryLocalFonts = state === "prompt" ? vi.fn().mockRejectedValue(new Error("needs a user gesture")) : vi.fn().mockResolvedValue([]);
       Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: () => Promise.resolve({ state }) } });
     };
 
-    beforeEach(() => {
+    beforeEach(async () => {
+      // The font list query is cached for the page lifetime: drop what an earlier case left in it.
+      (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn().mockRejectedValue(new Error("reset"));
+      await loadLocalFontFamilies(true);
       resetNotifications();
       resetFontProblems();
       closeFontPermissionRequest(false);
@@ -201,6 +206,27 @@ describe("installLabelFontSync", () => {
       await settle();
       expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost"] });
       expect(useNotificationStore.getState().errors).toHaveLength(0);
+    });
+
+    it("does not ask for a permission that is already given when one query is refused and the next one is answered", async () => {
+      setPermission("granted");
+      (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn()
+        .mockRejectedValueOnce(new Error("refused for a passing reason"))
+        .mockResolvedValue([]);
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(getFontPermissionRequest().open).toBe(false);
+      expect(useNotificationStore.getState().errors[0].code).toBe("fonts.unavailable");
+    });
+
+    it("trusts a font list that loads when the browser cannot report the permission state", async () => {
+      setPermission("granted");
+      Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: () => Promise.reject(new Error("unknown permission name")) } });
+      (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn().mockResolvedValue([]);
+      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      await settle();
+      expect(getFontPermissionRequest().open).toBe(false);
+      expect(useNotificationStore.getState().errors[0].code).toBe("fonts.unavailable");
     });
 
     it("asks for the permission first when the browser can still prompt, and reports nothing yet", async () => {

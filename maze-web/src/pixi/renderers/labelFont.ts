@@ -3,7 +3,7 @@ import { LABEL_FONT_LOADED_EVENT, convertsToMsdf, isMsdfFamily, msdfFace, type L
 import { loadMsdfFamily } from "./msdfLoader";
 import { canvasLabelResolution } from "./canvasLabelResolution";
 import { isRasterFontReady, rasterCoversText } from "./rasterFont/rasterMsdf";
-import { knownRasterWeights, registerLocalFaces, type LocalFontFace } from "./rasterFont/rasterFontStore";
+import { ensureUploadedFace, isUploadedFaceLoaded, isUploadedFamily, knownRasterWeights, registerLocalFaces, saveUploadedCoverage, storedUploadedCoverage, type LocalFontFace } from "./rasterFont/rasterFontStore";
 
 /** Runtime support for installed and uploaded fonts (issues #740, #966). A raster font is drawn by canvas
  * text (a `Text` whose texture density follows the zoom, `canvasLabelResolution.ts`) from the moment its
@@ -51,6 +51,16 @@ const coverageCache = new Map<string, boolean>();
  *  picker asks it for every installed family. */
 export function fontCoversSample(family: string, sample: string): boolean {
   if (typeof document === "undefined") return false;
+  if (isUploadedFamily(family)) {
+    // An uploaded face is read only when needed, so its coverage is measured once it is loaded and remembered;
+    // until then it counts as not covering and nothing is cached.
+    const stored = storedUploadedCoverage(family, sample);
+    if (stored !== undefined) return stored;
+    if (!isUploadedFaceLoaded(family)) return false;
+    const measured = hasDistinctGlyphMetrics(family, [sample]);
+    saveUploadedCoverage(family, sample, measured);
+    return measured;
+  }
   const key = `${sample}|${family}`;
   let covers = coverageCache.get(key);
   if (covers === undefined) {
@@ -177,6 +187,8 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   if (inFlight) return inFlight;
   const loading = (async () => {
     try {
+      // An uploaded file is read into the browser only now, when the font is first used.
+      await ensureUploadedFace(family, font.weight);
       const face = `${font.weight} 16px ${JSON.stringify(family)}`;
       // A canvas text texture is immutable until rebuilt. Load the face before the font becomes
       // active so Pixi never bakes the label from a late regular/fallback face.

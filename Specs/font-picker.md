@@ -71,13 +71,13 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   while it is highlighted the preview is a small pixi canvas (`MsdfFontPreview`) drawing the phrase as a
   `BitmapText` over the baked atlas, exactly like the maze canvas. It owns one pixi application for the
   lifetime of the panel and only rewrites text and colors. When a WebGL canvas cannot be created it
-  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing).
+  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing). The line is centred on the ink of a fixed sample (`Hx`), not of the phrase or the font's line box, in both variants (`canvasInkCentreOffset` shifts the DOM line, the sample's pivot the MSDF canvas), so it does not move with the phrase, the font or the weight.
   The preview text is not selectable. A phrase wider than the preview is cut with an ellipsis in both
   variants (CSS `text-overflow` for DOM text, the longest prefix that fits with "…", found by binary
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,
   colors or size change, not on a later panel resize).
 - **"Family" section** (GitHub issue #984) — second. Its header carries the info button (`InfoIconButton`) opening a
-  `CategoryInfoModal` that explains the practical difference between the two formats (MSDF, TTF/OTF). The body holds, top to
+  `CategoryInfoModal` that explains the practical difference between the two formats (MSDF, TTF/OTF) and what "Uploaded by user" fonts are and how long they live. The body holds, top to
   bottom, a search field, a filter row and one list of every font. There is no format switch and no
   global license button.
   - **List.** A single-select `SelectableList` (`components/SelectableList.tsx`, see `side-panel.md`'s "Shared list
@@ -106,7 +106,7 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
     named by a `LabelFont` of `vectorByWallsSettings`, `vectorByCorridorsSettings` or `pngExportSettings`, found by
     `collectLabelFontFamilies`, `store/labelFontSync.ts`; read once when the panel opens, because the live preview keeps the
     store on the highlighted font and would mark every browsed font; the default Roboto counts while any text still uses it),
-    **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. The two status icons are muted
+    **uploaded by user** (`Upload`; an uploaded font file, hint "Uploaded by user"; a typed name has none), **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. The two status icons are muted
     with a `Tooltip` hint and an `aria-label` (not tab stops: the tooltip is `focusable={false}` so the list keeps keyboard focus). Every hint of the panel (indicators, format bubbles, filter chips, copyright icon) goes through the shared `Tooltip`, never a native `title`. The **format** is a `Bubble` (the shared chip) in one of two neutral hues
     that carry no status meaning (`ui.fontFormat`): violet `MSDF` for a baked font, teal `Vec` for a browser TTF/OTF font, each with a
     tooltip hint, both of one fixed width so they line up.
@@ -118,10 +118,8 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
     for it differ from every generic fallback, since a missing script falls back to one of them. Results are cached per family.
   - **Search and filters.** The search field filters by name, case-insensitive substring. Down in the field moves keyboard focus to the
     list. Under it a single row of toggle chips (`FilterChip`, a `Bubble` of the look of the row's indicators, the chips of equal width sharing the row evenly so together they are as wide as the list; an off chip is
-    dimmed, an on chip is full, `aria-pressed`, the hint as a `Tooltip` and `aria-label`): the **MSDF** and **Vec** format chips, **in project**
-    (`CircleCheck`) and **supports the locale's script** (`Languages`, not shown for English). The two format chips exclude each other:
-    picking one drops the other, and picking the active one again clears the format filter (both formats shown). The other two combine with
-    each other and with the format by AND. The highlighted font stays highlighted when a filter hides it, and the arrow keys walk the visible
+    dimmed, an on chip is full, `aria-pressed`, the hint as a `Tooltip` and `aria-label`): the **MSDF** and **Vec** format chips, **in project**\1(`CircleCheck`), **uploaded by user** (`Upload`) and **supports the locale's script** (`Languages`, not shown for English). The two format chips exclude each other:
+    picking one drops the other, and picking the active one again clears the format filter (both formats shown). The other chips combine with each other and with the format by AND. The highlighted font stays highlighted when a filter hides it, and the arrow keys walk the visible
     fonts only.
   - **Copyright icon.** Every bundled MSDF font's row carries a lucide `Copyright` `InfoIconButton` (`inList`, no hover highlight, with the tooltip "View copyright"), always visible,
     next to the badges; browser fonts have none (they are not bundled). A click opens `FontLicensesModal` scoped to that font
@@ -208,7 +206,12 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 - **Source.** `rasterFontStore.ts`: installed faces (`registerLocalFaces`, normal-style faces by weight)
   and uploaded files (`addUploadedFont`: TTF, OTF or WOFF 1.0, parsed by `sfnt.ts`; italic faces, WOFF2
   and font collections are refused with a message in the picker). Uploads live for the session and in
-  IndexedDB (`mazegen-fonts`), never in the project file. A project that names a font this machine
+  IndexedDB (`mazegen-fonts`), never in the project file. Memory holds only each face's identity (family, weight, the file's
+  fingerprint) and its file as a `Blob`; the file is read when the font is used (`ensureUploadedFace`: the highlighted font's
+  browser face, a font applied to the canvas, its atlas conversion), never just because it is listed. The "supports the
+  interface language" check of an uploaded font needs its loaded face, so it is measured once and remembered per file
+  fingerprint in `localStorage` (`mazegen-uploaded-coverage`); a font not measured yet is read once to measure it
+  (`loadUnmeasuredUploadedFonts`). Records of an earlier version (raw bytes) are converted when read. A project that names a font this machine
   lacks reads Roboto and says so (see "Restoring project fonts").
 - **Preview (canvas text).** While a picker is open (`pickerSession.ts`, set by `FontPickerPanel`) every
   highlighted font reaches the settings as a preview and its labels are pixi `Text` objects over a canvas
@@ -225,7 +228,8 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 - **Conversion (after Apply).** When the picker closes (applied, or the open-time font restored) or a
   project loads, `labelFontSync` calls `loadRasterFont` for each project font (never while a picker is
   open). `rasterMsdf.ts` builds one atlas per family and weight: a dedicated worker (`msdfWorker.ts`,
-  `@playcanvas/msdfgen-wasm`, msdfgen + FreeType) generates glyphs at the baked Roboto scale (54 px/em,
+  `@playcanvas/msdfgen-wasm`, msdfgen + FreeType; a font with no Unicode `cmap` record (platform 0, or 3 with encoding 1 or 10) first gets one built from its Symbol
+  or Mac Roman subtable, `withUnicodeCmap` in `unicodeCmap.ts`, or msdfgen would find no glyphs in it) generates glyphs at the baked Roboto scale (54 px/em,
   range 8 px). Other weights of the family are built when first used. The atlas replaces the canvas text
   when it is ready (`LABEL_FONT_LOADED_EVENT` redraw); on failure the canvas text stays.
 - **Character set** (`glyphCharset.ts`): the union of base Latin `A-Z a-z`, common symbols (digits,
@@ -252,14 +256,37 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 - **UX.** No conversion button, no per-weight or per-atlas status. After Apply a small "Preparing fonts: <names>"
   note (`FontPreparingIndicator`, GitHub issue #974) appears top-right of the canvas only when conversion takes longer
   than `INDICATOR_DELAY_MS`.
-- **Picker.** The browser list is installed + uploaded families (+ the saved one); the web-safe list is
-  gone. An upload button adds a font and selects it. The format info says vector fonts can be built from
+- **Picker.** The browser list is installed + uploaded + typed families (+ the saved one); the web-safe list is
+  gone. An upload icon (`Upload`, `font-picker-upload`) in the Family section header adds a font and selects it; next to it a trash icon (`Trash2`, `font-picker-remove`, inert while nothing is uploaded) opens the delete dialog. Both are header actions, not list rows: the list holds information only. The format info says vector fonts can be built from
   raster fonts.
+- **Manual fonts (GitHub issue #985).** A font the user added by hand is an uploaded file or an installed
+  font typed in by name. Only an **uploaded** font is marked: its row carries an `Upload` badge "Uploaded by user"
+  (`font-badge-uploaded`), and a filter chip of the same icon (`font-picker-filter-uploaded`) shows only those; it
+  combines with the other filters by AND. A typed name has no badge.
+  - **Typed name.** While the machine's font list is unavailable (no API, denied, or empty), a text field with an
+    "Add" button (Enter also adds) sits under the list. The name must be a font the browser has
+    (`isFontFamilyInstalled`), else a `warning` toast (`fonts.manual_not_found`) is raised and nothing is added. An added name is listed,
+    highlighted and applied like any family.
+  - **Permission state.** The picker reads the `local-fonts` permission on open (`navigator.permissions`); a state
+    already `denied` shows the "blocked, allow in site settings" note at once, without a "Grant access" button.
+  - **Lifetime.** Neither kind is ever stored in the project file. Uploaded files live in IndexedDB
+    (`mazegen-fonts`), typed names in `localStorage` (`mazegen-manual-fonts`, `addManualFontName`,
+    `manualFontNames`); both survive reloads in the same browser and are lost with the site data. Opening the
+    project in another browser or device reads the default font and raises the usual `fonts.unavailable` toast for an
+    upload (see "Restoring project fonts"). The info dialog of the Family section (`font_picker.info_uploaded`)
+    states this.
+  - **No conversion.** A typed name has no font file (`knownRasterWeights` is empty), so it cannot become an MSDF
+    atlas: picking it stores `msdf: false` and the convert switch is disabled, with a tooltip saying the font file
+    cannot be read without permission to local fonts; its labels are canvas text
+    (browser-drawn) and no "unavailable" toast is raised for it. If the machine's list later provides the file,
+    picking the family again re-enables conversion.
 - **Not supported.** WOFF2, uploaded TTC files, italic faces, variable-font axes. An installed font that lives in a TTC (Sitka on Windows) is supported: the face is cut out of the collection by the PostScript name (else the full name) the Local Font Access API reports (`toSfnt` with a `FaceHint`, GitHub issue #974).
 - **Style names.** `weightFromStyleName` ignores optical size words (`Small`, `Text`, `Subheading`, `Heading`, `Display`, `Banner`, `Caption`): Sitka Small reports `Small` and `Small Bold`. Layout features other than pair kerning
   (ligatures, contextual forms) are not applied to MSDF text.
-- **Convert to MSDF switch.** Under the weight select, for a raster font, a switch (on by default) with an
-  info button. `LabelFont.msdf === false` (stored only when off, `withMsdfConversion`; kept by the project
+- **Convert to MSDF switch.** Under the weight select, always shown (so the panel does not jump), a switch (on by
+  default for a raster font) with an info button. It is disabled with a tooltip when conversion is impossible: "The
+  font is already MSDF" for a bundled font, and "Conversion is unavailable without permission to access fonts" for a
+  font without a readable file. The info dialog is plain body text under the dialog title. `LabelFont.msdf === false` (stored only when off, `withMsdfConversion`; kept by the project
   validator) means the font is never converted: `labelFontSync` skips `loadRasterFont` and treats its
   atlas as idle (kept only among the `MAX_IDLE_RASTER_FONTS` most recent, so switching back is cheap), and `usesCanvasText` keeps its labels canvas text (zoom-aware, export-scale). The info says the
   automatic conversion can give artifacts on some fonts with thin lines, which is the reason to turn it off.
@@ -280,7 +307,13 @@ every case where a project font cannot be drawn from its own atlas is a toast (`
 source `fonts`) and, for the permission, a dialog.
 
 - **Sources settle first.** A font is judged missing only after the uploaded fonts are restored and, when the
-  permission is already granted, the installed ones are read (`sourcesSettled` in `installLabelFontSync`).
+  permission is already granted, the installed ones are read (`sourcesSettled` in `installLabelFontSync`). The
+  reported permission state is not trusted alone, so the dialog does not ask for a permission already given: the font
+  list is queried when the state is `granted` or `unknown` (the browser could not tell, `queryLocalFontPermission`),
+  and a list that loads counts as access. An undecided `prompt` is never queried at startup: without a click the
+  browser refuses, and a query inside a fresh click would show its own prompt past the dialog. A refused query under
+  `granted` is tried once more once the page is visible (a background tab may refuse it); only a second refusal falls
+  back to the dialog.
 - **Preparing.** No toast: a running conversion is shown by the "Preparing fonts" indicator, which names the fonts
   being converted (`rasterWorkLabels`).
 - **Toasts end with their cause.** A font problem that is resolved (the font arrives, the permission is granted, the
@@ -291,7 +324,7 @@ source `fonts`) and, for the permission, a dialog.
   is missing.
 - **Permission dialog.** When the browser can still prompt (`prompt`) and the user has not answered for the current
   missing fonts, no toast is raised yet: `LocalFontPermissionDialog` (state in `fontPermissionRequest.ts`) opens with
-  Cancel and Request permission. The prompt only appears from a user gesture, so the button starts
+  Cancel and Grant permission. The prompt only appears from a user gesture, so the button starts
   `queryLocalFonts()` synchronously in its click handler and the dialog stays open until the browser answers (closing
   earlier would let the sync read the undecided permission and raise the error). The dialog is narrow; two or more
   fonts are listed as bullets. Cancel (or a dismissed prompt) leaves the fonts missing and `fonts.permission_denied`
@@ -309,3 +342,18 @@ source `fonts`) and, for the permission, a dialog.
   (`fonts.atlas_full`, once per atlas).
 - **Export.** `PngExporter` calls `reportProjectFontProblems` after the conversions settle: a font still unavailable
   raises the same error again, without opening the dialog. Export itself is not blocked.
+
+## Upload limits and deleting uploaded fonts (GitHub issue #985)
+
+- **Limits** (`rasterFontStore.ts`): at most `MAX_UPLOADED_FACES` (50) font files, `MAX_UPLOADED_BYTES` (100 MB) in total,
+  and `MAX_UPLOAD_FILE_BYTES` (20 MB) per file. A face of the same family and weight replaces the old one, which frees its own
+  share first. When the count or the total size is already used up, the upload icon raises the toast at once and does not open
+  the file picker (`uploadCapacityExhausted`). A refused upload (`file-too-large`, `too-many-fonts`, `storage-full`) stores nothing and raises a `warning`
+  toast (`fonts.upload_refused`, `reportUploadRefused`); an unusable file keeps its inline message under the list.
+  Typed names have no limit.
+- **Delete dialog** (`RemoveUploadedFontsDialog`): lists every uploaded family with a switch each and the "in project" icon
+  for those a project font names (the set read when the panel opened). Deleting asks for nothing, except when a chosen font
+  is used in the project: then a second confirmation (`ConfirmModal`) says its text will be drawn in the default font.
+  Delete is disabled until something is chosen. `removeUploadedFont` forgets the family in memory and IndexedDB; a
+  highlighted font that goes is replaced by the default one, and the font sync reports a project font left without a source
+  as the usual `fonts.unavailable` error.

@@ -19,7 +19,7 @@ export function ToggleRow({ label, checked, onChange, disabled, info, action, re
         {info && <InfoIconButton onClick={info} />}
       </span>
       {action}
-      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} ariaLabel={label} />
+      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} disabled={disabled} ariaLabel={label} />
       {resetButton}
     </Inline>
   );
