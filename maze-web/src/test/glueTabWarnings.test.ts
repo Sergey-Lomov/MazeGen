@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GlueTab, GlueTabLayout } from "../pixi/imageExport/glueTabExport";
 
 let tabsNow: GlueTab[] = [];
+let hasCutsNow = false;
 let missingLinesNow: [number, number][][] = [];
-let layoutNow: GlueTabLayout = { tabs: [], missingEnds: [], missingLines: [] };
+let layoutNow: GlueTabLayout = { tabs: [], hasCuts: false, missingEnds: [], missingLines: [] };
 vi.mock("../pixi/imageExport/glueTabExport", () => ({ selectExportGlueTabLayout: () => layoutNow }));
 /** The layout changes identity only when the inputs do, like the real memoised selector. */
-const setLayout = () => { layoutNow = { tabs: tabsNow, missingEnds: [], missingLines: missingLinesNow }; };
+const setLayout = () => { layoutNow = { tabs: tabsNow, hasCuts: hasCutsNow, missingEnds: [], missingLines: missingLinesNow }; };
 
 import { convexPolygonsOverlap, computeGlueTabWarnings, MIN_TAB_BASE } from "../pixi/selectors/glueTabWarnings";
 
@@ -29,7 +30,7 @@ describe("convexPolygonsOverlap", () => {
 });
 
 describe("computeGlueTabWarnings", () => {
-  beforeEach(() => { tabsNow = []; missingLinesNow = []; setLayout(); });
+  beforeEach(() => { tabsNow = []; hasCutsNow = false; missingLinesNow = []; setLayout(); });
 
   it("returns nothing without tabs", () => {
     expect(compute()).toEqual([]);
@@ -39,6 +40,17 @@ describe("computeGlueTabWarnings", () => {
     tabsNow = [tab(0), tab(50)];
     setLayout();
     expect(compute()).toEqual([]);
+  });
+
+  it("cautions against tabs together with cut lines, highlighting nothing (GitHub issue #1014)", () => {
+    tabsNow = [tab(0), tab(50)];
+    hasCutsNow = true;
+    setLayout();
+    const warnings = compute();
+    expect(warnings.map((w) => w.id)).toEqual(["glue_tabs_with_cut_lines"]);
+    expect(warnings[0]).toMatchObject({ nodes: [], edges: [] });
+    expect(warnings[0].polygons).toBeUndefined();
+    expect(warnings[0].bands).toBeUndefined();
   });
 
   it("flags only the overlapping tabs, as polygons", () => {

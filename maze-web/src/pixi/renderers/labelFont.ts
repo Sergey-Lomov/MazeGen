@@ -210,6 +210,14 @@ export async function loadLabelFont(font: LabelFont): Promise<boolean> {
   return loading;
 }
 
+/** Distance from the centre of the line box to the ink centre of `text`, given the box's ascent and descent. */
+function inkCentreBelowBox(ink: TextMetrics, boxAscent: number, boxDescent: number): number {
+  const inkAscent = ink.actualBoundingBoxAscent || 0;
+  const inkDescent = ink.actualBoundingBoxDescent || 0;
+  if (!inkAscent && !inkDescent) return 0;
+  return (boxAscent - boxDescent) / 2 + (inkDescent - inkAscent) / 2;
+}
+
 /** How far the canvas-text ink centre of `text` sits below the centre of its line box, in logical pixels:
  *  `pivot.y` for a `Text` anchored at its centre, so the ink lands on the origin exactly like an MSDF label
  *  does (`inkCentreOffset`) and the label does not jump when the atlas replaces the canvas text. */
@@ -219,12 +227,26 @@ export function canvasInkCentreOffset(text: string, font: LabelFont, fontSize: n
   try {
     const css = `${font.weight} ${fontSize}px ${labelFontCss(font.family.trim())}`;
     context.font = css;
-    const metrics = context.measureText(text);
     const box = CanvasTextMetrics.measureFont(css);
-    const inkAscent = metrics.actualBoundingBoxAscent || 0;
-    const inkDescent = metrics.actualBoundingBoxDescent || 0;
-    if (!inkAscent && !inkDescent) return 0;
-    return (box.ascent - box.descent) / 2 + (inkDescent - inkAscent) / 2;
+    return inkCentreBelowBox(context.measureText(text), box.ascent, box.descent);
+  } catch {
+    return 0;
+  }
+}
+
+/** Like `canvasInkCentreOffset`, but for text laid out by the DOM: a CSS line box places the baseline by the
+ *  font's own ascent and descent (`fontBoundingBox*`), not by the glyph-scanned box Pixi measures, so the two
+ *  differ for fonts whose ascent/descent metrics disagree with their ink. Falls back to the Pixi box when the
+ *  browser lacks font bounding boxes. */
+export function domInkCentreOffset(text: string, font: LabelFont, fontSize: number): number {
+  const context = typeof document === "undefined" ? null : measureContext();
+  if (!context) return 0;
+  try {
+    context.font = `${font.weight} ${fontSize}px ${labelFontCss(font.family.trim())}`;
+    const metrics = context.measureText(text);
+    const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = metrics;
+    if (!Number.isFinite(ascent) || !Number.isFinite(descent)) return canvasInkCentreOffset(text, font, fontSize);
+    return inkCentreBelowBox(metrics, ascent, descent);
   } catch {
     return 0;
   }

@@ -93,10 +93,11 @@ export class CutLineDragController implements PointerHandler {
     let best: { handle: CutLineHandle; side: 0 | 1 } | null = null;
     let bestDistance = tolerance;
     const st = useMazeStore.getState();
-    for (const handle of activeCutLines(st)) {
+    const handles = activeCutLines(st);
+    for (const handle of handles) {
       if (handle.mode !== "manual") continue;
       // Only the drawn part of a line can be grabbed: its stretch across the cells, not the infinite line.
-      const drawn = drawnSideSpans(st, handle);
+      const drawn = drawnSideSpans(st, handle, handles);
       for (const side of [0, 1] as const) {
         const distance = Math.min(Infinity, ...drawn[side].map(([from, to]) => distanceToSegment([pointer.x, pointer.y], from, to)));
         if (distance <= bestDistance) {

@@ -72,13 +72,14 @@ export class CutLinesOverlay implements ViewportListener {
     const visible = this.visibleRect();
     const scale = Math.max(this.view.scale, 1e-9);
 
-    for (const handle of activeCutLines(st)) {
+    const handles = activeCutLines(st);
+    for (const handle of handles) {
       const { group, line } = handle;
       const index = arrows.findIndex((arrow) => arrow.group === group);
       const hovered = editing && group === focusedGroup;
       const color = imageColor ? imageColor(group) : index < 0 ? FALLBACK_COLOR : glueColor(index, arrows.length, hovered);
       // Only over the image: the twin shows the halves that moved over, so it has image where the line cuts a tile.
-      const drawn = drawnSideSpans(st, handle);
+      const drawn = drawnSideSpans(st, handle, handles);
       cutLineSides(line).forEach((through, side) => {
         const spans = drawn[side];
         for (const [from, to] of clipSpans(spans, lineInside(visible, through, line.cut.direction), line.cut.direction)) {

@@ -32,8 +32,8 @@ default font.
 An atlas is downloaded and decoded only when its font is first needed (`loadMsdfFamily`,
 `pixi/renderers/msdfLoader.ts`): picked in a font picker, highlighted in the picker preview, or referenced
 by the export settings. The last case is `installLabelFontSync` (`store/labelFontSync.ts`): it watches
-`vectorByWallsSettings`, `vectorByCorridorsSettings` and `pngExportSettings`, and any `LabelFont` in them
-(found at any depth) that names a non-default catalog font starts its download once. It covers every way
+`vectorByWallsSettings`, `vectorByCorridorsSettings` and the maze graph (`nodes`, `edges`, `floors`), and any drawn
+`LabelFont` (see "Drawn fonts") that names a non-default catalog font starts its download once. It covers every way
 settings arrive (project load, visual preset, shared-style link, picker) without needing a font row on
 screen. A font referenced by a project therefore loads on open, and the labels switch from Roboto when
 it lands. Only the
@@ -71,7 +71,7 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   while it is highlighted the preview is a small pixi canvas (`MsdfFontPreview`) drawing the phrase as a
   `BitmapText` over the baked atlas, exactly like the maze canvas. It owns one pixi application for the
   lifetime of the panel and only rewrites text and colors. When a WebGL canvas cannot be created it
-  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing). The line is centred on the ink of a fixed sample (`Hx`), not of the phrase or the font's line box, in both variants (`canvasInkCentreOffset` shifts the DOM line, the sample's pivot the MSDF canvas), so it does not move with the phrase, the font or the weight.
+  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing). The line is centred on the ink of a fixed sample (`Hx`), not of the phrase or the font's line box, in both variants (`domInkCentreOffset` shifts the DOM line, using the font's own ascent and descent that a CSS line box centres by, GitHub issue #1016; the line box is taller than the preview, so the ellipsis clip of the line does not cut glyphs that overshoot a font's ascent or descent, and the preview box clips them; the offset does not depend on the line height; the sample's pivot the MSDF canvas), so it does not move with the phrase, the font or the weight.
   The preview text is not selectable. A phrase wider than the preview is cut with an ellipsis in both
   variants (CSS `text-overflow` for DOM text, the longest prefix that fits with "…", found by binary
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,
@@ -102,11 +102,11 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
       A browser without the API shows a plain "cannot list local fonts" note and no button.
     - When the search and filters leave no font, the note says so, centered in the list body (`SelectableList`'s `centerFooter`). All notes of the list (empty, loading, permission) are muted disabled-colored captions like the embedded hotkey hints. The permission note is not shown while the format filter is MSDF, since the bundled fonts need no permission.
   - **Row.** The font name (cut with an ellipsis), then the indicators, then the format bubble last (`FontOption`, memoized, so a move re-renders
-    only the two rows whose selection changed). Indicators, in order: **in project** (lucide `CircleCheck`; the family is
-    named by a `LabelFont` of `vectorByWallsSettings`, `vectorByCorridorsSettings` or `pngExportSettings`, found by
-    `collectLabelFontFamilies`, `store/labelFontSync.ts`; read once when the panel opens, because the live preview keeps the
-    store on the highlighted font and would mark every browsed font; the default Roboto counts while any text still uses it),
-    **uploaded by user** (`Upload`; an uploaded font file, hint "Uploaded by user"; a typed name has none), **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. The two status icons are muted
+    only the two rows whose selection changed). Indicators, in order: **in project** (lucide `CircleDot`, `FontUsedIcon`; the family is
+    named by a drawn `LabelFont` of `vectorByWallsSettings` or `vectorByCorridorsSettings`, found by
+    `collectDrawnLabelFontFamilies`, `store/labelFontSync.ts`, see "Drawn fonts"; read once when the panel opens, because the live preview keeps the
+    store on the highlighted font and would mark every browsed font; the default Roboto counts while any drawn text uses it),
+    **uploaded by user** (`Upload`; an uploaded font file, hint "Uploaded by user"; a typed name has none), **locale support** (`Languages`; the font draws the script of the current UI locale; the hint reads "Supports the interface language"; never shown for a locale that needs only Latin, English) and the **copyright icon** below. All status icons share one size, `FONT_STATUS_ICON_SIZE` (14 px, `components/FontStatusIcons.tsx`, which also holds `FontUsedIcon`, reused by the delete dialog). The two status icons are muted
     with a `Tooltip` hint and an `aria-label` (not tab stops: the tooltip is `focusable={false}` so the list keeps keyboard focus). Every hint of the panel (indicators, format bubbles, filter chips, copyright icon) goes through the shared `Tooltip`, never a native `title`. The **format** is a `Bubble` (the shared chip) in one of two neutral hues
     that carry no status meaning (`ui.fontFormat`): violet `MSDF` for a baked font, teal `Vec` for a browser TTF/OTF font, each with a
     tooltip hint, both of one fixed width so they line up.
@@ -304,6 +304,18 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   character (`chars[second].kerning[first]`, atlas pixels), so MSDF text keeps the width canvas text had.
   Pairs form as glyphs arrive (charset completion, on-demand); a character drawn from the Roboto fallback
   is not kerned.
+
+## Drawn fonts (GitHub issue #1012)
+
+A font counts as used by the project only while its text is drawn. `collectDrawnLabelFonts` (`store/labelFontSync.ts`)
+walks the `labelFont` fields of `LINK_SCHEMA` (`textFont` of start and finish captions, teleport floor badges, elevator
+badges, marker indices and floor labels; the "Shared style" source `labelFont` is skipped, since it draws nothing
+itself) in both render modes and keeps a field's font only while its settings row is active
+(`isSchemaPathActive` over `buildProjectActivity`, `pixi/selectors/projectActivity.ts`, shared with the color field registry): the maze has the element
+(teleports, elevators, several floors) and the settings keep the text on (caption switch, floor label switch, badges,
+marker indices). A font a hidden text still names is therefore not marked "in project" in the picker, and the font sync
+does not download, convert, prune-protect or report it as unavailable. `installLabelFontSync` re-runs when the maze graph
+changes too, since that decides what is drawn. `pngExportSettings` holds no font and is not read.
 
 ## Restoring project fonts (GitHub issue #974)
 

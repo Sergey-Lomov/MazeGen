@@ -88,6 +88,19 @@ const MSDF_LABELS = Object.values(MSDF_FONTS).map((font) => font.label);
 // The list holds the bundled fonts first, then the browser ones.
 const browserNames = () => optionNames().slice(MSDF_LABELS.length);
 
+// Only the text a project draws marks its font as used (GitHub issue #1012): switch the waypoint captions on.
+function drawWaypointText(finishFont?: { family: string; weight: number }) {
+  const original = useMazeStore.getState().vectorByWallsSettings;
+  useMazeStore.setState({
+    vectorByWallsSettings: {
+      ...original,
+      startMarker: { ...original.startMarker, textEnabled: true },
+      finishMarker: { ...original.finishMarker, textEnabled: true, ...(finishFont ? { textFont: finishFont } : {}) },
+    },
+  });
+  return () => useMazeStore.setState({ vectorByWallsSettings: original });
+}
+
 describe("FontPickerPanel text warnings (GitHub issue #971)", () => {
   const overflow = (id: string) => ({ id, key: id, nodes: [], edges: [] as never[] });
   const sectionTitle = (count: number) => m["image_export.vector_by_walls.section_warnings"]({ count: String(count) });
@@ -535,14 +548,24 @@ describe("FontPickerPanel", () => {
   });
 
   it("marks the fonts the project uses, as the panel opened, and not the ones merely browsed", async () => {
-    const original = useMazeStore.getState().vectorByWallsSettings;
-    useMazeStore.setState({ vectorByWallsSettings: { ...original, label: { family: "Consolas", weight: 400 } } as typeof original });
+    const restore = drawWaypointText({ family: "Consolas", weight: 400 });
     try {
       await renderPanel({ font: { family: "Consolas", weight: 400 } });
       fireEvent.click(option("Georgia"));
       const used = listOptions().filter((o) => within(o).queryByTestId("font-badge-used")).map(labelOf);
       // The default Roboto is what the other text styles use.
       expect(used).toEqual(["Roboto", "Consolas"]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("marks no font whose text is hidden", async () => {
+    const original = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({ vectorByWallsSettings: { ...original, finishMarker: { ...original.finishMarker, textEnabled: false, textFont: { family: "Consolas", weight: 400 } } } });
+    try {
+      await renderPanel({ font: { family: "", weight: 400 } });
+      expect(listOptions().filter((o) => within(o).queryByTestId("font-badge-used")).map(labelOf)).not.toContain("Consolas");
     } finally {
       useMazeStore.setState({ vectorByWallsSettings: original });
     }
@@ -579,10 +602,15 @@ describe("FontPickerPanel", () => {
   });
 
   it("puts the indicators before the format bubble, which ends the row", async () => {
-    await renderPanel({ font: { family: "", weight: 400 } });
-    const row = option("Roboto");
-    const indicators = [...row.querySelectorAll('[data-testid="font-badge-used"], [role="button"], [data-testid="font-badge-format"]')];
-    expect(indicators.map((el) => el.getAttribute("data-testid") ?? "copyright")).toEqual(["font-badge-used", "copyright", "font-badge-format"]);
+    const restore = drawWaypointText();
+    try {
+      await renderPanel({ font: { family: "", weight: 400 } });
+      const row = option("Roboto");
+      const indicators = [...row.querySelectorAll('[data-testid="font-badge-used"], [role="button"], [data-testid="font-badge-format"]')];
+      expect(indicators.map((el) => el.getAttribute("data-testid") ?? "copyright")).toEqual(["font-badge-used", "copyright", "font-badge-format"]);
+    } finally {
+      restore();
+    }
   });
 
   it("centers the empty note in the list body", async () => {
@@ -601,9 +629,14 @@ describe("FontPickerPanel", () => {
   });
 
   it("filters to the fonts the project uses", async () => {
-    await renderPanel({ font: { family: "", weight: 400 } });
-    fireEvent.click(filter("used"));
-    expect(optionNames()).toEqual(["Roboto"]);
+    const restore = drawWaypointText();
+    try {
+      await renderPanel({ font: { family: "", weight: 400 } });
+      fireEvent.click(filter("used"));
+      expect(optionNames()).toEqual(["Roboto"]);
+    } finally {
+      restore();
+    }
   });
 
   it("walks only the visible fonts with the arrow keys, and hands the keyboard from the search to the list", async () => {

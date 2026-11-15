@@ -6,7 +6,7 @@ import type { ExportWarning } from "./exportWarnings";
 
 /// Glue tab geometry warnings (GitHub issue #913, `Specs/export-warnings.md`, "Glue tab geometry"): tabs that overlap each
 /// other, tabs whose part of the edge is thinner than `MIN_TAB_BASE` (both highlight the tabs as polygons), and stretches the
-/// inset left without any tab (highlighted as bands).
+/// inset left without any tab (highlighted as bands), plus a general caution while any cut line is set (GitHub issue #1014).
 
 /// The thinnest base (the part of the edge left for the tab) that still glues reliably, in display units (pixels at scale 1).
 export const MIN_TAB_BASE = 10;
@@ -52,7 +52,7 @@ function warningOf(id: ExportWarning["id"], tabs: readonly GlueTab[]): ExportWar
 /// The glue tab warnings of the active floor; none while the tabs are hidden.
 export function computeGlueTabWarnings(state: GlueTabWarningState, style: Pick<GlueTabStyle, "showTabs" | "inset" | "width" | "alternate">): ExportWarning[] {
   const layout = selectExportGlueTabLayout(state, style);
-  if (layout.tabs.length === 0 && layout.missingEnds.length === 0 && layout.missingLines.length === 0) return [];
+  if (layout.tabs.length === 0 && !layout.hasCuts && layout.missingEnds.length === 0 && layout.missingLines.length === 0) return [];
   // The layout is memoised by `selectExportGlueTabLayout`; the pairwise overlap test below is quadratic, and hover renders and
   // unrelated settings edits ask again with the same layout.
   if (lastWarnings?.layout === layout) return lastWarnings.warnings;
@@ -63,8 +63,11 @@ export function computeGlueTabWarnings(state: GlueTabWarningState, style: Pick<G
 
 let lastWarnings: { layout: GlueTabLayout; warnings: ExportWarning[] } | null = null;
 
-function warningsOfLayout({ tabs, missingEnds, missingLines }: GlueTabLayout, cfg: GlueTabWarningState["activeFieldConfig"]): ExportWarning[] {
+function warningsOfLayout({ tabs, hasCuts, missingEnds, missingLines }: GlueTabLayout, cfg: GlueTabWarningState["activeFieldConfig"]): ExportWarning[] {
   const warnings: ExportWarning[] = [];
+
+  // Nothing to highlight: the whole picture is the subject.
+  if (hasCuts) warnings.push({ id: "glue_tabs_with_cut_lines", key: "glue_tabs_with_cut_lines", nodes: [], edges: [] });
 
   const overlapping = new Set<GlueTab>();
   for (let i = 0; i < tabs.length; i++) {
