@@ -7,13 +7,13 @@ import { ParamFields } from "../ParamFields";
 import { NumberInput } from "../../NumberInput";
 import type { InputNormalizationReason } from "../../inputNormalization";
 import { WarningIcon } from "../../WarningIcon";
-import { RemoveIconButton } from "../../RemoveIconButton";
+import { DeleteIconButton } from "../../DeleteIconButton";
 import { EditIconButton } from "../../EditIconButton";
+import { IconActionButton } from "../../IconActionButton";
 import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
 import { ui, typography, spacing, indent } from "../../../styles/theme";
 import { Inline } from "../../Layout";
-import { Tooltip } from "../../Tooltip";
 import { resolveStrategyLabel, resolveNestedStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
@@ -277,7 +277,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           />
           {percent !== null && <span style={styles.weightPercent}>{percent}%</span>}
           {removable && (
-            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
@@ -305,31 +305,17 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             </>
           )}
           {removable && (
-            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
       {showPriority && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
           <span style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</span>
-          <Tooltip content={m["quality.nested_strategy.move_up"]()}><button
-            className="hoverable"
-            style={styles.reorderBtn}
-            disabled={!canMoveUp}
-            onClick={() => moveNestedStrategy(ruleId, path, "up")}
-          >
-            <ChevronUp size={16} color={canMoveUp ? ui.text.tertiary : ui.text.disabled} />
-          </button></Tooltip>
-          <Tooltip content={m["quality.nested_strategy.move_down"]()}><button
-            className="hoverable"
-            style={styles.reorderBtn}
-            disabled={!canMoveDown}
-            onClick={() => moveNestedStrategy(ruleId, path, "down")}
-          >
-            <ChevronDown size={16} color={canMoveDown ? ui.text.tertiary : ui.text.disabled} />
-          </button></Tooltip>
+          <IconActionButton action="move-up" title={m["quality.nested_strategy.move_up"]()} disabled={!canMoveUp} onClick={() => moveNestedStrategy(ruleId, path, "up")} />
+          <IconActionButton action="move-down" title={m["quality.nested_strategy.move_down"]()} disabled={!canMoveDown} onClick={() => moveNestedStrategy(ruleId, path, "down")} />
           {removable && (
-            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
+            <DeleteIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
@@ -363,7 +349,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             {node.strategy.experimental && <WarningIcon />}
             <EditIconButton title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }} />
             {!showRankRow && removable && (
-              <RemoveIconButton
+              <DeleteIconButton
                 title={m["quality.nested_strategy.remove"]()}
                 onClick={(e) => { e.stopPropagation(); flushRef.current(); removeNestedStrategy(ruleId, path); }}
               />
@@ -486,7 +472,7 @@ const styles = {
     whiteSpace: "nowrap" as const,
     textAlign: "right" as const,
   },
-  // Up/down priority-reorder buttons — same shape as `RemoveIconButton`, disabled (not hidden) at
+  // Up/down priority-reorder buttons — same shape as `DeleteIconButton`, disabled (not hidden) at
   // either end of the sibling list so the row's width stays stable as rank changes.
   reorderBtn: {
     background: "none",

@@ -1,11 +1,13 @@
 ﻿import { TESSELLATION_UI } from "../pixi/geometry/tessellationUi";
 import React, { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Save, FolderOpen, Maximize2, Bug } from "lucide-react";
+import { Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { HoverIconButton } from "./HoverIconButton";
+import { FlatIconButton } from "./FlatIconButton";
+import { SaveIconButton } from "./SaveIconButton";
+import { LoadIconButton } from "./LoadIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
@@ -412,10 +414,10 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
       <div style={styles.footer}>
         <LanguageSwitcher />
         <div style={styles.footerRight}>
-          <HoverIconButton onClick={handleSave} title={m["project.save"]()}><Save size={16} /></HoverIconButton>
-          <HoverIconButton onClick={handleLoadClick} title={m["project.load"]()}><FolderOpen size={16} /></HoverIconButton>
-          <HoverIconButton onClick={handleSaveDebugConfig} title={m["generation.save_debug_config_tooltip"]()}><Bug size={16} /></HoverIconButton>
-          <HoverIconButton onClick={onRefit} title={m["app.fit_to_screen"]()}><Maximize2 size={16} /></HoverIconButton>
+          <SaveIconButton onClick={handleSave} title={m["project.save"]()} />
+          <LoadIconButton onClick={handleLoadClick} title={m["project.load"]()} />
+          <FlatIconButton onClick={handleSaveDebugConfig} title={m["generation.save_debug_config_tooltip"]()}><Bug size={16} /></FlatIconButton>
+          <FlatIconButton onClick={onRefit} title={m["app.fit_to_screen"]()}><Maximize2 size={16} /></FlatIconButton>
         </div>
         <input
           ref={fileInputRef}
@@ -456,7 +458,6 @@ const styles: Record<string, React.CSSProperties> = {
   footerRight: {
     display: "flex",
     gap: spacing.itemGap,
-    alignItems: "stretch",
-    alignSelf: "stretch",
+    alignItems: "center",
   },
 };

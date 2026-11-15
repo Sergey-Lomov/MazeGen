@@ -13,9 +13,7 @@ import { hasGeneration } from "../../store/storeHelpers";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
 import { Switch } from "../Switch";
-import { Tooltip } from "../Tooltip";
 import { Stack, Inline } from "../Layout";
-import { InfoIconButton } from "../InfoIconButton";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { SettingsIconButton } from "../SettingsIconButton";
@@ -168,15 +166,14 @@ export function FieldSetupFeature() {
   function renderSmoothingToggle() {
     const exactCells = requiresExactCells(fieldConfig.shape);
     const row = (
-      <div style={styles.originRow}>
-        <span style={styles.smoothingLabelGroup}>
-          <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
-          <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
-        </span>
-        <Tooltip content={exactCells ? m["field.smoothing_unavailable"]() : undefined}>
-          <Switch checked={smoothPrimitives !== smoothInverted && !exactCells} onChange={setSmoothPrimitives} disabled={fieldEditLocked || exactCells} />
-        </Tooltip>
-      </div>
+      <ToggleRow
+        label={m["field.smooth_primitives"]()}
+        checked={smoothPrimitives !== smoothInverted && !exactCells}
+        onChange={setSmoothPrimitives}
+        disabled={fieldEditLocked || exactCells}
+        disabledHint={exactCells ? m["field.smoothing_unavailable"]() : undefined}
+        info={() => setSmoothingInfoOpen(true)}
+      />
     );
     // The hold hotkey only exists while drawing in the custom field editor.
     if (!isCustom) return row;
@@ -792,6 +789,5 @@ const styles: Record<string, React.CSSProperties> = {
   nestedContent: { paddingLeft: indent.tree, minWidth: 0, boxSizing: "border-box", width: "100%" },
   originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", ...muted(typography.body) },
   originLabel: { ...muted(typography.body) },
-  smoothingLabelGroup: { display: "flex", alignItems: "center", gap: spacing.rowGap, minWidth: 0 },
   infoText: { ...typography.body, ...muted(typography.body) },
 };

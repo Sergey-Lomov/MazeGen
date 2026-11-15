@@ -1,12 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
-import { InfoIconButton } from "./InfoIconButton";
+import { LabelWithInfo } from "./LabelWithInfo";
+import { FlatIconButton } from "./FlatIconButton";
+import { DeleteIconButton } from "./DeleteIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
 import { Modal } from "./Modal";
 import { reportManualFontNotFound, reportUploadRefused } from "../notifications/fontNotifications";
 import { RemoveUploadedFontsDialog } from "./dialogs/RemoveUploadedFontsDialog";
-import { CircleCheck, Copyright, Languages, Trash2, Upload } from "lucide-react";
+import { CircleCheck, Copyright, Languages, Upload } from "lucide-react";
 import { Bubble, type BubbleColors } from "./Bubble";
 import { FontLicensesModal } from "./FontLicensesModal";
 import { findFontNotice, type FontNotice } from "./fontLicenses";
@@ -473,18 +475,22 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             </div>
           </div>
           <div style={{ ...styles.section, ...styles.familySection }}>
-            <div style={styles.familyHeader}>
-              <div style={typography.body}>{m["font_picker.section_family"]()}</div>
-              <InfoIconButton onClick={() => setInfoOpen(true)} />
-              <span style={styles.familyActions}>
-                <Tooltip content={m["font_picker.upload_hint"]()}>
-                  <InfoIconButton symbol={<Upload size={16} />} label={m["font_picker.upload"]()} onClick={openFilePicker} testId="font-picker-upload" />
-                </Tooltip>
-                <Tooltip content={m["font_picker.remove_hint"]()}>
-                  <InfoIconButton symbol={<Trash2 size={16} />} label={m["font_picker.remove_hint"]()} onClick={() => setRemoveOpen(true)} disabled={uploadedFamilies().length === 0} testId="font-picker-remove" />
-                </Tooltip>
-              </span>
-            </div>
+            <LabelWithInfo
+              as="div"
+              style={styles.familyHeader}
+              labelStyle={typography.body}
+              onInfo={() => setInfoOpen(true)}
+              trailing={(
+                <span style={styles.familyActions}>
+                  <FlatIconButton title={m["font_picker.upload_hint"]()} ariaLabel={m["font_picker.upload"]()} onClick={openFilePicker} data-testid="font-picker-upload">
+                    <Upload size={16} />
+                  </FlatIconButton>
+                  <DeleteIconButton title={m["font_picker.remove_hint"]()} tone="danger" onClick={() => setRemoveOpen(true)} disabled={uploadedFamilies().length === 0} aria-disabled={uploadedFamilies().length === 0 ? true : undefined} data-testid="font-picker-remove" />
+                </span>
+              )}
+            >
+                {m["font_picker.section_family"]()}
+            </LabelWithInfo>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
               <input
                 type="search"
@@ -745,13 +751,17 @@ const FontOption = memo(function FontOption({ entry, selected, localeScript, onS
           )}
           {notice && (
             <Tooltip content={m["font_licenses.tooltip"]()} focusable={false}>
-              <InfoIconButton
-                inList
-                hoverable={false}
-                symbol={<Copyright size={14} />}
-                label={m["font_licenses.button"]({ font: entry.label })}
-                onClick={() => onShowLicense(notice)}
-              />
+              <FlatIconButton
+                title={m["font_licenses.button"]({ font: entry.label })}
+                withTooltip={false}
+                suppressHover
+                role="button"
+                tabIndex={-1}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => { event.stopPropagation(); onShowLicense(notice); }}
+              >
+                <Copyright size={14} />
+              </FlatIconButton>
             </Tooltip>
           )}
           <Tooltip content={format.hint()} focusable={false}>

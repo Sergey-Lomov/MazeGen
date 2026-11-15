@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link2, Spline, Trash2, Waypoints } from "lucide-react";
+import { Link2, Spline, Waypoints } from "lucide-react";
 import { manualPathMode, parseTeleportConnectorKey, straightCubicControls, type ManualTeleportConnectorMode } from "../../pixi/renderers/teleportConnectorManual";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
@@ -158,10 +158,11 @@ export function TeleportConnectorEditorPanel({ onClose, onFocusPath }: { onClose
                   onAction={() => setMode(row.key, "curve")}
                 ><Spline size={16} /></ListCellAction>
                 <ListCellAction
+                  action="delete"
                   title={m["image_export.teleport_connector_editor.reset_title"]()}
                   danger
                   onAction={() => setPendingKey(row.key)}
-                ><Trash2 size={16} /></ListCellAction>
+                />
               </>
             )}
           >

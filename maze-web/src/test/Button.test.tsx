@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "../components/Button";
 import { ToolIconButton } from "../components/ToolIconButton";
+import { FlatIconButton } from "../components/FlatIconButton";
+import { IconActionButton } from "../components/IconActionButton";
 import { ui } from "../styles/theme";
 
 describe("Button", () => {
@@ -31,6 +33,25 @@ describe("Button", () => {
     expect(button.querySelector(".tool-icon-content")).toBeInTheDocument();
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives reusable flat icon actions a shared surface and accessible name", () => {
+    const onClick = vi.fn();
+    render(<FlatIconButton title="Configure" onClick={onClick}><span aria-hidden="true">⚙</span></FlatIconButton>);
+
+    const button = screen.getByRole("button", { name: "Configure" });
+    expect(button).toHaveClass("btn-flat-icon");
+    expect(button).toHaveAttribute("type", "button");
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects standard compact action glyphs from the shared registry", () => {
+    render(<IconActionButton action="delete" title="Delete" onClick={() => {}} />);
+
+    const button = screen.getByRole("button", { name: "Delete" });
+    expect(button).toHaveClass("btn-flat-icon");
+    expect(button.querySelector("svg")).toBeInTheDocument();
   });
 
   it("separates a tool explanation and shortcut from its label", () => {

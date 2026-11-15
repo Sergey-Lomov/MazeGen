@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Trash2 } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { InactiveFoldReason, TopologyInfo } from "../../wasm/mazeService";
 import type { WireFoldGroup, WireTopology } from "../../wasm/types";
@@ -95,13 +94,12 @@ export function GlueCell({ glue, topology, info, fieldConfig, dotColor, setHover
         <>
           <EditIconButton title={disabledTitle ?? m["topology.edit"]()} disabled={!editing.canEdit} onClick={editing.onEdit} />
           <ListCellAction
+            action="delete"
             title={disabledTitle ?? m["topology.remove"]()}
             danger
             disabled={!editing.canEdit}
             onAction={() => setConfirmingRemove(true)}
-          >
-            <Trash2 size={16} />
-          </ListCellAction>
+          />
         </>
       )}
     >

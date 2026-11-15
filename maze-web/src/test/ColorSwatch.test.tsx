@@ -885,7 +885,7 @@ describe("ColorSwatch", () => {
 
     let [, stepSlider] = divergenceSliders();
     expect(Number(stepSlider.max)).toBe(180);
-    expect(getTooltipControl(m["color_picker.tools.auto_step"]())).toHaveStyle({ height: "22px" });
+    expect(getTooltipControl(m["color_picker.tools.auto_step"]())).toHaveClass("btn-flat-icon");
     fireEvent.change(scaleSelect(), { target: { value: "l" } });
     [, stepSlider] = divergenceSliders();
     expect(Number(stepSlider.max)).toBe(100);
@@ -901,7 +901,7 @@ describe("ColorSwatch", () => {
     expect(Number(minSlider.max)).toBe(100);
     expect(Number(maxSlider.max)).toBe(100);
     for (const reset of getTooltipControls(m["color_picker.tools.reset_auto"]())) {
-      expect(reset).toHaveStyle({ height: "22px" });
+      expect(reset).toHaveClass("btn-flat-icon");
     }
     fireEvent.change(scaleSelect(), { target: { value: "c" } });
     [, minSlider, maxSlider] = rangeSplitSliders();

@@ -71,6 +71,18 @@ inset blue `:focus-visible` ring. Keep keyboard focus styling in CSS rather than
 metrics on focus; this prevents scroll-panel clipping and layout shifts, especially on feature-card
 headers.
 
+## Compact icon actions
+
+`FlatIconButton` owns the shared 22 px square hit area, hover highlight, disabled state, tooltip, and
+accessible name for compact icon-only actions. Its variants supply standard, danger, and contextual
+surfaces; its active state accepts only the feature-specific colour variables needed by an active
+editor. `IconActionButton` owns the standard 16 px glyph registry (`add`, `edit`, `delete`, `close`,
+`info`, `load`, `move-up`, `move-down`, `save`, and `settings`), and semantic wrappers expose those
+actions where a name improves call-site clarity. `ListCellAction` uses the same surface and may take
+an `action` from that registry while preserving its list-safe activation behavior. Use
+`FlatIconButton` directly only when the action and icon are genuinely feature-specific. Visual
+styles belong to the shared CSS class, not to individual call sites.
+
 ## State
 
 See [store.md](store.md).

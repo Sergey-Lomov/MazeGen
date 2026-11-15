@@ -1,12 +1,10 @@
 import { useRef } from "react";
-import { Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ui } from "../../styles/theme";
 import { Stack, Inline } from "../Layout";
 import { bringSidePanelToFront, SidePanel } from "../SidePanel";
-import { HoverIconButton } from "../HoverIconButton";
 import { ExportTopologyPanel } from "./ExportTopologyPanel";
 import { TeleportConnectorEditorPanel } from "./TeleportConnectorEditorPanel";
 import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
@@ -107,23 +105,22 @@ export function ImageExportFeature({ onExportPng, onFocusTeleportConnector = () 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
       {EXPORT_FORMATS.map((format) => (
-        <Inline key={format.id} gap="itemGap">
+        <Stack key={format.id} gap="itemGap">
+          {format.id === "png" && (
+            <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={() => handleFormatGearClick(format.id)}>
+              {m["image_export.format.settings"]()}
+            </Button>
+          )}
           <Button
             variant="primary"
-            layoutStyle={{ flex: 1 }}
+            layoutStyle={{ width: "100%" }}
             disabled={activeRenderMode === null}
+            title={activeRenderMode === null ? m["image_export.no_renderer_hint"]() : undefined}
             onClick={() => handleExportClick(format.id)}
           >
             {format.label()}
           </Button>
-          <HoverIconButton
-            stretch
-            onClick={() => handleFormatGearClick(format.id)}
-            title={m["image_export.format.settings_tooltip"]({ format: format.label() })}
-          >
-            <Settings size={16} />
-          </HoverIconButton>
-        </Inline>
+        </Stack>
       ))}
 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />

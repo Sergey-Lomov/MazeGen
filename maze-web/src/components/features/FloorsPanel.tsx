@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, ChevronUp, ChevronDown, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../pixi/selectors/mazeSelectors";
 import { ConfirmModal } from "../ConfirmModal";
@@ -179,12 +179,8 @@ export function FloorsPanel({ onClose }: { onClose: () => void }) {
                 current={floor.id === activeFloorId}
                 actions={(
                   <>
-                    <ListCellAction title={m["floors.move_floor_up"]()} disabled={isFirst} onAction={() => handleMoveClick(floor.id, "down")}>
-                      <ChevronUp size={16} />
-                    </ListCellAction>
-                    <ListCellAction title={m["floors.move_floor_down"]()} disabled={isLast} onAction={() => handleMoveClick(floor.id, "up")}>
-                      <ChevronDown size={16} />
-                    </ListCellAction>
+                    <ListCellAction action="move-up" title={m["floors.move_floor_up"]()} disabled={isFirst} onAction={() => handleMoveClick(floor.id, "down")} />
+                    <ListCellAction action="move-down" title={m["floors.move_floor_down"]()} disabled={isLast} onAction={() => handleMoveClick(floor.id, "up")} />
                     {floors.length > 1 && (
                       <>
                         <ListCellAction
@@ -207,14 +203,13 @@ export function FloorsPanel({ onClose }: { onClose: () => void }) {
                     )}
                     <EditIconButton title={m["floors.rename_floor"]()} fontSize={15} onClick={() => startRename(floor.id, floor.title)} />
                     <ListCellAction
+                      action="delete"
                       title={m["floors.remove_floor"]()}
                       description={floors.length === 1 ? m["floors.remove_last_floor_hint"]() : undefined}
                       danger
                       disabled={floors.length === 1}
                       onAction={() => handleRemoveClick(floor.id)}
-                    >
-                      <Trash2 size={16} />
-                    </ListCellAction>
+                    />
                   </>
                 )}
               />

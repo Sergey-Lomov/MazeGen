@@ -12,9 +12,11 @@ import { bringSidePanelToFront } from "../SidePanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
+import { EditIconButton } from "../EditIconButton";
+import { FlatIconButton } from "../FlatIconButton";
 import { ToolTooltip } from "../ToolIconButton";
 import { Tooltip } from "../Tooltip";
-import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
+import { ui, radius, typography, muted, spacing, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
@@ -151,34 +153,18 @@ export function GenerationFeature({ canGenerate }: Props) {
             }}
           />
           <ToolTooltip title={m["generation.seed_history_prev_tooltip"]()} description={seedBackDescription}>
-            <button
-              className={canSeedBack ? "hoverable" : undefined}
-              style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
-              disabled={!canSeedBack}
-              onClick={seedHistoryBack}
-              aria-label={m["generation.seed_history_prev_tooltip"]()}
-            >
-              <ChevronLeft size={16} color={ui.text.tertiary} />
-            </button>
+            <FlatIconButton title={m["generation.seed_history_prev_tooltip"]()} withTooltip={false} disabled={!canSeedBack} onClick={seedHistoryBack}>
+              <ChevronLeft size={16} />
+            </FlatIconButton>
           </ToolTooltip>
           <ToolTooltip title={m["generation.seed_history_next_tooltip"]()} description={seedForwardDescription}>
-            <button
-              className={canSeedForward ? "hoverable" : undefined}
-              style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
-              disabled={!canSeedForward}
-              onClick={seedHistoryForward}
-              aria-label={m["generation.seed_history_next_tooltip"]()}
-            >
-              <ChevronRight size={16} color={ui.text.tertiary} />
-            </button>
+            <FlatIconButton title={m["generation.seed_history_next_tooltip"]()} withTooltip={false} disabled={!canSeedForward} onClick={seedHistoryForward}>
+              <ChevronRight size={16} />
+            </FlatIconButton>
           </ToolTooltip>
-          <Tooltip content={m["generation.seed_history_open_tooltip"]()}><button
-            className="hoverable"
-            style={styles.seedToolbarBtn}
-            onClick={() => setHistoryDialogOpen(true)}
-          >
-            <History size={16} color={ui.text.tertiary} />
-          </button></Tooltip>
+          <FlatIconButton title={m["generation.seed_history_open_tooltip"]()} onClick={() => setHistoryDialogOpen(true)}>
+            <History size={16} />
+          </FlatIconButton>
         </div>
         <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{m["generation.random"]()}</span>
@@ -200,7 +186,7 @@ export function GenerationFeature({ canGenerate }: Props) {
               setVertexSettingsPanelOpen(true);
             }} />
           )}
-          <Tooltip content={m["generation.edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)}>✎</button></Tooltip>
+          <EditIconButton title={m["generation.edit"]()} onClick={() => setAlgorithmDialogOpen(true)} />
         </div>
       </div>
 
@@ -301,34 +287,6 @@ const styles: Record<string, React.CSSProperties> = {
   algorithmLabel: {
     flex: 1,
     ...muted(typography.body),
-  },
-  editBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    lineHeight: 1,
-    flexShrink: 0,
-    opacity: 0.7,
-  },
-  seedToolbarBtn: {
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: "2px 1px",
-    cursor: "default",
-    lineHeight: 1,
-    display: "flex",
-    alignItems: "center",
-    flexShrink: 0,
-    borderRadius: radius.sm,
-    opacity: 0.85,
-  },
-  seedToolbarBtnDisabled: {
-    opacity: 0.3,
-    cursor: "default",
   },
   paramValues: {
     paddingLeft: indent.tree * 2,

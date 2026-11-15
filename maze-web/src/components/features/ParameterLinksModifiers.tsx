@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
-import { RemoveIconButton } from "../RemoveIconButton";
+import { DeleteIconButton } from "../DeleteIconButton";
 import { SelectRow } from "../SelectRow";
 import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
@@ -147,7 +147,7 @@ export function ModifierStepDialog({
 
 /** One chain-step row inside the editor's "Modifiers" column — read-only display text plus edit
  *  (reopens `ModifierStepDialog` pre-filled) and remove actions, same convention the link list's own
- *  rows use (`EditIconButton`/`RemoveIconButton`). */
+ *  rows use (`EditIconButton`/`DeleteIconButton`). */
 export function ModifierStepRow({
   modifier,
   onEdit,
@@ -161,7 +161,7 @@ export function ModifierStepRow({
     <div style={styles.modifierStep}>
       <span style={styles.modifierStepText}>{modifierStepText(modifier)}</span>
       <EditIconButton title={m["image_export.param_links.edit_modifier_title"]()} onClick={onEdit} />
-      <RemoveIconButton title={m["image_export.param_links.remove_modifier"]()} size={16} onClick={onRemove} />
+      <DeleteIconButton title={m["image_export.param_links.remove_modifier"]()} onClick={onRemove} />
     </div>
   );
 }
@@ -201,7 +201,7 @@ export function ColorModifierStepRow({
     <div style={styles.modifierStep}>
       <span style={styles.modifierStepText}>{colorModifierStepText(modifier)}</span>
       <EditIconButton title={m["image_export.param_links.edit_color_modifier_title"]()} onClick={onEdit} />
-      <RemoveIconButton title={m["image_export.param_links.remove_color_modifier"]()} size={16} onClick={onRemove} />
+      <DeleteIconButton title={m["image_export.param_links.remove_color_modifier"]()} onClick={onRemove} />
     </div>
   );
 }

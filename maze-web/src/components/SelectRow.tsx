@@ -22,8 +22,8 @@ export function SelectRow<T extends string>({
   options: { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   disabled?: boolean;
-  /** Opens an info popup for this row — renders a small clickable "ℹ" after the select, before
-   *  `resetButton`. */
+  /** Opens an info popup for this row — renders a small clickable "ℹ" immediately before the
+   *  select. */
   info?: () => void;
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
    *  label stays `flex: 1`, so this never shrinks it. */
@@ -37,6 +37,7 @@ export function SelectRow<T extends string>({
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+      {info && <InfoIconButton onClick={info} />}
       <select
         name={label}
         data-testid={testId}
@@ -53,7 +54,6 @@ export function SelectRow<T extends string>({
           <option key={o.value} value={o.value} disabled={o.disabled && o.value !== value}>{o.label}</option>
         ))}
       </select>
-      {info && <InfoIconButton onClick={info} />}
       {resetButton}
     </Inline>
   );

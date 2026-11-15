@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { useMazeStore } from "../../store/mazeStore";
 import { TileFaceEditor } from "../features/TileFaceEditor";
@@ -14,6 +13,9 @@ import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 import { Tooltip } from "../Tooltip";
 import { NumberInput } from "../NumberInput";
+import { AddIconButton } from "../AddIconButton";
+import { EditIconButton } from "../EditIconButton";
+import { DeleteIconButton } from "../DeleteIconButton";
 
 interface Props {
   patterns: SplitPattern[];
@@ -126,9 +128,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         <div style={styles.sectionHeader}>
           <span style={styles.label}>{m["generation.split_patterns"]()}</span>
           {!locked && (
-            <Tooltip content={m["generation.split_pattern_add"]()}><button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern}>
-              <Plus size={14} />
-            </button></Tooltip>
+            <AddIconButton title={m["generation.split_pattern_add"]()} onClick={handleAddPattern} />
           )}
         </div>
         {patterns.length === 0 ? (
@@ -160,8 +160,8 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
               </div>
               {!locked && (
                 <div style={styles.patternActions}>
-                  <Tooltip content={m["generation.split_pattern_edit"]()}><button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)}>✎</button></Tooltip>
-                  <Tooltip content={m["generation.split_pattern_remove"]()}><button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)}>✕</button></Tooltip>
+                  <EditIconButton title={m["generation.split_pattern_edit"]()} onClick={() => setEditingIndex(i)} />
+                  <DeleteIconButton title={m["generation.split_pattern_remove"]()} onClick={() => handleRemovePattern(i)} />
                 </div>
               )}
             </div>
@@ -242,13 +242,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "row",
     gap: 2,
     flexShrink: 0,
-  },
-  editBtn: {
-    background: "none",
-    border: "none",
-    cursor: "default",
-    color: ui.text.secondary,
-    padding: "2px 6px",
+    alignSelf: "flex-start",
+    // `FlatIconButton` deliberately extends 2 px above its layout footprint; offset it back down
+    // so its visible square aligns with the preview tile's top edge.
+    paddingTop: 2,
   },
   // Horizontally scrolling strip of built-in blueprint thumbnails (GitHub issue #235 follow-up)
   // — same visual pattern as `SplitNodesDialogView`'s own blueprint strip, one-click "add a
@@ -279,17 +276,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  iconBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "none",
-    border: `1px solid ${ui.border.strong}`,
-    borderRadius: 4,
-    cursor: "default",
-    padding: 4,
-    color: ui.text.secondary,
   },
   empty: {
     ...muted(typography.body),

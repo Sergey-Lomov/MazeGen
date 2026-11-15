@@ -9,14 +9,14 @@ import { Bubble, BubbleHoverZone, BubbleHoverZones } from "../Bubble";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
 import { ConfirmModal } from "../ConfirmModal";
-import { InfoIconButton } from "../InfoIconButton";
+import { LabelWithInfo } from "../LabelWithInfo";
 import { Modal } from "../Modal";
 import { SidePanel } from "../SidePanel";
 import { Stack } from "../Layout";
 import { Switch } from "../Switch";
 import { WarningBubble } from "../WarningBubble";
 import { sharedStyles } from "../../styles/shared";
-import { typography, muted, radius, spacing, indent, ui } from "../../styles/theme";
+import { typography, muted, spacing, indent, ui } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 /** Side panel stacked over the topology panel for adding a glue or editing an existing one
@@ -72,7 +72,12 @@ export function GlueEditorPanel() {
           <EditIconButton
             title={label}
             disabled={locked || contours.length === 0}
-            style={{ ...styles.editZone, ...(editing ? { color: color.text, background: color.bg } : {}) }}
+            active={editing}
+            style={{
+              ...styles.editZone,
+              "--flat-icon-active-bg": color.bg,
+              "--flat-icon-active-color": color.text,
+            } as React.CSSProperties}
             onClick={() => startPick(editing ? null : target)}
           />
         </div>
@@ -99,10 +104,9 @@ export function GlueEditorPanel() {
           {runBlock("a", m["topology.run_a_title"]({ count: facesA?.length ?? 0 }), facesA)}
           {runBlock("b", m["topology.run_b_title"]({ count: facesB?.length ?? 0 }), facesB)}
           <div style={styles.row}>
-            <span style={styles.labelGroup}>
-              <span style={styles.hint}>{m["topology.twist"]()}</span>
-              <InfoIconButton onClick={() => setTwistInfoOpen(true)} />
-            </span>
+            <LabelWithInfo style={styles.labelGroup} labelStyle={styles.hint} onInfo={() => setTwistInfoOpen(true)}>
+              {m["topology.twist"]()}
+            </LabelWithInfo>
             <Switch checked={twist} onChange={setTwist} disabled={locked} />
           </div>
           <Button variant="primary" disabled={locked || facesA === null || facesB === null || problem !== null || contoursError !== null} onClick={confirm}>
@@ -138,5 +142,5 @@ const styles: Record<string, React.CSSProperties> = {
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   sides: { paddingLeft: indent.tree },
   // A square, roomy hit and highlight area for the edit glyph.
-  editZone: { width: 28, height: 28, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: radius.lg },
+  editZone: { width: 28, height: 28, flex: "0 0 28px" },
 };

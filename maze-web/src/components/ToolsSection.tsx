@@ -5,7 +5,7 @@ import { SectionHeader } from "./SectionHeader";
 import { SelectRow } from "./SelectRow";
 import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
-import { HoverIconButton } from "./HoverIconButton";
+import { FlatIconButton } from "./FlatIconButton";
 import { Tooltip } from "./Tooltip";
 import { colorToHex, colorToOklch, oklchToColor, oklchMaxChroma, OKLCH_MAX_CHROMA, type Oklch } from "./colorFormat";
 import { ui, spacing, font, indent } from "../styles/theme";
@@ -293,9 +293,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                 format={divStepFormat}
                 preciseMax={divStepMax}
                 resetButton={divScale === "h" ? (
-                  <HoverIconButton fixedHeight onClick={() => setDivStep(autoFitHueStep(divCount))} title={m["color_picker.tools.auto_step"]()}>
+                  <FlatIconButton onClick={() => setDivStep(autoFitHueStep(divCount))} title={m["color_picker.tools.auto_step"]()}>
                     <Maximize2 size={13} />
-                  </HoverIconButton>
+                  </FlatIconButton>
                 ) : undefined}
               />
             </>
@@ -329,9 +329,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                     format={rangeFormat}
                     preciseMax={rangeMax0}
                     resetButton={
-                      <HoverIconButton fixedHeight onClick={() => setRangeMin(RANGE_SPLIT_AUTO_MIN[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
+                      <FlatIconButton onClick={() => setRangeMin(RANGE_SPLIT_AUTO_MIN[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
                         <RotateCcw size={13} />
-                      </HoverIconButton>
+                      </FlatIconButton>
                     }
                   />
                   <SliderRow
@@ -344,9 +344,9 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
                     format={rangeFormat}
                     preciseMax={rangeMax0}
                     resetButton={
-                      <HoverIconButton fixedHeight onClick={() => setRangeMax(RANGE_SPLIT_AUTO_MAX[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
+                      <FlatIconButton onClick={() => setRangeMax(RANGE_SPLIT_AUTO_MAX[rangeScale])} title={m["color_picker.tools.reset_auto"]()}>
                         <RotateCcw size={13} />
-                      </HoverIconButton>
+                      </FlatIconButton>
                     }
                   />
                 </>

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { Trash2 } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { Crease } from "../../store/creases";
 import type { FieldConfig } from "../../fieldConfig";
 import { creaseLabelPoint } from "../../pixi/creaseGeometry";
 import { ConfirmModal } from "../ConfirmModal";
 import { EditIconButton } from "../EditIconButton";
-import { Tooltip } from "../Tooltip";
+import { DeleteIconButton } from "../DeleteIconButton";
 import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
 import { Stack } from "../Layout";
@@ -99,18 +98,7 @@ function CreaseCell({ crease, cfg, canEdit, onHover, onEdit, onDelete }: {
           <span style={typography.body}>{title}</span>
           <div style={styles.actions}>
             <EditIconButton title={m["topology.crease_edit"]()} disabled={!canEdit} onClick={onEdit} />
-            <Tooltip content={m["topology.crease_remove"]()}>
-              <button
-                type="button"
-                className="hoverable"
-                disabled={!canEdit}
-                aria-label={m["topology.crease_remove"]()}
-                style={{ ...styles.iconButton, color: ui.text.error, ...(canEdit ? {} : { opacity: 0.4 }) }}
-                onClick={() => setConfirmingRemove(true)}
-              >
-                <Trash2 size={16} style={styles.iconGlyph} />
-              </button>
-            </Tooltip>
+            <DeleteIconButton title={m["topology.crease_remove"]()} tone="danger" disabled={!canEdit} onClick={() => setConfirmingRemove(true)} />
           </div>
         </div>
         <div style={styles.cellBody}>

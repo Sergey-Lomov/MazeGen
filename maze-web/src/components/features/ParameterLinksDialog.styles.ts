@@ -80,7 +80,7 @@ export const styles: Record<string, React.CSSProperties> = {
     padding: "7px 6px 7px 10px",
   },
   rowDisabled: { opacity: 0.5 },
-  rowLine: { display: "flex", alignItems: "center", gap: spacing.groupGap },
+  rowLine: { display: "flex", alignItems: "center", gap: spacing.elementsGap },
   linkLabel: { ...typography.body, flex: 1, minWidth: 0 },
   valueLabel: { ...muted(typography.caption), flex: 1, minWidth: 0 },
   valueColorSwatch: {
