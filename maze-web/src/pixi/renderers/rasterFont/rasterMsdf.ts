@@ -7,6 +7,7 @@ import { currentCharset } from "./glyphCharset";
 import { beginRasterWork, endRasterWork, isRasterWorkBusy, knownRasterWeights, rasterFaceBytes, rasterFaceSource, subscribeRasterFonts, subscribeRasterWork } from "./rasterFontStore";
 import { readKerning } from "./kerning";
 import { readFontInfo } from "./sfnt";
+import { withUnicodeCmap } from "./unicodeCmap";
 import { FONT_CODES, FONT_SOURCE, clearFontProblem, fontDisplayName, reportFontProblemOnce } from "../../../notifications/fontNotifications";
 import { notify } from "../../../notifications/notificationStore";
 
@@ -99,8 +100,10 @@ async function build(family: string, weight: number): Promise<Entry> {
   const id = entryId(family, weight);
   const service = getMsdfService();
   const source = rasterFaceSource(family, weight);
-  const bytes = await rasterFaceBytes(family, weight);
-  if (!bytes || !source) throw new Error("The font file cannot be read.");
+  const raw = await rasterFaceBytes(family, weight);
+  if (!raw || !source) throw new Error("The font file cannot be read.");
+  // A font that maps its letters only in a Symbol or Mac subtable would give msdfgen no glyphs (GitHub issue #985).
+  const bytes = withUnicodeCmap(raw);
   const info = readFontInfo(bytes);
   if (!info) throw new Error("The font file is not a usable TrueType or OpenType font.");
   if (!(await service.load(id, bytes))) throw new Error("The glyph generator could not load the font file.");

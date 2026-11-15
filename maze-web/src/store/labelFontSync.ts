@@ -153,15 +153,26 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
     // The dialog was answered: read the permission again (the browser prompt may have granted it) and review.
     subscribeFontPermissionRequest(() => {
       if (disposed || getFontPermissionRequest().open) return;
-      void queryLocalFontPermission(isLocalFontAccessSupported()).then((state) => { permission = state; refresh(); });
+      void queryLocalFontPermission(isLocalFontAccessSupported()).then((state) => { permission = state === "unknown" ? "prompt" : state; refresh(); });
     }),
   ];
   void (async () => {
     await restoreUploadedFonts();
     permission = await queryLocalFontPermission(isLocalFontAccessSupported());
-    // A granted permission whose query still fails (the browser wants a user gesture) is not a settled source:
-    // the dialog asks again, and its button supplies the gesture.
-    if (permission === "granted" && (await loadLocalFontFamilies()) === null) permission = "prompt";
+    if (permission === "granted" || permission === "unknown") {
+      // A browser that cannot report the state may still have given access, so a list that loads proves it. A query
+      // refused for a passing reason (a background tab) is tried once more when the page is visible, before the
+      // dialog asks for a permission that is already given. (An undecided `prompt` is never queried here: without a
+      // click the browser refuses, and a query inside a fresh click would show its own prompt past the dialog.)
+      let families = await loadLocalFontFamilies();
+      if (families === null && permission === "granted") {
+        await untilPageVisible();
+        families = await loadLocalFontFamilies(true);
+      }
+      // A granted permission whose query still fails (the browser wants a user gesture) is not a settled source:
+      // the dialog asks again, and its button supplies the gesture.
+      permission = families === null ? "prompt" : "granted";
+    }
     sourcesSettled = true;
     refresh();
   })();
@@ -172,6 +183,19 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
     unsubscribeStore();
     for (const unsubscribe of unsubscribes) unsubscribe();
   };
+}
+
+/** Resolves once the page is visible: a background tab may refuse the font list query that a visible one answers. */
+function untilPageVisible(): Promise<void> {
+  if (typeof document === "undefined" || document.visibilityState !== "hidden") return Promise.resolve();
+  return new Promise((resolve) => {
+    const onChange = () => {
+      if (document.visibilityState === "hidden") return;
+      document.removeEventListener("visibilitychange", onChange);
+      resolve();
+    };
+    document.addEventListener("visibilitychange", onChange);
+  });
 }
 
 const UNAVAILABLE_PREFIX = "unavailable|";

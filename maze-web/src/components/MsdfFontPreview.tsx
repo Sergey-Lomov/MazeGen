@@ -9,6 +9,9 @@ import { loadMsdfFamily } from "../pixi/renderers/msdfLoader";
 /** Gap in px between the left edge of the preview and its text. */
 const TEXT_PADDING = 8;
 
+/** Text whose ink is centred, so the line keeps its height whatever the phrase says. */
+const CENTRE_SAMPLE = "Hx";
+
 interface Props {
   text: string;
   /** The baked font to draw: its family and the weight whose atlas is used. */
@@ -110,6 +113,10 @@ export function MsdfFontPreview({ text, font, textColor, background, fontSize, s
       };
       const label = makeCenteredLabel(truncateToWidth(text, app.screen.width - TEXT_PADDING * 2, measure), font, fontSize, textColor);
       // `makeCenteredLabel` anchors at the centre, so offset by half its width to start at the padding.
+      // Centre on the ink of a fixed sample, not of the phrase, so a descender does not move the line.
+      const sample = makeCenteredLabel(CENTRE_SAMPLE, font, fontSize, textColor);
+      label.pivot.y = sample.pivot.y;
+      sample.destroy();
       label.position.set(TEXT_PADDING + label.width / 2, app.screen.height / 2);
       app.stage.addChild(label);
     }

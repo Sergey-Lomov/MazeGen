@@ -114,11 +114,24 @@ export function describeLocalFaces(family: string): string {
 
 // --- Uploaded fonts --------------------------------------------------------------------------
 
+/** An uploaded face. Only its identity is kept in memory: the file stays a `Blob` (file-backed in IndexedDB), read
+ *  when its atlas is built or its browser face is needed, so a long list of uploads costs no memory until a font is
+ *  used (GitHub issue #985). */
 interface UploadedFace {
   family: string;
   weight: number;
-  bytes: Uint8Array;
+  /** Identity of the file (`fingerprint`), kept beside it so the atlas cache can key on it without reading the file. */
+  fingerprint: string;
+  blob: Blob;
 }
+
+/** Limits on what the user may upload (GitHub issue #985): a file, the number of files, and their total size. */
+export const MAX_UPLOADED_FACES = 50;
+export const MAX_UPLOADED_BYTES = 100 * 1024 * 1024;
+export const MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Why an upload was refused for size rather than for the file's content. */
+export type UploadLimitError = "file-too-large" | "too-many-fonts" | "storage-full";
 
 /** A cheap fingerprint of font bytes: length plus a hash of every 7th byte. */
 function fingerprint(bytes: Uint8Array): string {
@@ -155,51 +168,105 @@ async function dbWrite(run: (store: IDBObjectStore) => void): Promise<void> {
   db.close();
 }
 
-/** Browser faces of the uploaded fonts. The picker preview and the script coverage probes are drawn by the
- *  browser, so an uploaded font must be known to it too; the canvas labels use the MSDF atlas instead. */
+/** What IndexedDB holds per face. Early versions stored the bytes themselves (`bytes`) and no fingerprint; such a
+ *  record is converted when read. */
+interface StoredFace {
+  id: string;
+  family: string;
+  weight: number;
+  fingerprint?: string;
+  blob?: Blob;
+  bytes?: Uint8Array;
+}
+
+const storedId = (family: string, weight: number) => `${family}|${weight}`;
+
+/** Browser faces of the uploaded fonts, created on demand. The picker preview and the script coverage probes are
+ *  drawn by the browser, so a font in use must be known to it; the canvas labels use the MSDF atlas instead. */
 const browserFaces = new Map<string, FontFace>();
+const pendingBrowserFaces = new Map<string, Promise<void>>();
 
 function dropBrowserFace(family: string, weight: number): void {
   const key = `${weight}|${family}`;
   const old = browserFaces.get(key);
   if (old && typeof document !== "undefined") document.fonts?.delete(old);
   browserFaces.delete(key);
+  pendingBrowserFaces.delete(key);
 }
 
-function installBrowserFace(face: UploadedFace): void {
-  if (typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts) return;
+function installBrowserFace(face: UploadedFace, bytes: Uint8Array): Promise<void> {
+  if (typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts) return Promise.resolve();
   dropBrowserFace(face.family, face.weight);
   try {
-    const browserFace = new FontFace(face.family, face.bytes.slice().buffer, { weight: String(face.weight) });
+    const browserFace = new FontFace(face.family, bytes.slice().buffer, { weight: String(face.weight) });
     document.fonts.add(browserFace);
     browserFaces.set(`${face.weight}|${face.family}`, browserFace);
-    void browserFace.load().then(notifyRasterFontsChanged, () => {});
+    return browserFace.load().then(notifyRasterFontsChanged, () => {});
   } catch {
     // The preview then falls back to a generic font; the MSDF conversion does not depend on it.
+    return Promise.resolve();
   }
+}
+
+/** Makes the browser know the uploaded faces of `family` (only `weight` when given): reads their files and loads
+ *  them. A no-op for a family that was not uploaded and for a face already known. Resolves once they are usable. */
+export async function ensureUploadedFace(family: string, weight?: number): Promise<void> {
+  const name = family.trim();
+  const faces = uploaded.get(name);
+  if (!faces) return;
+  const wanted = [...faces.values()].filter((face) => weight === undefined || face.weight === weight);
+  await Promise.all(wanted.map((face) => {
+    const key = `${face.weight}|${face.family}`;
+    const inFlight = pendingBrowserFaces.get(key);
+    if (inFlight) return inFlight;
+    if (browserFaces.has(key)) return Promise.resolve();
+    const pending = readBlobBytes(face.blob).then((bytes) => {
+      // A replaced or removed face must not come back from a read that was in flight.
+      if (uploaded.get(face.family)?.get(face.weight) === face) return installBrowserFace(face, bytes);
+    }).catch(() => {}).finally(() => { if (pendingBrowserFaces.get(key) === pending) pendingBrowserFaces.delete(key); });
+    pendingBrowserFaces.set(key, pending);
+    return pending;
+  }));
+}
+
+/** Whether the browser already knows an uploaded face of `family`, so glyph probes of it mean something. */
+export function isUploadedFaceLoaded(family: string): boolean {
+  const faces = uploaded.get(family.trim());
+  return !!faces && [...faces.values()].some((face) => browserFaces.has(`${face.weight}|${face.family}`));
 }
 
 function remember(face: UploadedFace): void {
   let byWeight = uploaded.get(face.family);
   if (!byWeight) uploaded.set(face.family, (byWeight = new Map()));
   byWeight.set(face.weight, face);
-  installBrowserFace(face);
 }
 
 let restored: Promise<void> | null = null;
 
-/** Loads the fonts uploaded in earlier sessions from IndexedDB, once. */
+/** Loads the fonts uploaded in earlier sessions from IndexedDB, once. Only their identity is read into memory:
+ *  the files stay blobs until a font is used (`ensureUploadedFace`, `rasterFaceBytes`). */
 export function restoreUploadedFonts(): Promise<void> {
   restored ??= (async () => {
     const db = await openDb();
     if (!db) return;
-    const stored = await new Promise<UploadedFace[]>((resolve) => {
+    const stored = await new Promise<StoredFace[]>((resolve) => {
       const request = db.transaction(DB_STORE).objectStore(DB_STORE).getAll();
-      request.onsuccess = () => resolve(request.result as UploadedFace[]);
+      request.onsuccess = () => resolve(request.result as StoredFace[]);
       request.onerror = () => resolve([]);
     });
     db.close();
-    for (const face of stored) if (!uploaded.get(face.family)?.has(face.weight)) remember(face);
+    const converted: StoredFace[] = [];
+    for (const record of stored) {
+      if (uploaded.get(record.family)?.has(record.weight)) continue;
+      if (record.blob && record.fingerprint) {
+        remember({ family: record.family, weight: record.weight, fingerprint: record.fingerprint, blob: record.blob });
+      } else if (record.bytes) {
+        const face: UploadedFace = { family: record.family, weight: record.weight, fingerprint: fingerprint(record.bytes), blob: new Blob([record.bytes.slice().buffer]) };
+        remember(face);
+        converted.push({ id: record.id, family: face.family, weight: face.weight, fingerprint: face.fingerprint, blob: face.blob });
+      }
+    }
+    if (converted.length > 0) await dbWrite((store) => { for (const record of converted) store.put(record); });
     if (stored.length > 0) notifyRasterFontsChanged();
   })();
   return restored;
@@ -207,7 +274,35 @@ export function restoreUploadedFonts(): Promise<void> {
 
 export type UploadResult =
   | { ok: true; family: string; weight: number }
-  | { ok: false; reason: FontFileError };
+  | { ok: false; reason: FontFileError | UploadLimitError };
+
+/** Which limit adding a face of `size` bytes would break; replacing a face of the same family and weight frees its
+ *  own share first. `null` when the upload fits. */
+function uploadLimitReached(family: string, weight: number, size: number): UploadLimitError | null {
+  if (size > MAX_UPLOAD_FILE_BYTES) return "file-too-large";
+  const replaced = uploaded.get(family)?.get(weight);
+  const usage = uploadedUsage();
+  if (!replaced && usage.faces + 1 > MAX_UPLOADED_FACES) return "too-many-fonts";
+  if (usage.bytes - (replaced?.blob.size ?? 0) + size > MAX_UPLOADED_BYTES) return "storage-full";
+  return null;
+}
+
+/** Which limit is already used up, so a file picker is not even worth opening; `null` while there is room for at
+ *  least one more face. A later upload is still checked against its own size (`uploadLimitReached`). */
+export function uploadCapacityExhausted(): UploadLimitError | null {
+  const usage = uploadedUsage();
+  if (usage.faces >= MAX_UPLOADED_FACES) return "too-many-fonts";
+  if (usage.bytes >= MAX_UPLOADED_BYTES) return "storage-full";
+  return null;
+}
+
+/** How many uploaded faces there are and how many bytes their files take. */
+export function uploadedUsage(): { faces: number; bytes: number } {
+  let faces = 0;
+  let bytes = 0;
+  for (const byWeight of uploaded.values()) for (const face of byWeight.values()) { faces++; bytes += face.blob.size; }
+  return { faces, bytes };
+}
 
 /** Accepts a font file (TTF, OTF or WOFF): checks it parses, keeps it for the session and in IndexedDB. A
  *  face with the same family and weight is replaced. */
@@ -218,9 +313,12 @@ export async function addUploadedFont(file: Blob): Promise<UploadResult> {
     if (!info) return { ok: false, reason: "corrupt" };
     // The Local Font Access API and the picker address normal-style faces only.
     if (info.italic) return { ok: false, reason: "unsupported-format" };
-    const face: UploadedFace = { family: info.family, weight: info.weight, bytes: sfnt };
+    const limit = uploadLimitReached(info.family, info.weight, sfnt.length);
+    if (limit) return { ok: false, reason: limit };
+    const face: UploadedFace = { family: info.family, weight: info.weight, fingerprint: fingerprint(sfnt), blob: new Blob([sfnt.slice().buffer]) };
     remember(face);
-    await dbWrite((store) => { store.put({ id: `${face.family}|${face.weight}`, ...face }); });
+    void installBrowserFace(face, sfnt);
+    await dbWrite((store) => { store.put({ id: storedId(face.family, face.weight), family: face.family, weight: face.weight, fingerprint: face.fingerprint, blob: face.blob } satisfies StoredFace); });
     notifyRasterFontsChanged();
     return { ok: true, family: face.family, weight: face.weight };
   } catch (error) {
@@ -234,7 +332,7 @@ export async function removeUploadedFont(family: string): Promise<void> {
   if (!faces) return;
   uploaded.delete(family);
   for (const weight of faces.keys()) dropBrowserFace(family, weight);
-  await dbWrite((store) => { for (const weight of faces.keys()) store.delete(`${family}|${weight}`); });
+  await dbWrite((store) => { for (const weight of faces.keys()) store.delete(storedId(family, weight)); });
   notifyRasterFontsChanged();
 }
 
@@ -245,6 +343,83 @@ export function uploadedFamilies(): string[] {
 
 export function isUploadedFamily(family: string): boolean {
   return uploaded.has(family.trim());
+}
+
+// --- Script coverage of uploaded fonts ---------------------------------------------------------
+
+const COVERAGE_KEY = "mazegen-uploaded-coverage";
+
+function coverageEntryKey(family: string, sample: string): string | null {
+  const faces = uploaded.get(family.trim());
+  const first = faces ? [...faces.values()].sort((a, b) => a.weight - b.weight)[0] : undefined;
+  return first ? `${first.fingerprint}|${sample}` : null;
+}
+
+function readCoverage(): Record<string, boolean> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(COVERAGE_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Whether an uploaded font draws `sample` itself, as measured once with its face loaded and remembered in this
+ *  browser keyed by the file's fingerprint (a replaced file is measured again). `undefined` while not measured, so
+ *  a font that is never highlighted or probed is never read just to fill the "supports the language" badge. */
+export function storedUploadedCoverage(family: string, sample: string): boolean | undefined {
+  const key = coverageEntryKey(family, sample);
+  const value = key === null ? undefined : readCoverage()[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+export function saveUploadedCoverage(family: string, sample: string, covers: boolean): void {
+  const key = coverageEntryKey(family, sample);
+  if (key === null) return;
+  try {
+    localStorage.setItem(COVERAGE_KEY, JSON.stringify({ ...readCoverage(), [key]: covers }));
+  } catch {
+    // The font is measured again next time.
+  }
+}
+
+// --- Manually named fonts (GitHub issue #985) --------------------------------------------------
+
+const MANUAL_NAMES_KEY = "mazegen-manual-fonts";
+
+function readManualNames(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(MANUAL_NAMES_KEY) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === "string" && name.trim() !== "") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Names of installed fonts the user typed in because the machine's font list could not be read. Only the name
+ *  is kept (in this browser's local storage, never in the project): the font file is out of reach, so such a
+ *  font is drawn by the browser and never converted to an MSDF atlas. */
+const manualNames = readManualNames();
+
+/** Remembers an installed font family by name. Returns `false` for an empty name. */
+export function addManualFontName(name: string): boolean {
+  const family = name.trim();
+  if (!family) return false;
+  if (!manualNames.has(family)) {
+    manualNames.add(family);
+    try {
+      localStorage.setItem(MANUAL_NAMES_KEY, JSON.stringify([...manualNames]));
+    } catch {
+      // The name then lives for this session only.
+    }
+    notifyRasterFontsChanged();
+  }
+  return true;
+}
+
+/** Families typed in by name, sorted. */
+export function manualFontNames(): string[] {
+  return [...manualNames].sort();
 }
 
 // --- Weights and bytes -----------------------------------------------------------------------
@@ -262,7 +437,7 @@ export function knownRasterWeights(family: string): number[] {
 export function rasterFaceSource(family: string, weight: number): string | null {
   const name = family.trim();
   const upload = uploaded.get(name)?.get(weight);
-  if (upload) return `upload:${fingerprint(upload.bytes)}`;
+  if (upload) return `upload:${upload.fingerprint}`;
   return localFaces.get(name)?.has(weight) ? "local" : null;
 }
 
@@ -271,7 +446,7 @@ export function rasterFaceSource(family: string, weight: number): string | null 
 export async function rasterFaceBytes(family: string, weight: number): Promise<Uint8Array | null> {
   const name = family.trim();
   const upload = uploaded.get(name)?.get(weight);
-  if (upload) return upload.bytes;
+  if (upload) return readBlobBytes(upload.blob);
   const local = localFaces.get(name)?.get(weight);
   if (!local) return null;
   try {

@@ -1,14 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_TEXTURE_PIXELS, MAX_TEXTURE_SIDE, SETTLE_MS, ZOOM_LEVELS, beginCanvasLabelScale, canvasLabelResolution, endCanvasLabelScale,
-  levelFor, noteFontSelected, resetCanvasLabelResolution, setCanvasLabelZoom, textureResolutionCap,
+  MAX_TEXTURE_PIXELS, MAX_TEXTURE_SIDE, MAX_TOTAL_PIXELS, SETTLE_MS, ZOOM_LEVELS, beginCanvasLabelScale, canvasLabelResolution,
+  endCanvasLabelScale, levelFor, noteFontSelected, registerCanvasLabel, resetCanvasLabelResolution, setCanvasLabelView,
+  textureResolutionCap, type CanvasLabel,
 } from "../pixi/renderers/canvasLabelResolution";
 
-const listen = () => {
-  const handler = vi.fn();
-  window.addEventListener("mazegen:label-font-loaded", handler);
-  return { handler, off: () => window.removeEventListener("mazegen:label-font-loaded", handler) };
-};
+const ratio = () => Math.max(1, window.devicePixelRatio || 1);
+const STAGE = { parent: null };
+
+interface FakeLabel extends CanvasLabel { destroy(): void }
+
+/** A label at `x`, `y` (screen pixels) in the scene stage, as wide as the texture's logical size. */
+function makeLabel(x: number, y: number, width = 50, height = 20, parent: { parent: unknown } | null = STAGE): FakeLabel {
+  let onDestroy: (() => void) | null = null;
+  const label: FakeLabel = {
+    resolution: canvasLabelResolution(width, height),
+    destroyed: false,
+    parent,
+    getBounds: () => ({ minX: x, minY: y, maxX: x + width, maxY: y + height }),
+    once: (_event, listener) => { onDestroy = listener; },
+    destroy: () => { label.destroyed = true; onDestroy?.(); },
+  };
+  registerCanvasLabel(label, width, height);
+  return label;
+}
+
+const settle = () => vi.advanceTimersByTime(SETTLE_MS + 1);
 
 describe("canvas label resolution", () => {
   beforeEach(() => { vi.useFakeTimers(); resetCanvasLabelResolution(); });
@@ -40,59 +57,109 @@ describe("canvas label resolution", () => {
     expect(800 * cap * 800 * cap).toBeLessThanOrEqual(MAX_TEXTURE_PIXELS + 1e-3);
   });
 
+  it("never needs more pixels than the screen can show", () => {
+    const cap = textureResolutionCap(100, 20, 400, 300);
+    expect(100 * cap).toBeLessThanOrEqual(400 + 1e-9);
+    expect(20 * cap).toBeLessThanOrEqual(300 + 1e-9);
+  });
+
+  it("builds a new label at the base level", () => {
+    setCanvasLabelView(STAGE, 8, 1000, 800);
+    expect(canvasLabelResolution(50, 20)).toBeCloseTo(ratio(), 6);
+  });
+
+  it("raises only the visible labels to the zoom level", () => {
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    const inside = makeLabel(100, 100);
+    const outside = makeLabel(5000, 5000);
+    settle();
+    expect(inside.resolution).toBeCloseTo(3 * ratio(), 6);
+    expect(outside.resolution).toBeCloseTo(ratio(), 6);
+  });
+
+  it("drops a label back to the base level when it leaves the screen", () => {
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    const label = makeLabel(100, 100);
+    settle();
+    expect(label.resolution).toBeGreaterThan(ratio());
+    label.getBounds = () => ({ minX: 9000, minY: 9000, maxX: 9050, maxY: 9020 });
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    settle();
+    expect(label.resolution).toBeCloseTo(ratio(), 6);
+  });
+
   it("never allocates a huge texture at an extreme zoom", () => {
-    setCanvasLabelZoom(120);
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    const width = 300;
-    const height = 60;
-    const resolution = canvasLabelResolution(width, height);
-    expect(width * resolution).toBeLessThanOrEqual(MAX_TEXTURE_SIDE + 1e-6);
-    expect(width * resolution * height * resolution).toBeLessThanOrEqual(MAX_TEXTURE_PIXELS + 1e-3);
+    setCanvasLabelView(STAGE, 120, 1000, 800);
+    const label = makeLabel(10, 10, 300, 60);
+    settle();
+    const resolution = label.resolution as number;
+    expect(300 * resolution).toBeLessThanOrEqual(MAX_TEXTURE_SIDE + 1e-6);
+    expect(300 * resolution * 60 * resolution).toBeLessThanOrEqual(MAX_TEXTURE_PIXELS + 1e-3);
+    expect(300 * resolution).toBeLessThanOrEqual(1000 * ratio() + 1e-6);
+  });
+
+  it("shares one pixel budget: labels get a lower density instead of more memory", () => {
+    setCanvasLabelView(STAGE, 120, 4000, 4000);
+    const labels = Array.from({ length: 200 }, (_, i) => makeLabel(10 + (i % 20) * 10, 10 + Math.floor(i / 20) * 10, 400, 100));
+    settle();
+    const total = labels.reduce((sum, l) => sum + 400 * 100 * (l.resolution as number) ** 2, 0);
+    expect(total).toBeLessThanOrEqual(MAX_TOTAL_PIXELS + 1);
+    for (const label of labels) expect(label.resolution as number).toBeGreaterThanOrEqual(ratio() - 1e-6);
   });
 
   it("builds at the exact zoom of the selection (344%), not a stepped one", () => {
-    setCanvasLabelZoom(3.44);
+    setCanvasLabelView(STAGE, 3.44, 1000, 800);
     noteFontSelected();
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    expect(canvasLabelResolution(50, 20)).toBeCloseTo(3.44 * Math.max(1, window.devicePixelRatio || 1), 6);
+    const label = makeLabel(100, 100);
+    settle();
+    expect(label.resolution).toBeCloseTo(3.44 * ratio(), 6);
   });
 
-  it("builds quickly at the base level while a selection is settling, then asks for a rebuild", () => {
-    setCanvasLabelZoom(3);
-    const { handler, off } = listen();
-    noteFontSelected();
-    expect(canvasLabelResolution(50, 20)).toBeCloseTo(Math.max(1, window.devicePixelRatio || 1), 6);
-    expect(handler).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    expect(handler).toHaveBeenCalledTimes(1);
-    off();
+  it("leaves a label outside the scene (a preview) as built", () => {
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    const elsewhere = makeLabel(100, 100, 50, 20, { parent: { parent: null } });
+    settle();
+    expect(elsewhere.resolution).toBeCloseTo(ratio(), 6);
   });
 
-  it("rebuilds after a zoom change only when the level changed and canvas labels exist", () => {
-    const { handler, off } = listen();
-    setCanvasLabelZoom(2);
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    expect(handler).not.toHaveBeenCalled(); // no canvas label was ever built
-    canvasLabelResolution(50, 20);
-    setCanvasLabelZoom(2.4);
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    expect(handler).toHaveBeenCalledTimes(1);
-    canvasLabelResolution(50, 20);
-    setCanvasLabelZoom(2.6); // same level (3)
-    vi.advanceTimersByTime(SETTLE_MS + 1);
-    expect(handler).toHaveBeenCalledTimes(1);
-    off();
+  it("does not touch a destroyed label", () => {
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    const gone = makeLabel(100, 100);
+    gone.destroy();
+    settle();
+    expect(gone.resolution).toBeCloseTo(ratio(), 6);
   });
 
-  it("debounces a burst of zoom changes into one rebuild", () => {
-    const { handler, off } = listen();
-    canvasLabelResolution(50, 20);
-    for (const zoom of [1.2, 2.2, 3.2, 4.2]) setCanvasLabelZoom(zoom);
+  it("manages a label again when it returns to the scene after being detached", () => {
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    const label = makeLabel(100, 100);
+    label.parent = null;
+    settle();
+    expect(label.resolution).toBeCloseTo(ratio(), 6);
+    label.parent = STAGE;
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    settle();
+    expect(label.resolution).toBeCloseTo(3 * ratio(), 6);
+  });
+
+  it("holds labels built before the first view sync until the scene is known", () => {
+    const label = makeLabel(100, 100);
+    settle();
+    expect(label.resolution).toBeCloseTo(ratio(), 6);
+    setCanvasLabelView(STAGE, 3, 1000, 800);
+    settle();
+    expect(label.resolution).toBeCloseTo(3 * ratio(), 6);
+  });
+
+  it("debounces a burst of view changes into one pass", () => {
+    setCanvasLabelView(STAGE, 1, 1000, 800);
+    const label = makeLabel(100, 100);
+    const spy = vi.spyOn(label, "getBounds");
+    for (const zoom of [1.2, 2.2, 3.2, 4.2]) setCanvasLabelView(STAGE, zoom, 1000, 800);
     vi.advanceTimersByTime(SETTLE_MS - 10);
-    expect(handler).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(20);
-    expect(handler).toHaveBeenCalledTimes(1);
-    off();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("uses the export scale while an export renders", () => {

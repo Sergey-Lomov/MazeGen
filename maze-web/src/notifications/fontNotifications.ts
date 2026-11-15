@@ -1,6 +1,7 @@
 import { registerNotificationCode } from "./notificationRegistry";
 import { notify, retractErrorOccurrence } from "./notificationStore";
 import * as m from "~/paraglide/messages";
+import { MAX_UPLOADED_BYTES, MAX_UPLOADED_FACES, MAX_UPLOAD_FILE_BYTES, type UploadLimitError } from "../pixi/renderers/rasterFont/rasterFontStore";
 
 /** Toasts of the font pipeline (GitHub issue #974): every case where a project font cannot be drawn from its
  *  own atlas is reported here, never silently replaced by Roboto or canvas text. */
@@ -13,6 +14,8 @@ export const FONT_CODES = {
   conversionFailed: "fonts.conversion_failed",
   glyphsMissing: "fonts.glyphs_missing",
   atlasFull: "fonts.atlas_full",
+  manualNotFound: "fonts.manual_not_found",
+  uploadRefused: "fonts.upload_refused",
 } as const;
 
 registerNotificationCode(FONT_CODES.unavailable, {
@@ -42,6 +45,30 @@ registerNotificationCode(FONT_CODES.atlasFull, {
   message: (p) => m["fonts.atlas_full"]({ font: String(p.font), weight: Number(p.weight) }),
 });
 
+registerNotificationCode(FONT_CODES.manualNotFound, {
+  severity: "warning",
+  dedupParams: ["font"],
+  message: (p) => m["fonts.manual_not_found"]({ font: String(p.font) }),
+});
+
+const MB = 1024 * 1024;
+registerNotificationCode(FONT_CODES.uploadRefused, {
+  severity: "warning",
+  dedupParams: ["reason"],
+  message: (p) => {
+    switch (p.reason as UploadLimitError) {
+      case "file-too-large": return m["fonts.upload_file_too_large"]({ limit: MAX_UPLOAD_FILE_BYTES / MB });
+      case "too-many-fonts": return m["fonts.upload_too_many"]({ limit: MAX_UPLOADED_FACES });
+      case "storage-full": return m["fonts.upload_storage_full"]({ limit: MAX_UPLOADED_BYTES / MB });
+    }
+  },
+});
+
+/** An upload was refused because of a size limit: a warning, nothing is stored. */
+export function reportUploadRefused(reason: UploadLimitError): void {
+  notify({ source: FONT_SOURCE, code: FONT_CODES.uploadRefused, params: { reason } });
+}
+
 /** Problems already reported and still standing, by key. A repeated report of one is dropped, so a font
  *  that stays broken raises one error and not one per refresh; `clearFontProblem` re-arms it. */
 const reported = new Map<string, { code: string; occurrenceId: number | null }>();
@@ -51,6 +78,11 @@ export function reportFontProblemOnce(key: string, code: string, params: Record<
   if (reported.has(key)) return false;
   reported.set(key, { code, occurrenceId: notify({ source: FONT_SOURCE, code, params, details }) });
   return true;
+}
+
+/** A font typed in by name is not installed: a warning, nothing is added. */
+export function reportManualFontNotFound(font: string): void {
+  notify({ source: FONT_SOURCE, code: FONT_CODES.manualNotFound, params: { font } });
 }
 
 /** The problem `key` is resolved: its error leaves the screen and the problem is re-armed. */

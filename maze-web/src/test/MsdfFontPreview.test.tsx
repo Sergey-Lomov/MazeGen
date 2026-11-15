@@ -35,7 +35,7 @@ markMsdfFamilyLoaded("msdf:ready");
 
 beforeEach(() => {
   makeCenteredLabel.mockReset();
-  makeCenteredLabel.mockImplementation(() => ({ width: 10, position: { set: vi.fn() }, destroy: vi.fn() }));
+  makeCenteredLabel.mockImplementation(() => ({ width: 10, pivot: { y: 0 }, position: { set: vi.fn() }, destroy: vi.fn() }));
   loadMsdfFamily.mockReset();
 });
 

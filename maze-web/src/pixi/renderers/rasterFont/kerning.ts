@@ -15,7 +15,7 @@ type Table = { offset: number; length: number };
 // --- cmap ---------------------------------------------------------------------------------------
 
 /** Code point to glyph id, from the best Unicode subtable of `cmap` (format 12, else format 4). */
-function readCmap(v: DataView, cmap: Table): (codepoint: number) => number {
+export function readCmap(v: DataView, cmap: Table): (codepoint: number) => number {
   const count = v.getUint16(cmap.offset + 2);
   let best: { offset: number; rank: number } | null = null;
   for (let i = 0; i < count; i++) {

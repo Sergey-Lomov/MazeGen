@@ -4,6 +4,7 @@ import { FontPickerPanel } from "../components/FontPickerPanel";
 import { FontButton } from "../components/FontButton";
 import { useMazeStore } from "../store/mazeStore";
 import { MSDF_FONTS } from "../pixi/renderers/fontChoice";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
 import * as m from "~/paraglide/messages";
 
 const localFamilies = vi.hoisted(() => ({
@@ -12,14 +13,41 @@ const localFamilies = vi.hoisted(() => ({
   retryValue: null as string[] | null,
   // Weights per browser family; a family not listed offers only regular.
   weights: {} as Record<string, number[]>,
+  // Families with no font file to read (typed in by name).
+  noFile: [] as string[],
+  // Families the browser reports as present, `null` to defer to the real probe; families the user uploaded.
+  installed: null as string[] | null,
+  uploaded: [] as string[],
+  // Names typed in by the user, kept per test instead of in the real store.
+  manual: [] as string[],
+  // What the upload limits report before a file is chosen.
+  exhausted: null as string | null,
 }));
 
-vi.mock("../pixi/renderers/labelFont", async (importActual) => ({
-  ...(await importActual<typeof import("../pixi/renderers/labelFont")>()),
+vi.mock("../pixi/renderers/labelFont", async (importActual) => {
+  const actual = await importActual<typeof import("../pixi/renderers/labelFont")>();
+  return {
+  ...actual,
   isLocalFontAccessSupported: () => localFamilies.supported,
   rasterFontWeights: (family: string) => localFamilies.weights[family] ?? [400],
+  isFontFamilyInstalled: (family: string) => (localFamilies.installed ? localFamilies.installed.includes(family) : actual.isFontFamilyInstalled(family)),
   loadLocalFontFamilies: (retry?: boolean) => Promise.resolve(retry ? localFamilies.retryValue : localFamilies.value),
-}));
+  };
+});
+
+// The mocked machine has a font file for every family it lists; a typed name has none (GitHub issue #985).
+vi.mock("../pixi/renderers/rasterFont/rasterFontStore", async (importActual) => {
+  const actual = await importActual<typeof import("../pixi/renderers/rasterFont/rasterFontStore")>();
+  return {
+  ...actual,
+  uploadedFamilies: () => localFamilies.uploaded,
+  uploadCapacityExhausted: () => localFamilies.exhausted,
+  manualFontNames: () => localFamilies.manual,
+  addManualFontName: (name: string) => { localFamilies.manual.push(name.trim()); actual.notifyRasterFontsChanged(); return true; },
+  isUploadedFamily: (family: string) => localFamilies.uploaded.includes(family),
+  knownRasterWeights: (family: string) => (localFamilies.noFile.includes(family) ? [] : localFamilies.weights[family] ?? [400]),
+  };
+});
 
 // The export warning pass is covered by its own tests; here it is a list the panel has to filter and show.
 const exportWarnings = vi.hoisted(() => ({ value: [] as { id: string; key: string; nodes: number[]; edges: never[] }[] }));
@@ -36,7 +64,7 @@ vi.mock("../components/MsdfFontPreview", () => ({
 
 afterEach(() => { vi.useRealTimers(); msdfPreview.unavailable = false; });
 
-beforeEach(() => { localFamilies.value = ["Arial", "Consolas", "Georgia"]; localFamilies.supported = true; localFamilies.retryValue = null; localFamilies.weights = {}; });
+beforeEach(() => { localFamilies.value = ["Arial", "Consolas", "Georgia"]; localFamilies.supported = true; localFamilies.retryValue = null; localFamilies.weights = {}; localFamilies.noFile = []; localFamilies.installed = null; localFamilies.uploaded = []; localFamilies.manual = []; localFamilies.exhausted = null; resetNotifications(); });
 
 async function renderPanel(props: Partial<React.ComponentProps<typeof FontPickerPanel>> = {}) {
   const handlers = { onApply: vi.fn(), onClose: vi.fn(), onPreview: vi.fn(), onCancel: vi.fn() };
@@ -369,7 +397,104 @@ describe("FontPickerPanel", () => {
     expect((toggle as HTMLInputElement).checked).toBe(true);
     cleanup();
     await renderPanel({ font: { family: "", weight: 400 } });
-    expect(screen.queryByTestId("font-picker-msdf-toggle")).toBeNull();
+    // The switch stays in place, disabled, for a font that is MSDF already.
+    const bundled = within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("checkbox") as HTMLInputElement;
+    expect(bundled.checked).toBe(false);
+  });
+
+  it("marks uploaded fonts with a badge and narrows the list with the uploaded filter", async () => {
+    localFamilies.uploaded = ["Georgia"];
+    await renderPanel();
+    expect(within(option("Georgia")).getByTestId("font-badge-uploaded")).toBeTruthy();
+    expect(within(option("Arial")).queryByTestId("font-badge-uploaded")).toBeNull();
+    fireEvent.click(screen.getByTestId("font-picker-filter-uploaded"));
+    expect(optionNames()).toEqual(["Georgia"]);
+  });
+
+  it("keeps upload and delete in the Family header, with delete inert while nothing is uploaded", async () => {
+    await renderPanel();
+    expect(screen.getByTestId("font-picker-upload")).toBeTruthy();
+    expect(screen.getByTestId("font-picker-remove")).toHaveAttribute("aria-disabled", "true");
+    cleanup();
+    localFamilies.uploaded = ["Georgia"];
+    await renderPanel();
+    const remove = screen.getByTestId("font-picker-remove");
+    expect(remove).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(remove);
+    expect(screen.getByTestId("font-remove-list")).toBeTruthy();
+  });
+
+  it("does not open the file picker when an upload limit is already used up, and says why instead", async () => {
+    await renderPanel();
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    const picked = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByTestId("font-picker-upload"));
+    expect(picked).toHaveBeenCalledTimes(1);
+    localFamilies.exhausted = "too-many-fonts";
+    fireEvent.click(screen.getByTestId("font-picker-upload"));
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(useNotificationStore.getState().notices.length + useNotificationStore.getState().queue.length).toBe(1);
+  });
+
+  describe("typed font name (GitHub issue #985)", () => {
+    const manualInput = () => screen.getByTestId("font-picker-manual-input") as HTMLInputElement;
+    const typeName = (name: string) => fireEvent.change(manualInput(), { target: { value: name } });
+
+    it("is offered only while the machine's font list is unavailable", async () => {
+      await renderPanel();
+      expect(screen.queryByTestId("font-picker-manual-input")).toBeNull();
+      cleanup();
+      localFamilies.value = null;
+      await renderPanel();
+      expect(manualInput()).toBeTruthy();
+    });
+
+    it("adds an installed name to the list, highlights it and previews it without conversion", async () => {
+      localFamilies.value = null;
+      localFamilies.installed = ["Comic Neue"];
+      localFamilies.noFile = ["Comic Neue"];
+      const handlers = await renderPanel();
+      typeName("  Comic Neue ");
+      fireEvent.click(screen.getByTestId("font-picker-manual-add"));
+      expect(optionNames()).toContain("Comic Neue");
+      expect(selectedName()).toBe("Comic Neue");
+      expect(within(option("Comic Neue")).queryByTestId("font-badge-uploaded")).toBeNull();
+      expect(handlers.onPreview).toHaveBeenLastCalledWith({ family: "Comic Neue", weight: 400, msdf: false });
+      expect(manualInput().value).toBe("");
+    });
+
+    it("raises a warning toast for a name that is not installed and adds nothing", async () => {
+      localFamilies.value = null;
+      localFamilies.installed = [];
+      await renderPanel();
+      typeName("Nope Sans");
+      fireEvent.keyDown(manualInput(), { key: "Enter" });
+      expect(optionNames()).not.toContain("Nope Sans");
+      const { notices, errors } = useNotificationStore.getState();
+      expect(errors).toHaveLength(0);
+      expect(notices.length + useNotificationStore.getState().queue.length).toBe(1);
+    });
+
+    it("keeps the Add button disabled while the field is blank", async () => {
+      localFamilies.value = null;
+      await renderPanel();
+      expect(screen.getByTestId("font-picker-manual-add")).toBeDisabled();
+      typeName("x");
+      expect(screen.getByTestId("font-picker-manual-add")).not.toBeDisabled();
+    });
+  });
+
+  it("explains why the switch is off for a bundled font", async () => {
+    await renderPanel({ font: { family: "", weight: 400 } });
+    expect(within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("checkbox")).toBeDisabled();
+  });
+
+  it("disables the switch and stores conversion off for a font without a readable file", async () => {
+    localFamilies.noFile = ["Georgia"];
+    const handlers = await renderPanel({ font: { family: "Arial", weight: 400 } });
+    fireEvent.click(screen.getByText("Georgia"));
+    expect(handlers.onPreview).toHaveBeenLastCalledWith({ family: "Georgia", weight: 400, msdf: false });
+    expect(within(screen.getByTestId("font-picker-msdf-toggle")).getByRole("checkbox")).toBeDisabled();
   });
 
   it("turning the switch off previews and applies the font with conversion disabled, and keeps it across a weight change", async () => {
@@ -398,7 +523,7 @@ describe("FontPickerPanel", () => {
 
   it("the info button explains both font types", async () => {
     await renderPanel({ font: { family: "", weight: 400 } });
-    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Info" })[0]);
     expect(screen.getByText(m["font_picker.info_vector"]())).toBeTruthy();
     expect(screen.getByText(m["font_picker.info_raster"]())).toBeTruthy();
   });
@@ -538,7 +663,9 @@ describe("FontPickerPanel", () => {
     it("the global licenses button in the Family header is gone", async () => {
       await renderPanel({ font: { family: "", weight: 400 } });
       const header = screen.getByText(m["font_picker.section_family"]()).parentElement!;
-      expect(within(header).getAllByRole("button")).toHaveLength(1);
+      // The info button, then the upload and delete actions; no licenses button.
+      expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).not.toContain(m["font_licenses.button"]({ font: "" }));
+      expect(within(header).getAllByRole("button")).toHaveLength(3);
     });
 
     it("Escape in the dialog closes only the dialog, not the panel", async () => {

@@ -2,16 +2,17 @@
  *  nor readable yet, and the Local Font Access permission has not been decided: the browser only shows its
  *  prompt from a user gesture, so the app asks the user first with a dialog whose button is that gesture. */
 
-export type LocalFontPermission = "unsupported" | "granted" | "prompt" | "denied";
+/** `unknown`: the browser could not tell (the query itself failed), unlike `prompt`, which it reports. */
+export type LocalFontPermission = "unsupported" | "granted" | "prompt" | "denied" | "unknown";
 
-/** The Local Font Access permission without prompting. A browser that cannot tell is treated as `prompt`. */
+/** The Local Font Access permission without prompting. A browser that cannot tell reads as `unknown`. */
 export async function queryLocalFontPermission(supported: boolean): Promise<LocalFontPermission> {
   if (!supported) return "unsupported";
   try {
     const status = await navigator.permissions.query({ name: "local-fonts" as PermissionName });
     return status.state;
   } catch {
-    return "prompt";
+    return "unknown";
   }
 }
 
