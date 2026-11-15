@@ -32,7 +32,7 @@ export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo 
       {expanded ? <ChevronDown size={CHEVRON_SIZE} color={chevronColor} /> : <ChevronRight size={CHEVRON_SIZE} color={chevronColor} />}
       <div style={disabled ? { ...sharedStyles.sectionHeader, color: ui.text.disabled } : sharedStyles.sectionHeader}>{label}</div>
       {onOpenInfo && (
-        <span onClick={(event) => event.stopPropagation()}>
+        <span style={styles.infoWrap} onClick={(event) => event.stopPropagation()}>
           <InfoIconButton onClick={onOpenInfo} />
         </span>
       )}
@@ -41,6 +41,9 @@ export function SectionHeader({ label, expanded, disabled, onToggle, onOpenInfo 
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  // A flex wrapper: a plain span would hold the icon in a line box with the inherited line height, making
+  // a header with an info icon taller than one without (GitHub issue #1015).
+  infoWrap: { display: "flex", alignItems: "center" },
   sectionHeaderRow: {
     display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
     // Keep the existing negative margin so headers retain their ordinary-section spacing. The
