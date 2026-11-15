@@ -20,7 +20,7 @@ describe("PostEditFeature auto-confirm/auto-compact info icons", () => {
     expect(screen.queryByText(infoText)).not.toBeInTheDocument();
 
     const label = screen.getByText("Auto-confirm");
-    fireEvent.click(label.parentElement!.querySelector('[role="button"]')!);
+    fireEvent.click(label.parentElement!.parentElement!.querySelector('button[aria-label="Info"]')!);
     expect(screen.getByText(infoText)).toBeInTheDocument();
   });
 
@@ -28,7 +28,7 @@ describe("PostEditFeature auto-confirm/auto-compact info icons", () => {
     render(<PostEditFeature />);
 
     const label = screen.getByText("Auto-compact");
-    fireEvent.click(label.parentElement!.querySelector('[role="button"]')!);
+    fireEvent.click(label.parentElement!.parentElement!.querySelector('button[aria-label="Info"]')!);
     expect(screen.getByText(/Auto-compact shrinks the log after every edit/)).toBeInTheDocument();
   });
 });

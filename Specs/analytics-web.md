@@ -16,7 +16,9 @@ after a 300 ms debounce. The analytics-only WASM call runs in a module worker fr
 `WorkerPool` (see `Specs/generation.md`, "Worker lifecycle") so cycle analysis and QC issue
 collection do not block rule editing or canvas input on the main thread. Starting a newer refresh
 cancels the running request: its worker is terminated and its promise rejects with "Analytics
-request superseded"; the next request starts a fresh worker. Only the latest completed request may
+request superseded"; the next request starts a fresh worker. Every request is wrapped by `trackActivity("analytics", …)`
+(`computeAnalyticsAsync`), so a refresh that runs longer than the delay shows the "Updating analytics" card
+(`Specs/background-activity.md`); a new caller must go through `computeAnalyticsAsync` to get it. Only the latest completed request may
 update the store. Leaving the Quality panel flushes the pending refresh immediately.
 
 ### Card comment

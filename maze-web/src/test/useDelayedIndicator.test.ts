@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
-import { useDelayedIndicator } from "../components/useDelayedIndicator";
+import { useDelayedIndicator, useDelayedKeys } from "../components/useDelayedIndicator";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
@@ -58,3 +58,21 @@ describe("useDelayedIndicator", () => {
     expect(result.current).toBe(false);
   });
 });
+
+describe("useDelayedKeys", () => {
+  const keysHook = (initial: string[]) => renderHook(({ active }) => useDelayedKeys(active, opts), { initialProps: { active: initial } });
+
+  it("times every key on its own and lists keys in the order they appeared", () => {
+    const { result, rerender } = keysHook(["a"]);
+    act(() => { vi.advanceTimersByTime(100); });
+    rerender({ active: ["a", "b"] });
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(result.current).toEqual(["a"]);
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(result.current).toEqual(["a", "b"]);
+    rerender({ active: ["b"] });
+    act(() => { vi.advanceTimersByTime(750); });
+    expect(result.current).toEqual(["b"]);
+  });
+});
+

@@ -1,5 +1,3 @@
-import type React from "react";
-import { FlatIconButton } from "./FlatIconButton";
 import { IconActionButton } from "./IconActionButton";
 
 /** Shared information action with the common icon-button hover treatment. */

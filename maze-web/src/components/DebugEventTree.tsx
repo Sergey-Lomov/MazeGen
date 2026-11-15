@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
   buildStepIndex, flattenVisibleRows, allRenderableRows, resolveHighlightTarget, buildNodeCoordIndex,

@@ -159,7 +159,9 @@ describe("ExportTopologyPanel", () => {
     const reason = m["image_export.cuts.edit_unavailable"]();
     // The edit and the remove button both carry the reason as their tooltip.
     expect(screen.getAllByText(reason)).toHaveLength(2);
-    expect((screen.getByRole("button", { name: reason }) as HTMLButtonElement).disabled).toBe(true);
+    const reasonButtons = screen.getAllByRole("button", { name: reason }) as HTMLButtonElement[];
+    expect(reasonButtons).toHaveLength(2);
+    expect(reasonButtons.every((button) => button.disabled)).toBe(true);
     expect((screen.getByText("✎").closest("button") as HTMLButtonElement).disabled).toBe(true);
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select.disabled).toBe(false);

@@ -190,7 +190,7 @@ describe("DebugPanel", () => {
     // SidePanel's header close button carries no title/aria-label of its own — locate it via the
     // panel title text it sits alongside (header layout, see SidePanel.tsx).
     const title = screen.getByText("Debug");
-    const closeBtn = title.closest("div")!.parentElement!.querySelector("button.hoverable") as HTMLButtonElement;
+    const closeBtn = title.closest("div")!.parentElement!.querySelector("button.btn-flat-icon") as HTMLButtonElement;
     fireEvent.click(closeBtn);
     expect(useMazeStore.getState().debugMode).toBe(false);
   });

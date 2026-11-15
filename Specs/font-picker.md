@@ -261,7 +261,7 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 - **Export.** `PngExporter` awaits `whenRasterFontsSettled` first, and renders canvas text of a font still
   without an atlas at the export scale (`beginCanvasLabelScale`).
 - **UX.** No conversion button, no per-weight or per-atlas status. After Apply a small "Preparing fonts: <names>"
-  note (`FontPreparingIndicator`, GitHub issue #974) appears top-right of the canvas only when conversion takes longer
+  card (`BackgroundActivityStack`, GitHub issues #974, #1004; see `Specs/background-activity.md`) appears top-right of the canvas only when conversion takes longer
   than `INDICATOR_DELAY_MS`.
 - **Picker.** The browser list is installed + uploaded + typed families (+ the saved one); the web-safe list is
   gone. An upload icon (`Upload`, `font-picker-upload`) in the Family section header adds a font and selects it; next to it a trash icon (`Trash2`, `font-picker-remove`, inert while nothing is uploaded) opens the delete dialog. Both are header actions, not list rows: the list holds information only. The format info says vector fonts can be built from
@@ -334,7 +334,7 @@ source `fonts`) and, for the permission, a dialog.
   `granted` is tried once more once the page is visible (a background tab may refuse it); only a second refusal falls
   back to the dialog.
 - **Preparing.** No toast: a running conversion is shown by the "Preparing fonts" indicator, which names the fonts
-  being converted (`rasterWorkLabels`).
+  being converted (the labels of the `fonts` activity).
 - **Toasts end with their cause.** A font problem that is resolved (the font arrives, the permission is granted, the
   missing set changes) withdraws its error from the screen (`clearFontProblem`, `retractErrorOccurrence`), not only
   its once-per-key guard.
