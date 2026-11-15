@@ -16,7 +16,7 @@ vi.mock("../pixi/renderers/rasterFont/rasterMsdf", () => ({
 
 const { MSDF_FONTS } = await import("../pixi/renderers/fontChoice");
 const { setFontPickerOpen } = await import("../pixi/renderers/rasterFont/pickerSession");
-const { collectLabelFontFamilies, collectLazyMsdfFamilies, installLabelFontSync, reportProjectFontProblems } = await import("../store/labelFontSync");
+const { collectDrawnLabelFontFamilies, collectLabelFonts, installLabelFontSync, reportProjectFontProblems } = await import("../store/labelFontSync");
 const { useNotificationStore, resetNotifications } = await import("../notifications/notificationStore");
 const { resetFontProblems } = await import("../notifications/fontNotifications");
 const { registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");
@@ -36,44 +36,71 @@ beforeEach(() => {
   setFontPickerOpen(false);
 });
 
-describe("collectLabelFontFamilies", () => {
-  it("finds every family at any depth, the default and browser fonts included", () => {
-    const settings = { a: { textFont: font("Mono") }, groups: [{ labelFont: font("") }, { labelFont: font("Arial") }], textSize: 12 };
-    expect([...collectLabelFontFamilies(settings)].sort()).toEqual(["", "Arial", "Mono"]);
+describe("collectDrawnLabelFontFamilies (GitHub issue #1012)", () => {
+  const state = (walls: unknown, extra: object = {}) => ({ vectorByWallsSettings: walls, vectorByCorridorsSettings: {}, nodes: [], edges: [], floors: [{ id: "a" }], ...extra }) as never;
+
+  it("counts a font while its text is drawn and drops it when the text is hidden", () => {
+    expect([...collectDrawnLabelFontFamilies(state({ startMarker: { textFont: font("Arial") } }))]).toEqual(["Arial"]);
+    expect(collectDrawnLabelFontFamilies(state({ startMarker: { textEnabled: false, textFont: font("Arial") } })).size).toBe(0);
+  });
+
+  it("needs the maze to have the element: floor labels need several floors", () => {
+    const walls = { floorLabel: { enabled: true, textFont: font("Arial") } };
+    expect(collectDrawnLabelFontFamilies(state(walls)).size).toBe(0);
+    expect([...collectDrawnLabelFontFamilies(state(walls, { floors: [{ id: "a" }, { id: "b" }] }))]).toEqual(["Arial"]);
+    expect(collectDrawnLabelFontFamilies(state({ floorLabel: { enabled: false, textFont: font("Arial") } }, { floors: [{ id: "a" }, { id: "b" }] })).size).toBe(0);
   });
 });
 
-describe("collectLazyMsdfFamilies", () => {
-  it("finds fonts at any depth, in arrays too, and skips Roboto and browser fonts", () => {
-    const settings = {
-      startMarker: { textFont: font("Mono") },
-      groups: [{ inner: { labelFont: font("Serif") } }, { labelFont: font("") }, { labelFont: font("Arial") }],
-      textSize: 12,
-    };
-    expect([...collectLazyMsdfFamilies(settings)].sort()).toEqual(["Mono", "Serif"]);
+describe("collectDrawnLabelFontFamilies and the maze (GitHub issue #1012)", () => {
+  const elevatorEdges = [{ kind: "elevator" }];
+  const state = (walls: unknown, edges: unknown[] = [], mode: "vectorByWallsSettings" | "vectorByCorridorsSettings" = "vectorByWallsSettings") =>
+    ({ vectorByWallsSettings: {}, vectorByCorridorsSettings: {}, [mode]: walls, nodes: [], edges, floors: [{ id: "a" }] }) as never;
+  const families = (value: never) => [...collectDrawnLabelFontFamilies(value)].sort();
+
+  it("draws elevator badge and marker index fonts only for a maze with an elevator", () => {
+    const walls = { elevatorBadges: { enabled: true, textFont: font("Arial") }, markerIndex: { enabled: true, textFont: font("Georgia") } };
+    expect(families(state(walls))).toEqual([]);
+    expect(families(state(walls, elevatorEdges))).toEqual(["Arial", "Georgia"]);
+  });
+
+  it("drops the font of a text its own switch turns off", () => {
+    const walls = { elevatorBadges: { enabled: false, textFont: font("Arial") }, markerIndex: { enabled: true, textFont: font("Georgia") } };
+    expect(families(state(walls, elevatorEdges))).toEqual(["Georgia"]);
+  });
+
+  it("reads the corridors settings too", () => {
+    expect(families(state({ finishMarker: { textFont: font("Arial") } }, [], "vectorByCorridorsSettings"))).toEqual(["Arial"]);
+  });
+});
+
+describe("collectLabelFonts", () => {
+  const families = (value: unknown) => [...collectLabelFonts(value).values()].map((f) => f.family).sort();
+
+  it("finds every font at any depth, in arrays too, the default and browser fonts included", () => {
+    const settings = { startMarker: { textFont: font("Mono") }, groups: [{ inner: { labelFont: font("Serif") } }, { labelFont: font("") }, { labelFont: font("Arial") }], textSize: 12 };
+    expect(families(settings)).toEqual(["", "Arial", "Mono", "Serif"]);
   });
 
   it("stays correct when an updated tree reuses its unchanged subtrees", () => {
     const shared = { textFont: font("Mono") };
-    const first = { shared, other: { textFont: font("") } };
-    expect([...collectLazyMsdfFamilies(first)]).toEqual(["Mono"]);
+    expect(families({ shared, other: { textFont: font("") } })).toEqual(["", "Mono"]);
     // A later settings object keeps `shared` by identity, swaps the other font and adds a new one.
-    const second = { shared, other: { textFont: font("Serif") }, extra: [{ labelFont: font("Mono") }] };
-    expect([...collectLazyMsdfFamilies(second)].sort()).toEqual(["Mono", "Serif"]);
+    expect(families({ shared, other: { textFont: font("Serif") }, extra: [{ labelFont: font("Mono") }] })).toEqual(["Mono", "Serif"]);
     // And dropping the reused subtree drops its family.
-    expect(collectLazyMsdfFamilies({ other: second.other }).has("Mono")).toBe(false);
+    expect(families({ other: { textFont: font("Serif") } })).toEqual(["Serif"]);
   });
 
   it("ignores values that only look like a font", () => {
-    expect(collectLazyMsdfFamilies({ family: "Mono" }).size).toBe(0);
-    expect(collectLazyMsdfFamilies(null).size).toBe(0);
+    expect(collectLabelFonts({ family: "Mono" }).size).toBe(0);
+    expect(collectLabelFonts(null).size).toBe(0);
   });
 });
 
 describe("installLabelFontSync", () => {
-  type Settings = { vectorByWallsSettings: unknown; vectorByCorridorsSettings: unknown; pngExportSettings: unknown };
+  type Settings = { vectorByWallsSettings: unknown; vectorByCorridorsSettings: unknown; pngExportSettings: unknown; nodes: unknown[]; edges: unknown[]; floors: unknown[] };
   const makeStore = (initial: Partial<Settings> = {}) => {
-    const store = createStore<Settings>()(() => ({ vectorByWallsSettings: {}, vectorByCorridorsSettings: {}, pngExportSettings: {}, ...initial }));
+    const store = createStore<Settings>()(() => ({ vectorByWallsSettings: {}, vectorByCorridorsSettings: {}, pngExportSettings: {}, nodes: [], edges: [], floors: [], ...initial }));
     disposers.push(installLabelFontSync(store as never));
     return store;
   };
@@ -81,45 +108,65 @@ describe("installLabelFontSync", () => {
   afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });
 
   it("loads a font already referenced by the settings at install time", () => {
-    makeStore({ vectorByWallsSettings: { textFont: font("Mono") } });
+    makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Mono") } } });
     expect(loadMsdfFamily).toHaveBeenCalledWith("Mono");
   });
 
   it("loads a font that arrives with a later settings change, whichever mode holds it", () => {
     const store = makeStore();
     expect(loadMsdfFamily).not.toHaveBeenCalled();
-    store.setState({ vectorByCorridorsSettings: { markerIndex: { textFont: font("Serif") } } });
+    store.setState({ vectorByCorridorsSettings: { startMarker: { textFont: font("Serif") } } });
     expect(loadMsdfFamily).toHaveBeenCalledWith("Serif");
   });
 
   it("requests each family once", () => {
     const store = makeStore();
-    store.setState({ pngExportSettings: { a: font("Mono") } });
-    store.setState({ pngExportSettings: { a: font("Mono"), b: font("Mono") } });
-    store.setState({ vectorByWallsSettings: { c: font("Mono") } });
+    store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Mono") } } });
+    store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Mono") }, finishMarker: { textFont: font("Mono") } } });
+    store.setState({ vectorByCorridorsSettings: { startMarker: { textFont: font("Mono") } } });
     expect(loadMsdfFamily).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores a font whose text is not drawn (GitHub issue #1012)", () => {
+    const store = makeStore({ vectorByWallsSettings: { startMarker: { textEnabled: false, textFont: font("Mono") } } });
+    expect(loadMsdfFamily).not.toHaveBeenCalled();
+    // The text switches on: its font starts loading then.
+    store.setState({ vectorByWallsSettings: { startMarker: { textEnabled: true, textFont: font("Mono") } } });
+    expect(loadMsdfFamily).toHaveBeenCalledWith("Mono");
+  });
+
+  it("ignores the Shared style source font and fonts of elements the maze lacks", () => {
+    makeStore({ vectorByWallsSettings: { labelFont: font("Mono"), elevatorBadges: { textFont: font("Serif") }, floorLabel: { textFont: font("Serif") } } });
+    expect(loadMsdfFamily).not.toHaveBeenCalled();
+  });
+
+  it("starts the download when the maze gains the element that draws the font", () => {
+    const store = makeStore({ vectorByWallsSettings: { elevatorBadges: { enabled: true, textFont: font("Mono") } } });
+    expect(loadMsdfFamily).not.toHaveBeenCalled();
+    store.setState({ edges: [{ kind: "elevator" }] });
+    expect(loadMsdfFamily).toHaveBeenCalledWith("Mono");
+  });
+
   it("does nothing for the default font", () => {
-    const store = makeStore({ vectorByWallsSettings: { textFont: font("") } });
-    store.setState({ pngExportSettings: { textFont: font("") } });
+    const store = makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("") } } });
+    store.setState({ vectorByCorridorsSettings: { startMarker: { textFont: font("") } } });
     expect(loadMsdfFamily).not.toHaveBeenCalled();
   });
 
   describe("raster fonts (GitHub issue #966)", () => {
     it("converts a project font once no picker is open", () => {
-      makeStore({ vectorByWallsSettings: { textFont: font("Arial") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Arial") } } });
       expect(loadRasterFont).toHaveBeenCalledWith({ family: "Arial", weight: 400 });
     });
 
     it("does not convert a font whose MSDF conversion is switched off, and frees its atlas", () => {
-      makeStore({ vectorByWallsSettings: { textFont: { family: "Gamma", weight: 400, msdf: false } } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: { family: "Gamma", weight: 400, msdf: false } } } });
       expect(loadRasterFont).not.toHaveBeenCalled();
       expect(pruneRasterFonts).toHaveBeenLastCalledWith(new Set());
     });
 
     it("keeps converting a font that one text converts and another does not", () => {
-      makeStore({ vectorByWallsSettings: { a: { textFont: { family: "Delta", weight: 400, msdf: false } }, b: { textFont: font("Delta") } } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: { family: "Delta", weight: 400, msdf: false } }, finishMarker: { textFont: font("Delta") } } });
       expect(loadRasterFont).toHaveBeenCalledWith({ family: "Delta", weight: 400 });
     });
 
@@ -128,8 +175,8 @@ describe("installLabelFontSync", () => {
       loadRasterFont.mockClear();
       pruneRasterFonts.mockClear();
       setFontPickerOpen(true);
-      store.setState({ vectorByWallsSettings: { textFont: font("Arial") } });
-      store.setState({ vectorByWallsSettings: { textFont: font("Verdana") } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Arial") } } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Verdana") } } });
       expect(loadRasterFont).not.toHaveBeenCalled();
       expect(pruneRasterFonts).not.toHaveBeenCalled();
     });
@@ -137,8 +184,8 @@ describe("installLabelFontSync", () => {
     it("converts the font that stays when the picker closes", () => {
       const store = makeStore();
       setFontPickerOpen(true);
-      store.setState({ vectorByWallsSettings: { textFont: font("Alpha") } });
-      store.setState({ vectorByWallsSettings: { textFont: font("Beta") } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Alpha") } } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Beta") } } });
       expect(loadRasterFont).not.toHaveBeenCalledWith({ family: "Alpha", weight: 400 });
       setFontPickerOpen(false);
       expect(loadRasterFont).toHaveBeenCalledWith({ family: "Beta", weight: 400 });
@@ -149,7 +196,7 @@ describe("installLabelFontSync", () => {
     it("still downloads a baked font while a picker is open", () => {
       const store = makeStore();
       setFontPickerOpen(true);
-      store.setState({ vectorByWallsSettings: { textFont: font("Mono") } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Mono") } } });
       expect(loadMsdfFamily).toHaveBeenCalledWith("Mono");
     });
   });
@@ -179,7 +226,7 @@ describe("installLabelFontSync", () => {
 
     it("raises one error naming every font that has no source when the browser cannot read installed fonts", async () => {
       setPermission(null);
-      makeStore({ vectorByWallsSettings: { a: { textFont: font("Ghost") }, b: { textFont: font("Phantom") } } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") }, finishMarker: { textFont: font("Phantom") } } });
       await settle();
       const { errors } = useNotificationStore.getState();
       expect(errors).toHaveLength(1);
@@ -190,7 +237,7 @@ describe("installLabelFontSync", () => {
 
     it("withdraws the error once the font becomes available", async () => {
       setPermission(null);
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(useNotificationStore.getState().errors).toHaveLength(1);
       registerLocalFaces([{ family: "Ghost", style: "Regular", blob: () => Promise.resolve(new Blob()) }]);
@@ -202,7 +249,7 @@ describe("installLabelFontSync", () => {
     it("asks again through the dialog when a granted permission's query is refused without a gesture", async () => {
       setPermission("granted");
       (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn().mockRejectedValue(new Error("needs a user gesture"));
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost"] });
       expect(useNotificationStore.getState().errors).toHaveLength(0);
@@ -213,7 +260,7 @@ describe("installLabelFontSync", () => {
       (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn()
         .mockRejectedValueOnce(new Error("refused for a passing reason"))
         .mockResolvedValue([]);
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(getFontPermissionRequest().open).toBe(false);
       expect(useNotificationStore.getState().errors[0].code).toBe("fonts.unavailable");
@@ -223,7 +270,7 @@ describe("installLabelFontSync", () => {
       setPermission("granted");
       Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: () => Promise.reject(new Error("unknown permission name")) } });
       (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts = vi.fn().mockResolvedValue([]);
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(getFontPermissionRequest().open).toBe(false);
       expect(useNotificationStore.getState().errors[0].code).toBe("fonts.unavailable");
@@ -231,7 +278,7 @@ describe("installLabelFontSync", () => {
 
     it("asks for the permission first when the browser can still prompt, and reports nothing yet", async () => {
       setPermission("prompt");
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost"] });
       expect(useNotificationStore.getState().errors).toHaveLength(0);
@@ -239,11 +286,11 @@ describe("installLabelFontSync", () => {
 
     it("turns a cancelled request into an error, once", async () => {
       setPermission("prompt");
-      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      const store = makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       closeFontPermissionRequest(true);
       await settle();
-      store.setState({ pngExportSettings: { other: 1 } });
+      store.setState({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") }, other: 1 } });
       expect(getFontPermissionRequest().open).toBe(false);
       const { errors } = useNotificationStore.getState();
       expect(errors).toHaveLength(1);
@@ -253,25 +300,25 @@ describe("installLabelFontSync", () => {
 
     it("asks again when another font goes missing after the dialog was cancelled", async () => {
       setPermission("prompt");
-      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      const store = makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       closeFontPermissionRequest(true);
       await settle();
       expect(getFontPermissionRequest().open).toBe(false);
-      store.setState({ vectorByCorridorsSettings: { textFont: font("Phantom") } });
+      store.setState({ vectorByCorridorsSettings: { startMarker: { textFont: font("Phantom") } } });
       expect(getFontPermissionRequest()).toEqual({ open: true, families: ["Ghost", "Phantom"] });
     });
 
     it("says the access is blocked when the permission was denied", async () => {
       setPermission("denied");
-      makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       expect(useNotificationStore.getState().errors[0].code).toBe("fonts.permission_denied");
     });
 
     it("reports again for an export without opening the dialog", async () => {
       setPermission("prompt");
-      const store = makeStore({ vectorByWallsSettings: { textFont: font("Ghost") } });
+      const store = makeStore({ vectorByWallsSettings: { startMarker: { textFont: font("Ghost") } } });
       await settle();
       closeFontPermissionRequest(true);
       await settle();

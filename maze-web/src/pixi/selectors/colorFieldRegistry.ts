@@ -3,12 +3,11 @@ import { resolveGroupOverrides } from "../../store/teleportGroupLinks";
 import { lazyOverlay } from "../../store/lazyOverlay";
 import { withResolvedEdgeMarkerFloors } from "../../store/edgeMarkerLinks";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/imageExportTypes";
-import type { EdgeDto } from "../../wasm/types";
 import { splitSlotColor } from "../colorUtils";
 import { canvas } from "../colorTokens";
 import { parseColorFieldKey, type ColorFieldKey, type StaticColorFieldKey } from "../colorFieldKeys";
 import { maxSplitNodeCount } from "./mazeSelectors";
-import { hasCrossFloorTeleport } from "./mazeSelectors/teleport";
+import { buildProjectActivity, memoized, type ProjectMaze } from "./projectActivity";
 import { isPathActive, type ParamActivityContext } from "../../store/parameterLinksActivity";
 import { isSchemaPathInMode, type LinkPath } from "../../store/parameterLinkSchema";
 
@@ -56,30 +55,8 @@ export interface ColorVisibilityContext {
   activity: ParamActivityContext;
 }
 
-function hasDirectionalBasicEdge(edges: EdgeDto[]): boolean {
-  const basic = edges.filter((e) => e.kind === "basic");
-  const forward = new Set(basic.map((e) => `${e.from}->${e.to}`));
-  return basic.some((e) => !forward.has(`${e.to}->${e.from}`));
-}
-
-function verticalVisibility(edges: EdgeDto[], replaceTwoFloorElevatorsWithStairs: boolean) {
-  const passageEdges = edges.filter((e) => e.kind === "vertical_passage");
-  const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
-  const oneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-  const elevators = edges.some((e) => e.kind === "elevator");
-  const twoWayPassages =
-    passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
-    (replaceTwoFloorElevatorsWithStairs && elevators);
-  return { twoWayPassages, oneWayPassages, elevators };
-}
-
 /** Project-wide input of {@link buildColorVisibility} — the unscoped maze graph. */
-export interface ColorVisibilityMaze {
-  nodes: MazeState["nodes"];
-  edges: EdgeDto[];
-  floors: MazeState["floors"];
-  /** Whether some floor has a glue (GitHub issue #901); the glue tab fields are hidden without one. Unknown counts as yes. */
-  hasGlues?: boolean;
+export interface ColorVisibilityMaze extends ProjectMaze {
   /** Each floor's edge marker keys in display order (`MazeState.edgeMarkerOrder`, GitHub issue #902): a marker's number on its floor. */
   edgeMarkerOrder?: MazeState["edgeMarkerOrder"];
 }
@@ -87,18 +64,6 @@ export interface ColorVisibilityMaze {
 /** Whether some floor has a glue (GitHub issue #901): the `hasGlues` input of {@link buildColorVisibility}. */
 export function hasAnyGlue(floorTopology: MazeState["floorTopology"]): boolean {
   return Object.values(floorTopology).some((topology) => topology.groups.length > 0);
-}
-
-function memoized<T>(compute: () => T): () => T {
-  let done = false;
-  let value: T;
-  return () => {
-    if (!done) {
-      value = compute();
-      done = true;
-    }
-    return value;
-  };
 }
 
 /** The visibility context of `rawSettings` over the unscoped maze. Lazy (GitHub issue #928): `settings` is an
@@ -110,34 +75,10 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     teleportGroupOverrides: () => resolveGroupOverrides(rawSettings),
     edgeMarkers: () => withResolvedEdgeMarkerFloors(rawSettings.edgeMarkers, rawSettings.links),
   });
-  const vertical = memoized(() => verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs));
   const walls = memoized(() => "verticalStyle" in s);
-  const teleports = memoized(() => maze.edges.some((e) => e.kind === "teleport"));
-  const markerIndexAvailable = memoized(() => teleports() || vertical().elevators || maze.edges.some((e) => e.kind === "vertical_passage"));
-  const multipleFloors = () => maze.floors.length > 1;
   const slotCount = memoized(() => maxSplitNodeCount(maze.nodes));
-  const oneWayIndicator = memoized(() => hasDirectionalBasicEdge(maze.edges));
-  const crossFloorTeleports = memoized(() => hasCrossFloorTeleport(maze.nodes, maze.edges));
   const floorIds = memoized(() => maze.floors.map((floor) => floor.id));
-  // Only the flags a color field's schema path can read are answered; the rest are floor-scoped or irrelevant to
-  // a color, and reading one throws instead of answering from the wrong scope.
-  const unavailable = (flag: string) => () => { throw new Error(`Schema rule reads "${flag}", which a color field's visibility cannot answer`); };
-  const activity: ParamActivityContext = {
-    get hasOneWays() { return oneWayIndicator(); },
-    get hasTeleports() { return teleports(); },
-    get hasCrossFloorTeleports() { return crossFloorTeleports(); },
-    get hasTwoWayPassages() { return vertical().twoWayPassages; },
-    get hasOneWayPassages() { return vertical().oneWayPassages; },
-    get hasElevators() { return vertical().elevators; },
-    get hasVerticalSection() { const v = vertical(); return v.twoWayPassages || v.oneWayPassages || v.elevators; },
-    get hasMarkerIndexSource() { return markerIndexAvailable(); },
-    get hasMultipleFloors() { return multipleFloors(); },
-    get hasSplits() { return slotCount() > 0; },
-    get hasGlues() { return maze.hasGlues ?? true; },
-    get hasAreaSpread(): boolean { return unavailable("hasAreaSpread")(); },
-    get hasSeams(): boolean { return unavailable("hasSeams")(); },
-    get hasCreases(): boolean { return unavailable("hasCreases")(); },
-  };
+  const activity = buildProjectActivity(maze, s.replaceTwoFloorElevatorsWithStairs);
   return {
     activity,
     settings: s,
@@ -150,12 +91,11 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     get floorIds() { return floorIds(); },
     get teleportGroupOverrides() { return s.teleportGroupCustomization; },
     get vertical() {
-      const { twoWayPassages, oneWayPassages, elevators } = vertical();
-      return twoWayPassages || oneWayPassages || elevators || multipleFloors();
+      return activity.hasVerticalSection || activity.hasMultipleFloors;
     },
     get verticalStyle() { return walls() ? (s as VectorByWallsSettings).verticalStyle : "abstract"; },
-    get markerIndex() { return markerIndexAvailable() && s.markerIndex.enabled; },
-    get floorLabel() { return multipleFloors() && s.floorLabel.enabled; },
+    get markerIndex() { return activity.hasMarkerIndexSource && s.markerIndex.enabled; },
+    get floorLabel() { return activity.hasMultipleFloors && s.floorLabel.enabled; },
   };
 }
 

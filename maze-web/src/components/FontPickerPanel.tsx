@@ -6,13 +6,14 @@ import { CategoryInfoModal } from "./CategoryInfoModal";
 import { Modal } from "./Modal";
 import { reportManualFontNotFound, reportUploadRefused } from "../notifications/fontNotifications";
 import { RemoveUploadedFontsDialog } from "./dialogs/RemoveUploadedFontsDialog";
-import { CircleCheck, Copyright, Languages, Trash2, Upload } from "lucide-react";
+import { Copyright, Languages, Trash2, Upload } from "lucide-react";
+import { FONT_STATUS_ICON_SIZE, FontUsedIcon } from "./FontStatusIcons";
 import { Bubble, type BubbleColors } from "./Bubble";
 import { FontLicensesModal } from "./FontLicensesModal";
 import { findFontNotice, type FontNotice } from "./fontLicenses";
 import { LOCALE_FONT_SCRIPT, fontSupportsScript, loadUnmeasuredUploadedFonts } from "./fontLocaleSupport";
 import { useLocale } from "../i18n/useLocale";
-import { collectLabelFontFamilies, projectFontSettings } from "../store/labelFontSync";
+import { collectDrawnLabelFontFamilies } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
 import { canvasInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
@@ -150,7 +151,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const localeScript = LOCALE_FONT_SCRIPT[locale];
   // Fonts of the project as the panel opened: the live preview keeps the store on the highlighted
   // font, so reading it later would mark every font that was merely browsed as used.
-  const usedFamilies = useRef(collectLabelFontFamilies(projectFontSettings(useMazeStore.getState()))).current;
+  const usedFamilies = useRef(collectDrawnLabelFontFamilies(useMazeStore.getState())).current;
   const listWrapRef = useRef<HTMLDivElement>(null);
   // `undefined` while the local font query is pending, `null` when the browser cannot list fonts.
   // An empty answer is how some browsers report a denied permission, so it counts as unavailable.
@@ -521,7 +522,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   onClick={() => setOnlyUsed(!onlyUsed)}
                   testId="font-picker-filter-used"
                 >
-                  <CircleCheck size={14} />
+                  <FontUsedIcon />
                 </FilterChip>
                 <FilterChip
                   active={onlyUploaded}
@@ -530,7 +531,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                   onClick={() => setOnlyUploaded(!onlyUploaded)}
                   testId="font-picker-filter-uploaded"
                 >
-                  <Upload size={14} />
+                  <Upload size={FONT_STATUS_ICON_SIZE} />
                 </FilterChip>
                 {localeScript !== null && (
                   <FilterChip
@@ -540,7 +541,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                     onClick={() => setOnlySupported(!onlySupported)}
                     testId="font-picker-filter-locale"
                   >
-                    <Languages size={14} />
+                    <Languages size={FONT_STATUS_ICON_SIZE} />
                   </FilterChip>
                 )}
               </div>
@@ -725,21 +726,21 @@ const FontOption = memo(function FontOption({ entry, selected, localeScript, onS
           {entry.used && (
             <Tooltip content={m["font_picker.badge_used"]()} focusable={false}>
               <span style={styles.statusIcon} role="img" aria-label={m["font_picker.badge_used"]()} data-testid="font-badge-used">
-                <CircleCheck size={14} />
+                <FontUsedIcon />
               </span>
             </Tooltip>
           )}
           {entry.uploaded && (
             <Tooltip content={m["font_picker.badge_uploaded"]()} focusable={false}>
               <span style={styles.statusIcon} role="img" aria-label={m["font_picker.badge_uploaded"]()} data-testid="font-badge-uploaded">
-                <Upload size={14} />
+                <Upload size={FONT_STATUS_ICON_SIZE} />
               </span>
             </Tooltip>
           )}
           {localeScript !== null && entry.supportsLocale && (
             <Tooltip content={m["font_picker.filter_locale"]()} focusable={false}>
               <span style={styles.statusIcon} role="img" aria-label={m["font_picker.filter_locale"]()} data-testid="font-badge-locale">
-                <Languages size={14} />
+                <Languages size={FONT_STATUS_ICON_SIZE} />
               </span>
             </Tooltip>
           )}
@@ -748,7 +749,7 @@ const FontOption = memo(function FontOption({ entry, selected, localeScript, onS
               <InfoIconButton
                 inList
                 hoverable={false}
-                symbol={<Copyright size={14} />}
+                symbol={<Copyright size={FONT_STATUS_ICON_SIZE} />}
                 label={m["font_licenses.button"]({ font: entry.label })}
                 onClick={() => onShowLicense(notice)}
               />
