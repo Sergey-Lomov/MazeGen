@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
-import { isRasterWorkBusy, subscribeRasterWork } from "../pixi/renderers/rasterFont/rasterFontStore";
+import { isRasterWorkBusy, rasterWorkLabels, subscribeRasterWork } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { ui, typography, radius } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -7,10 +7,11 @@ import * as m from "~/paraglide/messages";
 export const INDICATOR_DELAY_MS = 500;
 
 /** A small unobtrusive "Preparing fonts" note while an MSDF atlas is being built in the background
- *  (GitHub issue #966). It says nothing about which font, weight or glyph: the user only needs to know
- *  that the text may still change its rendering shortly. */
+ *  (GitHub issue #966). It names the fonts being converted (GitHub issue #974) and nothing about weights
+ *  or glyphs: the user only needs to know that the text may still change its rendering shortly. */
 export function FontPreparingIndicator() {
   const busy = useSyncExternalStore(subscribeRasterWork, isRasterWorkBusy);
+  const fonts = useSyncExternalStore(subscribeRasterWork, rasterWorkLabels);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (!busy) { setVisible(false); return; }
@@ -20,7 +21,7 @@ export function FontPreparingIndicator() {
   if (!visible) return null;
   return (
     <div role="status" style={styles.note} data-testid="font-preparing-indicator">
-      {m["font_picker.preparing"]()}
+      {fonts ? m["font_picker.preparing_named"]({ fonts }) : m["font_picker.preparing"]()}
     </div>
   );
 }

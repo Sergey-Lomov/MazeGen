@@ -3047,6 +3047,7 @@
   "font_picker.upload_failed_unsupported_format": "This file format is not supported. Use an upright TTF, OTF or WOFF file.",
   "font_picker.upload_failed_corrupt": "The file is not a usable font.",
   "font_picker.preparing": "Preparing fonts…",
+  "font_picker.preparing_named": "Preparing fonts: {fonts}…",
   "font_picker.local_fonts_blocked": "Access to local fonts is blocked. Allow it in the site settings (the icon left of the address bar), then reload the page.",
   "font_picker.local_fonts_unsupported": "This browser cannot show the list of local fonts. Upload a font file instead.",
   "font_picker.preview_input_placeholder": "Type a phrase to preview",
@@ -3074,5 +3075,16 @@
   "font_licenses.license_apache": "Apache License 2.0",
   "font_licenses.full_text": "Full text: {license}",
   "font_licenses.loading": "Loading the license text",
-  "font_licenses.load_failed": "The license text could not be loaded."
+  "font_licenses.load_failed": "The license text could not be loaded.",
+  "fonts.unavailable": "Fonts not found on this machine and not uploaded: {fonts}. Labels use Roboto. Upload the font files or install the fonts.",
+  "fonts.permission_denied": "Access to installed fonts is not granted, so these fonts are unavailable: {fonts}. Labels are drawn without MSDF conversion. Allow local fonts for this site in the browser settings.",
+  "fonts.weight_unavailable": "{font} has no file for weight {requested}. Labels use the nearest weight, {used}.",
+  "fonts.conversion_failed": "Could not convert {font} (weight {weight}) to MSDF. Its labels keep canvas text.",
+  "fonts.glyphs_missing": "{font} has no glyphs for: {chars}. Roboto draws them.",
+  "fonts.atlas_full": "The atlas of {font} (weight {weight}) is full. Some glyphs are drawn in Roboto.",
+  "font_permission.title": "Installed fonts needed",
+  "font_permission.body": "This project uses fonts that are not uploaded: {fonts}. They may be installed on this machine. Allow access to installed fonts to try to restore them.",
+  "font_permission.body_many": "This project uses fonts that are not uploaded:",
+  "font_permission.body_many_hint": "They may be installed on this machine. Allow access to installed fonts to try to restore them.",
+  "font_permission.request": "Request permission"
 }

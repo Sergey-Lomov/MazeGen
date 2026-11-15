@@ -7,6 +7,8 @@ import { currentCharset } from "./glyphCharset";
 import { beginRasterWork, endRasterWork, isRasterWorkBusy, knownRasterWeights, rasterFaceBytes, rasterFaceSource, subscribeRasterFonts, subscribeRasterWork } from "./rasterFontStore";
 import { readKerning } from "./kerning";
 import { readFontInfo } from "./sfnt";
+import { FONT_CODES, FONT_SOURCE, clearFontProblem, fontDisplayName, reportFontProblemOnce } from "../../../notifications/fontNotifications";
+import { notify } from "../../../notifications/notificationStore";
 
 /** Dynamic MSDF atlases of raster fonts (GitHub issue #966): an installed or uploaded TTF/OTF font is turned
  *  into signed distance field glyphs by a worker and drawn by `BitmapText`, so it stays sharp at any zoom like
@@ -30,6 +32,10 @@ interface Entry {
   requested: Set<number>;
   /** Characters the source font does not draw (Roboto draws them). */
   lacking: Set<string>;
+  /** The page-limit warning was raised for this atlas. */
+  overflowReported: boolean;
+  /** Lacking characters already warned about, so one label text does not warn on every redraw. */
+  reportedLacking: Set<string>;
   /** Codepoints already sent to the generator, so a missing glyph is not retried on every label. */
   tried: Set<number>;
   queue: Set<number>;
@@ -43,6 +49,20 @@ const requests = new Map<string, Promise<boolean>>();
 let clock = 0;
 
 const entryId = (family: string, weight: number) => `${weight}|${family}`;
+
+/** Atlases whose conversion failed, by id to the source they failed with: asking again would fail the same way. */
+const failedSources = new Map<string, string | null>();
+
+/** Weights reported as missing from their family (problem key to the face asked for). */
+const weightProblems = new Map<string, { family: string; weight: number }>();
+
+function clearResolvedWeightProblems(): void {
+  for (const [key, { family, weight }] of [...weightProblems]) {
+    if (!knownRasterWeights(family).includes(weight)) continue;
+    weightProblems.delete(key);
+    clearFontProblem(key);
+  }
+}
 
 function announce(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(LABEL_FONT_LOADED_EVENT));
@@ -62,30 +82,44 @@ function attach(entry: Entry, requestedWeight: number): void {
   registerRasterFace(entry.family, requestedWeight, { weight: entry.weight, atlasName: entry.atlas.name, url: "" });
 }
 
-async function build(family: string, weight: number): Promise<Entry | null> {
+/** Raises the conversion error of one atlas; the key keeps a failing font from repeating it on every refresh. */
+function reportConversionFailure(family: string, weight: number, reason: string): void {
+  reportFontProblemOnce(`conversion|${entryId(family, weight)}`, FONT_CODES.conversionFailed, { font: fontDisplayName(family), weight }, reason);
+}
+
+/** Raises the warning that an atlas reached its page limit, once per atlas. */
+function reportOverflow(entry: Entry, overflowed: readonly string[]): void {
+  if (overflowed.length === 0 || entry.overflowReported) return;
+  entry.overflowReported = true;
+  notify({ source: FONT_SOURCE, code: FONT_CODES.atlasFull, params: { font: fontDisplayName(entry.family), weight: entry.weight } });
+}
+
+/** Builds the atlas of one face. Throws an `Error` whose message says why it could not (reported by the caller). */
+async function build(family: string, weight: number): Promise<Entry> {
   const id = entryId(family, weight);
   const service = getMsdfService();
   const source = rasterFaceSource(family, weight);
   const bytes = await rasterFaceBytes(family, weight);
-  if (!bytes || !source) return null;
+  if (!bytes || !source) throw new Error("The font file cannot be read.");
   const info = readFontInfo(bytes);
-  if (!info) return null;
-  if (!(await service.load(id, bytes))) return null;
+  if (!info) throw new Error("The font file is not a usable TrueType or OpenType font.");
+  if (!(await service.load(id, bytes))) throw new Error("The glyph generator could not load the font file.");
   const charset = currentCharset();
   let glyphs;
   try {
     glyphs = await service.generate(id, charset.codepoints);
-  } catch {
+  } catch (error) {
     service.unload(id);
-    return null;
+    throw new Error(`The glyph generator failed: ${error instanceof Error ? error.message : String(error)}`);
   }
   const atlas = new DynamicMsdfFont(`raster:${family}:${weight}`, info, () => fallbackFont(weight), readKerning(bytes));
   const report = atlas.insert(charset.codepoints, glyphs);
   const entry: Entry = {
     id, source, charsetVersion: charset.version, family, weight, atlas,
-    requested: new Set(), lacking: new Set(report.lacking),
+    requested: new Set(), lacking: new Set(report.lacking), overflowReported: false, reportedLacking: new Set(),
     tried: new Set(charset.codepoints), queue: new Set(), flushing: false, lastUsed: ++clock,
   };
+  reportOverflow(entry, report.overflowed);
   entries.set(id, entry);
   return entry;
 }
@@ -104,16 +138,32 @@ export function loadRasterFont(font: LabelFont): Promise<boolean> {
   if (weights.length === 0) return Promise.resolve(false);
   const weight = nearestWeight(font.weight, weights);
   const id = entryId(family, weight);
+  // The family has no file for the weight asked for: nothing to generate it from, so the nearest one is used and
+  // the user is told. The problem is re-armed once the file arrives (an upload, see `subscribeRasterFonts` below).
+  if (weight !== font.weight) {
+    const key = `weight|${requested}`;
+    weightProblems.set(key, { family, weight: font.weight });
+    reportFontProblemOnce(key, FONT_CODES.weightUnavailable, { font: fontDisplayName(family), requested: font.weight, used: weight });
+  }
+  if (failedSources.has(id) && failedSources.get(id) === rasterFaceSource(family, weight)) return Promise.resolve(false);
   const existing = entries.get(id);
   if (existing) {
     attach(existing, font.weight);
     completeCharset(existing);
     return Promise.resolve(true);
   }
-  beginRasterWork();
+  const label = fontDisplayName(family);
+  beginRasterWork(label);
   let job = building.get(id);
   if (!job) {
-    job = build(family, weight).catch(() => null).finally(() => { building.delete(id); });
+    job = build(family, weight).then(
+      (entry): Entry | null => { failedSources.delete(id); clearFontProblem(`conversion|${id}`); return entry; },
+      (error): Entry | null => {
+        failedSources.set(id, rasterFaceSource(family, weight));
+        reportConversionFailure(family, weight, error instanceof Error ? error.message : String(error));
+        return null;
+      },
+    ).finally(() => { building.delete(id); });
     building.set(id, job);
   }
   const request = job.then((entry) => {
@@ -123,7 +173,7 @@ export function loadRasterFont(font: LabelFont): Promise<boolean> {
     return true;
   }).finally(() => {
     requests.delete(requested);
-    endRasterWork();
+    endRasterWork(label);
   });
   requests.set(requested, request);
   return request;
@@ -150,7 +200,8 @@ export function isRasterFontReady(font: LabelFont): boolean {
 
 async function flush(entry: Entry): Promise<void> {
   entry.flushing = true;
-  beginRasterWork();
+  const label = fontDisplayName(entry.family);
+  beginRasterWork(label);
   try {
     while (entry.queue.size > 0) {
       const codepoints = [...entry.queue];
@@ -158,17 +209,19 @@ async function flush(entry: Entry): Promise<void> {
       let glyphs;
       try {
         glyphs = await getMsdfService().generate(entry.id, codepoints);
-      } catch {
+      } catch (error) {
+        reportConversionFailure(entry.family, entry.weight, `Extending the atlas failed: ${error instanceof Error ? error.message : String(error)}`);
         return;
       }
       if (entries.get(entry.id) !== entry) return;
       const report = entry.atlas.insert(codepoints, glyphs);
       for (const char of report.lacking) entry.lacking.add(char);
+      reportOverflow(entry, report.overflowed);
       if (report.added.length > 0 || report.lacking.length > 0) announce();
     }
   } finally {
     entry.flushing = false;
-    endRasterWork();
+    endRasterWork(label);
   }
 }
 
@@ -187,9 +240,14 @@ export function rasterCoversText(font: LabelFont, text: string): boolean {
   if (!entry || !entry.requested.has(font.weight)) return false;
   entry.lastUsed = ++clock;
   let covered = true;
+  const lackingNow: string[] = [];
   for (const char of text) {
     const codepoint = char.codePointAt(0)!;
-    if (/\s/.test(char) || entry.lacking.has(char) || entry.atlas.has(char)) continue;
+    if (entry.lacking.has(char) && !/\s/.test(char)) {
+      if (!entry.reportedLacking.has(char)) { entry.reportedLacking.add(char); lackingNow.push(char); }
+      continue;
+    }
+    if (/\s/.test(char) || entry.atlas.has(char)) continue;
     covered = false;
     if (!entry.tried.has(codepoint)) {
       entry.tried.add(codepoint);
@@ -197,6 +255,11 @@ export function rasterCoversText(font: LabelFont, text: string): boolean {
     }
   }
   if (entry.queue.size > 0 && !entry.flushing) void flush(entry);
+  if (lackingNow.length > 0) {
+    // Text fit and warning memos call this while a component renders: a toast (a store update) must not start there.
+    const params = { font: fontDisplayName(entry.family), chars: lackingNow.join(" ") };
+    queueMicrotask(() => { notify({ source: FONT_SOURCE, code: FONT_CODES.glyphsMissing, params }); });
+  }
   return covered;
 }
 
@@ -235,6 +298,10 @@ export function rasterAtlasSignature(): string {
 /** Frees atlases whose font file was replaced since they were built (an upload with the same family and weight). */
 subscribeRasterFonts(() => {
   for (const entry of [...entries.values()]) if (rasterFaceSource(entry.family, entry.weight) !== entry.source) dispose(entry);
+  // A failed conversion gets another try when a source changed.
+  failedSources.clear();
+  // A weight problem stands only while the family still lacks that weight's file.
+  clearResolvedWeightProblems();
 });
 
 /** Resolves once no atlas is being built or extended, or after `timeoutMs`. An export awaits it so labels

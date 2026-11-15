@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import { resolve } from "node:path";
@@ -16,6 +16,8 @@ import {
 } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { disposeRasterFamily } from "../pixi/renderers/rasterFont/rasterMsdf";
 import { currentCharset } from "../pixi/renderers/rasterFont/glyphCharset";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
+import { resetFontProblems } from "../notifications/fontNotifications";
 
 const fontBytes = (name: string) => new Uint8Array(readFileSync(resolve(__dirname, "../../tools/msdf", name)));
 const ROBOTO_REGULAR = fontBytes("Roboto-Regular.ttf");
@@ -48,6 +50,58 @@ describe("sfnt reading", () => {
     expect(readFontInfo(new Uint8Array(64))).toBeNull();
   });
 });
+
+describe("font collections (GitHub issue #974)", () => {
+  const collection = toTtc([ROBOTO_REGULAR, ROBOTO_BOLD]);
+
+  it("extracts the face whose PostScript name the machine reported", async () => {
+    const bold = await toSfnt(collection, { postscriptName: "Roboto-Bold" });
+    expect(readFontInfo(bold)).toMatchObject({ family: "Roboto", weight: 700 });
+    const regular = await toSfnt(collection, { postscriptName: "Roboto-Regular" });
+    expect(readFontInfo(regular)).toMatchObject({ family: "Roboto", weight: 400 });
+  });
+
+  it("falls back to the full name when no PostScript name is given", async () => {
+    const bold = await toSfnt(collection, { fullName: "Roboto Bold" });
+    expect(readFontInfo(bold)).toMatchObject({ weight: 700 });
+  });
+
+  it("extracts a face that generates glyphs like the standalone file", async () => {
+    const bold = await toSfnt(collection, { postscriptName: "Roboto-Bold" });
+    expect(await engine.load("collection-bold", bold)).toBe(true);
+    const [glyph] = engine.generate("collection-bold", [0x41]);
+    expect(glyph && glyph.rgba.length > 0).toBe(true);
+    engine.unload("collection-bold");
+  });
+
+  it("refuses a collection without a hint and one with no matching face, naming what it looked for", async () => {
+    await expect(toSfnt(collection)).rejects.toMatchObject({ reason: "unsupported-format" });
+    await expect(toSfnt(collection, { postscriptName: "Missing-Face" })).rejects.toThrow("Missing-Face");
+  });
+});
+
+/** Packs TTF files into a font collection (the tables stay in each file's own copy, offsets rebased). */
+function toTtc(fonts: Uint8Array[]): Uint8Array {
+  const headerSize = 12 + fonts.length * 4;
+  const total = fonts.reduce((sum, font) => sum + font.length, headerSize);
+  const out = new Uint8Array(total);
+  const o = new DataView(out.buffer);
+  o.setUint32(0, 0x74746366);
+  o.setUint32(4, 0x00010000);
+  o.setUint32(8, fonts.length);
+  let cursor = headerSize;
+  fonts.forEach((font, i) => {
+    o.setUint32(12 + i * 4, cursor);
+    out.set(font, cursor);
+    const tables = o.getUint16(cursor + 4);
+    for (let t = 0; t < tables; t++) {
+      const at = cursor + 12 + t * 16 + 8;
+      o.setUint32(at, o.getUint32(at) + cursor);
+    }
+    cursor += font.length;
+  });
+  return out;
+}
 
 /** Wraps a TTF's tables into a WOFF 1.0 file (each table zlib-compressed). */
 function toWoff(ttf: Uint8Array): Uint8Array {
@@ -237,6 +291,8 @@ describe("DynamicMsdfFont", () => {
 describe("raster font pipeline", () => {
   const family = "Roboto";
 
+  beforeEach(() => { resetNotifications(); resetFontProblems(); });
+
   afterEach(async () => {
     pruneRasterFonts(new Set());
     for (const name of uploadedFamilies()) { disposeRasterFamily(name); await removeUploadedFont(name); }
@@ -311,6 +367,52 @@ describe("raster font pipeline", () => {
     await expect(loadRasterFont({ family: "Nowhere", weight: 400 })).resolves.toBe(false);
     expect(msdfFace({ family: "Nowhere", weight: 400 }).atlasName).toBe("Roboto-Regular");
   });
+
+  it("raises one conversion error with the reason for a file that is not a font, and does not retry it", async () => {
+    const blob = vi.fn(() => Promise.resolve(asBlob(new Uint8Array(200))));
+    registerLocalFaces([{ family: "Broken", style: "Regular", blob }]);
+    await loadRasterFont({ family: "Broken", weight: 400 });
+    await loadRasterFont({ family: "Broken", weight: 400 });
+    expect(blob).toHaveBeenCalledTimes(1);
+    const { errors } = useNotificationStore.getState();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].code).toBe("fonts.conversion_failed");
+    expect(errors[0].occurrences).toHaveLength(1);
+    expect(errors[0].occurrences[0].details).toContain("unsupported-format");
+  });
+
+  it("raises the weight error once when the family has no file for the weight asked", async () => {
+    await upload(ROBOTO_REGULAR);
+    await loadRasterFont({ family, weight: 500 });
+    await loadRasterFont({ family, weight: 500 });
+    const { errors } = useNotificationStore.getState();
+    expect(errors.map((card) => card.code)).toEqual(["fonts.weight_unavailable"]);
+    expect(errors[0].occurrences).toHaveLength(1);
+  }, 30_000);
+
+  it("withdraws the weight error once the family gets that weight", async () => {
+    await upload(ROBOTO_REGULAR);
+    await loadRasterFont({ family, weight: 700 });
+    expect(useNotificationStore.getState().errors).toHaveLength(1);
+    await upload(ROBOTO_BOLD);
+    expect(useNotificationStore.getState().errors).toHaveLength(0);
+  }, 30_000);
+
+  it("warns once per lacking character, outside the render that asked", async () => {
+    await upload(ROBOTO_REGULAR);
+    await loadRasterFont({ family, weight: 400 });
+    const font = { family, weight: 400 };
+    const settled = new Promise<void>((done) => window.addEventListener("mazegen:label-font-loaded", () => done(), { once: true }));
+    rasterCoversText(font, "中");
+    await settled;
+    rasterCoversText(font, "中中");
+    rasterCoversText(font, "中");
+    expect(useNotificationStore.getState().notices.filter((n) => n.code === "fonts.glyphs_missing")).toHaveLength(0);
+    await Promise.resolve();
+    const warnings = useNotificationStore.getState().notices.filter((n) => n.code === "fonts.glyphs_missing");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].params.chars).toBe("中");
+  }, 30_000);
 
   it("does not build an installed font whose file is not a font", async () => {
     registerLocalFaces([{ family: "Broken", style: "Regular", blob: () => Promise.resolve(asBlob(new Uint8Array(200))) }]);

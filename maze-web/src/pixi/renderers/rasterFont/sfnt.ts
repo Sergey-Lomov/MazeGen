@@ -22,8 +22,9 @@ const TTC_SIGNATURE = 0x74746366; // 'ttcf'
 export type FontFileError = "unsupported-format" | "corrupt";
 
 export class FontFileFailure extends Error {
-  constructor(readonly reason: FontFileError) {
-    super(reason);
+  /** `detail` explains the failure in an error toast's details; the picker only reads `reason`. */
+  constructor(readonly reason: FontFileError, detail?: string) {
+    super(detail ? `${reason}: ${detail}` : reason);
   }
 }
 
@@ -69,7 +70,13 @@ async function unwrapWoff(bytes: Uint8Array): Promise<Uint8Array> {
       data: compLength < origLength ? await inflate(raw) : raw,
     });
   }
-  records.sort((a, b) => a.tag - b.tag);
+  return buildSfnt(flavor, records);
+}
+
+/** Writes a plain sfnt from its tables (sorted by tag, each padded to four bytes). */
+function buildSfnt(flavor: number, tables: Array<{ tag: number; checksum: number; data: Uint8Array }>): Uint8Array {
+  const records = [...tables].sort((a, b) => a.tag - b.tag);
+  const numTables = records.length;
   const headerSize = 12 + numTables * 16;
   const total = records.reduce((sum, r) => sum + ((r.data.length + 3) & ~3), headerSize);
   const out = new Uint8Array(total);
@@ -94,15 +101,64 @@ async function unwrapWoff(bytes: Uint8Array): Promise<Uint8Array> {
   return out;
 }
 
-/** The plain sfnt bytes of a font file: TTF and OTF as they are, WOFF unwrapped. WOFF2 needs a Brotli
- *  decoder the browser does not expose and font collections hold several faces, so both are refused. */
-export async function toSfnt(bytes: Uint8Array): Promise<Uint8Array> {
+/** Names that tell the faces of a font collection apart, as the Local Font Access API reports them. */
+export interface FaceHint {
+  postscriptName?: string;
+  fullName?: string;
+}
+
+/** The plain sfnt of one face of a font collection: its tables copied out of the shared file. The face is the one
+ *  whose PostScript name (`name` id 6) matches the hint, else whose full name (id 4) does. `null` when none does. */
+function extractCollectionFace(bytes: Uint8Array, hint: FaceHint): Uint8Array | null {
+  const v = view(bytes);
+  const count = v.getUint32(8);
+  if (12 + count * 4 > bytes.length) throw new FontFileFailure("corrupt");
+  const wanted = (name: string | undefined) => (name ?? "").trim().toLowerCase();
+  const postscript = wanted(hint.postscriptName);
+  const full = wanted(hint.fullName);
+  if (!postscript && !full) return null;
+  for (let i = 0; i < count; i++) {
+    const faceAt = v.getUint32(12 + i * 4);
+    if (faceAt + 12 > bytes.length) continue;
+    const tableCount = v.getUint16(faceAt + 4);
+    if (faceAt + 12 + tableCount * 16 > bytes.length) continue;
+    const tables: Array<{ tag: number; checksum: number; data: Uint8Array }> = [];
+    let name: { offset: number; length: number } | null = null;
+    let broken = false;
+    for (let t = 0; t < tableCount; t++) {
+      const at = faceAt + 12 + t * 16;
+      const tag = v.getUint32(at);
+      const offset = v.getUint32(at + 8);
+      const length = v.getUint32(at + 12);
+      if (offset + length > bytes.length) { broken = true; break; }
+      if (tag === 0x6e616d65) name = { offset, length }; // 'name'
+      tables.push({ tag, checksum: v.getUint32(at + 4), data: bytes.subarray(offset, offset + length) });
+    }
+    // A damaged face is skipped: another face of the collection may be the one asked for.
+    if (broken || !name) continue;
+    const names = readNames(v, name);
+    const matches = (postscript && wanted(names.get(6)) === postscript) || (!postscript && full && wanted(names.get(4)) === full);
+    if (matches) return buildSfnt(v.getUint32(faceAt), tables);
+  }
+  return null;
+}
+
+/** The plain sfnt bytes of a font file: TTF and OTF as they are, WOFF unwrapped, and, when `hint` names a face, that
+ *  face of a font collection (an installed font may be one). WOFF2 needs a Brotli decoder the browser does not
+ *  expose, and a collection without a matching face holds several, so both are refused. */
+export async function toSfnt(bytes: Uint8Array, hint?: FaceHint): Promise<Uint8Array> {
   if (bytes.length < 12) throw new FontFileFailure("corrupt");
   const tag = view(bytes).getUint32(0);
   if (SFNT_TAGS.has(tag)) return bytes;
   if (tag === WOFF_SIGNATURE) return unwrapWoff(bytes);
-  if (tag === WOFF2_SIGNATURE || tag === TTC_SIGNATURE) throw new FontFileFailure("unsupported-format");
-  throw new FontFileFailure("unsupported-format");
+  const signature = `file signature 0x${tag.toString(16).padStart(8, "0")}, ${bytes.length} bytes`;
+  if (tag === TTC_SIGNATURE) {
+    const face = hint ? extractCollectionFace(bytes, hint) : null;
+    if (face) return face;
+    throw new FontFileFailure("unsupported-format", `font collection (TTC) without a face matching ${hint?.postscriptName ?? hint?.fullName ?? "any name"}, ${signature}`);
+  }
+  if (tag === WOFF2_SIGNATURE) throw new FontFileFailure("unsupported-format", `WOFF2, ${signature}`);
+  throw new FontFileFailure("unsupported-format", `unknown format, ${signature}`);
 }
 
 export function findTable(v: DataView, tag: string): { offset: number; length: number } | null {
@@ -116,17 +172,17 @@ export function findTable(v: DataView, tag: string): { offset: number; length: n
   return null;
 }
 
-/** The family name of the `name` table: the typographic family (id 16) before the legacy one (id 1),
+/** The strings of the `name` table by name id (1 family, 4 full name, 6 PostScript name, 16 typographic family):
  *  a Windows Unicode record before a Mac Roman one. */
-function readFamilyName(v: DataView, table: { offset: number; length: number }): string {
+function readNames(v: DataView, table: { offset: number; length: number }): Map<number, string> {
   const count = v.getUint16(table.offset + 2);
   const stringsAt = table.offset + v.getUint16(table.offset + 4);
-  const candidates = new Map<number, string>();
+  const names = new Map<number, string>();
   for (let i = 0; i < count; i++) {
     const at = table.offset + 6 + i * 12;
     const platform = v.getUint16(at);
     const nameId = v.getUint16(at + 6);
-    if (nameId !== 1 && nameId !== 16) continue;
+    if (nameId !== 1 && nameId !== 4 && nameId !== 6 && nameId !== 16) continue;
     const length = v.getUint16(at + 8);
     const start = stringsAt + v.getUint16(at + 10);
     if (start + length > v.byteLength) continue;
@@ -137,9 +193,15 @@ function readFamilyName(v: DataView, table: { offset: number; length: number }):
       for (let p = 0; p < length; p++) text += String.fromCharCode(v.getUint8(start + p));
     } else continue;
     // Windows/Unicode records beat Mac ones for the same id.
-    if (!candidates.has(nameId) || platform !== 1) candidates.set(nameId, text.trim());
+    if (!names.has(nameId) || platform !== 1) names.set(nameId, text.trim());
   }
-  return candidates.get(16) || candidates.get(1) || "";
+  return names;
+}
+
+/** The family name of the `name` table: the typographic family (id 16) before the legacy one (id 1). */
+function readFamilyName(v: DataView, table: { offset: number; length: number }): string {
+  const names = readNames(v, table);
+  return names.get(16) || names.get(1) || "";
 }
 
 /** Family, weight, slant and line metrics of an sfnt font, or `null` when it lacks the tables. */

@@ -102,7 +102,12 @@ export function loadLocalFontFamilies(retry = false): Promise<string[] | null> {
           // Keeps each face so its file can be read and converted when the family is picked.
           registerLocalFaces(fonts);
           return families;
-        }).catch(() => null)
+        }).catch(() => {
+          // A failure is not cached: a query made without a user gesture (at startup) may be refused, and the
+          // same query from a click (the permission dialog, the picker) must still be able to succeed.
+          localFamiliesPromise = null;
+          return null;
+        })
       : Promise.resolve(null);
   }
   return localFamiliesPromise;

@@ -26,6 +26,7 @@ import { colorToHex, hexToColor } from "./colorFormat";
 import { PickerWarningsSection } from "./PickerWarningsSection";
 import { useMazeStore } from "../store/mazeStore";
 import { computeActiveModeTextOverflowWarnings } from "../pixi/selectors/activeModeWarnings";
+import { useTextMetricsKey } from "./features/useTextMetricsKey";
 import { TEXT_OVERFLOW_WARNING_ID, type TextFitKind } from "../pixi/selectors/exportWarnings";
 import { sharedStyles } from "../styles/shared";
 import * as m from "~/paraglide/messages";
@@ -308,13 +309,15 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   const finish = useMazeStore((s) => s.finish);
   // The call site builds `warningKinds` anew on every render, so the memo keys on its content.
   const warningKindsKey = warningKinds?.join(",");
+  const metricsKey = useTextMetricsKey();
   const fontWarnings = useMemo(() => {
     if (!warningKindsKey || !openMode || !cfg) return [];
     const ids = new Set(warningKindsKey.split(",").map((kind) => TEXT_OVERFLOW_WARNING_ID[kind as TextFitKind]));
     const settings = openMode === "vector_by_walls" ? wallsSettings : corridorsSettings;
     return computeActiveModeTextOverflowWarnings(openMode, settings, { nodes, edges, floors, floorTopology, cfg, start, finish })
       .filter((warning) => ids.has(warning.id));
-  }, [warningKindsKey, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warningKindsKey, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, floorTopology, cfg, start, finish, metricsKey]);
 
   return (
     <SidePanel title={title ?? m["font_picker.title"]()} onClose={cancel} overlay>

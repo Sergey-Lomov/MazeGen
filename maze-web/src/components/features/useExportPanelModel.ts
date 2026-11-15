@@ -18,6 +18,7 @@ import { hasAnyGlue, type ExportSettings } from "../../pixi/selectors/colorField
 import { buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
 import type { TextFitContextValue } from "./TextFitContext";
 import { useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
+import { useTextMetricsKey } from "./useTextMetricsKey";
 
 type FloorEntry = ReturnType<typeof useMazeStore.getState>["floors"][number];
 
@@ -54,9 +55,12 @@ export function useModeWarnings<S extends ExportSettings>(settings: S, computeWa
   );
   // Glue tabs (GitHub issue #901) only exist where some floor has a glue.
   const hasGlues = useMemo(() => hasAnyGlue(floorTopology), [floorTopology]);
+  // Text overflow is judged against the loaded fonts: a font that lands after the first measurement re-runs the warnings.
+  const metricsKey = useTextMetricsKey();
   const modeWarnings = useMemo(
     () => computeWarnings(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish, cutFloorIds, hasGlues),
-    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, cutFloorIds, hasGlues, metricsKey],
   );
   return { modeWarnings, rawEffectiveEndpoints };
 }
@@ -109,6 +113,7 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
 
   // Auto fit data for font size rows (GitHub issue #707); floor labels have their own independent
   // size control, so `fitAll` only covers the shared style label controls.
+  const textFitMetricsKey = useTextMetricsKey();
   const textFit = useMemo<TextFitContextValue>(() => {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
@@ -117,7 +122,8 @@ export function useExportPanelModel<S extends ExportSettings, P extends string>(
       fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
       fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
     };
-  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints, textFitMetricsKey]);
 
   // Group customization lists every teleport connection group of the whole project, cross floor
   // pairs included (GitHub issue #484), so switching floors never changes the customizable set.

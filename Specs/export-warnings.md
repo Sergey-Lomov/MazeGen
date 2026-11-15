@@ -65,6 +65,10 @@ that and that every emitted id is declared.
   label-font state (`textMetricsKey()`, MSDF atlases and browser TTF/OTF fonts), the split color groups add whether a cut line separates seam mirrors on the floor. A group that
   reads any other state outside the settings must list it in `hiddenInputs`. Color checks read through `buildColorVisibility`, which is
   lazy (a reader of one color field subscribes to that field and the flags gating it, not to the whole settings).
+- **Font readiness (GitHub issue #974).** The cache key sees a font that finished loading or converting, but a React memo does not: the
+  settings panels, their text fit and the font picker's own overflow warnings list `useTextMetricsKey()` (`components/features/useTextMetricsKey.ts`,
+  a subscription to `LABEL_FONT_LOADED_EVENT` returning `textMetricsKey()`) among their memo inputs, so a warning measured while the label was still
+  drawn in the fallback font is recomputed once the font lands.
 - **Order.** The merged list is ordered group by group (the group list order), floors in order within a group; a group's own order is the
   order its warnings are emitted in. The uncached single-floor entry points (`computeVectorByWallsWarnings`,
   `computeVectorByCorridorsWarnings`) run the same groups in the same order; they are the uncached reference the tests compare the cache against,

@@ -3,8 +3,16 @@ import type { MazeStore } from "./storeTypes";
 import { VECTOR_FONT_FAMILY, convertsToMsdf, isMsdfFamily, type LabelFont } from "../pixi/renderers/fontChoice";
 import { loadMsdfFamily } from "../pixi/renderers/msdfLoader";
 import { loadRasterFont, pruneRasterFonts } from "../pixi/renderers/rasterFont/rasterMsdf";
-import { restoreUploadedFonts, subscribeRasterFonts } from "../pixi/renderers/rasterFont/rasterFontStore";
+import { describeLocalFaces, knownRasterWeights, restoreUploadedFonts, subscribeRasterFonts } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { isFontPickerOpen, subscribeFontPicker } from "../pixi/renderers/rasterFont/pickerSession";
+import { isLocalFontAccessSupported, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
+import {
+  closeFontPermissionRequest, getFontPermissionRequest, hasFontPermissionBeenAnswered, openFontPermissionRequest,
+  queryLocalFontPermission, resetFontPermissionAnswer, subscribeFontPermissionRequest, type LocalFontPermission,
+} from "../pixi/renderers/rasterFont/fontPermissionRequest";
+import {
+  FONT_CODES, clearFontProblemsWithPrefix, reportFontProblemOnce,
+} from "../notifications/fontNotifications";
 
 /** Fonts found under each settings node. Settings are updated immutably, so a subtree that did
  *  not change keeps its identity and is answered from here: a settings change that touches one slider
@@ -65,9 +73,48 @@ export function projectFontSettings(state: MazeStore): unknown[] {
  *  uploaded fonts arrive, so it is requested again when they change. While a font picker is open the settings
  *  hold previews, which are drawn by canvas text and never converted: the conversion of the font that stays
  *  starts when the picker closes. Dynamic atlases no project text uses are freed (`pruneRasterFonts`). */
-export function installLabelFontSync(store: StoreApi<MazeStore>): void {
+export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
   const requested = new Set<string>();
-  const request = (state: MazeStore) => {
+  let disposed = false;
+  /** The uploaded fonts are restored and the installed ones read (or known to be unreadable): only from then on
+   *  a font without a source is truly missing and not just not loaded yet. */
+  let sourcesSettled = false;
+  let permission: LocalFontPermission = "prompt";
+  /** Families of project fonts that convert to MSDF, are not bundled and have no font file at all. */
+  const missingFamilies = (fonts: Map<string, LabelFont>): string[] => [...new Set(
+    [...fonts.values()]
+      .filter((font) => font.family !== VECTOR_FONT_FAMILY && !isMsdfFamily(font.family) && convertsToMsdf(font) && knownRasterWeights(font.family).length === 0)
+      .map((font) => font.family.trim()),
+  )].sort();
+  /** Tells the user about project fonts that cannot be restored: asks for the installed fonts permission when
+   *  the browser can still show its prompt, else raises one error for all of them (GitHub issue #974). */
+  const reviewAvailability = (fonts: Map<string, LabelFont>, forExport: boolean) => {
+    const missing = missingFamilies(fonts);
+    if (missing.length === 0) {
+      closeFontPermissionRequest(false);
+      resetFontPermissionAnswer();
+      clearFontProblemsWithPrefix(UNAVAILABLE_PREFIX);
+      return;
+    }
+    if (permission === "prompt" && !hasFontPermissionBeenAnswered(missing) && !forExport) {
+      clearFontProblemsWithPrefix(UNAVAILABLE_PREFIX);
+      openFontPermissionRequest(missing);
+      return;
+    }
+    closeFontPermissionRequest(false);
+    // A dialog dismissed without granting leaves the state at `prompt`: access is still missing, not the fonts.
+    const denied = permission === "denied" || permission === "prompt";
+    const key = `${UNAVAILABLE_PREFIX}${denied ? "denied" : "missing"}|${missing.join("\n")}`;
+    // An error for an earlier set of missing fonts no longer holds.
+    clearFontProblemsWithPrefix(UNAVAILABLE_PREFIX, key);
+    reportFontProblemOnce(
+      key,
+      denied ? FONT_CODES.permissionDenied : FONT_CODES.unavailable,
+      { fonts: missing.join(", ") },
+      missing.map(describeLocalFaces).join("\n"),
+    );
+  };
+  const request = (state: MazeStore, forExport = false) => {
     const previewing = isFontPickerOpen();
     const fonts = collectLabelFonts(projectFontSettings(state));
     for (const font of fonts.values()) {
@@ -81,8 +128,10 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): void {
       }
     }
     if (!previewing) pruneRasterFonts(new Set([...fonts].filter(([, font]) => convertsToMsdf(font)).map(([key]) => key)));
+    if (sourcesSettled && !previewing) reviewAvailability(fonts, forExport);
   };
-  store.subscribe((state, prev) => {
+  recheckProjectFonts = (state) => request(state, true);
+  const unsubscribeStore = store.subscribe((state, prev) => {
     if (
       state.vectorByWallsSettings === prev.vectorByWallsSettings
       && state.vectorByCorridorsSettings === prev.vectorByCorridorsSettings
@@ -94,12 +143,45 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): void {
   // only once the user grants the permission: request again when the sources change.
   let running = false;
   const refresh = () => {
-    if (running) return;
+    if (running || disposed) return;
     running = true;
     try { request(store.getState()); } finally { running = false; }
   };
-  subscribeRasterFonts(refresh);
-  subscribeFontPicker(refresh);
-  void restoreUploadedFonts().then(refresh);
+  const unsubscribes = [
+    subscribeRasterFonts(refresh),
+    subscribeFontPicker(refresh),
+    // The dialog was answered: read the permission again (the browser prompt may have granted it) and review.
+    subscribeFontPermissionRequest(() => {
+      if (disposed || getFontPermissionRequest().open) return;
+      void queryLocalFontPermission(isLocalFontAccessSupported()).then((state) => { permission = state; refresh(); });
+    }),
+  ];
+  void (async () => {
+    await restoreUploadedFonts();
+    permission = await queryLocalFontPermission(isLocalFontAccessSupported());
+    // A granted permission whose query still fails (the browser wants a user gesture) is not a settled source:
+    // the dialog asks again, and its button supplies the gesture.
+    if (permission === "granted" && (await loadLocalFontFamilies()) === null) permission = "prompt";
+    sourcesSettled = true;
+    refresh();
+  })();
   request(store.getState());
+  return () => {
+    disposed = true;
+    recheckProjectFonts = null;
+    unsubscribeStore();
+    for (const unsubscribe of unsubscribes) unsubscribe();
+  };
+}
+
+const UNAVAILABLE_PREFIX = "unavailable|";
+
+let recheckProjectFonts: ((state: MazeStore) => void) | null = null;
+
+/** Raises the toasts for project fonts that cannot be drawn from their own atlas again, without asking for a
+ *  permission (an export is not the place for a dialog). The export calls it so a font still unavailable is
+ *  never exported as Roboto silently. */
+export function reportProjectFontProblems(state: MazeStore): void {
+  clearFontProblemsWithPrefix(UNAVAILABLE_PREFIX);
+  recheckProjectFonts?.(state);
 }

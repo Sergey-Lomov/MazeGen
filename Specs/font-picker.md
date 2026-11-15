@@ -209,7 +209,7 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   and uploaded files (`addUploadedFont`: TTF, OTF or WOFF 1.0, parsed by `sfnt.ts`; italic faces, WOFF2
   and font collections are refused with a message in the picker). Uploads live for the session and in
   IndexedDB (`mazegen-fonts`), never in the project file. A project that names a font this machine
-  lacks reads Roboto.
+  lacks reads Roboto and says so (see "Restoring project fonts").
 - **Preview (canvas text).** While a picker is open (`pickerSession.ts`, set by `FontPickerPanel`) every
   highlighted font reaches the settings as a preview and its labels are pixi `Text` objects over a canvas
   texture (`makeLabelText` in `labelFont.ts`, once the browser face has loaded, `loadLabelFont`). The texture
@@ -249,13 +249,14 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   freeing pages and the worker's font. Canvas textures are freed with their labels.
 - **Export.** `PngExporter` awaits `whenRasterFontsSettled` first, and renders canvas text of a font still
   without an atlas at the export scale (`beginCanvasLabelScale`).
-- **UX.** No conversion button, no per-weight or per-atlas status. After Apply a small "Preparing fonts"
-  note (`FontPreparingIndicator`) appears top-right of the canvas only when conversion takes longer
+- **UX.** No conversion button, no per-weight or per-atlas status. After Apply a small "Preparing fonts: <names>"
+  note (`FontPreparingIndicator`, GitHub issue #974) appears top-right of the canvas only when conversion takes longer
   than `INDICATOR_DELAY_MS`.
 - **Picker.** The browser list is installed + uploaded families (+ the saved one); the web-safe list is
   gone. An upload button adds a font and selects it. The format info says vector fonts can be built from
   raster fonts.
-- **Not supported.** WOFF2, TTC, italic faces, variable-font axes. Layout features other than pair kerning
+- **Not supported.** WOFF2, uploaded TTC files, italic faces, variable-font axes. An installed font that lives in a TTC (Sitka on Windows) is supported: the face is cut out of the collection by the PostScript name (else the full name) the Local Font Access API reports (`toSfnt` with a `FaceHint`, GitHub issue #974).
+- **Style names.** `weightFromStyleName` ignores optical size words (`Small`, `Text`, `Subheading`, `Heading`, `Display`, `Banner`, `Caption`): Sitka Small reports `Small` and `Small Bold`. Layout features other than pair kerning
   (ligatures, contextual forms) are not applied to MSDF text.
 - **Convert to MSDF switch.** Under the weight select, for a raster font, a switch (on by default) with an
   info button. `LabelFont.msdf === false` (stored only when off, `withMsdfConversion`; kept by the project
@@ -269,3 +270,42 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   character (`chars[second].kerning[first]`, atlas pixels), so MSDF text keeps the width canvas text had.
   Pairs form as glyphs arrive (charset completion, on-demand); a character drawn from the Roboto fallback
   is not kerned.
+
+## Restoring project fonts (GitHub issue #974)
+
+Atlases are never stored: not in the project file, not in browser storage. A reloaded project gets its atlases back
+by regenerating them (`labelFontSync` calls `loadRasterFont` for each project font) from the font file, which comes
+from the uploaded fonts in IndexedDB or from the installed fonts (Local Font Access). Nothing falls back silently:
+every case where a project font cannot be drawn from its own atlas is a toast (`notifications/fontNotifications.ts`,
+source `fonts`) and, for the permission, a dialog.
+
+- **Sources settle first.** A font is judged missing only after the uploaded fonts are restored and, when the
+  permission is already granted, the installed ones are read (`sourcesSettled` in `installLabelFontSync`).
+- **Preparing.** No toast: a running conversion is shown by the "Preparing fonts" indicator, which names the fonts
+  being converted (`rasterWorkLabels`).
+- **Toasts end with their cause.** A font problem that is resolved (the font arrives, the permission is granted, the
+  missing set changes) withdraws its error from the screen (`clearFontProblem`, `retractErrorOccurrence`), not only
+  its once-per-key guard.
+- **Fonts without a source.** One `error` toast (`fonts.unavailable`) names all of them. When the permission is
+  blocked it is `fonts.permission_denied` instead. It is raised once per set of missing fonts and re-armed when none
+  is missing.
+- **Permission dialog.** When the browser can still prompt (`prompt`) and the user has not answered for the current
+  missing fonts, no toast is raised yet: `LocalFontPermissionDialog` (state in `fontPermissionRequest.ts`) opens with
+  Cancel and Request permission. The prompt only appears from a user gesture, so the button starts
+  `queryLocalFonts()` synchronously in its click handler and the dialog stays open until the browser answers (closing
+  earlier would let the sync read the undecided permission and raise the error). The dialog is narrow; two or more
+  fonts are listed as bullets. Cancel (or a dismissed prompt) leaves the fonts missing and `fonts.permission_denied`
+  follows ("access not granted", also for a permission still at `prompt`). The answer is kept per set of missing
+  fonts: another missing font is a new question. It is forgotten once no project font is missing, so the next project
+  load asks again.
+- **Weights.** A weight is generated from the family's file for exactly that weight. A family without that file
+  raises an `error` toast (`fonts.weight_unavailable`) and uses the nearest weight; it is re-armed once the file
+  arrives.
+- **Failures.** A failed conversion (unreadable or unusable file, generator error) or a failed atlas extension raises
+  an `error` toast (`fonts.conversion_failed`, the reason in its details); the labels keep canvas text. A failed face
+  is not rebuilt until a source changes (`failedSources`).
+- **Glyphs.** A character of a label that the font lacks raises a `warning` (`fonts.glyphs_missing`, once per
+  character and atlas, raised outside the render that measured the text), and Roboto draws it. An atlas that reaches its page limit raises a `warning`
+  (`fonts.atlas_full`, once per atlas).
+- **Export.** `PngExporter` calls `reportProjectFontProblems` after the conversions settle: a font still unavailable
+  raises the same error again, without opening the dialog. Export itself is not blocked.
