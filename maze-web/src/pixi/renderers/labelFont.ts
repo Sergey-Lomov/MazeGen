@@ -1,7 +1,7 @@
 import { BitmapText, CanvasTextMetrics, Text } from "pixi.js";
 import { LABEL_FONT_LOADED_EVENT, convertsToMsdf, isMsdfFamily, msdfFace, type LabelFont } from "./fontChoice";
 import { loadMsdfFamily } from "./msdfLoader";
-import { canvasLabelResolution } from "./canvasLabelResolution";
+import { canvasLabelResolution, registerCanvasLabel } from "./canvasLabelResolution";
 import { isRasterFontReady, rasterCoversText } from "./rasterFont/rasterMsdf";
 import { ensureUploadedFace, isUploadedFaceLoaded, isUploadedFamily, knownRasterWeights, registerLocalFaces, saveUploadedCoverage, storedUploadedCoverage, type LocalFontFace } from "./rasterFont/rasterFontStore";
 
@@ -238,11 +238,14 @@ function makeCanvasText(text: string, font: LabelFont, fontSize: number, fill: n
     context.font = `${font.weight} ${fontSize}px ${labelFontCss(family)}`;
     width = context.measureText(text).width;
   }
-  return new Text({
+  const height = fontSize * 1.5;
+  const label = new Text({
     text,
     style: { fontFamily: labelFontFamilies(family), fontSize, fontWeight: String(font.weight) as "400", fontStyle: "normal", fill },
-    resolution: canvasLabelResolution(width, fontSize * 1.5),
+    resolution: canvasLabelResolution(width, height),
   });
+  registerCanvasLabel(label, width, height);
+  return label;
 }
 
 /** A label drawn in `font`: canvas text while the font has no MSDF atlas that covers `text`, else the font's

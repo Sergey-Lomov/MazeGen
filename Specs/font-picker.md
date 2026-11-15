@@ -216,12 +216,19 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
 - **Preview (canvas text).** While a picker is open (`pickerSession.ts`, set by `FontPickerPanel`) every
   highlighted font reaches the settings as a preview and its labels are pixi `Text` objects over a canvas
   texture (`makeLabelText` in `labelFont.ts`, once the browser face has loaded, `loadLabelFont`). The texture
-  density is `canvasLabelResolution.ts`: zoom times device pixel ratio, snapped up to the levels `1, 1.5, 2,
-  3, 4` (then geometrically), plus the exact zoom at the moment the font was selected as one more level (a
-  344% zoom is rasterized at 3.44, not 4). A texture is bounded by `MAX_TEXTURE_SIDE` and
-  `MAX_TEXTURE_PIXELS`, so an extreme zoom softens the label instead of allocating a huge texture. A
-  selection is rebuilt at full quality `SETTLE_MS` (150 ms) after the last change; meanwhile labels use the
-  base level. A zoom change rebuilds canvas labels only when their level changed, after the same delay.
+  density is `canvasLabelResolution.ts` (GitHub issue #1003). Every canvas label is built at the cheap base
+  level (the device pixel ratio) and registered (`registerCanvasLabel`). `SETTLE_MS` (150 ms) after the last
+  view change (zoom, pan, resize) or font selection, `applyQuality` raises only the labels that intersect the
+  screen to zoom times device pixel ratio, snapped up to the levels `1, 1.5, 2, 3, 4` (then geometrically),
+  plus the exact zoom at the moment the font was selected as one more level (a 344% zoom is rasterized at
+  3.44, not 4); labels off screen go back to the base level. The resolution of the existing `Text` is
+  changed, no label is rebuilt. A texture is bounded by `MAX_TEXTURE_SIDE`, `MAX_TEXTURE_PIXELS` and the
+  screen size in device pixels (a label never needs more pixels than the viewport), and all canvas label
+  textures share `MAX_TOTAL_PIXELS`: when it runs out, the remaining visible labels get a lower density
+  (never below the base level) instead of more memory. Only labels under the live scene stage are managed
+  (`setCanvasLabelView`, called from `MazeScene.syncLayersToViewport`); an export's labels keep the export
+  scale and a preview's labels stay at the base level. Nothing is applied before the first view sync, and a
+  label detached from the stage for a while (a hidden layer) stays registered until it is destroyed.
   Canvas text is ink-centred like an MSDF label (`canvasInkCentreOffset`), so a label does not move when
   the atlas replaces it. Stale results are dropped: only the latest font request is applied
   (`LabelFontRow`).
