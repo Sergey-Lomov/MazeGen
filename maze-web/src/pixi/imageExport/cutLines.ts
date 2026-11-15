@@ -308,6 +308,57 @@ export function lineInside(polygon: Vec2[], point: Vec2, direction: Vec2): [Vec2
   return [add(point, scale(direction, lo)), add(point, scale(direction, hi))];
 }
 
+/// Points closer than this, and spans narrower than this, count as none.
+const SHEET_EPS = 1e-6;
+/// A direction counts as parallel when the sine of the angle between them is below this.
+const SHEET_PARALLEL_EPS = 1e-6;
+
+/// The unit normal of a cut line that the period points along, and how far the period reaches across the line.
+function periodAcross(cut: { period: Vec2; direction: Vec2 }): { across: Vec2; width: number } {
+  const normal: Vec2 = [-cut.direction[1], cut.direction[0]];
+  const span = dot(normal, cut.period);
+  return { across: span < 0 ? scale(normal, -1) : normal, width: Math.abs(span) };
+}
+
+/// The stretch of a cut line inside the sheet strips of the other cut lines (GitHub issue #1014), for the tabs and for the drawn lines alike: with two cuts the sheet is a
+/// parallelogram, so the line's edge of it runs from one other line to its twin, not as far as the tiles extend. `null` with
+/// no other cut, or when none of them crosses the line.
+export function sheetSpan(line: { point: Vec2; cut: { direction: Vec2 } }, others: readonly { point: Vec2; cut: { period: Vec2; direction: Vec2 } }[]): [Vec2, Vec2] | null {
+  let lo = -Infinity;
+  let hi = Infinity;
+  const d = line.cut.direction;
+  for (const { point, cut } of others) {
+    const { across, width } = periodAcross(cut);
+    const rate = dot(d, across);
+    if (width < SHEET_EPS || Math.abs(rate) < SHEET_PARALLEL_EPS) continue;
+    const start = (line.point[0] - point[0]) * across[0] + (line.point[1] - point[1]) * across[1];
+    // The line's across-coordinate to the other line is `start + t * rate`, which has to stay in [0, width].
+    const [a, b] = [(0 - start) / rate, (width - start) / rate];
+    lo = Math.max(lo, Math.min(a, b));
+    hi = Math.min(hi, Math.max(a, b));
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi - lo < SHEET_EPS) return null;
+  return [[line.point[0] + d[0] * lo, line.point[1] + d[1] * lo], [line.point[0] + d[0] * hi, line.point[1] + d[1] * hi]];
+}
+
+/// How far a cut line moves the sheet's edge relative to the field's own (GitHub issue #1014): the field spans `[min, max]`
+/// across the line (`min` is at or before it), the sheet spans `[0, period]` from the line, so the picture, edge included, has
+/// slid by `-min` along the period. The tabs of the glues without a cut follow it. Sums over the cut lines.
+export function cutTabShift(tiles: readonly Vec2[][], lines: readonly { point: Vec2; cut: { period: Vec2; direction: Vec2 } }[]): Vec2 {
+  let shift: Vec2 = [0, 0];
+  for (const { point, cut } of lines) {
+    const { across, width } = periodAcross(cut);
+    if (width < SHEET_EPS) continue;
+    let min = Infinity;
+    for (const tile of tiles) for (const [x, y] of tile) min = Math.min(min, (x - point[0]) * across[0] + (y - point[1]) * across[1]);
+    if (!Number.isFinite(min)) continue;
+    // Only the part of the field before the line slides; a field starting at or after it leaves the edge where it is.
+    const lead = Math.min(min, 0) / width;
+    shift = [shift[0] - cut.period[0] * lead, shift[1] - cut.period[1] * lead];
+  }
+  return shift;
+}
+
 /// The stretch of the infinite line (`point`, unit `direction`) across the field: one unbroken line as long as the tiles
 /// extend along it, whatever gaps they leave and however few of them the line meets (a skewed edge is a staircase, so a
 /// line near it meets fewer tiles, but it is still the same cut across the sheet). Empty when the line meets no tile; a
@@ -405,9 +456,12 @@ export function buildCutPlan(
     // The twin line shows the halves that moved over, so it has image where the line itself cuts a tile.
     const over = tiles ? lineSpans(tiles, point, cut.direction) : null;
     for (const side of [0, 1] as const) {
-      const segment = lineInside(region, side === 0 ? point : add(point, cut.period), cut.direction);
+      const through = side === 0 ? point : add(point, cut.period);
+      const segment = lineInside(region, through, cut.direction);
       if (!segment) continue;
-      const spans = over ? sideSpans(over, cut.period, side) : [segment];
+      // With another cut the sheet is a parallelogram: the line runs from that line to its twin, not as far as the tiles.
+      const sheet = over && over.length > 0 ? sheetSpan({ point: through, cut }, entries.filter((other) => other.cut !== cut)) : null;
+      const spans = sheet ? [sheet] : over ? sideSpans(over, cut.period, side) : [segment];
       for (const [from, to] of clipSpans(spans, segment, cut.direction)) guides.push({ group: cut.group, from, to });
     }
   }

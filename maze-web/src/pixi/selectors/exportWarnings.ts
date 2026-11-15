@@ -132,6 +132,8 @@ export type ExportWarningId =
   | "grid_low_contrast_background"
   | "glue_tab_outline_low_contrast_fill"
   | "glue_tab_fill_low_contrast_background"
+  /** Both vector modes (GitHub issue #1014) — glue tabs show while a cut line is set: the two features are not meant to be combined, the tabs have to be checked by eye. Highlights nothing. */
+  | "glue_tabs_with_cut_lines"
   /** Both vector modes (GitHub issue #913) — glue tabs of the active floor overlap each other. Highlights the overlapping tabs as `polygons`. */
   | "glue_tabs_overlap"
   /** Both vector modes (GitHub issue #913) — the inset leaves less than `MIN_TAB_BASE` (10 display units) of an edge for its glue tab. Highlights those tabs as `polygons`. */

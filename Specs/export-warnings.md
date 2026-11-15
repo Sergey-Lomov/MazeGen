@@ -430,6 +430,7 @@ computed by `computeGlueTabWarnings` (`glueTabWarnings.ts`), outside the per-mod
 geometry), and, together with the edge mark warnings, appended to the mode's list by the panel (`useExportPanelModel`) through `computeTopologyWarnings` (`topologyWarnings.ts`).
 None carries nodes, edges or cells; the first two carry `polygons` (the offending tabs, display space), the third `bands`.
 
+- `glue_tabs_with_cut_lines` (GitHub issue #1014) — the glue tabs show while some glue of the floor has a cut line (`GlueTabLayout.hasCuts`: the line itself is set, whether or not it is drawn) on a tessellation other than the square one; squares never get it, because there tabs and cut lines work together. On other topologies how they should fit together cannot be stated simply, so combining them may be unstable and the warning tells the user to check every tab by eye. It carries no nodes, edges, polygons or bands: nothing is highlighted.
 - `glue_tabs_overlap` — two tabs overlap by more than a negligible depth (convex separating-axis test; touching edges or
   corners do not count). Highlights every tab that overlaps another.
 - `glue_tab_too_thin` — the base of a tab (the part of the edge between the insets) is shorter than 10 display units (pixels at

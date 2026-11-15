@@ -14,6 +14,19 @@ describe("SectionHeader hit testing", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
+  it("holds the info icon in a flex wrapper so it does not make the row taller (GitHub issue #1015)", () => {
+    const onToggle = vi.fn();
+    const onOpenInfo = vi.fn();
+    render(<SectionHeader label="Glue tabs" expanded={false} onToggle={onToggle} onOpenInfo={onOpenInfo} />);
+
+    const wrap = screen.getByRole("button", { name: "Info" }).parentElement!;
+    expect(wrap).toHaveStyle({ display: "flex" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(onOpenInfo).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
   it("ignores clicks and drops hover/clickable markers while disabled", () => {
     const onToggle = vi.fn();
     render(<SectionHeader label="Details" expanded={false} disabled onToggle={onToggle} />);
