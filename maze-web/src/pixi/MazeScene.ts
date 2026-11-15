@@ -43,7 +43,6 @@ type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => FieldCon
 
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   basic_config: (st) => st.previewFieldConfig,
-  floors: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   field_setup: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   preset_connections: (st) => st.floorFields[st.activeFloorId].fieldConfig,
   quality: (st) => st.floorFields[st.activeFloorId].fieldConfig,

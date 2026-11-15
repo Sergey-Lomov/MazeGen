@@ -216,12 +216,14 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // ui (optional section — defaults for old files)
   const uiObj = optSection(migrated, "ui", "ui");
-  const validFeatureIds: FeatureId[] = ["basic_config", "floors", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
+  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
   const ui: ProjectFileUi = {
     showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
     showPresetLocks: optBool(uiObj, "showPresetLocks", true),
     showFieldOrigin: optBool(uiObj, "showFieldOrigin", true),
-    openCard: uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
+    // The "floors" card (removed in GitHub issue #1010) now lives inside the field setup card.
+    openCard: uiObj != null && uiObj.openCard === "floors" ? "field_setup"
+      : uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
     postEditAutoConfirm: optBool(uiObj, "postEditAutoConfirm", true),
   };
 

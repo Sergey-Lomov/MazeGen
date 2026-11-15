@@ -44,7 +44,7 @@ overlay's `inset: 0` down with it (issue #629 follow-up).
 
 Pressing Escape closes the panel — but only when:
 - this instance is the topmost entry on the mount-order stack (`isTop`), and
-- no `Modal` dialog is currently open (`hasOpenModal()`, exported by `Modal.tsx`) — a dialog
+- no `Modal` dialog is currently open (`hasOpenModal()`, exported by `Modal.tsx`; a `Modal` also `preventDefault()`s the Escape it handles, since it unmounts before this listener runs) — a dialog
   stacked on top of the panel must take precedence, leaving the panel open and closing only the
   dialog, and
 - the keydown event wasn't already handled by content nested inside the panel
@@ -66,7 +66,7 @@ outline while covered, `PngExportSettingsPanel` hides its print-frame canvas ove
 
 `ColorPickerPanel` (overlay), `DebugPanel`, `AnalyticsFeature`, `ImageExportFeature` (render-mode
 settings, overlay for nested config), `PostEditChangesPanel`, `SplitNodesDialogView`,
-`VertexBasedSettingsPanel`, `MirrorPanel`, `TopologyPanel`, `GlueEditorPanel`.
+`VertexBasedSettingsPanel`, `MirrorPanel`, `TopologyPanel`, `GlueEditorPanel`, `FloorsPanel`.
 
 ### Top-edge hit testing (issue #679)
 
@@ -149,7 +149,7 @@ bubbles never passes a spot that hovers the whole group and the highlight does n
 
 ### `ListCell` / `ListCellAction` (`components/ListCell.tsx`)
 
-One entry of a side-panel list: a title row (title, optional addon such as a colour dot, `badge`
+One entry of a side-panel list (`current` lays a 3px green bar over the left edge of its padding, taking no layout space): a title row (title, optional addon such as a colour dot, `badge`
 pinned right — an `IdBubble`), an optional details row, an optional body, and an `actions` area at the
 right end of the title row or of the details row (`actionsPlacement`). `ListCellAction` is the 22×22
 icon button: `title` is both tooltip and accessible name, `danger` tints it with the error colour,

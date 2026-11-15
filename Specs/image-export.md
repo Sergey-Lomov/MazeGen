@@ -974,7 +974,7 @@ extracted from the quality panel's own row/toolbar-action convention (a plain "�
 lucide `X` for remove/delete — never a trash-can icon — and a flat, borderless lucide `Plus` for add)
 so every edit/delete/add entry point across the app renders and behaves identically instead of each
 row or toolbar hand-rolling its own button+glyph copy. Used by `ParameterLinksDialog`'s link rows and
-its own toolbar's "+" button, `FloorsFeature`'s floor rows, and the quality panel's own
+its own toolbar's "+" button, `FloorsPanel`'s floor rows, and the quality panel's own
 `RuleCheckRow`/`NestedStrategyPanel`/`RulesColumn`/`RuleStrategyPanel`. `RemoveIconButton` takes a
 `size` (16 compact / 18 card-level) and an optional `disabled` (dims via opacity, e.g. "can't remove
 the last floor"); `EditIconButton` takes an optional `fontSize` override; `AddIconButton` has no

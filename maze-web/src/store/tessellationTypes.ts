@@ -26,7 +26,7 @@ export interface BackgroundImage {
   layer: BackgroundImageLayerMode;
   opacity: number;
 }
-export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
+export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
   | { kind: "setSelectedShape"; shape: PresetFieldShapeName }
@@ -42,7 +42,8 @@ export type PendingFieldEdit =
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applyMirror" }
-  | { kind: "copyFloorField"; sourceFloorId: string; includeTopology: boolean }
+  | { kind: "copyFloorField"; sourceFloorId: string; includeTopology: boolean; targetFloorId: string }
+  | { kind: "copyFloorFieldToFloors"; sourceFloorId: string; targetFloorIds: string[]; includeTopology: boolean }
   | { kind: "applyTopologyOp"; op: import("../wasm/mazeService").TopologyOp }
   | { kind: "clearTopologyGroups" };
 
@@ -200,9 +201,10 @@ export interface FloorFieldsActions {
   applyMirror: () => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
-  copyFloorField: (sourceFloorId: string, includeTopology?: boolean) => void;
-  /** Replaces every other floor's field config with a copy of the active floor's config. */
-  copyCurrentFloorFieldToAll: () => void;
+  copyFloorField: (sourceFloorId: string, includeTopology?: boolean, targetFloorId?: string) => void;
+  /** Replaces the field config of each target floor with a copy of `sourceFloorId`'s (GitHub issue
+   * #1010; asks for confirmation first while a generation exists). */
+  copyFloorFieldToFloors: (sourceFloorId: string, targetFloorIds: readonly string[], includeTopology?: boolean) => void;
   applyBackgroundAutoFill: (points: Set<number>) => void;
   confirmFieldEdit: () => void;
   cancelFieldEdit: () => void;

@@ -4,7 +4,6 @@ import {
   computeAnalyticsCard,
   computeGenerationCard,
   computeImageExportCard,
-  computeFloorsCard,
   presetConnectionsSubtitle,
   getTessellationKindLabel,
 } from "../components/FeaturesPanel";
@@ -55,42 +54,6 @@ describe("computeFieldStatus", () => {
       floorField("custom", new Set(), squareConfig),
     ];
     expect(computeFieldStatus(true, floors)).toBe("critical");
-  });
-});
-
-describe("computeFloorsCard", () => {
-  it("returns critical when floors is empty", () => {
-    const card = computeFloorsCard([]);
-    expect(card.status).toBe("critical");
-  });
-
-  it("returns set for a single floor", () => {
-    const card = computeFloorsCard([{ id: "a", title: "Floor 1" }]);
-    expect(card.status).toBe("set");
-  });
-
-  it("returns set for multiple floors with distinct titles", () => {
-    const card = computeFloorsCard([
-      { id: "a", title: "Floor 1" },
-      { id: "b", title: "Floor 2" },
-    ]);
-    expect(card.status).toBe("set");
-  });
-
-  it("subtitle reports floor count", () => {
-    expect(computeFloorsCard([{ id: "a", title: "Floor 1" }]).subtitle).toBe("1 floor");
-    expect(computeFloorsCard([
-      { id: "a", title: "Floor 1" },
-      { id: "b", title: "Floor 2" },
-    ]).subtitle).toBe("2 floors");
-  });
-
-  it("returns warning when two floors share the same title", () => {
-    const card = computeFloorsCard([
-      { id: "a", title: "Same" },
-      { id: "b", title: "Same" },
-    ]);
-    expect(card.status).toBe("warning");
   });
 });
 
