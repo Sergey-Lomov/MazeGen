@@ -4,7 +4,7 @@ import type { WireFoldEnd, WireTopology } from "../../wasm/types";
 import { getSeamModel } from "../selectors/seams";
 import { displayTransform } from "../tessellationGeometry";
 import { applyTransform } from "../geometry/worldTransform";
-import { cutLineOf, cutSettingOf, lineSpans, type Vec2 } from "./cutLines";
+import { cutLineOf, cutSettingOf, cutTabShift, lineSpans, sheetSpan, type Vec2 } from "./cutLines";
 import { floorGroupCuts, tilePolygons } from "./exportContent";
 import { selectFloorScopedMaze } from "../selectors/mazeSelectors";
 
@@ -18,11 +18,15 @@ export type GlueTab = readonly [Vec2, Vec2, Vec2, Vec2];
 /// as fold faces for a glue seen from its cells, as plain display-space lines for a cut glue.
 export interface GlueTabLayout {
   tabs: GlueTab[];
+  /// Whether some glue of the floor has a cut line (an active one, not only a shown one) on a tessellation other than the
+  /// square one, where the tabs of a cut sheet may not sit where the cells moved to (GitHub issue #1014): the
+  /// `glue_tabs_with_cut_lines` warning tells. Always false on squares, where the two features work together.
+  hasCuts: boolean;
   missingEnds: WireFoldEnd[];
   missingLines: Vec2[][];
 }
 
-const NO_LAYOUT: GlueTabLayout = { tabs: [], missingEnds: [], missingLines: [] };
+const NO_LAYOUT: GlueTabLayout = { tabs: [], hasCuts: false, missingEnds: [], missingLines: [] };
 
 /// Points closer than this (display units) are one point.
 const EPS = 1e-6;
@@ -149,6 +153,14 @@ function groupTabs(topology: WireTopology, group: WireTopology["groups"][number]
   });
 }
 
+/// The tab moved, whole, by `shift`: it is not content, so it is never clipped by a cut line nor drawn twice.
+export function shiftTab(tab: GlueTab, shift: Vec2): GlueTab {
+  if (shift[0] === 0 && shift[1] === 0) return tab;
+  const [a, b, c, d] = tab;
+  const move = ([x, y]: Vec2): Vec2 => [x + shift[0], y + shift[1]];
+  return [move(a), move(b), move(c), move(d)];
+}
+
 /// The tabs of the active floor (GitHub issue #901), or none while the style hides them. A glue with a cut line gets its tab
 /// along the cut line instead (the line over the cells, outward from the sheet); the others on their side A.
 export function selectExportGlueTabs(
@@ -169,7 +181,7 @@ export function selectExportGlueTabLayout(
   if (lastTabs && lastTabs.inputs.every((input, i) => Object.is(input, inputs[i]))) return lastTabs.layout;
   const layout = computeGlueTabs(state, style);
   // An empty answer may only mean the seam geometry is not warmed yet: ask again next time.
-  lastTabs = layout.tabs.length > 0 || layout.missingEnds.length > 0 || layout.missingLines.length > 0 ? { inputs, layout } : null;
+  lastTabs = layout.tabs.length > 0 || layout.hasCuts || layout.missingEnds.length > 0 || layout.missingLines.length > 0 ? { inputs, layout } : null;
   return layout;
 }
 
@@ -188,11 +200,20 @@ function computeGlueTabs(
     return line ? [[cut.group, line] as const] : [];
   }));
   let tiles: Vec2[][] | null = null;
-  const layout: GlueTabLayout = { tabs: [], missingEnds: [], missingLines: [] };
+  const cutLines = [...cuts.values()];
+  let slide: Vec2 | null = null;
+  const layout: GlueTabLayout = { tabs: [], hasCuts: cuts.size > 0 && cfg.tessellation.kind !== "square", missingEnds: [], missingLines: [] };
   for (const group of topology.groups) {
     const line = cuts.get(group.id);
     if (!line) {
+      const before = layout.tabs.length;
       groupTabs(topology, group, cfg, style, layout);
+      // A cut slides the picture across the sheet, so the tabs of the other glues slide with their edge.
+      if (cuts.size > 0) {
+        tiles ??= tilePolygons(selectFloorScopedMaze(state.nodes, [], state.floors, floorId).nodes, cfg);
+        slide ??= cutTabShift(tiles, cutLines);
+        for (let i = before; i < layout.tabs.length; i++) layout.tabs[i] = shiftTab(layout.tabs[i], slide);
+      }
       continue;
     }
     tiles ??= tilePolygons(selectFloorScopedMaze(state.nodes, [], state.floors, floorId).nodes, cfg);
@@ -200,7 +221,8 @@ function computeGlueTabs(
     // The period points from the cut line into the sheet, so the tab reaches the other way.
     const across: Vec2 = [-direction[1], direction[0]];
     const normal: Vec2 = across[0] * period[0] + across[1] * period[1] > 0 ? [-across[0], -across[1]] : across;
-    for (const [from, to] of lineSpans(tiles, line.point, direction)) {
+    const spans = lineSpans(tiles, line.point, direction).map(([from, to]) => sheetSpan(line, cutLines.filter((other) => other !== line)) ?? [from, to]);
+    for (const [from, to] of spans) {
       const tab = glueTabOn(from, to, normal, style);
       if (tab) layout.tabs.push(tab);
       else layout.missingLines.push([from, to]);

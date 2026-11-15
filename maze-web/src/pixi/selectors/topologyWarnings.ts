@@ -35,7 +35,7 @@ interface TopologyWarningGroup {
 export type EffectiveEndpoints = { start: number | null; finish: number | null };
 
 export const TOPOLOGY_WARNING_GROUPS: readonly TopologyWarningGroup[] = [
-  { name: "glueTabs", ids: ["glue_tabs_overlap", "glue_tab_too_thin", "glue_tab_missing"], run: (state, settings) => computeGlueTabWarnings(state, settings.glueTabs) },
+  { name: "glueTabs", ids: ["glue_tabs_with_cut_lines", "glue_tabs_overlap", "glue_tab_too_thin", "glue_tab_missing"], run: (state, settings) => computeGlueTabWarnings(state, settings.glueTabs) },
   { name: "edgeMarkers", ids: ["edge_marker_colors_similar", "edge_marker_looks_like_marker", "edge_marker_low_contrast_background"], run: (state, settings, endpoints) => (
     // The settings are the whole render mode's (see above); the marks are compared with the mode's other markers, read through the same tracked object.
     computeEdgeMarkerWarningsOf(state, settings, stateMarkerLooks(state, settings as unknown as AnySettings, endpoints))

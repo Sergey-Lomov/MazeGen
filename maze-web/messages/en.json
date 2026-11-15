@@ -2803,6 +2803,8 @@
   "image_export.warning.glue_tab_outline_low_contrast_fill_description": "The outline of the glue tabs may be difficult to distinguish from their fill.",
   "image_export.warning.glue_tab_fill_low_contrast_background": "Glue tab fill is too close to the background color",
   "image_export.warning.glue_tab_fill_low_contrast_background_description": "With no outline, the glue tabs may be difficult to distinguish from the background.",
+  "image_export.warning.glue_tabs_with_cut_lines": "Combining glue tabs with cut lines may be unstable",
+  "image_export.warning.glue_tabs_with_cut_lines_description": "Using glue tabs together with cut lines may cause unstable results on this tessellation: some tabs may be misplaced. Check every glue tab visually.",
   "image_export.warning.glue_tabs_overlap": "Glue tabs overlap each other",
   "image_export.warning.glue_tabs_overlap_description": "Overlapping glue tabs leave less glue area than intended and may be impossible to fold.",
   "image_export.warning.glue_tab_too_thin": "Glue tab is thinner than 10 px",

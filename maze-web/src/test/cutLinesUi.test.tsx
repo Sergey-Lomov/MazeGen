@@ -338,7 +338,7 @@ describe("CutLineDragController", () => {
     const extent = () => {
       const st = useMazeStore.getState();
       const [handle] = activeCutLines(st);
-      const [[span]] = drawnSideSpans(st, handle);
+      const [[span]] = drawnSideSpans(st, handle, [handle]);
       return Math.abs(span[1][1] - span[0][1]);
     };
     const full = extent();
@@ -364,5 +364,36 @@ describe("CutLineDragController", () => {
     useMazeStore.getState().setCutLine(TEST_FLOOR_ID, 0, null);
     c.onPointerMove(line.point[0] + 5, line.point[1]);
     expect(lineOffset()).toBeUndefined();
+  });
+});
+
+describe("drawnSideSpans with two cuts (GitHub issue #1014)", () => {
+  const torus = (): WireTopology => ({
+    fingerprint: "square{}",
+    folds: [
+      ...range(ROWS).map((y) => fold([COLUMNS - 1, y], 0, [0, y], 2)),
+      ...range(COLUMNS).map((x) => ({ ...fold([x, ROWS - 1], 1, [x, 0], 3), group: 1 })),
+    ],
+    groups: [{ id: 0, folds: range(ROWS) }, { id: 1, folds: range(COLUMNS).map((x) => ROWS + x) }],
+  });
+
+  it("runs each line from the other line to its twin, so the two lines meet at the corner of the sheet", () => {
+    setState(torus(), { [TEST_FLOOR_ID]: { 0: { mode: "manual", offset: 0.3 }, 1: { mode: "manual", offset: 0.4 } } });
+    const st = useMazeStore.getState();
+    const handles = activeCutLines(st);
+    expect(handles).toHaveLength(2);
+    const [vertical, horizontal] = handles[0].line.cut.direction[0] === 0 ? [handles[0], handles[1]] : [handles[1], handles[0]];
+    const [[[from, to]]] = drawnSideSpans(st, vertical, handles);
+    // The vertical line spans the sheet's height: from the horizontal line, one period down.
+    expect(Math.min(from[1], to[1])).toBeCloseTo(horizontal.line.point[1]);
+    expect(Math.abs(to[1] - from[1])).toBeCloseTo(Math.abs(horizontal.line.cut.period[1]));
+    expect(from[0]).toBeCloseTo(vertical.line.point[0]);
+  });
+
+  it("falls back to the stretch over the cells without another cut", () => {
+    setState(torus(), { [TEST_FLOOR_ID]: { 0: { mode: "manual", offset: 0.3 } } });
+    const st = useMazeStore.getState();
+    const [handle] = activeCutLines(st);
+    expect(drawnSideSpans(st, handle, [handle])[0]).toHaveLength(1);
   });
 });
