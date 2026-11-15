@@ -5,13 +5,14 @@ import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { SectionHeader } from "./SectionHeader";
 import { ColorEyedropperOverlay } from "./ColorEyedropperOverlay";
-import { ui, radius, typography, spacing, font, controlRowHeight, indent } from "../styles/theme";
+import { ui, radius, typography, spacing, font, indent } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
 import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
 import { Tooltip } from "./Tooltip";
+import { FlatIconButton } from "./FlatIconButton";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
@@ -251,17 +252,17 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
             isValid={(raw) => HEX_COLOR_RE.test(raw)}
             onChange={handleHexChange}
             resetButton={
-              <Tooltip content={m["color_picker.eyedropper"]()}><button
-                type="button"
-                className="hoverable"
-                aria-label={m["color_picker.eyedropper"]()}
+              <FlatIconButton
+                title={m["color_picker.eyedropper"]()}
+                withTooltip={false}
                 aria-pressed={sampling}
-                style={{ ...styles.eyedropperBtn, ...(sampling ? styles.eyedropperBtnActive : {}) }}
+                active={sampling}
+                layoutStyle={sampling ? { "--flat-icon-active-bg": ui.state.selected, "--flat-icon-active-color": ui.text.primary } as React.CSSProperties : undefined}
                 onClick={() => setSampling((v) => !v)}
                 data-testid="color-picker-eyedropper"
               >
                 <Pipette size={14} />
-              </button></Tooltip>
+              </FlatIconButton>
             }
           />
           <div style={styles.modelSwitcher}>
@@ -391,26 +392,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: `2px solid ${ui.border.strong}`,
     borderRadius: radius.md,
     boxSizing: "border-box",
-  },
-  eyedropperBtn: {
-    ...typography.icon,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: controlRowHeight,
-    height: controlRowHeight,
-    flexShrink: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    borderRadius: radius.sm,
-    color: ui.text.tertiary,
-    cursor: "default",
-    boxSizing: "border-box",
-  },
-  eyedropperBtnActive: {
-    background: ui.state.selected,
-    color: ui.text.primary,
-    border: `1px solid ${ui.state.selected}`,
   },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
   recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },

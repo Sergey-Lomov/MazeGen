@@ -4,7 +4,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { FloorState } from "../store/mazeStore";
 import { ui, radius, typography, spacing, inset, shadow, font } from "../styles/theme";
 import * as m from "~/paraglide/messages";
-import { Tooltip } from "./Tooltip";
+import { IconActionButton } from "./IconActionButton";
 
 /** Widest a floor title is allowed to push the panel to — beyond this the title itself truncates
  *  with an ellipsis instead of growing the panel further. */
@@ -60,7 +60,7 @@ export function FloorSwitcher() {
   // lengths — capped at MAX_PANEL_WIDTH, beyond which the title itself truncates.
   const titleWidth = useMemo(() => {
     const widest = measureMaxTitleWidth(floors);
-    const arrowsAndGaps = 2 * 16 + 2 * spacing.itemGap + 2 * inset.panelInsetX;
+    const arrowsAndGaps = 2 * 24 + 2 * spacing.itemGap + 2 * inset.panelInsetX;
     return Math.min(Math.ceil(widest), MAX_PANEL_WIDTH - arrowsAndGaps);
   }, [floors]);
 
@@ -74,23 +74,9 @@ export function FloorSwitcher() {
 
   return (
     <div style={styles.panel}>
-      <Tooltip content={m["floors.switcher_prev_floor"]()}><button
-        className={canGoDown ? "hoverable" : undefined}
-        style={{ ...styles.arrowBtn, ...(canGoDown ? {} : styles.arrowBtnDisabled) }}
-        disabled={!canGoDown}
-        onClick={goDown}
-      >
-        <ChevronDown size={16} color={ui.text.tertiary} />
-      </button></Tooltip>
+      <IconActionButton action="move-down" title={m["floors.switcher_prev_floor"]()} disabled={!canGoDown} onClick={goDown} />
       <span style={{ ...styles.title, width: titleWidth, textAlign: "center" }}>{floorDisplayLabel(activeFloor, index)}</span>
-      <Tooltip content={m["floors.switcher_next_floor"]()}><button
-        className={canGoUp ? "hoverable" : undefined}
-        style={{ ...styles.arrowBtn, ...(canGoUp ? {} : styles.arrowBtnDisabled) }}
-        disabled={!canGoUp}
-        onClick={goUp}
-      >
-        <ChevronUp size={16} color={ui.text.tertiary} />
-      </button></Tooltip>
+      <IconActionButton action="move-up" title={m["floors.switcher_next_floor"]()} disabled={!canGoUp} onClick={goUp} />
     </div>
   );
 }
@@ -119,18 +105,5 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     userSelect: "none",
     flexShrink: 0,
-  },
-  arrowBtn: {
-    background: "none",
-    border: "none",
-    padding: 0,
-    cursor: "default",
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-  },
-  arrowBtnDisabled: {
-    opacity: 0.25,
-    cursor: "default",
   },
 };

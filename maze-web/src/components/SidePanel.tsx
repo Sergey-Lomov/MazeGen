@@ -2,10 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ui, typography, spacing, inset } from "../styles/theme";
-import { sharedStyles } from "../styles/shared";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { hasOpenModal } from "./Modal";
+import { CloseIconButton } from "./CloseIconButton";
+import { FlatIconButton } from "./FlatIconButton";
 import type React from "react";
+import * as m from "~/paraglide/messages";
 
 const MIN_PANEL_WIDTH = 360;
 
@@ -517,12 +519,12 @@ export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overla
           onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
         />
       )}
-      <div ref={headerRef} data-side-panel-region="header" style={styles.header}>
+      <div ref={headerRef} className="side-panel-header" data-side-panel-region="header" style={styles.header}>
         <div style={styles.headerText}>
           <span style={typography.title}>{title}</span>
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
         </div>
-        <button className="hoverable" style={sharedStyles.closeBtn} onClick={onClose}><X size={16} /></button>
+        <CloseIconButton onClick={onClose} />
       </div>
       {showWarnings && (
         <div style={styles.warningsStrip}>
@@ -531,9 +533,15 @@ export function SidePanel({ title, stackKey, subtitle, onClose, warnings, overla
               <div key={i} style={styles.warningItem}>{w}</div>
             ))}
           </div>
-          <button className="hoverable" style={sharedStyles.closeBtn} onClick={() => setWarningsDismissed(true)}>
+          <FlatIconButton
+            title={m["notifications.close"]()}
+            variant="contextual"
+            layoutStyle={{ margin: 0 }}
+            tooltipLayoutStyle={styles.warningDismiss}
+            onClick={() => setWarningsDismissed(true)}
+          >
             <X size={14} />
-          </button>
+          </FlatIconButton>
         </div>
       )}
       <div ref={bodyRef} data-side-panel-region="body" style={styles.body}>
@@ -616,14 +624,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     background: notificationPalette("warning").bg,
+    color: notificationPalette("warning").text,
     flexShrink: 0,
+    position: "relative",
   },
+  warningDismiss: { position: "absolute", top: 7, right: 7, zIndex: 1 },
   warningsList: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: spacing.itemGap,
     minWidth: 0,
+    paddingRight: 30,
   },
   warningItem: {
     ...embeddedNotificationStyle,

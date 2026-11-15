@@ -3,6 +3,75 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Shared action surface matches the 22 px switch height. Negative block-axis margins preserve an
+   18 px layout footprint, so adding an icon control never increases a text row's height. */
+.btn-flat-icon {
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  margin: -2px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #aaa;
+  cursor: default;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.btn-flat-icon:hover:not(:disabled) {
+  background: #2d2d2d;
+  color: #d0d4d7;
+}
+
+/* An action needs a distinct second hover level when its containing list row is already hovered,
+   or when it sits in a SidePanel's lighter header. Both contexts are shared structural surfaces,
+   so controls need no local colour overrides. */
+.list-cell.hoverable:hover .btn-flat-icon:hover:not(:disabled),
+.side-panel-header .btn-flat-icon:hover:not(:disabled) {
+  background: #404040;
+}
+
+.btn-flat-icon-no-hover:hover:not(:disabled) {
+  background: transparent;
+  color: #aaa;
+}
+
+.btn-flat-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn-flat-icon-danger {
+  color: #e06c75;
+}
+
+.btn-flat-icon-danger:hover:not(:disabled) {
+  background: #542d32;
+  color: #ff9ba3;
+}
+
+/* Icons inside a coloured message inherit that message's contrast colour. */
+.btn-flat-icon-contextual {
+  color: inherit;
+}
+
+.btn-flat-icon-contextual:hover:not(:disabled) {
+  background: rgb(255 255 255 / 16%);
+  color: inherit;
+}
+
+.btn-flat-icon-active {
+  background: var(--flat-icon-active-bg, #444);
+  color: var(--flat-icon-active-color, #e0e0e0);
+}
+
+
 .loading-progress-indeterminate {
   animation: loading-progress-slide 3s ease-in-out infinite;
 }

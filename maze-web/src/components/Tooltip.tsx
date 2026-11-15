@@ -34,7 +34,7 @@ const getSuppressed = () => tooltipsSuppressed;
  *  Meant for disabled controls and other non-focusable content (epic #766 rule 3). With empty
  *  `content` the wrapper stays in place (so toggling a control's `disabled` never remounts it) but is
  *  inert: no tab stop, no description, no bubble. */
-export function Tooltip({ content, children, placement = "bottom", block = false, stretch = false, focusable = true, bubbleStyle }: {
+export function Tooltip({ content, children, placement = "bottom", block = false, stretch = false, focusable = true, bubbleStyle, layoutStyle }: {
   content: React.ReactNode;
   children: React.ReactNode;
   placement?: Placement;
@@ -49,6 +49,8 @@ export function Tooltip({ content, children, placement = "bottom", block = false
   focusable?: boolean;
   /** Optional presentation override for one tooltip bubble. Most callers use the shared style. */
   bubbleStyle?: React.CSSProperties;
+  /** Layout-only override for the tooltip anchor. */
+  layoutStyle?: React.CSSProperties;
 }) {
   const id = useId();
   const descriptionId = `${id}-description`;
@@ -110,7 +112,7 @@ export function Tooltip({ content, children, placement = "bottom", block = false
       data-testid="tooltip-anchor"
       tabIndex={active && focusable ? 0 : undefined}
       aria-describedby={active ? descriptionId : undefined}
-      style={{ ...(block ? styles.block : styles.inline), ...(stretch ? { alignSelf: "stretch" } : {}) }}
+      style={{ ...(block ? styles.block : styles.inline), ...(stretch ? { alignSelf: "stretch" } : {}), ...layoutStyle }}
       onPointerEnter={(e) => {
         if (!active || e.pointerType === "touch") return;
         clearHoverTimer();

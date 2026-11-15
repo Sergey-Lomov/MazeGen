@@ -4,7 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { Stack, Inline } from "../Layout";
-import { HoverIconButton } from "../HoverIconButton";
+import { FlatIconButton } from "../FlatIconButton";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
@@ -224,16 +224,16 @@ export function PngExportSettingsPanel() {
       preciseMax={null}
       preciseAriaLabel={m["image_export.format.png.digital.scale"]()}
       trailingAction={
-        <HoverIconButton
+        <FlatIconButton
           onClick={outputMode === "digital" ? handleScaleFromZoom : handlePrintAutoFit}
           title={outputMode === "digital"
             ? m["image_export.format.png.digital.scale_from_zoom_tooltip"]()
             : m["image_export.format.png.print.scale_auto_fit"]()}
-          stretch
-          square
+          tooltipStretch
+          layoutStyle={{ aspectRatio: "1 / 1", margin: 0 }}
         >
           <Maximize2 size={16} />
-        </HoverIconButton>
+        </FlatIconButton>
       }
     />
   );
@@ -411,13 +411,12 @@ export function PngExportSettingsPanel() {
                     ? m["image_export.format.png.print.screen_calibration_uncalibrated"]()
                     : m["image_export.format.png.print.screen_calibration_value"]({ ppi: calibratedCssPpi.toFixed(0) })}
                 </span>
-                <HoverIconButton
-                  fixedHeight
+                <FlatIconButton
                   onClick={() => setCalibrationOpen(true)}
                   title={m["image_export.format.png.print.calibrate_tooltip"]()}
                 >
                   <Ruler size={16} />
-                </HoverIconButton>
+                </FlatIconButton>
               </Inline>
             </Inline>
 

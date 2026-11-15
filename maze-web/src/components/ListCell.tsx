@@ -1,7 +1,9 @@
 import type React from "react";
-import { radius, spacing, typography, ui } from "../styles/theme";
+import { spacing, typography, ui } from "../styles/theme";
 import { Tooltip } from "./Tooltip";
 import { ToolTooltip } from "./ToolIconButton";
+import { FlatIconButton } from "./FlatIconButton";
+import { IconActionGlyph, type IconAction } from "./IconActionButton";
 
 export interface ListCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   /** Text of the title row. Omitted for a cell that is only a details row. */
@@ -31,13 +33,13 @@ export interface ListCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>
  *  passes in; hover, click and highlight behavior stays with the caller through the `div` props.
  *  `style` is merged last (e.g. a highlighted background). */
 export function ListCell({
-  title, truncateTitle = false, titleAddon, badge, details, current = false, actions, actionsPlacement = "details", children, style, ...rest
+  title, truncateTitle = false, titleAddon, badge, details, current = false, actions, actionsPlacement = "details", children, style, className, ...rest
 }: ListCellProps) {
   const titleActions = actionsPlacement === "title" && actions;
   const detailsActions = actionsPlacement === "details" && actions;
   const hasTitleRow = title !== undefined || !!titleAddon || !!badge || !!titleActions;
   return (
-    <div {...rest} style={{ ...styles.cell, ...style }}>
+    <div {...rest} className={`list-cell${className ? ` ${className}` : ""}`} style={{ ...styles.cell, ...style }}>
       {current && <span data-testid="list-cell-current" aria-hidden style={styles.currentBar} />}
       {hasTitleRow && (
         <div style={styles.titleRow}>
@@ -77,36 +79,38 @@ export interface ListCellActionProps extends Omit<React.ButtonHTMLAttributes<HTM
    *  still goes through click. */
   activateOnPress?: boolean;
   /** The glyph, usually a 16px lucide icon. */
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  /** Standard glyph selected centrally instead of supplied at the call site. */
+  action?: IconAction;
 }
 
 /** Icon button of a `ListCell`'s action area. */
-export function ListCellAction({ title, description, onAction, danger = false, selected, activateOnPress = false, disabled, children, ...rest }: ListCellActionProps) {
+export function ListCellAction({ title, description, onAction, danger = false, selected, activateOnPress = false, disabled, children, action, ...rest }: ListCellActionProps) {
   const button = (
-      <button
-        type="button"
-        className="hoverable"
-        {...rest}
-        aria-label={title}
-        // Only a mode button (one with a `selected` flag) is a toggle for assistive technology.
-        aria-pressed={selected}
-        disabled={disabled}
-        style={{ ...styles.actionButton, ...(selected ? styles.actionSelected : {}), ...(danger ? { color: ui.text.error } : {}), ...(disabled ? { opacity: 0.4 } : {}) }}
-        onPointerDown={activateOnPress ? (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          // Mouse/touch activation happens here so it cannot depend on a later click event after a
-          // list re-render. Keyboard activation still comes through click below.
-          onAction();
-        } : undefined}
-        onClick={(event) => {
-          // A button inside a clickable cell never also clicks the cell.
-          event.stopPropagation();
-          if (!activateOnPress || event.detail === 0) onAction();
-        }}
-      >
-        <span style={styles.glyph}>{children}</span>
-      </button>
+    <FlatIconButton
+      {...rest}
+      title={title}
+      variant={danger ? "danger" : "default"}
+      active={selected}
+      withTooltip={false}
+      // Only a mode button (one with a `selected` flag) is a toggle for assistive technology.
+      aria-pressed={selected}
+      disabled={disabled}
+      onPointerDown={activateOnPress ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        // Mouse/touch activation happens here so it cannot depend on a later click event after a
+        // list re-render. Keyboard activation still comes through click below.
+        onAction();
+      } : undefined}
+      onClick={(event) => {
+        // A button inside a clickable cell never also clicks the cell.
+        event.stopPropagation();
+        if (!activateOnPress || event.detail === 0) onAction();
+      }}
+    >
+      <span style={styles.glyph}>{action ? <IconActionGlyph action={action} /> : children}</span>
+    </FlatIconButton>
   );
   return description === undefined
     ? <Tooltip content={title}>{button}</Tooltip>
@@ -132,22 +136,6 @@ const styles: Record<string, React.CSSProperties> = {
   detailsRowWithActions: { marginTop: spacing.itemGap / 2 },
   actions: { position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: spacing.itemGap, flexShrink: 0 },
   actionsPushed: { marginLeft: "auto" },
-  actionButton: {
-    ...typography.icon,
-    width: 22,
-    height: 22,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    border: "none",
-    background: "none",
-    color: ui.text.tertiary,
-    lineHeight: 1,
-    cursor: "default",
-    flexShrink: 0,
-  },
-  actionSelected: { background: ui.state.selected, color: ui.text.primary, borderRadius: radius.sm },
   // Lets the pointer reach the button itself, not the svg inside it.
   glyph: { display: "flex", pointerEvents: "none" },
 };

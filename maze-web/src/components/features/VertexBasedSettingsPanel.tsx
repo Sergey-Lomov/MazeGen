@@ -5,7 +5,7 @@ import { configAllCells } from "../../pixi/tessellationCells";
 import { getTessellationCellTypes } from "../../wasm/mazeService";
 import { SidePanel } from "../SidePanel";
 import { CategoryInfoModal } from "../CategoryInfoModal";
-import { InfoIconButton } from "../InfoIconButton";
+import { LabelWithInfo } from "../LabelWithInfo";
 import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
 import { ElementPlacementSettingsDialog } from "../dialogs/ElementPlacementSettingsDialog";
 import { ToggleRow } from "../ToggleRow";
@@ -77,10 +77,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       )}
       {/* Growth */}
       <div style={styles.category}>
-        <div style={styles.categoryHeader}>
-          <span style={styles.categoryLabel}>{m["generation.category.growth"]()}</span>
-          <InfoIconButton onClick={() => setOpenInfoCategory("growth")} />
-        </div>
+        <LabelWithInfo as="div" style={styles.categoryHeader} labelStyle={styles.categoryLabel} onInfo={() => setOpenInfoCategory("growth")}>
+          {m["generation.category.growth"]()}
+        </LabelWithInfo>
         <div style={styles.categoryBody}>
           <ChanceSliderRow label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
           <ChanceSliderRow label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
@@ -92,10 +91,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
 
       {/* One-way */}
       <div style={styles.category}>
-        <div style={styles.categoryHeader}>
-          <span style={styles.categoryLabel}>{m["generation.category.one_way"]()}</span>
-          <InfoIconButton onClick={() => setOpenInfoCategory("one_way")} />
-        </div>
+        <LabelWithInfo as="div" style={styles.categoryHeader} labelStyle={styles.categoryLabel} onInfo={() => setOpenInfoCategory("one_way")}>
+          {m["generation.category.one_way"]()}
+        </LabelWithInfo>
         <div style={styles.categoryBody}>
           <ChanceSliderRow preciseAriaLabel={`${m["generation.category.one_way"]()} ${m["generation.one_way_chance_short"]()}`} label={m["generation.one_way_chance_short"]()} value={elementsConfig.one_way_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_chance", v)} />
         </div>
@@ -103,10 +101,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
 
       {/* Teleport */}
       <div style={styles.category}>
-        <div style={styles.categoryHeader}>
-          <span style={styles.categoryLabel}>{m["generation.category.teleport"]()}</span>
-          <InfoIconButton onClick={() => setOpenInfoCategory("teleport")} />
-        </div>
+        <LabelWithInfo as="div" style={styles.categoryHeader} labelStyle={styles.categoryLabel} onInfo={() => setOpenInfoCategory("teleport")}>
+          {m["generation.category.teleport"]()}
+        </LabelWithInfo>
         <div style={styles.categoryBody}>
           <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_chance_short"]()}`} label={m["generation.teleport_chance_short"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
           <ChanceSliderRow preciseAriaLabel={`${m["generation.category.teleport"]()} ${m["generation.teleport_one_way_chance_short"]()}`} label={m["generation.teleport_one_way_chance_short"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
@@ -118,10 +115,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
 
       {/* Split */}
       <div style={styles.category}>
-        <div style={styles.categoryHeader}>
-          <span style={styles.categoryLabel}>{m["generation.category.split"]()}</span>
-          <InfoIconButton onClick={() => setOpenInfoCategory("split")} />
-        </div>
+        <LabelWithInfo as="div" style={styles.categoryHeader} labelStyle={styles.categoryLabel} onInfo={() => setOpenInfoCategory("split")}>
+          {m["generation.category.split"]()}
+        </LabelWithInfo>
         <div style={styles.categoryBody}>
           <ChanceSliderRow preciseAriaLabel={`${m["generation.category.split"]()} ${m["generation.split_chance_short"]()}`} label={m["generation.split_chance_short"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
           <Inline gap="groupGap" style={styles.paramRow}>
@@ -136,10 +132,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       {/* Vertical */}
       {multiFloor && (
         <div style={styles.category}>
-          <div style={styles.categoryHeader}>
-            <span style={styles.categoryLabel}>{m["generation.category.vertical"]()}</span>
-            <InfoIconButton onClick={() => setOpenInfoCategory("vertical")} />
-          </div>
+          <LabelWithInfo as="div" style={styles.categoryHeader} labelStyle={styles.categoryLabel} onInfo={() => setOpenInfoCategory("vertical")}>
+            {m["generation.category.vertical"]()}
+          </LabelWithInfo>
           <div style={styles.categoryBody}>
             <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_chance_short"]()}`} label={m["generation.vertical_chance_short"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} />
             <ChanceSliderRow preciseAriaLabel={`${m["generation.category.vertical"]()} ${m["generation.vertical_passage_elevator_balance_short"]()}`} label={m["generation.vertical_passage_elevator_balance_short"]()} value={elementsConfig.vertical_passage_elevator_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_passage_elevator_balance", v)} />

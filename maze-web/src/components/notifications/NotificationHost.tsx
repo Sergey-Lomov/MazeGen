@@ -18,7 +18,7 @@ import {
 } from "../../notifications/notificationStore";
 import { embeddedNotificationStyle, notificationPalette, type NotificationSeverity } from "../EmbeddedNotification";
 import { overlay, radius, spacing, typography } from "../../styles/theme";
-import { Tooltip } from "../Tooltip";
+import { FlatIconButton } from "../FlatIconButton";
 import * as m from "~/paraglide/messages";
 
 export const NOTIFICATION_ZONE_OFFSET = 16;
@@ -96,8 +96,8 @@ function NoticeZone({ notices, queuedCount }: { notices: NoticeItem[]; queuedCou
     >
       {notices.map((n) => (
         <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle(noticeSeverity(n.code)) }}>
-          <span style={styles.message}>{notificationMessage(n.code, n.params)}</span>
-          <CloseButton onClick={() => closeNotice(n.id)} />
+          <span style={{ ...styles.message, ...styles.toastMessage }}>{notificationMessage(n.code, n.params)}</span>
+          <CloseButton onClick={() => closeNotice(n.id)} layoutStyle={styles.toastClose} />
           <CountdownBar key={n.expiresAt} notice={n} paused={paused} />
         </div>
       ))}
@@ -153,7 +153,7 @@ function ErrorCardView({ card, severity }: { card: ErrorCard; severity: Notifica
       <div style={styles.cardHeader}>
         <span style={styles.message}>{headline}</span>
         {count > 1 && <span data-testid="error-count" style={styles.counter}>×{count}</span>}
-        <CloseButton onClick={() => closeErrorCard(card.key)} />
+        <CloseButton onClick={() => closeErrorCard(card.key)} layoutStyle={styles.toastClose} />
       </div>
       {card.source === "generation" && card.code === "generation.registry_load_failed" && (
         <RegistryRetryButton cardKey={card.key} />
@@ -223,15 +223,13 @@ function CopyButton({ text }: { text: string }) {
   }, [copied]);
   const label = m["notifications.copy"]();
   return (
-    <Tooltip content={label}><button
-      type="button"
-      className="hoverable"
-      style={styles.iconBtn}
-      aria-label={label}
+    <FlatIconButton
+      title={label}
+      variant="contextual"
       onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {}); }}
     >
       {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-    </button></Tooltip>
+    </FlatIconButton>
   );
 }
 
@@ -264,17 +262,17 @@ function CountdownBar({ notice, paused }: { notice: NoticeItem; paused: boolean 
   );
 }
 
-function CloseButton({ onClick }: { onClick: () => void }) {
+function CloseButton({ onClick, layoutStyle }: { onClick: () => void; layoutStyle?: React.CSSProperties }) {
   return (
-    <Tooltip content={m["notifications.close"]()}><button
-      type="button"
-      className="hoverable"
-      aria-label={m["notifications.close"]()}
-      style={styles.iconBtn}
+    <FlatIconButton
+      title={m["notifications.close"]()}
+      variant="contextual"
+      layoutStyle={{ margin: 0 }}
+      tooltipLayoutStyle={layoutStyle}
       onClick={onClick}
     >
       <X size={14} />
-    </button></Tooltip>
+    </FlatIconButton>
   );
 }
 
@@ -350,27 +348,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "flex-start",
     gap: spacing.rowGap,
+    paddingRight: 30,
   },
   message: {
     flex: 1,
     minWidth: 0,
     overflowWrap: "anywhere",
   },
+  toastMessage: { paddingRight: 30 },
+  toastClose: { position: "absolute", top: 3, right: 3, zIndex: 1 },
   counter: {
     ...typography.caption,
     color: "inherit",
     flexShrink: 0,
-  },
-  iconBtn: {
-    background: "none",
-    border: "none",
-    color: "inherit",
-    cursor: "default",
-    padding: 0,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    borderRadius: radius.sm,
   },
   disclosureBtn: {
     ...typography.caption,

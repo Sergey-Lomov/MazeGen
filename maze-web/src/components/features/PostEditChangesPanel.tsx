@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, RotateCcw, Trash2 } from "lucide-react";
+import { X, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
@@ -200,14 +200,13 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                       <RotateCcw size={ROW_ACTION_ICON_SIZE} />
                     </ListCellAction>
                     <ListCellAction
+                      action="delete"
                       title={m["post_edit.changes_delete_title"]()}
                       danger
                       onAction={() => setPendingRowAction({ kind: "delete", commandIndex: row.commandIndex, cascade: row.cascade })}
                       onMouseEnter={() => setHoveredPreview({ kind: "delete", commandIndex: row.commandIndex })}
                       onMouseLeave={() => setHoveredPreview(null)}
-                    >
-                      <Trash2 size={ROW_ACTION_ICON_SIZE} />
-                    </ListCellAction>
+                    />
                   </>
                 )}
               />

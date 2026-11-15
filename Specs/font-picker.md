@@ -71,7 +71,7 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
   while it is highlighted the preview is a small pixi canvas (`MsdfFontPreview`) drawing the phrase as a
   `BitmapText` over the baked atlas, exactly like the maze canvas. It owns one pixi application for the
   lifetime of the panel and only rewrites text and colors. When a WebGL canvas cannot be created it
-  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing). The line is centred on the ink of a fixed sample (`Hx`), not of the phrase or the font's line box, in both variants (`canvasInkCentreOffset` shifts the DOM line, the sample's pivot the MSDF canvas), so it does not move with the phrase, the font or the weight.
+  falls back to DOM text in Roboto. The preview ignores any label text transform (uppercasing). The line is centred on the ink of a fixed sample (`Hx`), not of the phrase or the font's line box, in both variants (`domInkCentreOffset` shifts the DOM line, using the font's own ascent and descent that a CSS line box centres by, GitHub issue #1016; the line box is taller than the preview, so the ellipsis clip of the line does not cut glyphs that overshoot a font's ascent or descent, and the preview box clips them; the offset does not depend on the line height; the sample's pivot the MSDF canvas), so it does not move with the phrase, the font or the weight.
   The preview text is not selectable. A phrase wider than the preview is cut with an ellipsis in both
   variants (CSS `text-overflow` for DOM text, the longest prefix that fits with "…", found by binary
   search over `truncateToWidth` in `pixi/ellipsisFit.ts`, for the MSDF canvas; computed when the text,

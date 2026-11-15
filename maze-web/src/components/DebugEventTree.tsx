@@ -13,7 +13,7 @@ import { buildDebugRowText, normalizeSearchText, bubbleLabel } from "../debug/de
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
-import { Tooltip } from "./Tooltip";
+import { IconActionButton } from "./IconActionButton";
 import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { resolveIssueLabel } from "./features/qualityI18n";
@@ -483,22 +483,8 @@ export function DebugEventTree() {
           style={styles.searchInput}
         />
         <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
-        <Tooltip content={m["debug.search.prev"]()}><button
-          type="button"
-          onClick={() => navigate(-1)}
-          disabled={matchCount <= 1}
-          style={styles.searchNavBtn}
-        >
-          <ChevronUp size={14} color={ui.text.secondary} />
-        </button></Tooltip>
-        <Tooltip content={m["debug.search.next"]()}><button
-          type="button"
-          onClick={() => navigate(1)}
-          disabled={matchCount <= 1}
-          style={styles.searchNavBtn}
-        >
-          <ChevronDown size={14} color={ui.text.secondary} />
-        </button></Tooltip>
+        <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
+        <IconActionButton action="move-down" title={m["debug.search.next"]()} disabled={matchCount <= 1} onClick={() => navigate(1)} />
       </div>
       <div ref={scrollRef} style={styles.scroll}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

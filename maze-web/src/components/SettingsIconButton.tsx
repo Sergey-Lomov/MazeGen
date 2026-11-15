@@ -1,30 +1,6 @@
-import { Settings } from "lucide-react";
-import { ui } from "../styles/theme";
-import { Tooltip } from "./Tooltip";
+import { IconActionButton } from "./IconActionButton";
 
+/** Shared settings action with the common flat icon-button surface. */
 export function SettingsIconButton({ title, onClick }: { title: string; onClick: () => void }) {
-  return (
-    <Tooltip content={title}>
-      <button type="button" className="hoverable" style={styles.button} onClick={onClick} aria-label={title}>
-        <Settings size={16} color={ui.text.tertiary} />
-      </button>
-    </Tooltip>
-  );
+  return <IconActionButton action="settings" title={title} onClick={onClick} />;
 }
-
-const styles = {
-  button: {
-    width: 22,
-    height: 22,
-    padding: 0,
-    display: "flex" as const,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    border: "none",
-    background: "none",
-    color: ui.text.tertiary,
-    lineHeight: 1,
-    opacity: 0.7,
-    cursor: "default" as const,
-  },
-};

@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Settings, Trash2 } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
@@ -21,6 +21,7 @@ import { ToolIconButton } from "../ToolIconButton";
 import { Bubble, BubbleArrow, IdBubble } from "../Bubble";
 import { Button } from "../Button";
 import { ListCell, ListCellAction } from "../ListCell";
+import { SettingsListCellAction } from "../SettingsListCellAction";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
@@ -534,6 +535,7 @@ function PresetCell({
 
   const actionButton = (kind: ActionKind, title: string, onAction: () => void, child: React.ReactNode, danger = false) => (
     <ListCellAction
+      action={kind === "delete" ? "delete" : undefined}
       title={title}
       danger={danger}
       activateOnPress
@@ -578,12 +580,12 @@ function PresetCell({
             actionButton("direction", m["preset.list_toggle_direction"](), onCycleDirection, <ArrowLeftRight size={16} />)
           )}
           {cell.control?.kind === "elevator" && (
-            actionButton("settings", m["preset.list_edit_elevator"](), onEditElevator, <Settings size={16} />)
+            <SettingsListCellAction title={m["preset.list_edit_elevator"]()} activateOnPress data-testid="preset-action-settings" data-preset-key={cell.key} onAction={onEditElevator} />
           )}
           {cell.control?.kind === "split" && (
-            actionButton("settings", m["preset.list_edit_split"](), onEditSplit, <Settings size={16} />)
+            <SettingsListCellAction title={m["preset.list_edit_split"]()} activateOnPress data-testid="preset-action-settings" data-preset-key={cell.key} onAction={onEditSplit} />
           )}
-          {actionButton("delete", m["preset.list_delete"](), onDelete, <Trash2 size={16} />, true)}
+          {actionButton("delete", m["preset.list_delete"](), onDelete, null, true)}
         </>
       )}
     />

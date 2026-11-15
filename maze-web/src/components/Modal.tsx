@@ -1,8 +1,7 @@
 import React, { useEffect, useId, useRef } from "react";
-import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
-import { sharedStyles } from "../styles/shared";
+import { CloseIconButton } from "./CloseIconButton";
 
 type DialogSizeKey = keyof typeof dialogSize;
 
@@ -131,7 +130,7 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
       >
         <div style={styles.header}>
           <span style={styles.title}>{title}</span>
-          <button className="hoverable" style={styles.closeBtn} onClick={onClose}><X size={16} /></button>
+          <CloseIconButton onClick={onClose} />
         </div>
         {rawBody !== undefined ? (
           <div style={styles.bodyRaw}>{rawBody}</div>
@@ -174,7 +173,6 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     ...typography.title,
   },
-  closeBtn: sharedStyles.closeBtn,
   body: {
     flex: 1,
     overflowY: "auto" as const,

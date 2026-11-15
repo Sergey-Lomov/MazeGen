@@ -5,7 +5,7 @@ import { Switch } from "../Switch";
 import { ToggleRow } from "../ToggleRow";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
-import { RemoveIconButton } from "../RemoveIconButton";
+import { DeleteIconButton } from "../DeleteIconButton";
 import { AddIconButton } from "../AddIconButton";
 import { Tooltip } from "../Tooltip";
 import { typography } from "../../styles/theme";
@@ -445,9 +445,8 @@ export function ParameterLinksDialog<P extends string>({
                         title={m["image_export.param_links.edit_link_title"]()}
                         onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
                       />
-                      <RemoveIconButton
+                      <DeleteIconButton
                         title={m["image_export.param_links.remove_link"]()}
-                        size={16}
                         onClick={() => onRemoveLink(link.target)}
                       />
                     </div>

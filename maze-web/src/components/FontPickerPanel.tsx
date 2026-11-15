@@ -1,12 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
-import { InfoIconButton } from "./InfoIconButton";
+import { LabelWithInfo } from "./LabelWithInfo";
+import { FlatIconButton } from "./FlatIconButton";
+import { DeleteIconButton } from "./DeleteIconButton";
 import { CategoryInfoModal } from "./CategoryInfoModal";
 import { Modal } from "./Modal";
 import { reportManualFontNotFound, reportUploadRefused } from "../notifications/fontNotifications";
 import { RemoveUploadedFontsDialog } from "./dialogs/RemoveUploadedFontsDialog";
-import { Copyright, Languages, Trash2, Upload } from "lucide-react";
+import { Copyright, Languages, Upload } from "lucide-react";
 import { FONT_STATUS_ICON_SIZE, FontUsedIcon } from "./FontStatusIcons";
 import { Bubble, type BubbleColors } from "./Bubble";
 import { FontLicensesModal } from "./FontLicensesModal";
@@ -16,7 +18,7 @@ import { useLocale } from "../i18n/useLocale";
 import { collectDrawnLabelFontFamilies } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
-import { canvasInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
+import { domInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
 import { setFontPickerOpen } from "../pixi/renderers/rasterFont/pickerSession";
 import { addManualFontName, addUploadedFont, ensureUploadedFace, isUploadedFamily, uploadCapacityExhausted, knownRasterWeights, manualFontNames, rasterFontsVersion, removeUploadedFont, restoreUploadedFonts, subscribeRasterFonts, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { MSDF_FONTS, convertsToMsdf, isMsdfFamily, msdfFontWeights, nearestWeight, withMsdfConversion, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
@@ -319,7 +321,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     return () => document.fonts?.removeEventListener("loadingdone", bump);
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const previewShift = useMemo(() => -canvasInkCentreOffset(PREVIEW_CENTRE_SAMPLE, isMsdfFamily(working.family) ? { ...working, family: "Roboto" } : working, PREVIEW_FONT_SIZE), [working.family, working.weight, fontsVersion, faceTick]);
+  const previewShift = useMemo(() => -domInkCentreOffset(PREVIEW_CENTRE_SAMPLE, isMsdfFamily(working.family) ? { ...working, family: "Roboto" } : working, PREVIEW_FONT_SIZE), [working.family, working.weight, fontsVersion, faceTick]);
 
   // Why the MSDF conversion switch is off for good: a bundled font is MSDF already, a font without a readable
   // file (a typed name) cannot be converted.
@@ -474,18 +476,22 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
             </div>
           </div>
           <div style={{ ...styles.section, ...styles.familySection }}>
-            <div style={styles.familyHeader}>
-              <div style={typography.body}>{m["font_picker.section_family"]()}</div>
-              <InfoIconButton onClick={() => setInfoOpen(true)} />
-              <span style={styles.familyActions}>
-                <Tooltip content={m["font_picker.upload_hint"]()}>
-                  <InfoIconButton symbol={<Upload size={16} />} label={m["font_picker.upload"]()} onClick={openFilePicker} testId="font-picker-upload" />
-                </Tooltip>
-                <Tooltip content={m["font_picker.remove_hint"]()}>
-                  <InfoIconButton symbol={<Trash2 size={16} />} label={m["font_picker.remove_hint"]()} onClick={() => setRemoveOpen(true)} disabled={uploadedFamilies().length === 0} testId="font-picker-remove" />
-                </Tooltip>
-              </span>
-            </div>
+            <LabelWithInfo
+              as="div"
+              style={styles.familyHeader}
+              labelStyle={typography.body}
+              onInfo={() => setInfoOpen(true)}
+              trailing={(
+                <span style={styles.familyActions}>
+                  <FlatIconButton title={m["font_picker.upload_hint"]()} ariaLabel={m["font_picker.upload"]()} onClick={openFilePicker} data-testid="font-picker-upload">
+                    <Upload size={16} />
+                  </FlatIconButton>
+                  <DeleteIconButton title={m["font_picker.remove_hint"]()} tone="danger" onClick={() => setRemoveOpen(true)} disabled={uploadedFamilies().length === 0} aria-disabled={uploadedFamilies().length === 0 ? true : undefined} data-testid="font-picker-remove" />
+                </span>
+              )}
+            >
+                {m["font_picker.section_family"]()}
+            </LabelWithInfo>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
               <input
                 type="search"
@@ -746,13 +752,17 @@ const FontOption = memo(function FontOption({ entry, selected, localeScript, onS
           )}
           {notice && (
             <Tooltip content={m["font_licenses.tooltip"]()} focusable={false}>
-              <InfoIconButton
-                inList
-                hoverable={false}
-                symbol={<Copyright size={FONT_STATUS_ICON_SIZE} />}
-                label={m["font_licenses.button"]({ font: entry.label })}
-                onClick={() => onShowLicense(notice)}
-              />
+              <FlatIconButton
+                title={m["font_licenses.button"]({ font: entry.label })}
+                withTooltip={false}
+                suppressHover
+                role="button"
+                tabIndex={-1}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => { event.stopPropagation(); onShowLicense(notice); }}
+              >
+                <Copyright size={14} />
+              </FlatIconButton>
             </Tooltip>
           )}
           <Tooltip content={format.hint()} focusable={false}>
@@ -789,7 +799,7 @@ const styles: Record<string, React.CSSProperties> = {
   familyActions: { display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto" },
   // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
   // not selectable, it is only a sample.
-  previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.2, userSelect: "none", WebkitUserSelect: "none" },
+  previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 2, userSelect: "none", WebkitUserSelect: "none" },
   previewInput: { ...sharedStyles.input, width: "100%", boxSizing: "border-box" },
   previewCanvasBox: {
     height: PREVIEW_HEIGHT,
