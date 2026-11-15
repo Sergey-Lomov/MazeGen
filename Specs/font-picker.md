@@ -88,7 +88,8 @@ and a body indented by `indent.tree`; the weight row is a single label and selec
     Cousine, Open Sans, keys `msdf:<id>`; each offers Regular and Bold and covers Latin and Cyrillic), then the browser
     fonts:
     - every family installed on this machine (`loadLocalFontFamilies`). The open-time family is kept in the browser
-      part when the machine does not report it, so a project saved elsewhere still shows its current choice highlighted;
+      part only while that list cannot be read (no permission, no API), so its current choice stays highlighted; once
+      the list is known, a family it lacks (and no upload or typed-in name provides) is missing and is not listed;
     - while the local query is pending the MSDF fonts are listed and a loading hint sits in the list footer;
     - uploaded families (see "Raster fonts as dynamic MSDF atlases");
     - when the machine's list is unavailable (no API, permission denied, or an empty answer, which is how some browsers
@@ -233,7 +234,8 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   the atlas replaces it. Stale results are dropped: only the latest font request is applied
   (`LabelFontRow`).
 - **Conversion (after Apply).** When the picker closes (applied, or the open-time font restored) or a
-  project loads, `labelFontSync` calls `loadRasterFont` for each project font (never while a picker is
+  project loads, `labelFontSync` calls `loadRasterFont` for each converting project font and `loadLabelFont` for each
+  one without conversion, so its browser face loads and its canvas text replaces the default font (never while a picker is
   open). `rasterMsdf.ts` builds one atlas per family and weight: a dedicated worker (`msdfWorker.ts`,
   `@playcanvas/msdfgen-wasm`, msdfgen + FreeType; a font with no Unicode `cmap` record (platform 0, or 3 with encoding 1 or 10) first gets one built from its Symbol
   or Mac Roman subtable, `withUnicodeCmap` in `unicodeCmap.ts`, or msdfgen would find no glyphs in it) generates glyphs at the baked Roboto scale (54 px/em,
@@ -294,7 +296,7 @@ through two renderings. Browsing never converts anything; the MSDF atlas is buil
   default for a raster font) with an info button. It is disabled with a tooltip when conversion is impossible: "The
   font is already MSDF" for a bundled font, and "Conversion is unavailable without permission to access fonts" for a
   font without a readable file. The info dialog is plain body text under the dialog title. `LabelFont.msdf === false` (stored only when off, `withMsdfConversion`; kept by the project
-  validator) means the font is never converted: `labelFontSync` skips `loadRasterFont` and treats its
+  validator) means the font is never converted: `labelFontSync` skips `loadRasterFont` (it loads the browser face with `loadLabelFont` instead) and treats its
   atlas as idle (kept only among the `MAX_IDLE_RASTER_FONTS` most recent, so switching back is cheap), and `usesCanvasText` keeps its labels canvas text (zoom-aware, export-scale). The info says the
   automatic conversion can give artifacts on some fonts with thin lines, which is the reason to turn it off.
   Two texts naming one font, one with and one without conversion, keep the atlas. Choosing a bundled font drops
@@ -338,7 +340,9 @@ source `fonts`) and, for the permission, a dialog.
 - **Toasts end with their cause.** A font problem that is resolved (the font arrives, the permission is granted, the
   missing set changes) withdraws its error from the screen (`clearFontProblem`, `retractErrorOccurrence`), not only
   its once-per-key guard.
-- **Fonts without a source.** One `error` toast (`fonts.unavailable`) names all of them. When the permission is
+- **Fonts without a source.** One `error` toast (`fonts.unavailable`) names all of them, also those whose MSDF
+  conversion is off (the browser cannot draw them either), except a family the user typed in by name. Once the
+  installed font list is readable, the picker does not list a saved family that is not in it. When the permission is
   blocked it is `fonts.permission_denied` instead. It is raised once per set of missing fonts and re-armed when none
   is missing.
 - **Permission dialog.** When the browser can still prompt (`prompt`) and the user has not answered for the current

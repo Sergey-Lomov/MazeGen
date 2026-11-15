@@ -14,12 +14,18 @@ vi.mock("../pixi/renderers/rasterFont/rasterMsdf", () => ({
   isRasterFontReady: () => false,
 }));
 
+const loadLabelFont = vi.fn().mockResolvedValue(true);
+vi.mock("../pixi/renderers/labelFont", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../pixi/renderers/labelFont")>()),
+  loadLabelFont: (font: unknown) => loadLabelFont(font),
+}));
+
 const { MSDF_FONTS } = await import("../pixi/renderers/fontChoice");
 const { setFontPickerOpen } = await import("../pixi/renderers/rasterFont/pickerSession");
 const { collectDrawnLabelFontFamilies, collectLabelFonts, installLabelFontSync, reportProjectFontProblems } = await import("../store/labelFontSync");
 const { useNotificationStore, resetNotifications } = await import("../notifications/notificationStore");
 const { resetFontProblems } = await import("../notifications/fontNotifications");
-const { registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");
+const { addManualFontName, registerLocalFaces } = await import("../pixi/renderers/rasterFont/rasterFontStore");
 const { loadLocalFontFamilies } = await import("../pixi/renderers/labelFont");
 const { closeFontPermissionRequest, getFontPermissionRequest, resetFontPermissionAnswer } = await import("../pixi/renderers/rasterFont/fontPermissionRequest");
 
@@ -32,6 +38,7 @@ const font = (family: string) => ({ family, weight: 400 });
 beforeEach(() => {
   loadMsdfFamily.mockClear();
   loadRasterFont.mockClear();
+  loadLabelFont.mockClear();
   pruneRasterFonts.mockClear();
   setFontPickerOpen(false);
 });
@@ -165,6 +172,17 @@ describe("installLabelFontSync", () => {
       expect(pruneRasterFonts).toHaveBeenLastCalledWith(new Set());
     });
 
+    it("loads the browser face of a font without conversion so its labels leave the fallback font", () => {
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: { family: "Gamma", weight: 400, msdf: false } } } });
+      expect(loadLabelFont).toHaveBeenCalledWith({ family: "Gamma", weight: 400, msdf: false });
+    });
+
+    it("loads no browser face while a picker is open", () => {
+      setFontPickerOpen(true);
+      makeStore({ vectorByWallsSettings: { startMarker: { textFont: { family: "Gamma", weight: 400, msdf: false } } } });
+      expect(loadLabelFont).not.toHaveBeenCalled();
+    });
+
     it("keeps converting a font that one text converts and another does not", () => {
       makeStore({ vectorByWallsSettings: { startMarker: { textFont: { family: "Delta", weight: 400, msdf: false } }, finishMarker: { textFont: font("Delta") } } });
       expect(loadRasterFont).toHaveBeenCalledWith({ family: "Delta", weight: 400 });
@@ -233,6 +251,24 @@ describe("installLabelFontSync", () => {
       expect(errors[0].code).toBe("fonts.unavailable");
       expect(errors[0].occurrences[0].params.fonts).toBe("Ghost, Phantom");
       expect(getFontPermissionRequest().open).toBe(false);
+    });
+
+    it("also reports a missing font whose MSDF conversion is switched off", async () => {
+      setPermission(null);
+      makeStore({ vectorByWallsSettings: { finishMarker: { textFont: { family: "Ghost", weight: 400, msdf: false } } } });
+      await settle();
+      const { errors } = useNotificationStore.getState();
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe("fonts.unavailable");
+      expect(errors[0].occurrences[0].params.fonts).toBe("Ghost");
+    });
+
+    it("does not report a font without conversion that the user typed in as an installed one", async () => {
+      setPermission(null);
+      addManualFontName("Typed Sans");
+      makeStore({ vectorByWallsSettings: { finishMarker: { textFont: { family: "Typed Sans", weight: 400, msdf: false } } } });
+      await settle();
+      expect(useNotificationStore.getState().errors).toHaveLength(0);
     });
 
     it("withdraws the error once the font becomes available", async () => {

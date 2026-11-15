@@ -3,9 +3,9 @@ import type { MazeStore } from "./storeTypes";
 import { VECTOR_FONT_FAMILY, convertsToMsdf, isMsdfFamily, type LabelFont } from "../pixi/renderers/fontChoice";
 import { loadMsdfFamily } from "../pixi/renderers/msdfLoader";
 import { loadRasterFont, pruneRasterFonts } from "../pixi/renderers/rasterFont/rasterMsdf";
-import { describeLocalFaces, knownRasterWeights, restoreUploadedFonts, subscribeRasterFonts } from "../pixi/renderers/rasterFont/rasterFontStore";
+import { describeLocalFaces, isManualFontName, knownRasterWeights, restoreUploadedFonts, subscribeRasterFonts } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { isFontPickerOpen, subscribeFontPicker } from "../pixi/renderers/rasterFont/pickerSession";
-import { isLocalFontAccessSupported, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
+import { isLocalFontAccessSupported, loadLabelFont, loadLocalFontFamilies } from "../pixi/renderers/labelFont";
 import {
   closeFontPermissionRequest, getFontPermissionRequest, hasFontPermissionBeenAnswered, openFontPermissionRequest,
   queryLocalFontPermission, resetFontPermissionAnswer, subscribeFontPermissionRequest, type LocalFontPermission,
@@ -101,10 +101,12 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
    *  a font without a source is truly missing and not just not loaded yet. */
   let sourcesSettled = false;
   let permission: LocalFontPermission = "prompt";
-  /** Families of project fonts that convert to MSDF, are not bundled and have no font file at all. */
+  /** Families of project fonts that are not bundled and have no font file at all. A font without MSDF conversion is
+   *  drawn by the browser, so it is missing too unless the user named it by hand as an installed one. */
   const missingFamilies = (fonts: Map<string, LabelFont>): string[] => [...new Set(
     [...fonts.values()]
-      .filter((font) => font.family !== VECTOR_FONT_FAMILY && !isMsdfFamily(font.family) && convertsToMsdf(font) && knownRasterWeights(font.family).length === 0)
+      .filter((font) => font.family !== VECTOR_FONT_FAMILY && !isMsdfFamily(font.family) && knownRasterWeights(font.family).length === 0
+        && (convertsToMsdf(font) || !isManualFontName(font.family)))
       .map((font) => font.family.trim()),
   )].sort();
   /** Tells the user about project fonts that cannot be restored: asks for the installed fonts permission when
@@ -144,8 +146,12 @@ export function installLabelFontSync(store: StoreApi<MazeStore>): () => void {
         if (requested.has(font.family)) continue;
         requested.add(font.family);
         void loadMsdfFamily(font.family);
-      } else if (!previewing && convertsToMsdf(font)) {
-        void loadRasterFont(font);
+      } else if (!previewing) {
+        // A font without conversion is drawn by canvas text once its browser face has loaded; nothing else loads it
+        // for a project that just opened. A face that arrives later (an upload) re-runs this through
+        // `subscribeRasterFonts`, and the load announces itself with `LABEL_FONT_LOADED_EVENT` so the labels redraw.
+        if (convertsToMsdf(font)) void loadRasterFont(font);
+        else void loadLabelFont(font);
       }
     }
     if (!previewing) pruneRasterFonts(new Set([...fonts].filter(([, font]) => convertsToMsdf(font)).map(([key]) => key)));
