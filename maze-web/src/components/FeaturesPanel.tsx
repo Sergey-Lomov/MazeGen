@@ -7,7 +7,6 @@ import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { HoverIconButton } from "./HoverIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
-import { FloorsFeature } from "./features/FloorsFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
@@ -21,7 +20,7 @@ import { readJsonFile } from "./jsonFile";
 import { notify } from "../notifications/notificationStore";
 import { PROJECT_LOAD_SOURCE, PROJECT_LOAD_CODES } from "../store/projectLoadNotifications";
 import { useMazeStore } from "../store/mazeStore";
-import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
+import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
@@ -42,27 +41,6 @@ export function computeFieldStatus(
   );
   if (totalCount === 0) return "critical";
   return "set";
-}
-
-export interface FloorsCardData {
-  status: FeatureStatus;
-  comment: string;
-  subtitle: string;
-}
-
-// floors.length === 0 is unreachable through the UI (removeFloor refuses to drop the last floor,
-// default state always starts with one) — kept anyway per the issue's own status mapping, and as
-// a defensive fallback if a future path (e.g. a malformed loaded project) ever produces an empty
-// list.
-export function computeFloorsCard(floors: FloorState[]): FloorsCardData {
-  const subtitle = floors.length === 1
-    ? m["floors.count_active"]({ count: floors.length })
-    : m["floors.count_active_plural"]({ count: floors.length });
-  if (floors.length === 0) return { status: "critical", comment: m["status.floors_none"](), subtitle };
-  const titles = floors.map((f) => f.title);
-  const hasDuplicate = new Set(titles).size !== titles.length;
-  if (hasDuplicate) return { status: "warning", comment: m["status.floors_duplicate_title"](), subtitle };
-  return { status: "set", comment: m["status.floors_ready"](), subtitle };
 }
 
 export function presetConnectionsSubtitle(
@@ -172,7 +150,6 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
 
   const floors = useMazeStore((s) => s.floors);
-
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const tessellationParams = useMazeStore((s) => s.tessellationParams);
@@ -266,8 +243,6 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
     return label;
   }
 
-  const floorsCard = computeFloorsCard(floors);
-
   const orderedFloorFields = useMemo(() => floors.map((f) => floorFields[f.id]), [floors, floorFields]);
 
   const fieldStatus = computeFieldStatus(tessellationConfirmed, orderedFloorFields);
@@ -360,16 +335,6 @@ export function FeaturesPanel({ onRefit, onExportPng, onFocusTeleportConnector }
         onOpen={() => handleToggle("basic_config")}
       >
         <BasicConfigFeature />
-      </FeatureCard>
-      <FeatureCard
-        title={m["floors.title"]()}
-        status={floorsCard.status}
-        comment={floorsCard.comment}
-        subtitle={floorsCard.subtitle}
-        expanded={openCard === "floors"}
-        onOpen={() => handleToggle("floors")}
-      >
-        <FloorsFeature />
       </FeatureCard>
       <FeatureCard
         title={m["field.title"]()}

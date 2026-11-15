@@ -1,6 +1,7 @@
 import type React from "react";
 import { radius, spacing, typography, ui } from "../styles/theme";
 import { Tooltip } from "./Tooltip";
+import { ToolTooltip } from "./ToolIconButton";
 
 export interface ListCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   /** Text of the title row. Omitted for a cell that is only a details row. */
@@ -14,6 +15,9 @@ export interface ListCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>
   /** The row under the title. The caller gives it its own sizing (e.g. `flex: 1`); the actions sit
    *  at its right edge when they are in the details row. */
   details?: React.ReactNode;
+  /** Marks the cell as the current one with a green bar over the left edge of its padding (it takes
+   *  no layout space, so nothing shifts when the mark appears). */
+  current?: boolean;
   /** Buttons of the cell (`ListCellAction`). */
   actions?: React.ReactNode;
   /** Where `actions` go: the right end of the title row, or of the details row. */
@@ -27,13 +31,15 @@ export interface ListCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>
  *  passes in; hover, click and highlight behavior stays with the caller through the `div` props.
  *  `style` is merged last (e.g. a highlighted background). */
 export function ListCell({
-  title, truncateTitle = false, titleAddon, badge, details, actions, actionsPlacement = "details", children, style, ...rest
+  title, truncateTitle = false, titleAddon, badge, details, current = false, actions, actionsPlacement = "details", children, style, ...rest
 }: ListCellProps) {
   const titleActions = actionsPlacement === "title" && actions;
   const detailsActions = actionsPlacement === "details" && actions;
+  const hasTitleRow = title !== undefined || !!titleAddon || !!badge || !!titleActions;
   return (
     <div {...rest} style={{ ...styles.cell, ...style }}>
-      {(title !== undefined || titleAddon || badge || titleActions) && (
+      {current && <span data-testid="list-cell-current" aria-hidden style={styles.currentBar} />}
+      {hasTitleRow && (
         <div style={styles.titleRow}>
           {title !== undefined && <span style={truncateTitle ? styles.titleTruncated : styles.title}>{title}</span>}
           {titleAddon}
@@ -42,7 +48,10 @@ export function ListCell({
         </div>
       )}
       {(details !== undefined || detailsActions) && (
-        <div style={styles.detailsRow}>
+        // Action buttons are taller than the details content: with a title row above, the row gets the
+        // extra top inset that balances the cell's bottom padding, so the buttons' hover boxes do not
+        // sit flush against the title row (its id badge) while having free space below.
+        <div style={{ ...styles.detailsRow, ...(detailsActions && hasTitleRow ? styles.detailsRowWithActions : {}) }}>
           {details}
           {detailsActions && <div style={{ ...styles.actions, ...styles.actionsPushed }}>{detailsActions}</div>}
         </div>
@@ -55,6 +64,8 @@ export function ListCell({
 export interface ListCellActionProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "title" | "onClick" | "style"> {
   /** Tooltip text and accessible name. */
   title: string;
+  /** Explanation under the title in the tooltip (the shared `ToolTooltip`). */
+  description?: string;
   onAction: () => void;
   /** Tints the glyph with the error colour (a destructive action). */
   danger?: boolean;
@@ -70,9 +81,8 @@ export interface ListCellActionProps extends Omit<React.ButtonHTMLAttributes<HTM
 }
 
 /** Icon button of a `ListCell`'s action area. */
-export function ListCellAction({ title, onAction, danger = false, selected, activateOnPress = false, disabled, children, ...rest }: ListCellActionProps) {
-  return (
-    <Tooltip content={title}>
+export function ListCellAction({ title, description, onAction, danger = false, selected, activateOnPress = false, disabled, children, ...rest }: ListCellActionProps) {
+  const button = (
       <button
         type="button"
         className="hoverable"
@@ -97,8 +107,10 @@ export function ListCellAction({ title, onAction, danger = false, selected, acti
       >
         <span style={styles.glyph}>{children}</span>
       </button>
-    </Tooltip>
   );
+  return description === undefined
+    ? <Tooltip content={title}>{button}</Tooltip>
+    : <ToolTooltip title={title} description={description}>{button}</ToolTooltip>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -108,13 +120,16 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.itemGap / 2,
     padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
     borderBottom: `1px solid ${ui.border.default}`,
+    position: "relative",
   },
+  currentBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: ui.status.set },
   // The badge stays in normal flow, so it cannot overlap the controls of the details row.
   titleRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
   title: { ...typography.body, minWidth: 0 },
   titleTruncated: { ...typography.body, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   badge: { marginLeft: "auto", display: "inline-flex", flexShrink: 0 },
   detailsRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, minWidth: 0 },
+  detailsRowWithActions: { marginTop: spacing.itemGap / 2 },
   actions: { position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: spacing.itemGap, flexShrink: 0 },
   actionsPushed: { marginLeft: "auto" },
   actionButton: {

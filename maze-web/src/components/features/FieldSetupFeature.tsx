@@ -10,7 +10,6 @@ import { ToolIconButton, ToolTooltip } from "../ToolIconButton";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { hasGeneration } from "../../store/storeHelpers";
-import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
 import { Switch } from "../Switch";
@@ -32,12 +31,13 @@ import { availablePresetKeys, compactNetOf, fieldOperationAvailable, polyhedronF
 import { colorToHex } from "../colorFormat";
 import { SizeParam } from "./SizeParam";
 import { TopologyPanel } from "./TopologyPanel";
+import { FloorsPanel } from "./FloorsPanel";
 import { bringSidePanelToFront } from "../SidePanel";
 import { copyFieldSelection, fieldClipboardBlock, pasteFieldClipboard, type FieldClipboardBlock } from "../../pixi/fieldClipboard";
 import { canActivateFieldPrimitive, fieldPrimitiveShortcut } from "../../pixi/fieldPrimitiveShortcuts";
 import * as m from "~/paraglide/messages";
 
-type ConfirmPending = "switchToDefault" | "clearField" | "copyAll" | null;
+type ConfirmPending = "switchToDefault" | "clearField" | null;
 
 const OPERATION_SHORTCUTS: Record<FieldOperation, readonly string[]> = {
   add: ["+"],
@@ -66,7 +66,6 @@ export function FieldSetupFeature() {
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const centerFieldPoints = useMazeStore((s) => s.centerFieldPoints);
-  const copyCurrentFloorFieldToAll = useMazeStore((s) => s.copyCurrentFloorFieldToAll);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
   const confirmFieldEdit = useMazeStore((s) => s.confirmFieldEdit);
   const cancelFieldEdit = useMazeStore((s) => s.cancelFieldEdit);
@@ -87,7 +86,7 @@ export function FieldSetupFeature() {
   const hasClipboard = useMazeStore((s) => s.fieldClipboard !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
-  const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
+  const [floorsPanelOpen, setFloorsPanelOpen] = useState(false);
   const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
   const [smoothingInfoOpen, setSmoothingInfoOpen] = useState(false);
   const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
@@ -127,7 +126,6 @@ export function FieldSetupFeature() {
   function handleConfirm() {
     if (confirmPending === "switchToDefault") setFieldEditMode("default");
     if (confirmPending === "clearField") clearFieldPoints();
-    if (confirmPending === "copyAll") copyCurrentFloorFieldToAll();
     setConfirmPending(null);
   }
 
@@ -256,7 +254,6 @@ export function FieldSetupFeature() {
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
     switchToDefault: m["field.confirm_switch_to_default"](),
     clearField: m["field.confirm_clear"](),
-    copyAll: m["floors.confirm_from_current"](),
   };
 
   return (
@@ -281,6 +278,7 @@ export function FieldSetupFeature() {
         <>
           {renderShapeSelect()}
           {renderParams()}
+          {renderSmoothingToggle()}
           <Button
             variant="secondary"
             disabled={fieldEditLocked}
@@ -289,7 +287,6 @@ export function FieldSetupFeature() {
           >
             {m["field.print_sizing.open"]()}
           </Button>
-          {renderSmoothingToggle()}
         </>
       )}
       {isCustom && (
@@ -381,26 +378,17 @@ export function FieldSetupFeature() {
         </>
       )}
       {isCustom && topologyPanelOpen && <TopologyPanel onClose={() => setTopologyPanelOpen(false)} />}
-      {floorCount > 1 && (
-        <>
-          <Button
-            variant="secondary"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={() => setCopyFloorDialogOpen(true)}
-          >
-            {m["field.copy_floor"]()}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={fieldEditLocked}
-            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
-            onClick={() => setConfirmPending("copyAll")}
-          >
-            {m["floors.from_current"]()}
-          </Button>
-        </>
-      )}
+      <Button
+        variant="secondary"
+        layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+        onClick={() => {
+          bringSidePanelToFront("floors");
+          setFloorsPanelOpen(true);
+        }}
+      >
+        {m["floors.title"]()}
+      </Button>
+      {floorsPanelOpen && <FloorsPanel onClose={() => setFloorsPanelOpen(false)} />}
       {isCustom && (
         <Button
           variant="destructive"
@@ -424,9 +412,6 @@ export function FieldSetupFeature() {
           onConfirm={confirmFieldEdit}
           onCancel={cancelFieldEdit}
         />
-      )}
-      {copyFloorDialogOpen && (
-        <CopyFloorDialog onClose={() => setCopyFloorDialogOpen(false)} />
       )}
       {printSizingDialogOpen && printableConfig && (
         <FieldPrintSizingDialog
@@ -455,7 +440,8 @@ export function FieldSetupFeature() {
           onClose={() => setSmoothingInfoOpen(false)}
         >
           <div style={styles.infoText}>{m["field.smoothing_info_description"]()}</div>
-          <div style={{ ...styles.infoText, marginTop: 8 }}>{m["field.smoothing_info_hotkey"]()}</div>
+          {/* The hold hotkey only exists while drawing in the custom field editor. */}
+          {isCustom && <div style={{ ...styles.infoText, marginTop: 8 }}>{m["field.smoothing_info_hotkey"]()}</div>}
         </Modal>
       )}
     </Stack>

@@ -351,48 +351,47 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     };
   })),
 
-  copyFloorField: (sourceFloorId, includeTopology = true) => set((state) => {
+  copyFloorField: (sourceFloorId, includeTopology = true, targetFloorId) => set((state) => {
+    const target = targetFloorId ?? state.activeFloorId;
     const source = state.floorFields[sourceFloorId];
-    if (!source) return {};
+    const current = state.floorFields[target];
+    if (!source || !current || sourceFloorId === target) return {};
     if (state.backgroundAutoFillPreview !== null) return {};
-    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology } };
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId, includeTopology, targetFloorId: target } };
     return {
-      ...withActiveFloorField(state, { ...cloneFloorField(source), fieldDirty: true }),
+      floorFields: { ...state.floorFields, [target]: { ...current, ...cloneFloorField(source), fieldDirty: true } },
       floorTopology: includeTopology
-        ? topologyCopiedTo(state.floorTopology, sourceFloorId, [state.activeFloorId])
-        : activeFloorField(state).isEditingField && !source.isEditingField
-          ? withoutFloorTopology(state.floorTopology, [state.activeFloorId])
+        ? topologyCopiedTo(state.floorTopology, sourceFloorId, [target])
+        : current.isEditingField && !source.isEditingField
+          ? withoutFloorTopology(state.floorTopology, [target])
           : state.floorTopology,
       ...(includeTopology
-        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, [state.activeFloorId]), creaseDraft: null, creaseHover: null }
+        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, [target]), creaseDraft: null, creaseHover: null }
         : {}),
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
   }),
 
-  copyCurrentFloorFieldToAll: () => set((state) => {
-    const source = state.floorFields[state.activeFloorId];
-    if (!source || state.floors.length <= 1 || state.backgroundAutoFillPreview !== null) return {};
+  copyFloorFieldToFloors: (sourceFloorId, targetFloorIds, includeTopology = true) => set((state) => {
+    const source = state.floorFields[sourceFloorId];
+    const targets = [...new Set(targetFloorIds)].filter((id) => id !== sourceFloorId && state.floorFields[id]);
+    if (!source || targets.length === 0 || state.backgroundAutoFillPreview !== null) return {};
+    if (hasGeneration(state)) return { fieldEditConfirmation: { kind: "copyFloorFieldToFloors", sourceFloorId, targetFloorIds: targets, includeTopology } };
+    // Without topology, a target that leaves the field editor's custom shape loses its (now stale)
+    // topology exactly as in `copyFloorField`; every other target keeps its own.
+    const staleTopology = targets.filter((id) => state.floorFields[id].isEditingField && !source.isEditingField);
     return {
-      floorTopology: topologyCopiedTo(
-        state.floorTopology,
-        state.activeFloorId,
-        state.floors.map((floor) => floor.id).filter((id) => id !== state.activeFloorId),
-      ),
-      floorCreases: creasesCopiedTo(
-        state.floorCreases,
-        state.activeFloorId,
-        state.floors.map((floor) => floor.id).filter((id) => id !== state.activeFloorId),
-      ),
-      creaseDraft: null,
-      creaseHover: null,
-      floorFields: Object.fromEntries(state.floors.map((floor) => [
-        floor.id,
-        floor.id === state.activeFloorId
-          ? source
-          : { ...cloneFloorField(source), fieldDirty: true },
-      ])),
+      floorTopology: includeTopology
+        ? topologyCopiedTo(state.floorTopology, sourceFloorId, targets)
+        : staleTopology.length > 0 ? withoutFloorTopology(state.floorTopology, staleTopology) : state.floorTopology,
+      ...(includeTopology
+        ? { floorCreases: creasesCopiedTo(state.floorCreases, sourceFloorId, targets), creaseDraft: null, creaseHover: null }
+        : {}),
+      floorFields: {
+        ...state.floorFields,
+        ...Object.fromEntries(targets.map((id) => [id, { ...cloneFloorField(source), fieldDirty: true }])),
+      },
       ...buildResetDownstreamState(),
       debugStale: debugStaleOf(state),
     };
@@ -442,7 +441,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applyMirror": get().applyMirror(); break;
-      case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology); break;
+      case "copyFloorField": get().copyFloorField(pending.sourceFloorId, pending.includeTopology, pending.targetFloorId); break;
+      case "copyFloorFieldToFloors": get().copyFloorFieldToFloors(pending.sourceFloorId, pending.targetFloorIds, pending.includeTopology); break;
       case "applyTopologyOp": get().applyTopologyOp(pending.op); break;
       case "clearTopologyGroups": get().clearTopologyGroups(); break;
     }

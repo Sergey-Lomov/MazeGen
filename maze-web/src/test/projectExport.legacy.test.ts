@@ -35,6 +35,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.ui.openCard).toBe("basic_config");
   });
 
+  it("maps the removed floors card to field_setup when loading ui.openCard", () => {
+    const data = valid_without_optional_sections();
+    data.ui = { openCard: "floors" };
+    const result = parseAndValidate(data);
+    expect(result.ui.openCard).toBe("field_setup");
+  });
+
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);

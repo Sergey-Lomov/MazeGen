@@ -29,7 +29,7 @@ const PANEL_WIDTH = 260;
 /** Feature cards the floor switcher stays hidden for (GitHub issue #336): "Basic configuration"
  *  (tessellation is floor-independent), "Floors" (configures the floor set itself), and "Quality
  *  control" (spans the whole maze, not scoped to one floor). */
-const FLOOR_SWITCHER_HIDDEN_CARDS: ReadonlySet<FeatureId> = new Set(["basic_config", "floors", "quality"]);
+const FLOOR_SWITCHER_HIDDEN_CARDS: ReadonlySet<FeatureId> = new Set(["basic_config", "quality"]);
 
 export function App() {
   useLocale(); // re-render entire tree on locale change

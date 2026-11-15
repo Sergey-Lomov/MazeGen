@@ -85,6 +85,9 @@ export function Modal({ title, size = "info", layoutStyle, rawBody, onClose, onC
     function handleKeyDown(e: KeyboardEvent) {
       if (openModalStack[openModalStack.length - 1] !== id) return;
       if (e.key === "Escape") {
+        // The dialog unmounts synchronously, so a window-level Escape listener of the UI beneath it
+        // (`SidePanel`) would no longer see an open modal: `defaultPrevented` is its signal.
+        e.preventDefault();
         onClose();
         return;
       }

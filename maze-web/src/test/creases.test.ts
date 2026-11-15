@@ -200,9 +200,9 @@ describe("copying floors", () => {
     expect(get().floorCreases[second]).toBeUndefined();
   });
 
-  it("synchronizes the active floor's creases to every floor", () => {
+  it("copies the source floor's creases to every target floor", () => {
     seed();
-    get().copyCurrentFloorFieldToAll();
+    get().copyFloorFieldToFloors(TEST_FLOOR_ID, get().floors.map((floor) => floor.id));
     expect(get().floorCreases[second]).toEqual(get().floorCreases[TEST_FLOOR_ID]);
   });
 });

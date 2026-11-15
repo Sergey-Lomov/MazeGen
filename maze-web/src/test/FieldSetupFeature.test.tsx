@@ -30,8 +30,18 @@ beforeEach(() => {
   useMazeStore.setState({ ...baseStoreState(), backgroundAutoFillPreview: null });
 });
 
-describe("FieldSetupFeature — Copy floor button", () => {
-  it("applies the current field to every other floor after confirmation", () => {
+function openFloorsPanel() {
+  fireEvent.click(screen.getByRole("button", { name: m["floors.title"]() }));
+}
+
+/** The floor-row action button of the floor with `title`. */
+function rowAction(title: string, name: string): HTMLElement {
+  const row = screen.getAllByTestId("floor-row").find((candidate) => within(candidate).queryByText(title));
+  return within(row!).getByRole("button", { name });
+}
+
+describe("FieldSetupFeature — floors panel field copy", () => {
+  it("copies the field to every other floor via the copy-to-all button", () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -43,16 +53,59 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
+    openFloorsPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
-    expect(screen.getByText(m["floors.confirm_from_current"]())).toBeInTheDocument();
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.click(screen.getByRole("button", { name: m["floors.copy_to_all"]() }));
+    // Nothing to reset: no confirmation, the copy is applied at once.
+    expect(screen.queryByText(m["field.reset_generation_warning"]())).not.toBeInTheDocument();
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
+  });
+
+  it("asks to confirm the reset before copying to floors when generation exists", () => {
+    useMazeStore.setState({
+      mazeDirty: true,
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }) }),
+      },
+    });
+    render(<FieldSetupFeature />);
+    openFloorsPanel();
+
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.click(screen.getByRole("button", { name: m["floors.copy_to_all"]() }));
+    expect(screen.getByText(m["field.reset_generation_warning"]())).toBeInTheDocument();
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
 
     fireEvent.click(screen.getByRole("button", { name: m["common.ok"]() }));
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 3, rows: 4 }));
   });
 
-  it("keeps other floors unchanged when the confirmation is cancelled", () => {
+  it("Escape closes only the copy dialog, not the floors panel", () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Floor 1" },
+        { id: "floor_2", title: "Floor 2" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig(),
+        floor_2: baseFloorFieldConfig(),
+      },
+    });
+    render(<FieldSetupFeature />);
+    openFloorsPanel();
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: m["floors.copy_to_all"]() })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("floor-row")).toHaveLength(2);
+  });
+
+  it("keeps other floors unchanged when the dialog is dismissed", () => {
     useMazeStore.setState({
       floors: [
         { id: TEST_FLOOR_ID, title: "Floor 1" },
@@ -64,9 +117,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
+    openFloorsPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: m["floors.from_current"]() }));
-    fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
+    fireEvent.click(rowAction("Floor 1", m["floors.copy_to_floors"]()));
+    fireEvent.keyDown(document, { key: "Escape" });
 
     expect(useMazeStore.getState().floorFields.floor_2.fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
   });
@@ -311,13 +365,14 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.queryByText(m["field.confirm_switch_to_default"]())).not.toBeInTheDocument();
   });
 
-  it("is hidden with a single floor", () => {
+  it("hides the copy buttons in the floors panel with a single floor", () => {
     render(<FieldSetupFeature />);
-    expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();
-    expect(screen.queryByText(m["floors.from_current"]())).not.toBeInTheDocument();
+    openFloorsPanel();
+    expect(screen.queryByRole("button", { name: "Copy floor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: m["floors.copy_to_floors"]() })).not.toBeInTheDocument();
   });
 
-  it("is shown once more than one floor exists", () => {
+  it("shows the copy buttons in the floors panel once more than one floor exists", () => {
     useMazeStore.setState({
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       floorFields: {
@@ -326,8 +381,9 @@ describe("FieldSetupFeature — Copy floor button", () => {
       },
     });
     render(<FieldSetupFeature />);
-    expect(screen.getByText("Copy floor")).toBeInTheDocument();
-    expect(screen.getByText(m["floors.from_current"]())).toBeInTheDocument();
+    openFloorsPanel();
+    expect(screen.getAllByRole("button", { name: "Copy floor" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: m["floors.copy_to_floors"]() })).toHaveLength(2);
   });
 
   it("describes smoothing", () => {
@@ -363,6 +419,21 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
     expect(screen.queryAllByText(hint).length).toBeGreaterThan(0);
+  });
+
+  it("mentions the hold hotkey in the smoothing info only for the custom editor", () => {
+    const hotkey = m["field.smoothing_info_hotkey"]();
+    const { unmount } = render(<FieldSetupFeature />);
+    fireEvent.click(screen.getByRole("button", { name: /info/i }));
+    expect(screen.getByText(m["field.smoothing_info_description"]())).toBeInTheDocument();
+    expect(screen.queryByText(hotkey)).not.toBeInTheDocument();
+    unmount();
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }) },
+    });
+    render(<FieldSetupFeature />);
+    fireEvent.click(screen.getByRole("button", { name: /info/i }));
+    expect(screen.getByText(hotkey)).toBeInTheDocument();
   });
 
   it("shows the inverted smoothing state while the hotkey is held", () => {
@@ -558,7 +629,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
 
-    expect(await screen.findByText("Floors")).toBeInTheDocument();
+    // The field card's own "Floors" button plus the dialog's section header.
+    expect(await screen.findAllByText("Floors")).toHaveLength(2);
     const groundRow = screen.getByText("1: Ground floor").parentElement!;
     const upperRow = screen.getByText("2: Upper floor").parentElement!;
     const customRow = screen.getByText("3: Custom floor").parentElement!;

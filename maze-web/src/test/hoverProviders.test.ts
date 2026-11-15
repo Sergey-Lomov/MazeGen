@@ -95,7 +95,6 @@ describe("zoom reset controls", () => {
     const floorConfig = state.floorFields[state.activeFloorId].fieldConfig;
 
     expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewFieldConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.floors(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.field_setup(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.preset_connections(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.quality(state)).toBe(floorConfig);
