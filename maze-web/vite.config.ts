@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
-import { paraglideVitePlugin } from "@inlang/paraglide-js";
+import { paraglideWatchPlugin } from "./tools/paraglide-watch-plugin.mjs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -13,11 +13,7 @@ export default defineConfig({
     react(),
     wasm(),
     topLevelAwait(),
-    paraglideVitePlugin({
-      project: "./project.inlang",
-      outdir: "./generated/paraglide",
-      outputStructure: "locale-modules",
-    }),
+    paraglideWatchPlugin(),
   ],
   resolve: {
     alias: {

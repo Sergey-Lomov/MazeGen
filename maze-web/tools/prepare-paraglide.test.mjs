@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getInputFingerprint, needsPreparation } from "./prepare-paraglide.mjs";
+import { getInputFingerprint, isParaglideSource, needsPreparation } from "./prepare-paraglide.mjs";
 
 const temporaryDirectories = [];
 
@@ -55,5 +55,16 @@ describe("needsPreparation", () => {
 
   it("skips preparation when the fingerprint and generated output are current", () => {
     expect(needsPreparation({ cachedFingerprint: "same", fingerprint: "same", generatedOutputExists: true })).toBe(false);
+  });
+});
+
+describe("isParaglideSource", () => {
+  it("accepts translation files and the inlang settings only", () => {
+    const root = createProject();
+    expect(isParaglideSource(join(root, "messages", "ru.json"), root)).toBe(true);
+    expect(isParaglideSource(join(root, "project.inlang", "settings.json"), root)).toBe(true);
+    expect(isParaglideSource(join(root, "messages", "notes.txt"), root)).toBe(false);
+    expect(isParaglideSource(join(root, "src", "App.tsx"), root)).toBe(false);
+    expect(isParaglideSource(join(root, "generated", "paraglide", "messages", "en.js"), root)).toBe(false);
   });
 });

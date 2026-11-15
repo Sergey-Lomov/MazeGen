@@ -56,6 +56,8 @@ Compile from `maze-web`: `npx paraglide-js compile --project ./project.inlang --
 
 `npm run dev`, `npm run build`, `npm test`, and `npm run test:watch` run `tools/ensure-deps.mjs` first (runs `npm install` when a declared package is missing from `node_modules` or differs from the version `package-lock.json` pins, e.g. after a pull brought a new dependency), then `tools/prepare-paraglide.mjs`. It fingerprints the translation files, `project.inlang/settings.json`, the package manifests, and the installed Paraglide package. When the fingerprint changes, it regenerates `generated/paraglide` with the command above and clears `node_modules/.vite`; otherwise it reuses the generated output. Both generated output and the preparation marker remain untracked.
 
+The inlang plugins are vendored in `maze-web/tools/inlang-plugins/` (self-contained bundles of the former CDN modules, referenced from `project.inlang/settings.json`, so compile needs no network; they are part of the fingerprint). Paraglide is compiled only by `prepare-paraglide`; `tools/paraglide-watch-plugin.mjs` recompiles on translation/settings edits while the dev server runs. `npm run measure:startup` (from `maze-web`) runs a real `npm run dev` and timestamps each output line until Vite is ready; `-- --cold` drops the app-level caches first. A reboot also empties the OS file cache, which only a run right after a reboot reproduces.
+
 ## Export
 
 - Cut transfers (GitHub issue #859, `PngExporter.renderCutSheet`): unless a feature's spec says otherwise, everything drawn on the image takes part in them — it is drawn once per `CutPlan` offset, clipped to the cut region, like the content. A new export element that is drawn once over the whole frame must say so in `Specs/image-export.md`.

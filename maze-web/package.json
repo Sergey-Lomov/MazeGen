@@ -16,6 +16,7 @@
     "test": "vitest run",
     "pretest:watch": "node tools/ensure-deps.mjs && node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs",
     "test:watch": "vitest",
+    "measure:startup": "node tools/measure-startup.mjs",
     "gen:msdf": "node tools/msdf/generate.mjs"
   },
   "dependencies": {
