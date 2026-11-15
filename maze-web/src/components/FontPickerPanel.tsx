@@ -16,7 +16,7 @@ import { useLocale } from "../i18n/useLocale";
 import { collectDrawnLabelFontFamilies } from "../store/labelFontSync";
 import { SelectableList, SelectableRow } from "./SelectableList";
 import { muted, ui, radius, typography, spacing, font, indent, controlRowHeight } from "../styles/theme";
-import { canvasInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
+import { domInkCentreOffset, isFontFamilyInstalled, isLocalFontAccessSupported, labelFontCss, loadLocalFontFamilies, rasterFontWeights } from "../pixi/renderers/labelFont";
 import { setFontPickerOpen } from "../pixi/renderers/rasterFont/pickerSession";
 import { addManualFontName, addUploadedFont, ensureUploadedFace, isUploadedFamily, uploadCapacityExhausted, knownRasterWeights, manualFontNames, rasterFontsVersion, removeUploadedFont, restoreUploadedFonts, subscribeRasterFonts, uploadedFamilies } from "../pixi/renderers/rasterFont/rasterFontStore";
 import { MSDF_FONTS, convertsToMsdf, isMsdfFamily, msdfFontWeights, nearestWeight, withMsdfConversion, type FontScript, type LabelFont } from "../pixi/renderers/fontChoice";
@@ -319,7 +319,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
     return () => document.fonts?.removeEventListener("loadingdone", bump);
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const previewShift = useMemo(() => -canvasInkCentreOffset(PREVIEW_CENTRE_SAMPLE, isMsdfFamily(working.family) ? { ...working, family: "Roboto" } : working, PREVIEW_FONT_SIZE), [working.family, working.weight, fontsVersion, faceTick]);
+  const previewShift = useMemo(() => -domInkCentreOffset(PREVIEW_CENTRE_SAMPLE, isMsdfFamily(working.family) ? { ...working, family: "Roboto" } : working, PREVIEW_FONT_SIZE), [working.family, working.weight, fontsVersion, faceTick]);
 
   // Why the MSDF conversion switch is off for good: a bundled font is MSDF already, a font without a readable
   // file (a typed name) cannot be converted.
@@ -789,7 +789,7 @@ const styles: Record<string, React.CSSProperties> = {
   familyActions: { display: "flex", alignItems: "center", gap: spacing.itemGap, marginLeft: "auto" },
   // A flex item needs `minWidth: 0` and its own overflow to be cut with an ellipsis; the text is
   // not selectable, it is only a sample.
-  previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.2, userSelect: "none", WebkitUserSelect: "none" },
+  previewLine: { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 2, userSelect: "none", WebkitUserSelect: "none" },
   previewInput: { ...sharedStyles.input, width: "100%", boxSizing: "border-box" },
   previewCanvasBox: {
     height: PREVIEW_HEIGHT,

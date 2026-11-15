@@ -220,3 +220,37 @@ describe("fontCoversSample", () => {
     expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("domInkCentreOffset (GitHub issue #1016)", () => {
+  function mockMetrics(metrics: Record<string, number>) {
+    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+      font: "",
+      measureText: () => ({ width: 50, ...metrics }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  }
+
+  it("centres the ink by the font's own ascent and descent, as a CSS line box does", async () => {
+    mockMetrics({ actualBoundingBoxAscent: 20, actualBoundingBoxDescent: 0, fontBoundingBoxAscent: 36, fontBoundingBoxDescent: 12 });
+    const { domInkCentreOffset } = await import("../pixi/renderers/labelFont");
+    // (36 - 12) / 2 + (0 - 20) / 2 = 2
+    expect(domInkCentreOffset("Hx", font("Any"), 32)).toBe(2);
+  });
+
+  it("is zero when the sample has no ink", async () => {
+    mockMetrics({ actualBoundingBoxAscent: 0, actualBoundingBoxDescent: 0, fontBoundingBoxAscent: 36, fontBoundingBoxDescent: 12 });
+    const { domInkCentreOffset } = await import("../pixi/renderers/labelFont");
+    expect(domInkCentreOffset("Hx", font("Any"), 32)).toBe(0);
+  });
+
+  it("falls back to the glyph-scanned box Pixi measures when the browser has no font bounding boxes", async () => {
+    vi.doMock("pixi.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("pixi.js")>();
+      return { ...actual, CanvasTextMetrics: { measureFont: () => ({ ascent: 30, descent: 10 }) } };
+    });
+    mockMetrics({ actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 0 });
+    const { domInkCentreOffset, canvasInkCentreOffset } = await import("../pixi/renderers/labelFont");
+    // (30 - 10) / 2 + (0 - 10) / 2 = 5
+    expect(domInkCentreOffset("Hx", font("Any"), 32)).toBe(5);
+    expect(canvasInkCentreOffset("Hx", font("Any"), 32)).toBe(5);
+  });
+});
