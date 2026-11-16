@@ -12,6 +12,7 @@
   "loading.fonts": "Loading labels",
   "common.reset_all": "Reset all",
   "common.clear_all": "Clear all",
+  "common.clear_search": "Clear search",
   "common.select": "Select",
   "common.back": "Back",
   "common.next": "Next",

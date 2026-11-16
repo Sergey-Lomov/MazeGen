@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, EyeOff, Repeat, X } from "lucide-react";
 import { Tooltip } from "../Tooltip";
+import { SearchInput } from "../SearchInput";
 import { ui, indent } from "../../styles/theme";
 import type { ParamDescriptor } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
@@ -387,14 +388,13 @@ export function ParamPicker<P extends string>({
 
   return (
     <>
-      <input
-        type="text"
+      <SearchInput
         value={query}
         disabled={locked}
-        onChange={(e) => setQuery(e.target.value)}
+        onValueChange={setQuery}
         placeholder={m["image_export.param_links.picker_search_placeholder"]()}
         aria-label={m["image_export.param_links.picker_search_placeholder"]()}
-        style={styles.pickerSearch}
+        layoutStyle={styles.pickerSearch}
       />
       <div style={styles.pickerList}>{renderNodes(tree, 0)}</div>
     </>

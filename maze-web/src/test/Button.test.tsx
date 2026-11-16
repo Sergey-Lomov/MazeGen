@@ -46,6 +46,11 @@ describe("Button", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("supports a compact 18 px hit area for dense in-field actions", () => {
+    render(<FlatIconButton title="Clear" size="compact"><span aria-hidden="true">×</span></FlatIconButton>);
+    expect(screen.getByRole("button", { name: "Clear" })).toHaveClass("btn-flat-icon", "btn-flat-icon-compact");
+  });
+
   it("selects standard compact action glyphs from the shared registry", () => {
     render(<IconActionButton action="delete" title="Delete" onClick={() => {}} />);
 

@@ -133,6 +133,17 @@ Small presentational components that the side panels and dialogs share. They lay
 hover, click and highlight behavior stays with the caller through the usual DOM props (`style` is
 always merged last).
 
+### `SearchInput` (`components/SearchInput.tsx`)
+
+Every text search or free-text filter uses this component. It is a controlled `type="text"` field,
+never a native `type="search"`: a non-empty query gets the same in-field clear action everywhere,
+clearing is immediate and retains focus, and committed query updates are debounced by 150 ms. The
+field is 24 px high; its 18 px compact clear action has a 3 px top/bottom/right inset. Its font,
+dimensions, inset, border, clear label and hover treatment are not configurable; callers may
+supply their own `onKeyDown` only for context-specific keyboard behavior. `tools/check-search-input.mjs`
+runs before the web test suite and production build; it rejects native search controls, raw
+search/filter inputs, and regression of the currently migrated consumers.
+
 ### `Bubble` (`components/Bubble.tsx`)
 
 The monospace chip. `variant`: `neutral` (references an entity, `ui.debug.refHighlight`), `success`

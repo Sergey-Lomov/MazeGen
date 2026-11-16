@@ -26,6 +26,7 @@ import { ToggleRow } from "./ToggleRow";
 import { fontWeightName } from "../store/fontLabels";
 import { SelectRow } from "./SelectRow";
 import { Tooltip } from "./Tooltip";
+import { SearchInput } from "./SearchInput";
 import { MsdfFontPreview } from "./MsdfFontPreview";
 import { UnregisteredColorRow } from "./ColorRow";
 import { colorToHex, hexToColor } from "./colorFormat";
@@ -493,10 +494,9 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                 {m["font_picker.section_family"]()}
             </LabelWithInfo>
             <div style={{ ...styles.sectionBody, ...styles.familyBody }}>
-              <input
-                type="search"
+              <SearchInput
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onValueChange={setQuery}
                 onKeyDown={(e) => {
                   // Down hands the keyboard to the list, which then walks the fonts the search left.
                   if (e.key !== "ArrowDown") return;
@@ -505,7 +505,7 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
                 }}
                 placeholder={m["font_picker.search_placeholder"]()}
                 aria-label={m["font_picker.search_placeholder"]()}
-                style={styles.searchInput}
+                layoutStyle={styles.searchBox}
                 data-testid="font-picker-search"
               />
               <div style={styles.filters} data-testid="font-picker-filters">
@@ -821,7 +821,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
   },
-  searchInput: { ...sharedStyles.input, width: "100%", boxSizing: "border-box", flexShrink: 0 },
+  searchBox: { width: "100%", flexShrink: 0 },
   // The chips share the row evenly, whatever their number: one column each, as wide as the list below.
   filters: { display: "grid", gridAutoFlow: "column", gridAutoColumns: "1fr", gap: spacing.itemGap, flexShrink: 0 },
   chipButton: { background: "none", border: "none", padding: 0, margin: 0, font: "inherit", cursor: "pointer", display: "inline-flex", flex: 1, minWidth: 0 },
