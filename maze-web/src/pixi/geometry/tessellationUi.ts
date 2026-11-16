@@ -38,6 +38,9 @@ export interface EditorUi {
   /// The size modes the print-sizing dialog offers, the first is the default. The mode select is
   /// shown only for several; a kind with one has that mode's name as the label of the size field.
   sizeModes: readonly PrintSizeMode[];
+  /// Glue tabs and cut lines work together on this lattice, so the export does not warn about
+  /// combining them (GitHub issue #1014).
+  glueTabsFitCutLines: boolean;
 }
 
 const AXIS_ALIGNED: EditorUi = {
@@ -48,6 +51,7 @@ const AXIS_ALIGNED: EditorUi = {
   triangleCellCount: null,
   circleInclusion: "center",
   sizeModes: ["min_side", "cell_size"],
+  glueTabsFitCutLines: false,
 };
 
 /// UI registry entry of one tessellation kind: metadata only -- no geometry lives here. Cell
@@ -169,7 +173,7 @@ const DODECAGON_FACED_UI: TessellationUi = {
 export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
   square: {
     orientationSlot: null,
-    editor: AXIS_ALIGNED,
+    editor: { ...AXIS_ALIGNED, glueTabsFitCutLines: true },
     orientations: [],
     defaultParams: {},
     paramSpecs: [],
@@ -194,6 +198,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       triangleCellCount: null,
       circleInclusion: "center",
       sizeModes: ["min_side", "cell_size"],
+      glueTabsFitCutLines: false,
     },
     orientations: ["flat_top", "pointy_top"],
     defaultParams: {},
@@ -219,6 +224,7 @@ export const TESSELLATION_UI: Record<TessellationKind, TessellationUi> = {
       triangleCellCount: (n) => n * n,
       circleInclusion: "contained",
       sizeModes: ["min_side", "cell_size"],
+      glueTabsFitCutLines: false,
     },
     orientations: ["r0", "r90", "r180", "r270"],
     defaultParams: {},

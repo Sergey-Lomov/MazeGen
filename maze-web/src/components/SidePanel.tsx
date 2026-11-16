@@ -5,6 +5,7 @@ import { ui, typography, spacing, inset } from "../styles/theme";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { hasOpenModal } from "./Modal";
 import { CloseIconButton } from "./CloseIconButton";
+import { SIDE_PANEL_SLOT_ID } from "./sidePanelSlot";
 import { FlatIconButton } from "./FlatIconButton";
 import type React from "react";
 import * as m from "~/paraglide/messages";
@@ -102,7 +103,7 @@ function useKeepsFlowWidth(id: symbol): boolean {
  *  regardless of where in the component tree it's triggered from (GitHub issue #237), so it
  *  always docks next to the canvas rather than wherever its owning feature happens to live in the
  *  left features panel. */
-export const SIDE_PANEL_SLOT_ID = "side-panel-slot";
+export { SIDE_PANEL_SLOT_ID };
 export const SIDE_PANEL_DIAGNOSTICS_STORAGE_KEY = "maze.debug.sidePanelHitTesting";
 
 function sidePanelDiagnosticsEnabled(): boolean {

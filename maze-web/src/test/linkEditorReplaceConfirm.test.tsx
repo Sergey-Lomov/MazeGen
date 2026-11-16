@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { LinkEditor } from "../components/features/ParameterLinksDialog";
 import type { ColorModifier, ParamDescriptor, ParamLink, ParamModifier } from "../store/parameterLinks";
 
@@ -243,11 +243,12 @@ describe("LinkEditor replace confirmation", () => {
 
 // GitHub issue #732 — search field above each picker tree; target tree is locked while editing.
 describe("LinkEditor picker search and lock", () => {
-  it("filters the target tree by the typed query", () => {
+  it("filters the target tree by the typed query", async () => {
     renderEditor(null, null, []);
     const [targetSearch] = screen.getAllByRole("textbox");
     fireEvent.change(targetSearch, { target: { value: "gam" } });
-    expect(screen.queryByText("Alpha")).toBeNull();
+    // The shared search field debounces its query.
+    await waitFor(() => expect(screen.queryByText("Alpha")).toBeNull());
     expect(screen.getByText("Gamma")).toBeTruthy();
   });
 
