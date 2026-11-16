@@ -224,7 +224,7 @@ describe("DebugPanel", () => {
   it("shows the stale-run warning when debugStale is true", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, debugStale: true });
     render(<DebugPanel />);
-    expect(screen.getByText(/outdated|stale/i)).toBeInTheDocument();
+    expect(screen.getByText(/outdated|stale/i)).toHaveStyle({ borderWidth: "1px" });
   });
 
   it("does not show the stale-run warning when debugStale is false", () => {

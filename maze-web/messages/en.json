@@ -18,6 +18,7 @@
   "common.next": "Next",
   "common.apply": "Apply",
   "common.problems": "Problems",
+  "common.warnings": "Warnings ({count})",
   "common.exact_input": "Click for exact input",
   "color_picker.title": "Color",
   "color_picker.hex_label": "Hex",

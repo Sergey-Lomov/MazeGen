@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { Modal } from "../Modal";
@@ -8,9 +7,9 @@ import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { dialogPanelStyles, type SplitEdgeKind, KIND_LABEL } from "../features/SplitNodesDialogView";
 import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
+import { WarningsSection } from "../WarningsSection";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { typography, spacing } from "../../styles/theme";
-import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
+import { typography } from "../../styles/theme";
 import { anchorCanonicalFaces } from "../../pixi/tessellationGeometry";
 import { originCellOf, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
@@ -21,7 +20,6 @@ interface Props {
   onChange: (next: SplitPattern) => void;
   onClose: () => void;
 }
-
 /** Synthetic anchor point for `TileFaceEditor`'s tile geometry — a pattern has no real field point
  *  (it's rotated/mirrored against an actual tile only when applied during generation, see
  *  `SplitGenerationConfig`'s doc comment), but `getTileDiagram` only ever uses its `(x,y)` argument
@@ -137,13 +135,7 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
     <>
     <Modal title={m["generation.split_pattern_editor_title"]()} size="wide" onClose={onClose} rawBody={
       <>
-        {warnings.length > 0 && (
-          <div style={styles.warningsStrip}>
-            {warnings.map((w, i) => (
-              <div key={i} style={styles.warningItem}>{w}</div>
-            ))}
-          </div>
-        )}
+        <WarningsSection warnings={warnings} testId="split-pattern-warnings" />
         <div style={dialogPanelStyles.tileArea}>
           <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
             {AVAILABLE_KINDS.map((kind) => (
@@ -217,22 +209,3 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
     </>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  warningsStrip: {
-    display: "flex",
-    flexDirection: "column",
-    gap: spacing.itemGap,
-    padding: `${spacing.groupGap}px ${spacing.sectionGap}px`,
-    background: notificationPalette("warning").bg,
-    borderBottom: `1px solid ${notificationPalette("warning").text}`,
-    flexShrink: 0,
-  },
-  warningItem: {
-    ...embeddedNotificationStyle,
-    background: "transparent",
-    borderWidth: 0,
-    padding: 0,
-    color: notificationPalette("warning").text,
-  },
-};

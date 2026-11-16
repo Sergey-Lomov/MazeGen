@@ -31,6 +31,7 @@
   "common.next": "Далее",
   "common.apply": "Применить",
   "common.problems": "Проблемы",
+  "common.warnings": "Предупреждения ({count})",
   "common.exact_input": "Нажмите для точного ввода",
 
   "color_picker.title": "Цвет",

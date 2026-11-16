@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { ui, radius, typography, muted, inset, spacing } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { SidePanel } from "./SidePanel";
+import { WarningBubble } from "./WarningBubble";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
@@ -107,8 +108,8 @@ export function DebugPanel() {
       title={m["debug.title"]()}
       stackKey="debug"
       onClose={handleClose}
-      warnings={debugStale ? [m["debug.outdated_warning"]()] : undefined}
     >
+      {debugStale && <div style={styles.warning}><WarningBubble message={m["debug.outdated_warning"]()} /></div>}
       <div style={styles.controls}>
         {/* Step buttons */}
         <Tooltip content={m["debug.prev_step"]()}><button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }}>❮</button></Tooltip>
@@ -203,6 +204,11 @@ export function DebugPanel() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  warning: {
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    flexShrink: 0,
+  },
   controls: {
     display: "flex",
     alignItems: "center",
