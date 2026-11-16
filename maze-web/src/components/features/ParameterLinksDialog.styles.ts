@@ -1,5 +1,6 @@
 import type React from "react";
 import { ui, radius, typography, muted, disabled as disabledText, spacing, dialogSpacing, controlRowHeight } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import { sharedStyles } from "../../styles/shared";
 
 export const styles: Record<string, React.CSSProperties> = {
@@ -113,7 +114,7 @@ export const styles: Record<string, React.CSSProperties> = {
   // the closed-eye badge; applied before `pickerRowSelected` so a selected-but-inactive row still
   // shows its selection highlight.
   pickerRowInactive: { ...muted(typography.body) },
-  pickerRowDisabled: { ...disabledText(typography.body), cursor: "not-allowed" },
+  pickerRowDisabled: { ...disabledText(typography.body), cursor: notAllowedCursor },
   pickerRowLocked: { opacity: 0.6 },
   pickerRowSelected: { background: ui.state.selected },
   pickerGroupRow: {

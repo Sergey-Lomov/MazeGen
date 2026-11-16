@@ -5,6 +5,7 @@ import { Button } from "../Button";
 import { isEntityVisible } from "./ParamFields";
 import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
 import { radius, typography, disabled, spacing, inset } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -124,6 +125,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnDisabled: {
     opacity: 0.4,
-    cursor: "not-allowed",
+    cursor: notAllowedCursor,
   },
 };

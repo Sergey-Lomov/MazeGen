@@ -1,5 +1,6 @@
 import type React from "react";
 import { ui, font, radius, typography, spacing, inset, controlRowHeight } from "./theme";
+import { notAllowedCursor } from "./cursors";
 
 const selectArrow = {
   appearance: "none",
@@ -135,7 +136,7 @@ export const sharedStyles = {
   // Disabled state overlay
   btnDisabled: {
     opacity: 0.4,
-    cursor: "not-allowed",
+    cursor: notAllowedCursor,
   } satisfies React.CSSProperties,
 
   // Slider row (label + range + value) — explicit `controlRowHeight` so it lines up with

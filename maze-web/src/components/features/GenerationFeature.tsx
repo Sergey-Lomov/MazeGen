@@ -17,6 +17,7 @@ import { FlatIconButton } from "../FlatIconButton";
 import { ToolTooltip } from "../ToolIconButton";
 import { Tooltip } from "../Tooltip";
 import { ui, radius, typography, muted, spacing, indent } from "../../styles/theme";
+import { notAllowedCursor } from "../../styles/cursors";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
@@ -308,6 +309,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnDisabled: {
     opacity: 0.4,
-    cursor: "not-allowed",
+    cursor: notAllowedCursor,
   },
 };

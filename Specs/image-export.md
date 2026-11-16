@@ -832,7 +832,8 @@ a DFS along all existing links (disabled ones included, since `validateLinkGraph
 `wouldCreateCycle(links, source, target)` is true when `source` is in `reachableFrom(links, target)` or
 `source === target`.
 `addLink` refuses such a link (returns `settings`/`links` unchanged). `LinkEditor` keeps those Source
-candidates listed but disabled (`ParamPicker`'s `disabledPaths`): dimmed, not-allowed cursor, a cycle
+candidates listed but disabled (`ParamPicker`'s `disabledPaths`): dimmed, the shared muted-slate
+Lucide Ban cursor, a cycle
 icon after the label, not clickable, and a tooltip on the whole row (a group row whose leaves are all
 disabled, `allLeavesDisabled`, is dimmed and gets the icon too) ("Source unavailable: it would create
 a cyclic dependency between links."). An already-picked source that a newly chosen Target makes cyclic
