@@ -261,10 +261,9 @@ describe("FontPickerPanel", () => {
     expect(selectedName()).toBe("Consolas");
   });
 
-  it("keeps a saved family the machine does not report in the list", async () => {
+  it("does not list a saved family that the machine's readable font list lacks", async () => {
     await renderPanel({ font: { family: "Missing Sans", weight: 400 } });
-    expect(browserNames()).toEqual(["Missing Sans", "Arial", "Consolas", "Georgia"]);
-    expect(selectedName()).toBe("Missing Sans");
+    expect(browserNames()).toEqual(["Arial", "Consolas", "Georgia"]);
   });
 
   it("previews a font on click without committing", async () => {

@@ -225,12 +225,12 @@ export function FontPickerPanel({ font, onApply, onClose, onPreview, onCancel, t
   useEffect(() => { if (localeScript !== null) void loadUnmeasuredUploadedFonts(localeScript); }, [localeScript, fontsVersion]);
 
   const entries = useMemo<FontEntry[]>(() => {
-    // The open-time family stays listed even when the machine does not report it, so a project
-    // saved elsewhere still shows its current choice highlighted.
     // Installed fonts the machine reports, plus the files the user uploaded (the only raster source
     // in a browser without the Local Font Access API).
     const families = [...new Set([...(hasLocalFamilies ? localFamilies : []), ...uploadedFamilies(), ...manualFontNames()])].sort();
-    const extra = !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
+    // The open-time family stays listed while the machine's list cannot be read, so its current choice stays
+    // highlighted. Once the list is known, a family it lacks is missing and is not offered (GitHub issue #974).
+    const extra = !hasLocalFamilies && !isMsdfFamily(originalFamily) && !families.includes(originalFamily) ? [originalFamily] : [];
     const entry = (value: string, label: string, format: FontFormat): FontEntry => ({
       value,
       label,

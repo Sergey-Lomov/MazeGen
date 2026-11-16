@@ -13,7 +13,7 @@ import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { NotificationHost } from "./components/notifications/NotificationHost";
 import { Announcer } from "./components/Announcer";
 import { LoadingScreen } from "./components/LoadingScreen";
-import { FontPreparingIndicator } from "./components/FontPreparingIndicator";
+import { BackgroundActivityStack } from "./components/BackgroundActivityStack";
 import { LocalFontPermissionDialog } from "./components/dialogs/LocalFontPermissionDialog";
 import { GenerationProgressOverlay } from "./components/GenerationProgressOverlay";
 import { useMazeStore } from "./store/mazeStore";
@@ -150,7 +150,7 @@ export function App() {
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
         {!qualityOpen && <NoExportRendererHint />}
         {showFloorSwitcher && <FloorSwitcher />}
-        <FontPreparingIndicator />
+        <BackgroundActivityStack />
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
       {showMirrorPanel && <MirrorPanel />}

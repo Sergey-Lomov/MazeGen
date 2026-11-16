@@ -88,7 +88,7 @@ describe("VertexBasedSettingsPanel", () => {
     render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
 
     const oneWayHeader = screen.getByText(m["generation.category.one_way"]()).closest("div")!;
-    fireEvent.click(oneWayHeader.querySelector('[role="button"]')!);
+    fireEvent.click(oneWayHeader.querySelector("button")!);
 
     expect(screen.getByText(m["generation.desc.one_way_chance"]())).toBeInTheDocument();
   });
