@@ -106,7 +106,7 @@ export const styles: Record<string, React.CSSProperties> = {
   // own — an opaque background matching the dialog's (`Modal`'s `ui.bg.panel`) is what actually
   // clips them instead of letting them bleed through underneath (GitHub issue #645 follow-up).
   editorColumnTitle: { ...typography.body, position: "sticky" as const, top: 0, background: ui.bg.panel, paddingBottom: spacing.elementsGap, zIndex: 1 },
-  pickerSearch: { ...sharedStyles.inputSm, boxSizing: "border-box" as const, width: "100%", flexShrink: 0 },
+  pickerSearch: { width: "100%", flexShrink: 0 },
   pickerList: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   pickerRow: { ...typography.body, cursor: "default", padding: "2px 4px", borderRadius: 3 },
   // GitHub issue #688 — dims a hidden leaf/group row so it reads as inactive at a glance, on top of

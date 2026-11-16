@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
@@ -11,12 +11,12 @@ import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditLifelines";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
-import { sharedStyles } from "../../styles/shared";
 import { typography, muted, spacing, ui, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import { ToolTooltip } from "../ToolIconButton";
 import { Tooltip } from "../Tooltip";
+import { SearchInput } from "../SearchInput";
 
 /** Which row-level confirm dialog is pending (GitHub issue #547) — `commandIndex` is the log's own
  *  oldest-to-newest index (not the panel's reversed display order); `cascade` (only meaningful for
@@ -33,14 +33,8 @@ type PendingRowAction =
  *  needed here (unlike `PendingRowAction`) — the preview set itself already tells the whole story. */
 type HoveredRowPreview = { kind: "reset" | "delete"; commandIndex: number };
 
-/** Size of the clear (×) button's own `X` icon, and its horizontal inset (matching
- *  `sharedStyles.closeBtn`'s own `padding: "0 2px"`) — both feed `filterInput`'s right padding so
- *  typed text can never run under the button regardless of either value changing later. */
-const CLEAR_ICON_SIZE = 16;
-const CLEAR_ICON_INSET = 2;
-
 /** Size of each row's own Reset/Delete icon buttons (GitHub issue #547), inline with that row's own
- *  bubbles — same icon size as the filter's own clear button. */
+ *  bubbles. */
 const ROW_ACTION_ICON_SIZE = 16;
 
 /** "Changes" panel (GitHub issue #545) — lists every entry of the post-edit command log
@@ -125,25 +119,13 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   return (
     <SidePanel title={m["post_edit.changes_title"]()} stackKey="post-edit-changes" onClose={onClose}>
       <div style={styles.filterRow}>
-        <input
-          type="text"
+        <SearchInput
           name="post-edit-entity-filter"
           value={entityFilter ?? ""}
-          onChange={(e) => setEntityFilter(e.target.value.trim() === "" ? null : e.target.value.trim())}
+          onValueChange={(value) => setEntityFilter(value.trim() === "" ? null : value.trim())}
           placeholder={m["post_edit.changes_filter_placeholder"]()}
-          style={styles.filterInput}
+          layoutStyle={styles.filterBox}
         />
-        {entityFilter !== null && (
-          <Tooltip content={m["post_edit.changes_filter_clear"]()}><button
-            type="button"
-            className="hoverable"
-            onClick={() => setEntityFilter(null)}
-            aria-label={m["post_edit.changes_filter_clear"]()}
-            style={{ ...sharedStyles.closeBtn, ...styles.filterClear }}
-          >
-            <X size={CLEAR_ICON_SIZE} />
-          </button></Tooltip>
-        )}
       </div>
       {entityFilter !== null && rows.length === 0 ? (
         <div style={styles.empty}>{m["post_edit.changes_filter_empty"]({ id: entityFilter })}</div>
@@ -257,22 +239,9 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.panel,
     flexShrink: 0,
   },
-  filterInput: {
-    ...typography.field,
-    width: "100%",
+  filterBox: {
+    flex: 1,
     minWidth: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    // Right padding reserves room for `filterClear`'s icon (`CLEAR_ICON_SIZE`) plus its own inset
-    // on both sides, so typed text never runs under the button regardless of where it sits.
-    padding: `2px ${spacing.rowGap + CLEAR_ICON_SIZE + 2 * CLEAR_ICON_INSET}px 2px 6px`,
-  },
-  filterClear: {
-    position: "absolute",
-    right: spacing.rowGap + 2,
-    top: "calc(50% + 1px)",
-    transform: "translateY(-50%)",
   },
   list: {
     display: "flex",

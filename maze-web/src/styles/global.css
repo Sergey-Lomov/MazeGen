@@ -24,9 +24,25 @@ input[type="number"] {
   font-size: 16px;
 }
 
+/* The compact hit area is for dense, in-field actions. Unlike the default 22 px button with its
+   negative block margins, it naturally occupies the standard 18 px row footprint. */
+.btn-flat-icon-compact {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+  margin: 0;
+}
+
 .btn-flat-icon:hover:not(:disabled) {
   background: #2d2d2d;
   color: #d0d4d7;
+}
+
+/* Search fields share this flat-icon hit area. Their input background is also #2d2d2d, so the
+   regular hover fill would be invisible; the stronger shared action surface remains 18 px square
+   and the absolutely-positioned control does not affect the field's height. */
+.btn-flat-icon.search-input-clear:hover:not(:disabled) {
+  background: #404040;
 }
 
 /* An action needs a distinct second hover level when its containing list row is already hovered,

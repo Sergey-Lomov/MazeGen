@@ -25,6 +25,7 @@
   "loading.fonts": "Загрузка подписей",
   "common.reset_all": "Сбросить всё",
   "common.clear_all": "Очистить всё",
+  "common.clear_search": "Очистить поиск",
   "common.select": "Выбрать",
   "common.back": "Назад",
   "common.next": "Далее",

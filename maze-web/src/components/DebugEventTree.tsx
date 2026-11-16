@@ -14,6 +14,7 @@ import type { EventedEventKind } from "../wasm/mazeService";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { IconActionButton } from "./IconActionButton";
+import { SearchInput } from "./SearchInput";
 import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { resolveIssueLabel } from "./features/qualityI18n";
@@ -469,18 +470,17 @@ export function DebugEventTree() {
   return (
     <div style={styles.container}>
       <div style={styles.searchRow}>
-        <input
-          type="text"
+        <SearchInput
           name="debug-search"
           value={debugSearchQuery}
-          onChange={(e) => setDebugSearchQuery(e.target.value)}
+          onValueChange={setDebugSearchQuery}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
             navigate(e.shiftKey ? -1 : 1);
           }}
           placeholder={m["debug.search.placeholder"]()}
-          style={styles.searchInput}
+          layoutStyle={styles.searchBox}
         />
         <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
         <IconActionButton action="move-up" title={m["debug.search.prev"]()} disabled={matchCount <= 1} onClick={() => navigate(-1)} />
@@ -565,14 +565,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  searchInput: {
-    ...typography.field,
+  searchBox: {
     flex: 1,
     minWidth: 0,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.default}`,
-    borderRadius: radius.sm,
-    padding: "2px 6px",
   },
   searchCounter: {
     ...muted(typography.caption),

@@ -9,10 +9,11 @@
   "scripts": {
     "predev": "node tools/ensure-deps.mjs && node tools/prepare-paraglide.mjs",
     "dev": "vite",
-    "prebuild": "node tools/ensure-deps.mjs && node tools/prepare-paraglide.mjs",
+    "prebuild": "node tools/ensure-deps.mjs && node tools/prepare-paraglide.mjs && node tools/check-search-input.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "pretest": "node tools/ensure-deps.mjs && node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs",
+    "pretest": "node tools/ensure-deps.mjs && node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs && node tools/check-search-input.mjs",
+    "check:search-input": "node tools/check-search-input.mjs",
     "test": "vitest run",
     "pretest:watch": "node tools/ensure-deps.mjs && node tools/require-wasm.mjs && node tools/prepare-paraglide.mjs",
     "test:watch": "vitest",
