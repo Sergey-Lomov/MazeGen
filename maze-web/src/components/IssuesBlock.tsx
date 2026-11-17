@@ -195,6 +195,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           entries: entries.map((e) => ({ kind: e.kind, edges: e.edges, nodes: e.nodes, tile: e.tile != null ? { nodes: e.tile.nodes } : null })),
         };
       }
+      case "invalid_cross_element": {
+        const entries = payload.elements[sourceCheck]?.filter(visibleGroup) ?? null;
+        return entries == null ? null : {
+          kind: "invalidCrossElementGroup" as const,
+          entries: entries.map((e) => ({ kind: e.kind, edges: e.edges, nodes: e.nodes, tile: e.tile != null ? { nodes: e.tile.nodes } : null })),
+        };
+      }
       default:
         return null;
     }

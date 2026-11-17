@@ -315,6 +315,11 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     description: m["check.elevator_stop_group_graph_proximity.description"] as MessageFn,
     cardLabel: m["check.elevator_stop_group_graph_proximity.label"] as MessageFn,
   },
+  cross_element_cell_type: {
+    label: m["check.cross_element_cell_type.short_label"] as MessageFn,
+    description: m["check.cross_element_cell_type.description"] as MessageFn,
+    cardLabel: m["check.cross_element_cell_type.label"] as MessageFn,
+  },
   cross_element_geometric_proximity: {
     label: m["check.cross_element_geometric_proximity.short_label"] as MessageFn,
     description: m["check.cross_element_geometric_proximity.description"] as MessageFn,

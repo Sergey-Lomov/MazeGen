@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { fakeTessellationShapes } from "./tessellationShapesFake";
 import { qcForTessellation } from "../store/slices/qcTessellationFilter";
 import { selectTessellationWouldLoseData } from "../pixi/selectors/mazeSelectors";
-import { getTessellationShapes } from "../wasm/mazeService";
+import { getTessellationShapes, getTessellationCellTypes } from "../wasm/mazeService";
 import type { CheckDescriptor, RuleParamDescriptor, StrategyDescriptor } from "../wasm/types";
 import type { QcRuleState } from "../store/storeTypes";
 import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
 vi.mock("../wasm/mazeService", async (importActual) => ({
-  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
+  getFieldPreset: (await importActual<typeof import("../wasm/mazeService")>()).getFieldPreset, getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
+  getTessellationCellTypes: vi.fn(() => ({ keys: ["square", "octagon"] })) }));
 
 const HEX = tessellationConfigOf("hex");
 
@@ -138,5 +139,38 @@ describe("selectTessellationWouldLoseData split patterns", () => {
   it("reports loss when quality control would drop split patterns", () => {
     const rules = [rule("r", { checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square, hex]) }, disabled: false }] })];
     expect(selectTessellationWouldLoseData({ ...clean, ...qcState(rules), splitPatterns: [] })).toBe(true);
+  });
+});
+
+describe("qcForTessellation: cell_type-scoped params", () => {
+  const cellTypeChecks: CheckDescriptor[] = [{
+    id: "cross_element_cell_type", label: "", description: "", issue_kinds: ["invalid_cross_element"],
+    params: ["square", "hexagon"].map((key) => ({
+      id: `forbid_cell_type_${key}`, label: "", kind: { type: "bool" as const, default: false },
+      visibility: { type: "cell_type" as const, key },
+    })),
+  }];
+  const withParams = (params: Record<string, string>) => ({
+    ...qcState([rule("r", { checks: [{ localId: 0, typeId: "cross_element_cell_type", params, disabled: false }] })]),
+    availableChecks: cellTypeChecks,
+  });
+
+  it("switches off a forbidden type the new tessellation lacks and keeps the rest", () => {
+    const state = withParams({ forbid_cell_type_square: "true", forbid_cell_type_hexagon: "true" });
+    const result = qcForTessellation(state, tessellationConfigOf("square_octagon"));
+    expect(result.rules[0].checks[0].params).toEqual({
+      forbid_cell_type_square: "true", forbid_cell_type_hexagon: "false",
+    });
+  });
+
+  it("returns the same references when every forbidden type exists", () => {
+    const state = withParams({ forbid_cell_type_square: "true", forbid_cell_type_hexagon: "false" });
+    expect(qcForTessellation(state, tessellationConfigOf("square_octagon")).rules).toBe(state.rules);
+  });
+
+  it("does not ask core for cell types when no param is cell_type-scoped", () => {
+    vi.mocked(getTessellationCellTypes).mockClear();
+    qcForTessellation(qcState([rule("r", { checks: [{ localId: 0, typeId: "split_count", params: {}, disabled: false }] })]), HEX);
+    expect(getTessellationCellTypes).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { Button } from "../Button";
-import { isEntityVisible } from "./ParamFields";
+import { isEntityVisible, useVisibilityContext } from "./ParamFields";
 import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
 import { radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import { notAllowedCursor } from "../../styles/cursors";
@@ -24,7 +24,7 @@ interface Props {
  * into two non-contiguous runs, which renders as duplicate React keys. Kinds absent here sort
  * after all of these. */
 const ISSUE_KIND_ORDER = [
-  "invalid_cross_element_group",
+  "invalid_cross_element_group", "invalid_cross_element",
   "invalid_dead_end_group",
   "missing_endpoints", "unreachable_finish",
   "missing_one_ways", "invalid_one_way", "invalid_one_way_group",
@@ -42,11 +42,11 @@ const ISSUE_KIND_ORDER = [
  * step 2 (CheckSelectDialog with a `kind` filter) to checks of that kind. */
 export function IssueSelectDialog({ onSelect, onClose }: Props) {
   const allChecks = useMazeStore((s) => s.availableChecks);
-  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibility = useVisibilityContext();
   // A kind survives here if at least one check offering it is currently visible -- a kind whose
   // every check is `MultiFloorOnly` (e.g. vertical-passage/elevator kinds on a single floor)
   // disappears entirely rather than leading to an empty step-2 dialog.
-  const availableChecks = allChecks.filter((c) => isEntityVisible(c.visibility, floorCount));
+  const availableChecks = allChecks.filter((c) => isEntityVisible(c.visibility, visibility));
 
   const kinds = Array.from(new Set(availableChecks.map((c) => c.issue_kinds[0]))).sort((a, b) => {
     const ia = ISSUE_KIND_ORDER.indexOf(a);

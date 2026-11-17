@@ -1,8 +1,9 @@
+use super::check_factory::parse_cell_type_keys;
 use super::qc_kind_registry::build_rule;
 use crate::config::GenerateConfig;
 use maze_core::{
     quality_control::{QualityControlEngine, RuleTrait, Stage},
-    space::Tessellation,
+    space::{Tessellation, cell_type_by_key},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -41,6 +42,30 @@ pub fn build_qc_and_repair<T: Tessellation + 'static>(
     // longer a separate "all rules" list a strategy-bearing rule could fail to appear in.
 
     Ok(QualityControlEngine::new(stages))
+}
+
+/// Rejects a `forbid_cell_type_<key>` param whose key the built tessellation instance does not have (GitHub
+/// issue #824; `Specs/space.md`'s "Cell types": an unknown key is a config error, never ignored).
+/// Needs the instance, which `build_qc_and_repair` does not have, so callers run it separately.
+pub fn validate_cell_type_params<T: Tessellation>(
+    config: &GenerateConfig,
+    tessellation: &T,
+) -> Result<(), String> {
+    let types = tessellation.cell_types();
+    for rule_cfg in config.stages.iter().flat_map(|stage| &stage.rules) {
+        for instance in &rule_cfg.checks {
+            for key in parse_cell_type_keys(instance) {
+                if cell_type_by_key(types, &key).is_none() {
+                    let known: Vec<_> = types.iter().map(|t| t.key()).collect();
+                    return Err(format!(
+                        "rule {}: unknown cell type `{key}`, expected one of {known:?}",
+                        rule_cfg.id
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Maps each check *instance* id (`"<rule_id>:<local_id>"`, the key issue groups are attributed

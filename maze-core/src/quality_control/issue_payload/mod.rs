@@ -11,7 +11,6 @@ pub use types::{
 
 use super::distance_diagnostics::IndeterminateReason;
 use super::issue::Issue;
-use super::issue_kinds::InvalidCrossElementGroupIssue;
 use super::issue_kinds::{
     AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
     InvalidDeadEndGroupIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
@@ -25,6 +24,7 @@ use super::issue_kinds::{
     MissingTeleportsIssue, MissingVerticalPassagesIssue,
     RegionNeedsExpansionIssue, RegionNeedsShrinkIssue,
 };
+use super::issue_kinds::{InvalidCrossElementGroupIssue, InvalidCrossElementIssue};
 use crate::generation::PresetState;
 use crate::graph::Graph;
 use crate::graph::scc::ConnectedComponents;
@@ -32,7 +32,8 @@ use crate::space::{MultiLevelField, Tessellation};
 use resolvers::{
     excessive_scc_count_preset_locked, region_preset_locked_for_expansion,
     region_preset_locked_for_shrink, resolve_area_deficit_map, resolve_cross_element_group_payload,
-    resolve_cycle_payload, resolve_dead_end_group_map, resolve_edge_group_map,
+    resolve_cross_element_payload, resolve_cycle_payload, resolve_dead_end_group_map,
+    resolve_edge_group_map,
     resolve_elevator_group_map, resolve_elevator_stop_group_map,
     resolve_excessive_elevator_stop_gap_payload, resolve_invalid_elevator_payload,
     resolve_invalid_elevator_stop_payload, resolve_invalid_split_node_group_payload,
@@ -451,6 +452,18 @@ pub fn resolve_issue_payload<T: Tessellation>(
             cross.groups(),
             cross.invalid_sources(),
             &cross.close_nodes,
+            graph,
+            field,
+            preset_state,
+        )
+    {
+        return payload;
+    }
+
+    if let Some(cross) = issue.as_any().downcast_ref::<InvalidCrossElementIssue>()
+        && let Some(payload) = resolve_cross_element_payload(
+            &cross.violations,
+            &cross.invalid_sources,
             graph,
             field,
             preset_state,

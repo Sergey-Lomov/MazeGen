@@ -2005,6 +2005,22 @@ element is still flagged — the repair strategy then spares the protected side 
 one (see `repair.md`). The per-element check is precomputed once over the distinct elements of the
 scan, so `pair_excluded` is a pair of set lookups rather than re-running the route test per pair.
 
+**`CrossElementCellTypeCheck`** (`check_type_id() == "cross_element_cell_type"`, GitHub issue #824)
+— flags every element of the selected kinds that sits on a forbidden tessellation cell type. The
+element kinds come from the same seven `include_*` booleans (`CrossElementSet`) the proximity
+checks use; the forbidden types are one bool param per cell type, `forbid_cell_type_<key>` (default off,
+`FORBID_CELL_TYPE_PARAM_PREFIX`; keys from `space.md`, "Cell types"), each shown in the UI only while
+the active tessellation provides that type (`EntityVisibility::CellType`). Each occurrence from `cross_element_occurrences` is looked up with
+`cell_type_key_of(occurrence.point)`, so an element with several ends (teleport, vertical passage,
+elevator stops, split nodes) is checked at every end and one offending end is enough to violate it.
+No forbidden type switched on, or an empty element selection, is a silent no-op, and a
+single-type tessellation fires only if its one type is listed. Fires one
+`InvalidCrossElementIssue` per run, listing every `CrossElementCellViolation { element, node,
+cell_type }`, with `.with_detail(instance_id, "cell_types", <forbidden keys joined by ", ">)`.
+An unknown key is a config error, not a silent miss: `maze-runner`'s `validate_cell_type_params`
+rejects it (naming the known keys) in `run_repair` / `run_check_only`, because the check factory
+has no tessellation instance. No repair strategy is registered for `invalid_cross_element`.
+
 ### CrossElementGroupKind / InvalidCrossElementGroupIssue
 
 ```rust
@@ -2128,6 +2144,13 @@ multi-node region, since stops in a group aren't necessarily spatially adjacent.
 (`maze-core/src/quality_control/issue_payload.rs`) from `InvalidElevatorStopIssue::invalid`/
 `InvalidElevatorStopGroupIssue::groups` and their respective `invalid_sources` maps.
 
+`IssuePayloadDto::InvalidCrossElement.elements` (GitHub issue #824) is
+`HashMap<String, Vec<CrossElementPayloadEntry>>` — keyed by source check instance id, one
+`CrossElementPayloadEntry` per flagged element (same entry shape as below), narrowed to the
+offending occurrence nodes. Built by `resolve_cross_element_payload` from
+`InvalidCrossElementIssue.violations` / `invalid_sources`. The web highlights those cells as
+region squares through the same `invalidCrossElementGroup` highlight target.
+
 `IssuePayloadDto::InvalidCrossElementGroup.groups` (GitHub issue #376) is
 `HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>` — keyed by source check instance id, one
 inner `Vec<CrossElementPayloadEntry>` per flagged pair (length 2), one `CrossElementPayloadEntry`
@@ -2153,7 +2176,8 @@ cells as region squares, one flat deduplicated group.
 On the binary QC event tape (`event_encode.rs`/`qcCustom.ts`, see `event_log.md`), `IssuePayload`
 variants are hand-written wire tags on both sides (`write_issue_payload` writes; `readIssuePayload`
 reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`, `InvalidCrossElementGroup`
-is tag `14`, `IndeterminateDistance` is tag `15`. `codegen`'s
+is tag `14`, `InvalidDeadEnd` is tag `15`, `IndeterminateDistance` is tag `16`,
+`InvalidCrossElement` is tag `17`. `codegen`'s
 `issue_payload_check` module (`codegen/src/issue_payload_check.rs`) text-scans both functions' tag
 literals and fails `--check`/plain runs on any mismatch, since a tag added to one side and
 forgotten on the other only surfaces as a runtime "unknown tag" crash otherwise.
@@ -2349,6 +2373,7 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `elevator_span` | `invalid_elevator` | `span: Integer(default=10, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `elevator_stop_group_geometric_proximity` | `invalid_elevator_stop_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `elevator_stop_group_graph_proximity` | `invalid_elevator_stop_group` | `distance: Integer(default=0, min=0, max=100_000)` | no |
+| `cross_element_cell_type` | `invalid_cross_element` | `include_teleport: Bool(default=true)`, `include_one_way: Bool(default=true)`, `include_vertical_passage: Bool(default=true)`, `include_elevator_stop: Bool(default=true)`, `include_split: Bool(default=true)`, `include_start: Bool(default=false)`, `include_finish: Bool(default=false)`, `forbid_cell_type_<key>: Bool(default=false)` for `triangle` / `square` / `hexagon` / `octagon` / `dodecagon` | no |
 | `cross_element_geometric_proximity` | `invalid_cross_element_group` | `include_teleport: Bool(default=true)`, `include_one_way: Bool(default=true)`, `include_vertical_passage: Bool(default=true)`, `include_elevator_stop: Bool(default=true)`, `include_split: Bool(default=true)`, `include_start: Bool(default=false)`, `include_finish: Bool(default=false)`, `distance: Float(default=1.0, min=0.0, max=1_000_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | yes |
 | `cross_element_graph_proximity` | `invalid_cross_element_group` | `include_teleport: Bool(default=true)`, `include_one_way: Bool(default=true)`, `include_vertical_passage: Bool(default=true)`, `include_elevator_stop: Bool(default=true)`, `include_split: Bool(default=true)`, `include_start: Bool(default=false)`, `include_finish: Bool(default=false)`, `distance: Integer(default=1, min=0, max=100_000)` (rule-level `protect_route`) | yes |
 

@@ -1,6 +1,7 @@
 use super::snapshot_dto::{
-    cross_element_group_map_dto, edge_group_map_dto, missing_elevator_stops_map_dto,
-    region_payload_map_dto, route_payload_map_dto, split_face_requirement_dto, split_group_map_dto,
+    cross_element_group_map_dto, cross_element_map_dto, edge_group_map_dto,
+    missing_elevator_stops_map_dto, region_payload_map_dto, route_payload_map_dto,
+    split_face_requirement_dto, split_group_map_dto,
 };
 use crate::dto::{
     EdgeDto, EdgeKindDto, ElementsStatsDto, FloorScoped, GraphStatsDto, IssueDto, IssuePayloadDto,
@@ -166,6 +167,11 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 IssuePayload::InvalidCrossElementGroup { groups } => {
                     IssuePayloadDto::InvalidCrossElementGroup {
                         groups: cross_element_group_map_dto(groups),
+                    }
+                }
+                IssuePayload::InvalidCrossElement { elements } => {
+                    IssuePayloadDto::InvalidCrossElement {
+                        elements: cross_element_map_dto(elements),
                     }
                 }
             };

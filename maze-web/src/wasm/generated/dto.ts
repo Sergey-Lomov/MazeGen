@@ -284,6 +284,10 @@ export type IssuePayloadDto =
       groups: Record<string, CrossElementPayloadEntry[][]>;
     }
   | {
+      kind: "invalid_cross_element";
+      elements: Record<string, CrossElementPayloadEntry[]>;
+    }
+  | {
       kind: "indeterminate_distance";
       pairs: IssueUndecidedPairPayload[];
     }
